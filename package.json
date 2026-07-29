@@ -7,9 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev",
+    "clean": "rm -rf node_modules .turbo apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist",
+    "dev:all": "npm run clean && npm install && npm run build && turbo run dev --concurrency=20",
+    "dev": "turbo run dev --concurrency=20",
     "build": "turbo run build",
-    "start": "turbo run start",
+    "start": "turbo run start --concurrency=20",
     "lint": "turbo run lint"
   },
   "packageManager": "npm@10.9.2",

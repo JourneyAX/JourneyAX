@@ -1,30 +1,16 @@
 import { MongoClient, Db, Collection } from 'mongodb';
+import { connectToDatabase } from '@journeyax/database';
 import { KnowledgeDocument, SearchOptions, SearchResult } from './types';
-
-// ── Singleton client ───────────────────────────────────────────────────
-let client: MongoClient | null = null;
-let db: Db | null = null;
 
 const DB_NAME = 'journeyx';
 const COLLECTION_NAME = 'documents';
 const VECTOR_INDEX_NAME = 'vector_index';
 
-export async function getMongoClient(): Promise<MongoClient> {
-  if (client) return client;
-
+export async function getDb(): Promise<Db> {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error('MONGODB_URI not set in environment');
 
-  client = new MongoClient(uri);
-  await client.connect();
-  console.log('✅ Connected to MongoDB Atlas');
-  return client;
-}
-
-export async function getDb(): Promise<Db> {
-  if (db) return db;
-  const c = await getMongoClient();
-  db = c.db(DB_NAME);
+  const { db } = await connectToDatabase(uri, DB_NAME);
   return db;
 }
 
@@ -33,12 +19,25 @@ export async function getCollection(): Promise<Collection<KnowledgeDocument>> {
   return database.collection<KnowledgeDocument>(COLLECTION_NAME);
 }
 
-// ── Insert documents ───────────────────────────────────────────────────
+// ── Insert documents (idempotent: upsert by sourceUrl + chunkIndex) ─────
+// Upsert so re-ingesting a product replaces its doc instead of creating a
+// duplicate — safe to re-run against the live catalogue.
 export async function insertDocuments(docs: KnowledgeDocument[]): Promise<number> {
   if (docs.length === 0) return 0;
   const col = await getCollection();
-  const result = await col.insertMany(docs as any[]);
-  return result.insertedCount;
+  const ops = docs.map((d: any) => ({
+    updateOne: {
+      // projectId in the key when present (isolation contract); legacy docs
+      // without projectId keep the old key so re-ingests stay idempotent.
+      filter: d.projectId
+        ? { projectId: d.projectId, sourceUrl: d.sourceUrl, chunkIndex: d.chunkIndex }
+        : { sourceUrl: d.sourceUrl, chunkIndex: d.chunkIndex },
+      update: { $set: d },
+      upsert: true,
+    },
+  }));
+  const result = await col.bulkWrite(ops as any[]);
+  return (result.upsertedCount || 0) + (result.modifiedCount || 0);
 }
 
 // ── Clear brand data ───────────────────────────────────────────────────
@@ -232,10 +231,5 @@ export async function ensureIndexes(): Promise<void> {
 
 // ── Close connection ───────────────────────────────────────────────────
 export async function closeConnection(): Promise<void> {
-  if (client) {
-    await client.close();
-    client = null;
-    db = null;
-    console.log('MongoDB connection closed');
-  }
+  console.log('MongoDB connection close requested (managed by shared client pool)');
 }

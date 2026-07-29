@@ -16,6 +16,8 @@ html, body { height: 100%; overflow: hidden; }
   --surface:       #FFFFFF;
   --surface-alt:   #FCFBF7;
   --surface-hover: #F3EFE7;
+  /* The 60% stage canvas. White by default; tenant-themeable via applyTheme. */
+  --stage-bg:      #FFFFFF;
 
   /* Brand */
   --dark:          #17140F;
@@ -131,8 +133,41 @@ body {
   max-width: 40%;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  background: var(--sidebar-bg, var(--surface));
   border-right: 1px solid var(--border);
+}
+
+/* Config-driven dark sidebar (AUG-49). A tenant whose brand runs dark
+   (Momentec black/graphite, Augusta red-on-black) sets theme.sidebarStyle:
+   'dark'. Rather than restyle every element, we REDEFINE the colour variables
+   scoped to the panel — everything inside that reads --surface/--text/--border/
+   the chat-bubble vars flips to a legible dark theme automatically, while the
+   brand accent (--gold) still drives buttons and the user bubble. The right 60%
+   panel is untouched and stays light. */
+.chat-panel[data-sidebar="dark"] {
+  --surface:        rgba(255,255,255,0.05);
+  --surface-alt:    rgba(255,255,255,0.07);
+  --surface-hover:  rgba(255,255,255,0.10);
+  --dark:           #FFFFFF;
+  --text:           #F1EEE7;
+  --text-dark-alt:  #F1EEE7;
+  --text-body:      #E4E0D8;
+  --text-muted:     rgba(255,255,255,0.50);
+  --text-light:     rgba(255,255,255,0.44);
+  --text-lighter:   rgba(255,255,255,0.40);
+  --text-dim:       rgba(255,255,255,0.82);
+  --text-secondary: rgba(255,255,255,0.72);
+  --border:         rgba(255,255,255,0.12);
+  --border-light:   rgba(255,255,255,0.10);
+  --border-dark:    rgba(255,255,255,0.30);
+  --border-input:   rgba(255,255,255,0.18);
+  --chat-ai-bg:     rgba(255,255,255,0.06);
+  --chat-ai-border: rgba(255,255,255,0.10);
+  --chat-user-bg:   var(--gold);
+  --chat-user-text: #FFFFFF;
+  /* Opaque backing for pop-overs — see .chat-header__convomenu. */
+  --convo-menu-bg:  #17171A;
+  color: var(--text);
 }
 
 .chat-header {
@@ -176,8 +211,140 @@ body {
   color: var(--text-muted);
 }
 
-.chat-header__badge {
+.chat-header__logo {
+  height: 30px;
+  width: auto;
+  max-width: 132px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.chat-header__actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-header__signin {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-dark);
+  padding: 6px 14px;
+  border-radius: 2px;              /* square, matching the panel's edges */
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-header__signin:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* Conversations — switch threads, or start a clean one. Same square, quiet
+   treatment as Sign in: these are utilities beside the brand, not calls to
+   action competing with the chat itself. */
+.chat-header__convos {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-header__iconbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-dark);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.chat-header__iconbtn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.chat-header__convomenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  /* The panel's --surface is a translucent overlay in the dark theme, which
+     made this menu see-through and unreadable over the chat behind it. A
+     dropdown needs its own opaque surface, so it declares one. */
+  background: var(--convo-menu-bg, #ffffff);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+.chat-header__convomenu-title {
+  padding: 6px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.chat-header__convoitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.chat-header__convoitem:hover { background: var(--surface-hover, rgba(127, 127, 127, 0.12)); }
+.chat-header__convoitem.is-active { color: var(--gold); }
+.chat-header__convoitem-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-header__convoitem-when {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.chat-header__convonew {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--gold);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border-dark);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.chat-header__badge {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -380,6 +547,10 @@ body {
   overflow-y: auto;
   position: relative;
   height: 100%;
+  /* The stage is WHITE, not the page's beige. The left 40% carries the brand's
+     dark colour (data-sidebar="dark"); the right 60% stays a clean white canvas
+     so garments, colour cards and concepts read true. */
+  background: var(--stage-bg, #fff);
 }
 
 .project-panel::-webkit-scrollbar { width: 9px; }
@@ -801,8 +972,13 @@ body {
 /* Specs grid */
 .product-card__specs {
   margin: 8px 0;
-  border: 1px solid var(--border-light);
-  background: var(--bg);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 8px;
+  overflow: hidden;
+  /* Neutral surface, not the beige --bg (which read as Caroma) and not the
+     accent-hijacked --text for values — a spec table must look the same clean
+     way on every brand. */
+  background: var(--surface, #fff);
 }
 
 .product-card__specs-title {
@@ -840,7 +1016,7 @@ body {
 }
 
 .product-card__spec-value {
-  color: var(--text);
+  color: #1e1e1e;
   font-weight: 600;
   text-align: right;
 }
@@ -1580,5 +1756,186 @@ body {
   font-family: var(--font-heading);
   font-size: 14px;
   font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Embed mode (?embed=1) — the AX surface inside an iframe on a customer site ──
+   Single column, agent on top, context panel below; no page chrome. */
+.app-layout--embed { flex-direction: column; height: 100vh; overflow-y: auto; }
+.app-layout--embed .chat-panel {
+  flex: none; max-width: 100%; width: 100%;
+  min-height: 46vh; border-right: none; border-bottom: 1px solid var(--border);
+}
+.app-layout--embed .project-panel { width: 100%; height: auto; min-height: 0; flex: 1; }
+/* Drop the marketing hero in the tight embed — go straight to the agent. */
+.app-layout--embed .hero-panel { display: none; }
+
+/* Design CTA on a product card — the customer's deterministic route into 3D.
+   Prominent because designing IS the business; stock is the fallback. */
+.product-card__design-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 16px;
+  padding: 11px 18px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--chat-user-text, #fff);
+  background: var(--gold);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.05s;
+}
+.product-card__design-btn:hover { filter: brightness(1.08); }
+.product-card__design-btn:active { transform: translateY(1px); }
+
+/* ── Design concepts (AUG-57) ───────────────────────────────────────────
+   Three looks in the team's colours, before the 3D view. Cards carry the real
+   composed print, so what the customer compares is what gets made. */
+.concepts-panel {
+  padding: 48px 56px;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--stage-bg);
+}
+.concepts-panel__eyebrow {
+  font-family: var(--font-heading);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+.concepts-panel__heading {
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.concepts-panel__desc {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 560px;
+  margin-bottom: 28px;
+}
+.concepts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.concept-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.concept-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+}
+.concept-card.is-current { border-color: var(--gold); }
+.concept-card__art {
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+.concept-card__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.concept-card__label {
+  padding: 12px 14px 0;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: capitalize;
+}
+.concept-card__cta {
+  display: flex;
+  align-items: center;
+  padding: 6px 14px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}
+.concepts-panel__skip {
+  margin-top: 22px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-dark);
+  cursor: pointer;
+}
+.concepts-panel__skip:hover { color: var(--gold); border-color: var(--gold); }
+
+/* Concept art arrives one composite at a time; shimmer until it does. */
+.concept-card__art {
+  position: relative;
+  background: linear-gradient(100deg,
+    var(--surface-alt) 30%, var(--surface-hover) 50%, var(--surface-alt) 70%);
+  background-size: 220% 100%;
+  animation: conceptShimmer 1.4s ease-in-out infinite;
+}
+.concept-card__art.is-loaded { animation: none; background: var(--surface-alt); }
+.concept-card__art img { opacity: 0; transition: opacity 0.25s ease; }
+.concept-card__art.is-loaded img { opacity: 1; }
+@keyframes conceptShimmer {
+  0%   { background-position: 130% 0; }
+  100% { background-position: -30% 0; }
+}
+
+/* Ordered: the line items actually bought (AUG-79). */
+.ordered-panel__lines {
+  width: 100%;
+  max-width: 560px;
+  margin: 22px 0 4px;
+  border-top: 1px solid var(--border-light);
+}
+.ordered-panel__line {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.ordered-panel__line-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ordered-panel__line-name {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.ordered-panel__line-meta { font-size: 11px; color: var(--text-secondary); }
+.ordered-panel__line-total {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
 }

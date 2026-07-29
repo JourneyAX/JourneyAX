@@ -1,16 +1,26 @@
 'use client';
 
+/**
+ * Hero — CONFIG-DRIVEN per tenant (multi-storefront). Brand, vocabulary and
+ * pitch all come from the project's published config; nothing brand-specific
+ * lives in code.
+ */
+import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+
 export default function HeroPanel() {
-  const features = ['Compatibility validated', 'Live pricing', 'Real-time stock'];
+  const cfg = useStorefrontConfig();
+  const items = (cfg.labels.items || 'Products').toLowerCase();
+  const features = ['Expert guidance', 'Real catalogue data', 'One complete quote'];
 
   return (
     <div className="hero-panel">
-      <div className="hero-panel__eyebrow">Caroma · Made For Life</div>
+      <div className="hero-panel__eyebrow">{cfg.companyName}</div>
       <h1 className="hero-panel__heading">
-        Configure your bathroom in one conversation.
+        {cfg.intro?.heroHeadline || `${cfg.labels.headerTitle || `Find the right ${items}`} — in one conversation.`}
       </h1>
       <p className="hero-panel__desc">
-        Tell me about your project — the style, the scope, and the finish. I&apos;ll match the right Caroma collection, validate every hidden in-wall component, price it, and confirm stock — as one quote you can adjust.
+        {cfg.intro?.heroSubtitle
+          || `Tell ${cfg.systemName || 'our consultant'} what you're trying to achieve. I'll ask the right questions, match the right ${items} from ${cfg.companyName}'s real catalogue, and bring it together as one plan you can adjust.`}
       </p>
       <div className="hero-panel__features">
         {features.map(f => (

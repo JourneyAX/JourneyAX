@@ -21,3 +21,6 @@ export function calculateTotals(
     total
   };
 }
+
+export * from './connectors';
+

@@ -6,7 +6,7 @@
     "dev": "next dev -p 3009",
     "build": "next build",
     "start": "next start -p 3009",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@journeyax/configurator-core": "*",
@@ -17,7 +17,8 @@
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "lucide-react": "^0.453.0"
+    "lucide-react": "^0.453.0",
+    "@journeyax/cache": "*"
   },
   "devDependencies": {
     "@types/node": "^20",

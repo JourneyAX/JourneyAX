@@ -4,3 +4,12 @@ node_modules/
 .env
 .DS_Store
 .vercel
+
+# Ingested artifacts (feeds, catalogue PDFs) — belong in per-project cloud storage, never the repo
+/data/
+
+# Build and IDE artifacts
+dist/
+.turbo/
+*.tsbuildinfo
+.env.bak.*

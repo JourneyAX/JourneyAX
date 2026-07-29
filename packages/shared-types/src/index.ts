@@ -64,3 +64,74 @@ export interface Quote {
   warrantySummary?: string;
   createdAt: Date;
 }
+
+export type ConnectorType = 'shopify' | 'commercetools' | 'sap_erp' | 'netsuite' | 'hubspot' | 'salesforce_crm' | 'stripe';
+
+export interface IntegrationConnection {
+  id: string;
+  tenantId: string;
+  name: string;
+  type: ConnectorType;
+  isActive: boolean;
+  credentials: {
+    apiUrl: string;
+    apiKey?: string;
+    apiSecret?: string;
+    authToken?: string;
+    clientId?: string;
+    orgId?: string;
+  };
+  lastSyncedAt?: Date;
+}
+
+export interface SyncCatalogPayload {
+  tenantId: string;
+  connectionId: string;
+  limit?: number;
+}
+
+export interface SyncResult {
+  success: boolean;
+  itemsProcessed: number;
+  errors: string[];
+}
+
+export interface PushLeadPayload {
+  tenantId: string;
+  quoteId: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  bom: BomItem[];
+  totals: {
+    subtotal: number;
+    discount: number;
+    gst: number;
+    total: number;
+  };
+  conversationTranscriptUrl?: string;
+}
+
+export interface PushLeadResult {
+  success: boolean;
+  externalLeadId: string;
+  crmUrl?: string;
+}
+
+export interface CreateCheckoutPayload {
+  tenantId: string;
+  quoteId: string;
+  bom: BomItem[];
+  currency: string;
+  successUrl: string;
+  cancelUrl: string;
+}
+
+export interface CreateCheckoutResult {
+  success: boolean;
+  checkoutUrl: string;
+  externalOrderId?: string;
+}
+
+// ── RBAC policy (P0-02) ──
+export * from "./rbac";

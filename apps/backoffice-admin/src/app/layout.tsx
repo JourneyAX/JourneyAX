@@ -17,7 +17,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body style={{ margin: 0, padding: 0, height: "100vh", overflow: "hidden" }}>
+      <body style={{ margin: 0, padding: 0, minHeight: "100vh", background: "var(--surface-base)" }}>
         {children}
       </body>
     </html>

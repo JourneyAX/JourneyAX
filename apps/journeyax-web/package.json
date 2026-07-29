@@ -3,19 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3008",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start -p 3008",
+    "lint": "eslint ."
   },
   "dependencies": {
-    "@mendable/firecrawl-js": "^4.29.0",
+    "@journeyax/database": "*",
+    "@journeyax/shared-types": "*",
+    "@types/three": "^0.169.0",
+    "csv-parse": "^7.0.1",
     "dotenv": "^17.4.2",
     "mongodb": "^7.4.0",
     "next": "16.2.9",
     "openai": "^6.45.0",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "three": "^0.169.0"
   },
   "devDependencies": {
     "@types/node": "^20",

@@ -4,11 +4,14 @@ import * as dotenv from 'dotenv';
 import { execSync } from 'child_process';
 import { chromium } from 'playwright';
 
+// Load .env.local if present, otherwise .env (dotenv won't override already-set vars).
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 import { getCollection, insertDocuments, closeConnection } from '../services/knowledge/mongo';
 import { chunkContent } from '../services/knowledge/chunker';
 import { embedTexts } from '../services/knowledge/embedder';
+import { extractProductMetadata } from '../services/knowledge/classifier';
 import { KnowledgeDocument, DocumentMetadata } from '../services/knowledge/types';
 
 const BRAND = 'caroma';
@@ -33,7 +36,7 @@ async function main() {
     'https://www.caroma.com/au/independent-living/'
   ];
 
-  let uniqueUrls = new Set<string>(seedUrls);
+  const uniqueUrls = new Set<string>(seedUrls);
 
   // Fetch product sitemap
   try {
@@ -55,7 +58,28 @@ async function main() {
       console.error("Error fetching sitemap", e);
   }
 
-  const urlList = Array.from(uniqueUrls);
+  // Add design / renovation-guide / collection / concept URLs from the static sitemap
+  try {
+    const staticPath = path.resolve(process.cwd(), 'data/sitemap-static.txt');
+    if (fs.existsSync(staticPath)) {
+      const staticUrls = fs.readFileSync(staticPath, 'utf-8')
+        .split('\n').map(l => l.trim()).filter(u => u.startsWith('http'));
+      staticUrls.forEach(u => uniqueUrls.add(u));
+      console.log(`Added ${staticUrls.length} design/static URLs from sitemap-static.txt`);
+    }
+  } catch (e) { console.warn('static sitemap read failed', e); }
+
+  let urlList = Array.from(uniqueUrls);
+  console.log(`Total URLs found: ${urlList.length}`);
+  // --limit N → test batch: N products + up to 3 design/category pages
+  const limitArg = process.argv.indexOf('--limit');
+  const LIMIT = limitArg >= 0 ? parseInt(process.argv[limitArg + 1], 10) : 0;
+  if (LIMIT > 0) {
+    const products = urlList.filter(u => u.toLowerCase().includes('/product/'));
+    const others = urlList.filter(u => !u.toLowerCase().includes('/product/'));
+    urlList = [...products.slice(0, LIMIT), ...others.slice(0, 3)];
+    console.log(`⚠️  TEST BATCH: limited to ${urlList.length} URLs (${Math.min(LIMIT, products.length)} products + designs)`);
+  }
   console.log(`Total URLs to process: ${urlList.length}`);
 
   console.log('\n🚀 Step 2: Launching Master Playwright Scraper...');
@@ -76,6 +100,11 @@ async function main() {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(2500); // Wait for React components
+
+      // Capture the full rendered HTML (with JSON-LD script tags) BEFORE the
+      // in-page evaluate strips <script>/<header> etc. — this is where the clean
+      // product data (sku, price, specs, variants, docs) lives.
+      const html = await page.content();
 
       const pageData = await page.evaluate(() => {
         // Extract images before removing elements
@@ -110,27 +139,48 @@ async function main() {
           continue;
       }
 
+      // Classify the page type first (needed by the re-ingest condition below).
+      const lowerUrl = url.toLowerCase();
+      let type: any = 'general';
+      if (lowerUrl.includes('/product/')) type = 'product';
+      else if (lowerUrl.includes('/dorf/')) type = 'product';
+      else if (lowerUrl.includes('renovation-guide') || lowerUrl.includes('/collection') || lowerUrl.includes('/design')) type = 'design';
+      else if (lowerUrl.includes('independent-living') || lowerUrl.includes('livewell')) type = 'design';
+      else if (lowerUrl.includes('warranties')) type = 'policy';
+      else if (lowerUrl.includes('conditions')) type = 'policy';
+
       // Check if already in DB to avoid dupes on restart
       const col = await getCollection();
       const existing = await col.findOne({ "metadata.url": url, type: { $ne: "troubleshooting" } });
-      
-      // If the old entry doesn't have images, we want to delete it and re-ingest
-      const hasImages = existing ? existing.content.includes('--- Product Images ---') : false;
 
-      if (!existing || !hasImages) {
+      // Re-ingest when: no entry, no image marker, --force, OR (product) the old
+      // doc is missing the structured JSON-LD metadata (sku/specs) — so shallow
+      // docs get upgraded with real specs/variants/image/docs.
+      const FORCE = process.argv.includes('--force');
+      const hasImages = existing ? existing.content.includes('--- Product Images ---') : false;
+      // Caroma exposes no stock/availability in JSON-LD or DOM (manufacturer, not
+      // D2C), so trigger re-ingest only on missing structured specs.
+      const missingStructured = existing && type === 'product' && !existing.metadata?.specs;
+      const designNeedsType = existing && type === 'design' && existing.metadata?.type !== 'design';
+
+      if (!existing || !hasImages || missingStructured || designNeedsType || FORCE) {
           if (existing) {
-              console.log(`  -> Upgrading old entry to include images...`);
-              await col.deleteMany({ "metadata.url": url, type: { $ne: "troubleshooting" } });
+              console.log(`  -> Re-ingesting to add structured product data (specs/variants/image/docs)...`);
+              // Delete only the page's own text chunk(s). PRESERVE the vectorised
+              // technical/troubleshooting PDF chunks mapped to this url — they are
+              // NOT re-downloaded once on disk, so deleting them loses coverage.
+              await col.deleteMany({
+                "metadata.url": url,
+                "metadata.type": { $nin: ["technical", "troubleshooting"] },
+              });
           }
 
-          const lowerUrl = url.toLowerCase();
-          let type: any = 'general';
-          if (lowerUrl.includes('/product/')) type = 'product';
-          else if (lowerUrl.includes('/dorf/')) type = 'product';
-          else if (lowerUrl.includes('warranties')) type = 'policy';
-          else if (lowerUrl.includes('conditions')) type = 'policy';
-
           const meta: DocumentMetadata = { type, brand: BRAND, url };
+          // Recover the clean product data from the page's JSON-LD (sku, price,
+          // specs, variants, real PIM image, install/CAD docs).
+          if (type === 'product') {
+            Object.assign(meta, extractProductMetadata(pageData.text, html));
+          }
           const pageChunks = chunkContent(pageData.text, pageData.title, url, meta);
           
           if (pageChunks.length > 0) {

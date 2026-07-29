@@ -1,541 +1,532 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  BarChart3, 
-  Settings, 
-  Users, 
-  Database, 
-  MessageSquare, 
-  Compass, 
-  TrendingUp, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  ChevronRight, 
-  UserCheck, 
-  Plus, 
-  Upload, 
-  RefreshCw
+  Search,
+  Bell,
+  ChevronDown,
+  Globe,
+  Settings as SettingsIcon,
+  HelpCircle,
+  Plus,
+  RefreshCw,
+  Upload,
+  Edit2,
+  Trash2,
+  Lock,
+  Mail,
+  User,
+  Power,
+  ChevronRight
 } from 'lucide-react';
-import { calculateTotals } from '@journeyax/configurator-core';
+import { projectApi, type Project } from '../lib/api';
+import { resolveConsoleSections, SECTION_GROUPS } from '../lib/console-sections';
+import { PublishControl } from '../components/PublishControl';
+import { IntegrationsConfig } from '../components/IntegrationsConfig';
+import { BusinessProfileConfig } from '../components/BusinessProfileConfig';
+import { AgentEmbed } from '../components/AgentEmbed';
+import { DashboardLive } from '../components/DashboardLive';
+import { AnalyticsLive } from '../components/AnalyticsLive';
+import { OrdersQuotes } from '../components/OrdersQuotes';
+import { CatalogueView } from '../components/CatalogueView';
+import { UsersRoles } from '../components/UsersRoles';
+import { PlatformOps } from '../components/PlatformOps';
+import { JourneyMap } from '../components/JourneyMap';
+import { NotificationsConfig } from '../components/NotificationsConfig';
+import { AccountView } from '../components/AccountView';
+import { OnboardWizard } from '../components/OnboardWizard';
+import { BusinessRules } from '../components/BusinessRules';
+import { AiOrchestration } from '../components/AiOrchestration';
+import { KnowledgeBase } from '../components/KnowledgeBase';
+import { ChannelsConfig } from '../components/ChannelsConfig';
+import { clearFetchCache } from '../lib/authed-fetch';
 
-// Mock Data
-const initialConversations = [
-  {
-    id: "CONV-4902",
-    tenantId: "caroma",
-    brand: "Caroma",
-    title: "Bathroom Renovation Plan",
-    status: "New",
-    user: "Mahaveer",
-    email: "mahaveer@journeyax.com",
-    createdAt: "2026-07-05 11:20",
-    transcript: [
-      { sender: "ai", text: "Hi! I'm your Caroma assistant. What are you looking to design today?" },
-      { sender: "user", text: "I am building a premium bathroom and need a matching tap and toilet." },
-      { sender: "ai", text: "Great! I recommend the Liano II Sink Mixer in Matte Black, paired with the Urbane II Toilet Suite." },
-      { sender: "user", text: "Can you add both in Matte Black to my quote?" }
-    ],
-    bom: [
-      { sku: "96379C56AF", name: "Liano II Sink Mixer - Matte Black", price: 515.00, quantity: 1, category: "Tapware", isRequired: true },
-      { sku: "99671C56AF", name: "Urbane II Toilet Suite - Matte Black", price: 1045.00, quantity: 1, category: "Toilet Suites", isRequired: true }
-    ],
-    installationSummary: "Wall mixer requires pre-tiling inwall body installation. Toilet suite is back-to-wall design.",
-    notes: ""
-  },
-  {
-    id: "CONV-4899",
-    tenantId: "qzero",
-    brand: "Q-Zero",
-    title: "Executive Office Setup",
-    status: "Assigned",
-    user: "Sarah Jenkins",
-    email: "sjenkins@officecore.com",
-    createdAt: "2026-07-05 09:15",
-    transcript: [
-      { sender: "ai", text: "Welcome to Q-Zero. How can I optimize your office configuration?" },
-      { sender: "user", text: "I need an ergonomic standing desk and an orthopaedic task chair." },
-      { sender: "ai", text: "I've matched you to our Series-9 Electric Standing Desk and the Ergoflex Pro Task Chair." }
-    ],
-    bom: [
-      { sku: "DSK-S9-WHT", name: "Q-Zero Series-9 Standing Desk", price: 1250.00, quantity: 1, category: "Desks", isRequired: true },
-      { sku: "CHR-EF-BLK", name: "Ergoflex Pro Mesh Task Chair", price: 680.00, quantity: 1, category: "Chairs", isRequired: true }
-    ],
-    installationSummary: "Electric desk assembly required. Includes 5-year electronics warranty.",
-    notes: "Follow up regarding custom wood finishes."
-  },
-  {
-    id: "CONV-4890",
-    tenantId: "rentacenter",
-    brand: "Rent-A-Center",
-    title: "Premium Lounge Package",
-    status: "Abandoned",
-    user: "Robert Miller",
-    email: "rmiller@yahoo.com",
-    createdAt: "2026-07-04 15:30",
-    transcript: [
-      { sender: "ai", text: "Hi Robert! Let's build your home entertainment lease package. What size room is this for?" },
-      { sender: "user", text: "A medium sized living room, looking for a smart TV and soundbar." }
-    ],
-    bom: [
-      { sku: "TV-OLED-65", name: "65-inch 4K OLED Smart TV", price: 2199.00, quantity: 1, category: "TVs", isRequired: true }
-    ],
-    installationSummary: "Wall-mount hardware not included by default.",
-    notes: "User disconnected during soundbar recommendations."
-  }
-];
+export default function BackOfficeSPA() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [email, setEmail] = useState('admin');
+  const [password, setPassword] = useState('admin');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ email: string; fullName: string; role: string; tenantId: string } | null>(null);
 
-const mockCatalog = [
-  { sku: "96379C56AF", name: "Liano II Sink Mixer", brand: "Caroma", category: "Tapware", price: 515.00, status: "Live" },
-  { sku: "99671C56AF", name: "Urbane II Toilet Suite", brand: "Caroma", category: "Toilet Suites", price: 1045.00, status: "Live" },
-  { sku: "DSK-S9-WHT", name: "Series-9 Standing Desk", brand: "Q-Zero", category: "Desks", price: 1250.00, status: "Live" },
-  { sku: "CHR-EF-BLK", name: "Ergoflex Pro Task Chair", brand: "Q-Zero", category: "Chairs", price: 680.00, status: "Live" }
-];
+  // ── Tenant (workspace) state ──────────────────────────────────────────
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
+  const [onboardOpen, setOnboardOpen] = useState(false);
 
-export default function BackOfficePage() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'builder' | 'catalog' | 'inbox' | 'roles'>('dashboard');
-  const [conversations, setConversations] = useState(initialConversations);
-  const [selectedLeadId, setSelectedLeadId] = useState("CONV-4902");
-  const [leadNotes, setLeadNotes] = useState("");
-  const [assignee, setAssignee] = useState("Unassigned");
+  const loadProjects = React.useCallback(async (preferId?: string) => {
+    try {
+      // Archived projects are hidden from the workspace switcher (kept in the DB,
+      // restorable) — so the dropdown shows only live customers.
+      const list = (await projectApi.list()).filter((p) => p.status !== 'archived');
+      setProjects(list);
+      const stored = preferId || (typeof window !== 'undefined' ? sessionStorage.getItem('jax_project') : null);
+      const pick = list.find((p) => p.projectId === stored) || list[0] || null;
+      setCurrentProject(pick);
+      if (pick && typeof window !== 'undefined') sessionStorage.setItem('jax_project', pick.projectId);
+    } catch {
+      /* services may be down — switcher just shows empty */
+    }
+  }, []);
 
-  const selectedLead = conversations.find(c => c.id === selectedLeadId) || conversations[0];
+  const selectProject = (p: Project) => {
+    // Cached reads belong to the workspace they were fetched for; carrying them
+    // across a switch would show one customer's figures under another's name.
+    clearFetchCache();
+    setCurrentProject(p);
+    if (typeof window !== 'undefined') sessionStorage.setItem('jax_project', p.projectId);
+    setTenantMenuOpen(false);
+  };
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'builder' | 'catalog' | 'orders' | 'analytics' | 'embed' | 'channels' | 'integrations' | 'business' | 'orchestration' | 'rules' | 'knowledge' | 'platform-ops' | 'users-roles' | 'notifications' | 'account'>('dashboard');
   
-  // Calculate Totals using shared core calculation logic
-  const totals = calculateTotals(selectedLead.bom, 0.10, 0.12);
+  // R4: restore session from the HttpOnly cookie via the BFF (no token in JS).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session', { credentials: 'same-origin' });
+        if (!alive) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated && data.user) {
+            setIsLoggedIn(true);
+            setCurrentUser(data.user);
+            if (typeof window !== 'undefined') sessionStorage.setItem('jax_user', JSON.stringify(data.user));
+            loadProjects();
+          }
+        }
+      } catch { /* not signed in */ }
+    })();
+    return () => { alive = false; };
+  }, [loadProjects]);
 
-  const handleSaveNotes = () => {
-    setConversations(conversations.map(c => 
-      c.id === selectedLead.id ? { ...c, notes: leadNotes } : c
-    ));
-    alert("Lead notes saved successfully!");
+  // R4: login goes through the same-origin BFF, which sets HttpOnly cookies.
+  // The browser never receives the tokens — only the profile for display.
+  const handleSignIn = async () => {
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setAuthError(data.message || 'Invalid email or password.');
+        return;
+      }
+      if (typeof window !== 'undefined') sessionStorage.setItem('jax_user', JSON.stringify(data.user));
+      setCurrentUser(data.user);
+      setIsLoggedIn(true);
+      loadProjects();
+    } catch (e: any) {
+      setAuthError(`Could not sign in (${e.message}).`);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  const handleConvertOrder = () => {
-    setConversations(conversations.map(c => 
-      c.id === selectedLead.id ? { ...c, status: "Converted" } : c
-    ));
-    alert(`Converted ${selectedLead.id} to Quote/Order!`);
+  const handleSignOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch { /* best-effort revoke */ }
+    if (typeof window !== 'undefined') sessionStorage.removeItem('jax_user');
+    setCurrentUser(null);
+    setIsLoggedIn(false);
   };
 
-  return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', background: '#0A0A0A', fontFamily: 'Outfit, sans-serif' }}>
-      
-      {/* ── PERSISTENT LEFT NAVIGATION ───────────────────────────────────── */}
-      <aside style={{ width: '260px', borderRight: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', background: '#0F1214', flexShrink: 0 }}>
+  // ── 1. SIGN IN PAGE VIEW ──────────────────────────────────────────────────
+  if (!isLoggedIn) {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', width: '100vw', minHeight: '100vh', background: 'var(--jx-white)', fontFamily: 'var(--font-body)' }}>
         
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ width: '24px', height: '24px', background: '#FFD600', borderRadius: '0' }} />
-          <span style={{ fontFamily: 'Space Grotesk', fontWeight: 800, fontSize: '18px', color: '#FFFFFF', letterSpacing: '0.12em' }}>JOURNEY<span style={{ color: '#FFD600' }}>AX</span></span>
-        </div>
+        {/* Left half - Branding Summary */}
+        <div style={{ background: 'var(--jx-black)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '48px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', right: '-200px', top: '-220px', width: '600px', height: '600px', borderRadius: '50%', background: 'rgba(255,214,0,0.10)', filter: 'blur(100px)' }}></div>
+          
+          <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img src="/assets/logo-yellow.png" alt="JourneyAX" style={{ height: '26px', width: 'auto' }} />
+          </div>
 
-        {/* Links */}
-        <nav style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button 
-            onClick={() => setActiveTab('dashboard')}
-            style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 16px', border: 'none', background: activeTab === 'dashboard' ? '#FFD600' : 'transparent', color: activeTab === 'dashboard' ? '#0A0A0A' : '#999999', cursor: 'pointer', borderRadius: '0', textAlign: 'left', fontWeight: 600 }}
-          >
-            <BarChart3 size={18} /> Dashboard
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('builder')}
-            style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 16px', border: 'none', background: activeTab === 'builder' ? '#FFD600' : 'transparent', color: activeTab === 'builder' ? '#0A0A0A' : '#999999', cursor: 'pointer', borderRadius: '0', textAlign: 'left', fontWeight: 600 }}
-          >
-            <Compass size={18} /> Journey Builder
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('catalog')}
-            style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 16px', border: 'none', background: activeTab === 'catalog' ? '#FFD600' : 'transparent', color: activeTab === 'catalog' ? '#0A0A0A' : '#999999', cursor: 'pointer', borderRadius: '0', textAlign: 'left', fontWeight: 600 }}
-          >
-            <Database size={18} /> Catalogue Manager
-          </button>
-          
-          <button 
-            onClick={() => {
-              setActiveTab('inbox');
-              setLeadNotes(selectedLead.notes);
-            }}
-            style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 16px', border: 'none', background: activeTab === 'inbox' ? '#FFD600' : 'transparent', color: activeTab === 'inbox' ? '#0A0A0A' : '#999999', cursor: 'pointer', borderRadius: '0', textAlign: 'left', fontWeight: 600 }}
-          >
-            <MessageSquare size={18} /> Inbox & Leads
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('roles')}
-            style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 16px', border: 'none', background: activeTab === 'roles' ? '#FFD600' : 'transparent', color: activeTab === 'roles' ? '#0A0A0A' : '#999999', cursor: 'pointer', borderRadius: '0', textAlign: 'left', fontWeight: 600 }}
-          >
-            <Users size={18} /> Users & Roles
-          </button>
-        </nav>
+          <div style={{ zIndex: 10 }}>
+            <h2 style={{ color: 'var(--jx-white)', fontSize: '36px', lineHeight: 1.15, maxWidth: '420px', letterSpacing: '-0.02em', fontWeight: 700 }}>
+              Every customer. Every goal. One perfect journey.
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '14px', maxWidth: '380px', lineHeight: 1.6, marginTop: '14px' }}>
+              Sign in to the JourneyAX console — configure AI journeys, manage your catalogue and knowledge, and orchestrate every workspace you run.
+            </p>
+          </div>
 
-        {/* Footer */}
-        <div style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <div style={{ width: '32px', height: '32px', background: '#FFD600', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#0A0A0A' }}>M</div>
-          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#FFFFFF' }}>Mahaveer</span>
-            <span style={{ fontSize: '11px', color: '#999999' }}>Administrator</span>
+          <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', fontFamily: 'var(--font-display)', zIndex: 10 }}>
+            JourneyAX · AI Journey Orchestration Platform
           </div>
         </div>
-      </aside>
 
-      {/* ── MAIN WORKSPACE CONTENT ─────────────────────────────────────────── */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0F1214' }}>
-        
-        {/* Header */}
-        <header style={{ padding: '20px 32px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0A0A0A' }}>
-          <h1 style={{ fontFamily: 'Space Grotesk', fontSize: '22px', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.02em', margin: 0 }}>
-            {activeTab === 'dashboard' && 'Operations Dashboard'}
-            {activeTab === 'builder' && 'Conversational Journey Builder'}
-            {activeTab === 'catalog' && 'Product Catalogue compliance'}
-            {activeTab === 'inbox' && 'Rosters & Completed Orders'}
-            {activeTab === 'roles' && 'Access Control & Permissions'}
-          </h1>
-          <div style={{ fontSize: '12px', color: '#999999', border: '1px solid rgba(255,255,255,0.2)', padding: '5px 12px', background: '#111111' }}>
-            Environment: <strong style={{ color: '#FFD600' }}>Staging-Demo</strong>
-          </div>
-        </header>
-
-        {/* Page Views */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
-          
-          {/* TAB 1: DASHBOARD */}
-          {activeTab === 'dashboard' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-              
-              {/* KPI Cards Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-                <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '24px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', color: '#999999', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Conversations <MessageSquare size={16} style={{ color: '#FFD600' }} />
-                  </div>
-                  <div style={{ fontFamily: 'Space Grotesk', fontSize: '28px', fontWeight: 800, color: '#FFFFFF' }}>1,248</div>
-                  <div style={{ fontSize: '11px', color: '#1F8A4C', marginTop: '6px', fontWeight: 500 }}>+12.4% vs last week</div>
-                </div>
-                
-                <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '24px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', color: '#999999', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Completion Rate <CheckCircle2 size={16} style={{ color: '#FFD600' }} />
-                  </div>
-                  <div style={{ fontFamily: 'Space Grotesk', fontSize: '28px', fontWeight: 800, color: '#FFFFFF' }}>82.4%</div>
-                  <div style={{ fontSize: '11px', color: '#1F8A4C', marginTop: '6px', fontWeight: 500 }}>+2.1% improvement</div>
-                </div>
-
-                <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '24px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', color: '#999999', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Cart Conversion <TrendingUp size={16} style={{ color: '#FFD600' }} />
-                  </div>
-                  <div style={{ fontFamily: 'Space Grotesk', fontSize: '28px', fontWeight: 800, color: '#FFFFFF' }}>34.1%</div>
-                  <div style={{ fontSize: '11px', color: '#D92D20', marginTop: '6px', fontWeight: 500 }}>-1.4% drop-off</div>
-                </div>
-
-                <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '24px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', color: '#999999', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Avg Kit Value <Clock size={16} style={{ color: '#FFD600' }} />
-                  </div>
-                  <div style={{ fontFamily: 'Space Grotesk', fontSize: '28px', fontWeight: 800, color: '#FFFFFF' }}>$1,560.80</div>
-                  <div style={{ fontSize: '11px', color: '#1F8A4C', marginTop: '6px', fontWeight: 500 }}>+$142.00 increase</div>
-                </div>
-              </div>
-
-              {/* Conversational Funnel Summary */}
-              <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '24px' }}>
-                <h3 style={{ fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: 700, color: '#FFFFFF', marginBottom: '20px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Guided Selling Funnel</h3>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <div style={{ flex: 1, background: '#FFD600', height: '24px', display: 'flex', alignItems: 'center', paddingLeft: '12px', fontWeight: 'bold', color: '#0A0A0A', fontSize: '11px' }}>Start Configurator (100%)</div>
-                  <div style={{ flex: 0.8, background: 'rgba(255,214,0,0.8)', height: '24px', display: 'flex', alignItems: 'center', paddingLeft: '12px', fontWeight: 'bold', color: '#0A0A0A', fontSize: '11px' }}>Answered Intake (82%)</div>
-                  <div style={{ flex: 0.4, background: 'rgba(255,214,0,0.5)', height: '24px', display: 'flex', alignItems: 'center', paddingLeft: '12px', fontWeight: 'bold', color: '#0A0A0A', fontSize: '11px' }}>Added to Cart (42%)</div>
-                  <div style={{ flex: 0.3, background: 'rgba(255,214,0,0.3)', height: '24px', display: 'flex', alignItems: 'center', paddingLeft: '12px', fontWeight: 'bold', color: '#FFFFFF', fontSize: '11px' }}>Converted (34%)</div>
-                </div>
-              </div>
+        {/* Right half - Login Card */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
+          <div style={{ width: '100%', maxWidth: '380px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--jx-black)' }}>Sign in to the console</h1>
+              <p style={{ fontSize: '13.5px', color: 'var(--jx-gray-600)', marginTop: '4px' }}>Use your workspace SSO or email &amp; password.</p>
             </div>
-          )}
 
-          {/* TAB 2: JOURNEY BUILDER */}
-          {activeTab === 'builder' && (
-            <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '32px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: 700, color: '#FFFFFF', margin: 0, textTransform: 'uppercase' }}>No-Code Flow Designer</h3>
-                <button style={{ border: 'none', background: '#FFD600', color: '#0A0A0A', padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Plus size={16} /> Add Question
+            <button
+              disabled
+              title="SSO is not configured in this environment"
+              style={{ width: '100%', border: 'none', background: 'var(--jx-gray-200)', color: 'var(--jx-gray-500)', padding: '12px', borderRadius: '9px', fontWeight: 'bold', fontSize: '13px', cursor: 'not-allowed', textAlign: 'center' }}
+            >
+              Continue with SSO (Okta / Azure AD)
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--jx-gray-400)', fontSize: '11.5px', fontFamily: 'var(--font-display)' }}>
+              <div style={{ flex: 1, height: '1px', background: 'var(--jx-gray-200)' }}></div>
+              OR
+              <div style={{ flex: 1, height: '1px', background: 'var(--jx-gray-200)' }}></div>
+            </div>
+
+            <div>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--jx-gray-700)', fontFamily: 'var(--font-display)', marginBottom: '6px', display: 'block' }}>
+                Work email
+              </span>
+              <input
+                type="text"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSignIn(); }}
+                autoFocus
+                style={{ width: '100%', border: '1px solid var(--jx-gray-300)', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: 'var(--jx-black)', background: 'var(--jx-white)' }}
+              />
+            </div>
+
+            <div>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--jx-gray-700)', fontFamily: 'var(--font-display)', marginBottom: '6px', display: 'block' }}>
+                Password
+              </span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSignIn(); }}
+                style={{ width: '100%', border: '1px solid var(--jx-gray-300)', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: 'var(--jx-black)', background: 'var(--jx-white)' }}
+              />
+            </div>
+
+            {authError && (
+              <div style={{ fontSize: '12.5px', color: '#B7392D', background: 'rgba(183,57,45,0.08)', border: '1px solid rgba(183,57,45,0.25)', borderRadius: '8px', padding: '9px 11px' }}>
+                {authError}
+              </div>
+            )}
+
+            <button
+              onClick={handleSignIn}
+              disabled={authLoading}
+              style={{ width: '100%', border: 'none', background: 'var(--jx-yellow)', color: 'var(--jx-black)', padding: '12px', borderRadius: '9px', fontWeight: 'bold', fontSize: '13px', cursor: authLoading ? 'wait' : 'pointer', textAlign: 'center', opacity: authLoading ? 0.7 : 1 }}
+            >
+              {authLoading ? 'Signing in…' : 'Sign in →'}
+            </button>
+
+            <div style={{ textAlign: 'center', fontSize: '12.5px', color: 'var(--jx-gray-500)', marginTop: '6px' }}>
+              Dev credentials: admin / admin · roles assigned by admin
+            </div>
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+  // ── 2. CONSOLE BACK-OFFICE APP VIEW ───────────────────────────────────────
+  // Nav sections + labels are resolved from the active project (config-driven).
+  const consoleSections = resolveConsoleSections(currentProject);
+  return (
+    <div className="board">
+      
+      {/* ── LEFT NAVIGATION SIDEBAR ───────────────────────────────────────── */}
+      <div className="nav">
+        {/* Brand logo header */}
+        <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '4px 8px 26px' }}>
+          <img
+            src="/assets/logo-mark-yellow.png"
+            alt="JourneyAX"
+            style={{ width: '26px', height: '26px', objectFit: 'contain' }}
+          />
+          <b style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            fontSize: '14px',
+            color: 'var(--jx-white)'
+          }}>JourneyAX</b>
+        </div>
+
+        {/* Config-driven nav: sections + labels resolved from the active project
+            (resolveConsoleSections). A bathroom brand and a fashion retailer get
+            different, sensibly-labelled menus with no code change. */}
+        {SECTION_GROUPS.map((group) => {
+          const items = consoleSections.filter((s) => s.group === group);
+          if (!items.length) return null;
+          return (
+            <React.Fragment key={group}>
+              <div className="grp">{group}</div>
+              {items.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveTab(s.id as typeof activeTab)}
+                  className={`ni ${activeTab === s.id ? 'on' : ''}`}
+                  title={s.status === 'demo' ? 'Demo — not yet wired to live data' : undefined}
+                >
+                  <span className="ic"></span>{s.label}
+                  {s.status === 'demo' && (
+                    <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, opacity: 0.5, letterSpacing: '0.04em' }}>DEMO</span>
+                  )}
+                </button>
+              ))}
+            </React.Fragment>
+          );
+        })}
+
+      </div>
+
+      {/* ── CENTER WORKSPACE CONTAINER ────────────────────────────────────── */}
+      <div className="center-wrap">
+        
+        {/* Workspace Mini-Header */}
+        <div className="miniheader">
+          <div className="mh-left" style={{ position: 'relative' }}>
+            <button
+              onClick={() => setTenantMenuOpen((o) => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: '9px', border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
+            >
+              <div className="mh-brand" style={{ background: currentProject?.theme?.primaryColor || 'var(--jx-yellow)', color: currentProject?.theme?.accentColor || 'var(--jx-black)' }}>
+                {(currentProject?.companyName || 'JX').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="mh-name">{currentProject?.companyName || 'Select workspace'}</div>
+              <ChevronDown size={14} style={{ color: 'var(--jx-gray-500)' }} />
+            </button>
+
+            {tenantMenuOpen && (
+              <div style={{ position: 'absolute', top: '110%', left: 0, minWidth: '260px', background: 'var(--jx-white)', border: '1px solid var(--jx-gray-200)', borderRadius: '12px', boxShadow: '0 12px 34px rgba(0,0,0,0.16)', padding: '6px', zIndex: 200 }}>
+                <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--jx-gray-500)', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '8px 10px 4px' }}>Workspaces</div>
+                <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                  {projects.length === 0 && (
+                    <div style={{ fontSize: '12.5px', color: 'var(--jx-gray-500)', padding: '8px 10px' }}>No workspaces yet.</div>
+                  )}
+                  {projects.map((p) => (
+                    <button
+                      key={p.projectId}
+                      onClick={() => selectProject(p)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', border: 'none', background: currentProject?.projectId === p.projectId ? 'var(--jx-gray-100)' : 'transparent', borderRadius: '8px', padding: '8px 10px', cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      <span style={{ width: '24px', height: '24px', borderRadius: '6px', background: p.theme?.primaryColor || 'var(--jx-yellow)', color: p.theme?.accentColor || 'var(--jx-black)', fontSize: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)' }}>
+                        {p.companyName.slice(0, 2).toUpperCase()}
+                      </span>
+                      <span style={{ flex: 1 }}>
+                        <b style={{ fontSize: '12.5px', color: 'var(--jx-black)', display: 'block' }}>{p.companyName}</b>
+                        <span style={{ fontSize: '10.5px', color: 'var(--jx-gray-500)' }}>{p.projectId} · {p.status}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ height: '1px', background: 'var(--jx-gray-200)', margin: '6px 4px' }} />
+                <button
+                  onClick={() => { setTenantMenuOpen(false); setOnboardOpen(true); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', border: 'none', background: 'transparent', borderRadius: '8px', padding: '9px 10px', cursor: 'pointer', color: 'var(--jx-black)', fontSize: '12.5px', fontWeight: 700 }}
+                >
+                  <Plus size={15} /> Onboard customer
                 </button>
               </div>
-
-              {/* Questions Stack */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ padding: '20px', border: '1px solid rgba(255,255,255,0.1)', background: '#111111' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '11px', color: '#FFD600', fontWeight: 'bold', textTransform: 'uppercase' }}>Question 1 (Grouped Form)</span>
-                    <span style={{ fontSize: '12px', color: '#999999' }}>Type: Chip Select</span>
-                  </div>
-                  <h4 style={{ color: '#FFFFFF', margin: '0 0 12px', fontSize: '15px' }}>What is the main objective or goal for your space?</h4>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 8px', color: '#CCCCCC' }}>Renovation</span>
-                    <span style={{ fontSize: '11px', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 8px', color: '#CCCCCC' }}>New Build</span>
-                    <span style={{ fontSize: '11px', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 8px', color: '#CCCCCC' }}>Quick Swap</span>
-                  </div>
-                </div>
-
-                <div style={{ padding: '20px', border: '1px solid rgba(255,255,255,0.1)', background: '#111111' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '11px', color: '#FFD600', fontWeight: 'bold', textTransform: 'uppercase' }}>Question 2 (Conditional)</span>
-                    <span style={{ fontSize: '12px', color: '#999999' }}>Type: Color Swatch</span>
-                  </div>
-                  <h4 style={{ color: '#FFFFFF', margin: '0 0 12px', fontSize: '15px' }}>Which tapware finish would you prefer?</h4>
-                  <div style={{ fontSize: '12px', color: '#FFD600', background: 'rgba(255,214,0,0.1)', border: '1px dashed rgba(255,214,0,0.3)', padding: '8px 12px', display: 'inline-block' }}>
-                    <strong>Logic Rule:</strong> IF Answer is 'Matte Black' {"->"} Include WELS water compliance filter
-                  </div>
-                </div>
-              </div>
+            )}
+          </div>
+          <div className="mh-right">
+            {currentProject && (
+              <PublishControl project={currentProject} onChanged={() => loadProjects(currentProject.projectId)} />
+            )}
+            <div className="mh-chip">🇦🇺 Australia · En ▾</div>
+            <div className="mh-icon">
+              🔔
+              <span className="mh-dot"></span>
             </div>
+            <button
+              onClick={() => setActiveTab('account')}
+              className="mh-av"
+              style={{ border: 'none', cursor: 'pointer' }}
+              title="Account"
+            >
+              R
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="mh-icon"
+              title="Sign out"
+              style={{ border: 'none', cursor: 'pointer', background: 'transparent', color: '#B7392D' }}
+            >
+              <Power size={15} />
+            </button>
+          </div>
+        </div>
+
+        {onboardOpen && (
+          <OnboardWizard
+            onClose={() => setOnboardOpen(false)}
+            onCreated={(projectId) => { setOnboardOpen(false); loadProjects(projectId); }}
+          />
+        )}
+
+        {/* ── SWITCHABLE ACTIVE PAGES ─────────────────────────────────────── */}
+        <div className="center">
+          
+          {/* A. DASHBOARD VIEW */}
+          {activeTab === 'dashboard' && (currentProject
+            ? <DashboardLive project={currentProject} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {/* B. JOURNEY BUILDER VIEW */}
+          {activeTab === 'builder' && (currentProject
+            ? <JourneyMap project={currentProject} onEdit={() => setActiveTab('orchestration')} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {/* C. CATALOGUE & COMPLIANCE VIEW */}
+          {activeTab === 'catalog' && (currentProject
+            ? <CatalogueView project={currentProject} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {/* D. ROSTERS & ORDERS VIEW */}
+          {activeTab === 'orders' && (currentProject
+            ? <OrdersQuotes project={currentProject} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {/* E. ANALYTICS VIEW */}
+          {activeTab === 'analytics' && (currentProject
+            ? <AnalyticsLive project={currentProject} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {/* F. CHANNELS VIEW */}
+          {activeTab === 'channels' && (
+            <>
+              <div className="crumb">JourneyAX / Channels</div>
+              {currentProject
+                ? <ChannelsConfig project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} />
+                : <div className="panel">Select a workspace to configure its channels.</div>}
+            </>
           )}
 
-          {/* TAB 3: CATALOG */}
-          {activeTab === 'catalog' && (
-            <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '32px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: 700, color: '#FFFFFF', margin: 0, textTransform: 'uppercase' }}>Active Products Sync</h3>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button style={{ border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: '#FFFFFF', padding: '8px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Upload size={16} /> Import CSV
-                  </button>
-                  <button style={{ border: 'none', background: '#FFD600', color: '#0A0A0A', padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <RefreshCw size={16} /> Sync from ERP
-                  </button>
+          {activeTab === 'embed' && (
+            <>
+              <div className="crumb">JourneyAX / Agent Embed</div>
+              {currentProject
+                ? <AgentEmbed project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} />
+                : <div className="panel">Select a workspace to configure its embed.</div>}
+            </>
+          )}
+
+          {/* G. INTEGRATIONS & ADAPTERS VIEW */}
+          {activeTab === 'integrations' && (
+            <>
+              <div className="crumb">JourneyAX / Integrations & Adapters</div>
+              {currentProject
+                ? <IntegrationsConfig project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} />
+                : <div className="panel">Select a workspace to configure its integrations.</div>}
+            </>
+          )}
+
+          {/* G2. BUSINESS PROFILE VIEW — what kind of business, and what its customers buy for */}
+          {activeTab === 'business' && (
+            <>
+              <div className="crumb">JourneyAX / Business Profile</div>
+              {currentProject
+                ? <BusinessProfileConfig project={currentProject} />
+                : <div className="panel">Select a workspace to configure its business profile.</div>}
+            </>
+          )}
+
+          {/* H. AI ORCHESTRATION VIEW */}
+          {activeTab === 'orchestration' && (
+            <>
+              <div className="crumb">JourneyAX / AI Orchestration</div>
+              {currentProject
+                ? <AiOrchestration project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} />
+                : <div className="panel">Select a workspace to configure its model and prompts.</div>}
+
+              <div className="micro" style={{ marginTop: '18px', marginBottom: '6px' }}>PIPELINE ARCHITECTURE (reference)</div>
+              <div className="cardrow">
+                <div className="panel">
+                  <div className="micro">AGENT LAYER</div>
+                  <div className="node">Intent detection <span className="pill p-active" style={{ float: 'right' }}>On</span></div>
+                  <div className="node">Context &amp; memory (session)</div>
+                  <div className="node">Recommendation engine → Catalogue &amp; Compliance rules</div>
+                  <div className="node">Human hand-off &amp; guardrails <span className="pill p-active" style={{ float: 'right' }}>On</span></div>
+                </div>
+
+                <div className="panel">
+                  <div className="micro">ORCHESTRATION LAYER</div>
+                  <div className="node">Intent → domain routing: gear advisor vs. uniform program copilot</div>
+                  <div className="node">MCP / tool router — selects catalogue, pricing, or CRM tool per step</div>
+                  <div className="node">Workflow orchestration — multi-step bundle build, quote, hand-off</div>
                 </div>
               </div>
 
-              {/* Product Grid Table */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px', color: '#CCCCCC' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#FFFFFF', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.08em' }}>
-                    <th style={{ padding: '12px' }}>SKU</th>
-                    <th style={{ padding: '12px' }}>Product Name</th>
-                    <th style={{ padding: '12px' }}>Brand</th>
-                    <th style={{ padding: '12px' }}>Category</th>
-                    <th style={{ padding: '12px' }}>Standard Price</th>
-                    <th style={{ padding: '12px' }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockCatalog.map(p => (
-                    <tr key={p.sku} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '16px 12px', fontFamily: 'monospace' }}>{p.sku}</td>
-                      <td style={{ padding: '16px 12px', color: '#FFFFFF', fontWeight: 500 }}>{p.name}</td>
-                      <td style={{ padding: '16px 12px' }}>{p.brand}</td>
-                      <td style={{ padding: '16px 12px' }}>{p.category}</td>
-                      <td style={{ padding: '16px 12px', fontWeight: 'bold' }}>${p.price.toFixed(2)}</td>
-                      <td style={{ padding: '16px 12px' }}>
-                        <span style={{ fontSize: '11px', background: '#F1F7F0', color: '#1F8A4C', padding: '2px 8px', fontWeight: 600 }}>{p.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* TAB 4: INBOX & LEADS */}
-          {activeTab === 'inbox' && (
-            <div style={{ display: 'flex', gap: '24px', height: '640px', overflow: 'hidden' }}>
-              
-              {/* Inbox Left Column */}
-              <div style={{ width: '320px', border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-                <div style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.1)', fontSize: '12px', color: '#999999', textTransform: 'uppercase', fontWeight: 'bold' }}>
-                  Leads & Abandoned Chats
-                </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                  {conversations.map(c => (
-                    <div 
-                      key={c.id} 
-                      onClick={() => {
-                        setSelectedLeadId(c.id);
-                        setLeadNotes(c.notes);
-                      }}
-                      style={{ 
-                        padding: '16px', 
-                        borderBottom: '1px solid rgba(255,255,255,0.05)', 
-                        cursor: 'pointer', 
-                        background: selectedLead.id === c.id ? '#1A1D20' : 'transparent',
-                        borderLeft: selectedLead.id === c.id ? '4px solid #FFD600' : 'none'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '11px', color: '#999999', fontFamily: 'monospace' }}>{c.id}</span>
-                        <span style={{ 
-                          fontSize: '10px', 
-                          padding: '2px 6px', 
-                          fontWeight: 'bold',
-                          background: c.status === 'New' ? 'rgba(255,214,0,0.15)' : c.status === 'Converted' ? '#F1F7F0' : 'rgba(217,45,32,0.1)',
-                          color: c.status === 'New' ? '#FFD600' : c.status === 'Converted' ? '#1F8A4C' : '#D92D20'
-                        }}>{c.status}</span>
-                      </div>
-                      <h4 style={{ color: '#FFFFFF', margin: '0 0 4px', fontSize: '14px' }}>{c.title}</h4>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999999' }}>
-                        <span>{c.user}</span>
-                        <span>{c.createdAt.split(' ')[1]}</span>
-                      </div>
-                    </div>
-                  ))}
+              <div className="panel">
+                <div className="micro">KNOWLEDGE &amp; CONTENT (RAG)</div>
+                <div className="chips">
+                  <span className="chip on">Compliance standards (AS/NZS)</span>
+                  <span className="chip">Product specs</span>
+                  <span className="chip">Sizing guides</span>
+                  <span className="chip">Pricing &amp; promo rules</span>
                 </div>
               </div>
 
-              {/* Inbox Details Right Column */}
-              <div style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                
-                {/* Header */}
-                <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h3 style={{ margin: 0, color: '#FFFFFF', fontSize: '16px' }}>{selectedLead.title} ({selectedLead.brand})</h3>
-                    <span style={{ fontSize: '12px', color: '#999999' }}>Contact: {selectedLead.user} &lt;{selectedLead.email}&gt;</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <select 
-                      value={assignee} 
-                      onChange={(e) => setAssignee(e.target.value)}
-                      style={{ background: '#111111', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px', fontSize: '12px' }}
-                    >
-                      <option>Unassigned</option>
-                      <option>Assign to Plumber-Rep</option>
-                      <option>Assign to Sales-CSR</option>
-                    </select>
-                    <button 
-                      onClick={handleConvertOrder}
-                      disabled={selectedLead.status === 'Converted'}
-                      style={{ border: 'none', background: selectedLead.status === 'Converted' ? '#1F8A4C' : '#FFD600', color: selectedLead.status === 'Converted' ? '#FFFFFF' : '#0A0A0A', padding: '6px 16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
-                    >
-                      {selectedLead.status === 'Converted' ? 'Converted ✓' : 'Convert to Quote'}
-                    </button>
-                  </div>
+              <div className="panel">
+                <div className="micro">COMPLIANCE GUARDRAILS</div>
+                <div className="node" style={{ background: '#FFF1F0', borderColor: '#F5222D' }}>
+                  Never recommend a non-compliant hi-vis class or missing FR rating — <b>hard block, safety critical.</b>
                 </div>
-
-                {/* Details Inner Scroll */}
-                <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-                  
-                  {/* Chat Transcript */}
-                  <div style={{ flex: 1, padding: '24px', overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '11px', color: '#999999', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '8px' }}>Chat Transcript</div>
-                    {selectedLead.transcript.map((t, idx) => (
-                      <div key={idx} style={{ alignSelf: t.sender === 'ai' ? 'flex-start' : 'flex-end', maxWidth: '85%' }}>
-                        <div style={{ 
-                          padding: '10px 14px', 
-                          borderRadius: '12px',
-                          background: t.sender === 'ai' ? 'rgba(255,255,255,0.05)' : '#FFD600',
-                          color: t.sender === 'ai' ? '#CCCCCC' : '#0A0A0A',
-                          fontSize: '13.5px',
-                          lineHeight: 1.4
-                        }}>
-                          {t.text}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* BOM & Action Panel */}
-                  <div style={{ width: '320px', padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', flexShrink: 0 }}>
-                    
-                    {/* BOM Cart Summary */}
-                    <div>
-                      <div style={{ fontSize: '11px', color: '#999999', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '12px' }}>Configured Cart items</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {selectedLead.bom.map(b => (
-                          <div key={b.sku} style={{ fontSize: '12px', borderBottom: '1px dashed rgba(255,255,255,0.1)', paddingBottom: '6px' }}>
-                            <div style={{ color: '#FFFFFF', fontWeight: 500 }}>{b.name}</div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#999999', marginTop: '2px' }}>
-                              <span>SKU: {b.sku}</span>
-                              <span>{b.quantity}x ${b.price.toFixed(2)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      
-                      {/* Price Calculations */}
-                      <div style={{ marginTop: '16px', background: 'rgba(255,255,255,0.02)', padding: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#999999', marginBottom: '4px' }}>
-                          <span>Subtotal:</span>
-                          <span>${totals.subtotal.toFixed(2)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#999999', marginBottom: '4px' }}>
-                          <span>Applied Discount (12%):</span>
-                          <span style={{ color: '#D92D20' }}>-${totals.discount.toFixed(2)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#999999', marginBottom: '6px' }}>
-                          <span>GST (10%):</span>
-                          <span>${totals.gst.toFixed(2)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#FFFFFF', fontWeight: 'bold', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '6px' }}>
-                          <span>Total Quote:</span>
-                          <span style={{ color: '#FFD600' }}>${totals.total.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Operator Notes */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <label style={{ fontSize: '11px', color: '#999999', textTransform: 'uppercase', fontWeight: 'bold' }}>Operator Internal Notes</label>
-                      <textarea 
-                        value={leadNotes} 
-                        onChange={(e) => setLeadNotes(e.target.value)}
-                        placeholder="Add comments or specific request details..."
-                        style={{ background: '#111111', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)', padding: '10px', height: '80px', resize: 'none', fontSize: '13px', outline: 'none' }}
-                      />
-                      <button 
-                        onClick={handleSaveNotes}
-                        style={{ border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: '#FFFFFF', padding: '6px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                      >
-                        Save Notes
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-
               </div>
-            </div>
+            </>
           )}
 
-          {/* TAB 5: ROLES */}
-          {activeTab === 'roles' && (
-            <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: '#0A0A0A', padding: '32px' }}>
-              <h3 style={{ fontFamily: 'Space Grotesk', fontSize: '16px', fontWeight: 700, color: '#FFFFFF', marginBottom: '20px', textTransform: 'uppercase' }}>Access Control Permissions Matrix</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px', color: '#CCCCCC' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#FFFFFF', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.08em' }}>
-                    <th style={{ padding: '12px' }}>Permission Level</th>
-                    <th style={{ padding: '12px' }}>Administrator</th>
-                    <th style={{ padding: '12px' }}>Account Manager</th>
-                    <th style={{ padding: '12px' }}>Sales Rep</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '16px 12px', color: '#FFFFFF', fontWeight: 500 }}>Edit Journey Rules & Logic</td>
-                    <td style={{ padding: '16px 12px', color: '#1F8A4C' }}>Allowed ✓</td>
-                    <td style={{ padding: '16px 12px', color: '#1F8A4C' }}>Allowed ✓</td>
-                    <td style={{ padding: '16px 12px', color: '#D92D20' }}>Denied ✕</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '16px 12px', color: '#FFFFFF', fontWeight: 500 }}>Modify Brand Catalog Prices</td>
-                    <td style={{ padding: '16px 12px', color: '#1F8A4C' }}>Allowed ✓</td>
-                    <td style={{ padding: '16px 12px', color: '#D92D20' }}>Denied ✕</td>
-                    <td style={{ padding: '16px 12px', color: '#D92D20' }}>Denied ✕</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '16px 12px', color: '#FFFFFF', fontWeight: 500 }}>View Multi-Tenant Leads</td>
-                    <td style={{ padding: '16px 12px', color: '#1F8A4C' }}>Allowed ✓</td>
-                    <td style={{ padding: '16px 12px', color: '#999999' }}>Scope Restricted</td>
-                    <td style={{ padding: '16px 12px', color: '#D92D20' }}>Denied ✕</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+          {/* H2. BUSINESS RULES VIEW */}
+          {activeTab === 'rules' && (
+            <>
+              <div className="crumb">JourneyAX / Business Rules</div>
+              {currentProject
+                ? <BusinessRules projectId={currentProject.projectId} />
+                : <div className="panel">Select a workspace to manage its agent rules.</div>}
+            </>
           )}
+
+          {/* H3. KNOWLEDGE BASE VIEW */}
+          {activeTab === 'knowledge' && (
+            <>
+              <div className="crumb">JourneyAX / Knowledge Base</div>
+              {currentProject
+                ? <KnowledgeBase project={currentProject} />
+                : <div className="panel">Select a workspace to view its knowledge base.</div>}
+            </>
+          )}
+
+          {/* I. PLATFORM & OPS VIEW */}
+          {activeTab === 'platform-ops' && <PlatformOps />}
+
+          {/* J. USERS & ROLES VIEW */}
+          {activeTab === 'users-roles' && (currentProject
+            ? <UsersRoles project={currentProject} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {/* K. NOTIFICATIONS VIEW */}
+          {activeTab === 'notifications' && (currentProject
+            ? <NotificationsConfig project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {/* L. ACCOUNT & SETTINGS VIEW */}
+          {activeTab === 'account' && (currentProject
+            ? <AccountView project={currentProject} />
+            : <div className="panel">Select a workspace.</div>)}
 
         </div>
-      </main>
+
+      </div>
     </div>
   );
 }

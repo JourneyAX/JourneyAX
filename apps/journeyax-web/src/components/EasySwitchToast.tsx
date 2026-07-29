@@ -2,7 +2,12 @@
 
 import { useJourney } from '@/context/JourneyContext';
 
+import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+
 export default function EasySwitchToast() {
+  // Caroma-specific (EasySwitch in-wall bodies) — only for fixtures tenants.
+  const cfg = useStorefrontConfig();
+  if (cfg.configurator && cfg.configurator.productType === 'garment') return null;
   const { state } = useJourney();
 
   if (!state.showToast) return null;

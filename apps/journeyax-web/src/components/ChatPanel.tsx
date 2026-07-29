@@ -2,10 +2,118 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useJourney } from '@/context/JourneyContext';
+import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import {
+  type Conversation, resolveActiveConversation, saveConversations, setActiveConversation,
+  messagesKey, sessionKey, newId, summarise,
+} from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
+
+/**
+ * Stream a chat turn via SSE. Live-updates the assistant message on each `token`
+ * and returns the final `done` payload (same shape as the buffered response).
+ * Throws on any failure so the caller can fall back to the buffered endpoint.
+ */
+async function streamChat(
+  body: string,
+  newMessages: any[],
+  setMessages: (m: any[]) => void,
+  tenantId?: string,
+): Promise<any> {
+  const res = await fetch('/api/chat/stream', {
+    method: 'POST',
+    // Pin the chat to the tenant this storefront resolved (multi-storefront routing).
+    headers: { 'Content-Type': 'application/json', ...(tenantId ? { 'X-Tenant-ID': tenantId } : {}) },
+    body,
+  });
+  if (!res.ok || !res.body) throw new Error('stream unavailable');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let streamText = '';
+  let doneData: any = null;
+  // Accumulate UI actions as they stream, so we can still render the result even
+  // if the connection ends without a clean `done` event (happens on the slow
+  // quote turn, which has a long silent gap while the BOM is assembled).
+  const streamedUiActions: any[] = [];
+
+  const handleFrame = (evt: string) => {
+    const evLine = evt.split('\n').find((l) => l.startsWith('event:'));
+    const dataLine = evt.split('\n').find((l) => l.startsWith('data:'));
+    if (!evLine || !dataLine) return;
+    const ev = evLine.slice(6).trim();
+    let payload: any;
+    try { payload = JSON.parse(dataLine.slice(5).trim()); } catch { return; }
+    if (ev === 'token') {
+      streamText += payload.delta || '';
+      setMessages([...newMessages, { role: 'assistant', content: streamText }]);
+    } else if (ev === 'uiAction') {
+      streamedUiActions.push(payload);
+    } else if (ev === 'done') {
+      doneData = payload;
+    } else if (ev === 'error') {
+      throw new Error(payload.message || 'stream error');
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      handleFrame(buffer.slice(0, idx));
+      buffer = buffer.slice(idx + 2);
+    }
+  }
+  /* The last frame carries the sessionId — and it is the one most likely to
+   * arrive without the blank line that separates frames, in which case it sat
+   * in this buffer and was thrown away. The client then never learned its own
+   * session id, so every turn opened a fresh one: the conversation was rebuilt
+   * from nothing, and anything the server remembered (the roster size, what has
+   * been shown) was unreachable. Drain whatever is left before giving up. */
+  if (buffer.trim()) handleFrame(buffer);
+  if (doneData) return doneData;
+  // No clean `done` — reconstruct from what streamed. As long as we got text or a
+  // UI action (e.g. the quote), render it rather than throwing into the buffered
+  // error path. sessionId is left as-is (kept from the prior turn).
+  if (streamText || streamedUiActions.length) {
+    return {
+      message: { role: 'assistant', content: streamText },
+      uiActions: streamedUiActions,
+      conversation: [],
+    };
+  }
+  throw new Error('stream produced no output');
+}
 
 export default function ChatPanel() {
   const { state, dispatch } = useJourney();
+  const cfg = useStorefrontConfig();
+  // The send handlers below are useCallback closures created BEFORE the config
+  // fetch resolves — reading `cfg` inside them would pin the DEFAULT tenant
+  // (stale-closure bug). Always read the live value through this ref.
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+
+  // Opening-screen copy. Tenants set their own vertical-true starters + placeholder
+  // in the back office; when unset we derive label-based defaults (never a generic
+  // "product, quantity, finish" example). Every starter routes through the agent
+  // (append a user turn) rather than hard-jumping a phase, so the conversation —
+  // research, colour confirmation, concepts — happens before anything renders.
+  const itemSingular = (cfg.labels.itemsSingular || 'product').toLowerCase();
+  const introStarters = (cfg.intro?.starters && cfg.intro.starters.length)
+    ? cfg.intro.starters
+    : [
+        { label: `Help me choose the right ${itemSingular}`, prompt: `Help me choose the right ${itemSingular} — I'll tell you what I need.` },
+        { label: 'I’d like a full recommendation — ask me what you need', prompt: `I'd like a full recommendation — ask me whatever you need to know.` },
+      ];
+  const introPlaceholder = cfg.intro?.inputPlaceholder
+    || (cfg.configurator?.productType === 'garment'
+      ? 'Tell me the team, the garment and how many…'
+      : `Tell me what you’re looking for…`);
+
   const stateRef = useRef(state);
   
   // Keep ref in sync with latest state
@@ -16,6 +124,14 @@ export default function ChatPanel() {
   const [messages, setMessages] = useState<any[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [displayName, setDisplayName] = useState<string>('');
+  const [convoId, setConvoId] = useState('');
+  const [convos, setConvos] = useState<Conversation[]>([]);
+  const [convoMenuOpen, setConvoMenuOpen] = useState(false);
+  // sendToAI is a stable closure; reading convoId directly would pin whichever
+  // thread was open when it was created.
+  const convoIdRef = useRef('');
+  convoIdRef.current = convoId;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -26,41 +142,165 @@ export default function ChatPanel() {
     scrollToBottom();
   }, [messages, isLoading, state.isThinking]);
 
+  // Conversation survives a refresh. The chat used to blank out on reload because
+  // `messages` is client state; persist it per session and restore on mount so the
+  // customer picks up exactly where they left off. Keyed by project + session id.
+  const msgKey = convoId ? messagesKey(cfg.projectId, convoId) : '';
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const { id, list } = resolveActiveConversation(cfg.projectId);
+    setConvoId(id);
+    setConvos(list);
+    try {
+      /* ALWAYS reset the thread to THIS project's active conversation.
+       *
+       * The storefront mounts with the default projectId ("caroma") for the
+       * instant before /api/config resolves the real tenant. That first pass
+       * loaded Caroma's saved conversation into the panel; when the project
+       * then flipped to (say) mms, this effect re-ran — but it only ever
+       * *set* messages when the new project had saved history, and never
+       * *cleared* them otherwise. So Caroma's chat stayed on screen under the
+       * M&M'S greeting. Opening a new conversation looked fine only because it
+       * clears explicitly. Reset unconditionally: a project with no saved
+       * thread must show an empty panel, never the previous tenant's. */
+      const saved = localStorage.getItem(messagesKey(cfg.projectId, id));
+      const parsed = saved ? JSON.parse(saved) : null;
+      setMessages(Array.isArray(parsed) && parsed.length ? parsed : []);
+      setDisplayName(localStorage.getItem(`jx_name::${cfg.projectId || 'default'}`) || '');
+    } catch { setMessages([]); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.projectId]);
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !msgKey || !convoId) return;
+    try {
+      if (messages.length) {
+        localStorage.setItem(msgKey, JSON.stringify(messages.slice(-40)));
+        // Keep the thread's label and its place in the list current, so the
+        // switcher describes the conversation rather than listing timestamps.
+        setConvos((prev) => {
+          const title = summarise(messages.find((m: any) => m?.role === 'user')?.content);
+          const next = prev.map((c) => (c.id === convoId ? { ...c, title, updatedAt: Date.now() } : c));
+          saveConversations(cfg.projectId, next);
+          return next;
+        });
+      } else if (restoredRef.current) {
+        // Emptied AFTER first render (a Restart) → clear the saved chat + session
+        // so a new configuration starts clean instead of resurrecting the old one.
+        localStorage.removeItem(msgKey);
+        localStorage.removeItem(sessionKey(cfg.projectId, convoId));
+      }
+      restoredRef.current = true;
+    } catch { /* quota — best effort */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, msgKey, convoId]);
+
+  /* Strip transient checkout params (?order=…&status=success) from the URL,
+   * keeping ?project. Left behind, they re-fire the Stripe-return poll on the
+   * next reload and hijack a brand-new conversation back to the "ordered"
+   * screen — so a new/switched thread must always start from a clean URL. */
+  const clearCheckoutParams = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('order') && !url.searchParams.has('status')) return;
+    url.searchParams.delete('order');
+    url.searchParams.delete('status');
+    window.history.replaceState({}, '', url.toString());
+  }, []);
+
+  /* Start a clean thread: new conversation id, so the next turn opens a NEW
+   * server session and the agent begins with no memory of the last brief. */
+  const startNewConversation = useCallback(() => {
+    const id = newId();
+    const next = [{ id, title: 'New conversation', updatedAt: Date.now() }, ...convos];
+    saveConversations(cfg.projectId, next);
+    setActiveConversation(cfg.projectId, id);
+    setConvos(next);
+    setConvoId(id);
+    setMessages([]);
+    dispatch({ type: 'RESET' });
+    clearCheckoutParams();
+    setConvoMenuOpen(false);
+  }, [convos, cfg.projectId, dispatch, clearCheckoutParams]);
+
+  /* Switch threads. The transcript comes back from storage; the panel resets to
+   * the start rather than showing the previous thread's garment or quote, which
+   * would belong to a different conversation. */
+  const openConversation = useCallback((id: string) => {
+    if (id === convoId) { setConvoMenuOpen(false); return; }
+    setActiveConversation(cfg.projectId, id);
+    setConvoId(id);
+    let restored: any[] = [];
+    try {
+      const saved = localStorage.getItem(messagesKey(cfg.projectId, id));
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (Array.isArray(parsed)) restored = parsed;
+    } catch { /* ignore corrupt storage */ }
+    setMessages(restored);
+    dispatch({ type: 'RESET' });
+    clearCheckoutParams();
+    setConvoMenuOpen(false);
+  }, [convoId, cfg.projectId, dispatch]);
+
+  // Lightweight customer sign-in: captures a display name for the session (real
+  // storefront accounts/long-term memory land later). Honest affordance, not a
+  // dead button — it greets them and persists across refresh.
+  const onSignIn = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const key = `jx_name::${cfg.projectId || 'default'}`;
+    const current = localStorage.getItem(key) || '';
+    const next = window.prompt('Your name (so we can personalise your kit):', current);
+    if (next === null) return;
+    const trimmed = next.trim();
+    localStorage.setItem(key, trimmed);
+    setDisplayName(trimmed);
+  }, [cfg.projectId]);
+
   const sendToAI = useCallback(async (newMessages: any[]) => {
     setIsLoading(true);
 
     try {
-      // Build clean message array for API
-      const apiMessages = newMessages.map(m => {
-        let content = m.content;
-        if (!content && m.tool_calls) {
-          // Summarize tool calls so context is preserved
-          content = m.tool_calls.map((c: any) => `[Action: ${c.function?.name || c.name}]`).join('\n');
-        }
-        return { role: m.role === 'assistant' ? 'assistant' : m.role, content: content || '' };
-      }).filter((m: any) => m.content); // Filter empty
+      // CLIENT-MINIMAL CONTRACT: the browser sends only the NEW user message + the
+      // sessionId. The server owns the transcript and journey state and
+      // reconstructs everything (no conversation/state is shipped from the client).
+      const newUserMessage = [...newMessages].reverse().find(m => m.role === 'user')?.content || '';
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: apiMessages,
-          state: {
-            phase: stateRef.current.phase,
-            bom: stateRef.current.customBom || [],
-            recommendedProducts: stateRef.current.recommendedProducts || [],
-            finish: stateRef.current.finish || '',
-            qty: stateRef.current.qty || 1
-          }
-        })
+      // Session id is the only durable handle the client keeps, per tenant.
+      // Per CONVERSATION, not per project: each thread carries its own server
+      // session, so switching threads switches what the agent remembers.
+      const sKey = sessionKey(cfgRef.current.projectId, convoIdRef.current);
+      const existingSessionId =
+        typeof window !== 'undefined' ? localStorage.getItem(sKey) || undefined : undefined;
+
+      const requestBody = JSON.stringify({
+        message: newUserMessage,
+        sessionId: existingSessionId,
+        // customerId will be attached here once storefront auth lands (long-term memory key).
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'API Error');
+      // Try streaming first; on ANY failure fall back to the buffered endpoint
+      // so the storefront keeps working exactly as before.
+      let data: any;
+      try {
+        data = await streamChat(requestBody, newMessages, setMessages, cfgRef.current.projectId);
+      } catch (streamErr) {
+        console.warn('[chat] streaming failed, using buffered fallback:', streamErr);
+        setMessages(newMessages); // clear any partial streamed text
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(cfgRef.current.projectId ? { 'X-Tenant-ID': cfgRef.current.projectId } : {}) },
+          body: requestBody,
+        });
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || 'API Error');
+        }
+        data = await res.json();
       }
-      
-      const data = await res.json();
+
+      if (data.sessionId && typeof window !== 'undefined') {
+        localStorage.setItem(sKey, data.sessionId);
+      }
 
       // Update messages to the full conversation history from the backend (including tool calls/responses)
       if (data.conversation && data.conversation.length > 0) {
@@ -76,7 +316,25 @@ export default function ChatPanel() {
       let hasPhaseChange = false;
       // Process UI actions from the backend
       if (data.uiActions && data.uiActions.length > 0) {
-        for (const action of data.uiActions) {
+        for (const rawAction of data.uiActions) {
+          /* Tool arguments arrive EITHER as a parsed object or as the raw JSON
+           * string the model emitted, depending on how the turn streamed. Every
+           * handler below reads properties off it, so an unparsed string makes
+           * each one silently read `undefined` — the panel then keeps whatever
+           * it was already showing while the agent describes something new.
+           * Normalise once, here, rather than in eleven places. */
+          const action = (() => {
+            const a = rawAction?.arguments;
+            if (typeof a !== 'string') return rawAction;
+            try {
+              return { ...rawAction, arguments: JSON.parse(a) };
+            } catch {
+              // Malformed arguments are worse than none: acting on half a tool
+              // call is how the wrong garment gets shown.
+              return { ...rawAction, arguments: {} };
+            }
+          })();
+
           if (action.name === 'setPhase') {
             hasPhaseChange = true;
             dispatch({ type: 'SET_PHASE', phase: action.arguments.phase });
@@ -88,31 +346,19 @@ export default function ChatPanel() {
                 questions: action.arguments.questions
               });
             }
+          } else if (action.name === 'researchSchool') {
+            // Live brand research (AUG-48). arguments IS the server-side research
+            // (colours mapped to our palette, sources, mascot). Shown for the
+            // customer to confirm before anything renders.
+            dispatch({ type: 'SET_SCHOOL_RESEARCH', research: action.arguments });
+            hasPhaseChange = true;
           } else if (action.name === 'updateQuote') {
-            // Transform to QuoteItem format
-            const bom = action.arguments.items.map((item: any) => ({
-              id: item.sku,
-              name: item.name,
-              price: item.price,
-              spec: item.reason || item.category || '',
-              sku: item.sku,
-              imageUrl: item.imageUrl || undefined,
-              category: item.category || '',
-              required: item.required || false,
-              reason: item.reason,
-              quantity: item.quantity || 1,
-              lineTotal: item.price * (item.quantity || 1),
-              stock: { label: 'In stock · NSW DC', color: '#4E7C59' }
-            }));
-            dispatch({ 
-              type: 'SET_QUOTE_DATA', 
-              title: action.arguments.title, 
-              bom,
-              jobId: action.arguments.jobId,
-              installationSummary: action.arguments.installationSummary,
-              warrantySummary: action.arguments.warrantySummary
-            });
-          } else if (action.name === 'showProducts') {
+            // P0-04: arguments IS the authoritative server quote (lines + totals
+            // computed server-side from the catalogue + tenant pricing). Store it
+            // verbatim — the client never recomputes prices.
+            dispatch({ type: 'SET_SERVER_QUOTE', quote: action.arguments });
+            hasPhaseChange = true;
+          } else if (action.name === 'showItems') {
             // Product recommendations — set them in state for ProductsPanel
             dispatch({
               type: 'SET_RECOMMENDED_PRODUCTS',
@@ -125,6 +371,43 @@ export default function ChatPanel() {
               steps: action.arguments.steps
             });
             hasPhaseChange = true;
+          } else if (action.name === 'showAddons') {
+            dispatch({ type: 'SET_ACCESSORIES', accessories: action.arguments.accessories || [] });
+            hasPhaseChange = true;
+          } else if (action.name === 'presentChoice') {
+            dispatch({ type: 'SET_CHOICE', choice: { title: action.arguments.title, key: action.arguments.key, options: action.arguments.options || [] } });
+            hasPhaseChange = true;
+          } else if (action.name === 'showDocuments') {
+            dispatch({ type: 'SET_INSTALL_GUIDE', installGuide: { productName: action.arguments.productName, summary: action.arguments.summary, guides: action.arguments.guides || [] } });
+            hasPhaseChange = true;
+          } else if (action.name === 'showInfo') {
+            dispatch({ type: 'SET_WARRANTY', warranty: action.arguments });
+            hasPhaseChange = true;
+          } else if (action.name === 'showConfigurator') {
+            /* Open the 3D configurator ALREADY showing what the customer described.
+             * Merged, not replaced, so a follow-up like "make it maroon" changes
+             * one facet and leaves the name, number and artwork intact. */
+            const a = action.arguments || {};
+            /* A NEW style is a new garment, not an edit of the old one. Merging
+             * into the previous design left the panel rendering the last item
+             * while the agent described the new one — the customer was told
+             * they were looking at something they were not. */
+            if (a.sku) dispatch({ type: 'CLEAR_DESIGN' });
+            dispatch({ type: 'SET_DESIGN', design: {
+              ...(a.sku ? { sku: String(a.sku) } : {}),
+              ...(a.baseColor ? { baseColor: String(a.baseColor) } : {}),
+              ...(a.accentColor ? { accentColor: String(a.accentColor) } : {}),
+              // Without the design line the pattern layer never switches on and
+              // the garment renders blank whatever the colours are.
+              ...(a.designLine ? { designLine: String(a.designLine) } : {}),
+              ...(a.textColour ? { textColour: String(a.textColour) } : {}),
+              ...(a.outlineColour ? { outlineColour: String(a.outlineColour) } : {}),
+              ...(a.name != null ? { name: String(a.name) } : {}),
+              ...(a.number != null ? { number: String(a.number) } : {}),
+              ...(a.note ? { note: String(a.note) } : {}),
+            } });
+            dispatch({ type: 'SET_PHASE', phase: 'configurator' });
+            hasPhaseChange = true;
           }
         }
         // If AI called updateQuote but forgot setPhase('quote'), do it
@@ -133,7 +416,7 @@ export default function ChatPanel() {
           hasPhaseChange = true;
         }
         // If AI called showProducts but forgot setPhase('products'), do it
-        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'showProducts')) {
+        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'showItems')) {
           dispatch({ type: 'SET_PHASE', phase: 'products' });
           hasPhaseChange = true;
         }
@@ -143,7 +426,13 @@ export default function ChatPanel() {
       if (!hasPhaseChange) {
         const latestState = stateRef.current;
         // Fallback to the most relevant phase based on what we have in state
-        if (latestState.customBom && latestState.customBom.length > 0) {
+        if (latestState.phase === 'configurator' && latestState.design?.sku) {
+          /* Already designing a real garment and this turn only spoke — STAY put.
+           * The chain below had no configurator branch, so any text-only reply
+           * mid-design threw the customer back to an older phase (usually the
+           * stale product list) while they were mid-edit. Leaving the phase
+           * untouched is the only correct move: there is nothing newer to show. */
+        } else if (latestState.customBom && latestState.customBom.length > 0) {
           dispatch({ type: 'SET_PHASE', phase: 'quote' });
         } else if (latestState.guideSteps && latestState.guideSteps.length > 0) {
           dispatch({ type: 'SET_PHASE', phase: 'guide' });
@@ -195,6 +484,13 @@ export default function ChatPanel() {
   }, [messages, state.dynamicAnswers, state.dynamicQuestions, sendToAI, dispatch]);
 
   // Expose handleClarifySubmit globally so ClarifyPanel can call it
+  // Generic bridge so the capability panels (accessories / choice / install /
+  // warranty) can send a follow-up message to advance the journey.
+  useEffect(() => {
+    (window as any).__journeySend = (text: string) => append({ role: 'user', content: text });
+    return () => { delete (window as any).__journeySend; };
+  }, [append]);
+
   useEffect(() => {
     (window as any).__handleClarifySubmit = handleClarifySubmit;
     return () => { delete (window as any).__handleClarifySubmit; };
@@ -202,7 +498,35 @@ export default function ChatPanel() {
 
   // Called when user clicks "Build Quote" on ProductsPanel
   const handleBuildQuote = useCallback(async (summary?: string) => {
-    const content = summary || 'Build my quote with the recommended products';
+    /* Spell out WHAT to quote.
+     *
+     * The kit lives only in client state — the request carries just
+     * { message, sessionId } — so an agent asked to "build the quote for the
+     * items in my rack" cannot see the rack at all. It then guesses from the
+     * conversation and describes a quote instead of building one, which is the
+     * "nothing happens" the customer experiences. Send the actual style codes,
+     * quantities and designs so there is nothing left to infer.
+     *
+     * Quantity comes from the team size the customer already gave, so a 14-player
+     * order is quoted as 14, not 1. */
+    const kit = stateRef.current.kit || [];
+    const qty = stateRef.current.qty && stateRef.current.qty > 1 ? stateRef.current.qty : undefined;
+    const kitLines = kit
+      .filter((k) => k?.sku)
+      .map((k) => {
+        const bits = [k.title || k.name || k.sku, `SKU ${k.sku}`];
+        if (k.designLine) bits.push(`${k.designLine} design`);
+        const cols = [k.baseColor, k.accentColor].filter(Boolean).join(' / ');
+        if (cols) bits.push(cols);
+        if (qty) bits.push(`qty ${qty}`);
+        return `- ${bits.join(', ')}`;
+      });
+
+    const content = summary
+      || (kitLines.length
+        ? `Build my quote for the items on my rack:\n${kitLines.join('\n')}\n`
+          + `Please put these exact styles${qty ? ` at ${qty} each` : ''} on the quote.`
+        : 'Build my quote with the recommended products');
     const userMsg = { role: 'user', content };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -255,26 +579,97 @@ export default function ChatPanel() {
     }
   };
 
-  // Merge context messages (welcome) with chat messages
-  const allMessages = [...state.messages, ...messages.map((m, i) => ({
-    id: `msg-${i}`,
-    role: m.role as 'user' | 'ai' | 'note',
-    text: m.content || ''
-  }))].filter(m => m.text);
+  // Merge context messages (welcome) with chat messages.
+  // Hide tool results and tool-call-only turns — they carry machine data
+  // (e.g. {"success":true}) and must never render as chat bubbles.
+  const allMessages = [...state.messages, ...messages
+    .filter(m => m.role !== 'tool' && !m.tool_calls)
+    .map((m, i) => ({
+      id: `msg-${i}`,
+      role: m.role as 'user' | 'ai' | 'note',
+      text: m.content || ''
+    }))]
+    .filter(m => m.text)
+    // Multi-tenant greeting: the welcome bubble shows the project's configured
+    // greeting (persona.greetingMessage) when set.
+    .map(m => (m.id === 'welcome' && cfg.greeting ? { ...m, text: cfg.greeting } : m));
 
   return (
-    <div className="chat-panel">
-      {/* Header */}
+    <div className="chat-panel" data-sidebar={cfg.theme?.sidebarStyle || 'light'}>
+      {/* Header — the brand's own logo + name, and sign-in. Nothing else: the
+          "Team Kit Builder / Augusta Team Outfitter" title+subtitle and the
+          "Online" status badge were noise the customer didn't need. */}
       <div className="chat-header">
-        <div className="chat-header__brand">CAROMA</div>
-        <div className="chat-header__divider" />
-        <div className="chat-header__info">
-          <div className="chat-header__title">Bathroom Configurator</div>
-          <div className="chat-header__subtitle">Agentic bathroom build</div>
-        </div>
-        <div className="chat-header__badge">
-          <span className="chat-header__badge-dot" />
-          <span className="chat-header__badge-text">Consumer · Bathroom</span>
+        {cfg.theme?.logoUrl
+          ? <img className="chat-header__logo" src={cfg.theme.logoUrl} alt={cfg.companyName || 'Brand'} />
+          : null}
+        {/* The logo already says who this is. Setting the name beside a
+            wordmark prints the brand twice — the logo carries its own
+            typography and lock-up, and the text competes with it. The name is
+            only written out when there is no logo to carry it. */}
+        {!cfg.theme?.logoUrl && (
+          <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>
+        )}
+        <div className="chat-header__actions">
+          {/* Conversations. One customer has more than one job — this season's
+              volleyball kit, next month's caps — and each deserves its own
+              thread with its own context, plus a way back to the earlier one. */}
+          <div className="chat-header__convos">
+            <button
+              type="button"
+              className="chat-header__iconbtn"
+              onClick={() => setConvoMenuOpen((o) => !o)}
+              title="Your conversations"
+              aria-label="Your conversations"
+              aria-expanded={convoMenuOpen}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.7-.8L3 21l1.9-4.8A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"
+                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="chat-header__iconbtn"
+              onClick={startNewConversation}
+              title="Start a new conversation"
+              aria-label="Start a new conversation"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+            {convoMenuOpen && (
+              <div className="chat-header__convomenu" role="menu">
+                <div className="chat-header__convomenu-title">Your conversations</div>
+                {convos.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="menuitem"
+                    className={`chat-header__convoitem${c.id === convoId ? ' is-active' : ''}`}
+                    onClick={() => openConversation(c.id)}
+                  >
+                    <span className="chat-header__convoitem-title">{c.title}</span>
+                    <span className="chat-header__convoitem-when">
+                      {new Date(c.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
+                  </button>
+                ))}
+                <button type="button" role="menuitem" className="chat-header__convonew" onClick={startNewConversation}>
+                  + New conversation
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="chat-header__signin"
+            onClick={onSignIn}
+            title={displayName ? `Signed in as ${displayName}` : 'Sign in'}
+          >
+            {displayName ? displayName.split(' ')[0] : 'Sign in'}
+          </button>
         </div>
       </div>
 
@@ -295,22 +690,18 @@ export default function ChatPanel() {
 
       {/* Input */}
       <div className="chat-input-area">
-        {state.phase === 'intro' && (
+        {state.phase === 'intro' && messages.length === 0 && introStarters.length > 0 && (
           <div className="chat-suggestions">
-            <div
-              className="chat-suggestion"
-              onClick={() => append({ role: 'user', content: "I'm renovating my bathroom — help me choose a new shower." })}
-            >
-              <span className="chat-suggestion__arrow">→</span>
-              I&apos;m renovating my bathroom — help me choose a shower
-            </div>
-            <div
-              className="chat-suggestion"
-              onClick={() => append({ role: 'user', content: "I'm building new — spec a full bathroom with matching finishes." })}
-            >
-              <span className="chat-suggestion__arrow">→</span>
-              I&apos;m building new — spec a full bathroom
-            </div>
+            {introStarters.map((s, i) => (
+              <div
+                key={i}
+                className="chat-suggestion"
+                onClick={() => append({ role: 'user', content: s.prompt })}
+              >
+                <span className="chat-suggestion__arrow">→</span>
+                {s.label}
+              </div>
+            ))}
           </div>
         )}
         <form className="chat-input-row" onSubmit={onSubmit}>
@@ -319,7 +710,7 @@ export default function ChatPanel() {
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Describe the build — product, quantity, finish…"
+            placeholder={introPlaceholder}
           />
           <button type="submit" className="chat-send-btn" aria-label="Send message">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">

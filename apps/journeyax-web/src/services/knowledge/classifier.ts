@@ -154,50 +154,171 @@ export function classifyMdFile(
 /**
  * Extract product metadata from content (price, SKU, images, finishes).
  */
-export function extractProductMetadata(content: string): Partial<DocumentMetadata> {
+// Known Caroma spec labels (longest-first so "item material" beats "item").
+const SPEC_KEYS = [
+  'item code', 'product types', 'item material', 'capacity size', 'capacity to overflow',
+  'number of tap holes', 'independent living compliant', 'as1428.1 accessible',
+  'wels rating', 'flow rate', 'installation type', 'range', 'brand', 'colour', 'color',
+  'shape', 'overflow', 'material', 'finish', 'warranty', 'dimensions', 'width', 'height',
+  'depth', 'weight', 'series',
+].sort((a, b) => b.length - a.length);
+
+/** Parse the "Specifications" block — key+value are concatenated per \n\n block. */
+function parseSpecBlock(content: string): Record<string, string> {
+  const specs: Record<string, string> = {};
+  const start = content.indexOf('Specifications');
+  if (start === -1) return specs;
+  const end = content.indexOf('Product Codes', start);
+  const section = content.slice(start + 14, end === -1 ? start + 3000 : end);
+  for (const block of section.split(/\n{2,}/).map(b => b.trim()).filter(Boolean)) {
+    const lower = block.toLowerCase();
+    const key = SPEC_KEYS.find(k => lower.startsWith(k));
+    if (!key) continue;
+    let value = block.slice(key.length).trim();
+    const link = value.match(/^\[([^\]]+)\]/); // range[Liano II](url) → Liano II
+    if (link) value = link[1].trim();
+    value = value.replace(/\\+/g, '').trim();
+    if (value && value.length < 120) specs[key] = value;
+  }
+  return specs;
+}
+
+/** Pull the real product image from HTML, ranking PIM product thumbnails first. */
+function extractProductImageFromHtml(html: string): string[] {
+  if (!html) return [];
+  const EXCLUDE = /logo|union\.svg|group_1156|sprite|icon|placeholder|favicon|swatch|banner|hero|carousel|landing|homepage/i;
+  const urls = new Set<string>();
+  const attrRe = /(?:src|data-src|data-lazy-src|data-original)\s*=\s*["']([^"']+\.(?:jpg|jpeg|png|webp|avif))[^"']*["']/gi;
+  let m;
+  while ((m = attrRe.exec(html)) !== null) {
+    const u = m[1];
+    if (!/^https?:\/\//i.test(u) || EXCLUDE.test(u)) continue;
+    urls.add(u);
+  }
+  // Rank: real product thumbnails (PIM asset store, keyed by SKU) first.
+  return [...urls].sort((a, b) => {
+    const score = (u: string) =>
+      /pim-assets\/(?:productthumbnail|product)/i.test(u) ? 0 : /cdn\.caroma/i.test(u) ? 1 : 2;
+    return score(a) - score(b);
+  });
+}
+
+const DOC_EXT = 'pdf|dae|rfa|skp|dxf|obj|3ds';
+
+/** Extract linked technical documents: install guide, CAD/3D files, spec/warranty PDFs. */
+function extractLinkedDocs(content: string, html: string): { title: string; url: string; kind?: string }[] {
+  const docs: { title: string; url: string; kind?: string }[] = [];
+  const seen = new Set<string>();
+  const push = (url: string, title: string) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    const s = (title + ' ' + url).toLowerCase();
+    const kind = /\.(dae|rfa|skp|dxf|obj|3ds)/.test(url) ? 'cad-3d'
+      : /install/.test(s) ? 'installation'
+      : /warrant/.test(s) ? 'warranty'
+      : /spec|tech|tm_|datasheet/.test(s) ? 'spec-sheet' : 'document';
+    docs.push({ url, title: title || kind, kind });
+  };
+  const all = `${content}\n${html || ''}`;
+  const re = new RegExp(`(https?:\\/\\/[^\\s"')<>]+\\.(?:${DOC_EXT}))`, 'gi');
+  let m;
+  while ((m = re.exec(all)) !== null) push(m[1], '');
+  return docs.slice(0, 12);
+}
+
+/** Parse the JSON-LD Product block — clean structured data (sku, price, specs, variants). */
+function parseProductJsonLd(html: string): any | null {
+  if (!html) return null;
+  const blocks = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  for (const b of blocks) {
+    let d: any;
+    try { d = JSON.parse(b[1].trim()); } catch { continue; }
+    const items = Array.isArray(d) ? d : (d['@graph'] || [d]);
+    for (const it of items) if (it && it['@type'] === 'Product') return it;
+  }
+  return null;
+}
+
+export function extractProductMetadata(content: string, html = ''): Partial<DocumentMetadata> {
   const result: Partial<DocumentMetadata> = {};
 
-  // Extract price (AUD)
-  const priceMatch = content.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
-  if (priceMatch) {
-    result.price = parseFloat(priceMatch[1].replace(',', ''));
-    result.currency = 'AUD';
-  }
-
-  // Extract SKU
-  const skuMatch = content.match(/\b(?:SKU|Product Code|Code)[:\s]*([A-Z0-9][\w-]{3,})/i);
-  if (skuMatch) {
-    result.sku = skuMatch[1];
-  }
-
-  // Extract image URLs
-  const imageUrls: string[] = [];
-  const imgRegex = /!\[.*?\]\((https?:\/\/[^\s)]+(?:\.(?:jpg|jpeg|png|webp|avif))[^\s)]*)\)/gi;
-  let imgMatch;
-  while ((imgMatch = imgRegex.exec(content)) !== null) {
-    imageUrls.push(imgMatch[1]);
-  }
-  // Also check for CDN URLs
-  const cdnRegex = /(https?:\/\/cdn\.[^\s"']+(?:\.(?:jpg|jpeg|png|webp|avif))[^\s"']*)/gi;
-  while ((imgMatch = cdnRegex.exec(content)) !== null) {
-    if (!imageUrls.includes(imgMatch[1])) {
-      imageUrls.push(imgMatch[1]);
+  // ── PRIMARY: JSON-LD Product (clean structured data) ──────────────
+  const ld = parseProductJsonLd(html);
+  if (ld) {
+    if (ld.description) result.description = String(ld.description).slice(0, 500);
+    if (ld.sku) result.sku = String(ld.sku);
+    if (ld.category) result.category = String(ld.category);
+    const img = typeof ld.image === 'string' ? ld.image
+      : Array.isArray(ld.image) ? ld.image[0] : ld.image?.url;
+    if (img) result.images = [img];
+    const off = Array.isArray(ld.offers) ? ld.offers[0] : ld.offers;
+    if (off?.price) { result.price = parseFloat(off.price); result.currency = off.priceCurrency || 'AUD'; }
+    if (off?.availability) result.availability = String(off.availability).split('/').pop(); // InStock / OutOfStock
+    const specsLd: Record<string, string> = {};
+    for (const a of ld.additionalProperty || []) if (a?.name) specsLd[a.name] = String(a.value ?? '');
+    if (Object.keys(specsLd).length) result.specs = specsLd;
+    if (specsLd['Range']) result.collection = specsLd['Range'];
+    const variants = ld.isVariantOf?.hasVariant || ld.model || [];
+    if (Array.isArray(variants) && variants.length) {
+      result.variants = variants.filter((v: any) => v?.sku).map((v: any) => ({
+        sku: String(v.sku),
+        finish: v.color || v.name,
+        availability: v.offers?.availability ? String(v.offers.availability).split('/').pop() : undefined,
+      }));
+      result.finishes = variants.map((v: any) => v.color || v.name).filter(Boolean);
     }
   }
-  if (imageUrls.length > 0) {
-    result.images = imageUrls.slice(0, 5); // Keep top 5
+
+  // ── FALLBACK: markdown/regex for anything JSON-LD didn't provide ───
+  // Price (AUD)
+  if (result.price == null) {
+    const priceMatch = content.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+    if (priceMatch) { result.price = parseFloat(priceMatch[1].replace(/,/g, '')); result.currency = 'AUD'; }
   }
 
-  // Extract finishes
-  const finishKeywords = [
-    'Matte Black', 'Chrome', 'Brushed Brass', 'Brushed Nickel',
-    'Gunmetal', 'Brushed Bronze', 'White', 'Gloss White',
-  ];
-  const finishes = finishKeywords.filter(f =>
-    content.toLowerCase().includes(f.toLowerCase())
-  );
-  if (finishes.length > 0) {
-    result.finishes = finishes;
+  // Structured technical specs (item code, material, WELS, dimensions, warranty…)
+  const specs = result.specs || parseSpecBlock(content);
+  if (!result.specs && Object.keys(specs).length) result.specs = specs;
+
+  // SKU — Caroma labels it "item code"; keep SKU/Product Code as fallbacks
+  if (!result.sku) {
+    const sku = specs['item code'] ||
+      content.match(/(?:item\s*code|SKU|product\s*code)[:\s]*([A-Za-z0-9][\w-]{3,})/i)?.[1];
+    if (sku) result.sku = sku;
+  }
+
+  if (!result.category && specs['product types']) result.category = specs['product types'];
+  if (!result.collection && (specs['range'] || specs['series'])) result.collection = specs['range'] || specs['series'];
+
+  // Images — prefer real product images from HTML, fall back to markdown/CDN
+  if (!result.images) {
+  let images = extractProductImageFromHtml(html);
+  if (images.length === 0) {
+    const md: string[] = [];
+    const imgRegex = /!\[.*?\]\((https?:\/\/[^\s)]+(?:\.(?:jpg|jpeg|png|webp|avif))[^\s)]*)\)/gi;
+    let im;
+    while ((im = imgRegex.exec(content)) !== null) {
+      if (!/logo|union\.svg|group_1156|sprite|icon/i.test(im[1])) md.push(im[1]);
+    }
+    images = md;
+  }
+  if (images.length > 0) result.images = images.slice(0, 5);
+  }
+
+  // Linked technical documents (install guide, CAD/3D files, spec/warranty PDFs)
+  const docs = extractLinkedDocs(content, html);
+  if (docs.length > 0) result.documents = docs;
+
+  // Finishes — fallback only if JSON-LD variants didn't supply them
+  if (!result.finishes || result.finishes.length === 0) {
+    const finishKeywords = [
+      'Matte Black', 'Chrome', 'Brushed Brass', 'Brushed Nickel',
+      'Gunmetal', 'Brushed Bronze', 'White', 'Gloss White',
+    ];
+    const finishes = finishKeywords.filter(f => content.toLowerCase().includes(f.toLowerCase()));
+    if (finishes.length > 0) result.finishes = finishes;
+    const primary = specs['colour'] || specs['color'] || specs['finish'];
+    if (primary) result.finishes = [primary, ...(result.finishes || []).filter(x => x !== primary)];
   }
 
   return result;
