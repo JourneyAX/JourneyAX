@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# ============================================================
+# scripts/cloudbuild-build-push.sh
+#
+# Step 2 of Cloud Build pipeline (runs in gcr.io/cloud-builders/docker).
+# Adapted from Metafy AI's cloudbuild-build-push.sh.
+#
+# - Sources /workspace/build_config.sh from Step 1
+# - Reads /workspace/services_to_deploy.txt from Step 1
+# - Builds Docker image for each service IN PARALLEL (4 concurrent)
+# - Pushes both :latest and :<COMMIT_SHA> tags to Artifact Registry
+#
+# Speed optimisations:
+#   DOCKER_BUILDKIT=1  → parallelises multi-stage Dockerfile stages
+#                        internally (your 4-stage Dockerfile runs
+#                        dependencies + prod-dependencies in parallel)
+#   MAX_PARALLEL=4     → up to 4 service builds run concurrently on
+#                        the 8-vCPU E2_HIGHCPU_8 machine
+#                        (6 services ÷ 4 = ~2 batches vs 6 sequential)
+#
+# Docker credentials were configured in Step 1 via
+# `gcloud auth configure-docker` and are shared across all steps
+# via Cloud Build's /root/.docker volume mount.
+# ============================================================
+set -euo pipefail
+
+export DOCKER_BUILDKIT=1
+
+source /workspace/build_config.sh
+
+if [ ! -s /workspace/services_to_deploy.txt ]; then
+  echo "✅ No services to build — skipping."
+  exit 0
+fi
+
+# Read services into array
+SERVICES=()
+while IFS= read -r line; do
+  [ -n "${line}" ] && SERVICES+=("${line}")
+done < /workspace/services_to_deploy.txt
+
+echo "============================================================"
+echo "🐳 Build & Push Docker Images (parallel, max 4 concurrent)"
+echo "   Registry : ${REGISTRY}"
+echo "   Project  : ${PROJECT_ID}"
+echo "   Commit   : ${COMMIT_SHA}"
+echo "   Services : ${#SERVICES[@]}"
+echo "   BuildKit : enabled (multi-stage Dockerfile parallelism)"
+echo "============================================================"
+
+# ── Per-service build + push function ─────────────────────────────────────────
+build_push_svc() {
+  local SVC="$1"
+  local IMAGE="${REGISTRY}/${PROJECT_ID}/${ARTIFACT_REPO}/${SVC}"
+  local DOCKERFILE="Dockerfile.template"
+
+  echo "🔨 [START] ${SVC}"
+
+  DOCKER_BUILDKIT=1 docker build \
+    --build-arg "SERVICE_NAME=${SVC}" \
+    --cache-from "${IMAGE}:latest" \
+    -t "${IMAGE}:latest" \
+    -t "${IMAGE}:${COMMIT_SHA}" \
+    -f "${DOCKERFILE}" \
+    . 2>&1 | sed "s/^/  [${SVC}] /"
+
+  docker push --all-tags "${IMAGE}" 2>&1 | sed "s/^/  [${SVC}] /"
+
+  echo "✅ [DONE ] ${SVC} → ${IMAGE}:${COMMIT_SHA}"
+}
+
+export -f build_push_svc
+export REGISTRY PROJECT_ID ARTIFACT_REPO COMMIT_SHA
+
+# ── Parallel execution with concurrency limit ──────────────────────────────────
+# Cloud Build E2_HIGHCPU_8 = 8 vCPUs / 8 GB RAM.
+# MAX_PARALLEL=4 gives each build 2 vCPUs with headroom.
+MAX_PARALLEL=4
+
+declare -a PIDS=()
+declare -a FAILED_SVCS=()
+
+wait_for_slot() {
+  # If we have MAX_PARALLEL jobs running, wait for one to finish before starting more
+  while [ "${#PIDS[@]}" -ge "${MAX_PARALLEL}" ]; do
+    local new_pids=()
+    for pid in "${PIDS[@]}"; do
+      if kill -0 "${pid}" 2>/dev/null; then
+        new_pids+=("${pid}")
+      else
+        # Job finished — check exit code
+        if ! wait "${pid}"; then
+          FAILED_SVCS+=("pid:${pid}")
+        fi
+      fi
+    done
+    PIDS=("${new_pids[@]+"${new_pids[@]}"}")
+    [ "${#PIDS[@]}" -lt "${MAX_PARALLEL}" ] && break
+    sleep 1
+  done
+}
+
+echo ""
+echo "▶ Launching builds (${#SERVICES[@]} services, ${MAX_PARALLEL} parallel)..."
+echo ""
+
+for SVC in "${SERVICES[@]}"; do
+  wait_for_slot
+  build_push_svc "${SVC}" &
+  PIDS+=($!)
+done
+
+# Wait for all remaining background jobs
+echo ""
+echo "⏳ Waiting for all builds to complete..."
+for pid in "${PIDS[@]}"; do
+  wait "${pid}" || FAILED_SVCS+=("pid:${pid}")
+done
+
+echo ""
+if [ "${#FAILED_SVCS[@]}" -gt 0 ]; then
+  echo "❌ Some builds failed: ${FAILED_SVCS[*]}"
+  exit 1
+fi
+
+echo "✅ All ${#SERVICES[@]} images built and pushed successfully!"
