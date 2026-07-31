@@ -134,7 +134,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
           query: { type: 'string', description: 'Natural language search query' },
           type: {
             type: 'string',
-            enum: ['product', 'troubleshooting', 'design', 'collection', 'installation', 'faq', 'general'],
+            enum: ['product', 'troubleshooting', 'design', 'collection', 'installation', 'faq', 'sizing', 'general'],
             description:
               "Pick the type that matches the CUSTOMER'S INTENT — this is critical for accurate results, each type carries different data:\n" +
               "• 'product' — they want to choose/compare specific fixtures (basin, toilet, tapware, shower). Carries real images, prices, specs, finishes.\n" +
@@ -143,6 +143,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
               "• 'troubleshooting' — something is broken/leaking/running/not working. Carries diagnostic fix steps.\n" +
               "• 'installation' — how to fit/install/rough-in a product. Carries install guides.\n" +
               "• 'faq' — warranty, policy, care/cleaning questions.\n" +
+              "• 'sizing' — fit & size questions (size charts, 'what size am I', 'does it run small', how to measure, which fit/cut suits, fabric care, occasion styling). Carries fit guides & size charts. Use this for apparel/footwear whenever fit or sizing is in play.\n" +
               "Classify each turn from what the customer actually said; do not default to 'product'. For a full bathroom build, lead with 'design' or 'collection', then search 'product' for the individual fixtures. Omit only if genuinely ambiguous.",
           },
           category: { type: 'string', description: 'Optional filter by category (Basins, Showers, Tapware, Toilet Suites, Baths, Accessories)' }
@@ -341,22 +342,22 @@ const tools: OpenAI.ChatCompletionTool[] = [
               properties: {
                 name: { type: 'string', description: 'Product name' },
                 sku: { type: 'string', description: 'Product SKU' },
-                price: { type: 'number', description: 'Price in AUD' },
-                imageUrl: { type: 'string', description: 'Product image URL' },
-                category: { type: 'string', description: 'Product category (Shower Head, Mixer, In-wall Body, Basin, etc.)' },
+                price: { type: 'number', description: 'Price as a number, in the store\'s own currency (do NOT convert or assume a currency).' },
+                imageUrl: { type: 'string', description: 'Product image URL, exactly as returned by retrieval.' },
+                category: { type: 'string', description: 'Product category, as it appears in the catalogue for THIS business (e.g. the retrieved breadcrumb/category).' },
                 collection: { type: 'string', description: 'Collection or range name, if the item belongs to one' },
                 description: { type: 'string', description: 'A 1-2 sentence explanation of WHY this product fits the user\'s brief' },
                 features: { type: 'array', items: { type: 'string' }, description: '2-3 key features or benefits' },
-                finishes: { type: 'array', items: { type: 'string' }, description: 'Available finishes' },
+                finishes: { type: 'array', items: { type: 'string' }, description: 'Available finishes / colours, if the item has them' },
                 specs: {
                   type: 'object',
-                  description: 'Technical specifications as key-value pairs. Include: Material, WELS Rating, Flow Rate, Dimensions, Warranty, Installation Type, etc. CRITICAL: Do NOT guess or hallucinate any specs (especially Warranty). If it is not explicitly stated in the knowledge base, omit it.',
+                  description: 'Key product specifications as key-value pairs — include ONLY specs that are EXPLICITLY present in the retrieved data for THIS item, using whatever fields that business actually publishes (e.g. material/fit/care for apparel; dimensions/rating for fixtures). CRITICAL: never invent or carry over a spec that is not in the retrieved data — in particular do NOT add a Warranty, rating, or installation field unless the retrieval explicitly states one. Omit anything not stated.',
                   additionalProperties: { type: 'string' }
                 },
                 url: { type: 'string', description: 'Item page URL from the catalogue' },
                 accessories: {
                   type: 'array',
-                  description: 'Optional matching accessories (e.g. Robe Hook, Towel Rail). You MUST proactively suggest 1-2 accessories from the catalog that match the style, even if they are not explicitly linked in the product markdown.',
+                  description: 'Optional matching add-ons — ONLY REAL items that retrieval returned for THIS business (e.g. a coordinating piece the catalogue actually carries). NEVER invent an accessory, SKU, or price to fill this in. If retrieval surfaced no genuine related items, leave this empty.',
                   items: {
                     type: 'object',
                     properties: {
@@ -1032,6 +1033,26 @@ async function markDesignable(tenantId: string, result: any): Promise<any> {
  * Prose stays the model's — only facts are overwritten, and only when the
  * lookup actually returns one, so a thin catalogue row never blanks a card.
  */
+/** The closest REAL catalogue product for a fabricated card, matched by text
+ *  (the name/category the model was trying to show). Lets grounding replace an
+ *  invented card with a genuine product instead of dropping it to an empty panel. */
+async function findCatalogueMatch(tenantId: string, query: string): Promise<any | null> {
+  if (!query || !query.trim()) return null;
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ query, limit: 1 }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const j: any = await res.json();
+    const arr = j?.results || j?.items || (Array.isArray(j) ? j : []);
+    return Array.isArray(arr) && arr.length ? arr[0] : null;
+  } catch { return null; }
+}
+
 async function groundItemFacts(tenantId: string, call: any): Promise<void> {
   if (call?.function?.name !== 'showItems') return;
   let args: any = {};
@@ -1042,7 +1063,7 @@ async function groundItemFacts(tenantId: string, call: any): Promise<void> {
   const skus = [...new Set(products.map((p: any) => String(p?.sku || '').trim()).filter(Boolean))];
   if (!skus.length) return;
 
-  let items: any[] = [];
+  let payload: any = null;
   try {
     const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
     const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/pricebook`, {
@@ -1052,29 +1073,65 @@ async function groundItemFacts(tenantId: string, call: any): Promise<void> {
       body: JSON.stringify({ skus }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return;
-    items = (await res.json())?.items || [];
+    if (!res.ok) return;   // lookup failed → keep cards untouched (best-effort, never block)
+    payload = await res.json();
   } catch {
-    return;   // grounding is best-effort; never block the panel on it
+    return;
   }
-  if (!items.length) return;
+  if (!payload) return;
 
+  const items: any[] = payload.items || [];
   const bySku = new Map(items.map((i: any) => [String(i.sku).trim().toUpperCase(), i]));
-  let corrected = 0;
-  args.products = products.map((p: any) => {
-    const row: any = bySku.get(String(p?.sku || '').trim().toUpperCase());
-    if (!row) return p;
-    const grounded = { ...p };
-    if (row.imageUrl) grounded.imageUrl = row.imageUrl;
-    if (typeof row.price === 'number') grounded.price = row.price;
-    if (row.name) grounded.name = row.name;
-    if (row.url) grounded.url = row.url;
-    if (grounded.imageUrl !== p.imageUrl || grounded.price !== p.price) corrected++;
-    return grounded;
-  });
+  /* HALLUCINATION GATE: the pricebook tells us which SKUs the catalogue does NOT
+     have (`missing`). A card carrying such a SKU is a fabricated product — e.g.
+     the model invented "LN-12345" for a linen shirt even though real linen
+     shirts were retrieved — and it must NEVER reach the customer. Drop it. Only
+     SKUs the catalogue AUTHORITATIVELY reports missing are dropped (a real SKU
+     resolves as `found` even when its price row is thin), so this can't remove a
+     genuine item. Prompt rules alone did not hold; this makes it structural. */
+  const missing = new Set((payload.missing || []).map((s: any) => String(s).trim().toUpperCase()));
+  const usedSkus = new Set<string>();
+  let grounded = 0, dropped = 0, substituted = 0;
+  const kept: any[] = [];
+  for (const p of products as any[]) {
+    const key = String(p?.sku || '').trim().toUpperCase();
+    if (key && missing.has(key)) {
+      // FABRICATED SKU (the catalogue does not have it). Instead of a fake card
+      // OR an empty panel (which makes the model wrongly claim "we don't carry
+      // it"), swap in the closest REAL product for what the model meant to show.
+      const match = await findCatalogueMatch(tenantId, String(p?.name || p?.category || '').trim());
+      const mkey = match ? String(match.sku || '').trim().toUpperCase() : '';
+      if (match && mkey && !usedSkus.has(mkey)) {
+        usedSkus.add(mkey);
+        substituted++;
+        kept.push({ ...p,
+          sku: match.sku,
+          name: match.name || p.name,
+          price: typeof match.price === 'number' ? match.price : p.price,
+          imageUrl: match.imageUrl || match.mainImage || p.imageUrl,
+          url: match.url || p.url,
+          category: match.category || p.category,
+        });
+      } else {
+        dropped++;   // no real match (or dup) → drop rather than ever show a fake
+      }
+      continue;
+    }
+    if (key) usedSkus.add(key);
+    const row: any = key ? bySku.get(key) : null;
+    if (!row) { kept.push(p); continue; }                      // real (not flagged missing) but thin row → keep
+    const g = { ...p };
+    if (row.imageUrl) g.imageUrl = row.imageUrl;
+    if (typeof row.price === 'number') g.price = row.price;
+    if (row.name) g.name = row.name;
+    if (row.url) g.url = row.url;
+    if (g.imageUrl !== p.imageUrl || g.price !== p.price) grounded++;
+    kept.push(g);
+  }
+  args.products = kept;
   call.function.arguments = JSON.stringify(args);
-  if (corrected) {
-    console.warn(`[AgentService] showItems: grounded ${corrected}/${products.length} card(s) against the catalogue`);
+  if (grounded || dropped || substituted) {
+    console.warn(`[AgentService] showItems: grounded ${grounded}, substituted ${substituted} fabricated→real, dropped ${dropped}; ${kept.length} real card(s)`);
   }
 }
 
@@ -1658,9 +1715,17 @@ export class AgentService {
    * is exactly right — that is the "show first, then narrow" order, not a ban
    * on questions.
    */
-  private askedToSeeSomething(intent: any, journeyState: any): boolean {
+  private askedToSeeSomething(intent: any, journeyState: any, commerceMode?: string): boolean {
     if (journeyState?.activeSku) return false;                 // already looking at one
     if ((journeyState?.lastShown || []).length) return false;   // panel already has items
+    /* A stylist/retail brand (commerceMode 'cart') SELLS the guided journey —
+     * occasion, fit, size, colour are the value, not friction. Naming "a blue
+     * shirt" is the START of that conversation, not a demand to dump a product
+     * list. So for cart brands we never force show-first; the model follows
+     * journeyGuidance (ask up to 3, or show if the brief is already complete).
+     * Fixtures/kit brands keep show-first so a direct "show me toilets" isn't
+     * buried under a questionnaire (AUG-68/AUG-80). */
+    if (commerceMode === 'cart') return false;
     const dims = intent?.dimensions || {};
     // A garment/product kind is the signal. Sport or team size alone is a brief,
     // not a request to see a specific thing.
@@ -2234,7 +2299,7 @@ export class AgentService {
           }
           // Asked to SEE something and the panel is empty → find it first, ask after.
           if (call.function.name === 'setPhase' && parsedArgs.phase === 'clarify'
-              && this.askedToSeeSomething(intent, journeyState)) {
+              && this.askedToSeeSomething(intent, journeyState, projectConfig?.commerceMode)) {
             conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ success: false, showFirst: true,
               message: 'The customer asked to SEE a product and the panel is empty. searchKnowledge for what they named and call showItems THIS TURN. Then ask what is still missing — team, sizes, quantity — in one short sentence beside the items. Never open with a questionnaire.' }) });
             didSearch = true;   // keep looping so the model searches instead of speaking
@@ -2620,7 +2685,7 @@ export class AgentService {
         }
         // Same rule on the streaming path — the AUG-38 parity trap.
         if (call.function.name === 'setPhase' && parsedArgs.phase === 'clarify'
-            && this.askedToSeeSomething(intent, journeyState)) {
+            && this.askedToSeeSomething(intent, journeyState, projectConfig?.commerceMode)) {
           conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ success: false, showFirst: true,
             message: 'The customer asked to SEE a product and the panel is empty. searchKnowledge for what they named and call showItems THIS TURN. Then ask what is still missing — team, sizes, quantity — in one short sentence beside the items. Never open with a questionnaire.' }) });
           didSearch = true;

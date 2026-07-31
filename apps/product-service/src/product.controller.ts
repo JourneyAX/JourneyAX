@@ -193,6 +193,33 @@ export class ProductController {
     );
   }
 
+  /**
+   * Ingest curated knowledge documents (fit guides, size charts, care, styling).
+   * Same audited, permission-checked path as ingestion/maintenance — both write
+   * the tenant's knowledge corpus. The platform's sanctioned way to add authored
+   * guidance a brand doesn't publish (e.g. size charts behind a bot wall), so it
+   * never needs a direct DB write. Idempotent per document title.
+   */
+  @Post('knowledge/documents')
+  async ingestKnowledgeDocs(
+    @Param('projectId') projectId: string,
+    @Headers('x-internal-key') internalKeyHeader: string,
+    @Headers('x-user-permissions') permissions: string,
+    @Body() body: { documents: Array<{ title: string; type: string; content: string; category?: string }>; namespace?: string },
+  ) {
+    const key = internalKey();
+    const isInternal = !!key && internalKeyHeader === key;
+    const perms = String(permissions || '').split(',').map((p) => p.trim());
+    if (!isInternal && !perms.includes('knowledge.ingest')) {
+      throw new HttpException("This action requires the 'knowledge.ingest' permission.", HttpStatus.FORBIDDEN);
+    }
+    const docs = Array.isArray(body?.documents) ? body.documents : [];
+    if (!docs.length) throw new HttpException('documents[] is required.', HttpStatus.BAD_REQUEST);
+    return this.productService.ingestKnowledgeDocuments(
+      (projectId || '').toLowerCase(), docs, body?.namespace || 'kb',
+    );
+  }
+
   /** Which of these tokens are real style codes here (AUG-22 identity guard). */
   @Post('skus/exists')
   async skusExist(@Param('projectId') projectId: string, @Body() body: { skus: string[] }) {

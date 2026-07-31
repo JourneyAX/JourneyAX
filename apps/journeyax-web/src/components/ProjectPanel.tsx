@@ -6,6 +6,7 @@ import ClarifyPanel from './panels/ClarifyPanel';
 import ValidatingPanel from './panels/ValidatingPanel';
 import ProductsPanel from './panels/ProductsPanel';
 import QuotePanel from './panels/QuotePanel';
+import RetailCartPanel from './panels/RetailCartPanel';
 import OrderedPanel from './panels/OrderedPanel';
 import GuidePanel from './panels/GuidePanel';
 import AccessoriesPanel from './panels/AccessoriesPanel';
@@ -25,6 +26,10 @@ export default function ProjectPanel() {
   // candy opens the 2D candy designer. Driven by configurator.productType so
   // one phase serves every kind of personalised product.
   const isCandy = cfg?.configurator?.productType === 'candy';
+  // The closing surface is DECLARED per brand: 'cart' → a B2C retail bag (sizes,
+  // checkout); 'quote' → the B2B project quote (BOM, finishes). A retail tenant
+  // never inherits the fixtures/quote template. Default 'quote' (Caroma/Augusta).
+  const isCart = cfg?.commerceMode === 'cart';
 
   return (
     <div className="project-panel">
@@ -38,7 +43,7 @@ export default function ProjectPanel() {
       {state.phase === 'install' && <InstallGuidePanel />}
       {state.phase === 'warranty' && <WarrantyPanel />}
       {state.phase === 'guide' && <GuidePanel />}
-      {state.phase === 'quote' && <QuotePanel />}
+      {state.phase === 'quote' && (isCart ? <RetailCartPanel /> : <QuotePanel />)}
       {state.phase === 'ordered' && <OrderedPanel />}
       {state.phase === 'concepts' && <ConceptsPanel />}
       {state.phase === 'configurator' && (isCandy ? <CandyDesignPanel /> : <ConfiguratorPanel />)}

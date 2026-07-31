@@ -9,14 +9,15 @@ export default function ProductsPanel() {
   const cfg = useStorefrontConfig();
   const { state, dispatch } = useJourney();
   const { labels } = useStorefrontConfig();
-  /* The Design-in-3D button belongs ONLY to projects that actually have a 3D
-     configurator (Augusta). Caroma and M&M'S have no renderer, so offering it
-     opened a designer that could never load. Gate on the project's own
-     `configurator` capability — one config flag, not a per-card guess. */
-  const has3D = (cfg.capabilities || []).includes('configurator');
   // Candy has no 3D concepts step — the design verb and destination come from
   // the project's configurator type, so the same button serves any product.
   const conf = (cfg as any).configurator || {};
+  /* The Design-in-3D / Personalize button belongs ONLY to projects that ACTUALLY
+     have a configurator — the `configurator` capability AND a real configurator
+     config (a productType). A retail-fashion tenant (Abercrombie) that had the
+     capability toggled on but no configurator config was wrongly offering
+     "Design this in 3D" on stock apparel that can't be designed. Require both. */
+  const has3D = (cfg.capabilities || []).includes('configurator') && !!conf.productType;
   const isCandy = conf.productType === 'candy';
   const designVerb = conf.designVerb || (isCandy ? 'Personalize this' : 'Design this in 3D');
   const { recommendedProducts } = state;
@@ -72,10 +73,11 @@ export default function ProductsPanel() {
     setSelectedAccs(prev => ({ ...prev, [accName]: !prev[accName] }));
   };
 
+  const isCart = (cfg as any).commerceMode === 'cart';
   const handleBuildQuote = () => {
     const fn = (window as any).__handleBuildQuote;
     if (fn) {
-      let summary = 'Build my quote with these selected items:\n';
+      let summary = (isCart ? 'Add these selected items to my bag:\n' : 'Build my quote with these selected items:\n');
       recommendedProducts.forEach(p => {
         summary += `- Main Product: ${p.name}\n`;
         if (p.installationParts) {
@@ -192,10 +194,13 @@ export default function ProductsPanel() {
                   </div>
                 )}
 
-                {/* Accessories (Multiple Choice) */}
+                {/* Cross-sell (Multiple Choice). For a retail fashion bag these
+                    are coordinating pieces — "Complete the look" — not plumbing
+                    "accessories"; a pant is not an accessory of a shirt. Label
+                    follows commerceMode so fixtures keep "Recommended Accessories". */}
                 {product.accessories && product.accessories.length > 0 && (
                   <div className="product-card__parts">
-                    <div className="product-card__parts-title">Recommended Accessories</div>
+                    <div className="product-card__parts-title">{isCart ? 'Complete the look' : 'Recommended Accessories'}</div>
                     {product.accessories.map((acc, i) => {
                       const isSelected = selectedAccs[acc.name] || false;
                       return (
@@ -260,7 +265,7 @@ export default function ProductsPanel() {
       {/* Sticky footer button */}
       <div className="products-panel__footer">
         <button className="clarify-build-btn" onClick={handleBuildQuote}>
-          Looks good — build my quote
+          {isCart ? 'Looks good — add to my bag' : 'Looks good — build my quote'}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>
             <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

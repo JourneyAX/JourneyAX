@@ -32,6 +32,9 @@ export async function GET(req: Request) {
       greeting: p?.persona?.greetingMessage || '',
       systemName: p?.persona?.systemName || '',
       capabilities: Array.isArray(p?.capabilities) ? p.capabilities : [],
+      // Commerce surface — DECLARED per brand ('cart' B2C vs 'quote' B2B). Default
+      // 'quote' so existing fixtures/kit tenants are unchanged when unset.
+      commerceMode: p?.commerceMode === 'cart' ? 'cart' : 'quote',
       configurator: p?.configurator?.enabled ? p.configurator : null,
       // Opening-screen copy — starters + input placeholder, set per tenant in the
       // back office (no hardcoded generic example).
@@ -57,6 +60,7 @@ function fallback(projectId: string) {
     labels: { items: 'Products', itemsSingular: 'Product', headerTitle: 'AI Configurator' },
     greeting: '',
     systemName: '',
+    commerceMode: 'quote',
   };
 }
 

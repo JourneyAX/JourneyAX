@@ -33,6 +33,7 @@ export interface LoadedProjectConfig {
   systemPromptOverrides?: string; // persona.systemPromptOverrides
   journeyGuidance?: string;       // persona.journeyGuidance (goals, not stages)
   capabilities?: string[];        // enabled agent capabilities (runtime toolset)
+  commerceMode?: string;          // 'cart' (B2C guided journey) | 'quote' (B2B/fixtures)
   pricing?: { currency: string; symbol: string; taxRate: number; discountRate: number }; // project.pricing (authoritative money rules)
   stripe?: { secretKey?: string; enabled: boolean };  // integrations.stripe (per-project payment key)
   scope?: ProjectScopeSlice;      // scope.rooms/categories — which spaces this business serves
@@ -103,6 +104,10 @@ export class ConfigLoader {
         systemPromptOverrides: p?.persona?.systemPromptOverrides,
         journeyGuidance: p?.persona?.journeyGuidance,
         capabilities: Array.isArray(p?.capabilities) ? p.capabilities : undefined,
+        // Commerce surface — a retail 'cart' brand sells the guided journey, so the
+        // agent must not force show-first over the occasion/fit/size clarify. 'quote'
+        // (or unset) keeps the direct-ask show-first behaviour for fixtures/kits.
+        commerceMode: p?.commerceMode === 'cart' ? 'cart' : 'quote',
         scope: {
           rooms: Array.isArray(p?.scope?.rooms) ? p.scope.rooms : undefined,
           categories: Array.isArray(p?.scope?.categories) ? p.scope.categories : undefined,
