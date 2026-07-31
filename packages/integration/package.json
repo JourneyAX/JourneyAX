@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "JourneyAX Integration/Adapter layer — business-domain ports (Commerce, CRM, Fulfilment, Configurator) with per-platform adapters resolved by tenant. The ONLY place that knows Shopify/SAP/Salesforce exist.",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
   "dependencies": {
     "@journeyax/shared-types": "*"
   }
