@@ -26,7 +26,7 @@ async function bootstrap() {
   const authService = app.get(AuthService);
   await authService.ensureIndexes();
 
-  const port = process.env.AUTH_SERVICE_PORT || 8080;
+  const port = process.env.PORT || process.env.AUTH_SERVICE_PORT || 8080;
   await app.listen(port);
   console.log(`[Auth Service] Running on HTTP port ${port}`);
   console.log(`[Auth Service] JWT_SECRET: ${process.env.JWT_SECRET ? '✅ set' : '❌ MISSING — set JWT_SECRET in .env'}`);

@@ -11,7 +11,7 @@ import { ProjectModule } from './project.module';
 async function bootstrap() {
   const app = await NestFactory.create(ProjectModule);
   app.enableCors();
-  const port = process.env.PROJECT_SERVICE_PORT || 8082;
+  const port = process.env.PORT || process.env.PROJECT_SERVICE_PORT || 8082;
   await app.listen(port);
   console.log(`[Project Service] Running on HTTP port ${port}`);
 }

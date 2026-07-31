@@ -18,7 +18,7 @@ import { ProductModule } from './product.module';
 async function bootstrap() {
   const app = await NestFactory.create(ProductModule);
   app.enableCors();
-  const port = process.env.PRODUCT_SERVICE_PORT || 8083;
+  const port = process.env.PORT || process.env.PRODUCT_SERVICE_PORT || 8083;
   await app.listen(port);
   console.log(`[Product Service] Running on HTTP port ${port}`);
 }

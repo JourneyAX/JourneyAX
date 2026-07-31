@@ -22,7 +22,7 @@ async function bootstrap() {
   }));
   app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
   app.enableCors();
-  const port = process.env.AGENT_SERVICE_PORT || 3004;
+  const port = process.env.PORT || process.env.AGENT_SERVICE_PORT || 3004;
   await app.listen(port);
   console.log(`[Agent Commerce Service] Running on HTTP port ${port}`);
   console.log(`[Agent Commerce Service] LLM Model: ${process.env.LLM_MODEL || 'gpt-5.4-mini'}`);

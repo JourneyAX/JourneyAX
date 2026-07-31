@@ -26,7 +26,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const port = process.env.GATEWAY_PORT || 3010;
+  const port = process.env.PORT || process.env.GATEWAY_PORT || 3010;
   await app.listen(port);
   console.log(`\n╔══════════════════════════════════════════════╗`);
   console.log(`║  JourneyAX API Gateway  — port ${port}          ║`);
