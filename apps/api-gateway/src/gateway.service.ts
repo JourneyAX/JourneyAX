@@ -208,8 +208,14 @@ async function redisConn(): Promise<RedisLike | null> {
 // ── Cache helpers ───────────────────────────────────────────────────────────
 
 function buildCacheKey(tenantId: string, path: string): string {
-  // Strip query string — we cache by canonical path only
-  return `resp:${tenantId}:${path.split('?')[0]}`;
+  const [pathname, qs] = path.split('?');
+  // For analytics paths the projectId query param is part of the data identity —
+  // include it in the key so /insights?projectId=caroma ≠ /insights?projectId=mms.
+  // We sort params so key is stable regardless of param order.
+  const keySuffix = qs
+    ? '?' + qs.split('&').sort().join('&')
+    : '';
+  return `resp:${tenantId}:${pathname}${keySuffix}`;
 }
 
 function ttlForPath(path: string): number {

@@ -14,9 +14,23 @@ import { readCookie, COOKIE_AT, jwtSecondsLeft } from '../../../../lib/bff-auth'
 
 const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
 
+/**
+ * Allow-listed domains proxied through this BFF.
+ * Every domain points to the API gateway — the gateway owns all routing to
+ * private backend services. This means ZERO direct service URLs in Vercel env
+ * vars; only GATEWAY_URL needs to be set.
+ */
+const GATEWAY = process.env.GATEWAY_URL
+  || process.env.PROJECT_SERVICE_URL  // legacy — remove once GATEWAY_URL is set
+  || process.env.NEXT_PUBLIC_PROJECT_API
+  || 'http://localhost:8080';
+
 const DOWNSTREAM: Record<string, string> = {
-  projects: process.env.PROJECT_SERVICE_URL || process.env.NEXT_PUBLIC_PROJECT_API || 'http://localhost:8082',
-  organizations: process.env.ORG_SERVICE_URL || process.env.NEXT_PUBLIC_ORG_API || 'http://localhost:8085',
+  projects:      GATEWAY,
+  organizations: GATEWAY,
+  analytics:     GATEWAY,  // insights, funnel, sessions — all via gateway → analytics-service
+  products:      GATEWAY,
+  auth:          GATEWAY,
 };
 
 async function forward(req: Request, path: string[]): Promise<Response> {
