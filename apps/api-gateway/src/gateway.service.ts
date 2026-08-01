@@ -431,24 +431,32 @@ export class GatewayService {
 
   /**
    * Check health of all registered downstream services.
+   * Uses Google ID tokens so private Cloud Run services respond correctly.
    */
   async checkHealth(): Promise<Record<string, { status: string; url: string }>> {
     const results: Record<string, { status: string; url: string }> = {};
 
-    for (const [prefix, baseUrl] of Object.entries(SERVICE_REGISTRY)) {
-      const serviceName = prefix.replace('/api/v1/', '');
+    for (const [domain, baseUrl] of Object.entries(DOMAIN_REGISTRY)) {
+      if (baseUrl.includes('localhost')) {
+        results[domain] = { status: 'not-deployed', url: baseUrl };
+        continue;
+      }
       try {
-        const healthUrl = `${baseUrl}${prefix}/health`;
-        const response = await fetch(healthUrl, { signal: AbortSignal.timeout(2000) });
-        results[serviceName] = {
+        const healthUrl = `${baseUrl}/api/v1/${domain}/health`;
+        const idToken = await getIdToken(baseUrl);
+        const headers: Record<string, string> = {};
+        if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
+        const response = await fetch(healthUrl, {
+          headers,
+          signal: AbortSignal.timeout(3000),
+        });
+        results[domain] = {
           status: response.ok ? 'healthy' : 'degraded',
           url: baseUrl,
         };
       } catch {
-        results[serviceName] = {
-          status: 'unreachable',
-          url: baseUrl,
-        };
+        results[domain] = { status: 'unreachable', url: baseUrl };
       }
     }
 
