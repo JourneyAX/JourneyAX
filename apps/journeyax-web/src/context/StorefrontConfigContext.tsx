@@ -32,6 +32,8 @@ export interface StorefrontConfig {
   capabilities: string[];
   configurator: ConfiguratorConfig | null;
   intro?: IntroConfig | null;
+  /** Commerce surface: 'cart' (B2C retail) vs 'quote' (B2B project quote). */
+  commerceMode: 'quote' | 'cart';
 }
 
 const DEFAULT: StorefrontConfig = {
@@ -43,10 +45,19 @@ const DEFAULT: StorefrontConfig = {
   systemName: '',
   capabilities: [],
   configurator: null,
+  commerceMode: 'quote',
 };
 
 const Ctx = createContext<StorefrontConfig>(DEFAULT);
 export const useStorefrontConfig = () => useContext(Ctx);
+
+/** Perceived luminance of a #rrggbb (Rec. 601). ~>0.69 reads as "light". */
+function isLightHex(hex?: string): boolean {
+  const h = (hex || '').replace('#', '');
+  if (h.length < 6) return false;
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.69;
+}
 
 /** Apply the tenant's theme to the storefront's CSS variables at runtime. */
 function applyTheme(theme: StorefrontConfig['theme']) {
@@ -59,8 +70,15 @@ function applyTheme(theme: StorefrontConfig['theme']) {
     root.setProperty('--auto-text', theme.primaryColor);
   }
   if (theme.accentColor) {
-    root.setProperty('--dark', theme.accentColor);
-    root.setProperty('--text', theme.accentColor);
+    // accentColor DOUBLES as the body TEXT colour (--text) and the dark token.
+    // A near-white accent — e.g. a minimalist black/white brand that set
+    // accent=#FFFFFF — would render every heading, product title and the chat
+    // input invisible on the light storefront. So a LIGHT accent falls back to a
+    // safe near-black for text/dark tokens; dark accents (the common case) pass
+    // through unchanged. A theme must never make text unreadable.
+    const safeInk = isLightHex(theme.accentColor) ? '#1A1A1A' : theme.accentColor;
+    root.setProperty('--dark', safeInk);
+    root.setProperty('--text', safeInk);
   }
   if (theme.fontFamily) {
     root.setProperty('--font-display', theme.fontFamily);

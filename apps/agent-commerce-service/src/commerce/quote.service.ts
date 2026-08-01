@@ -31,10 +31,9 @@ export interface BuildQuoteArgs {
 @Injectable()
 export class QuoteService {
   private col: Collection<Quote> | null = null;
+  private readonly productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
 
-  constructor(
-    private readonly productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083',
-  ) {}
+  constructor() {}
 
   private async getCol(): Promise<Collection<Quote> | null> {
     if (this.col) return this.col;

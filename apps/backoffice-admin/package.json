@@ -9,8 +9,6 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@journeyax/configurator-core": "*",
-    "@journeyax/database": "*",
     "@journeyax/shared-types": "*",
     "dotenv": "^17.4.2",
     "mongodb": "^7.4.0",

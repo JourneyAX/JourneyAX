@@ -17,8 +17,17 @@ const COLLECTION_NAME = 'documents';
 function expandTypeFilter(type: string): unknown {
   switch (type) {
     case 'installation': return { $in: ['installation', 'technical'] };
+    // Fashion fit knowledge (size charts, "runs small", how-to-measure, fabric
+    // care, occasion styling) is ingested under these companion types. A shopper
+    // fit question is a kind of FAQ, so fold them into faq too — tenants without
+    // sizing docs simply match nothing extra, so this is safe cross-tenant.
+    case 'sizing':
+    case 'fit':
+    case 'measurement':
+    case 'care':
+    case 'styling':      return { $in: ['sizing', 'fit', 'measurement', 'care', 'styling'] };
     case 'faq':
-    case 'warranty':     return { $in: ['faq', 'policy', 'technical'] };
+    case 'warranty':     return { $in: ['faq', 'policy', 'technical', 'sizing', 'fit', 'measurement', 'care'] };
     case 'troubleshooting': return { $in: ['troubleshooting', 'technical'] };
     default:             return type; // product / design / collection — exact
   }
@@ -131,6 +140,57 @@ export class ProductService {
       console.warn('[ProductService] Embedding failed, will use regex fallback:', err);
       return [];
     }
+  }
+
+  // ── Hand-authored knowledge ingest ──────────────────────────────────
+  /**
+   * Ingest curated knowledge documents (fit guides, size charts, care, styling)
+   * that don't come from a crawlable source — the platform's answer to "the
+   * brand blocks its size charts, so we author the guidance and embed it".
+   *
+   * Embeds each doc and upserts it into the SAME `documents` collection the
+   * crawler writes, tagged with `projectId` + `metadata.type`, so retrieval (and
+   * the `sizing` type filter) surface it exactly like any other knowledge. Keyed
+   * by a stable sourceUrl so re-ingest replaces rather than duplicates.
+   */
+  async ingestKnowledgeDocuments(
+    projectId: string,
+    docs: Array<{ title: string; type: string; content: string; category?: string }>,
+    namespace = 'kb',
+  ): Promise<{ inserted: number; updated: number; skipped: number }> {
+    const pid = (projectId || '').toLowerCase();
+    const col = await this.getCollection();
+    let inserted = 0, updated = 0, skipped = 0;
+    for (const d of docs || []) {
+      const title = String(d?.title || '').trim();
+      const type = String(d?.type || '').trim().toLowerCase();
+      const content = String(d?.content || '').trim();
+      if (!title || !content || !type) { skipped++; continue; }
+      const embedding = await this.embedText(content);
+      if (!embedding.length) { skipped++; continue; }   // embedding down → do not write a doc that can't be found
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60);
+      const sourceUrl = `knowledge://${pid}/${namespace}/${slug}`;
+      const now = new Date();
+      const res = await (col as any).updateOne(
+        { projectId: pid, sourceUrl },
+        { $set: {
+          chunkIndex: 0,
+          projectId: pid,
+          sourceUrl,
+          brand: pid,
+          chunk: content,
+          content,
+          crawledAt: now,
+          embedding,
+          metadata: { type, brand: pid, category: d?.category || namespace, source: 'curated', url: sourceUrl },
+          title,
+          updatedAt: now,
+        } },
+        { upsert: true },
+      );
+      if (res.upsertedCount) inserted++; else updated++;
+    }
+    return { inserted, updated, skipped };
   }
 
   // ── Spec & Image Parsing ────────────────────────────────────────────

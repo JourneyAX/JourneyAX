@@ -6,7 +6,7 @@ async function bootstrap() {
   const app = await NestFactory.create(LeadModule);
   app.enableCors();
   // Must match the gateway's LEAD_SERVICE_URL default (8087) or lead routing 404s.
-  const port = process.env.LEAD_SERVICE_PORT || 8087;
+  const port = process.env.PORT || process.env.LEAD_SERVICE_PORT || 8087;
   await app.listen(port);
   console.log(`[Lead Service] Running on HTTP port ${port}`);
 }

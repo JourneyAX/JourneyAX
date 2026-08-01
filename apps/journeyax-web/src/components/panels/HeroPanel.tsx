@@ -10,7 +10,10 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 export default function HeroPanel() {
   const cfg = useStorefrontConfig();
   const items = (cfg.labels.items || 'Products').toLowerCase();
-  const features = ['Expert guidance', 'Real catalogue data', 'One complete quote'];
+  // Closing-pitch word follows the commerce surface: a retail bag "complete look",
+  // a B2B project "complete quote". No brand string in code — driven by config.
+  const closing = cfg.commerceMode === 'cart' ? 'One complete look' : 'One complete quote';
+  const features = ['Expert guidance', 'Real catalogue data', closing];
 
   return (
     <div className="hero-panel">

@@ -1,0 +1,108 @@
+# ============================================================
+# Google Cloud Build — JourneyAX Microservices Orchestrator
+# ============================================================
+#
+# Adapted from Metafy AI's production pipeline (metafy-ai-platform).
+#
+# Triggered by Cloud Build triggers on:
+#   • journeyax-qa         branch → QA project
+#   • journeyax-production branch → PROD project (journeyax)
+#
+# $PROJECT_ID, $BRANCH_NAME, $COMMIT_SHA are Cloud Build built-in
+# substitutions — injected automatically before execution.
+#
+# Pipeline (4 steps):
+#   1. detect        (cloud-sdk)  – git show HEAD → writes /workspace state
+#   2. build-and-push (docker)   – docker build + push per service
+#   3. deploy         (cloud-sdk) – gcloud run deploy per service
+#   4. update-urls    (cloud-sdk) – inject all Cloud Run URLs
+#
+# /workspace is shared across all steps in the same build.
+# /root/.docker is also shared, so docker credentials from Step 1 are
+# available to the docker builder in Step 2.
+#
+# Rules:
+#   • NEVER uses --set-env-vars or --set-secrets  (always --update-*)
+#   • NEVER reads, writes, or references .env
+#   • All secrets come from GCP Secret Manager
+#   • journeyax-web, backoffice-admin excluded (Vercel/frontend)
+# ============================================================
+
+steps:
+  # ────────────────────────────────────────────────────────────
+  # Step 1: Detect changed services + configure Docker auth.
+  # Writes /workspace/services_to_deploy.txt and
+  # /workspace/build_config.sh for downstream steps.
+  # ────────────────────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'detect'
+    entrypoint: bash
+    env:
+      - 'PROJECT_ID=$PROJECT_ID'
+      - 'BRANCH_NAME=$BRANCH_NAME'
+      - 'COMMIT_SHA=$COMMIT_SHA'
+    args:
+      - 'scripts/cloudbuild-detect.sh'
+    timeout: 120s
+
+  # ────────────────────────────────────────────────────────────
+  # Step 2: Build Docker images and push to Artifact Registry.
+  # Uses gcr.io/cloud-builders/docker which has the docker CLI.
+  # Docker credentials configured in Step 1 are shared via
+  # Cloud Build's /root/.docker volume.
+  # ────────────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-and-push'
+    entrypoint: bash
+    env:
+      - 'PROJECT_ID=$PROJECT_ID'
+      - 'COMMIT_SHA=$COMMIT_SHA'
+    args:
+      - 'scripts/cloudbuild-build-push.sh'
+    waitFor:
+      - 'detect'
+    timeout: 3600s
+
+  # ────────────────────────────────────────────────────────────
+  # Step 3: Deploy each built image to Cloud Run.
+  # ────────────────────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy'
+    entrypoint: bash
+    env:
+      - 'PROJECT_ID=$PROJECT_ID'
+      - 'COMMIT_SHA=$COMMIT_SHA'
+    args:
+      - 'scripts/cloudbuild-deploy.sh'
+    waitFor:
+      - 'build-and-push'
+    timeout: 1800s
+
+  # ────────────────────────────────────────────────────────────
+  # Step 4: Collect all Cloud Run URLs and inject into
+  #         gateway and all internal backend services.
+  # ────────────────────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'update-service-urls'
+    entrypoint: bash
+    env:
+      - 'PROJECT_ID=$PROJECT_ID'
+      - 'BRANCH_NAME=$BRANCH_NAME'
+      - 'COMMIT_SHA=$COMMIT_SHA'
+    args:
+      - 'scripts/cloudbuild-update-urls.sh'
+    waitFor:
+      - 'deploy'
+    timeout: 600s
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+# Overall pipeline timeout (1 hour — 6 services × ~5 min build + deploy time)
+timeout: 3600s
+
+tags:
+  - 'journeyax'
+  - 'cloud-run'
+  - 'orchestrator'

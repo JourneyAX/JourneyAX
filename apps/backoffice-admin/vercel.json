@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run build --workspace=@journeyax/shared-types && npm run build --workspace=@journeyax/cache && cd apps/backoffice-admin && next build",
+  "outputDirectory": "apps/backoffice-admin/.next",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "nextjs"
+}

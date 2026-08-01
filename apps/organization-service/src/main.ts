@@ -21,7 +21,7 @@ async function bootstrap() {
   });
 
   // Note: onModuleInit() in OrganizationService handles DB connect + indexes
-  const port = process.env.ORG_SERVICE_PORT || 8085;
+  const port = process.env.PORT || process.env.ORG_SERVICE_PORT || 8085;
   await app.listen(port);
   console.log(`[Organization Service] Running on port ${port}`);
   console.log(`[Organization Service] MongoDB: ${process.env.MONGODB_URI ? '✅ connected' : '❌ MONGODB_URI missing'}`);

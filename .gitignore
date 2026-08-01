@@ -13,3 +13,5 @@ dist/
 .turbo/
 *.tsbuildinfo
 .env.bak.*
+setup-vercel-envs.js
+.env*

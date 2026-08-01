@@ -1,0 +1,31 @@
+# ── Build artifacts ────────────────────────────────
+dist/
+.turbo/
+*.tsbuildinfo
+.next/
+
+# ── Dependencies (re-installed inside the image) ──
+node_modules/
+
+# ── Env / secrets ─────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── IDE / OS ──────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ── Git / CI ──────────────────────────────────────
+.git/
+.github/
+.gitignore
+
+# ── Docs / non-runtime ────────────────────────────
+docs/
+scratch/
+skills/
+data/
+*.md

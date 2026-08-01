@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '../../../../lib/require-auth';
-import { probeBrand } from '../../../../../../journeyax-web/src/services/knowledge/brand-probe';
+import { probeBrand } from '../../../../lib/brand-probe';
 
 /**
  * POST /api/onboarding/probe { url }

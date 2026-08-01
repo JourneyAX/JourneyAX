@@ -471,6 +471,10 @@ export class ProjectService {
     if ((dto as any).notifications) $set.notifications = (dto as any).notifications;
     if ((dto as any).embed) $set.embed = (dto as any).embed;
     if ((dto as any).configurator) $set.configurator = (dto as any).configurator;
+    // Commerce surface: 'quote' (B2B project quote — BOM, finishes) vs 'cart'
+    // (B2C retail — bag, sizes, checkout). Declared per brand, never inferred, so
+    // a retail tenant never inherits the fixtures/quote template. Default 'quote'.
+    if ((dto as any).commerceMode) $set.commerceMode = (dto as any).commerceMode;
     // Storefront opening-screen copy (starters + input placeholder) — set per
     // tenant so the example is vertical-true, not a hardcoded generic one.
     if ((dto as any).intro) $set.intro = (dto as any).intro;

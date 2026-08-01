@@ -1,0 +1,471 @@
+# ============================================================
+# GitHub Actions – PRODUCTION Deployment Pipeline
+# ============================================================
+# Adapted from Metafy AI's deploy-production.yml
+#
+# Trigger: push to `JourneyAX-Prod` branch
+#
+# Flow:
+#   1. detect-changes      → figure out which services changed
+#   2. deploy-services     → build + push image, deploy to Cloud Run (parallel, max 3)
+#   3. update-service-urls → fetch ALL service URLs and inject into:
+#                              a) api-gateway     (routes all external traffic)
+#                              b) auth-service     → PROJECT + ORG urls
+#                              c) agent-commerce   → PRODUCT + PROJECT urls
+#                              d) product-service  → PROJECT url
+#                              e) project-service  → AUTH + ORG urls
+#                              f) org-service      → AUTH + PROJECT urls
+#   4. notify              → post deployment summary
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   GCP_SA_KEY            - JSON key for deployer service account
+#
+# GitHub Repo: JourneyAX-Prod
+# GCP Project: journeyax (515988776244)
+# ============================================================
+
+name: 🚀 Deploy to Production
+
+on:
+  push:
+    branches:
+      - JourneyAX-Prod
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile.template'
+      - 'cloudbuild.yaml'
+      - '.github/workflows/deploy-production.yml'
+  workflow_dispatch:
+    inputs:
+      service_name:
+        description: 'Single service to deploy (leave blank = auto-detect)'
+        required: false
+        type: string
+      force_all:
+        description: 'Force deploy ALL services'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PROJECT_ID: journeyax
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev
+  ARTIFACT_REPO: journeyax-services
+  ENVIRONMENT: production
+
+concurrency:
+  group: production-deploy-${{ github.ref }}
+  cancel-in-progress: false   # NEVER cancel in-flight production deploys
+
+jobs:
+  # ============================================================
+  # JOB 1 – Detect which services changed
+  # ============================================================
+  detect-changes:
+    name: 🔍 Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+      deploy_all: ${{ steps.detect.outputs.deploy_all }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: detect
+        run: |
+          set -euo pipefail
+
+          ALL_SERVICES='["api-gateway","auth-service","project-service","product-service","organization-service","agent-commerce-service"]'
+
+          # ── Manual: single service ─────────────────────────────
+          if [ -n "${{ github.event.inputs.service_name }}" ]; then
+            echo "services=[\"${{ github.event.inputs.service_name }}\"]" >> $GITHUB_OUTPUT
+            echo "has_changes=true"  >> $GITHUB_OUTPUT
+            echo "deploy_all=false"  >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # ── Manual: force all ─────────────────────────────────
+          if [ "${{ github.event.inputs.force_all }}" = "true" ]; then
+            echo "services=${ALL_SERVICES}" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "deploy_all=true"  >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # ── Auto: diff HEAD^ vs HEAD ──────────────────────────
+          CHANGED=$(git diff --name-only HEAD^ HEAD 2>/dev/null || git diff --name-only HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Core files changed → deploy everything
+          if echo "$CHANGED" | grep -qE "^(package\.json|package-lock\.json|Dockerfile\.template|cloudbuild\.yaml)$"; then
+            echo "⚠️  Core files changed → deploying ALL services"
+            echo "services=${ALL_SERVICES}" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "deploy_all=true"  >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Shared packages changed → deploy everything
+          if echo "$CHANGED" | grep -q "^packages/"; then
+            echo "⚠️  Shared packages changed → deploying ALL services"
+            echo "services=${ALL_SERVICES}" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "deploy_all=true"  >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Per-service detection (skip frontend apps — they go to Vercel)
+          SERVICES=()
+          for svc in api-gateway auth-service project-service product-service organization-service agent-commerce-service; do
+            if echo "$CHANGED" | grep -q "^apps/${svc}/"; then
+              SERVICES+=("\"${svc}\"")
+              echo "  → ${svc} changed"
+            fi
+          done
+
+          if [ ${#SERVICES[@]} -eq 0 ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "services=[]"       >> $GITHUB_OUTPUT
+            echo "deploy_all=false"  >> $GITHUB_OUTPUT
+          else
+            SERVICES_JSON="[$(IFS=,; echo "${SERVICES[*]}")]"
+            echo "services=${SERVICES_JSON}" >> $GITHUB_OUTPUT
+            echo "has_changes=true"          >> $GITHUB_OUTPUT
+            echo "deploy_all=false"          >> $GITHUB_OUTPUT
+          fi
+
+  # ============================================================
+  # JOB 2 – Build & Deploy each changed backend service
+  # ============================================================
+  deploy-services:
+    name: 🐳 Deploy ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true' && needs.detect-changes.outputs.services != '[]'
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+      max-parallel: 3
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Resolve service Cloud Run config
+        id: cfg
+        run: |
+          SVC="${{ matrix.service }}"
+          case "$SVC" in
+            api-gateway)
+              MIN=1; MAX=20; MEM=1Gi;  CPU=2; PORT=8080 ;;
+            auth-service)
+              MIN=1; MAX=10; MEM=512Mi; CPU=1; PORT=8080 ;;
+            agent-commerce-service)
+              MIN=0; MAX=5;  MEM=1Gi;  CPU=2; PORT=3004 ;;
+            product-service)
+              MIN=0; MAX=5;  MEM=1Gi;  CPU=1; PORT=8083 ;;
+            project-service)
+              MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8082 ;;
+            organization-service)
+              MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8085 ;;
+            *)
+              MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8080 ;;
+          esac
+          echo "min=$MIN" >> $GITHUB_OUTPUT
+          echo "max=$MAX" >> $GITHUB_OUTPUT
+          echo "mem=$MEM" >> $GITHUB_OUTPUT
+          echo "cpu=$CPU" >> $GITHUB_OUTPUT
+          echo "port=$PORT" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image via Cloud Build
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ matrix.service }}"
+
+          cat > /tmp/cb-build-${{ matrix.service }}.yaml << 'CBEOF'
+          steps:
+            - name: 'gcr.io/cloud-builders/docker'
+              id: build
+              args:
+                - build
+                - '--build-arg'
+                - 'SERVICE_NAME=$_SERVICE_NAME'
+                - '--cache-from'
+                - '$_IMAGE:latest'
+                - '-t'
+                - '$_IMAGE:latest'
+                - '-t'
+                - '$_IMAGE:$_SHA'
+                - '-f'
+                - '$_DOCKERFILE'
+                - '.'
+              timeout: 1200s
+            - name: 'gcr.io/cloud-builders/docker'
+              id: push
+              args: ['push', '--all-tags', '$_IMAGE']
+              waitFor: ['build']
+          images:
+            - '$_IMAGE:latest'
+            - '$_IMAGE:$_SHA'
+          options:
+            machineType: E2_HIGHCPU_8
+            logging: CLOUD_LOGGING_ONLY
+          timeout: 1800s
+          CBEOF
+
+          gcloud builds submit \
+            --region="${{ env.REGION }}" \
+            --config=/tmp/cb-build-${{ matrix.service }}.yaml \
+            --substitutions="_SERVICE_NAME=${{ matrix.service }},_IMAGE=${IMAGE},_SHA=${{ github.sha }},_DOCKERFILE=Dockerfile.template" \
+            --project="${{ env.PROJECT_ID }}" \
+            .
+
+      - name: Deploy to Cloud Run
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ matrix.service }}:${{ github.sha }}"
+
+          # ── Per-service secrets ────────────────────────────────────
+          if [ "${{ matrix.service }}" = "auth-service" ]; then
+            SECRETS_MAPPING="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
+          elif [ "${{ matrix.service }}" = "agent-commerce-service" ]; then
+            SECRETS_MAPPING="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest"
+          elif [ "${{ matrix.service }}" = "product-service" ]; then
+            SECRETS_MAPPING="MONGODB_URI=MONGODB_URI:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
+          elif [ "${{ matrix.service }}" = "api-gateway" ]; then
+            SECRETS_MAPPING="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
+          else
+            SECRETS_MAPPING="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
+          fi
+
+          # ── Per-service env vars ──────────────────────────────────
+          SERVICE_ENV_VARS="NODE_ENV=production,SERVICE_NAME=${{ matrix.service }},ENVIRONMENT=production"
+
+          if [ "${{ matrix.service }}" = "agent-commerce-service" ]; then
+            SERVICE_ENV_VARS="${SERVICE_ENV_VARS},LLM_MODEL=gpt-4o-mini,CHAT_RATE_PER_MIN_IP=30,CHAT_RATE_PER_MIN_SESSION=15,CHAT_MAX_MESSAGE_CHARS=4000,CHAT_MAX_MESSAGES=40"
+          fi
+
+          if [ "${{ matrix.service }}" = "api-gateway" ]; then
+            SERVICE_ENV_VARS="${SERVICE_ENV_VARS},AUTH_DEV_BYPASS=false"
+          fi
+
+          gcloud run deploy "${{ matrix.service }}" \
+            --image="${IMAGE}" \
+            --region="${{ env.REGION }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --platform=managed \
+            --allow-unauthenticated \
+            --min-instances="${{ steps.cfg.outputs.min }}" \
+            --max-instances="${{ steps.cfg.outputs.max }}" \
+            --memory="${{ steps.cfg.outputs.mem }}" \
+            --cpu="${{ steps.cfg.outputs.cpu }}" \
+            --timeout=300s \
+            --concurrency=80 \
+            --port="${{ steps.cfg.outputs.port }}" \
+            --update-env-vars="${SERVICE_ENV_VARS}" \
+            --update-secrets="${SECRETS_MAPPING}" \
+            --update-labels="service=${{ matrix.service }},environment=production,managed-by=github-actions,git-sha=${{ github.sha }}"
+
+      - name: Get service URL
+        id: url
+        run: |
+          URL=$(gcloud run services describe "${{ matrix.service }}" \
+            --region="${{ env.REGION }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --format='value(status.url)')
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+          echo "✅ ${{ matrix.service }} → ${URL}"
+
+      - name: Health check
+        run: |
+          URL="${{ steps.url.outputs.url }}"
+          echo "🏥 Health checking ${URL}/health ..."
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${URL}/health" 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Health check passed (HTTP 200)"
+              exit 0
+            fi
+            echo "  Attempt $i/5 — HTTP ${STATUS}, retrying in 10s..."
+            sleep 10
+          done
+          echo "⚠️  Health check did not pass after 5 attempts (service may still be starting)"
+
+  # ============================================================
+  # JOB 3 – Inject ALL service URLs
+  # ============================================================
+  update-service-urls:
+    name: 🔗 Inject Internal Service URLs
+    runs-on: ubuntu-latest
+    needs: [detect-changes, deploy-services]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.has_changes == 'true' &&
+      (needs.deploy-services.result == 'success' || needs.deploy-services.result == 'skipped')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Collect all service URLs
+        id: urls
+        run: |
+          set -euo pipefail
+
+          ALL_SVCS=(
+            "api-gateway"
+            "auth-service"
+            "project-service"
+            "product-service"
+            "organization-service"
+            "agent-commerce-service"
+          )
+
+          echo "🔍 Fetching all Cloud Run service URLs..."
+          declare -A URL_MAP
+          for SVC in "${ALL_SVCS[@]}"; do
+            URL=$(gcloud run services describe "${SVC}" \
+              --region="${{ env.REGION }}" \
+              --project="${{ env.PROJECT_ID }}" \
+              --format='value(status.url)' 2>/dev/null || echo "")
+            if [ -n "$URL" ]; then
+              VAR=$(echo "${SVC}" | tr '[:lower:]-' '[:upper:]_')_URL
+              URL_MAP[$VAR]="$URL"
+              echo "  ✅ ${VAR} = ${URL}"
+            fi
+          done
+
+          # Export for subsequent steps
+          for key in "${!URL_MAP[@]}"; do
+            echo "${key}=${URL_MAP[$key]}" >> $GITHUB_ENV
+          done
+
+      - name: Update api-gateway with all service URLs
+        run: |
+          GATEWAY_ENV="NODE_ENV=production,SERVICE_NAME=api-gateway,ENVIRONMENT=production,AUTH_DEV_BYPASS=false"
+          [ -n "${AUTH_SERVICE_URL:-}" ]              && GATEWAY_ENV="${GATEWAY_ENV},AUTH_SERVICE_URL=${AUTH_SERVICE_URL}"
+          [ -n "${PROJECT_SERVICE_URL:-}" ]           && GATEWAY_ENV="${GATEWAY_ENV},PROJECT_SERVICE_URL=${PROJECT_SERVICE_URL}"
+          [ -n "${PRODUCT_SERVICE_URL:-}" ]           && GATEWAY_ENV="${GATEWAY_ENV},PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL}"
+          [ -n "${ORGANIZATION_SERVICE_URL:-}" ]      && GATEWAY_ENV="${GATEWAY_ENV},ORGANIZATION_SERVICE_URL=${ORGANIZATION_SERVICE_URL}"
+          [ -n "${AGENT_COMMERCE_SERVICE_URL:-}" ]    && GATEWAY_ENV="${GATEWAY_ENV},AGENT_COMMERCE_SERVICE_URL=${AGENT_COMMERCE_SERVICE_URL}"
+
+          gcloud run services update api-gateway \
+            --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
+            --update-env-vars="${GATEWAY_ENV}" \
+            --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" || \
+            echo "  ⚠️  api-gateway not yet deployed"
+
+      - name: Update auth-service
+        run: |
+          AUTH_ENV="NODE_ENV=production,SERVICE_NAME=auth-service,ENVIRONMENT=production"
+          [ -n "${PROJECT_SERVICE_URL:-}" ]      && AUTH_ENV="${AUTH_ENV},PROJECT_SERVICE_URL=${PROJECT_SERVICE_URL}"
+          [ -n "${ORGANIZATION_SERVICE_URL:-}" ] && AUTH_ENV="${AUTH_ENV},ORGANIZATION_SERVICE_URL=${ORGANIZATION_SERVICE_URL}"
+
+          gcloud run services update auth-service \
+            --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
+            --update-env-vars="${AUTH_ENV}" \
+            --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" || \
+            echo "  ⚠️  auth-service not yet deployed"
+
+      - name: Update agent-commerce-service
+        run: |
+          AGENT_ENV="NODE_ENV=production,SERVICE_NAME=agent-commerce-service,ENVIRONMENT=production,LLM_MODEL=gpt-4o-mini,CHAT_RATE_PER_MIN_IP=30,CHAT_RATE_PER_MIN_SESSION=15,CHAT_MAX_MESSAGE_CHARS=4000,CHAT_MAX_MESSAGES=40"
+          [ -n "${PRODUCT_SERVICE_URL:-}" ] && AGENT_ENV="${AGENT_ENV},PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL}"
+          [ -n "${PROJECT_SERVICE_URL:-}" ] && AGENT_ENV="${AGENT_ENV},PROJECT_SERVICE_URL=${PROJECT_SERVICE_URL}"
+
+          gcloud run services update agent-commerce-service \
+            --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
+            --update-env-vars="${AGENT_ENV}" \
+            --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest" || \
+            echo "  ⚠️  agent-commerce-service not yet deployed"
+
+      - name: Update product-service
+        run: |
+          PRODUCT_ENV="NODE_ENV=production,SERVICE_NAME=product-service,ENVIRONMENT=production"
+          [ -n "${PROJECT_SERVICE_URL:-}" ] && PRODUCT_ENV="${PRODUCT_ENV},PROJECT_SERVICE_URL=${PROJECT_SERVICE_URL}"
+
+          gcloud run services update product-service \
+            --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
+            --update-env-vars="${PRODUCT_ENV}" \
+            --update-secrets="MONGODB_URI=MONGODB_URI:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" || \
+            echo "  ⚠️  product-service not yet deployed"
+
+      - name: Update project-service
+        run: |
+          PROJECT_ENV="NODE_ENV=production,SERVICE_NAME=project-service,ENVIRONMENT=production"
+          [ -n "${AUTH_SERVICE_URL:-}" ]              && PROJECT_ENV="${PROJECT_ENV},AUTH_SERVICE_URL=${AUTH_SERVICE_URL}"
+          [ -n "${ORGANIZATION_SERVICE_URL:-}" ]      && PROJECT_ENV="${PROJECT_ENV},ORGANIZATION_SERVICE_URL=${ORGANIZATION_SERVICE_URL}"
+
+          gcloud run services update project-service \
+            --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
+            --update-env-vars="${PROJECT_ENV}" \
+            --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" || \
+            echo "  ⚠️  project-service not yet deployed"
+
+      - name: Update organization-service
+        run: |
+          ORG_ENV="NODE_ENV=production,SERVICE_NAME=organization-service,ENVIRONMENT=production"
+          [ -n "${AUTH_SERVICE_URL:-}" ]    && ORG_ENV="${ORG_ENV},AUTH_SERVICE_URL=${AUTH_SERVICE_URL}"
+          [ -n "${PROJECT_SERVICE_URL:-}" ] && ORG_ENV="${ORG_ENV},PROJECT_SERVICE_URL=${PROJECT_SERVICE_URL}"
+
+          gcloud run services update organization-service \
+            --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
+            --update-env-vars="${ORG_ENV}" \
+            --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" || \
+            echo "  ⚠️  organization-service not yet deployed"
+
+  # ============================================================
+  # JOB 4 – Notify
+  # ============================================================
+  notify:
+    name: 📋 Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, deploy-services, update-service-urls]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "## 🚀 JourneyAX Production Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Services** | ${{ needs.detect-changes.outputs.services }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deploy** | ${{ needs.deploy-services.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **URL Wiring** | ${{ needs.update-service-urls.result }} |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run build --workspace=journeyax-web",
+  "outputDirectory": "apps/journeyax-web/.next",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "nextjs"
+}

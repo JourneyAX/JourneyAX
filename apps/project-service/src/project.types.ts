@@ -18,6 +18,10 @@
  */
 
 export type ProjectStatus = 'active' | 'draft' | 'archived';
+
+/** The storefront's closing surface. 'quote' = B2B project quote (BOM, finishes,
+ *  approve & pay); 'cart' = B2C retail (bag, sizes, checkout). Declared per brand. */
+export type CommerceMode = 'quote' | 'cart';
 export type MemberRole    = 'owner' | 'admin' | 'manager' | 'analyst' | 'viewer';
 
 // ── Project Configuration ──────────────────────────────────────
@@ -267,6 +271,12 @@ export interface ProjectConfig {
   notifications?: Record<string, boolean>;
   // How the AX surface embeds on the customer's e-commerce site (the widget loader).
   embed?: EmbedConfig;
+  // Commerce surface for the storefront's closing step. DECLARED per brand — never
+  // inferred from other config — so a B2C retailer never inherits the B2B project
+  // -quote template (finishes, BOM, "how many bathrooms"). Unset ⇒ 'quote'.
+  //   'quote' → B2B project quote (Caroma fixtures, Augusta team kits)
+  //   'cart'  → B2C retail bag + checkout (Abercrombie, M&M'S)
+  commerceMode?: CommerceMode;
 
   // ── Metadata ──────────────────────────────────────────────────
   createdAt: string;
@@ -397,6 +407,8 @@ export interface UpdateProjectDto {
   configurator?: ConfiguratorConfig;
   /** Storefront opening-screen copy — starters + input placeholder, per tenant. */
   intro?: IntroConfig;
+  /** Commerce surface: 'quote' (B2B project quote) vs 'cart' (B2C retail). */
+  commerceMode?: CommerceMode;
 }
 
 /**
