@@ -56,8 +56,21 @@ build_push_svc() {
 
   echo "🔨 [START] ${SVC}"
 
+  # ── Pull previous image to warm the layer cache ────────────────────────
+  # Cloud Build workers have NO local Docker cache between builds.
+  # We must explicitly pull :latest so the layers are present locally
+  # before --cache-from can use them.  Falls back gracefully on first build.
+  docker pull "${IMAGE}:latest" 2>/dev/null \
+    && echo "  [${SVC}] ✓ Cache warmed from :latest" \
+    || echo "  [${SVC}] ℹ No cache available (first build or new service)"
+
+  # ── Build with BuildKit inline cache ──────────────────────────────────
+  # BUILDKIT_INLINE_CACHE=1  embeds the layer cache manifest into the pushed
+  # image so the NEXT build can use --cache-from and actually find layers.
+  # Without this flag, --cache-from is a no-op (no cache map in the image).
   DOCKER_BUILDKIT=1 docker build \
     --build-arg "SERVICE_NAME=${SVC}" \
+    --build-arg "BUILDKIT_INLINE_CACHE=1" \
     --cache-from "${IMAGE}:latest" \
     -t "${IMAGE}:latest" \
     -t "${IMAGE}:${COMMIT_SHA}" \
@@ -68,6 +81,7 @@ build_push_svc() {
 
   echo "✅ [DONE ] ${SVC} → ${IMAGE}:${COMMIT_SHA}"
 }
+
 
 export -f build_push_svc
 export REGISTRY PROJECT_ID ARTIFACT_REPO COMMIT_SHA
