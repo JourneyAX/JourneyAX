@@ -36,21 +36,40 @@ async function getIdToken(audience: string): Promise<string | undefined> {
 
   try {
     const client = await auth.getIdTokenClient(audience);
+
+    // google-auth-library v11 changed getRequestHeaders() to return a native
+    // Headers object (headers.get()) rather than a plain object (headers[key]).
+    // We support both to stay compatible across versions.
     const headers = await client.getRequestHeaders();
-    const raw: Record<string, string> = headers as unknown as Record<string, string>;
-    const token = (raw['Authorization'] || raw['authorization'] || '')
-      .replace('Bearer ', '')
-      .trim();
+    let token: string | undefined;
+
+    if (typeof (headers as any).get === 'function') {
+      // v11+: native Headers object
+      token = ((headers as any).get('Authorization') as string | null)
+        ?.replace('Bearer ', '').trim() || undefined;
+    } else {
+      // v10 and earlier: plain object
+      const raw = headers as unknown as Record<string, string>;
+      token = (raw['Authorization'] || raw['authorization'] || '')
+        .replace('Bearer ', '').trim() || undefined;
+    }
+
+    // Fallback: fetchIdToken() is available in v11+ and returns the raw token
+    // string directly — use it when getRequestHeaders() yields nothing.
+    if (!token && typeof (client as any).fetchIdToken === 'function') {
+      token = await (client as any).fetchIdToken(audience);
+    }
 
     if (token) {
       // Cache for 55 minutes (tokens live 60 min)
       tokenCache.set(audience, { token, expiresAt: now + 55 * 60 * 1000 });
+      console.log(`[gateway-auth] ✅ ID token minted for ${audience}`);
       return token;
     }
-  } catch {
+    console.warn(`[gateway-auth] ⚠️ Could not extract ID token for ${audience}`);
+  } catch (err: any) {
     // Not on GCP (local dev) or SA doesn't have the necessary role yet.
-    // Fail silently — the downstream will return 403 if it's private,
-    // which is the correct behavior to surface during setup.
+    console.warn(`[gateway-auth] ⚠️ getIdToken failed for ${audience}: ${err?.message}`);
   }
   return undefined;
 }
