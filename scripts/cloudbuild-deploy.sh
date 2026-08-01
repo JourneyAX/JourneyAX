@@ -85,13 +85,22 @@ deploy_service() {
     SVC_ENV="${SVC_ENV},AUTH_DEV_BYPASS=false"
   fi
 
+  # ── Auth flag: gateway + auth-service are the ONLY public entry points.
+  # All other backend services are kept private; the gateway calls them
+  # using its Cloud Run service account + Google ID token (see gateway.service.ts).
+  if [ "${SVC}" = "api-gateway" ] || [ "${SVC}" = "auth-service" ]; then
+    AUTH_FLAG="--allow-unauthenticated"
+  else
+    AUTH_FLAG="--no-allow-unauthenticated"
+  fi
+
   # ── Deploy ─────────────────────────────────────────────────────────────────
   gcloud run deploy "${SVC}" \
     --image="${IMAGE}:${COMMIT_SHA}" \
     --region="${REGION}" \
     --project="${PROJECT_ID}" \
     --platform=managed \
-    --allow-unauthenticated \
+    ${AUTH_FLAG} \
     --min-instances="${MIN}" \
     --max-instances="${MAX}" \
     --memory="${MEM}" \
@@ -102,6 +111,27 @@ deploy_service() {
     --update-env-vars="${SVC_ENV}" \
     --update-secrets="${SECRETS}" \
     --update-labels="service=${SVC},environment=${ENVIRONMENT},managed-by=cloud-build,git-sha=${COMMIT_SHA}"
+
+  # ── Grant gateway's SA run.invoker on private services (idempotent) ─────────
+  # The gateway mints a Google ID token for each downstream service URL.
+  # Cloud Run validates that token, so the gateway's SA needs invoker on each
+  # private service. We discover the SA from the gateway's own config so this
+  # works even if the SA ever changes.
+  if [ "${SVC}" != "api-gateway" ] && [ "${SVC}" != "auth-service" ]; then
+    GATEWAY_SA=$(gcloud run services describe api-gateway \
+      --region="${REGION}" --project="${PROJECT_ID}" \
+      --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null \
+      || gcloud projects describe "${PROJECT_ID}" \
+           --format='value(projectNumber)' 2>/dev/null | sed 's/$/-compute@developer.gserviceaccount.com/')
+    if [ -n "${GATEWAY_SA}" ]; then
+      echo "🔐 Granting roles/run.invoker on ${SVC} to gateway SA: ${GATEWAY_SA}"
+      gcloud run services add-iam-policy-binding "${SVC}" \
+        --region="${REGION}" --project="${PROJECT_ID}" \
+        --member="serviceAccount:${GATEWAY_SA}" \
+        --role="roles/run.invoker" 2>/dev/null \
+        || echo "  ⚠️  IAM binding skipped (will retry on next deploy)"
+    fi
+  fi
 
   # ── Print URL ──────────────────────────────────────────────────────────────
   SVC_URL=$(gcloud run services describe "${SVC}" \
