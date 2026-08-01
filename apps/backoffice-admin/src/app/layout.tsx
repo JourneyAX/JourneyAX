@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "@journeyax/design-system/styles.css";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "JourneyAX | Back-Office Console",

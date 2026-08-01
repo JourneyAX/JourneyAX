@@ -1,10 +1,57 @@
-node_modules
+# Dependencies — exclude ALL node_modules at every level
+**/node_modules
+
+# Build outputs
+**/.next
+**/dist
+**/build
+**/.turbo
+*.tsbuildinfo
+
+# Environment files
 .env
 .env.local
 .env.*.local
-dist
-.next
-*.log
-.DS_Store
-coverage
-.vercel
+
+# Vercel internal
+**/.vercel
+
+# Logs & misc
+**/*.log
+**/.DS_Store
+**/coverage
+
+# Backend services (not deployed via Vercel)
+apps/api-gateway
+apps/auth-service
+apps/project-service
+apps/product-service
+apps/organization-service
+apps/agent-commerce-service
+
+# Storefront is a separate Vercel project — exclude from backoffice deploys
+apps/journeyax-web
+
+# Packages not needed for backoffice
+packages/ingestion
+packages/integration
+packages/design-system
+packages/configurator-core
+packages/database
+
+# Scripts, docs & infra
+scripts
+docs
+data
+scratch
+skills
+
+# Root-level test/scratch files
+*.js
+check-*.ts
+_finalstats.ts
+test-*.js
+test-*.ts
+Dockerfile.template
+cloudbuild.yaml
+setup-vercel-envs.js
