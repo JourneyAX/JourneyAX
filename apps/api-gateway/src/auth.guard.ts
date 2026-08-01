@@ -62,7 +62,11 @@ export class AuthGuard implements NestMiddleware {
     const path = req.originalUrl.split('?')[0];
 
     // ── 1. Fully public ───────────────────────────────────────────
-    if (PUBLIC_ROUTES.some(r => path.startsWith(r)) || path.endsWith('/health')) {
+    if (
+      PUBLIC_ROUTES.some(r => path.startsWith(r)) ||
+      path.endsWith('/health') ||
+      (path.startsWith('/api/v1/projects/') && path.endsWith('/published'))
+    ) {
       return next();
     }
 

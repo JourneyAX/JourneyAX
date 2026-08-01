@@ -436,7 +436,7 @@ export class GatewayService {
   async checkHealth(): Promise<Record<string, { status: string; url: string }>> {
     const results: Record<string, { status: string; url: string }> = {};
 
-    for (const [domain, baseUrl] of Object.entries(DOMAIN_REGISTRY)) {
+    for (const [domain, baseUrl] of Object.entries(SERVICE_REGISTRY)) {
       if (baseUrl.includes('localhost')) {
         results[domain] = { status: 'not-deployed', url: baseUrl };
         continue;
