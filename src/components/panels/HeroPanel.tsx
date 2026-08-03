@@ -1,7 +1,7 @@
 'use client';
 
 export default function HeroPanel() {
-  const features = ['Compatibility validated', 'Live pricing', 'Real-time stock'];
+  const features = ['Rule-based matching', 'Fixed catalog pricing', 'Zero AI tokens'];
 
   return (
     <div className="hero-panel">

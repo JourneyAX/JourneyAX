@@ -1,29 +1,29 @@
 # Caroma JourneyAX - Bathroom Configurator POC
 
-An AI-powered, conversational bathroom configurator built for Caroma. This Proof of Concept (POC) guides users through a seamless, end-to-end journey—from initial design and product selection to troubleshooting and generating a final quote—all driven by a dynamic, context-aware AI architecture.
+A guided bathroom configurator for Caroma. **By default it runs on a traditional rule engine (zero AI tokens)** — clarify → match products → install/troubleshoot guides → quote/BOM. An optional AI/RAG mode remains available behind an env flag.
 
 ## 🚀 Key Features
 
-*   **Conversational UI Routing:** The AI acts as the orchestrator, instantly adapting the right-hand panel (Clarify, Products, Guide, Quote) based on the user's intent without requiring page reloads.
-*   **Intelligent Knowledge Retrieval (RAG):** Powered by MongoDB Atlas Vector Search, the AI grounds every recommendation, price, and installation guide in actual Caroma product data to prevent hallucinations.
-*   **Multi-Persona Execution:** The AI dynamically switches between acting as a Store Stylist (recommending matching collections like Liano or Luna) and a Plumber (diagnosing leaks and providing installation checklists).
-*   **Real-time Quoting & BOM:** Automatically compiles the user's selections, adds mandatory installation parts, and generates a structured Bill of Materials (BOM) with live pricing.
+*   **Traditional engine (default):** Keyword intent → fixed clarify chips → deterministic catalog match → template guides → BOM/quote. No OpenAI calls, so production never “runs out of tokens.”
+*   **Conversational UI Routing:** The right-hand panel (Clarify, Products, Guide, Quote) updates from engine actions without page reloads.
+*   **Optional AI mode:** Set `NEXT_PUBLIC_JOURNEY_ENGINE=ai` to use the OpenAI + MongoDB Atlas Vector Search path (RAG, freer language).
+*   **Quoting & BOM:** Compiles selections, adds mandatory installation parts, and generates a structured Bill of Materials.
+
+See [`docs/TRADITIONAL_ENGINE.md`](docs/TRADITIONAL_ENGINE.md) for the zero-token architecture.
 
 ## 🛠 Tech Stack
 
 *   **Framework:** Next.js (App Router) + React
-*   **AI Orchestration:** Vercel AI SDK
-*   **LLM Provider:** OpenAI (`gpt-4o` / `gpt-4o-mini`)
-*   **Database & Vector Search:** MongoDB Atlas
-*   **Styling:** Vanilla CSS (custom `globals.css` with responsive, modern styling)
+*   **Default orchestrator:** Local TypeScript rule engine (`src/lib/traditional/`)
+*   **Optional AI:** OpenAI Chat Completions + MongoDB Atlas Vector Search
+*   **Styling:** Vanilla CSS (custom `globals.css`)
 *   **Language:** TypeScript
 
 ## 🏗 Getting Started (Local Development)
 
 ### Prerequisites
 *   Node.js v18+
-*   MongoDB Atlas Cluster (with Vector Search index configured)
-*   OpenAI API Key
+*   For AI mode only: MongoDB Atlas + OpenAI API Key
 
 ### 1. Installation
 Clone the repository and install the dependencies:
@@ -34,8 +34,11 @@ npm install
 ```
 
 ### 2. Environment Variables
-Create a `.env.local` file in the root of `journeyx-app` and add your secret keys:
+Traditional mode needs **no** API keys.
+
+Optional — AI mode only — create `.env.local`:
 ```env
+NEXT_PUBLIC_JOURNEY_ENGINE=ai
 OPENAI_API_KEY="sk-your-openai-api-key"
 MONGODB_URI="mongodb+srv://<username>:<password>@cluster.mongodb.net/?retryWrites=true&w=majority"
 ```

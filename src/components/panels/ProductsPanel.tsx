@@ -42,7 +42,7 @@ export default function ProductsPanel() {
         <div className="products-panel__eyebrow">Searching catalog</div>
         <h2 className="products-panel__heading">Finding the best match</h2>
         <p className="products-panel__desc">
-          Searching through 367 Caroma products to find the perfect fit…
+          Matching your answers against the catalog…
         </p>
         <div className="thinking" style={{ marginTop: 24 }}>
           <span className="thinking__dot" />
@@ -61,7 +61,7 @@ export default function ProductsPanel() {
           Products matched to your brief
         </h2>
         <p className="products-panel__desc">
-          I&apos;ve explained each product in the chat — here are the details and specs.
+          Products matched to your brief — review specs, pick accessories, then build your quote.
         </p>
 
         <div className="products-grid">

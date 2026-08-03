@@ -23,7 +23,7 @@ export default function ClarifyPanel() {
         <div className="clarify-panel__eyebrow">Analysing your request</div>
         <h2 className="clarify-panel__heading">Understanding your project</h2>
         <p className="clarify-panel__desc">
-          The AI is reading your brief and will generate tailored questions for you shortly…
+          Loading the right questions for your project…
         </p>
         <div className="thinking" style={{ marginTop: 24 }}>
           <span className="thinking__dot" />

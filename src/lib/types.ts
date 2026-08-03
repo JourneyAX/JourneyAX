@@ -168,7 +168,7 @@ export const INITIAL_STATE: JourneyState = {
     {
       id: 'welcome',
       role: 'ai',
-      text: "Welcome to the Caroma showroom! I'm your personal consultant — whether you're renovating, fixing a problem, or just looking for inspiration, I'm here to help. What brings you in today?",
+      text: "Welcome to the Caroma showroom! I'm your guided bathroom consultant — renovations, full specs, kitchen/laundry, troubleshooting, or warranty lookups. What brings you in today?",
     },
   ],
   clarify: { mode: null, scope: null, collection: null, shower: null, finishQ: null },

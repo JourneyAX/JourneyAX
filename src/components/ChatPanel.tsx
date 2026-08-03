@@ -3,6 +3,11 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useJourney } from '@/context/JourneyContext';
 import MessageBubble from './MessageBubble';
+import { runTraditional, type Intent } from '@/lib/traditional/engine';
+import { applyUiActions } from '@/lib/traditional/applyUiActions';
+
+/** Default: traditional (zero tokens). Set NEXT_PUBLIC_JOURNEY_ENGINE=ai to use OpenAI. */
+const USE_AI = process.env.NEXT_PUBLIC_JOURNEY_ENGINE === 'ai';
 
 export default function ChatPanel() {
   const { state, dispatch } = useJourney();
@@ -16,6 +21,7 @@ export default function ChatPanel() {
   const [messages, setMessages] = useState<any[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const engineMetaRef = useRef<{ lastIntent?: Intent; answers?: Record<string, string> }>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -25,6 +31,60 @@ export default function ChatPanel() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading, state.isThinking]);
+
+  const recoverPhase = useCallback(() => {
+    const latestState = stateRef.current;
+    if (latestState.customBom && latestState.customBom.length > 0) {
+      dispatch({ type: 'SET_PHASE', phase: 'quote' });
+    } else if (latestState.guideSteps && latestState.guideSteps.length > 0) {
+      dispatch({ type: 'SET_PHASE', phase: 'guide' });
+    } else if (latestState.recommendedProducts && latestState.recommendedProducts.length > 0) {
+      dispatch({ type: 'SET_PHASE', phase: 'products' });
+    } else if (latestState.dynamicQuestions && latestState.dynamicQuestions.length > 0) {
+      dispatch({ type: 'SET_PHASE', phase: 'clarify' });
+    } else {
+      dispatch({ type: 'SET_PHASE', phase: 'intro' });
+    }
+  }, [dispatch]);
+
+  const sendTraditional = useCallback(async (newMessages: any[]) => {
+    setIsLoading(true);
+    dispatch({ type: 'SET_THINKING', thinking: true });
+    try {
+      const lastUser = [...newMessages].reverse().find((m) => m.role === 'user');
+      const userText = lastUser?.content || '';
+      const result = runTraditional(userText, {
+        phase: stateRef.current.phase,
+        bom: stateRef.current.customBom || [],
+        recommendedProducts: stateRef.current.recommendedProducts || [],
+        finish: stateRef.current.finish || '',
+        qty: stateRef.current.qty || 1,
+        answers: engineMetaRef.current.answers,
+        lastIntent: engineMetaRef.current.lastIntent,
+      });
+
+      if (result.meta?.intent) engineMetaRef.current.lastIntent = result.meta.intent;
+      if (result.meta?.answers) {
+        engineMetaRef.current.answers = {
+          ...engineMetaRef.current.answers,
+          ...result.meta.answers,
+        };
+      }
+
+      const updatedMessages = [...newMessages, { role: 'assistant', content: result.reply }];
+      setMessages(updatedMessages);
+
+      const { hasPhaseChange } = applyUiActions(result.uiActions, dispatch as any);
+      if (!hasPhaseChange) recoverPhase();
+    } catch (err: any) {
+      console.error('Traditional engine error:', err);
+      setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err.message}` }]);
+      dispatch({ type: 'SET_PHASE', phase: 'intro' });
+    } finally {
+      dispatch({ type: 'SET_THINKING', thinking: false });
+      setIsLoading(false);
+    }
+  }, [dispatch, recoverPhase]);
 
   const sendToAI = useCallback(async (newMessages: any[]) => {
     setIsLoading(true);
@@ -73,88 +133,10 @@ export default function ChatPanel() {
         }
       }
 
-      let hasPhaseChange = false;
-      // Process UI actions from the backend
-      if (data.uiActions && data.uiActions.length > 0) {
-        for (const action of data.uiActions) {
-          if (action.name === 'setPhase') {
-            hasPhaseChange = true;
-            dispatch({ type: 'SET_PHASE', phase: action.arguments.phase });
-
-            // If the AI sent dynamic questions with the clarify phase, set them
-            if (action.arguments.phase === 'clarify' && action.arguments.questions) {
-              dispatch({
-                type: 'SET_DYNAMIC_QUESTIONS',
-                questions: action.arguments.questions
-              });
-            }
-          } else if (action.name === 'updateQuote') {
-            // Transform to QuoteItem format
-            const bom = action.arguments.items.map((item: any) => ({
-              id: item.sku,
-              name: item.name,
-              price: item.price,
-              spec: item.reason || item.category || '',
-              sku: item.sku,
-              imageUrl: item.imageUrl || undefined,
-              category: item.category || '',
-              required: item.required || false,
-              reason: item.reason,
-              quantity: item.quantity || 1,
-              lineTotal: item.price * (item.quantity || 1),
-              stock: { label: 'In stock · NSW DC', color: '#4E7C59' }
-            }));
-            dispatch({ 
-              type: 'SET_QUOTE_DATA', 
-              title: action.arguments.title, 
-              bom,
-              jobId: action.arguments.jobId,
-              installationSummary: action.arguments.installationSummary,
-              warrantySummary: action.arguments.warrantySummary
-            });
-          } else if (action.name === 'showProducts') {
-            // Product recommendations — set them in state for ProductsPanel
-            dispatch({
-              type: 'SET_RECOMMENDED_PRODUCTS',
-              products: action.arguments.products
-            });
-          } else if (action.name === 'showGuide') {
-            // Troubleshooting or installation guide steps
-            dispatch({
-              type: 'SET_GUIDE_STEPS',
-              steps: action.arguments.steps
-            });
-            hasPhaseChange = true;
-          }
-        }
-        // If AI called updateQuote but forgot setPhase('quote'), do it
-        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'updateQuote')) {
-          dispatch({ type: 'SET_PHASE', phase: 'quote' });
-          hasPhaseChange = true;
-        }
-        // If AI called showProducts but forgot setPhase('products'), do it
-        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'showProducts')) {
-          dispatch({ type: 'SET_PHASE', phase: 'products' });
-          hasPhaseChange = true;
-        }
-      }
+      const { hasPhaseChange } = applyUiActions(data.uiActions || [], dispatch as any);
       
       // Safety: if we're stuck on 'validating' and the AI didn't transition us
-      if (!hasPhaseChange) {
-        const latestState = stateRef.current;
-        // Fallback to the most relevant phase based on what we have in state
-        if (latestState.customBom && latestState.customBom.length > 0) {
-          dispatch({ type: 'SET_PHASE', phase: 'quote' });
-        } else if (latestState.guideSteps && latestState.guideSteps.length > 0) {
-          dispatch({ type: 'SET_PHASE', phase: 'guide' });
-        } else if (latestState.recommendedProducts && latestState.recommendedProducts.length > 0) {
-          dispatch({ type: 'SET_PHASE', phase: 'products' });
-        } else if (latestState.dynamicQuestions && latestState.dynamicQuestions.length > 0) {
-          dispatch({ type: 'SET_PHASE', phase: 'clarify' });
-        } else {
-          dispatch({ type: 'SET_PHASE', phase: 'intro' });
-        }
-      }
+      if (!hasPhaseChange) recoverPhase();
       dispatch({ type: 'SET_THINKING', thinking: false });
     } catch (err: any) {
       console.error('Chat error:', err);
@@ -164,14 +146,16 @@ export default function ChatPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, recoverPhase]);
+
+  const sendTurn = USE_AI ? sendToAI : sendTraditional;
 
   // Called when user types a message
   const append = useCallback(async (msg: { role: string; content: string }) => {
     const newMessages = [...messages, msg];
     setMessages(newMessages);
-    await sendToAI(newMessages);
-  }, [messages, sendToAI]);
+    await sendTurn(newMessages);
+  }, [messages, sendTurn]);
 
   // Called when user submits clarify answers from the right panel
   const handleClarifySubmit = useCallback(async () => {
@@ -189,10 +173,10 @@ export default function ChatPanel() {
     dispatch({ type: 'SET_PHASE', phase: 'validating' });
     dispatch({ type: 'SET_THINKING', thinking: true });
 
-    await sendToAI(newMessages);
+    await sendTurn(newMessages);
 
     dispatch({ type: 'SET_THINKING', thinking: false });
-  }, [messages, state.dynamicAnswers, state.dynamicQuestions, sendToAI, dispatch]);
+  }, [messages, state.dynamicAnswers, state.dynamicQuestions, sendTurn, dispatch]);
 
   // Expose handleClarifySubmit globally so ClarifyPanel can call it
   useEffect(() => {
@@ -210,10 +194,10 @@ export default function ChatPanel() {
     dispatch({ type: 'SET_PHASE', phase: 'validating' });
     dispatch({ type: 'SET_THINKING', thinking: true });
 
-    await sendToAI(newMessages);
+    await sendTurn(newMessages);
 
     dispatch({ type: 'SET_THINKING', thinking: false });
-  }, [messages, sendToAI, dispatch]);
+  }, [messages, sendTurn, dispatch]);
 
   // Expose handleBuildQuote globally so ProductsPanel can call it
   useEffect(() => {
@@ -221,7 +205,7 @@ export default function ChatPanel() {
     return () => { delete (window as any).__handleBuildQuote; };
   }, [handleBuildQuote]);
 
-  // Expose handleUserMessage globally so GuidePanel can send arbitrary messages back to AI
+  // Expose handleUserMessage globally so GuidePanel can send arbitrary messages
   const handleUserMessage = useCallback(async (text: string) => {
     const userMsg = { role: 'user', content: text };
     const newMessages = [...messages, userMsg];
@@ -230,10 +214,10 @@ export default function ChatPanel() {
     dispatch({ type: 'SET_PHASE', phase: 'validating' });
     dispatch({ type: 'SET_THINKING', thinking: true });
 
-    await sendToAI(newMessages);
+    await sendTurn(newMessages);
 
     dispatch({ type: 'SET_THINKING', thinking: false });
-  }, [messages, sendToAI, dispatch]);
+  }, [messages, sendTurn, dispatch]);
 
   useEffect(() => {
     (window as any).__handleUserMessage = handleUserMessage;
@@ -270,11 +254,15 @@ export default function ChatPanel() {
         <div className="chat-header__divider" />
         <div className="chat-header__info">
           <div className="chat-header__title">Bathroom Configurator</div>
-          <div className="chat-header__subtitle">Agentic bathroom build</div>
+          <div className="chat-header__subtitle">
+            {USE_AI ? 'AI-guided bathroom build' : 'Guided bathroom build · no AI tokens'}
+          </div>
         </div>
         <div className="chat-header__badge">
           <span className="chat-header__badge-dot" />
-          <span className="chat-header__badge-text">Consumer · Bathroom</span>
+          <span className="chat-header__badge-text">
+            {USE_AI ? 'Consumer · AI' : 'Consumer · Rules'}
+          </span>
         </div>
       </div>
 

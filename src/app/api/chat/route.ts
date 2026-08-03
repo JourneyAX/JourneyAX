@@ -2,7 +2,19 @@ import OpenAI from 'openai';
 import { embedText } from '@/services/knowledge/embedder';
 import { search } from '@/services/knowledge/mongo';
 
-const openai = new OpenAI();
+// Lazy init so traditional (zero-token) builds/deploys do not require OPENAI_API_KEY.
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error(
+        'AI mode requires OPENAI_API_KEY. Leave NEXT_PUBLIC_JOURNEY_ENGINE unset to use the traditional zero-token engine.'
+      );
+    }
+    _openai = new OpenAI();
+  }
+  return _openai;
+}
 
 function parseSpecs(content: string): Record<string, string> {
   const specs: Record<string, string> = {};
@@ -306,7 +318,7 @@ ${state.recommendedProducts && state.recommendedProducts.length > 0
   try {
     while (loops < maxLoops) {
     loops++;
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: 'gpt-5.4-mini',
       messages: conversation,
       tools,
