@@ -12,6 +12,7 @@ node_modules/
 dist/
 .turbo/
 *.tsbuildinfo
+next-env.d.ts
 .env.bak.*
 setup-vercel-envs.js
 .env*
