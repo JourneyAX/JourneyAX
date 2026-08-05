@@ -323,19 +323,21 @@ export class ProductController {
       type?: string;
       category?: string;
       limit?: number;
+      gender?: string;
     }
   ) {
     const brand = (projectId || body.brand || 'caroma').toLowerCase();
     const limit = body.limit || 8;
 
-    console.log(`[ProductService] Search: "${body.query}" brand=${brand} type=${body.type || 'any'} category=${body.category || 'any'}`);
+    console.log(`[ProductService] Search: "${body.query}" brand=${brand} type=${body.type || 'any'} category=${body.category || 'any'} gender=${body.gender || 'any'}`);
 
     const result = await this.productService.search(
       body.query,
       brand,
       body.type,
       body.category,
-      limit
+      limit,
+      body.gender
     );
 
     return result;

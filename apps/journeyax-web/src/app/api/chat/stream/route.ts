@@ -8,6 +8,19 @@
  */
 import { resolveTenant } from '../../../../lib/tenant';
 
+// Vercel streaming contract. Without these, Vercel runs this handler as a
+// default Node serverless function with a ~15s wall-clock cap and may buffer the
+// piped SSE body — so a long agent turn (retrieval + LLM) is KILLED mid-stream
+// and the `uiAction` events that drive the 60% panel never reach the browser
+// (the panel freezes / the guided step silently vanishes). Locally there is no
+// such cap, which is why it worked before the cloud build and broke after.
+//   - force-dynamic : never statically optimise / cache this route
+//   - runtime nodejs: keep Node (fetch stream piping), not edge
+//   - maxDuration 60: allow the full turn (60s is the Hobby ceiling; raise on Pro)
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: Request) {

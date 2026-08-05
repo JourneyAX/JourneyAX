@@ -274,6 +274,40 @@ body {
   border-color: var(--gold);
   color: var(--gold);
 }
+
+/* View bag — a real CTA (the way back to checkout), so slightly more present
+   than the quiet icon utilities: icon + live item count in an accent badge. */
+.chat-header__bag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 10px;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-dark);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.chat-header__bag:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.chat-header__bag-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--surface, #fff);
+  background: var(--gold);
+  border-radius: 999px;
+}
 .chat-header__convomenu {
   position: absolute;
   top: calc(100% + 6px);
@@ -777,7 +811,7 @@ body {
 
 /* ── Products Panel ────────────────────────────────────────────────── */
 .products-panel {
-  max-width: 860px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 48px 56px 80px;
 }
@@ -793,7 +827,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 48px 56px 24px;
-  max-width: 860px;
+  max-width: 1200px;
   margin: 0 auto;
   width: 100%;
 }
@@ -803,7 +837,31 @@ body {
   padding: 20px 56px;
   background: var(--surface);
   display: flex;
+  align-items: center;
+  gap: 14px;
   justify-content: flex-end;
+}
+
+/* Optional-recommendation escape hatch: a quiet secondary that jumps straight to
+   the bag/checkout. Sits on the LEFT (order:-1 + margin-right:auto) so the primary
+   "Add to bag" stays the emphasised action on the right. */
+.products-panel__skip {
+  order: -1;
+  margin-right: auto;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-dark);
+  padding: 11px 18px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.products-panel__skip:hover {
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 .products-panel__eyebrow {
@@ -831,10 +889,106 @@ body {
 }
 
 .products-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  align-items: start;
   gap: 16px;
   margin-bottom: 32px;
+}
+
+/* ANF: colour swatches + size pills + rating on the card */
+.product-card__rating { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
+.product-card__stars { color: #E8B93B; font-size: 13px; letter-spacing: 1px; }
+.product-card__stars-empty { color: var(--border, #ddd); }
+.product-card__rating-text { font-size: 12px; color: var(--text-secondary, #777); }
+.product-card__swatches { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; align-items: center; }
+.product-card__swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.22); box-shadow: 0 1px 2px rgba(0,0,0,0.12); display: inline-block; }
+.product-card__swatch-more { font-size: 11px; color: var(--text-secondary, #777); align-self: center; }
+.product-card__sizes { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.product-card__size-pill { font-size: 11px; padding: 3px 9px; border: 1px solid var(--border, #ccc); border-radius: 6px; color: var(--text, #222); background: var(--surface, #fff); }
+.product-card__size-pill--selected { background: var(--text, #111); color: var(--surface, #fff); border-color: var(--text, #111); font-weight: 700; }
+.product-card__size-yours { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-secondary, #888); align-self: center; margin-right: 2px; }
+.product-detail__ctl { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border, #eee); }
+.product-card__price--sale { color: #c0392b; }
+.product-card__price-was { margin-left: 8px; font-size: 0.82em; font-weight: 400; color: var(--text-secondary, #999); text-decoration: line-through; }
+
+/* Virtual try-on (beta) */
+.tryon__cta { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0; padding: 11px 18px; border-radius: 999px; border: 1.5px solid var(--text, #111); background: var(--text, #111); color: var(--surface, #fff); font-weight: 700; font-size: 14px; cursor: pointer; }
+.tryon__cta:hover { opacity: .9; }
+.tryon__beta { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.22); }
+.tryon { margin: 14px 0; padding: 16px; border: 1px solid var(--border, #e4e4e4); border-radius: 14px; background: var(--surface-2, #fafafa); }
+.tryon__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.tryon__title { font-weight: 700; font-size: 15px; }
+.tryon__close { background: none; border: none; font-size: 16px; color: var(--text-secondary, #888); cursor: pointer; }
+.tryon__hint { font-size: 12.5px; color: var(--text-secondary, #777); margin: 4px 0 12px; }
+.tryon__uploadrow { display: flex; align-items: center; gap: 12px; }
+.tryon__choose { padding: 9px 14px; border-radius: 8px; border: 1px dashed var(--border, #bbb); background: var(--surface, #fff); font-size: 13px; cursor: pointer; }
+.tryon__thumb { width: 46px; height: 58px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border, #ddd); }
+.tryon__go { margin-top: 12px; width: 100%; padding: 11px; border-radius: 9px; border: none; background: var(--color-primary, var(--text, #111)); color: var(--surface, #fff); font-weight: 700; font-size: 14px; cursor: pointer; }
+.tryon__go:disabled { opacity: .6; cursor: progress; }
+.tryon__result { text-align: center; }
+.tryon__resultimg { width: 100%; max-width: 340px; border-radius: 12px; border: 1px solid var(--border, #ddd); }
+.tryon__again { margin-top: 10px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border, #ccc); background: var(--surface, #fff); font-size: 13px; cursor: pointer; }
+.tryon__error { margin-top: 10px; font-size: 12.5px; color: #c0392b; }
+.tryon__disclaimer { margin-top: 12px; font-size: 10.5px; line-height: 1.4; color: var(--text-secondary, #999); }
+
+/* ANF-99: "Wear it with" complete-the-look strip */
+.product-card__ctl { margin: 12px 0 4px; }
+.product-card__ctl-title { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-secondary, #777); margin-bottom: 8px; }
+.product-card__ctl-strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.product-card__ctl-item { flex: 0 0 84px; width: 84px; }
+.product-card__ctl-img { width: 84px; height: 104px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border, #e4e4e4); background: var(--surface-2, #f5f5f5); display: block; }
+.product-card__ctl-img--empty { background: var(--surface-2, #f0f0f0); }
+.product-card__ctl-name { font-size: 10.5px; line-height: 1.25; color: var(--text, #333); margin-top: 5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.product-card__ctl-price { font-size: 10.5px; font-weight: 600; color: var(--text, #222); margin-top: 2px; }
+
+/* ANF: per-card selection + click-to-focus */
+.product-card { position: relative; cursor: pointer; }
+.product-card--selected {
+  border-color: var(--gold, #FFD700);
+  box-shadow: 0 0 0 2px var(--gold, #FFD700) inset;
+}
+.product-card__select {
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border, #ccc);
+  background: var(--surface, #fff);
+  color: var(--bg, #0A0A0A);
+  font-size: 15px; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 2; padding: 0;
+}
+.product-card__select.checked {
+  background: var(--gold, #FFD700);
+  border-color: var(--gold, #FFD700);
+}
+/* Focused single-product detail */
+.product-detail__back {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-secondary, #888); font-size: 14px; font-weight: 600;
+  padding: 0 0 20px; display: inline-flex; align-items: center;
+}
+.product-detail__back:hover { color: var(--text, #111); }
+.product-detail__image {
+  width: 100%; max-height: 420px; overflow: hidden;
+  border-radius: 12px; margin-bottom: 20px; background: var(--surface-2, #f4f4f4);
+}
+.product-detail__image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.product-detail__category {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-secondary, #888); margin-bottom: 8px;
+}
+.product-detail__name {
+  font-family: var(--font-heading); font-weight: 700; font-size: 26px;
+  letter-spacing: -0.02em; margin: 0 0 8px;
+}
+.product-detail__price {
+  font-size: 22px; font-weight: 700; margin: 8px 0 16px;
+}
+.product-detail__desc {
+  font-size: 15px; line-height: 1.55; color: var(--text-secondary, #555); margin: 0 0 24px;
 }
 
 .product-card {
@@ -1462,6 +1616,21 @@ body {
 }
 
 /* Sticky pricing footer */
+/* Retail bag: full-height flex column so the checkout footer is always at the
+   bottom of the stage, never floating mid-page when the bag holds one item. */
+.retail-cart {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+/* The items area grows to fill the space, pushing the footer down. Trim the big
+   bottom padding (only needed when the footer overlaid the content) so a short
+   bag doesn't leave a gap before the footer. */
+.retail-cart .quote-panel {
+  flex: 1 0 auto;
+  padding-bottom: 32px;
+}
+
 .quote-footer {
   position: sticky;
   bottom: 0;

@@ -115,6 +115,7 @@ export class StandaloneKnowledgeAdapter implements KnowledgePort {
           type: q.type,
           category: q.category,
           limit: q.limit ?? 8,
+          gender: q.gender,
         }),
       });
       if (!res.ok) {

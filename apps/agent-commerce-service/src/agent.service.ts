@@ -349,6 +349,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
                 description: { type: 'string', description: 'A 1-2 sentence explanation of WHY this product fits the user\'s brief' },
                 features: { type: 'array', items: { type: 'string' }, description: '2-3 key features or benefits' },
                 finishes: { type: 'array', items: { type: 'string' }, description: 'Available finishes / colours, if the item has them' },
+                recommendedSize: { type: 'string', description: 'The single size you recommend for THIS shopper based on the occasion, their stated size and this garment\'s fit (e.g. "M"). Set this once the shopper has given their size so the card can pre-select it. Must be one of the item\'s available sizes.' },
                 specs: {
                   type: 'object',
                   description: 'Key product specifications as key-value pairs — include ONLY specs that are EXPLICITLY present in the retrieved data for THIS item, using whatever fields that business actually publishes (e.g. material/fit/care for apparel; dimensions/rating for fixtures). CRITICAL: never invent or carry over a spec that is not in the retrieved data — in particular do NOT add a Warranty, rating, or installation field unless the retrieval explicitly states one. Omit anything not stated.',
@@ -1125,13 +1126,34 @@ async function groundItemFacts(tenantId: string, call: any): Promise<void> {
     if (typeof row.price === 'number') g.price = row.price;
     if (row.name) g.name = row.name;
     if (row.url) g.url = row.url;
+    // ANF-98: the authoritative variant axis rides on the pricebook row now —
+    // attach real colour swatches + size pills + rating so the card renders them
+    // (the model can't be trusted to carry structured colours through showItems).
+    if (Array.isArray(row.colors) && row.colors.length) g.colors = row.colors;
+    if (Array.isArray(row.sizes) && row.sizes.length) g.sizes = row.sizes;
+    if (row.rating) g.rating = row.rating;
+    // ANF-99: real "Wear It With" complete-the-look strip, code-attached (never LLM-authored).
+    if (Array.isArray(row.completeTheLook) && row.completeTheLook.length) g.completeTheLook = row.completeTheLook.slice(0, 12);
+    if (typeof row.originalPrice === 'number' && row.originalPrice > (row.price || 0)) g.originalPrice = row.originalPrice;
     if (g.imageUrl !== p.imageUrl || g.price !== p.price) grounded++;
     kept.push(g);
   }
-  args.products = kept;
+  // The live catalogue has many same-named variants; showing two visually identical
+  // cards (same name + price + image) reads as broken. Drop exact visual duplicates,
+  // keeping the first. Different image/price = a genuinely different variant, kept.
+  const seenSig = new Set<string>();
+  const deduped = kept.filter((p: any) => {
+    // Two cards with the same NAME + PRICE read as a duplicate to a shopper even if
+    // their SKU/image differ (the live catalogue lists many same-named variants).
+    const sig = `${String(p?.name || '').trim().toLowerCase()}|${p?.price ?? ''}`;
+    if (seenSig.has(sig)) return false;
+    seenSig.add(sig);
+    return true;
+  });
+  args.products = deduped;
   call.function.arguments = JSON.stringify(args);
-  if (grounded || dropped || substituted) {
-    console.warn(`[AgentService] showItems: grounded ${grounded}, substituted ${substituted} fabricated→real, dropped ${dropped}; ${kept.length} real card(s)`);
+  if (grounded || dropped || substituted || deduped.length !== kept.length) {
+    console.warn(`[AgentService] showItems: grounded ${grounded}, substituted ${substituted} fabricated→real, dropped ${dropped}, deduped ${kept.length - deduped.length}; ${deduped.length} real card(s)`);
   }
 }
 
@@ -1503,7 +1525,7 @@ async function lookupOptions(tenantId: string, rawArgs: string): Promise<unknown
     }
     return r.found
       ? r
-      : { found: false, sku, message: `No colour/size options are recorded for ${sku}. Say so plainly — do not offer options you have not verified.` };
+      : { found: false, sku, message: `No per-variant colour/size list is recorded for ${sku}. Do NOT tell the customer you "couldn't retrieve" or "failed to find" anything — that reads as a broken feature. Instead, describe the item's known details (fabric, fit, materials, care) confidently, and if they want a specific colour or size, say it can be confirmed at checkout. Never invent specific colours or sizes you have not verified.` };
   } catch (err) {
     console.error('[AgentService] getProductOptions error:', err);
     return { found: false, sku, message: 'Option lookup failed.' };
@@ -1732,6 +1754,147 @@ export class AgentService {
     const named = Object.entries(dims).some(([k, v]) =>
       /garment|product|category|item/i.test(k) && String(v || '').trim().length > 1);
     return Boolean(named) && intent?.intent === 'product_recommendation';
+  }
+
+  /* GENDER GATE (config-driven, deterministic). For a brand that declares GENDER a
+   * must-ask context dimension (e.g. apparel: men's and women's are different
+   * products), never show products until gender is known. The model alone doesn't
+   * hold this reliably — it will happily show men's jeans for "baggy jeans, size 32".
+   * Returns true when we must clarify gender before any showItems. Self-resolves:
+   * once the shopper says men/women/kids (or the intent extracts it) it stops firing,
+   * so it never loops. No-op for non-gendered brands (Caroma/Augusta). */
+  private needsGenderFirst(intent: any, projectConfig: any, messages: any[]): boolean {
+    const dims = (projectConfig?.contextDimensions || []) as any[];
+    const g = dims.find((d) => String(d?.key || '').toLowerCase() === 'gender');
+    const mustAsk = g && (g.scoping === true || g.scoping === 'must-ask' || g.mustAsk === true || g.required === true);
+    if (!mustAsk) return false;
+    if (intent?.dimensions?.gender) return false;              // intent already resolved it
+    const text = (messages || [])
+      .filter((m) => m?.role === 'user')
+      .map((m) => (typeof m?.content === 'string' ? m.content : '')).join(' ').toLowerCase();
+    if (/\b(men|mens|man|male|women|womens|woman|female|kid|kids|boy|boys|girl|girls|son|daughter|his|her|hers)\b/.test(text)) return false;
+    return true;                                               // gendered brand + gender genuinely unknown
+  }
+
+  /* Deterministic guided-clarify panel for the gender gate. Always asks gender;
+   * adds occasion when it's still unknown. Used as a post-turn safety net so the
+   * buttoned clarify ALWAYS renders when the gate fired, even if the model replied
+   * with plain text instead of calling setPhase. */
+  private synthGenderClarify(intent: any): { name: string; arguments: any } {
+    const qs: any[] = [{ id: 'gender', title: 'Who are you shopping for?', options: ['Men', 'Women', 'Kids'] }];
+    if (!intent?.dimensions?.occasion) qs.push({ id: 'occasion', title: "What's the occasion?", options: ['Casual', 'Work', 'Date', 'Party', 'Vacation'] });
+    return { name: 'setPhase', arguments: { phase: 'clarify', questions: qs } };
+  }
+
+  /* DETERMINISTIC COMPLETE-THE-LOOK (cross-sell). For a retail cart brand, the MOMENT
+   * a customer adds a piece the stylist should offer 2–3 COMPLEMENTARY pieces (a
+   * different category — shirt → pants/shoes, pants → a top/belt) with real cards,
+   * not shortcut to checkout. The model skips this proactively even with guidance, so
+   * after updateQuote we force ONE more round with an explicit directive. Fires once
+   * per new add (keyed on the bag's sku set), and never when the customer signalled
+   * they want to check out / are done. No-op for non-cart brands (Caroma/Augusta). */
+  private crossSellDirective(commerceMode: string | undefined, lastUserText: string, quote: any, journeyState: any): string | null {
+    if (commerceMode !== 'cart') return null;
+    const t = (lastUserText || '').toLowerCase();
+    // Customer asked to close / declined more → respect it, let them check out.
+    if (/\b(check\s?out|checkout|pay|purchase|buy now|that'?s all|thats all|just (this|these|that)|nothing else|no (thanks|more)|i'?m done|im done|ready to (pay|buy|check)|place (the )?order|proceed to)\b/.test(t)) return null;
+    const skus = (quote?.lines || []).map((l: any) => String(l.sku || '')).filter(Boolean).sort();
+    const sig = skus.join('|');
+    if (!sig) return null;
+    if (journeyState.crossSellSig === sig) return null;   // already offered for this bag state
+    journeyState.crossSellSig = sig;
+    const cats = [...new Set((quote?.lines || []).map((l: any) => String(l.category || '').trim()).filter(Boolean))];
+    // Stash what's in the bag so the showItems handler can DETERMINISTICALLY drop
+    // any "complementary" card that is really the SAME category/product — the model
+    // otherwise re-shows the same jeans, which loops (selecting one re-adds a jean).
+    journeyState.crossSellFor = sig;
+    journeyState.crossSellRetries = 0;
+    journeyState.crossSellExcludeCats = cats;
+    journeyState.crossSellExcludeNames = (quote?.lines || []).map((l: any) => String(l.name || '').trim().toLowerCase()).filter(Boolean);
+    const catHint = cats.length ? ` They just added: ${cats.join(', ')}.` : '';
+    return `ITEM ADDED TO THE BAG — now run the COMPLETE-THE-LOOK step before ANY checkout talk.${catHint} ` +
+      `You are their stylist. In ONE short warm line affirm what they added, then THIS TURN call searchKnowledge for 2–3 COMPLEMENTARY pieces in a DIFFERENT category that finish the outfit ` +
+      `(a top → bottoms / shoes / a jacket; bottoms → a top / belt / shoes; a dress → shoes / a jacket / a bag), and call showItems to put those cards on the panel. ` +
+      `Do NOT merely ask "want to complete the look?" and stop — actually SHOW the pieces. Then end with ONE short question: "Want to add any of these, or are you ready to check out?" ` +
+      `Keep the complementary pieces the SAME gender as the bag. Never call this a "quote" — it's their bag.`;
+  }
+
+  /* Deterministic complete-the-look guard: during a cross-sell turn, drop any
+   * showItems card whose category (leaf) or name matches what's already in the
+   * bag — those aren't "completing the look", they're the same thing again, and
+   * re-adding one loops. Mutates call.function.arguments. Returns true only when
+   * filtering removed EVERYTHING (so the caller can force a re-search). */
+  private applyCrossSellFilter(call: any, journeyState: any): boolean {
+    const leaf = (c: unknown): string =>
+      String(c || '').split(/[>\/|,]/).pop()!.trim().toLowerCase().replace(/s\b/g, '').trim();
+    let args: any = {};
+    try { args = JSON.parse(call.function.arguments || '{}'); } catch { return false; }
+    const prods = args?.products;
+    if (!Array.isArray(prods) || !prods.length) { return false; }
+    const badCats = new Set((journeyState.crossSellExcludeCats || []).map(leaf).filter(Boolean));
+    const badNames = new Set((journeyState.crossSellExcludeNames || []).map((n: string) => String(n).trim().toLowerCase()));
+    const kept = prods.filter((p: any) => {
+      const cl = leaf(p?.category);
+      const nm = String(p?.name || '').trim().toLowerCase();
+      if (cl && badCats.has(cl)) return false;   // same category as the bag
+      if (nm && badNames.has(nm)) return false;  // literally the same product
+      return true;
+    });
+    if (kept.length) {
+      args.products = kept;
+      call.function.arguments = JSON.stringify(args);
+      journeyState.crossSellFor = null;          // consumed successfully
+      return false;
+    }
+    return true;                                  // everything was same-category
+  }
+
+  /* Resolve the shopper's stated size to a canonical token ("medium" → "M",
+   * "32" → "32") from the intent dimensions or anything they typed. Deterministic
+   * so a card can pre-select it even when the model forgets recommendedSize. */
+  private resolveShopperSize(intent: any, messages: any[]): string | null {
+    const WORD: Record<string, string> = {
+      xs: 'XS', 'extra small': 'XS', s: 'S', small: 'S', m: 'M', med: 'M', medium: 'M',
+      l: 'L', large: 'L', xl: 'XL', 'x-large': 'XL', 'extra large': 'XL',
+      xxl: 'XXL', 'xx-large': 'XXL', '2xl': 'XXL', '3xl': 'XXXL', xxxl: 'XXXL',
+    };
+    const norm = (raw: string): string | null => {
+      const s = String(raw || '').trim().toLowerCase();
+      if (!s) return null;
+      if (WORD[s]) return WORD[s];
+      if (/^(x{0,3})[sml]$|^x{1,3}l$/.test(s)) return s.toUpperCase(); // xs/s/m/l/xl/xxl
+      const w = s.match(/\b(2[0-9]|3[0-9]|4[0-4])\b/);                 // waist 20–44
+      if (w) return w[1];
+      return null;
+    };
+    // Prefer an explicit size/fit dimension the extractor pulled.
+    for (const [k, v] of Object.entries(intent?.dimensions || {})) {
+      if (/size|fit/i.test(k)) { const n = norm(String(v)); if (n) return n; }
+    }
+    // Fall back to anything the shopper typed ("I'm usually a medium", "32 waist").
+    const text = (messages || []).filter((m) => m?.role === 'user')
+      .map((m) => (typeof m?.content === 'string' ? m.content : '')).join(' ');
+    const m = text.toLowerCase().match(/\b(xs|s|m|l|xl|xxl|extra small|small|medium|large|x-large|extra large|xx-large|2[0-9]|3[0-9]|4[0-4])\b/);
+    return m ? norm(m[1]) : null;
+  }
+
+  /* Deterministically pre-select the shopper's size on every card that carries it,
+   * so "medium" highlights M without relying on the model to set recommendedSize.
+   * Only sets it when the size genuinely exists in that card's own size list. */
+  private applySizePreselect(call: any, shopperSize: string | null): void {
+    if (!shopperSize || call?.function?.name !== 'showItems') return;
+    let args: any = {};
+    try { args = JSON.parse(call.function.arguments || '{}'); } catch { return; }
+    const prods = args?.products;
+    if (!Array.isArray(prods) || !prods.length) return;
+    const want = shopperSize.toUpperCase();
+    let changed = false;
+    for (const p of prods) {
+      const sizes = Array.isArray(p?.sizes) ? p.sizes : [];
+      const match = sizes.find((s: any) => String(s).trim().toUpperCase() === want);
+      if (match) { p.recommendedSize = match; changed = true; }
+    }
+    if (changed) call.function.arguments = JSON.stringify(args);
   }
 
   private async maybeResearchOrg(
@@ -1993,6 +2156,12 @@ export class AgentService {
           const itemVerdict = await enforceItemDesignability(tenantId, call, designFirst);
           // ...and the catalogue, not the model, states what each card shows.
           await groundItemFacts(tenantId, call);
+          // Complete-the-look guard (forced-emit path): never let a same-category
+          // card through. If they were ALL same-category, show none rather than loop.
+          if (call.function.name === 'showItems' && journeyState.crossSellFor && this.applyCrossSellFilter(call, journeyState)) {
+            try { const a = JSON.parse(call.function.arguments); a.products = []; call.function.arguments = JSON.stringify(a); } catch { /* noop */ }
+            journeyState.crossSellFor = null;
+          }
           let parsedArgs: any = {};
           try { parsedArgs = JSON.parse(call.function.arguments); } catch { /* keep {} */ }
           // Never FORCE an empty configurator. Without a real style SKU (and nothing
@@ -2031,6 +2200,30 @@ export class AgentService {
       .replace(/[ \t]{2,}/g, ' ')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+  }
+
+  /* A plain retail brand (cart, no configurator) customises / designs / 3D-renders
+   * NOTHING — that vocabulary belongs to fixtures/sportswear/candy. The model still
+   * occasionally leaks "these aren't customisable" or "3D" into chat despite the
+   * guidance, so for those brands we DROP any sentence carrying that language before
+   * it reaches the shopper. Config-gated: brands that DO personalise (M&M'S candy,
+   * Augusta garments) have a configuratorType and are never touched. */
+  private stripCartTaboo(text: string, active: boolean): string {
+    if (!text || !active) return text;
+    const TABOO = /\b(customi[sz]\w*|non-?customi\w*|un-?customi\w*|personali[sz]\w*|design\s+lines?|3-?d\b|configurat\w*)\b|colou?rs?\s+are\s+fixed|fixed\s+colou?rs?/i;
+    const parts = text.split(/(?<=[.!?])(\s+)/);   // [sentence, sep, sentence, sep, …]
+    let out = '';
+    for (let i = 0; i < parts.length; i += 2) {
+      const s = parts[i]; const sep = parts[i + 1] ?? '';
+      if (s && TABOO.test(s)) continue;            // drop the offending sentence
+      out += s + sep;
+    }
+    // Dropping a sentence can leave the next one starting with a dangling
+    // conjunction ("However, each shirt…"). Trim it and re-capitalise.
+    let cleaned = out.replace(/[ \t]{2,}/g, ' ').trim()
+      .replace(/^(however|but|so|and|also|that said|in addition)[,\s]+/i, '');
+    if (cleaned) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    return cleaned;
   }
 
   /**
@@ -2170,6 +2363,7 @@ export class AgentService {
     let forceText = false;           // when true, next call must produce text (no tools)
     let forcedUi = false;            // panel-render enforcement fired already?
     let finalMessage: any = null;
+    let mustClarifyGender = false;   // gender gate fired → guarantee a clarify panel (post-turn)
     const uiToolCalls: any[] = [];
     const wantUiTool = this.requiredUiTool(intent, { customised: brandHubProfile?.model?.customised, capabilities: projectConfig.capabilities });
 
@@ -2271,7 +2465,9 @@ export class AgentService {
             // integration registry and this agent is unchanged.
             const toolResult = await (await adapterRegistry.getKnowledge(tenantId)).search(
               { tenantId },
-              { query: args.query, type: args.type, category: args.category, limit: 8 },
+              // Gender is injected SERVER-SIDE from the resolved intent (not the model) so
+              // a "men's" journey never surfaces women's products — hard filter, not a hint.
+              { query: args.query, type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
             );
             conversation.push({
               role: 'tool',
@@ -2289,6 +2485,14 @@ export class AgentService {
         } else if (UI_TOOL_NAMES.has(call.function.name)) {
           await enforceNamedSku(tenantId, conversation, call);   // identity wins over the model
           const parsedArgs = JSON.parse(call.function.arguments);
+          // GENDER GATE: never show products until we know Men/Women/Kids (config-driven).
+          if (call.function.name === 'showItems' && this.needsGenderFirst(intent, projectConfig, messages)) {
+            mustClarifyGender = true;
+            conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ success: false, clarifyFirst: true,
+              message: 'STOP — you do not know whether the shopper wants Men, Women or Kids, and these are different products. Do NOT show products yet. Call setPhase("clarify") NOW with a gender question (id "gender", title "Who are we shopping for?", options ["Men","Women","Kids"]) plus occasion and their usual size if still unknown.' }) });
+            didSearch = true;   // loop so the model clarifies instead of presenting
+            continue;
+          }
           // Just researched a school this turn → the colour-confirmation card owns
           // the panel. Suppress a same-turn clarify so it isn't buried under a form;
           // the model still SPEAKS (acknowledge colours, invite confirmation).
@@ -2373,6 +2577,11 @@ export class AgentService {
                 note: 'Totals are authoritative (server-computed from the catalogue + tenant pricing). Quote these exact figures; never state different numbers.',
               }),
             });
+            {
+              const _lu = [...conversation].reverse().find((m: any) => m?.role === 'user');
+              const _xsell = this.crossSellDirective(projectConfig?.commerceMode, String(_lu?.content || ''), quote, journeyState);
+              if (_xsell) { conversation.push({ role: 'system', content: _xsell }); didSearch = true; }
+            }
             continue;
           }
           // NEVER render an empty configurator. A showConfigurator with no real
@@ -2412,6 +2621,20 @@ export class AgentService {
           const itemVerdict = await enforceItemDesignability(
             tenantId, call, !!brandHubProfile?.model?.customised);
           await groundItemFacts(tenantId, call);
+          this.applySizePreselect(call, this.resolveShopperSize(intent, messages));
+          // Complete-the-look: drop same-category cards. If nothing complementary
+          // survives, reject once and make the model search a DIFFERENT category —
+          // this is what stops the "keeps showing the same jeans" loop.
+          if (call.function.name === 'showItems' && journeyState.crossSellFor && this.applyCrossSellFilter(call, journeyState)) {
+            const canRetry = (journeyState.crossSellRetries || 0) < 1;
+            journeyState.crossSellRetries = (journeyState.crossSellRetries || 0) + 1;
+            if (!canRetry) journeyState.crossSellFor = null;
+            conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(canRetry
+              ? { success: false, sameCategoryOnly: true, message: 'Those are the SAME category as what is already in the bag — that does not complete the look. Do NOT show that category again. searchKnowledge for a COMPLEMENTARY, DIFFERENT category for the same gender (bottoms/jeans → a top: shirt/tee/sweater, or shoes; a top → bottoms or shoes; a dress → shoes/a jacket) and showItems those.' }
+              : { success: true, note: 'No complementary items found — ask what they would like to add, or invite checkout. Do not re-show the same category.' }) });
+            if (canRetry) didSearch = true;
+            continue;
+          }
           // Undesignable styles never reach the panel — see the streaming path.
           if (!verdict.designableAlternatives) uiToolCalls.push(call);
           conversation.push({
@@ -2448,7 +2671,13 @@ export class AgentService {
     trace.push({ step: 'grounding', detail: verdict.ok ? 'ok' : verdict.reason || 'flagged' });
     trace.push({ step: 'generate', detail: `${loops} loop(s), ${searchCount} search(es), ${uiToolCalls.length} ui action(s)` });
 
-    if (finalMessage?.content) finalMessage.content = this.stripChatMedia(finalMessage.content);
+    if (finalMessage?.content) {
+      const plainRetail = projectConfig?.commerceMode === 'cart' && !projectConfig?.configuratorType;
+      finalMessage.content = this.stripCartTaboo(this.stripChatMedia(finalMessage.content), plainRetail);
+      if (plainRetail && !String(finalMessage.content || '').trim()) {
+        finalMessage.content = 'Here are a few great options — let me know which one catches your eye, or head to checkout any time.';
+      }
+    }
 
     // ── Step 7: Reduce this turn's actions into journey memory, then persist ──
     // updateQuote emits the SERVER quote (P0-04), not the model's raw arguments.
@@ -2458,6 +2687,12 @@ export class AgentService {
         : (call as any).__research ? (call as any).__research
         : JSON.parse(call.function.arguments),
     }));
+    // SAFETY NET: the gender gate fired but the model didn't render a clarify → synthesize
+    // it so the buttoned panel ALWAYS appears (deterministic, no model dependence).
+    if (mustClarifyGender && !uiActions.some((a) => a.name === 'setPhase' && (a.arguments as any)?.phase === 'clarify')) {
+      uiActions.push(this.synthGenderClarify(intent));
+      if (!finalMessage?.content) finalMessage = { role: 'assistant', content: 'Happy to help! First — who are we shopping for, and what’s the occasion?' };
+    }
     const nextState = reduceActions(journeyState, uiActions, intent);
     // Append the assistant's spoken reply to the transcript, then persist the
     // bounded transcript + updated journey memory. The client stores nothing.
@@ -2563,6 +2798,8 @@ export class AgentService {
     let hadRetrieval = false;
     let readyToSpeak = false;
     let forcedUi = false;               // panel-render enforcement fired already?
+    let forcedSearch = false;           // post-clarify "don't defer, search now" nudge fired already? (ANF-10)
+    let mustClarifyGender = false;      // gender gate fired → guarantee a clarify panel (post-turn)
     const uiToolCalls: any[] = [];
     const wantUiTool = this.requiredUiTool(intent, { customised: brandHubProfile?.model?.customised, capabilities: projectConfig.capabilities });
 
@@ -2603,6 +2840,23 @@ export class AgentService {
             !uiToolCalls.some((c) => c.function?.name === wantUiTool)) {
           forcedUi = true;
           await this.forceUiTool(tenantId, conversation, activeTools, wantUiTool, uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+        }
+        // ANF-10: the model DEFERRED — it returned prose only ("let me find some
+        // options… give me a moment!") with NO search this turn, while a product
+        // panel is expected and still empty. Ending the turn here leaves the 60%
+        // panel stuck on the "Searching catalog" spinner until the customer sends
+        // another message. Instead re-loop ONCE with a hard instruction to search
+        // + show THIS turn. Same "act, don't defer" contract as the show-first
+        // guard (AUG-38 / AUG-80). Only fires when a product list is what's owed
+        // (wantUiTool === 'showItems') and nothing has been retrieved or shown.
+        if (!researchedThisTurn && !hadRetrieval && !forcedSearch
+            && wantUiTool === 'showItems'
+            && !uiToolCalls.length
+            && !((journeyState?.lastShown || []).length)) {
+          forcedSearch = true;
+          conversation.push({ role: 'system', content:
+            'The customer is waiting and the right-hand panel is EMPTY. Do NOT defer, do NOT reply with "give me a moment" or "let me look" — this turn you MUST call searchKnowledge for their brief and then showItems with the real results. Act now, in this same turn.' });
+          continue;   // re-loop; do not speak yet
         }
         readyToSpeak = true;
         break;
@@ -2653,7 +2907,7 @@ export class AgentService {
           run.map(async (call) => {
             try {
               const args = JSON.parse(call.function.arguments);
-              const r = await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query: args.query, type: args.type, category: args.category, limit: 8 });
+              const r = await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query: args.query, type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender });
               // Same annotation as the non-streaming path — this is the one the
               // storefront actually uses, so an omission here is invisible in
               // tests and total in production (the AUG-38 failure, repeated).
@@ -2674,6 +2928,14 @@ export class AgentService {
         if (!UI_TOOL_NAMES.has(call.function.name)) {
           // Unknown tool → still ack so OpenAI doesn't 400 on the next call.
           conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ success: false, error: 'unknown tool' }) });
+          continue;
+        }
+        // GENDER GATE (streaming parity): never show products until Men/Women/Kids is known.
+        if (call.function.name === 'showItems' && this.needsGenderFirst(intent, projectConfig, messages)) {
+          mustClarifyGender = true;
+          conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ success: false, clarifyFirst: true,
+            message: 'STOP — you do not know whether the shopper wants Men, Women or Kids, and these are different products. Do NOT show products yet. Call setPhase("clarify") NOW with a gender question (id "gender", title "Who are we shopping for?", options ["Men","Women","Kids"]) plus occasion and their usual size if still unknown.' }) });
+          didSearch = true;
           continue;
         }
         // Just researched a school this turn → the colour-confirmation card owns the
@@ -2747,6 +3009,11 @@ export class AgentService {
             lineCount: quote.lines.length, validation: quote.validation,
             note: 'Totals are authoritative (server-computed). Quote these exact figures; never state different numbers.',
           }) });
+          {
+            const _lu = [...conversation].reverse().find((m: any) => m?.role === 'user');
+            const _xsell = this.crossSellDirective(projectConfig?.commerceMode, String(_lu?.content || ''), quote, journeyState);
+            if (_xsell) { conversation.push({ role: 'system', content: _xsell }); didSearch = true; }
+          }
           continue;
         }
         // NEVER render an empty configurator (see buffered path). No real SKU and
@@ -2775,6 +3042,20 @@ export class AgentService {
           tenantId, call, !!brandHubProfile?.model?.customised);
         // Card facts come from the catalogue, never the model (AUG-82).
         await groundItemFacts(tenantId, call);
+        this.applySizePreselect(call, this.resolveShopperSize(intent, messages));
+        // Complete-the-look: drop same-category cards; if nothing complementary
+        // survives, reject once and force a DIFFERENT-category search. Stops the
+        // "keeps recommending the same jeans" loop (this is the live storefront path).
+        if (call.function.name === 'showItems' && journeyState.crossSellFor && this.applyCrossSellFilter(call, journeyState)) {
+          const canRetry = (journeyState.crossSellRetries || 0) < 1;
+          journeyState.crossSellRetries = (journeyState.crossSellRetries || 0) + 1;
+          if (!canRetry) journeyState.crossSellFor = null;
+          conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(canRetry
+            ? { success: false, sameCategoryOnly: true, message: 'Those are the SAME category as what is already in the bag — that does not complete the look. Do NOT show that category again. searchKnowledge for a COMPLEMENTARY, DIFFERENT category for the same gender (bottoms/jeans → a top: shirt/tee/sweater, or shoes; a top → bottoms or shoes; a dress → shoes/a jacket) and showItems those.' }
+            : { success: true, note: 'No complementary items found — ask what they would like to add, or invite checkout. Do not re-show the same category.' }) });
+          if (canRetry) didSearch = true;
+          continue;
+        }
         // validateDesign may have rewritten the arguments; re-read so the panel
         // receives the corrected design rather than the model's original.
         let emitArgs: any = parsedArgs;
@@ -2800,7 +3081,12 @@ export class AgentService {
     }
 
     // ── Final answer — streamed token by token ──────────────────────
+    // For a plain retail brand we can't stream raw tokens: a leaked "not
+    // customisable" sentence would already be on screen before a post-strip runs.
+    // So we buffer per-sentence and only emit sentences that pass the taboo filter.
+    const plainRetail = projectConfig?.commerceMode === 'cart' && !projectConfig?.configuratorType;
     let finalText = '';
+    let pending = '';   // holds an in-progress sentence (plainRetail only)
     try {
       // No tools/tool_choice here → the model can only produce text (OpenAI rejects
       // tool_choice when tools are absent). This IS the final spoken answer.
@@ -2812,21 +3098,44 @@ export class AgentService {
       });
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content || '';
-        if (delta) {
-          finalText += delta;
-          emit('token', { delta });
+        if (!delta) continue;
+        finalText += delta;
+        if (!plainRetail) { emit('token', { delta }); continue; }
+        pending += delta;
+        // Emit each COMPLETE sentence once it's terminated, stripping taboo ones.
+        let m: RegExpMatchArray | null;
+        while ((m = pending.match(/^([\s\S]*?[.!?]["')\]]?)(\s+)([\s\S]*)$/))) {
+          const sentence = m[1]; const sep = m[2]; pending = m[3];
+          const clean = this.stripCartTaboo(sentence, true);
+          if (clean) emit('token', { delta: clean + sep });
         }
       }
     } catch (err) {
       emit('error', { message: `generation failed: ${(err as Error).message}` });
     }
-    finalText = this.stripChatMedia(finalText);
+    // Flush the trailing (unterminated) sentence.
+    if (plainRetail && pending) {
+      const clean = this.stripCartTaboo(pending, true);
+      if (clean) emit('token', { delta: clean });
+    }
+    finalText = this.stripCartTaboo(this.stripChatMedia(finalText), plainRetail);
+    if (plainRetail && !finalText.trim()) {
+      finalText = 'Here are a few great options — let me know which one catches your eye, or head to checkout any time.';
+      emit('token', { delta: finalText });
+    }
     conversation.push({ role: 'assistant', content: finalText });
 
     // Grounding + reduce actions into journey memory, then persist server-side.
     const verdict = validateGrounding(finalText, intent.mode, hadRetrieval);
     pushTrace({ step: 'grounding', detail: verdict.ok ? 'ok' : verdict.reason || 'flagged' });
     const uiActions = uiToolCalls.map((call) => ({ name: call.function.name, arguments: (call as any).__quote ? (call as any).__quote : (call as any).__research ? (call as any).__research : JSON.parse(call.function.arguments) }));
+    // SAFETY NET (streaming): gender gate fired but no clarify rendered → synthesize + emit it.
+    if (mustClarifyGender && !uiActions.some((a) => a.name === 'setPhase' && (a.arguments as any)?.phase === 'clarify')) {
+      const synth = this.synthGenderClarify(intent);
+      uiActions.push(synth);
+      emit('uiAction', synth);
+      if (!finalText || !finalText.trim()) { finalText = 'Happy to help! First — who are we shopping for, and what’s the occasion?'; emit('token', { delta: finalText }); }
+    }
     const nextState = reduceActions(journeyState, uiActions, intent);
     await this.sessionStore.save({
       sessionId,
