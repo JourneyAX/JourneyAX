@@ -18,7 +18,7 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
  * never touched — the two surfaces are picked by config in ProjectPanel.
  */
 export default function RetailCartPanel() {
-  const { state, dispatch, bom, totals, quoteTitle, handleApprove } = useJourney();
+  const { state, dispatch, bom, totals, handleApprove } = useJourney();
   const cfg = useStorefrontConfig();
   const ordering = !!state.ordering;
   const orderError = state.orderError;
@@ -41,13 +41,18 @@ export default function RetailCartPanel() {
   const itemCount = bom.reduce((sum, l) => sum + (l.quantity ?? 1), 0);
 
   return (
-    <>
+    // Full-height flex column: the items area grows to fill the stage so the
+    // footer is ALWAYS pinned to the bottom — with one item it no longer floats
+    // mid-page (the sticky footer had nothing to stick against when content was
+    // short). Scoped to .retail-cart so Caroma/Augusta's QuotePanel is untouched.
+    <div className="retail-cart">
       <div className="quote-panel">
         {/* Header — retail language, no "quote"/"job id". */}
         <div className="quote-header">
           <div>
-            <div className="quote-header__eyebrow">Your Bag · {itemCount} {itemCount === 1 ? 'item' : 'items'}</div>
-            <h2 className="quote-header__heading">{quoteTitle || 'Your look'}</h2>
+            <div className="quote-header__eyebrow">{itemCount} {itemCount === 1 ? 'item' : 'items'} in your bag</div>
+            {/* Retail: a bag, never a "quote". Ignore quoteTitle (B2B) here. */}
+            <h2 className="quote-header__heading">Your Bag</h2>
           </div>
           <div className="quote-header__badge">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
@@ -139,6 +144,6 @@ export default function RetailCartPanel() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -37,10 +37,16 @@ type Action =
   | { type: 'SELECT_CHOICE'; value: string }
   | { type: 'SET_INSTALL_GUIDE'; installGuide: import('../lib/types').InstallGuide }
   | { type: 'SET_WARRANTY'; warranty: import('../lib/types').WarrantyInfo }
+  | { type: 'RESTORE'; state: Partial<JourneyState> }
   | { type: 'RESET' };
 
 function reducer(state: JourneyState, action: Action): JourneyState {
   switch (action.type) {
+    case 'RESTORE':
+      // AUG-89: rehydrate a conversation's saved panel journey (phase, products,
+      // quote, design…). Merge over INITIAL_STATE so any field the snapshot
+      // predates gets a sane default, and transient UI flags never persist.
+      return { ...INITIAL_STATE, ...action.state, isThinking: false, showToast: false, ordering: false };
     case 'SET_PHASE':
       /* A quote the customer just asked for outranks a turn that was already
        * in flight when they asked. The agent finishes describing the garment

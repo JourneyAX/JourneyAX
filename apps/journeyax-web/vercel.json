@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build --workspace=journeyax-web",
+  "buildCommand": "cd apps/journeyax-web && next build",
   "outputDirectory": "apps/journeyax-web/.next",
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "nextjs"

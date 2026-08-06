@@ -4,10 +4,42 @@ import React, { useState } from 'react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { formatAUD } from '@/lib/types';
+import TryOn from './TryOn';
+
+// A spec value must render as text. Occasionally a structured value slips into
+// specs (e.g. a rating object {value, count}); render it safely instead of
+// crashing React with "Objects are not valid as a React child".
+function specStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    if ('value' in o) return `${o.value}${o.count != null ? ` (${o.count})` : ''}`;
+    try { return Object.values(o).map((x) => String(x)).join(', '); } catch { return ''; }
+  }
+  return String(v);
+}
+
+/* Swatch colour: prefer the real ingested hex; else map a known apparel/denim
+ * colour NAME to a representative hex so the dot is never a flat grey. The name
+ * is authoritative (from the catalogue) — the hex is only the visual. */
+const SWATCH_HEX: Record<string, string> = {
+  'light wash': '#a9c2da', 'medium wash': '#6f93b8', 'dark wash': '#334a63', 'dark rinse': '#2b3a4d',
+  'black wash': '#2a2a2c', 'light medium wash': '#8fb0cf', 'gray wash': '#9a9ea3', 'grey wash': '#9a9ea3',
+  'medium ripped wash': '#6f93b8', 'no fade black': '#1c1c1e', 'washed black': '#39383a',
+  black: '#1a1a1a', white: '#f5f5f2', cream: '#f3ecd9', ecru: '#e8e0cd', navy: '#1f2a44',
+  'deep blue': '#2c3e5e', blue: '#2c3e5e', 'light blue': '#a8c1d6', 'light blue wash': '#a8c1d6',
+  'heather gray': '#b7b7b7', 'heather grey': '#b7b7b7', gray: '#8a8a8a', grey: '#8a8a8a',
+  'chocolate brown': '#4a3728', 'light brown': '#8a6f52', brown: '#5a4634', tan: '#c8a97e', khaki: '#b5a375',
+  olive: '#6b6b47', 'olive wash': '#6b6b47', green: '#3f6b4f', red: '#8a2a2a', burgundy: '#5a1f2a',
+  pink: '#e6a9b8', 'light pink': '#f2cdd6', purple: '#6a4a7a', yellow: '#e6c84a', orange: '#d0762e',
+  dark: '#334a63', light: '#a9c2da', ivory: '#f4efe3', charcoal: '#3a3a3c', stone: '#c9c2b3',
+};
+const swatchColor = (c: any): string =>
+  (c?.hex && String(c.hex).trim()) || SWATCH_HEX[String(c?.name || '').toLowerCase().trim()] || '#c9c9c9';
 
 export default function ProductsPanel() {
   const cfg = useStorefrontConfig();
-  const { state, dispatch } = useJourney();
+  const { state, dispatch, bom } = useJourney();
   const { labels } = useStorefrontConfig();
   // Candy has no 3D concepts step — the design verb and destination come from
   // the project's configurator type, so the same button serves any product.
@@ -22,6 +54,12 @@ export default function ProductsPanel() {
   const designVerb = conf.designVerb || (isCandy ? 'Personalize this' : 'Design this in 3D');
   const { recommendedProducts } = state;
   const [selectedAccs, setSelectedAccs] = useState<Record<string, boolean>>({});
+  // ANF: per-card selection (which items go to the bag) + a focused single-product
+  // detail view. The bag no longer force-adds every shown item; the customer picks.
+  const [selectedItems, setSelectedItems] = useState<Record<string, boolean>>({});
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const keyOf = (p: any, i: number) => String(p?.sku || `idx-${i}`);
+  const toggleItem = (k: string) => setSelectedItems(prev => ({ ...prev, [k]: !prev[k] }));
 
   /**
    * Open the designer on the style the customer clicked.
@@ -77,8 +115,14 @@ export default function ProductsPanel() {
   const handleBuildQuote = () => {
     const fn = (window as any).__handleBuildQuote;
     if (fn) {
+      // Only the items the customer selected. In retail (cart) mode we NEVER
+      // add the whole look on their behalf — a shopper picks. In quote mode
+      // (Caroma BOM) an empty selection still means "the recommended set".
+      const chosen = recommendedProducts.filter((p, i) => selectedItems[keyOf(p, i)]);
+      const list = chosen.length ? chosen : (isCart ? [] : recommendedProducts);
+      if (list.length === 0) return; // cart: nothing ticked → do nothing
       let summary = (isCart ? 'Add these selected items to my bag:\n' : 'Build my quote with these selected items:\n');
-      recommendedProducts.forEach(p => {
+      list.forEach(p => {
         summary += `- Main Product: ${p.name}\n`;
         if (p.installationParts) {
           p.installationParts.forEach(part => {
@@ -114,6 +158,96 @@ export default function ProductsPanel() {
     );
   }
 
+  // Focused single-product detail view (ANF): clicking a card opens just that
+  // item — big image, full specs/features, add-just-this. Back returns to the list.
+  if (focusIdx !== null && recommendedProducts[focusIdx]) {
+    const p = recommendedProducts[focusIdx];
+    const addThis = () => {
+      const fn = (window as any).__handleBuildQuote;
+      if (fn) fn(`${isCart ? 'Add this item to my bag' : 'Build my quote with this item'}:\n- Main Product: ${p.name}\n`);
+    };
+    return (
+      <div className="products-panel products-panel--with-footer">
+        <div className="products-panel__scroll">
+          <button type="button" className="product-detail__back" onClick={() => setFocusIdx(null)}>
+            ← Back to {labels.items?.toLowerCase() || 'recommendations'}
+          </button>
+          {p.imageUrl && (
+            <div className="product-detail__image">
+              <img src={p.imageUrl} alt={p.name} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            </div>
+          )}
+          <div className="product-detail__category">{p.category}</div>
+          <h2 className="product-detail__name">{p.name}</h2>
+          {p.collection && <div className="product-card__collection">{p.collection} Collection</div>}
+          <div className="product-detail__price">
+            {(p as any).originalPrice && (p as any).originalPrice > (p.price || 0)
+              ? <span className="product-card__price--sale">{formatAUD(p.price)}</span>
+              : formatAUD(p.price)}
+            {(p as any).originalPrice && (p as any).originalPrice > (p.price || 0) && (
+              <span className="product-card__price-was">{formatAUD((p as any).originalPrice)}</span>
+            )}
+          </div>
+          <p className="product-detail__desc">{p.description}</p>
+          <TryOn garmentImageUrl={p.imageUrl} garmentName={p.name} garmentColor={(p as any).colors?.[0]?.name} />
+          {p.specs && Object.keys(p.specs).length > 0 && (
+            <div className="product-card__specs">
+              <div className="product-card__specs-title">Specifications</div>
+              <div className="product-card__specs-grid">
+                {Object.entries(p.specs).map(([key, value]) => (
+                  <div key={key} className="product-card__spec-row">
+                    <span className="product-card__spec-label">{key}</span>
+                    <span className="product-card__spec-value">{specStr(value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {p.features && p.features.length > 0 && (
+            <ul className="product-card__features">
+              {p.features.map((f, i) => <li key={i}>{f}</li>)}
+            </ul>
+          )}
+          {/* STEP 2 — Complete the look: cross-sell shown once a shopper opens a piece */}
+          {Array.isArray((p as any).completeTheLook) && (p as any).completeTheLook.length > 0 && (
+            <div className="product-card__ctl product-detail__ctl">
+              <div className="product-card__ctl-title">Wear it with</div>
+              <div className="product-card__ctl-strip">
+                {(p as any).completeTheLook.slice(0, 8).map((o: any, i: number) => (
+                  <div key={i} className="product-card__ctl-item" title={o.name}>
+                    {o.image
+                      ? <img className="product-card__ctl-img" src={o.image} alt={o.name} loading="lazy" />
+                      : <div className="product-card__ctl-img product-card__ctl-img--empty" />}
+                    <div className="product-card__ctl-name">{o.name}</div>
+                    {o.price && <div className="product-card__ctl-price">{o.price}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {has3D && p.sku && p.sku.trim() !== '' && p.designable !== false && (
+            <button type="button" className="product-card__design-btn" onClick={() => onDesign(p)}>
+              {designVerb}
+            </button>
+          )}
+          {p.url && (
+            <a href={p.url} target="_blank" rel="noopener noreferrer" className="product-card__link">
+              View on {(() => { try { return new URL(p.url!).hostname.replace(/^www\./, ''); } catch { return 'source site'; } })()} →
+            </a>
+          )}
+        </div>
+        <div className="products-panel__footer">
+          <button className="clarify-build-btn" onClick={addThis}>
+            {isCart ? 'Add this to my bag' : 'Add this to my quote'}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>
+              <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="products-panel products-panel--with-footer">
       <div className="products-panel__scroll">
@@ -126,8 +260,26 @@ export default function ProductsPanel() {
         </p>
 
         <div className="products-grid">
-          {recommendedProducts.map((product, idx) => (
-            <div key={`${product.sku || 'product'}-${idx}`} className="product-card">
+          {recommendedProducts.map((product, idx) => {
+            const k = keyOf(product, idx);
+            const isSel = !!selectedItems[k];
+            return (
+            <div
+              key={`${product.sku || 'product'}-${idx}`}
+              className={`product-card${isSel ? ' product-card--selected' : ''}`}
+              onClick={() => setFocusIdx(idx)}
+              role="button"
+              tabIndex={0}
+            >
+              <button
+                type="button"
+                className={`product-card__select${isSel ? ' checked' : ''}`}
+                onClick={(e) => { e.stopPropagation(); toggleItem(k); }}
+                aria-pressed={isSel}
+                title={isSel ? 'Selected — click to remove' : 'Select for bag'}
+              >
+                {isSel ? '✓' : ''}
+              </button>
               {product.imageUrl && (
                 <div className="product-card__image">
                   <img
@@ -145,7 +297,44 @@ export default function ProductsPanel() {
                 {product.collection && (
                   <div className="product-card__collection">{product.collection} Collection</div>
                 )}
-                <div className="product-card__price">{formatAUD(product.price)}</div>
+                <div className="product-card__price">
+                  {(product as any).originalPrice && (product as any).originalPrice > (product.price || 0)
+                    ? <span className="product-card__price--sale">{formatAUD(product.price)}</span>
+                    : formatAUD(product.price)}
+                  {(product as any).originalPrice && (product as any).originalPrice > (product.price || 0) && (
+                    <span className="product-card__price-was">{formatAUD((product as any).originalPrice)}</span>
+                  )}
+                </div>
+                {/* Rating (from ingested reviews) */}
+                {(product as any).rating?.value && (
+                  <div className="product-card__rating">
+                    <span className="product-card__stars">{'★'.repeat(Math.round((product as any).rating.value))}<span className="product-card__stars-empty">{'★'.repeat(5 - Math.round((product as any).rating.value))}</span></span>
+                    <span className="product-card__rating-text">{(product as any).rating.value} ({(product as any).rating.count?.toLocaleString?.() || (product as any).rating.count})</span>
+                  </div>
+                )}
+                {/* Colour swatches */}
+                {Array.isArray((product as any).colors) && (product as any).colors.length > 0 && (
+                  <div className="product-card__swatches">
+                    {(product as any).colors.slice(0, 10).map((c: any, i: number) => (
+                      <span key={i} className="product-card__swatch" title={c.name}
+                        style={{ background: swatchColor(c) }} />
+                    ))}
+                    {(product as any).colors.length > 10 && <span className="product-card__swatch-more">+{(product as any).colors.length - 10}</span>}
+                  </div>
+                )}
+                {/* Size pills — pre-select the stylist's recommended size once known */}
+                {Array.isArray((product as any).sizes) && (product as any).sizes.length > 0 && (() => {
+                  const rec = String((product as any).recommendedSize || '').trim().toLowerCase();
+                  return (
+                    <div className="product-card__sizes">
+                      {rec && <span className="product-card__size-yours">Your size</span>}
+                      {[...new Set((product as any).sizes as string[])].map((s: string, i: number) => {
+                        const sel = rec && String(s).trim().toLowerCase() === rec;
+                        return <span key={`${s}-${i}`} className={`product-card__size-pill${sel ? ' product-card__size-pill--selected' : ''}`}>{s}</span>;
+                      })}
+                    </div>
+                  );
+                })()}
                 <div className="product-card__desc">{product.description}</div>
 
                 {/* Technical Specifications */}
@@ -156,7 +345,7 @@ export default function ProductsPanel() {
                       {Object.entries(product.specs).map(([key, value]) => (
                         <div key={key} className="product-card__spec-row">
                           <span className="product-card__spec-label">{key}</span>
-                          <span className="product-card__spec-value">{value}</span>
+                          <span className="product-card__spec-value">{specStr(value)}</span>
                         </div>
                       ))}
                     </div>
@@ -172,8 +361,8 @@ export default function ProductsPanel() {
                 )}
                 {product.finishes && product.finishes.length > 0 && (
                   <div className="product-card__finishes">
-                    {product.finishes.map(f => (
-                      <span key={f} className="product-card__finish-tag">{f}</span>
+                    {[...new Set(product.finishes)].map((f, i) => (
+                      <span key={`${f}-${i}`} className="product-card__finish-tag">{f}</span>
                     ))}
                   </div>
                 )}
@@ -207,7 +396,7 @@ export default function ProductsPanel() {
                         <div 
                           key={i} 
                           className={`product-card__part-row optional ${isSelected ? 'selected' : ''}`}
-                          onClick={() => toggleAccessory(acc.name)}
+                          onClick={(e) => { e.stopPropagation(); toggleAccessory(acc.name); }}
                           style={{ cursor: 'pointer' }}
                         >
                           <span className={`part-checkbox ${isSelected ? 'checked' : ''}`}>
@@ -235,7 +424,7 @@ export default function ProductsPanel() {
                   <button
                     type="button"
                     className="product-card__design-btn"
-                    onClick={() => onDesign(product)}
+                    onClick={(e) => { e.stopPropagation(); onDesign(product); }}
                   >
                     {designVerb}
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 8 }}>
@@ -252,25 +441,49 @@ export default function ProductsPanel() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="product-card__link"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     View on {(() => { try { return new URL(product.url).hostname.replace(/^www\./, ''); } catch { return 'source site'; } })()} →
                   </a>
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* Sticky footer button */}
+      {/* Sticky footer button. In cart mode it stays disabled until the shopper
+          ticks at least one item — so we never add the whole look for them. */}
+      {(() => {
+        const n = recommendedProducts.filter((p, i) => selectedItems[keyOf(p, i)]).length;
+        const disabled = isCart && n === 0;
+        const label = isCart
+          ? (n > 0 ? `Add ${n} to my bag` : 'Select the pieces you want')
+          : (n > 0 ? `Add ${n} selected — build my quote` : 'Looks good — build my quote');
+        return (
       <div className="products-panel__footer">
-        <button className="clarify-build-btn" onClick={handleBuildQuote}>
-          {isCart ? 'Looks good — add to my bag' : 'Looks good — build my quote'}
+        <button className="clarify-build-btn" onClick={handleBuildQuote} disabled={disabled} style={disabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+          {label}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>
             <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
+        {/* Recommendations are OPTIONAL: once the bag has something, always give a
+            visible skip straight to checkout so the shopper is never trapped in the
+            complete-the-look step. */}
+        {isCart && (bom?.length ?? 0) > 0 && (
+          <button
+            type="button"
+            className="products-panel__skip"
+            onClick={() => dispatch({ type: 'SET_PHASE', phase: 'quote' })}
+          >
+            Skip — review bag &amp; checkout
+          </button>
+        )}
       </div>
+        );
+      })()}
     </div>
   );
 }

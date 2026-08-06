@@ -154,6 +154,8 @@ export interface KnowledgeQuery {
   type?: string;
   category?: string;
   limit?: number;
+  /** hard filter by shopper gender/division ('men'|'women'|'kids') — unisex always kept */
+  gender?: string;
 }
 
 export interface KnowledgeResultItem {
