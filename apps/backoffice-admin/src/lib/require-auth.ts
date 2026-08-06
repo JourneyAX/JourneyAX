@@ -15,7 +15,7 @@
 import { can, permissionsFor, type Permission } from '@journeyax/shared-types';
 import { readCookie, COOKIE_AT } from './bff-auth';
 
-const AUTH_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8080';
+const AUTH_URL = process.env.GATEWAY_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3010';
 const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
 
 export interface AuthedIdentity {

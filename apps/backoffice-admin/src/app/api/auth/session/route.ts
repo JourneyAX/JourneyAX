@@ -7,7 +7,7 @@
 import { NextResponse } from 'next/server';
 import { readCookie, COOKIE_AT } from '../../../../lib/bff-auth';
 
-const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.NEXT_PUBLIC_AUTH_API || 'http://localhost:8080';
+const AUTH_URL = process.env.GATEWAY_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3010';
 
 export async function GET(req: Request) {
   const token = readCookie(req, COOKIE_AT);
