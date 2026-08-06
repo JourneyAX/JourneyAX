@@ -438,13 +438,17 @@ export class ProductService {
     brand: string,
     type?: string,
     category?: string,
-    limit: number = 8
+    limit: number = 8,
+    gender?: string,
   ): Promise<{
     found: boolean;
     resultCount: number;
     results: any[];
     message?: string;
   }> {
+    // Over-fetch when a gender filter is on so we still return a full set after
+    // dropping the wrong gender (the vector index has no gender to filter on).
+    const fetchLimit = gender ? Math.max(limit * 4, 24) : limit;
     // Step 0: NEEDS → measured vocabulary (AUG-67). "modern" is meaningless to the
     // index; 'bold — accents dominate' is what the visual reader actually wrote.
     // Additive: an unrecognised need leaves the query exactly as it was.
@@ -457,9 +461,9 @@ export class ProductService {
     const queryEmbedding = await this.embedText(needs.expandedQuery);
 
     // Step 2: Execute search
-    const rawResults = await this.searchRaw(
+    let rawResults = await this.searchRaw(
       queryEmbedding.length > 0 ? queryEmbedding : null,
-      { query: needs.expandedQuery, brand, type, category, limit }
+      { query: needs.expandedQuery, brand, type, category, limit: fetchLimit }
     );
 
     // Step 2.4: Reward documents whose MEASURED character matches the need, and
@@ -484,6 +488,33 @@ export class ProductService {
     // hardcoded sport list): a small additive boost per matched query token, so it
     // only reorders genuine ties and never overrides a strong semantic winner.
     this.lexicalRerank(query, rawResults);
+
+    // Step 2.7: GENDER FILTER (apparel). The retrieval index carries no gender — it
+    // lives on the products collection (`division`). Look it up for the candidates and
+    // DROP the wrong gender before budgeting, so a "men's ..." search never surfaces
+    // women's items. Unisex + unknown are always kept. Over-fetched above so the final
+    // set stays full; then trim back to `limit`.
+    if (gender) {
+      const want = String(gender).trim().toLowerCase();
+      const skus = [...new Set(rawResults.map((r: any) => r.document?.metadata?.sku).filter(Boolean))];
+      if (skus.length) {
+        try {
+          const db = await this.getDb();
+          const rows = await db.collection('products')
+            .find({ projectId: brand, parentSku: { $in: skus } }, { projection: { _id: 0, parentSku: 1, division: 1 } })
+            .toArray();
+          const divBy = new Map(rows.map((x: any) => [String(x.parentSku), String(x.division || '').trim().toLowerCase()]));
+          rawResults = rawResults.filter((r: any) => {
+            const sku = r.document?.metadata?.sku;
+            if (!sku) return true;
+            const div = divBy.get(String(sku));
+            if (!div) return true;                                  // unknown → keep (never hide a real item)
+            return div === want || div === 'unisex' || div.startsWith(want);
+          });
+        } catch { /* filter is best-effort — never fail a search on it */ }
+      }
+      rawResults = rawResults.slice(0, limit);
+    }
 
     // Step 3: Apply RAG-aware Token Budgeting (max 1500 tokens)
     let cumulativeTokens = 0;
@@ -553,6 +584,34 @@ export class ProductService {
         message: 'No matching documents found. Do not invent product or installation details. Either ask the customer one clarifying question to narrow the search, or tell them this item was not found and suggest the next step.'
       };
     }
+
+    // ANF-98: the retrieval index (documents.metadata) doesn't carry the variant
+    // axis, but the canonical `products` collection does. Join it so the card can
+    // render real colour swatches + size pills + rating. Additive + best-effort —
+    // a product without this data is returned exactly as before (unchanged for
+    // every existing tenant), and a failed join never fails the search.
+    try {
+      const skus = [...new Set(budgetedResults.map((r: any) => r.sku).filter(Boolean))];
+      if (skus.length) {
+        const db = await this.getDb();
+        const canon = await db.collection('products')
+          .find(
+            { projectId: brand, parentSku: { $in: skus } },
+            { projection: { _id: 0, parentSku: 1, colors: 1, sizes: 1, rating: 1, completeTheLook: 1, originalPrice: 1 } },
+          )
+          .toArray();
+        const byS = new Map(canon.map((c: any) => [String(c.parentSku), c]));
+        for (const r of budgetedResults as any[]) {
+          const c = byS.get(String(r.sku));
+          if (!c) continue;
+          if (Array.isArray(c.colors) && c.colors.length) r.colors = c.colors;
+          if (Array.isArray(c.sizes) && c.sizes.length) r.sizes = c.sizes;
+          if (c.rating) r.rating = c.rating;
+          if (Array.isArray(c.completeTheLook) && c.completeTheLook.length) r.completeTheLook = c.completeTheLook.slice(0, 12);
+          if (c.originalPrice?.min) r.originalPrice = c.originalPrice.min;
+        }
+      }
+    } catch { /* enrichment is best-effort — never fail a search over it */ }
 
     return {
       found: true,
@@ -2370,7 +2429,7 @@ export class ProductService {
   private async readPricebook(brand: string, clean: string[]): Promise<{
     found: string[];
     missing: string[];
-    items: Array<{ sku: string; name: string; price: number | null; currency?: string; category?: string; imageUrl?: string; url?: string; inStock: boolean }>;
+    items: Array<{ sku: string; name: string; price: number | null; currency?: string; category?: string; imageUrl?: string; url?: string; inStock: boolean; colors?: { name: string; hex?: string }[]; sizes?: string[]; rating?: { value: number; count?: number }; completeTheLook?: { name: string; productId?: string; image?: string; price?: string }[]; originalPrice?: number }>;
   }> {
     const col = await this.getCollection();
     // Tenant-scoped (isolation) + match by catalogue SKU (metadata.sku or Item Code spec).
@@ -2433,13 +2492,22 @@ export class ProductService {
       const styles = [...new Set([...bySku.keys()].map(styleOf))];
       const db = await this.getDb();
       const rows = await db.collection('products').find(
-        { projectId: brand, parentSku: { $in: styles }, leadTimeDays: { $exists: true } },
-        { projection: { parentSku: 1, leadTimeDays: 1 } },
+        { projectId: brand, parentSku: { $in: styles } },
+        { projection: { parentSku: 1, leadTimeDays: 1, colors: 1, sizes: 1, rating: 1, completeTheLook: 1, originalPrice: 1 } },
       ).toArray();
-      const byStyle = new Map(rows.map((r: any) => [String(r.parentSku).toUpperCase(), r.leadTimeDays]));
+      const byStyle = new Map(rows.map((r: any) => [String(r.parentSku).toUpperCase(), r]));
       for (const [sku, item] of bySku) {
-        const d = byStyle.get(styleOf(sku));
-        if (typeof d === 'number') item.leadTimeDays = d;
+        const r: any = byStyle.get(styleOf(sku));
+        if (!r) continue;
+        if (typeof r.leadTimeDays === 'number') item.leadTimeDays = r.leadTimeDays;
+        // ANF-98: the variant axis lives on the products collection — surface it so
+        // grounded cards get real colour swatches + size pills.
+        if (Array.isArray(r.colors) && r.colors.length) item.colors = r.colors;
+        if (Array.isArray(r.sizes) && r.sizes.length) item.sizes = r.sizes;
+        if (r.rating) item.rating = r.rating;
+        // ANF-99: "Wear It With" complete-the-look strip (denormalised outfit items).
+        if (Array.isArray(r.completeTheLook) && r.completeTheLook.length) item.completeTheLook = r.completeTheLook.slice(0, 12);
+        if (r.originalPrice?.min) item.originalPrice = r.originalPrice.min;
       }
     }
 

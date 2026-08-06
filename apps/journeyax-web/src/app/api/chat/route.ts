@@ -16,6 +16,14 @@
 
 import { resolveTenant } from '../../../lib/tenant';
 
+// Vercel duration contract. This buffered endpoint is the fallback the client
+// uses when the SSE stream errors — it runs the FULL agent turn in one request,
+// so the same default ~15s serverless cap would kill it on a long turn (leaving
+// the customer with neither stream nor fallback). Match the stream route's 60s.
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: Request) {

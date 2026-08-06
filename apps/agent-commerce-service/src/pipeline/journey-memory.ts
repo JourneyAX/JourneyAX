@@ -61,6 +61,16 @@ export interface JourneyState {
    *  Captured once and remembered: without it the quote silently defaulted every
    *  line to quantity 1, so an 18-player order priced as a single jersey. */
   teamSize?: number;
+  /** Complete-the-look (cross-sell) state. `crossSellSig` = the bag's sku-set the
+   *  cross-sell was last offered for (fires once per new add). `crossSellFor` marks
+   *  an in-flight cross-sell turn whose showItems must exclude the bag's own
+   *  categories/names; `crossSellExcludeCats/Names` are what to drop; `crossSellRetries`
+   *  bounds the "search a different category" retry so it can't loop. */
+  crossSellSig?: string;
+  crossSellFor?: string | null;
+  crossSellRetries?: number;
+  crossSellExcludeCats?: string[];
+  crossSellExcludeNames?: string[];
   version: number;
 }
 

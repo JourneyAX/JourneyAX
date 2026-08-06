@@ -5,7 +5,7 @@ import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import {
   type Conversation, resolveActiveConversation, saveConversations, setActiveConversation,
-  messagesKey, sessionKey, newId, summarise,
+  messagesKey, sessionKey, journeyKey, newId, summarise,
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
 
@@ -74,7 +74,17 @@ async function streamChat(
    * from nothing, and anything the server remembered (the roster size, what has
    * been shown) was unreachable. Drain whatever is left before giving up. */
   if (buffer.trim()) handleFrame(buffer);
-  if (doneData) return doneData;
+  if (doneData) {
+    /* Belt-and-braces: the `done` frame normally carries the full uiActions, but
+     * if any streamed uiAction (showItems/setPhase/…) is missing from it, keep the
+     * streamed one — otherwise the 60% panel silently misses that render. Union by
+     * tool name + arguments so nothing is applied twice. */
+    const doneUi: any[] = Array.isArray(doneData.uiActions) ? doneData.uiActions : [];
+    const keyOf = (a: any) => `${a?.name}:${typeof a?.arguments === 'string' ? a.arguments : JSON.stringify(a?.arguments ?? {})}`;
+    const seen = new Set(doneUi.map(keyOf));
+    const merged = [...doneUi, ...streamedUiActions.filter((a) => !seen.has(keyOf(a)))];
+    return { ...doneData, uiActions: merged };
+  }
   // No clean `done` — reconstruct from what streamed. As long as we got text or a
   // UI action (e.g. the quote), render it rather than throwing into the buffered
   // error path. sessionId is left as-is (kept from the prior turn).
@@ -89,8 +99,13 @@ async function streamChat(
 }
 
 export default function ChatPanel() {
-  const { state, dispatch } = useJourney();
+  const { state, dispatch, bom } = useJourney();
   const cfg = useStorefrontConfig();
+  // Retail bag affordance: a cart brand always needs a way BACK to its bag. Once
+  // the complete-the-look step takes over the panel, the bag is no longer the
+  // terminal view — this persistent header button returns to it any time.
+  const isCart = (cfg as any)?.commerceMode === 'cart';
+  const bagCount = (bom || []).reduce((n, l) => n + (l.quantity ?? 1), 0);
   // The send handlers below are useCallback closures created BEFORE the config
   // fetch resolves — reading `cfg` inside them would pin the DEFAULT tenant
   // (stale-closure bug). Always read the live value through this ref.
@@ -146,11 +161,32 @@ export default function ChatPanel() {
   // `messages` is client state; persist it per session and restore on mount so the
   // customer picks up exactly where they left off. Keyed by project + session id.
   const msgKey = convoId ? messagesKey(cfg.projectId, convoId) : '';
+
+  /* AUG-89: rehydrate the 60% panel for a conversation. Each thread snapshots its
+   * own journey (phase, products, quote, design…); reopening it must replay that
+   * journey, not reset to the intro hero (which left the chat full of products
+   * while the panel sat blank). Falls back to RESET when a thread has no snapshot.
+   * `journeyReadyRef` gates the persist effect so the brief default-tenant mount
+   * never writes a pristine INITIAL_STATE over a real saved snapshot. */
+  const journeyReadyRef = useRef(false);
+  const restoreJourney = useCallback((projectId: string | undefined, id: string) => {
+    journeyReadyRef.current = false;
+    let snap: any = null;
+    try {
+      const raw = localStorage.getItem(journeyKey(projectId, id));
+      snap = raw ? JSON.parse(raw) : null;
+    } catch { /* corrupt storage — start clean */ }
+    if (snap && typeof snap === 'object' && snap.phase) dispatch({ type: 'RESTORE', state: snap });
+    else dispatch({ type: 'RESET' });
+    journeyReadyRef.current = true;
+  }, [dispatch]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const { id, list } = resolveActiveConversation(cfg.projectId);
     setConvoId(id);
     setConvos(list);
+    restoreJourney(cfg.projectId, id);
     try {
       /* ALWAYS reset the thread to THIS project's active conversation.
        *
@@ -189,11 +225,25 @@ export default function ChatPanel() {
         // so a new configuration starts clean instead of resurrecting the old one.
         localStorage.removeItem(msgKey);
         localStorage.removeItem(sessionKey(cfg.projectId, convoId));
+        localStorage.removeItem(journeyKey(cfg.projectId, convoId)); // AUG-89
       }
       restoredRef.current = true;
     } catch { /* quota — best effort */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, msgKey, convoId]);
+
+  /* AUG-89: snapshot this conversation's panel journey on every change, so a
+   * reload or thread-switch replays exactly what the customer last saw. Gated by
+   * `journeyReadyRef` (see restoreJourney) so it can't clobber a saved snapshot
+   * before that thread has been restored. Transient UI flags are dropped by the
+   * RESTORE reducer, so persisting them here is harmless. */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !convoId || !journeyReadyRef.current) return;
+    try {
+      localStorage.setItem(journeyKey(cfg.projectId, convoId), JSON.stringify(state));
+    } catch { /* quota — best effort */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, convoId, cfg.projectId]);
 
   /* Strip transient checkout params (?order=…&status=success) from the URL,
    * keeping ?project. Left behind, they re-fire the Stripe-return poll on the
@@ -219,9 +269,13 @@ export default function ChatPanel() {
     setConvoId(id);
     setMessages([]);
     dispatch({ type: 'RESET' });
+    // AUG-89: a brand-new thread starts with no saved journey; drop any stale
+    // snapshot under this id and enable persistence for the turns that follow.
+    try { localStorage.removeItem(journeyKey(cfg.projectId, id)); } catch { /* best effort */ }
+    journeyReadyRef.current = true;
     clearCheckoutParams();
     setConvoMenuOpen(false);
-  }, [convos, cfg.projectId, dispatch, clearCheckoutParams]);
+  }, [convos, cfg.projectId, dispatch, clearCheckoutParams, restoreJourney]);
 
   /* Switch threads. The transcript comes back from storage; the panel resets to
    * the start rather than showing the previous thread's garment or quote, which
@@ -237,10 +291,12 @@ export default function ChatPanel() {
       if (Array.isArray(parsed)) restored = parsed;
     } catch { /* ignore corrupt storage */ }
     setMessages(restored);
-    dispatch({ type: 'RESET' });
+    // AUG-89: replay THIS thread's saved panel journey instead of resetting to
+    // intro — the whole point of switching back to a conversation.
+    restoreJourney(cfg.projectId, id);
     clearCheckoutParams();
     setConvoMenuOpen(false);
-  }, [convoId, cfg.projectId, dispatch]);
+  }, [convoId, cfg.projectId, dispatch, restoreJourney]);
 
   // Lightweight customer sign-in: captures a display name for the session (real
   // storefront accounts/long-term memory land later). Honest affordance, not a
@@ -611,6 +667,24 @@ export default function ChatPanel() {
           <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>
         )}
         <div className="chat-header__actions">
+          {/* View bag — persistent return path to the retail bag. Shown once the
+              bag has items and we're not already on it; the complete-the-look
+              step otherwise leaves the shopper with no way back to checkout. */}
+          {isCart && bagCount > 0 && state.phase !== 'quote' && (
+            <button
+              type="button"
+              className="chat-header__bag"
+              onClick={() => dispatch({ type: 'SET_PHASE', phase: 'quote' })}
+              title="View your bag"
+              aria-label={`View your bag, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                <path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+              <span className="chat-header__bag-count">{bagCount}</span>
+            </button>
+          )}
           {/* Conversations. One customer has more than one job — this season's
               volleyball kit, next month's caps — and each deserves its own
               thread with its own context, plus a way back to the earlier one. */}

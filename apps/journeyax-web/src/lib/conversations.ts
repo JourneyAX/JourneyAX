@@ -26,6 +26,11 @@ export const messagesKey = (projectId: string | undefined, convoId: string) =>
   `jx_messages::${ns(projectId)}::${convoId}`;
 export const sessionKey = (projectId: string | undefined, convoId: string) =>
   `jx_session_id::${ns(projectId)}::${convoId}`;
+/** AUG-89: the 60% panel's journey state (phase, products, quote, design…),
+ *  snapshotted per conversation so reopening a thread replays its journey
+ *  instead of resetting to the intro hero. Keyed like messages/session. */
+export const journeyKey = (projectId: string | undefined, convoId: string) =>
+  `jx_journey::${ns(projectId)}::${convoId}`;
 
 /** Legacy single-thread keys, kept only so an in-progress chat survives the upgrade. */
 const legacyMessagesKey = (projectId?: string) => `jx_messages::${ns(projectId)}`;

@@ -70,6 +70,11 @@ export interface CanonicalProduct {
   variants: Variant[];
   variantCount: number;
   totalStock?: number;
+  /** "Complete the look" / coordinated pieces (e.g. A&F "Wear It With"): denormalised
+   *  so the card can render the strip without those items being catalogue products. */
+  completeTheLook?: { name: string; productId?: string; image?: string; price?: string }[];
+  rating?: { value: number; count?: number };   // aggregate customer rating
+  originalPrice?: { min: number; max: number };  // pre-markdown price when on sale
 }
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36';
@@ -133,6 +138,23 @@ function foldRow(map: Map<string, CanonicalProduct>, row: Record<string, string>
   pushUniq(p.swatchImages, clean(row.Swatch_Image_URL));
   pushUniq(p.sizeChartImages, clean(row.Size_Chart_Image_URL));
   pushUniq(p.videos, clean(row.ProductVideoUrl));
+
+  // Complete-the-look / "Wear It With" — parent-level JSON, parsed once.
+  if (!p.completeTheLook && row.CompleteTheLook_JSON) {
+    try {
+      const ctl = JSON.parse(row.CompleteTheLook_JSON);
+      if (Array.isArray(ctl) && ctl.length) {
+        p.completeTheLook = ctl.slice(0, 12).map((x: any) => ({
+          name: String(x?.name || '').trim(), productId: x?.productId ? String(x.productId) : undefined,
+          image: x?.image ? String(x.image) : undefined, price: x?.price ? String(x.price) : undefined,
+        })).filter((x) => x.name);
+      }
+    } catch { /* ignore malformed */ }
+  }
+
+  // Rating + original (pre-sale) price — parent-level, set once.
+  if (!p.rating && row.Rating) { const v = num(row.Rating); if (v != null) p.rating = { value: v, count: num(row.Reviews) }; }
+  if (!p.originalPrice && row.OriginalPrice) { const v = num(row.OriginalPrice); if (v != null) p.originalPrice = { min: v, max: v }; }
 
   // Colour / size vocabularies
   const color = clean(row.Color), hex = clean(row.Color_Hex_Value), size = clean(row.Size);
