@@ -1,5 +1,30 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "GATEWAY_URL",
+    "AUTH_SERVICE_URL",
+    "PRODUCT_SERVICE_URL",
+    "AGENT_SERVICE_URL",
+    "PROJECT_API",
+    "PROJECT_SERVICE_URL",
+    "ORG_SERVICE_URL",
+    "ANALYTICS_SERVICE_URL",
+    "LEAD_SERVICE_URL",
+    "DATA_SERVICE_URL",
+    "NEXT_PUBLIC_GATEWAY_URL",
+    "NEXT_PUBLIC_AUTH_API",
+    "NEXT_PUBLIC_GATEWAY_API",
+    "NEXT_PUBLIC_AUTH_URL",
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
+    "MONGODB_URI",
+    "INTERNAL_API_KEY",
+    "DEFAULT_PROJECT_ID",
+    "AUTH_DEV_BYPASS",
+    "WHATSAPP_VERIFY_TOKEN",
+    "WHATSAPP_APP_SECRET",
+    "NODE_ENV"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
