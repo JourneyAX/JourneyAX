@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrSet, cacheKey } from '@journeyax/cache';
-import { documentsCollection } from '../../../../lib/mongo-server';
 import { requireAuth, scopeTenant } from '../../../../lib/require-auth';
+
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 
 /**
  * GET /api/knowledge/stats?brand=caroma
@@ -20,49 +21,15 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get('refresh') === '1';
   try {
     return NextResponse.json(await getOrSet(cacheKey(brand, 'knowledge-stats'),
-      () => computeStats(brand), { ttlSeconds: 600, force }));
+      async () => {
+        const res = await fetch(`${GATEWAY_URL}/api/v1/${brand}/products/stats`, {
+          headers: { Authorization: `Bearer ${auth.token}` },
+        });
+        if (!res.ok) throw new Error(`Gateway returned ${res.status}`);
+        return res.json();
+      }, { ttlSeconds: 600, force }));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
 
-async function computeStats(brand: string) {
-  {
-    const col = await documentsCollection();
-    const brandFilter = { $or: [{ projectId: brand }, { brand }, { 'metadata.brand': brand }] };
-    const P = { ...brandFilter, 'metadata.type': 'product' };
-
-    const [total, products, withSpecs, withImage, withPrice, designs, technical, troubleshooting] = await Promise.all([
-      col.countDocuments(brandFilter),
-      col.countDocuments(P),
-      col.countDocuments({ ...P, 'metadata.specs': { $exists: true } }),
-      col.countDocuments({ ...P, 'metadata.images.0': { $exists: true } }),
-      col.countDocuments({ ...P, 'metadata.price': { $exists: true } }),
-      col.countDocuments({ ...brandFilter, 'metadata.type': 'design' }),
-      col.countDocuments({ ...brandFilter, 'metadata.type': 'technical' }),
-      col.countDocuments({ ...brandFilter, 'metadata.type': 'troubleshooting' }),
-    ]);
-
-    // Genuine duplicates: same (sourceUrl, chunkIndex, metadata.type) appearing >1×
-    const dupAgg = await col.aggregate([
-      { $match: brandFilter },
-      { $group: { _id: { u: '$sourceUrl', c: '$chunkIndex', t: '$metadata.type' }, n: { $sum: 1 } } },
-      { $match: { n: { $gt: 1 } } },
-      { $count: 'groups' },
-    ]).toArray();
-
-    return {
-      brand,
-      total,
-      products,
-      withSpecs,
-      withImage,
-      withPrice,
-      designs,
-      technical,
-      troubleshooting,
-      duplicateGroups: (dupAgg[0] as any)?.groups || 0,
-      specsPct: products ? Math.round((withSpecs / products) * 100) : 0,
-    };
-  }
-}

@@ -2517,22 +2517,28 @@ export class ProductService {
   }
 
   // ── Stats ───────────────────────────────────────────────────────────
-  async getStats(brand?: string): Promise<{
-    totalDocuments: number;
-    byType: Record<string, number>;
-    brands: string[];
-  }> {
+  async getStats(brand?: string) {
     const col = await this.getCollection();
-    const filter = brand ? { brand } : {};
+    const brandFilter = brand ? { $or: [{ projectId: brand }, { brand }, { 'metadata.brand': brand }] } : {};
+    const P = { ...brandFilter, 'metadata.type': 'product' };
 
-    const totalDocuments = await col.countDocuments(filter);
-
-    const typeAgg = await col
-      .aggregate([
-        { $match: filter },
+    const [
+      totalDocuments, products, withSpecs, withImage, withPrice,
+      designs, technical, troubleshooting, typeAgg
+    ] = await Promise.all([
+      col.countDocuments(brandFilter),
+      col.countDocuments(P),
+      col.countDocuments({ ...P, 'metadata.specs': { $exists: true } }),
+      col.countDocuments({ ...P, 'metadata.images.0': { $exists: true } }),
+      col.countDocuments({ ...P, 'metadata.price': { $exists: true } }),
+      col.countDocuments({ ...brandFilter, 'metadata.type': 'design' }),
+      col.countDocuments({ ...brandFilter, 'metadata.type': 'technical' }),
+      col.countDocuments({ ...brandFilter, 'metadata.type': 'troubleshooting' }),
+      col.aggregate([
+        { $match: brandFilter },
         { $group: { _id: '$metadata.type', count: { $sum: 1 } } },
-      ])
-      .toArray();
+      ]).toArray()
+    ]);
 
     const byType: Record<string, number> = {};
     for (const t of typeAgg) {
@@ -2541,6 +2547,115 @@ export class ProductService {
 
     const brandsAgg = await col.distinct('brand');
 
-    return { totalDocuments, byType, brands: brandsAgg };
+    const dupAgg = await col.aggregate([
+      { $match: brandFilter },
+      { $group: { _id: { u: '$sourceUrl', c: '$chunkIndex', t: '$metadata.type' }, n: { $sum: 1 } } },
+      { $match: { n: { $gt: 1 } } },
+      { $count: 'groups' },
+    ]).toArray();
+
+    return {
+      totalDocuments,
+      byType,
+      brands: brandsAgg,
+      total: totalDocuments,
+      products,
+      withSpecs,
+      withImage,
+      withPrice,
+      designs,
+      technical,
+      troubleshooting,
+      duplicateGroups: (dupAgg[0] as any)?.groups || 0,
+      specsPct: products ? Math.round((withSpecs / products) * 100) : 0,
+    };
+  }
+
+  // ── Backoffice Catalogue APIs ──────────────────────────────────────────
+
+  async getCatalogue(projectId: string, q: string | undefined, limit: number) {
+    const col = await this.getCollection();
+    const match: any = { "metadata.brand": projectId, "metadata.type": "product" };
+    if (q) match.$and = [{ $or: [{ title: { $regex: q, $options: "i" } }, { "metadata.sku": { $regex: q, $options: "i" } }] }];
+
+    const rows = await col.aggregate([
+      { $match: match },
+      { $project: {
+          sourceUrl: 1, title: 1, updatedAt: 1,
+          "metadata.sku": 1, "metadata.price": 1, "metadata.currency": 1,
+          "metadata.category": 1, "metadata.collection": 1, "metadata.images": 1,
+          "metadata.availability": 1, "metadata.specs": 1,
+      } },
+      { $sort: { updatedAt: -1 } },
+      { $group: {
+          _id: "$sourceUrl",
+          titles: { $addToSet: "$title" },
+          sku: { $first: "$metadata.sku" },
+          price: { $first: "$metadata.price" },
+          currency: { $first: "$metadata.currency" },
+          category: { $first: "$metadata.category" },
+          collection: { $first: "$metadata.collection" },
+          image: { $first: { $arrayElemAt: ["$metadata.images", 0] } },
+          availability: { $first: "$metadata.availability" },
+          specCount: { $first: { $size: { $objectToArray: { $ifNull: ["$metadata.specs", {}] } } } },
+          updatedAt: { $first: "$updatedAt" },
+      } },
+      { $limit: limit },
+    ]).toArray();
+
+    for (const r of rows as any[]) {
+      const clean = (r.titles as string[])
+        .filter((t: string) => t && !/^[-–—\s]/.test(t))
+        .sort((a: string, b: string) => b.length - a.length);
+      r.title = clean[0] || (r.titles as string[]).sort((a: string, b: string) => b.length - a.length)[0] || r.sku || "Untitled";
+      delete r.titles;
+    }
+    rows.sort((a: any, b: any) => String(a.title).localeCompare(String(b.title)));
+
+    const total = await col.aggregate([
+      { $match: { "metadata.brand": projectId, "metadata.type": "product" } },
+      { $group: { _id: "$sourceUrl" } }, { $count: "n" },
+    ]).toArray();
+
+    return {
+      products: rows.map(({ _id, ...r }) => ({ url: _id, ...r })),
+      totalProducts: total[0]?.n ?? 0,
+    };
+  }
+
+  async getCatalogueItem(projectId: string, url: string) {
+    const col = await this.getCollection();
+    const chunks = await col
+      .find({ $and: [{ $or: [{ projectId }, { "metadata.brand": projectId }] }, { sourceUrl: url }] })
+      .project({ _id: 0, title: 1, chunk: 1, chunkIndex: 1, metadata: 1, updatedAt: 1 })
+      .sort({ chunkIndex: 1 })
+      .toArray();
+
+    if (!chunks.length) return null;
+
+    const merged: any = { specs: {}, images: [], variants: [], documents: [], finishes: [] };
+    let title = "";
+    for (const c of chunks as any[]) {
+      const m = c.metadata || {};
+      if (c.title && !/^[-–—\s]/.test(c.title) && c.title.length > title.length) title = c.title;
+      Object.assign(merged.specs, m.specs || {});
+      for (const k of ["images", "variants", "documents", "finishes"] as const) {
+        for (const v of m[k] || []) {
+          if (!merged[k].some((x: any) => JSON.stringify(x) === JSON.stringify(v))) merged[k].push(v);
+        }
+      }
+      for (const k of ["sku", "price", "currency", "category", "collection", "description", "availability", "type"]) {
+        if (merged[k] == null && m[k] != null) merged[k] = m[k];
+      }
+    }
+
+    return {
+      url,
+      title: title || (chunks[0] as any).title,
+      ...merged,
+      updatedAt: (chunks[0] as any).updatedAt,
+      chunks: (chunks as any[]).map((c) => ({ index: c.chunkIndex, text: String(c.chunk || "").slice(0, 1200) })),
+    };
   }
 }
+

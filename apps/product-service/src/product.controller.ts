@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, HttpStatus, Query } from '@nestjs/common';
 import { ProductService } from './product.service';
 import { ArtworkService, ArtworkStatus } from './artwork.service';
 import { RenderService } from './render.service';
@@ -38,6 +38,30 @@ export class ProductController {
   async rack(@Param('projectId') projectId: string) {
     return { groups: await this.productService.getRack((projectId || '').toLowerCase()) };
   }
+
+  @Get('catalogue')
+  async getCatalogue(
+    @Param('projectId') projectId: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const brand = (projectId || 'caroma').toLowerCase();
+    const parsedLimit = Math.min(Number(limit) || 50, 200);
+    return this.productService.getCatalogue(brand, q?.trim(), parsedLimit);
+  }
+
+  @Get('catalogue/item')
+  async getCatalogueItem(
+    @Param('projectId') projectId: string,
+    @Query('url') url?: string,
+  ) {
+    if (!url) throw new HttpException('url query parameter is required', HttpStatus.BAD_REQUEST);
+    const brand = (projectId || 'caroma').toLowerCase();
+    const item = await this.productService.getCatalogueItem(brand, url);
+    if (!item) throw new HttpException('Item not found', HttpStatus.NOT_FOUND);
+    return item;
+  }
+
 
   @Get('renderer-config')
   async rendererConfig(@Param('projectId') projectId: string) {
