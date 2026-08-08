@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { knowledgeDb } from '../../../../lib/mongo-server';
 import { requireAuth, scopeTenant } from '../../../../lib/require-auth';
+
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 
 /**
  * GET /api/knowledge/reconciliation?brand=augusta
@@ -17,36 +18,15 @@ export async function GET(req: NextRequest) {
   if (!brand) return NextResponse.json({ error: 'brand is required' }, { status: 400 });
 
   try {
-    const db = await knowledgeDb();
-    const doc = await db.collection('ingest_reconciliation').findOne({
-      projectId: brand,
-      kind: 'catalogue-codes-missing-from-feed',
+    const res = await fetch(`${GATEWAY_URL}/api/v1/${brand}/products/reconciliation`, {
+      headers: { Authorization: `Bearer ${auth.token}` },
     });
-    const rels = db.collection('collections');
-    const [collections, sizingGroups, outfittingSets] = await Promise.all([
-      rels.countDocuments({ projectId: brand, kind: 'collection' }),
-      rels.countDocuments({ projectId: brand, kind: 'sizing-group' }),
-      rels.countDocuments({ projectId: brand, kind: 'outfitting-set' }),
-    ]);
-
-    // The brand hub is what the agent is actually told about this business every
-    // turn, so an operator should be able to read exactly that text.
-    const hub = await db.collection('brand_hub').findOne({ projectId: brand }, { projection: { _id: 0 } });
-
-    return NextResponse.json({
-      brand,
-      hub: hub || null,
-      relationships: { collections, sizingGroups, outfittingSets },
-      missing: doc
-        ? {
-            distinctCodes: doc.distinctCodes ?? 0,
-            totalReferences: doc.totalReferences ?? 0,
-            codes: (doc.codes || []).slice(0, 100),
-            updatedAt: doc.updatedAt ?? null,
-          }
-        : null,
-    });
+    
+    if (!res.ok) throw new Error(`Gateway returned ${res.status}`);
+    const data = await res.json();
+    return NextResponse.json(data);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+

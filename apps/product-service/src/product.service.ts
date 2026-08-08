@@ -2571,6 +2571,38 @@ export class ProductService {
     };
   }
 
+  async getReconciliation(brand: string) {
+    const db = await this.getDb();
+    
+    const doc = await db.collection('ingest_reconciliation').findOne({
+      projectId: brand,
+      kind: 'catalogue-codes-missing-from-feed',
+    });
+    
+    const rels = db.collection('collections');
+    const [collections, sizingGroups, outfittingSets] = await Promise.all([
+      rels.countDocuments({ projectId: brand, kind: 'collection' }),
+      rels.countDocuments({ projectId: brand, kind: 'sizing-group' }),
+      rels.countDocuments({ projectId: brand, kind: 'outfitting-set' }),
+    ]);
+
+    const hub = await db.collection('brand_hub').findOne({ projectId: brand }, { projection: { _id: 0 } });
+
+    return {
+      brand,
+      hub: hub || null,
+      relationships: { collections, sizingGroups, outfittingSets },
+      missing: doc
+        ? {
+            distinctCodes: doc.distinctCodes ?? 0,
+            totalReferences: doc.totalReferences ?? 0,
+            codes: (doc.codes || []).slice(0, 100),
+            updatedAt: doc.updatedAt ?? null,
+          }
+        : null,
+    };
+  }
+
   // ── Backoffice Catalogue APIs ──────────────────────────────────────────
 
   async getCatalogue(projectId: string, q: string | undefined, limit: number) {

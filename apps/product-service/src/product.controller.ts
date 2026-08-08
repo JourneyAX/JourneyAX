@@ -372,7 +372,12 @@ export class ProductController {
    */
   @Get('stats')
   async getStats(@Param('projectId') projectId: string) {
-    return this.productService.getStats((projectId || 'caroma').toLowerCase());
+    return this.productService.getStats((projectId || '').toLowerCase());
+  }
+
+  @Get('reconciliation')
+  async getReconciliation(@Param('projectId') projectId: string) {
+    return this.productService.getReconciliation((projectId || '').toLowerCase());
   }
 
   /**
