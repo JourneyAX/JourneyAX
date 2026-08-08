@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * product-service, which owns the per-project imaging config. The storefront
  * only needs the resulting image URLs.
  */
-const PRODUCT_API = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   ).toLowerCase();
 
   try {
-    const res = await fetch(`${PRODUCT_API}/api/v1/${encodeURIComponent(projectId)}/products/render`, {
+    const res = await fetch(`${GATEWAY_URL}/api/v1/${encodeURIComponent(projectId)}/products/render`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': projectId },
       body: JSON.stringify(body),

@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Read-only catalogue facts, scoped to the project in the request — the same
  * data the agent sees via getProductOptions, so chat and the 3D agree.
  */
-const PRODUCT_API = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   ).toLowerCase();
 
   try {
-    const res = await fetch(`${PRODUCT_API}/api/v1/${encodeURIComponent(projectId)}/products/options`, {
+    const res = await fetch(`${GATEWAY_URL}/api/v1/${encodeURIComponent(projectId)}/products/options`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': projectId },
       body: JSON.stringify({ sku }),
