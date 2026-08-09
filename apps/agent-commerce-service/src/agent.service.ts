@@ -84,6 +84,16 @@ function persistableTranscript(conversation: any[]): any[] {
   return out.slice(-MAX_TRANSCRIPT_MESSAGES);
 }
 
+/** This turn's raw tool results — the corpus the grounding check verifies prices
+ *  and SKUs against. Only valid within a turn: `persistableTranscript` strips
+ *  tool messages, so these are gone by the next request. */
+function retrievedFactsThisTurn(conversation: any[]): string {
+  return conversation
+    .filter((m) => m.role === 'tool')
+    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')))
+    .join('\n');
+}
+
 /** Reasoning models (gpt-5.x / o-series) reject an explicit temperature. */
 function isReasoningModel(model: string): boolean {
   return /^(gpt-5|o[134])/.test(model);
@@ -2444,8 +2454,14 @@ export class AgentService {
     }
 
     // ── Step 6: Grounding validation (technical mode) ───────────────
-    const verdict = validateGrounding(finalMessage?.content || '', intent.mode, hadRetrieval);
-    trace.push({ step: 'grounding', detail: verdict.ok ? 'ok' : verdict.reason || 'flagged' });
+    const verdict = validateGrounding(
+      finalMessage?.content || '', intent.mode, hadRetrieval, retrievedFactsThisTurn(conversation),
+    );
+    trace.push({
+      step: 'grounding',
+      detail: verdict.ok ? 'ok' : verdict.reason || 'flagged',
+      ...(verdict.unverified ? { data: { unverified: verdict.unverified } } : {}),
+    });
     trace.push({ step: 'generate', detail: `${loops} loop(s), ${searchCount} search(es), ${uiToolCalls.length} ui action(s)` });
 
     if (finalMessage?.content) finalMessage.content = this.stripChatMedia(finalMessage.content);
@@ -2824,8 +2840,14 @@ export class AgentService {
     conversation.push({ role: 'assistant', content: finalText });
 
     // Grounding + reduce actions into journey memory, then persist server-side.
-    const verdict = validateGrounding(finalText, intent.mode, hadRetrieval);
-    pushTrace({ step: 'grounding', detail: verdict.ok ? 'ok' : verdict.reason || 'flagged' });
+    const verdict = validateGrounding(
+      finalText, intent.mode, hadRetrieval, retrievedFactsThisTurn(conversation),
+    );
+    pushTrace({
+      step: 'grounding',
+      detail: verdict.ok ? 'ok' : verdict.reason || 'flagged',
+      ...(verdict.unverified ? { data: { unverified: verdict.unverified } } : {}),
+    });
     const uiActions = uiToolCalls.map((call) => ({ name: call.function.name, arguments: (call as any).__quote ? (call as any).__quote : (call as any).__research ? (call as any).__research : JSON.parse(call.function.arguments) }));
     const nextState = reduceActions(journeyState, uiActions, intent);
     await this.sessionStore.save({
