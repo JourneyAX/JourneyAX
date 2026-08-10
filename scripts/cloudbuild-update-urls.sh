@@ -113,7 +113,7 @@ echo "🔧 Updating agent-commerce-service..."
 gcloud run services update agent-commerce-service \
   --region="${REGION}" --project="${PROJECT_ID}" \
   --update-env-vars="${AGENT_ENV}" \
-  --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest" 2>/dev/null || \
+  --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest" 2>/dev/null || \
   echo "  ⚠️  agent-commerce-service not yet deployed – will get URLs on next deploy"
 
 # ── (d) product-service → project ────────────────────────────────────────────
@@ -124,7 +124,7 @@ echo "🔧 Updating product-service..."
 gcloud run services update product-service \
   --region="${REGION}" --project="${PROJECT_ID}" \
   --update-env-vars="${PRODUCT_ENV}" \
-  --update-secrets="MONGODB_URI=MONGODB_URI:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" 2>/dev/null || \
+  --update-secrets="MONGODB_URI=MONGODB_URI:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" 2>/dev/null || \
   echo "  ⚠️  product-service not yet deployed – will get URLs on next deploy"
 
 # ── (e) project-service → auth, organization ─────────────────────────────────

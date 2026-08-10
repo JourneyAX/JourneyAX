@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { documentsCollection } from '../../../../lib/mongo-server';
 import { requireAuth, scopeTenant } from '../../../../lib/require-auth';
+
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 
 /**
  * POST /api/knowledge/dedup  { brand: "caroma" }
@@ -22,35 +23,18 @@ export async function POST(req: NextRequest) {
   if (!brand) return NextResponse.json({ error: 'brand is required' }, { status: 400 });
 
   try {
-    const col = await documentsCollection();
-    const brandFilter = { $or: [{ brand }, { 'metadata.brand': brand }] };
-
-    const groups = await col.aggregate([
-      { $match: brandFilter },
-      {
-        $group: {
-          _id: { u: '$sourceUrl', c: '$chunkIndex', t: '$metadata.type' },
-          n: { $sum: 1 },
-          docs: { $push: { id: '$_id', when: { $ifNull: ['$updatedAt', '$crawledAt'] } } },
-        },
+    const res = await fetch(`${GATEWAY_URL}/api/v1/${brand}/products/maintenance`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${auth.token}`,
+        'Content-Type': 'application/json' 
       },
-      { $match: { n: { $gt: 1 } } },
-    ]).toArray();
-
-    const toDelete: any[] = [];
-    for (const g of groups as any[]) {
-      // keep the newest, delete the rest
-      const sorted = [...g.docs].sort((a, b) => new Date(b.when || 0).getTime() - new Date(a.when || 0).getTime());
-      sorted.slice(1).forEach((d) => toDelete.push(d.id));
-    }
-
-    let removed = 0;
-    if (toDelete.length) {
-      const res = await col.deleteMany({ _id: { $in: toDelete } });
-      removed = res.deletedCount || 0;
-    }
-
-    return NextResponse.json({ brand, duplicateGroups: groups.length, removed });
+      body: JSON.stringify({ op: 'dedupe-knowledge', dryRun: false })
+    });
+    
+    if (!res.ok) throw new Error(`Gateway returned ${res.status}`);
+    const data = await res.json();
+    return NextResponse.json({ brand, duplicateGroups: data.details?.duplicateGroups || 0, removed: data.details?.removed || 0 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

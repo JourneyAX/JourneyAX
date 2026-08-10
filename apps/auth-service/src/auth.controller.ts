@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Body, Headers,
+  Controller, Post, Get, Body, Headers, Query,
   UnauthorizedException, BadRequestException, Inject,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -124,5 +124,15 @@ export class AuthController {
       service: 'auth-service',
       timestamp: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Get users scoped by tenant.
+   * GET /api/v1/auth/users
+   */
+  @Get('users')
+  async getUsers(@Query('tenantId') tenantId?: string) {
+    const users = await this.authService.getUsers(tenantId);
+    return { users };
   }
 }

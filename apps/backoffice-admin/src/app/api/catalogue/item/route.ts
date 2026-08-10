@@ -5,8 +5,10 @@
  * agent grounds on. Powers the Catalogue drill-down drawer.
  */
 import { NextResponse } from "next/server";
-import { documentsCollection } from "../../../../lib/mongo-server";
+import { getOrSet, cacheKey } from "@journeyax/cache";
 import { requireAuth, scopeTenant } from "../../../../lib/require-auth";
+
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 
 export async function GET(req: Request) {
   try {
@@ -17,39 +19,25 @@ export async function GET(req: Request) {
     const url = u.searchParams.get("url");
     if (!projectId || !url) return NextResponse.json({ error: "projectId and url required" }, { status: 400 });
 
-    const col = await documentsCollection();
-    const chunks = await col
-      .find({ $and: [{ $or: [{ projectId }, { "metadata.brand": projectId }] }, { sourceUrl: url }] })
-      .project({ _id: 0, title: 1, chunk: 1, chunkIndex: 1, metadata: 1, updatedAt: 1 })
-      .sort({ chunkIndex: 1 })
-      .toArray();
-    if (!chunks.length) return NextResponse.json({ error: "not found" }, { status: 404 });
-
-    // Merge metadata across chunks (later chunks may carry variants/documents).
-    const merged: any = { specs: {}, images: [], variants: [], documents: [], finishes: [] };
-    let title = "";
-    for (const c of chunks as any[]) {
-      const m = c.metadata || {};
-      if (c.title && !/^[-–—\s]/.test(c.title) && c.title.length > title.length) title = c.title;
-      Object.assign(merged.specs, m.specs || {});
-      for (const k of ["images", "variants", "documents", "finishes"] as const) {
-        for (const v of m[k] || []) {
-          if (!merged[k].some((x: any) => JSON.stringify(x) === JSON.stringify(v))) merged[k].push(v);
+    const force = u.searchParams.get("refresh") === "1";
+    return NextResponse.json(await getOrSet(
+      cacheKey(projectId, "catalogue-item", { url }),
+      async () => {
+        const res = await fetch(`${GATEWAY_URL}/api/v1/${projectId}/products/catalogue/item?url=${encodeURIComponent(url)}`, {
+          headers: { Authorization: `Bearer ${auth.token}` },
+        });
+        
+        if (!res.ok) {
+          if (res.status === 404) throw new Error("not found");
+          throw new Error(`Gateway returned ${res.status}`);
         }
-      }
-      for (const k of ["sku", "price", "currency", "category", "collection", "description", "availability", "type"]) {
-        if (merged[k] == null && m[k] != null) merged[k] = m[k];
-      }
-    }
 
-    return NextResponse.json({
-      url,
-      title: title || (chunks[0] as any).title,
-      ...merged,
-      updatedAt: (chunks[0] as any).updatedAt,
-      chunks: (chunks as any[]).map((c) => ({ index: c.chunkIndex, text: String(c.chunk || "").slice(0, 1200) })),
-    });
+        return res.json();
+      },
+      { ttlSeconds: 600, force },
+    ));
   } catch (e: any) {
+    if (e.message === "not found") return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

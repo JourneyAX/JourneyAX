@@ -22,6 +22,53 @@ if [ ! -s /workspace/services_to_deploy.txt ]; then
   exit 0
 fi
 
+# ────────────────────────────────────────────────────────────
+# Ensure all required Secret Manager secrets exist.
+# Uses --replication-policy=automatic (GCP-managed replication).
+# Idempotent: silently skips secrets that already exist.
+# Secrets are created EMPTY — populate them via:
+#   echo -n "value" | gcloud secrets versions add SECRET_NAME --data-file=-
+# ────────────────────────────────────────────────────────────
+ensure_secret() {
+  local NAME="$1"
+  if ! gcloud secrets describe "${NAME}" --project="${PROJECT_ID}" &>/dev/null; then
+    echo "  🔐 Creating secret: ${NAME}"
+    gcloud secrets create "${NAME}" \
+      --project="${PROJECT_ID}" \
+      --replication-policy=automatic \
+      --labels="managed-by=cloud-build,environment=${ENVIRONMENT}"
+    echo "  ⚠️  ${NAME} created but has NO VALUE — add a version before deploying!"
+  fi
+}
+
+echo ""
+echo "============================================================"
+echo "🔐 Ensuring Secret Manager secrets exist..."
+echo "============================================================"
+
+# Shared / infrastructure secrets
+ensure_secret "MONGODB_URI"
+ensure_secret "JWT_SECRET"
+ensure_secret "JWT_REFRESH_SECRET"
+ensure_secret "INTERNAL_API_KEY"
+ensure_secret "REDIS_URL"
+
+# AI provider keys
+ensure_secret "OPENAI_API_KEY"
+ensure_secret "GEMINI_API_KEY"
+ensure_secret "CLAUDE_API_KEY"
+ensure_secret "PERPLEXITY_API_KEY"
+
+# Commerce
+ensure_secret "STRIPE_SECRET_KEY"
+
+# WhatsApp (Meta) — moved from Storefront to agent-commerce-service
+ensure_secret "WHATSAPP_VERIFY_TOKEN"
+ensure_secret "WHATSAPP_APP_SECRET"
+
+echo "✅ All secrets verified."
+
+
 # Read services into array
 SERVICES=()
 while IFS= read -r line; do
@@ -63,9 +110,9 @@ deploy_service() {
     auth-service)
       SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" ;;
     agent-commerce-service)
-      SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,REDIS_URL=REDIS_URL:latest" ;;
+      SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,REDIS_URL=REDIS_URL:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest" ;;
     product-service)
-      SECRETS="MONGODB_URI=MONGODB_URI:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" ;;
+      SECRETS="MONGODB_URI=MONGODB_URI:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" ;;
     api-gateway)
       # REDIS_URL activates the edge response cache (resp:* namespace in Upstash).
       # @journeyax/cache in each service uses the same secret (data:* namespace).

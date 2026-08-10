@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Credentials never live in this config, so it is safe to expose. The project
  * comes from request context, not the client body.
  */
-const PRODUCT_API = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function GET(req: NextRequest) {
   const projectId = (
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(
-      `${PRODUCT_API}/api/v1/${encodeURIComponent(projectId)}/products/renderer-config`,
+      `${GATEWAY_URL}/api/v1/${encodeURIComponent(projectId)}/products/renderer-config`,
       { headers: { 'X-Tenant-ID': projectId }, signal: AbortSignal.timeout(8000) },
     );
     if (!res.ok) return NextResponse.json({}, { status: 200 });
