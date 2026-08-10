@@ -38,6 +38,7 @@ CONVERSATION and the customer's latest message, and return ONLY a JSON object:
   "mode": "business" for planning/selling/discovery, "technical" for install/repair/specs,
   "needsRetrieval": boolean,
   "retrievalType": one of ["product","design","collection","troubleshooting","installation","faq","none"],
+  "panelRenderBlocked": boolean — true ONLY when the customer EXPLICITLY says they do NOT want the right-hand panel to render/show items yet. Examples that set this true: "don't render yet", "don't choose one for me", "don't show it yet", "just tell me what to look for", "I'll pick the design from the panel — don't render". Examples that leave this false: browsing normally, asking to see items, confirming colours. Default: false.
   "confidence": 0..1,
   "missingInfo": array of context still missing (e.g. ["budget","dimensions","fixtures"]),
   "organization": if the customer names a specific school, college, university, club, team or company they are buying/designing FOR, return { "name": "...", "location": "city, state if given" }; otherwise null
@@ -64,6 +65,9 @@ Classify from the CONVERSATION FLOW, not keywords:
 - Match retrievalType to the need: "product" to choose/compare fixtures; "design"/"collection" for
   inspiration or a whole-room look; "troubleshooting" for a fault/leak (safety+diagnosis first);
   "installation" for how-to; "faq" for warranty/policy.
+- panelRenderBlocked: set true ONLY when the customer explicitly opts out of seeing items rendered on
+  the panel THIS turn ("don't render yet", "just tell me what to look for", "don't choose for me",
+  "I'll pick from the panel — don't render it"). This is rare; most browsing turns leave it false.
 Return JSON only, no prose.`;
 }
 
@@ -142,6 +146,7 @@ export class IntentResolver {
         organization: parsed.organization && typeof parsed.organization === 'object' && parsed.organization.name
           ? { name: String(parsed.organization.name), location: parsed.organization.location ? String(parsed.organization.location) : undefined }
           : undefined,
+        panelRenderBlocked: Boolean(parsed.panelRenderBlocked),
       };
     } catch (err) {
       console.warn('[IntentResolver] classification failed, using safe default:', (err as Error).message);
