@@ -39,6 +39,12 @@ export interface IntentResult {
   missingInfo: string[];
   /** Free-text org the customer is buying for — school/college/club/team/company (AUG-48). */
   organization?: { name: string; location?: string };
+  /**
+   * True when the customer explicitly opts out of a panel render THIS turn
+   * ("don't render yet", "just tell me what to look for", "don't choose for me").
+   * Suppresses the force-showItems guard so the panel stays blank per user request.
+   */
+  panelRenderBlocked?: boolean;
 }
 
 /** One observable step in the reasoning trace (surfaced to the right-hand panel). */
