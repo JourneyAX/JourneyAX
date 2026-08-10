@@ -1,7 +1,8 @@
-import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, HttpStatus, Query } from '@nestjs/common';
 import { ProductService } from './product.service';
 import { ArtworkService, ArtworkStatus } from './artwork.service';
 import { RenderService } from './render.service';
+import { TryOnService, TryOnInput } from './tryon.service';
 
 // Read at REQUEST time, not module-load time — env may not be populated when this
 // module is first imported (dotenv loads in main.ts), which would leave the key
@@ -14,6 +15,7 @@ export class ProductController {
     @Inject(ProductService) private readonly productService: ProductService,
     @Inject(ArtworkService) private readonly artwork: ArtworkService,
     @Inject(RenderService) private readonly renderer: RenderService,
+    @Inject(TryOnService) private readonly tryOnService: TryOnService,
   ) {}
 
   /**
@@ -38,6 +40,30 @@ export class ProductController {
   async rack(@Param('projectId') projectId: string) {
     return { groups: await this.productService.getRack((projectId || '').toLowerCase()) };
   }
+
+  @Get('catalogue')
+  async getCatalogue(
+    @Param('projectId') projectId: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const brand = (projectId || 'caroma').toLowerCase();
+    const parsedLimit = Math.min(Number(limit) || 50, 200);
+    return this.productService.getCatalogue(brand, q?.trim(), parsedLimit);
+  }
+
+  @Get('catalogue/item')
+  async getCatalogueItem(
+    @Param('projectId') projectId: string,
+    @Query('url') url?: string,
+  ) {
+    if (!url) throw new HttpException('url query parameter is required', HttpStatus.BAD_REQUEST);
+    const brand = (projectId || 'caroma').toLowerCase();
+    const item = await this.productService.getCatalogueItem(brand, url);
+    if (!item) throw new HttpException('Item not found', HttpStatus.NOT_FOUND);
+    return item;
+  }
+
 
   @Get('renderer-config')
   async rendererConfig(@Param('projectId') projectId: string) {
@@ -348,7 +374,20 @@ export class ProductController {
    */
   @Get('stats')
   async getStats(@Param('projectId') projectId: string) {
-    return this.productService.getStats((projectId || 'caroma').toLowerCase());
+    return this.productService.getStats((projectId || '').toLowerCase());
+  }
+
+  @Get('reconciliation')
+  async getReconciliation(@Param('projectId') projectId: string) {
+    return this.productService.getReconciliation((projectId || '').toLowerCase());
+  }
+
+  @Post('tryon')
+  async tryOn(@Body() body: TryOnInput) {
+    if (!body.personDataUrl || !body.garmentImageUrl) {
+      throw new HttpException('personDataUrl and garmentImageUrl are required', HttpStatus.BAD_REQUEST);
+    }
+    return this.tryOnService.generateTryOn(body);
   }
 
   /**

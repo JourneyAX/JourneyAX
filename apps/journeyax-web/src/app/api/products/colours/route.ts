@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * from the colour's name. Names it cannot resolve are simply absent, and the
  * caller marks those as unknown instead of painting them white.
  */
-const PRODUCT_API = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: NextRequest) {
   const projectId = (
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const res = await fetch(
-      `${PRODUCT_API}/api/v1/${encodeURIComponent(projectId)}/products/colours/resolve`,
+      `${GATEWAY_URL}/api/v1/${encodeURIComponent(projectId)}/products/colours/resolve`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': projectId },

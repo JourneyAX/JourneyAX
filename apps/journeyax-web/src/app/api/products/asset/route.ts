@@ -15,14 +15,14 @@ import { NextRequest, NextResponse } from 'next/server';
  * project's own renderer config; anything else is refused. An open proxy here
  * would let a visitor use the storefront to reach internal addresses.
  */
-const PRODUCT_API = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 /** Hosts this project is allowed to load render assets from. */
 async function allowedHosts(projectId: string): Promise<Set<string>> {
   const hosts = new Set<string>();
   try {
     const res = await fetch(
-      `${PRODUCT_API}/api/v1/${encodeURIComponent(projectId)}/products/renderer-config`,
+      `${GATEWAY_URL}/api/v1/${encodeURIComponent(projectId)}/products/renderer-config`,
       { headers: { 'X-Tenant-ID': projectId }, signal: AbortSignal.timeout(5000) },
     );
     if (!res.ok) return hosts;

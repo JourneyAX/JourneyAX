@@ -6,6 +6,7 @@ import { QuoteService } from './commerce/quote.service';
 import { OrderService } from './commerce/order.service';
 import { RosterService } from './commerce/roster.service';
 import { SchoolResearchService } from './commerce/school-research.service';
+import { WhatsAppService } from './commerce/whatsapp.service';
 import { ConfigLoader } from './pipeline/config-loader';
 import { SessionStore } from './pipeline/session-store';
 
@@ -19,6 +20,7 @@ export class JourneyAXController {
     @Inject(OrderService) private readonly orderService: OrderService,
     @Inject(RosterService) private readonly rosterService: RosterService,
     @Inject(SchoolResearchService) private readonly schoolResearch: SchoolResearchService,
+    @Inject(WhatsAppService) private readonly whatsappService: WhatsAppService,
   ) {}
 
   /**
@@ -393,5 +395,23 @@ export class JourneyAXController {
   @Get('health')
   health() {
     return { status: 'ok', service: 'journeyax-commerce-service', timestamp: new Date().toISOString() };
+  }
+
+  /**
+   * WhatsApp Webhook Helpers.
+   */
+  @Post('whatsapp/dedupe')
+  async whatsappDedupe(@Body() body: { messageId: string }) {
+    if (!body.messageId) return { processed: true };
+    const processed = await this.whatsappService.alreadyProcessed(body.messageId);
+    return { processed };
+  }
+
+  @Post('whatsapp/session')
+  async whatsappSession(@Param('projectId') projectId: string, @Body() body: { phone: string }) {
+    const tenantId = (projectId || 'caroma').toLowerCase();
+    if (!body.phone) return { sessionId: null };
+    const sessionId = await this.whatsappService.resolveSessionId(tenantId, body.phone);
+    return { sessionId };
   }
 }

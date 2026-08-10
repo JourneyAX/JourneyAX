@@ -324,6 +324,12 @@ export class AuthService {
     return { success: true };
   }
 
+  async getUsers(tenantId?: string): Promise<User[]> {
+    const usersCol = await this.getUsersCollection();
+    const query = tenantId ? { tenantId } : {};
+    return usersCol.find(query).project<User>({ passwordHash: 0 }).toArray();
+  }
+
   // ── Ensure Indexes on startup ──────────────────────────────────────
   async ensureIndexes(): Promise<void> {
     const users = await this.getUsersCollection();

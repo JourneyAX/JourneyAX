@@ -22,12 +22,40 @@ const auth = new GoogleAuth();
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 /**
+ * Whether GCP service-to-service auth is disabled for this process.
+ * Set DISABLE_GCP_AUTH=true in local dev to suppress all getIdToken attempts
+ * and their associated noise. On Cloud Run, leave this unset (or false).
+ */
+const GCP_AUTH_DISABLED =
+  process.env.DISABLE_GCP_AUTH === 'true' ||
+  process.env.NODE_ENV === 'development';
+
+/** Returns true when the audience is a local-only URL — never needs a GCP token. */
+function isLocalAudience(audience: string): boolean {
+  try {
+    const { hostname } = new URL(audience);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Return a Google-signed ID token for the given Cloud Run service URL.
  * Tokens are cached per audience for ~55 minutes (they expire at 60).
- * Falls back gracefully to undefined when not running on Google Cloud
- * (local dev) so the dev experience is unchanged.
+ *
+ * Local dev: returns undefined immediately and silently for localhost targets.
+ * GCP: mints an ID token using the runtime service account (ADC).  The SA
+ *   must hold roles/run.invoker on every downstream Cloud Run service — see
+ *   docs/deployment-plan.md §IAM for the exact gcloud commands.
  */
 async function getIdToken(audience: string): Promise<string | undefined> {
+  // Skip entirely for localhost targets or when explicitly disabled.
+  // This removes the noisy `invalid_grant` warning in local dev.
+  if (isLocalAudience(audience) || GCP_AUTH_DISABLED) {
+    return undefined;
+  }
+
   const now = Date.now();
   const cached = tokenCache.get(audience);
   if (cached && cached.expiresAt > now) {
@@ -68,8 +96,11 @@ async function getIdToken(audience: string): Promise<string | undefined> {
     }
     console.warn(`[gateway-auth] ⚠️ Could not extract ID token for ${audience}`);
   } catch (err: any) {
-    // Not on GCP (local dev) or SA doesn't have the necessary role yet.
-    console.warn(`[gateway-auth] ⚠️ getIdToken failed for ${audience}: ${err?.message}`);
+    // SA missing roles/run.invoker or ADC not configured — surface clearly.
+    console.error(
+      `[gateway-auth] ❌ getIdToken failed for ${audience}: ${err?.message}. ` +
+      `Ensure the gateway SA has roles/run.invoker on this service.`,
+    );
   }
   return undefined;
 }

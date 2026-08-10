@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Grouped by the catalogue's own garment types. Items we know we can render are
  * flagged, so the rack can lead with the ones that will actually appear.
  */
-const PRODUCT_API = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function GET(req: NextRequest) {
   const projectId = (
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(
-      `${PRODUCT_API}/api/v1/${encodeURIComponent(projectId)}/products/rack`,
+      `${GATEWAY_URL}/api/v1/${encodeURIComponent(projectId)}/products/rack`,
       { headers: { 'X-Tenant-ID': projectId }, signal: AbortSignal.timeout(15000) },
     );
     if (!res.ok) return NextResponse.json({ groups: [] });

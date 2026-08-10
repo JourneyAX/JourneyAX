@@ -5,9 +5,11 @@ import { QuoteService } from './commerce/quote.service';
 import { RosterService } from './commerce/roster.service';
 import { OrderService } from './commerce/order.service';
 import { SchoolResearchService } from './commerce/school-research.service';
+import { WhatsAppService } from './commerce/whatsapp.service';
+import { WhatsappController } from './whatsapp.controller';
 
 @Module({
-  controllers: [JourneyAXController],
-  providers: [AgentService, QuoteService, OrderService, RosterService, SchoolResearchService],
+  controllers: [JourneyAXController, WhatsappController],
+  providers: [AgentService, QuoteService, OrderService, RosterService, SchoolResearchService, WhatsAppService],
 })
 export class AgentModule {}
