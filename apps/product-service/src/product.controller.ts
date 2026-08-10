@@ -2,6 +2,7 @@ import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, Htt
 import { ProductService } from './product.service';
 import { ArtworkService, ArtworkStatus } from './artwork.service';
 import { RenderService } from './render.service';
+import { TryOnService, TryOnInput } from './tryon.service';
 
 // Read at REQUEST time, not module-load time — env may not be populated when this
 // module is first imported (dotenv loads in main.ts), which would leave the key
@@ -14,6 +15,7 @@ export class ProductController {
     @Inject(ProductService) private readonly productService: ProductService,
     @Inject(ArtworkService) private readonly artwork: ArtworkService,
     @Inject(RenderService) private readonly renderer: RenderService,
+    @Inject(TryOnService) private readonly tryOnService: TryOnService,
   ) {}
 
   /**
@@ -378,6 +380,14 @@ export class ProductController {
   @Get('reconciliation')
   async getReconciliation(@Param('projectId') projectId: string) {
     return this.productService.getReconciliation((projectId || '').toLowerCase());
+  }
+
+  @Post('tryon')
+  async tryOn(@Body() body: TryOnInput) {
+    if (!body.personDataUrl || !body.garmentImageUrl) {
+      throw new HttpException('personDataUrl and garmentImageUrl are required', HttpStatus.BAD_REQUEST);
+    }
+    return this.tryOnService.generateTryOn(body);
   }
 
   /**

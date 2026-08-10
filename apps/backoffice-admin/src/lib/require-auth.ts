@@ -26,11 +26,11 @@ export interface AuthedIdentity {
 }
 
 type AuthResult =
-  | { ok: true; identity: AuthedIdentity }
+  | { ok: true; identity: AuthedIdentity; token: string }
   | { ok: false; status: number; message: string };
 
 function devIdentity(): AuthResult {
-  return { ok: true, identity: { email: 'dev@local', role: 'admin', tenantId: 'platform', permissions: permissionsFor('admin') } };
+  return { ok: true, identity: { email: 'dev@local', role: 'admin', tenantId: 'platform', permissions: permissionsFor('admin') }, token: 'dev' };
 }
 
 export async function requireAuth(req: Request, permission: Permission): Promise<AuthResult> {
@@ -57,7 +57,7 @@ export async function requireAuth(req: Request, permission: Permission): Promise
     if (!can(payload.role, permission)) {
       return { ok: false, status: 403, message: `This action requires the '${permission}' permission.` };
     }
-    return { ok: true, identity: { email: payload.sub, role: payload.role, tenantId: payload.tenantId, permissions: permissionsFor(payload.role) } };
+    return { ok: true, identity: { email: payload.sub, role: payload.role, tenantId: payload.tenantId, permissions: permissionsFor(payload.role) }, token };
   } catch {
     if (DEV_BYPASS) return devIdentity();
     return { ok: false, status: 503, message: 'Auth service unreachable.' };
