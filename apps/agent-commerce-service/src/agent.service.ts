@@ -2088,6 +2088,9 @@ export class AgentService {
     intent: IntentResult,
     opts: { customised?: boolean; capabilities?: string[] } = {},
   ): 'showItems' | 'showGuide' | 'showConfigurator' | null {
+    // Customer explicitly said "don't render yet" / "just tell me what to look for" —
+    // honour that by keeping the panel blank this turn.
+    if (intent.panelRenderBlocked) return null;
     const rt = intent.retrievalType;
     const productish = intent.stage === 'products' || rt === 'product' || rt === 'design' || rt === 'collection';
     const canConfigure = !!opts.customised
@@ -2404,6 +2407,7 @@ export class AgentService {
         // Never force a UI render on the research turn — the colour-confirmation
         // card owns the panel and the customer must confirm first.
         if (!forceText && !researchedThisTurn && (hadRetrieval || wantUiTool === 'showConfigurator') && wantUiTool && !forcedUi &&
+            !intent.panelRenderBlocked &&
             !uiToolCalls.some((c) => c.function?.name === wantUiTool)) {
           forcedUi = true;
           trace.push({ step: 'forced-ui', detail: `${wantUiTool} (model answered in prose)` });
@@ -2837,6 +2841,7 @@ export class AgentService {
         // the one the storefront uses; the fix had only ever been applied to the
         // other one.
         if (!researchedThisTurn && (hadRetrieval || wantUiTool === 'showConfigurator') && wantUiTool && !forcedUi &&
+            !intent.panelRenderBlocked &&
             !uiToolCalls.some((c) => c.function?.name === wantUiTool)) {
           forcedUi = true;
           await this.forceUiTool(tenantId, conversation, activeTools, wantUiTool, uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
@@ -2849,8 +2854,10 @@ export class AgentService {
         // + show THIS turn. Same "act, don't defer" contract as the show-first
         // guard (AUG-38 / AUG-80). Only fires when a product list is what's owed
         // (wantUiTool === 'showItems') and nothing has been retrieved or shown.
+        // Does NOT fire when the customer explicitly opted out of a render this turn.
         if (!researchedThisTurn && !hadRetrieval && !forcedSearch
             && wantUiTool === 'showItems'
+            && !intent.panelRenderBlocked
             && !uiToolCalls.length
             && !((journeyState?.lastShown || []).length)) {
           forcedSearch = true;
