@@ -22,6 +22,15 @@
  *    common) from a fabrication. Flagging then would be guesswork, so we stay
  *    silent. What this DOES catch is the real failure mode: the agent searched,
  *    got results, and then stated a number those results never contained.
+ *
+ *    Computed totals are accepted: "$349 + $150 = $499" is honest arithmetic over
+ *    real catalogue prices even though $499 appears in no result, so a value that
+ *    is the sum of retrieved prices (quantities allowed) passes.
+ *
+ *    KNOWN GAP — a total that has tax or a discount applied (subtotal × 1.1, or
+ *    less 12%) is not a plain sum of line items and will still be flagged. Since
+ *    the verdict is advisory (trace only, nothing blocked) the cost is a noisy
+ *    trace entry. Resolve this before any enforcement/retry is built on top.
  */
 import { ConversationMode } from './types';
 
@@ -50,6 +59,54 @@ function priceKey(raw: string): string {
   return raw.replace(/[^0-9]/g, '');
 }
 
+/** Money as integer cents — avoids float drift when summing line items. */
+function toCents(raw: string): number {
+  const [whole, frac = ''] = raw.replace(/[^0-9.]/g, '').split('.');
+  return Number(whole || 0) * 100 + Number((frac + '00').slice(0, 2));
+}
+
+/**
+ * Prices appearing in retrieved results — either as JSON (`"price": 349`) or
+ * written out (`$349`). Deliberately narrow: pulling every bare number would
+ * drag in SKU digits and dimensions, and a large pool of candidates makes the
+ * sum check below match by coincidence, which would hide real fabrications.
+ */
+const PRICE_IN_FACTS = /(?:"?price"?"?\s*[:=]?\s*"?\$?\s*|\$\s?)(\d[\d,]*(?:\.\d{1,2})?)/gi;
+
+function factPriceCents(corpus: string): number[] {
+  const out = new Set<number>();
+  for (const m of corpus.matchAll(PRICE_IN_FACTS)) {
+    const c = toCents(m[1]);
+    if (c > 0) out.add(c);
+  }
+  return [...out];
+}
+
+/**
+ * Can `target` be reached by adding retrieved prices together (quantities
+ * allowed)? A quote total like "$349 + $150 = $499" is honest arithmetic over
+ * real catalogue prices, but the total itself appears in no search result — so
+ * without this it would be reported as invented.
+ *
+ * Bounded on purpose: sums above the target are pruned, and the reachable set is
+ * capped, so this stays linear-ish rather than exploring every combination.
+ */
+function isDerivableSum(target: number, parts: number[], cap = 20000): boolean {
+  if (parts.length === 0) return false;
+  let reachable = new Set<number>([0]);
+  for (const part of parts) {
+    for (const base of [...reachable]) {
+      // Quantities: allow the same line item to repeat, bounded by the target.
+      for (let v = base + part; v <= target; v += part) {
+        if (v === target) return true;
+        reachable.add(v);
+        if (reachable.size > cap) return false; // too complex — decline to guess
+      }
+    }
+  }
+  return false;
+}
+
 function assertedFacts(text: string): string[] {
   const out = new Set<string>();
   for (const p of text.match(PRICE) || []) out.add(p.trim());
@@ -59,12 +116,20 @@ function assertedFacts(text: string): string[] {
   return [...out];
 }
 
-function isSupported(token: string, corpus: string, corpusDigits: string): boolean {
+function isSupported(
+  token: string,
+  corpus: string,
+  corpusDigits: string,
+  factPrices: number[],
+): boolean {
   if (token.startsWith('$')) {
     const digits = priceKey(token);
     // Guard: a 1-2 digit "price" ($5) matches too easily by chance — skip it
     // rather than claim verification we did not really perform.
-    return digits.length < 3 ? true : corpusDigits.includes(digits);
+    if (digits.length < 3) return true;
+    if (corpusDigits.includes(digits)) return true;
+    // Not quoted verbatim — accept it if it is the sum of retrieved prices.
+    return isDerivableSum(toCents(token), factPrices);
   }
   return corpus.toUpperCase().includes(token.toUpperCase());
 }
@@ -80,7 +145,9 @@ export function validateGrounding(
   if (text && hadRetrieval && retrievedFacts) {
     const corpus = retrievedFacts;
     const corpusDigits = corpus.replace(/[^0-9]/g, '');
-    const unverified = assertedFacts(text).filter((t) => !isSupported(t, corpus, corpusDigits));
+    const factPrices = factPriceCents(corpus);
+    const unverified = assertedFacts(text)
+      .filter((t) => !isSupported(t, corpus, corpusDigits, factPrices));
 
     if (unverified.length > 0) {
       return {

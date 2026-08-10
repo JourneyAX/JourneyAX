@@ -6,9 +6,15 @@
  */
 import { validateGrounding } from './grounding-validator';
 
-const FACTS =
-  'Liano II Bath/Shower Mixer, price 349, sku 853010MW. ' +
-  'Contura II Rail Shower With Overhead price 1063.00. Invisi flush plate 99651F.';
+/** Shaped like a real searchKnowledge tool result, since that is what the
+ *  validator receives — JSON with `price` / `sku` fields. */
+const FACTS = JSON.stringify({
+  results: [
+    { title: 'Liano II Bath/Shower Mixer', sku: '853010MW', price: 349 },
+    { title: 'Contura II Rail Shower With Overhead', sku: '766100W', price: 1063 },
+    { title: 'EasySwitch In-Wall Body', sku: '99651F', price: 150 },
+  ],
+});
 
 let failures = 0;
 
@@ -51,6 +57,22 @@ if (v.unverified?.[0] !== '$899') {
 
 v = validateGrounding('Order SKU 999999ZZ today.', 'business', true, FACTS);
 check('invented SKU is flagged', v.ok, false, v.reason);
+
+// Computed totals are honest arithmetic over real prices — must NOT be flagged.
+console.log('\ngrounding-validator — computed totals');
+
+v = validateGrounding('The mixer is $349 plus the $150 in-wall body, so $499 total.', 'business', true, FACTS);
+check('sum of two retrieved prices is accepted', v.ok, true, v.reason);
+
+v = validateGrounding('Two mixers comes to $698.', 'business', true, FACTS);
+check('quantity multiple (2 × $349) is accepted', v.ok, true, v.reason);
+
+v = validateGrounding('Mixer, shower and plate together: $1,761.', 'business', true, FACTS);
+check('three-item total (349+1063+349) is accepted', v.ok, true, v.reason);
+
+// ...but a number that is NOT reachable by adding real prices is still caught.
+v = validateGrounding('Your total is $2,000.', 'business', true, FACTS);
+check('non-derivable total is still flagged', v.ok, false, v.reason);
 
 // Scope guards — must stay silent when it cannot verify.
 v = validateGrounding('As I mentioned, it was $899.', 'business', false, '');
