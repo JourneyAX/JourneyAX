@@ -7,8 +7,24 @@ import { guard, isFailure, errorResponse, validateMessages } from '@/lib/api-gua
 import { AI_LIMIT } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 
-const openai = new OpenAI();
 const log = logger('api/chat');
+
+/**
+ * Lazily construct the client instead of `new OpenAI()` at module scope.
+ *
+ * The OpenAI SDK throws at construction — not at request time — when
+ * `OPENAI_API_KEY` is unset, and Next collects route module side effects
+ * during `next build`. With no env file present (a fresh CI checkout has
+ * none; a local `.env.local` masked this because it always carried at least
+ * a placeholder string), that throw happened at build time, not runtime, and
+ * failed the entire build before any request was ever served — even though
+ * this route has always degraded gracefully everywhere else.
+ */
+let openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!openai) openai = new OpenAI();
+  return openai;
+}
 
 /**
  * The slice of client journey state this route reads back to the model.
@@ -304,7 +320,7 @@ ${state.recommendedProducts && state.recommendedProducts.length > 0
   try {
     while (loops < maxLoops) {
     loops++;
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: 'gpt-5.4-mini',
       messages: conversation,
       tools,

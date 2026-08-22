@@ -1,0 +1,39 @@
+# Minimal CI: the four checks already run locally before every commit this
+# session (npm test / tsc / lint / build), now enforced on every push and PR
+# instead of relying on someone remembering to run them.
+#
+# Deliberately does not need real OPENAI_API_KEY/MONGODB_URI — the build only
+# compiles the app, and the health check + local fallbacks mean nothing here
+# calls a live service. No secrets are configured or required.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
