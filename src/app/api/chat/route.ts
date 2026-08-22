@@ -1,51 +1,26 @@
 import OpenAI from 'openai';
 import { embedText } from '@/services/knowledge/embedder';
-import { search } from '@/services/knowledge/mongo';
+import { searchWithReport } from '@/services/knowledge/mongo';
+import { parseSpecs, parseImages } from '@/services/knowledge/page-parsers';
+import { trimConversation } from '@/lib/conversation';
+import { guard, isFailure, errorResponse, validateMessages } from '@/lib/api-guard';
+import { AI_LIMIT } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
 
 const openai = new OpenAI();
+const log = logger('api/chat');
 
-function parseSpecs(content: string): Record<string, string> {
-  const specs: Record<string, string> = {};
-  const specsIdx = content.indexOf('Specifications');
-  if (specsIdx === -1) return specs;
-  
-  const techDownloadsIdx = content.indexOf('Technical Downloads', specsIdx);
-  const specsText = techDownloadsIdx !== -1 
-    ? content.substring(specsIdx, techDownloadsIdx) 
-    : content.substring(specsIdx);
-    
-  const lines = specsText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  for (let i = 1; i < lines.length - 1; i += 2) {
-    const key = lines[i];
-    const val = lines[i+1];
-    if (key === 'Product Codes' || /^\d+[A-Z\d]*$/.test(key) || /^\d+[A-Z\d]*$/.test(val)) {
-      continue;
-    }
-    if (key.length < 40 && !key.includes('[') && !key.includes('http') && val.length < 100) {
-      specs[key] = val;
-    }
-  }
-  return specs;
+/**
+ * The slice of client journey state this route reads back to the model.
+ * Loose on purpose — it is echoed into a prompt, never trusted for logic.
+ */
+interface ClientState {
+  phase?: string;
+  finish?: string;
+  qty?: number;
+  bom?: { name?: string; sku?: string; price?: number; category?: string; quantity?: number }[];
+  recommendedProducts?: { name?: string; sku?: string }[];
 }
-
-function parseImages(content: string): string[] {
-  const images: string[] = [];
-  const idx = content.indexOf('--- Product Images ---');
-  if (idx === -1) {
-    const cdnRegex = /(https?:\/\/cdn\.[^\s\"']+\.(?:jpg|jpeg|png|webp|avif)[^\s\"']*)/gi;
-    let match;
-    while ((match = cdnRegex.exec(content)) !== null) {
-      if (!images.includes(match[1])) images.push(match[1]);
-    }
-    return images;
-  }
-  
-  const text = content.substring(idx + '--- Product Images ---'.length);
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-  return lines;
-}
-
-
 
 const SYSTEM_PROMPT = `You are a multi-persona Caroma expert. You act seamlessly as a Customer Support Agent (CSA), Plumber, Store Stylist, and Sales Consultant. A customer is talking to you. Your job is to guide them through a COMPLETE end-to-end journey.
 
@@ -275,7 +250,17 @@ const tools: OpenAI.ChatCompletionTool[] = [
 ];
 
 export async function POST(req: Request) {
-  const { messages, state } = await req.json();
+  const guarded = await guard<{ messages?: unknown; state?: ClientState }>(
+    req,
+    { scope: 'chat', rule: AI_LIMIT },
+  );
+  if (isFailure(guarded)) return guarded.response;
+
+  const checked = validateMessages(guarded.body.messages);
+  if (!checked.ok) return errorResponse(400, 'invalid_messages', checked.message);
+
+  const messages = checked.messages;
+  const state = guarded.body.state;
 
   const stateContext = state ? `
 [CURRENT SYSTEM STATE (Do NOT repeat questions for items/phases already completed here)]
@@ -284,24 +269,37 @@ export async function POST(req: Request) {
 - Selected Quantity: ${state.qty}
 - Current BOM (Bill of Materials):
 ${state.bom && state.bom.length > 0 
-  ? state.bom.map((item: any) => `  * ${item.name} (${item.sku || 'No SKU'}) - Price: $${item.price} - Category: ${item.category} - Quantity: ${item.quantity}`).join('\n')
+  ? state.bom.map(item => `  * ${item.name} (${item.sku || 'No SKU'}) - Price: $${item.price} - Category: ${item.category} - Quantity: ${item.quantity}`).join('\n')
   : '  * (Empty)'}
 - Recommended Products currently showing on the right:
 ${state.recommendedProducts && state.recommendedProducts.length > 0
-  ? state.recommendedProducts.map((item: any) => `  * ${item.name} (${item.sku || 'No SKU'})`).join('\n')
+  ? state.recommendedProducts.map(item => `  * ${item.name} (${item.sku || 'No SKU'})`).join('\n')
   : '  * (None)'}
 ` : '';
 
-  const conversation: any[] = [
+  // Trim before sending. There is no server-side session, so the whole history
+  // is resent every turn — without this, cost grows with the square of the
+  // conversation length and a long journey eventually exceeds the context
+  // window and dies at the point the customer has invested the most.
+  const trimmed = trimConversation<OpenAI.ChatCompletionMessageParam>([
     { role: 'system', content: SYSTEM_PROMPT },
-    ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
-    ...messages
-  ];
+    ...(stateContext ? [{ role: 'system' as const, content: stateContext }] : []),
+    ...(messages as OpenAI.ChatCompletionMessageParam[])
+  ]);
+
+  if (trimmed.dropped > 0) {
+    log.info(`trimmed ${trimmed.dropped} message(s); ~${trimmed.approxTokens} tokens sent`);
+  }
+
+  const conversation: OpenAI.ChatCompletionMessageParam[] = trimmed.messages;
 
   const maxLoops = 8; // Allow enough loops for multiple search + UI tool calls
   let loops = 0;
-  let finalMessage: any = null;
-  const uiToolCalls: any[] = []; // Collect UI tool calls to return to frontend
+  let finalMessage: OpenAI.ChatCompletionMessage | null = null;
+  // UI tool calls are collected, never executed here, and replayed in the browser.
+  // Narrowed to the function variant — we never register custom tools, and the
+  // wider union has no `.function` to read.
+  const uiToolCalls: OpenAI.ChatCompletionMessageFunctionToolCall[] = [];
 
   try {
     while (loops < maxLoops) {
@@ -333,10 +331,15 @@ ${state.recommendedProducts && state.recommendedProducts.length > 0
             try {
               queryEmbedding = await embedText(args.query);
             } catch (embedErr) {
-              console.warn('Embedding failed, using regex search:', embedErr);
+              log.warn('embedding failed — falling back to keyword search', embedErr);
             }
             
-            const results = await search(queryEmbedding, {
+            // `searchWithReport`, not `search` — the report says whether this
+            // came from semantic search or a degraded keyword scan, and the
+            // model has to know. Answering off keyword-matched chunks with the
+            // same confidence as a good vector hit is how a customer gets told
+            // the wrong thing about an in-wall component.
+            const { results, degraded } = await searchWithReport(queryEmbedding, {
               query: args.query,
               brand: 'caroma',
               type: args.type,
@@ -344,13 +347,22 @@ ${state.recommendedProducts && state.recommendedProducts.length > 0
               limit: 8,
             });
 
+            const retrievalNote = degraded
+              ? 'DEGRADED RETRIEVAL: semantic search is unavailable and these results come from a keyword match, so they may be less relevant. Rely only on what the content plainly states, do not infer, and say you are not certain if the answer is not clearly present.'
+              : undefined;
+
              let toolResult;
             if (results.length === 0) {
-              toolResult = { found: false, message: 'No relevant documents found for this query. Try a broader search.' };
+              toolResult = {
+                found: false,
+                message: 'No relevant documents found for this query. Try a broader search.',
+                retrievalNote,
+              };
             } else {
               toolResult = {
                 found: true,
                 resultCount: results.length,
+                retrievalNote,
                 results: results.map(r => {
                   const specs = parseSpecs(r.document.content);
                   const images = parseImages(r.document.content);
@@ -379,7 +391,7 @@ ${state.recommendedProducts && state.recommendedProducts.length > 0
             requiresAnotherCall = true;
 
           } catch (err) {
-            console.error('Knowledge search error:', err);
+            log.error('knowledge search failed', err);
             conversation.push({
               role: 'tool',
               tool_call_id: call.id,
@@ -410,6 +422,22 @@ ${state.recommendedProducts && state.recommendedProducts.length > 0
     }
   }
 
+    // The loop can exhaust `maxLoops` while the model is still calling tools.
+    // `finalMessage` is then an assistant turn whose content is null, because
+    // its substance was in `tool_calls` — the browser rendered that as an
+    // empty bubble, which reads as the assistant ignoring you. The UI actions
+    // it produced are still good, so keep them and supply words to go with.
+    if (loops >= maxLoops && !finalMessage?.content) {
+      log.warn(`tool loop exhausted after ${maxLoops} iterations`);
+      finalMessage = {
+        role: 'assistant',
+        content: uiToolCalls.length > 0
+          ? "I've updated the panel on the right with what I found. Tell me what you'd like to do next."
+          : "That took longer than expected to work through. Could you narrow it down a little for me?",
+        refusal: null,
+      } as OpenAI.ChatCompletionMessage;
+    }
+
     // Return both the final message text AND any UI tool calls
     return new Response(JSON.stringify({
       message: finalMessage,
@@ -421,11 +449,11 @@ ${state.recommendedProducts && state.recommendedProducts.length > 0
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
-  } catch (error: any) {
-    console.error('API Error:', error);
-    return new Response(JSON.stringify({ error: error.message || 'An error occurred during AI processing.' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+  } catch (error) {
+    // Log the detail, return a generic message. The previous version echoed
+    // `error.message` to the browser, which leaks upstream provider errors
+    // and occasionally connection strings.
+    log.error('chat turn failed', error);
+    return errorResponse(502, 'ai_unavailable', 'The assistant is unavailable right now. Please try again.');
   }
 }
