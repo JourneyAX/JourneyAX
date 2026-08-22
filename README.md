@@ -1,68 +1,80 @@
-# Caroma JourneyAX - Bathroom Configurator POC
+# JourneyAX
 
-An AI-powered, conversational bathroom configurator built for Caroma. This Proof of Concept (POC) guides users through a seamless, end-to-end journey—from initial design and product selection to troubleshooting and generating a final quote—all driven by a dynamic, context-aware AI architecture.
+Conversational commerce journeys where **the AI chooses the interface**, not the router. The model calls a tool, the browser replays it as a state change, and the right-hand panel becomes whatever the conversation now needs — clarifying questions, product cards, an installation checklist, a fit advisor, a quote.
 
-## 🚀 Key Features
+Two businesses run on the same engine: a Caroma bathroom configurator and an apparel journey with size intelligence.
 
-*   **Conversational UI Routing:** The AI acts as the orchestrator, instantly adapting the right-hand panel (Clarify, Products, Guide, Quote) based on the user's intent without requiring page reloads.
-*   **Intelligent Knowledge Retrieval (RAG):** Powered by MongoDB Atlas Vector Search, the AI grounds every recommendation, price, and installation guide in actual Caroma product data to prevent hallucinations.
-*   **Multi-Persona Execution:** The AI dynamically switches between acting as a Store Stylist (recommending matching collections like Liano or Luna) and a Plumber (diagnosing leaks and providing installation checklists).
-*   **Real-time Quoting & BOM:** Automatically compiles the user's selections, adds mandatory installation parts, and generates a structured Bill of Materials (BOM) with live pricing.
+## Journeys
 
-## 🛠 Tech Stack
+Run `npm run dev`, then:
 
-*   **Framework:** Next.js (App Router) + React
-*   **AI Orchestration:** Vercel AI SDK
-*   **LLM Provider:** OpenAI (`gpt-4o` / `gpt-4o-mini`)
-*   **Database & Vector Search:** MongoDB Atlas
-*   **Styling:** Vanilla CSS (custom `globals.css` with responsive, modern styling)
-*   **Language:** TypeScript
+| Route | What it is | Needs a key? |
+|---|---|---|
+| `/` | Caroma bathroom configurator | **Yes** — `OPENAI_API_KEY` + `MONGODB_URI` |
+| `/shop` | Apparel journey: fit, try-on, bag, returns, 5 languages | No — mock data, deterministic fallback |
+| `/advisor` | Fit Advisor as a modal widget on a mock storefront | No |
+| `/csr` | Augusta CSR reorder desk | No — **staff sign-in required** |
+| `/fit` | Batch size review, two brands on one engine | No — **staff sign-in required** |
+| `/login`, `/account` | Staff sign-in and account management | No |
 
-## 🏗 Getting Started (Local Development)
+`/api/health` reports whether retrieval is working or has silently degraded. Point an uptime monitor at it.
 
-### Prerequisites
-*   Node.js v18+
-*   MongoDB Atlas Cluster (with Vector Search index configured)
-*   OpenAI API Key
+## Getting started
 
-### 1. Installation
-Clone the repository and install the dependencies:
+**Prerequisites:** Node.js 20+ (developed on 24). MongoDB Atlas with a `vector_index` **created in the Atlas UI** — `ensureIndexes()` only creates the scalar ones. An OpenAI key.
+
 ```bash
-git clone https://github.com/JourneyAX/caroma-journeyAX.git
-cd caroma-journeyAX/journeyx-app
 npm install
-```
-
-### 2. Environment Variables
-Create a `.env.local` file in the root of `journeyx-app` and add your secret keys:
-```env
-OPENAI_API_KEY="sk-your-openai-api-key"
-MONGODB_URI="mongodb+srv://<username>:<password>@cluster.mongodb.net/?retryWrites=true&w=majority"
-```
-
-### 3. Run the Development Server
-Start the Next.js local server:
-```bash
+cp .env.example .env.local   # then fill it in
 npm run dev
 ```
-Open [http://localhost:3008](http://localhost:3008) in your browser to start the conversation!
 
-## ☁️ Deployment (Vercel)
+Only `/` needs the key and the database. Every other journey runs on local mock data, so you can develop most of the app with an empty `.env.local`.
 
-This application is fully optimized for Vercel deployment.
+```bash
+npm run dev      # dev server
+npm run build    # production build
+npm run lint     # must stay at 0 errors
+npm test         # node:test via tsx
+```
 
-1. Push your code to GitHub.
-2. Go to the [Vercel Dashboard](https://vercel.com/new) and click **Add New** -> **Project**.
-3. Import this repository.
-4. Expand the **Environment Variables** section and add `OPENAI_API_KEY` and `MONGODB_URI`.
-5. Click **Deploy**.
+### Staff accounts
 
-## 📁 Repository Structure
-*   `src/app/page.tsx`: The main application shell layout.
-*   `src/app/api/chat/route.ts`: The core AI Orchestrator prompt and tool definitions.
-*   `src/components/panels/`: The dynamic UI panels (Hero, Clarify, Products, Guide, Quote).
-*   `src/context/JourneyContext.tsx`: The global state manager that tracks the user's phase, selections, and quotes.
-*   `src/services/knowledge/`: Ingestion, chunking, and MongoDB Vector Search logic.
+`/csr` and `/fit` require sign-in. Create an account:
+
+```bash
+npx tsx src/scripts/make-user.ts add alice csr
+```
+
+With `JOURNEYAX_USER_STORE` set this writes to a JSON file and enables password changes, MFA and recovery codes. Without it, the script prints a line for `JOURNEYAX_USERS` and the directory is read-only.
+
+## Architecture
+
+**`src/app/api/chat/route.ts` is the whole backend for `/`.** It runs its own OpenAI tool loop and splits tools in two:
+
+- `searchKnowledge` runs server-side against MongoDB and feeds the result back into the loop.
+- `setPhase` / `updateQuote` / `showProducts` / `showGuide` are **never executed on the server.** They are collected, answered with a stub so the model keeps going, and returned as `uiActions[]` for the browser to replay as reducer dispatches.
+
+So the model changes the interface by calling a function that does nothing where it is called. Adding a panel means: a tool, a branch in the route, a handler in `ChatPanel`, a reducer action, an entry in `ProjectPanel`.
+
+**Retrieval** tries Atlas `$vectorSearch` and falls back to a regex scan. That fallback used to be invisible; `searchWithReport()` now returns `degraded`, the model is told to hedge when it fires, and `/api/health` reports it.
+
+**Money is verified server-side.** `lib/pricing.ts` is shared by both sides, the browser's figure is a preview, and `/api/quote` is the number of record. Nothing may be ordered on a total that did not come from there.
+
+**The fit engine** (`src/services/fit/`) is brand-agnostic size intelligence: six independent signals, each returning `null` when it lacks data, so one engine serves made-to-order team wear and retail fashion with no branching. Onboarding a brand is one object in `brands.ts`.
+
+## Where the detail lives
+
+**`CLAUDE.md` is the working document** — architecture, the authentication model, the request-handling pipeline, and a "things that will mislead you" section covering the traps this codebase actually contains. Read it before changing anything non-trivial. `AGENTS.md` covers the Next 16 breaking changes.
+
+## Status
+
+A proof of concept under active hardening, not a production deployment. Honest limitations:
+
+- Four of the five journeys run on **mock data**. Only `/` is wired to anything real.
+- Rate limiting, account lockout and session revocation are **in-process** — they reset on restart and do not coordinate across instances.
+- The writable user store is a **JSON file**, single-instance only.
+- The scraped-page parsers are positional string-slicing against one site's layout and will break when it changes. They are tested so the breakage is visible.
 
 ---
-*Built as a Proof of Concept by JourneyAX.*
+*Built as a proof of concept by JourneyAX.*
