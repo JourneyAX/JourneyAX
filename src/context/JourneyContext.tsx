@@ -341,18 +341,30 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
    * Approve the quote.
    *
    * The total shown on screen was computed in this browser, so it is not
-   * trusted to create an order. `/api/quote` re-prices the same lines and is
-   * the only figure allowed through. If the server disagrees or rejects a
-   * line, no order is created and the shopper is told.
+   * trusted to create an order. /api/orders/submit re-prices the same lines
+   * server-side (the same verifyQuote used by /api/quote) and only persists
+   * — and only returns an id — once it agrees. Before this route existed,
+   * a client-generated id was the entire "order": nothing was ever written
+   * anywhere, and no one but the shopper's own browser tab could ever see
+   * what had been ordered.
+   *
+   * `source` is inferred from the jobId prefix rather than threaded through
+   * as its own piece of state — Caroma mints "JOB-…", the shop journey mints
+   * "AF-…", and that's already reliable per-tenant since each route
+   * generates its own prefix.
    */
   const handleApprove = useCallback(async () => {
     setApproving(true);
     setQuoteError(null);
     try {
-      const res = await fetch('/api/quote', {
+      const source = state.jobId?.startsWith('AF-') ? 'shop' : 'caroma';
+      const res = await fetch('/api/orders/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bom, selectedAddons: state.selectedAddons, qty: state.qty }),
+        body: JSON.stringify({
+          source, title: quoteTitle, jobId: state.jobId,
+          bom, selectedAddons: state.selectedAddons, qty: state.qty,
+        }),
       });
 
       if (!res.ok) {
@@ -372,7 +384,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const id = 'CAR-' + Math.floor(100000 + Math.random() * 899999);
+      const id = verdict.id;
       dispatch({ type: 'SET_ORDER_ID', orderId: id });
       dispatch({ type: 'SET_PHASE', phase: 'ordered' });
       dispatch({ type: 'SET_TOAST', show: false });
@@ -386,7 +398,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setApproving(false);
     }
-  }, [bom, state.selectedAddons, state.qty]);
+  }, [bom, state.selectedAddons, state.qty, state.jobId, quoteTitle]);
 
   const handleTryRemove = useCallback(() => {
     dispatch({
