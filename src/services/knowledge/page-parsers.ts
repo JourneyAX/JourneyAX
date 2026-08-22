@@ -83,8 +83,10 @@ export function parseImages(content: string): string[] {
   const idx = content.indexOf(IMAGE_MARKER);
 
   if (idx === -1) {
+    // Real product photos live on the PIM blob storage host; cdn.caroma.com
+    // only serves site-wide logos/icons, so both are worth catching here.
     const images: string[] = [];
-    const cdnRegex = /(https?:\/\/cdn\.[^\s"']+\.(?:jpg|jpeg|png|webp|avif)[^\s"']*)/gi;
+    const cdnRegex = /(https?:\/\/[^\s"']*(?:cdn\.[^\s"']+|pim-assets\/ProductThumbnail\/[^\s"']+)\.(?:jpg|jpeg|png|webp|avif)[^\s"']*)/gi;
     let match: RegExpExecArray | null;
     while ((match = cdnRegex.exec(content)) !== null) {
       if (!images.includes(match[1])) images.push(match[1]);

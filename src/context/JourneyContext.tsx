@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, useState } from 'react';
 import {
   JourneyState, INITIAL_STATE, Phase, ClarifyAnswers, DynamicQuestion, RecommendedProduct,
-  FINISHES, DEFAULT_ADDONS, formatAUD, getStockInfo, BOMLine, QuoteTotals
+  formatAUD, BOMLine, QuoteTotals
 } from '@/lib/types';
 import { computeTotals } from '@/lib/pricing';
 import { recordReturn } from '@/services/fit/return-store';

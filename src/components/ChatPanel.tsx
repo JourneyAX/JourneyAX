@@ -96,15 +96,20 @@ export default function ChatPanel({ tenant = CAROMA_TENANT }: { tenant?: TenantC
     setIsLoading(true);
 
     try {
-      // Build clean message array for API
-      const apiMessages = newMessages.map(m => {
-        let content = m.content;
-        if (!content && m.tool_calls) {
-          // Summarize tool calls so context is preserved
-          content = m.tool_calls.map(c => `[Action: ${c.function?.name || c.name}]`).join('\n');
-        }
-        return { role: m.role === 'assistant' ? 'assistant' : m.role, content: content || '' };
-      }).filter(m => m.content); // Filter empty
+      // Build clean message array for API. Tool-call/tool-result pairs are
+      // flattened to plain assistant text, so a lone 'tool' message here
+      // would have no 'tool_calls' message left to answer and the API
+      // rejects the whole request — drop them rather than resend them.
+      const apiMessages = newMessages
+        .filter(m => m.role !== 'tool')
+        .map(m => {
+          let content = m.content;
+          if (!content && m.tool_calls) {
+            // Summarize tool calls so context is preserved
+            content = m.tool_calls.map(c => `[Action: ${c.function?.name || c.name}]`).join('\n');
+          }
+          return { role: m.role === 'assistant' ? 'assistant' : m.role, content: content || '' };
+        }).filter(m => m.content); // Filter empty
 
       const res = await fetch(tenant.endpoint, {
         method: 'POST',
@@ -132,7 +137,7 @@ export default function ChatPanel({ tenant = CAROMA_TENANT }: { tenant?: TenantC
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'API Error');
+        throw new Error(errorData.error?.message || 'API Error');
       }
       
       const data = await res.json();

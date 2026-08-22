@@ -15,7 +15,7 @@
  */
 
 import { verifyQuote } from '@/lib/pricing';
-import { recordOrder, type OrderSource, type OrderLine } from '@/lib/order-store';
+import { recordOrder, getOrder, type OrderSource, type OrderLine } from '@/lib/order-store';
 import type { BOMLine } from '@/lib/types';
 import { guard, isFailure, errorResponse } from '@/lib/api-guard';
 import { COMPUTE_LIMIT } from '@/lib/rate-limit';
@@ -35,9 +35,16 @@ interface SubmitRequest {
   qty?: unknown;
 }
 
+// order-store's Map.set() overwrites silently on a key collision, so a
+// repeated random id would erase a prior order rather than error — check
+// before minting rather than trusting the random draw is unique.
 function orderIdFor(source: OrderSource): string {
   const prefix = source === 'shop' ? 'AF' : 'CAR';
-  return `${prefix}-${Math.floor(100000 + Math.random() * 899999)}`;
+  let id: string;
+  do {
+    id = `${prefix}-${Math.floor(100000 + Math.random() * 899999)}`;
+  } while (getOrder(id));
+  return id;
 }
 
 export async function POST(req: Request) {

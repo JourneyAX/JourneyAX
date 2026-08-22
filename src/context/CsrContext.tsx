@@ -484,7 +484,7 @@ export function CsrProvider({ children }: { children: React.ReactNode }) {
           },
         }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Assist unavailable');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error?.message || 'Assist unavailable');
       const data = await res.json();
 
       for (const a of data.uiActions || []) {
