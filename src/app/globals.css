@@ -1582,3 +1582,581 @@ body {
   font-weight: 600;
   color: var(--text);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Apparel journey — bag, try-on, returns, language.
+
+   Reuses the clarify-panel shell (scroll body + sticky footer) so these
+   panels feel like the rest of the journey rather than a bolted-on cart.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Header: language + bag ─────────────────────────────────────────── */
+.chat-header__shop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.lang-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lang-switch__label {
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lang-switch__select {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  padding: 4px 22px 4px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-body);
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+                    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 12px) 52%, calc(100% - 8px) 52%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.lang-switch__select:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+.chat-header__bag {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  padding: 7px 11px;
+  cursor: pointer;
+  color: var(--text-body);
+  font-family: inherit;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.chat-header__bag:hover { border-color: var(--gold); background: var(--surface-hover); }
+.chat-header__bag-icon  { font-size: 15px; line-height: 1; color: var(--gold); }
+.chat-header__bag-count { font-size: 12px; font-weight: 600; min-width: 8px; }
+
+/* ── Bag ─────────────────────────────────────────────────────────────── */
+.bag-list { display: flex; flex-direction: column; gap: 12px; margin-top: 22px; }
+
+.bag-line {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* An unsized line is a blocker, not a warning — mark it clearly. */
+.bag-line--unsized { border-color: var(--gold); background: var(--surface-alt); }
+
+.bag-line__main   { flex: 1; min-width: 0; }
+.bag-line__name   { font-size: 15px; font-weight: 600; color: var(--text); }
+.bag-line__reason { font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
+
+.bag-line__size { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-top: 10px; }
+
+.bag-line__size-tag {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dark);
+  background: var(--surface-hover);
+  border-radius: 5px;
+  padding: 3px 8px;
+}
+
+.bag-line__size-why { font-size: 11.5px; color: var(--text-muted); }
+
+.bag-line__size-cta {
+  margin-top: 10px;
+  background: transparent;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  border-radius: 6px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.bag-line__size-cta:hover { background: var(--gold); color: #fff; }
+
+.bag-line__side  { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.bag-line__price { font-size: 14px; font-weight: 600; color: var(--text); }
+
+.bag-qty { display: flex; align-items: center; gap: 8px; }
+
+.bag-qty button {
+  width: 22px; height: 22px;
+  border: 1px solid var(--border-input);
+  background: var(--surface);
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text-body);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.bag-qty button:hover { border-color: var(--gold); color: var(--gold); }
+.bag-qty span { font-size: 13px; min-width: 14px; text-align: center; }
+
+.bag-line__remove {
+  background: none; border: none;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.bag-line__remove:hover { color: var(--text-body); }
+
+.bag-total-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+.bag-total-row__label { font-size: 12.5px; color: var(--text-secondary); }
+.bag-total-row__value { font-size: 19px; font-weight: 600; color: var(--text); }
+
+.bag-blocked {
+  font-size: 12.5px;
+  color: var(--gold);
+  background: var(--surface-alt);
+  border: 1px solid var(--gold);
+  border-radius: 7px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+/* ── Try-on ──────────────────────────────────────────────────────────── */
+.tryon-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 22px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.tryon-head__style { font-size: 14.5px; font-weight: 600; color: var(--text); }
+
+.tryon-head__size {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dark);
+  background: var(--surface-hover);
+  border-radius: 5px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.tryon-stage { display: flex; justify-content: center; padding: 20px 0; }
+
+.tryon-empty,
+.tryon-summary {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--surface-alt);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 13px 15px;
+  margin-top: 14px;
+}
+
+/* The disclaimer is load-bearing: try-on shows how it looks, the advisor
+   decides the size. It must not read as fine print. */
+.tryon-disclaimer {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--gold);
+  padding: 2px 0 2px 12px;
+  margin-top: 18px;
+}
+
+.tryon-actions { display: flex; flex-direction: column; gap: 9px; }
+
+.tryon-secondary {
+  background: transparent;
+  border: 1px solid var(--border-input);
+  color: var(--text-body);
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+.tryon-secondary:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ── Returns ─────────────────────────────────────────────────────────── */
+.ret-group { display: flex; flex-direction: column; gap: 9px; margin-top: 22px; }
+
+.ret-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.ret-item:hover  { border-color: var(--text-muted); }
+.ret-item--on    { border-color: var(--gold); background: var(--surface-alt); }
+.ret-item__name  { font-size: 14px; font-weight: 500; color: var(--text); }
+.ret-item__size  { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+
+.ret-subhead {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 26px 0 12px;
+}
+
+.ret-reasons { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.ret-resolved {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.ret-resolved__title  { font-size: 14.5px; font-weight: 600; color: var(--text); }
+.ret-resolved__detail { font-size: 13px; color: var(--text-body); margin-top: 6px; }
+
+.ret-resolved__learn {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+  line-height: 1.6;
+}
+
+.ret-actions { display: flex; flex-direction: column; gap: 9px; }
+
+/* ── Quote approval: server price confirmation ────────────────────────── */
+/* Approving now waits on /api/quote, so the button has a pending state and
+   the footer needs somewhere to report a refusal. */
+.btn-approve:disabled {
+  opacity: .6;
+  cursor: progress;
+}
+
+.quote-footer__error {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--gold);
+  background: var(--surface-alt);
+  border: 1px solid var(--gold);
+  border-radius: 7px;
+  padding: 9px 12px;
+}
+
+/* ── Staff sign-in ────────────────────────────────────────────────────── */
+/* Deliberately plain. This page is a door, not a journey — anything that
+   looks like the configurator invites people to linger on it. */
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 34px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.login-card__brand {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.login-card__title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.login-card__sub {
+  margin: -8px 0 4px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-field span {
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.login-field input {
+  background: var(--surface-alt);
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  padding: 11px 13px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-body);
+}
+
+.login-field input:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+  border-color: var(--gold);
+}
+
+.login-error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--gold);
+  background: var(--surface-alt);
+  border: 1px solid var(--gold);
+  border-radius: 7px;
+  padding: 9px 12px;
+}
+
+.login-submit {
+  margin-top: 4px;
+  background: var(--gold);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.login-submit:disabled {
+  opacity: .6;
+  cursor: progress;
+}
+
+.login-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.login-note a {
+  color: var(--text-secondary);
+}
+
+/* ── Account management ───────────────────────────────────────────────── */
+.account-card { max-width: 440px; }
+
+.account-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 20px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-light);
+}
+
+.account-section__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.account-notice {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-body);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 12px;
+}
+
+/* Recovery codes are shown exactly once — make them hard to miss and easy
+   to select. */
+.account-codes {
+  background: var(--surface-alt);
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.account-codes__warn {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.account-codes ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text);
+  user-select: all;
+}
+
+.account-secret {
+  margin: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: .06em;
+  word-break: break-all;
+  color: var(--text);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 11px 13px;
+  user-select: all;
+}
+
+.account-uri {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  word-break: break-all;
+  color: var(--text-muted);
+  user-select: all;
+}
+
+.login-linkbtn {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.login-linkbtn:hover { color: var(--gold); }
+
+/* ── Fault pages: error boundary and 404 ──────────────────────────────── */
+/* Shares the login shell's centred-card layout. These pages appear when
+   something has already gone wrong, so they stay dependency-free: no images,
+   no fonts, nothing else that could also fail to load. */
+.fault-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.fault-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 34px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.fault-card__brand {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.fault-card__title {
+  margin: 14px 0 10px;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.fault-card__body {
+  margin: 0 0 22px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.fault-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+/* The secondary action is an anchor here, not a button — centre its text. */
+.fault-card__actions .tryon-secondary,
+.fault-card__actions .login-submit {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
+.fault-card__ref {
+  margin: 20px 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.fault-card__ref code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  user-select: all;
+}

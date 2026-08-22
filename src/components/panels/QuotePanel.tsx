@@ -4,7 +4,7 @@ import { useJourney } from '@/context/JourneyContext';
 import { FINISHES, DEFAULT_ADDONS, formatAUD } from '@/lib/types';
 
 export default function QuotePanel() {
-  const { state, dispatch, bom, totals, quoteTitle, handleApprove, handleTryRemove } = useJourney();
+  const { state, dispatch, bom, totals, quoteTitle, handleApprove, handleTryRemove, approving, quoteError } = useJourney();
   const { qty, finish, selectedAddons } = state;
 
   return (
@@ -194,13 +194,16 @@ export default function QuotePanel() {
             >
               Download BOM
             </button>
-            <button className="btn-approve" onClick={handleApprove}>
-              Approve &amp; convert to order
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>
-                <path d="M4 12h13M11 5l7 7-7 7" stroke="#F7F4EE" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            <button className="btn-approve" onClick={handleApprove} disabled={approving}>
+              {approving ? 'Confirming price…' : 'Approve & convert to order'}
+              {!approving && (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>
+                  <path d="M4 12h13M11 5l7 7-7 7" stroke="#F7F4EE" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </button>
           </div>
+          {quoteError && <p className="quote-footer__error" role="alert">{quoteError}</p>}
         </div>
       </div>
     </>

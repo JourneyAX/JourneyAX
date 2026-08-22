@@ -1,5 +1,16 @@
+import type { BodyEstimate, GarmentSpec, ZoneFit } from './advisor-types';
+import type { BagLine, ReturnCase, TryOnView } from './shop-types';
+import { EMPTY_RETURN } from './shop-types';
+import type { LanguageCode } from './i18n';
+
 // ── Phase machine ──────────────────────────────────────────────────────
-export type Phase = 'intro' | 'clarify' | 'validating' | 'products' | 'guide' | 'quote' | 'ordered';
+// 'tryon', 'bag' and 'returns' are apparel-only, the same way 'guide' is
+// bathroom-only. One phase machine serves both journeys because the shell
+// is the same; the tenant decides which phases can actually be reached.
+export type Phase =
+  | 'intro' | 'clarify' | 'validating' | 'products' | 'fit'
+  | 'tryon' | 'bag' | 'returns'
+  | 'guide' | 'quote' | 'ordered';
 
 // ── Clarification answers ──────────────────────────────────────────────
 export interface ClarifyAnswers {
@@ -99,21 +110,6 @@ export const DEFAULT_ADDONS: Addon[] = [
   { id: 'warranty', name: 'Caroma Care — 20-year warranty', desc: 'Extended cover across the full BOM.', price: 40 },
 ];
 
-// ── Clarification questions ────────────────────────────────────────────
-export interface ClarifyQuestion {
-  id: keyof ClarifyAnswers;
-  title: string;
-  options: string[];
-}
-
-export const CLARIFY_QUESTIONS: ClarifyQuestion[] = [
-  { id: 'mode', title: 'Renovating, or building new?', options: ['Renovating', 'Building new', 'Replacing fixtures'] },
-  { id: 'scope', title: "What's in scope?", options: ['Just the shower', 'Shower + tapware', 'The whole bathroom'] },
-  { id: 'collection', title: 'Overall style?', options: ['Minimalist', 'Soft & curved', 'No preference'] },
-  { id: 'shower', title: 'Shower experience?', options: ['Rain overhead', 'Handheld on rail', 'Rail + overhead'] },
-  { id: 'finishQ', title: 'Finish?', options: ['Matte Black', 'Chrome', 'Brushed Brass'] },
-];
-
 // ── Dynamic questions (AI-driven) ─────────────────────────────────────
 export interface DynamicQuestion {
   id: string;
@@ -148,12 +144,43 @@ export interface JourneyState {
   dynamicAnswers: Record<string, string>;
   recommendedProducts: RecommendedProduct[];
   guideSteps: GuideStep[];
+  /**
+   * The garment the Fit Advisor is currently running against. Set by the
+   * model calling showFitAdvisor; null whenever the advisor is not open.
+   */
+  fitGarment: GarmentSpec | null;
+  /**
+   * The size the shopper accepted from the advisor, kept for the quote — and
+   * the body/zone detail behind it, which is what lets try-on draw this
+   * shopper rather than a generic mannequin.
+   */
+  fitChoice: {
+    size: string;
+    summary: string;
+    body?: BodyEstimate;
+    zones?: ZoneFit[];
+  } | null;
+  /**
+   * The bag. Accumulates across the whole session — unlike customBom, which
+   * the model replaces wholesale on every updateQuote. A shopping journey
+   * that forgets what you already picked is not one journey; it is several.
+   */
+  bag: BagLine[];
+  /** What try-on is currently visualising, or null when it is closed. */
+  tryOn: TryOnView | null;
+  /** The in-progress return, if any. */
+  returnCase: ReturnCase;
+  /**
+   * Language for the panels. Lives here rather than in a route so that
+   * switching it mid-journey changes the chrome without resetting the bag,
+   * the sizes or the conversation.
+   */
+  language: LanguageCode;
   quoteTitle?: string;
   customBom?: BOMLine[];
   qty: number;
   finish: string;
   selectedAddons: string[];   // addon IDs
-  revealed: boolean;          // EasySwitch parts revealed
   showToast: boolean;
   orderId: string | null;
   isThinking: boolean;
@@ -179,97 +206,15 @@ export const INITIAL_STATE: JourneyState = {
   qty: 1,
   finish: 'Matte Black',
   selectedAddons: [],
-  revealed: false,
   showToast: false,
   orderId: null,
   isThinking: false,
-};
-
-// ── Product data (from wireframe — real Caroma products) ───────────────
-export const SHOWER_OPTIONS: Record<string, Product> = {
-  'Rain overhead': {
-    key: 'shower',
-    name: 'Caroma 300mm Square Rain Shower',
-    price: 425,
-    spec: '300mm square overhead · single function',
-    category: 'Showers',
-  },
-  'Handheld on rail': {
-    key: 'shower',
-    name: 'Caroma Contura® II Hand Shower',
-    price: 569,
-    spec: 'Multi-function hand shower on rail',
-    category: 'Showers',
-  },
-  'Rail + overhead': {
-    key: 'shower',
-    name: 'Caroma Contura® II Rail Shower With Overhead',
-    price: 1063,
-    spec: 'Rail + 300mm overhead · with diverter',
-    category: 'Showers',
-  },
-};
-
-export const BASE_PARTS: Record<string, Product> = {
-  showerMixer: {
-    key: 'showerMixer',
-    name: 'Liano II Bath/Shower Mixer',
-    price: 349,
-    spec: 'WELS 6★ · round cover plate',
-    category: 'Tapware',
-  },
-  basin: {
-    key: 'basin',
-    name: 'Liano II Hand Wall Basin',
-    price: 360,
-    spec: 'Fine fire clay · thin rim · matte white',
-    sku: '853010MW',
-    category: 'Basins',
-  },
-  basinMixer: {
-    key: 'basinMixer',
-    name: 'Liano II Wall Basin/Bath Mixer',
-    price: 329,
-    spec: 'WELS 6★ · 4.5 L/min · lead-free · wall-mounted',
-    category: 'Tapware',
-  },
-  suite: {
-    key: 'suite',
-    name: 'Liano Cleanflush® WF Invisi Suite',
-    price: 690,
-    spec: 'Rimless Cleanflush® · GermGard® · gloss white',
-    sku: '766100W',
-    category: 'Toilet Suites',
-  },
-};
-
-export const AUTO_PARTS: Record<string, Product & { reason: string }> = {
-  esShower: {
-    key: 'esShower',
-    name: 'EasySwitch® Bath/Shower Mixer In-Wall Body',
-    price: 150,
-    spec: 'Universal in-wall body · lead-free',
-    sku: '99651F',
-    reason: 'Required for the shower mixer',
-    category: 'In-Wall',
-  },
-  esBasin: {
-    key: 'esBasin',
-    name: 'EasySwitch® Basin/Bath Mixer In-Wall Body',
-    price: 150,
-    spec: 'Universal in-wall body · install now, finish later',
-    sku: '99635F',
-    reason: 'Required for the wall basin mixer',
-    category: 'In-Wall',
-  },
-  plate: {
-    key: 'plate',
-    name: 'Invisi Series II® Round Flush Plate',
-    price: 130,
-    spec: 'Dual-flush plate + buttons · finish-matched',
-    reason: 'Finish-matched flush control for the suite',
-    category: 'Sanitaryware',
-  },
+  fitGarment: null,
+  fitChoice: null,
+  bag: [],
+  tryOn: null,
+  returnCase: EMPTY_RETURN,
+  language: 'en',
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────

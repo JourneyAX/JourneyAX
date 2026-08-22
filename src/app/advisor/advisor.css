@@ -1,0 +1,89 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Fit Advisor — shopper-facing.
+
+   Roomier than the CSR desk on purpose. This one is read by a customer on a
+   phone who did not come here to fill in a form, so targets are large, the
+   copy is short, and the answer is the biggest thing on the screen.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.adv-shell { overflow-y: auto; }
+
+/* ── Mock product page ──────────────────────────────────────────────── */
+.pdp { max-width: 1080px; margin: 0 auto; padding: 22px 22px 60px; width: 100%; }
+
+.pdp__switcher {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 26px;
+}
+.pdp__switchlabel {
+  font-family: var(--csr-mono); font-size: 10px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--text-muted); margin-right: 4px;
+}
+.pdp__switch {
+  font-family: inherit; font-size: 12.5px; padding: 6px 13px; cursor: pointer;
+  background: var(--surface); color: var(--text-secondary);
+  border: 1px solid var(--border-input); border-radius: 999px;
+}
+.pdp__switch:hover { border-color: var(--gold); color: var(--gold); }
+.pdp__switch.is-on { background: var(--dark); border-color: var(--dark); color: #F7F4EE; }
+
+.pdp__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+
+.pdp__shot {
+  aspect-ratio: 4 / 5; border-radius: 10px;
+  background: linear-gradient(150deg, var(--surface-alt), var(--border-light));
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+}
+.pdp__shotid {
+  font-family: var(--csr-mono); font-size: 13px; letter-spacing: .12em;
+  color: var(--text-faint);
+}
+
+.pdp__brand {
+  font-family: var(--csr-mono); font-size: 10.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+}
+.pdp__name { font-size: 26px; line-height: 1.25; margin: 0 0 10px; font-weight: 600; }
+.pdp__price { font-size: 18px; color: var(--text-body); margin-bottom: 26px; }
+
+.pdp__sizerow {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px;
+}
+.pdp__sizelabel {
+  font-family: var(--csr-mono); font-size: 10.5px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+
+.pdp__sizes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.pdp__size {
+  min-width: 52px; padding: 11px 12px; cursor: pointer;
+  font-family: var(--csr-mono); font-size: 13px;
+  background: var(--surface); color: var(--text-body);
+  border: 1px solid var(--border-input); border-radius: 6px;
+}
+.pdp__size:hover { border-color: var(--gold); }
+.pdp__size.is-on { background: var(--dark); border-color: var(--dark); color: #F7F4EE; }
+
+.pdp__advised {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--success-text);
+  background: var(--success-bg); border: 1px solid var(--success-border);
+  border-radius: 6px; padding: 9px 12px; margin-bottom: 16px;
+}
+.pdp__advisedmark { color: var(--success); }
+
+.pdp__add {
+  width: 100%; padding: 15px; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  background: var(--dark); color: #F7F4EE;
+  border: 1px solid var(--dark); border-radius: 8px;
+}
+.pdp__add:disabled { opacity: .4; cursor: not-allowed; }
+
+.pdp__note { font-size: 12px; color: var(--text-muted); margin-top: 14px; line-height: 1.6; }
+
+@media (max-width: 820px) {
+  .pdp__grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .pdp__media { max-width: 340px; }
+}

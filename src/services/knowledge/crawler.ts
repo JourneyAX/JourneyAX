@@ -141,7 +141,12 @@ export async function mapSite(url: string): Promise<string[]> {
   try {
     const result = await app.mapUrl(url);
 
-    const links = (result?.links as any) || [];
+    // Firecrawl returns link objects, not bare strings. The previous `as any`
+    // hid that: this function promises string[] and was handing back objects,
+    // so every consumer stringified them into "[object Object]".
+    const links = (result?.links ?? [])
+      .map(entry => (typeof entry === 'string' ? entry : entry?.url))
+      .filter((u): u is string => typeof u === 'string' && u.length > 0);
     console.log(`🗺️  Mapped ${links.length} URLs from ${url}`);
     return links;
   } catch (err) {
