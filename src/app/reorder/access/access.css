@@ -1,0 +1,150 @@
+/* ── Coach access: confirm-your-email step ────────────────────────────── */
+/* Standalone styling. This page must render before the coach has any
+   session, and must not depend on anything the reorder view loads. */
+
+.ca-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0F1115;
+  color: #E8EAED;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.ca-card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 34px 32px;
+  background: #171A20;
+  border: 1px solid #262B33;
+  border-radius: 12px;
+}
+
+.ca-brand {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: .22em;
+  color: #8A93A0;
+}
+
+.ca-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.ca-body {
+  margin: -4px 0 4px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #A8B0BC;
+}
+
+.ca-body strong { color: #E8EAED; }
+
+.ca-field { display: flex; flex-direction: column; gap: 6px; }
+
+.ca-field span {
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: #8A93A0;
+}
+
+/* Wide tracking so six digits are easy to check against a phone screen. */
+.ca-field input {
+  background: #0F1115;
+  border: 1px solid #2E353F;
+  border-radius: 8px;
+  padding: 13px 14px;
+  font-size: 22px;
+  letter-spacing: .38em;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: #E8EAED;
+  text-align: center;
+}
+
+.ca-field input:focus-visible {
+  outline: 2px solid #4C8DFF;
+  outline-offset: 1px;
+}
+
+.ca-field input:disabled { opacity: .5; }
+
+.ca-error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #FF8A80;
+  background: #2A1618;
+  border: 1px solid #5A2A2E;
+  border-radius: 7px;
+  padding: 9px 12px;
+}
+
+.ca-submit {
+  background: #4C8DFF;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #0F1115;
+  cursor: pointer;
+}
+
+.ca-submit:disabled { opacity: .45; cursor: not-allowed; }
+
+.ca-resend {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-family: inherit;
+  color: #8A93A0;
+  text-decoration: underline;
+  cursor: pointer;
+  align-self: center;
+}
+
+.ca-resend:disabled { opacity: .5; cursor: default; text-decoration: none; }
+
+.ca-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8A93A0;
+}
+
+/* Development-only affordance. Marked out clearly so nobody mistakes it for
+   part of the product. */
+.ca-dev {
+  margin-top: 6px;
+  border: 1px dashed #4A5260;
+  border-radius: 8px;
+  padding: 12px 13px;
+  background: #12151A;
+}
+
+.ca-dev__label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #C8A96A;
+}
+
+.ca-dev pre {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #A8B0BC;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}

@@ -6,13 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "reorder:data": "node scripts/reorder-data-server.mjs",
+    "test:reorder-auth": "tsx src/scripts/test-reorder-authorization.ts",
+    "lint": "eslint",
+    "coach:link": "tsx src/scripts/make-coach-link.ts"
   },
   "dependencies": {
     "@mendable/firecrawl-js": "^4.29.0",
+    "@types/nodemailer": "^8.0.1",
     "dotenv": "^17.4.2",
     "mongodb": "^7.4.0",
     "next": "16.2.9",
+    "nodemailer": "^9.0.5",
     "openai": "^6.45.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
