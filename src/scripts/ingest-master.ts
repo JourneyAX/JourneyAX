@@ -33,7 +33,7 @@ async function main() {
     'https://www.caroma.com/au/independent-living/'
   ];
 
-  let uniqueUrls = new Set<string>(seedUrls);
+  const uniqueUrls = new Set<string>(seedUrls);
 
   // Fetch product sitemap
   try {

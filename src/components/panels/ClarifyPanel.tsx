@@ -13,7 +13,7 @@ export default function ClarifyPanel() {
 
   const handleSubmit = () => {
     // Call the ChatPanel's submit handler via the window bridge
-    const fn = (window as any).__handleClarifySubmit;
+    const fn = window.__handleClarifySubmit;
     if (fn) fn();
   };
 

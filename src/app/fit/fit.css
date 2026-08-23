@@ -1,0 +1,98 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Fit engine demo.
+
+   Borrows the CSR desk's tokens and blocks so it reads as the same product.
+   The layout puts the brand configuration on the left and the answer on the
+   right, because the argument being made is "the left column is the only
+   thing that changed".
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.fitd-shell { overflow-y: auto; }
+
+.fitd { padding: 18px 22px 40px; max-width: 1500px; margin: 0 auto; width: 100%; }
+
+/* ── Brand toggle ───────────────────────────────────────────────────── */
+.fitd__tabs {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.fitd__tab {
+  font-family: inherit; font-size: 13.5px; font-weight: 600;
+  padding: 8px 16px; cursor: pointer;
+  background: var(--surface); color: var(--text-secondary);
+  border: 1px solid var(--border-input); border-radius: 999px;
+}
+.fitd__tab:hover { border-color: var(--gold); color: var(--gold); }
+.fitd__tab.is-on {
+  background: var(--dark); border-color: var(--dark); color: #F7F4EE;
+}
+.fitd__tabnote {
+  margin-left: 6px; font-size: 12px; color: var(--text-muted); font-style: italic;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────── */
+.fitd__grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: var(--csr-gap);
+  align-items: start;
+}
+.fitd__side { position: sticky; top: 0; }
+.fitd__main { min-width: 0; }
+
+.fitd__label {
+  font-family: var(--csr-mono); font-size: 10px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--text-muted);
+  margin: 14px 0 8px;
+}
+.csr-block > .fitd__label:first-child { margin-top: 0; }
+
+/* ── Signal list ────────────────────────────────────────────────────── */
+.fitd__signals { list-style: none; margin: 0; padding: 0; }
+.fitd__signals li {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: 8px; align-items: baseline;
+  padding: 4px 0; font-size: 12.5px;
+}
+.fitd__signals li.is-off { opacity: .42; }
+.fitd__sigmark { color: var(--gold); font-size: 9px; }
+.fitd__signals li.is-off .fitd__sigmark { color: var(--text-faint); }
+.fitd__signame { color: var(--text-body); }
+.fitd__sigweight {
+  font-family: var(--csr-mono); font-size: 11px; color: var(--text-muted);
+}
+
+/* The shared .csr-kv is a two-up grid, which wraps badly in a 320px rail.
+   One pair per row here. */
+.fitd__side .csr-kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+.fitd__side .csr-kv div {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 4px 0; border-top: 1px solid var(--border-light);
+}
+.fitd__side .csr-kv div:first-child { border-top: 0; }
+
+.fitd__cost p {
+  font-size: 12.5px; line-height: 1.6; color: var(--text-secondary); margin: 0;
+}
+
+/* ── Evidence table ─────────────────────────────────────────────────── */
+.fitd__scroll { overflow-x: auto; }
+.fitd__table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.fitd__table th {
+  text-align: left; font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600; padding: 0 12px 7px 0; white-space: nowrap;
+}
+.fitd__table td {
+  padding: 7px 12px 7px 0;
+  border-top: 1px solid var(--border-light);
+  color: var(--text-secondary); vertical-align: baseline;
+}
+.fitd__table tr.is-flagged td { background: var(--auto-bg); }
+.fitd__name { font-weight: 600; color: var(--text); white-space: nowrap; }
+.fitd__size { font-family: var(--csr-mono); color: var(--text-body); white-space: nowrap; }
+.fitd__cell { line-height: 1.5; }
+
+@media (max-width: 1080px) {
+  .fitd__grid { grid-template-columns: minmax(0, 1fr); }
+  .fitd__side { position: static; }
+}

@@ -1,5 +1,8 @@
-import { MongoClient, Db, Collection } from 'mongodb';
+import { MongoClient, Db, Collection, OptionalUnlessRequiredId, Document } from 'mongodb';
 import { KnowledgeDocument, SearchOptions, SearchResult } from './types';
+import { logger, redact } from '@/lib/logger';
+
+const log = logger('knowledge/mongo');
 
 // ── Singleton client ───────────────────────────────────────────────────
 let client: MongoClient | null = null;
@@ -17,7 +20,7 @@ export async function getMongoClient(): Promise<MongoClient> {
 
   client = new MongoClient(uri);
   await client.connect();
-  console.log('✅ Connected to MongoDB Atlas');
+  log.info('connected to MongoDB Atlas');
   return client;
 }
 
@@ -37,7 +40,7 @@ export async function getCollection(): Promise<Collection<KnowledgeDocument>> {
 export async function insertDocuments(docs: KnowledgeDocument[]): Promise<number> {
   if (docs.length === 0) return 0;
   const col = await getCollection();
-  const result = await col.insertMany(docs as any[]);
+  const result = await col.insertMany(docs as OptionalUnlessRequiredId<KnowledgeDocument>[]);
   return result.insertedCount;
 }
 
@@ -99,7 +102,7 @@ export async function vectorSearch(
 
   return results.map((doc) => ({
     document: doc as unknown as KnowledgeDocument,
-    score: (doc as any).score || 0,
+    score: typeof doc.score === 'number' ? doc.score : 0,
   }));
 }
 
@@ -130,7 +133,7 @@ export async function regexSearch(
     ];
     if (filter['$or']) {
       filter['$and'] = [
-        { $or: filter['$or'] as any[] },
+        { $or: filter['$or'] as Document[] },
         { $or: categoryOr }
       ];
       delete filter['$or'];
@@ -162,32 +165,83 @@ export async function regexSearch(
 }
 
 // ── Search (tries vector first, falls back to regex) ───────────────────
-export async function search(
+/** How the results were actually obtained. */
+export type SearchMode = 'vector' | 'regex' | 'failed';
+
+export interface SearchReport {
+  results: SearchResult[];
+  mode: SearchMode;
+  /** True when we answered with something worse than semantic search. */
+  degraded: boolean;
+  /** Why we fell back, when we did. */
+  reason?: string;
+}
+
+/**
+ * The health of the last search.
+ *
+ * Degradation used to be invisible: when the Atlas vector index was missing
+ * or erroring, `search` quietly dropped to a keyword regex and kept returning
+ * confident-looking answers. Callers could not tell, and neither could
+ * anyone watching from outside. This module now records what happened so a
+ * health check can report it.
+ */
+let lastReport: SearchReport = { results: [], mode: 'failed', degraded: true, reason: 'no search yet' };
+export function lastSearchReport(): Omit<SearchReport, 'results'> {
+  const { mode, degraded, reason } = lastReport;
+  return { mode, degraded, reason };
+}
+
+/**
+ * Search with full detail about how the answer was obtained.
+ *
+ * Prefer this over `search` in new code — the boolean `degraded` is the whole
+ * point, and the plain `search` wrapper throws it away.
+ */
+export async function searchWithReport(
   queryEmbedding: number[] | null,
   options: SearchOptions
-): Promise<SearchResult[]> {
-  // Try vector search first
+): Promise<SearchReport> {
+  let reason: string | undefined;
+
   if (queryEmbedding) {
     try {
       const vectorResults = await vectorSearch(queryEmbedding, options);
       if (vectorResults.length > 0) {
-        console.log(`  📊 Vector search: ${vectorResults.length} results`);
-        return vectorResults;
+        log.debug(`vector search: ${vectorResults.length} results`);
+        lastReport = { results: vectorResults, mode: 'vector', degraded: false };
+        return lastReport;
       }
+      reason = 'vector index returned no matches';
     } catch (err) {
-      console.warn('  ⚠️ Vector search unavailable, using regex fallback');
+      reason = err instanceof Error ? err.message : 'vector search threw';
+      // A missing or broken vector index is an operational fault, not a
+      // routine miss. It must be loud enough to reach a log search.
+      log.error('vector search unavailable — answers are degraded', reason);
     }
+  } else {
+    reason = 'no query embedding (embedding step unavailable)';
   }
-  
-  // Fallback to regex search (always works, no index needed)
+
   try {
     const regexResults = await regexSearch(options.query, options);
-    console.log(`  📊 Regex search: ${regexResults.length} results for "${options.query}"`);
-    return regexResults;
+    log.warn(`degraded keyword search used (${reason}); ${regexResults.length} results`, redact(options.query));
+    lastReport = { results: regexResults, mode: 'regex', degraded: true, reason };
+    return lastReport;
   } catch (err) {
-    console.error('  ❌ Regex search also failed:', err);
-    return [];
+    log.error('keyword search also failed', err);
+    lastReport = { results: [], mode: 'failed', degraded: true, reason: 'both search paths failed' };
+    return lastReport;
   }
+}
+
+/** Back-compatible wrapper for callers that only want the hits. */
+export async function search(
+  queryEmbedding: number[] | null,
+  options: SearchOptions
+): Promise<SearchResult[]> {
+  const report = await searchWithReport(queryEmbedding, options);
+  return report.results;
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────
@@ -226,7 +280,7 @@ export async function ensureIndexes(): Promise<void> {
   await col.createIndex({ 'metadata.type': 1 });
   await col.createIndex({ 'metadata.category': 1 });
   await col.createIndex({ sourceUrl: 1 });
-  console.log('✅ Standard indexes created');
+  log.info('standard indexes created');
   // Note: Vector search index must be created in Atlas UI
 }
 
@@ -236,6 +290,6 @@ export async function closeConnection(): Promise<void> {
     await client.close();
     client = null;
     db = null;
-    console.log('MongoDB connection closed');
+    log.info('MongoDB connection closed');
   }
 }

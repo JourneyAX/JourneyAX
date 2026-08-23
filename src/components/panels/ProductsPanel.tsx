@@ -14,7 +14,7 @@ export default function ProductsPanel() {
   };
 
   const handleBuildQuote = () => {
-    const fn = (window as any).__handleBuildQuote;
+    const fn = window.__handleBuildQuote;
     if (fn) {
       let summary = 'Build my quote with these selected items:\n';
       recommendedProducts.forEach(p => {

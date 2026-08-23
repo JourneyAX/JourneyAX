@@ -1,4 +1,4 @@
-import { Chunk, DocumentMetadata, DocumentType } from './types';
+import { Chunk, DocumentMetadata } from './types';
 
 const MAX_CHUNK_TOKENS = 500;
 const OVERLAP_TOKENS = 100;

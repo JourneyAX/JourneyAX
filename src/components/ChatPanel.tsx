@@ -2,9 +2,70 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useJourney } from '@/context/JourneyContext';
+import { resolveGarment } from '@/services/fit/garment-specs';
 import MessageBubble from './MessageBubble';
+import { CAROMA_TENANT, TenantConfig } from '@/lib/tenants';
+import { isLanguageCode } from '@/lib/i18n';
+import type { BagLine } from '@/lib/shop-types';
+import LanguageSwitcher from './LanguageSwitcher';
+import { logger } from '@/lib/logger';
 
-export default function ChatPanel() {
+const log = logger('ChatPanel');
+
+/**
+ * A message as it travels between this panel and the API.
+ *
+ * Wider than a display message: the server returns the full OpenAI-shaped
+ * trace, including `role: 'tool'` entries and assistant turns whose content
+ * is null because the substance is in `tool_calls`. Those are flattened to
+ * text before the next request.
+ */
+interface ConversationMessage {
+  role: string;
+  content?: string | null;
+  tool_calls?: { function?: { name?: string }; name?: string }[];
+}
+
+/**
+ * A quote line as the model supplies it in `updateQuote`.
+ *
+ * Every field is optional because it comes from a language model, not from
+ * our catalogue. `/api/quote` is what decides whether the resulting numbers
+ * are fit to order on.
+ */
+interface QuoteItemArg {
+  sku?: string;
+  name?: string;
+  price?: number;
+  reason?: string;
+  category?: string;
+  imageUrl?: string;
+  required?: boolean;
+  quantity?: number;
+}
+
+/** A UI tool call returned by the server for the browser to replay. */
+interface UiAction {
+  name: string;
+  // Shapes vary per tool and are narrowed at each call site.
+  arguments: Record<string, unknown> & { items?: Record<string, unknown>[] };
+}
+
+/**
+ * Panels reach back into the chat through these globals — a deliberate
+ * choice documented in CLAUDE.md, not an accident. Declaring them here is
+ * what lets that pattern typecheck without `any`.
+ */
+declare global {
+  interface Window {
+    __handleClarifySubmit?: () => void;
+    /** Receives a plain-text summary of the shopper's selections. */
+    __handleBuildQuote?: (summary: string) => void;
+    __handleUserMessage?: (text: string) => void;
+  }
+}
+
+export default function ChatPanel({ tenant = CAROMA_TENANT }: { tenant?: TenantConfig }) {
   const { state, dispatch } = useJourney();
   const stateRef = useRef(state);
   
@@ -13,7 +74,7 @@ export default function ChatPanel() {
     stateRef.current = state;
   }, [state]);
 
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -26,21 +87,31 @@ export default function ChatPanel() {
     scrollToBottom();
   }, [messages, isLoading, state.isThinking]);
 
-  const sendToAI = useCallback(async (newMessages: any[]) => {
+  // Greet as this tenant, not as whichever one wrote INITIAL_STATE.
+  useEffect(() => {
+    dispatch({ type: 'SET_WELCOME', text: tenant.welcome });
+  }, [dispatch, tenant.welcome]);
+
+  const sendToAI = useCallback(async (newMessages: ConversationMessage[]) => {
     setIsLoading(true);
 
     try {
-      // Build clean message array for API
-      const apiMessages = newMessages.map(m => {
-        let content = m.content;
-        if (!content && m.tool_calls) {
-          // Summarize tool calls so context is preserved
-          content = m.tool_calls.map((c: any) => `[Action: ${c.function?.name || c.name}]`).join('\n');
-        }
-        return { role: m.role === 'assistant' ? 'assistant' : m.role, content: content || '' };
-      }).filter((m: any) => m.content); // Filter empty
+      // Build clean message array for API. Tool-call/tool-result pairs are
+      // flattened to plain assistant text, so a lone 'tool' message here
+      // would have no 'tool_calls' message left to answer and the API
+      // rejects the whole request — drop them rather than resend them.
+      const apiMessages = newMessages
+        .filter(m => m.role !== 'tool')
+        .map(m => {
+          let content = m.content;
+          if (!content && m.tool_calls) {
+            // Summarize tool calls so context is preserved
+            content = m.tool_calls.map(c => `[Action: ${c.function?.name || c.name}]`).join('\n');
+          }
+          return { role: m.role === 'assistant' ? 'assistant' : m.role, content: content || '' };
+        }).filter(m => m.content); // Filter empty
 
-      const res = await fetch('/api/chat', {
+      const res = await fetch(tenant.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -50,14 +121,23 @@ export default function ChatPanel() {
             bom: stateRef.current.customBom || [],
             recommendedProducts: stateRef.current.recommendedProducts || [],
             finish: stateRef.current.finish || '',
-            qty: stateRef.current.qty || 1
+            qty: stateRef.current.qty || 1,
+            // Apparel journey context. Sent every turn for the same reason
+            // the BOM is: there is no server-side session, so the bag and the
+            // chosen language only exist if we keep telling the model.
+            language: stateRef.current.language,
+            bag: stateRef.current.bag || [],
+            fitChoice: stateRef.current.fitChoice
+              ? { size: stateRef.current.fitChoice.size }
+              : null,
+            returnStage: stateRef.current.returnCase.stage
           }
         })
       });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'API Error');
+        throw new Error(errorData.error?.message || 'API Error');
       }
       
       const data = await res.json();
@@ -89,21 +169,32 @@ export default function ChatPanel() {
               });
             }
           } else if (action.name === 'updateQuote') {
-            // Transform to QuoteItem format
-            const bom = action.arguments.items.map((item: any) => ({
-              id: item.sku,
-              name: item.name,
-              price: item.price,
-              spec: item.reason || item.category || '',
-              sku: item.sku,
-              imageUrl: item.imageUrl || undefined,
-              category: item.category || '',
-              required: item.required || false,
-              reason: item.reason,
-              quantity: item.quantity || 1,
-              lineTotal: item.price * (item.quantity || 1),
-              stock: { label: 'In stock · NSW DC', color: '#4E7C59' }
-            }));
+            // Transform the model's items into BOM lines.
+            //
+            // Every field is defended because the source is a language model.
+            // This mapping previously emitted `id` while `BOMLine` declares
+            // `key`, so every line carried an undefined key — invisible while
+            // the array was typed `any[]`.
+            const bom = (action.arguments.items as QuoteItemArg[]).map((item, i) => {
+              const price = typeof item.price === 'number' && Number.isFinite(item.price) ? item.price : 0;
+              const quantity = Number.isInteger(item.quantity) && (item.quantity as number) > 0
+                ? (item.quantity as number)
+                : 1;
+              return {
+                key: item.sku || `line-${i}`,
+                name: item.name || 'Unnamed item',
+                price,
+                spec: item.reason || item.category || '',
+                sku: item.sku,
+                imageUrl: item.imageUrl || undefined,
+                category: item.category || '',
+                required: item.required || false,
+                reason: item.reason,
+                quantity,
+                lineTotal: price * quantity,
+                stock: { label: 'In stock · NSW DC', color: '#4E7C59' }
+              };
+            });
             dispatch({ 
               type: 'SET_QUOTE_DATA', 
               title: action.arguments.title, 
@@ -118,6 +209,15 @@ export default function ChatPanel() {
               type: 'SET_RECOMMENDED_PRODUCTS',
               products: action.arguments.products
             });
+          } else if (action.name === 'showFitAdvisor') {
+            // Resolve to a spec we trust: our own numbers when we hold the
+            // style, otherwise the chart the model retrieved. If neither is
+            // usable we show nothing rather than advise on invented figures.
+            const garment = resolveGarment(action.arguments);
+            if (garment) {
+              dispatch({ type: 'SHOW_FIT_ADVISOR', garment });
+              hasPhaseChange = true;
+            }
           } else if (action.name === 'showGuide') {
             // Troubleshooting or installation guide steps
             dispatch({
@@ -125,21 +225,68 @@ export default function ChatPanel() {
               steps: action.arguments.steps
             });
             hasPhaseChange = true;
+          } else if (action.name === 'addToBag') {
+            // The bag accumulates, so this is an add, never a replace.
+            dispatch({
+              type: 'ADD_TO_BAG',
+              lines: (action.arguments.items || []).map((i: Partial<BagLine>) => ({
+                sku: i.sku ?? '',
+                name: i.name ?? '',
+                price: i.price ?? 0,
+                quantity: i.quantity || 1,
+                size: i.size,
+                category: i.category,
+                reason: i.reason,
+              })),
+            });
+            hasPhaseChange = true;
+          } else if (action.name === 'showBag') {
+            dispatch({ type: 'SHOW_BAG' });
+            hasPhaseChange = true;
+          } else if (action.name === 'showTryOn') {
+            // Try-on visualises a size the advisor already produced. If the
+            // model did not pass one, fall back to the shopper's chosen size
+            // rather than picking a size here — this panel must never be the
+            // thing that decides a size.
+            const size = action.arguments.size || stateRef.current.fitChoice?.size;
+            if (size) {
+              dispatch({
+                type: 'SHOW_TRY_ON',
+                view: {
+                  styleId: action.arguments.styleId,
+                  styleName: action.arguments.styleName,
+                  size,
+                  fitSummary: stateRef.current.fitChoice?.summary,
+                },
+              });
+              hasPhaseChange = true;
+            }
+          } else if (action.name === 'startReturn') {
+            dispatch({ type: 'START_RETURN' });
+            hasPhaseChange = true;
+          } else if (action.name === 'setLanguage') {
+            const code = action.arguments.language;
+            if (isLanguageCode(code)) {
+              dispatch({ type: 'SET_LANGUAGE', language: code });
+            }
           }
         }
         // If AI called updateQuote but forgot setPhase('quote'), do it
-        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'updateQuote')) {
+        if (!hasPhaseChange && data.uiActions.some((a: UiAction) => a.name === 'updateQuote')) {
           dispatch({ type: 'SET_PHASE', phase: 'quote' });
           hasPhaseChange = true;
         }
         // If AI called showProducts but forgot setPhase('products'), do it
-        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'showProducts')) {
+        if (!hasPhaseChange && data.uiActions.some((a: UiAction) => a.name === 'showProducts')) {
           dispatch({ type: 'SET_PHASE', phase: 'products' });
           hasPhaseChange = true;
         }
       }
       
-      // Safety: if we're stuck on 'validating' and the AI didn't transition us
+      // Safety: if we're stuck on 'validating' and the AI didn't transition us.
+      // This also covers a bare language switch: the inference below lands on
+      // whatever the shopper was actually doing (bag, try-on, advisor), which
+      // is what makes changing language feel like nothing was reset.
       if (!hasPhaseChange) {
         const latestState = stateRef.current;
         // Fallback to the most relevant phase based on what we have in state
@@ -147,6 +294,18 @@ export default function ChatPanel() {
           dispatch({ type: 'SET_PHASE', phase: 'quote' });
         } else if (latestState.guideSteps && latestState.guideSteps.length > 0) {
           dispatch({ type: 'SET_PHASE', phase: 'guide' });
+        } else if (latestState.fitGarment) {
+          // The advisor is mid-flow — do not yank the panel out from under it.
+          dispatch({ type: 'SET_PHASE', phase: 'fit' });
+        } else if (latestState.returnCase.stage !== 'choose-item' || latestState.returnCase.line) {
+          // A return in progress outranks the bag behind it.
+          dispatch({ type: 'SET_PHASE', phase: 'returns' });
+        } else if (latestState.tryOn) {
+          dispatch({ type: 'SET_PHASE', phase: 'tryon' });
+        } else if (latestState.bag.length > 0) {
+          // A shopper with things in the bag should land back on the bag, not
+          // be thrown to the intro screen.
+          dispatch({ type: 'SET_PHASE', phase: 'bag' });
         } else if (latestState.recommendedProducts && latestState.recommendedProducts.length > 0) {
           dispatch({ type: 'SET_PHASE', phase: 'products' });
         } else if (latestState.dynamicQuestions && latestState.dynamicQuestions.length > 0) {
@@ -156,15 +315,21 @@ export default function ChatPanel() {
         }
       }
       dispatch({ type: 'SET_THINKING', thinking: false });
-    } catch (err: any) {
-      console.error('Chat error:', err);
-      setMessages(prev => [...prev, { role: 'assistant', content: `🚨 **Error:** ${err.message}` }]);
+    } catch (err) {
+      log.error('chat turn failed', err);
+      // Show the shopper a sentence, not an exception. The server no longer
+      // returns internal detail, so echoing `err.message` would only ever
+      // surface transport noise like "Failed to fetch".
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry — something went wrong on my end. Please try that again.',
+      }]);
       dispatch({ type: 'SET_THINKING', thinking: false });
       dispatch({ type: 'SET_PHASE', phase: 'intro' }); // Reset phase on error
     } finally {
       setIsLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, tenant.endpoint]);
 
   // Called when user types a message
   const append = useCallback(async (msg: { role: string; content: string }) => {
@@ -196,8 +361,8 @@ export default function ChatPanel() {
 
   // Expose handleClarifySubmit globally so ClarifyPanel can call it
   useEffect(() => {
-    (window as any).__handleClarifySubmit = handleClarifySubmit;
-    return () => { delete (window as any).__handleClarifySubmit; };
+    window.__handleClarifySubmit = handleClarifySubmit;
+    return () => { delete window.__handleClarifySubmit; };
   }, [handleClarifySubmit]);
 
   // Called when user clicks "Build Quote" on ProductsPanel
@@ -217,8 +382,8 @@ export default function ChatPanel() {
 
   // Expose handleBuildQuote globally so ProductsPanel can call it
   useEffect(() => {
-    (window as any).__handleBuildQuote = handleBuildQuote;
-    return () => { delete (window as any).__handleBuildQuote; };
+    window.__handleBuildQuote = handleBuildQuote;
+    return () => { delete window.__handleBuildQuote; };
   }, [handleBuildQuote]);
 
   // Expose handleUserMessage globally so GuidePanel can send arbitrary messages back to AI
@@ -236,8 +401,8 @@ export default function ChatPanel() {
   }, [messages, sendToAI, dispatch]);
 
   useEffect(() => {
-    (window as any).__handleUserMessage = handleUserMessage;
-    return () => { delete (window as any).__handleUserMessage; };
+    window.__handleUserMessage = handleUserMessage;
+    return () => { delete window.__handleUserMessage; };
   }, [handleUserMessage]);
 
 
@@ -266,16 +431,33 @@ export default function ChatPanel() {
     <div className="chat-panel">
       {/* Header */}
       <div className="chat-header">
-        <div className="chat-header__brand">CAROMA</div>
+        <div className="chat-header__brand">{tenant.brand}</div>
         <div className="chat-header__divider" />
         <div className="chat-header__info">
-          <div className="chat-header__title">Bathroom Configurator</div>
-          <div className="chat-header__subtitle">Agentic bathroom build</div>
+          <div className="chat-header__title">{tenant.title}</div>
+          <div className="chat-header__subtitle">{tenant.subtitle}</div>
         </div>
-        <div className="chat-header__badge">
-          <span className="chat-header__badge-dot" />
-          <span className="chat-header__badge-text">Consumer · Bathroom</span>
-        </div>
+        {tenant.shopFeatures ? (
+          <div className="chat-header__shop">
+            <LanguageSwitcher />
+            <button
+              type="button"
+              className="chat-header__bag"
+              onClick={() => dispatch({ type: 'SHOW_BAG' })}
+              aria-label="Open bag"
+            >
+              <span className="chat-header__bag-icon" aria-hidden>◫</span>
+              <span className="chat-header__bag-count">
+                {state.bag.reduce((n, l) => n + l.quantity, 0)}
+              </span>
+            </button>
+          </div>
+        ) : (
+          <div className="chat-header__badge">
+            <span className="chat-header__badge-dot" />
+            <span className="chat-header__badge-text">{tenant.badge}</span>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -297,20 +479,16 @@ export default function ChatPanel() {
       <div className="chat-input-area">
         {state.phase === 'intro' && (
           <div className="chat-suggestions">
-            <div
-              className="chat-suggestion"
-              onClick={() => append({ role: 'user', content: "I'm renovating my bathroom — help me choose a new shower." })}
-            >
-              <span className="chat-suggestion__arrow">→</span>
-              I&apos;m renovating my bathroom — help me choose a shower
-            </div>
-            <div
-              className="chat-suggestion"
-              onClick={() => append({ role: 'user', content: "I'm building new — spec a full bathroom with matching finishes." })}
-            >
-              <span className="chat-suggestion__arrow">→</span>
-              I&apos;m building new — spec a full bathroom
-            </div>
+            {tenant.suggestions.map(text => (
+              <div
+                key={text}
+                className="chat-suggestion"
+                onClick={() => append({ role: 'user', content: text })}
+              >
+                <span className="chat-suggestion__arrow">→</span>
+                {text}
+              </div>
+            ))}
           </div>
         )}
         <form className="chat-input-row" onSubmit={onSubmit}>
@@ -319,7 +497,7 @@ export default function ChatPanel() {
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Describe the build — product, quantity, finish…"
+            placeholder={tenant.placeholder}
           />
           <button type="submit" className="chat-send-btn" aria-label="Send message">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">

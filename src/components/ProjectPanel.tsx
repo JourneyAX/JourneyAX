@@ -8,6 +8,10 @@ import ProductsPanel from './panels/ProductsPanel';
 import QuotePanel from './panels/QuotePanel';
 import OrderedPanel from './panels/OrderedPanel';
 import GuidePanel from './panels/GuidePanel';
+import FitAdvisorPanel from './panels/FitAdvisorPanel';
+import TryOnPanel from './panels/TryOnPanel';
+import BagPanel from './panels/BagPanel';
+import ReturnsPanel from './panels/ReturnsPanel';
 
 export default function ProjectPanel() {
   const { state } = useJourney();
@@ -18,6 +22,10 @@ export default function ProjectPanel() {
       {state.phase === 'clarify' && <ClarifyPanel />}
       {state.phase === 'validating' && <ValidatingPanel />}
       {state.phase === 'products' && <ProductsPanel />}
+      {state.phase === 'fit' && <FitAdvisorPanel />}
+      {state.phase === 'tryon' && <TryOnPanel />}
+      {state.phase === 'bag' && <BagPanel />}
+      {state.phase === 'returns' && <ReturnsPanel />}
       {state.phase === 'guide' && <GuidePanel />}
       {state.phase === 'quote' && <QuotePanel />}
       {state.phase === 'ordered' && <OrderedPanel />}

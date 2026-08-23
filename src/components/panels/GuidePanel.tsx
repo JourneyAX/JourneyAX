@@ -19,7 +19,7 @@ export default function GuidePanel() {
       messageText = `I haven't been able to complete any steps yet. I need more help.`;
     }
 
-    const fn = (window as any).__handleUserMessage;
+    const fn = window.__handleUserMessage;
     if (fn) fn(messageText);
   };
 
@@ -91,7 +91,7 @@ export default function GuidePanel() {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '8px' }}>
                   <button 
                     onClick={() => {
-                      const fn = (window as any).__handleUserMessage;
+                      const fn = window.__handleUserMessage;
                       if (fn) fn(`I need more help with step ${index + 1}: ${step.title}. Can you explain it in more detail?`);
                     }}
                     style={{
