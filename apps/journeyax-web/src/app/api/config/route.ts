@@ -18,7 +18,12 @@ export async function GET(req: Request) {
       headers: { 'X-Tenant-ID': PROJECT_ID },
       cache: 'no-store',
     });
-    if (!res.ok) return json(fallback(PROJECT_ID));
+    if (!res.ok) {
+      if (res.status === 404 || res.status === 403) {
+        return json({ error: 'ProjectNotFound', message: 'This project is currently disabled or does not exist.' });
+      }
+      return json(fallback(PROJECT_ID));
+    }
     const p: any = await res.json();
     return json({
       projectId: p.projectId || PROJECT_ID,
@@ -64,6 +69,9 @@ function fallback(projectId: string) {
   };
 }
 
-function json(data: any) {
-  return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
+function json(data: any, init?: ResponseInit) {
+  return new Response(JSON.stringify(data), {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }
+  });
 }

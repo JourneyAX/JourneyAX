@@ -272,7 +272,11 @@ export async function stageNarratives(ctx: PipelineCtx, opts: { force?: boolean;
     const now = new Date();
     await D.bulkWrite(ok.map((x, j) => {
       const p: any = x.p;
-      const url = p.web?.productUrl || `product://${ctx.projectId}/${p.parentSku}`;
+      // p.web?.productUrl is set by apparel PDP scrapes; p.url is the additive
+      // field the PlaceMakers field-backfill writes directly from the source
+      // export (no PDP scrape needed — the real URL was already in the feed).
+      // Falls back to the synthetic placeholder only when neither is present.
+      const url = p.web?.productUrl || p.url || `product://${ctx.projectId}/${p.parentSku}`;
       return { updateOne: {
         filter: { projectId: ctx.projectId, sourceUrl: url, chunkIndex: 0 },
         update: { $set: {
@@ -282,6 +286,8 @@ export async function stageNarratives(ctx: PipelineCtx, opts: { force?: boolean;
             type: 'product', brand: ctx.projectId, url, sku: p.parentSku,
             ...(p.priceUSD ? { price: p.priceUSD.min, currency: 'USD' } : {}),
             ...(p.category ? { category: p.category } : {}),
+            ...(p.categoryPath?.length ? { categoryPath: p.categoryPath } : {}),
+            ...(p.stock ? { stock: p.stock } : {}),
             ...(p.images?.length ? { images: p.images.slice(0, 12) } : {}),
             ...(p.colors?.length ? { colors: p.colors.slice(0, 24) } : {}),
             ...(p.sizes?.length ? { sizes: p.sizes } : {}),

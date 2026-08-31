@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server';
 import { invalidateProject } from '@journeyax/cache';
 import { requireAuth, tenantAllowed } from '../../../../lib/require-auth';
 
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 const settledJobs = new Set<string>();
 

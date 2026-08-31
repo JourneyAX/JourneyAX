@@ -16,6 +16,21 @@ import { Collection } from 'mongodb';
 const DB_NAME = 'journeyx';
 const SESSIONS = 'sessions';
 
+/**
+ * One entry per tool call the agent made during a turn — a lightweight,
+ * human-readable trace of "what the agent actually did" (distinct from the
+ * full message transcript). Consumed by analytics-service's getTranscript.
+ */
+export interface SessionStep {
+  turnIndex: number;
+  tool: string;
+  /** Short, safely-truncated plain-text summary of the call's arguments — never a raw JSON dump. */
+  argsSummary: string;
+  /** Short, safely-truncated plain-text summary of the call's result. */
+  resultSummary: string;
+  ts: string;
+}
+
 export interface SessionDoc {
   sessionId: string;
   tenantId: string;
@@ -29,9 +44,99 @@ export interface SessionDoc {
   customerId?: string;
   state?: any;              // legacy UI-state snapshot (kept for back-compat)
   lastIntent?: { intent: string; stage: string; mode: string };
+  /** Per-tool-call trace across the session's turns — see SessionStep. */
+  steps?: SessionStep[];
   turnCount: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Cap on truncated one-line summaries — keeps steps[] cheap to store and read.
+const SUMMARY_MAX_LEN = 160;
+
+function truncate(s: string, max = SUMMARY_MAX_LEN): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1)}…`;
+}
+
+/**
+ * Turns a tool name + its raw args/result objects into short, human-readable
+ * one-liners for the session trace. Special-cases the tools whose args/result
+ * shapes are worth summarising meaningfully; anything else falls back to a
+ * generic truncated JSON dump.
+ */
+export function summarizeToolCall(
+  tool: string,
+  args: any,
+  result: any,
+): { argsSummary: string; resultSummary: string } {
+  const fallback = (v: any) => {
+    try {
+      return truncate(JSON.stringify(v ?? {}));
+    } catch {
+      return '';
+    }
+  };
+
+  switch (tool) {
+    case 'searchKnowledge': {
+      const parts = [args?.query, args?.type, args?.category].filter(Boolean);
+      const argsSummary = truncate(parts.length ? `query: ${parts.join(', ')}` : 'query: (empty)');
+      const count = Array.isArray(result?.items) ? result.items.length
+        : Array.isArray(result?.results) ? result.results.length
+        : undefined;
+      const resultSummary = truncate(
+        result?.found === false ? (result?.message || 'no results found')
+          : count !== undefined ? `${count} result${count === 1 ? '' : 's'} found`
+          : fallback(result),
+      );
+      return { argsSummary, resultSummary };
+    }
+    case 'recommendSize': {
+      const argsSummary = truncate(`size query: ${[args?.measurement, args?.value, args?.unit].filter(Boolean).join(' ')}` || fallback(args));
+      const size = result?.recommendedSize ?? result?.size;
+      const available = Array.isArray(result?.availableSizes) ? result.availableSizes.length : undefined;
+      const resultSummary = truncate(
+        size ? `recommended size ${size}${available !== undefined ? `, ${available} sizes available` : ''}`
+          : result?.message || fallback(result),
+      );
+      return { argsSummary, resultSummary };
+    }
+    case 'showItems': {
+      const items = Array.isArray(args?.items) ? args.items : Array.isArray(args?.skus) ? args.skus : [];
+      const argsSummary = truncate(items.length ? `${items.length} item(s) to show` : fallback(args));
+      const resultSummary = truncate(result?.success === false ? (result?.message || 'rejected') : 'shown');
+      return { argsSummary, resultSummary };
+    }
+    case 'showConfigurator': {
+      const argsSummary = truncate(args?.sku ? `sku: ${args.sku}` : fallback(args));
+      const resultSummary = truncate(result?.success === false ? (result?.message || 'rejected') : 'configurator rendered');
+      return { argsSummary, resultSummary };
+    }
+    case 'updateQuote': {
+      const itemCount = Array.isArray(args?.items) ? args.items.length : undefined;
+      const argsSummary = truncate(itemCount !== undefined ? `${itemCount} line item(s)` : fallback(args));
+      const resultSummary = truncate(
+        result?.success === false ? (result?.message || 'rejected')
+          : `quote ${result?.quoteId || ''} total ${result?.total ?? '?'} ${result?.currency || ''}`.trim(),
+      );
+      return { argsSummary, resultSummary };
+    }
+    case 'setPhase': {
+      const argsSummary = truncate(`phase: ${args?.phase || '?'}`);
+      const resultSummary = truncate(result?.success === false ? (result?.message || 'rejected') : 'ok');
+      return { argsSummary, resultSummary };
+    }
+    case 'researchSchool': {
+      const argsSummary = truncate(args?.school || args?.query ? `school: ${args.school || args.query}` : fallback(args));
+      const resultSummary = truncate(
+        result?.error ? result.error : `team ${result?.team || '?'}, mascot ${result?.mascot || '?'}, confidence ${result?.confidence ?? '?'}`,
+      );
+      return { argsSummary, resultSummary };
+    }
+    default:
+      return { argsSummary: fallback(args), resultSummary: fallback(result) };
+  }
 }
 
 export class SessionStore {
@@ -98,6 +203,29 @@ export class SessionStore {
       );
     } catch (e) {
       console.warn('[SessionStore] save failed:', (e as Error).message);
+    }
+  }
+
+  /**
+   * Append one tool-call trace entry for this session. Best-effort — a failed
+   * append never blocks the turn (same resilience posture as save()). Keeps
+   * only the most recent 500 steps per session so the doc can't grow unbounded.
+   */
+  async appendStep(sessionId: string, tenantId: string, step: SessionStep): Promise<void> {
+    const col = await this.getCol();
+    if (!col) return;
+    try {
+      await col.updateOne(
+        { sessionId },
+        {
+          $push: { steps: { $each: [step], $slice: -500 } } as any,
+          $set: { tenantId, updatedAt: new Date() },
+          $setOnInsert: { sessionId, createdAt: new Date(), turnCount: 0 },
+        },
+        { upsert: true },
+      );
+    } catch (e) {
+      console.warn('[SessionStore] appendStep failed:', (e as Error).message);
     }
   }
 }

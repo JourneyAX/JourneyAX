@@ -17,6 +17,8 @@ export interface Insights {
   recent: any[];
   quotes: any[];
   knowledgeDocs: number;
+  /** Sessions touched per day, last 14 days (real, from analytics-service — see computeInsights). */
+  sessionsByDay?: { date: string; count: number }[];
 }
 
 export function useInsights(projectId: string) {

@@ -70,6 +70,14 @@ export interface ProjectPersona {
   // shape the flow (NOT a fixed stage sequence — see docs §6.3). Configured in the
   // back office; injected into agent context each turn. Empty = base behaviour.
   journeyGuidance?: string;
+  /**
+   * Raw editable Journey Builder canvas graph (node positions, types, data) —
+   * persisted SEPARATELY from the compiled `journeyGuidance` prose so re-opening
+   * the canvas doesn't require parsing text back into nodes. The compiler in
+   * JourneyBuilder.tsx walks this graph to (re)generate `journeyGuidance` on
+   * save; the agent runtime only ever reads `journeyGuidance`, never this field.
+   */
+  journeyGraph?: { nodes: any[]; edges: any[] };
 }
 
 export interface ProjectTheme {
@@ -495,6 +503,8 @@ export type RuleScope =
   | 'conversation'
   | 'escalation';
 
+export type RuleStatus = 'draft' | 'in_review' | 'approved' | 'published';
+
 export interface BusinessRule {
   ruleId: string;
   projectId: string;          // isolation key
@@ -506,6 +516,8 @@ export interface BusinessRule {
   action: string;
   priority: number;           // lower = evaluated first
   isActive: boolean;
+  /** Publish-gate status. Only 'published' rules are honoured by getActiveRules. */
+  status: RuleStatus;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -517,6 +529,7 @@ export interface CreateBusinessRuleDto {
   action: string;
   priority?: number;
   isActive?: boolean;
+  status?: RuleStatus;
 }
 
 export interface UpdateBusinessRuleDto {
@@ -526,4 +539,5 @@ export interface UpdateBusinessRuleDto {
   action?: string;
   priority?: number;
   isActive?: boolean;
+  status?: RuleStatus;
 }

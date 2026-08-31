@@ -201,6 +201,8 @@ export class JourneyAXController {
       };
       tenantId?: string;
       sessionId?: string;
+      imageBase64?: string;
+      imageUrl?: string;
     }
   ) {
     // Tenant identity comes from the URL projectId (validated by the gateway
@@ -218,6 +220,8 @@ export class JourneyAXController {
         state: body.state,
         tenantId,
         sessionId: body.sessionId,
+        imageBase64: body.imageBase64,
+        imageUrl: body.imageUrl,
       });
 
       return result;
@@ -241,7 +245,7 @@ export class JourneyAXController {
   async chatStream(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
-    @Body() body: { message?: string; messages?: any[]; customerId?: string; state?: any; tenantId?: string; sessionId?: string },
+    @Body() body: { message?: string; messages?: any[]; customerId?: string; state?: any; tenantId?: string; sessionId?: string; imageBase64?: string; imageUrl?: string },
     @Res() res: Response,
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || 'caroma').toLowerCase();
@@ -275,7 +279,7 @@ export class JourneyAXController {
 
     try {
       await this.agentService.processChatStream(
-        { message: body.message, messages: body.messages, customerId: body.customerId, state: body.state, tenantId, sessionId: body.sessionId },
+        { message: body.message, messages: body.messages, customerId: body.customerId, state: body.state, tenantId, sessionId: body.sessionId, imageBase64: body.imageBase64, imageUrl: body.imageUrl },
         emit,
       );
     } catch (error: any) {

@@ -50,6 +50,7 @@ ALL_SVCS=(
   "product-service"
   "organization-service"
   "agent-commerce-service"
+  "retexture-service"
 )
 
 # ── Compute changed files ────────────────────────────────────────────────────

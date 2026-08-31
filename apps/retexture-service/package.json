@@ -1,0 +1,12 @@
+{
+  "name": "retexture-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Python (FastAPI) service: bakes a customer design onto the real per-SKU 3D mesh via render -> Gemini paint -> UV-atlas bake.",
+  "scripts": {
+    "postinstall": "npm run setup",
+    "setup": "python3.12 -m venv .venv && ./.venv/bin/pip install -r requirements.txt",
+    "dev": "./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8091} --reload",
+    "start": "./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8091}"
+  }
+}

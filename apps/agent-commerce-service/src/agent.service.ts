@@ -94,11 +94,17 @@ function genParams(model: string, temperature?: number): { temperature?: number 
   if (typeof temperature === 'number' && !isReasoningModel(model)) return { temperature };
   return {};
 }
+
+/** Parses a tool call's raw (string) arguments defensively — used only for the session step trace. */
+function safeParseArgs(raw: string | undefined): any {
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch { return {}; }
+}
 import { IntentResolver } from './pipeline/intent-resolver';
 import { buildRetrievalPolicy } from './pipeline/retrieval-router';
 import { validateGrounding } from './pipeline/grounding-validator';
 import { ConfigLoader } from './pipeline/config-loader';
-import { SessionStore } from './pipeline/session-store';
+import { SessionStore, summarizeToolCall } from './pipeline/session-store';
 import { assembleSystemPrompt } from './prompts';
 import { IntentResult, TraceEntry } from './pipeline/types';
 import { randomUUID } from 'crypto';
@@ -247,6 +253,167 @@ const tools: OpenAI.ChatCompletionTool[] = [
           sku: { type: 'string', description: 'The item/style code (must be a real code from a previous search result).' },
         },
         required: ['sku'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'analyzeDesign',
+      description:
+        "Read a CUSTOM DESIGN IMAGE the customer attached this turn and match it to our make-able template library. " +
+        "Call this the moment you are told a design image was attached — before saying anything else. " +
+        "It runs vision on the image (reads the garment type, sport, colours, and whether it has a team name / number / logo) and returns a decision: " +
+        "`decision:'use'` means we ALREADY make this exact style — a real template with all the needed sizes exists, and `match.best.parentSku` is the style code to design on; " +
+        "`decision:'create'` means NO existing template matches, so this is a brand-new design whose cut pieces must be generated and finalised by an artist. " +
+        "On 'use', follow up by calling showConfigurator with `match.best.parentSku` and the analysed colours so the customer sees THEIR design on our real template in 3D. " +
+        "On 'create', do NOT invent a style code — tell the customer warmly it is a fresh design that we will pattern and an artist will finalise. " +
+        "You do not pass the image yourself; it is already attached server-side. Only pass `sizes` if the customer named the sizes they need.",
+      parameters: {
+        type: 'object',
+        properties: {
+          sizes: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Sizes the customer explicitly needs (e.g. ["YM","YL","AS","AM","AL","AXL"]). Omit if not stated — matching still works.',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generateDesign',
+      description:
+        "DESIGN a brand-new jersey concept FOR the customer from their description — you are their designer, so they never have to go to another tool to make an image. " +
+        "Call this whenever the customer describes a look they want (colours, team name, number, style, vibe) rather than uploading one, e.g. 'design me a navy and orange baseball jersey for the Cougars, number 30, aggressive'. " +
+        "It generates a concept image, then reads and matches it to our make-able template library, returning the same decision as analyzeDesign: " +
+        "`decision:'use'` (we already make this style — `template.sku` is the code, and the configurator will open) or `decision:'create'` (a brand-new pattern our artist will finalise). " +
+        "After it returns on 'use', tell the customer you've designed their concept and it's shown on the right; invite them to tweak colours, name or number. " +
+        "If they then say 'make the sleeves brighter' or similar, call generateDesign again with the refined brief to iterate.",
+      parameters: {
+        type: 'object',
+        properties: {
+          brief: { type: 'string', description: "The customer's design description in your own words — capture sport, garment (jersey/top), colours, team name, number and any style/vibe they mentioned." },
+          sizes: { type: 'array', items: { type: 'string' }, description: 'Sizes the customer needs, if stated. Optional.' },
+        },
+        required: ['brief'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generateTeamDesign',
+      description:
+        "DESIGN a WHOLE TEAM's look, not one customer's garment — use when a coach/dealer describes a roster/team order rather than a single design: multiple players, a team name, 'coach', 'our team', 'need N jerseys', etc. " +
+        "Produces four FLAT 2D views (front/back/left sleeve/right sleeve) from the accumulated brief — a fast 2D preview, not a 3D bake. If the coach attached a team logo this turn, it is used automatically as the base artwork; you do not pass image bytes yourself. " +
+        "After it returns, tell the coach their team's design is shown (four views) and invite them to approve or ask for changes; the panel itself offers 'Approve — let's do the roster' once they're happy — you do not need a separate tool for that step. " +
+        "If they ask for a change ('make the body black, orange shoulders'), call generateTeamDesign again with the FULL accumulated brief (not just the delta) — this regenerates all four views from scratch, it does not surgically edit one. " +
+        "IMPORTANT: before the coach's FIRST design generation, confirm which real style/garment they want using getProductOptions (grounded in our actual catalogue) and pass its code as `sku` — the roster step that follows needs a real style to price against.",
+      parameters: {
+        type: 'object',
+        properties: {
+          brief: { type: 'string', description: "The running, accumulated design description in your own words — sport, garment, colours, lettering, style. Re-send the whole thing on every edit, not just what changed." },
+          sourceId: { type: 'string', description: 'Optional — a previously generated concept/design id to use as the base artwork instead of a fresh description.' },
+          sku: { type: 'string', description: 'The confirmed style/template code (from getProductOptions) the team order is being priced against. Pass it every time it is known, even on a re-generation.' },
+        },
+        required: ['brief'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'uploadPhotosFor3D',
+      description:
+        "Switch the customer into the REAL-PHOTO 3D match flow — use when they say they have actual photos of a garment they want matched/baked in 3D ('I have real photos of the jersey I want to match', 'can you show my actual jersey in 3D', 'I'll upload pictures of it'), as opposed to describing a look for us to design (use generateDesign/generateTeamDesign for that). " +
+        "This tool does NOT do the baking itself — it only opens the upload panel where the customer picks up to 4 real photos (front required; back/left sleeve/right sleeve optional) and the bake happens client-side once they submit. " +
+        "Confirm which real style/garment the photos should be matched to using getProductOptions first if not already known, and pass its code as `sku` — the bake needs a real style's 3D mesh. " +
+        "After calling this, tell the customer briefly that the upload panel is open and to add their photos (front is required).",
+      parameters: {
+        type: 'object',
+        properties: {
+          sku: { type: 'string', description: 'The confirmed style/template code (from getProductOptions) the real-photo bake will be matched against, if already known.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'submitForReview',
+      description:
+        "Send the customer's finished design to our ARTIST for review — the artist is the production authority and every custom design is checked before it can print. " +
+        "Call this once the customer is happy with how their design looks (after the configurator, colours, name and number are set), or immediately when the design is a brand-new one we don't yet have a pattern for (kind 'create'). " +
+        "kind 'use' = the design sits on an existing style we make; kind 'create' = a new design whose cut pieces the artist must generate at all sizes first. " +
+        "After submitting, tell the customer it's with our artist and you'll confirm once it's approved — do NOT tell them it is production-ready yourself.",
+      parameters: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['use', 'create'], description: "'use' if the design is on an existing style code; 'create' if it is a brand-new design needing new cut pieces." },
+          sku: { type: 'string', description: 'The style code the design sits on (for kind "use").' },
+          summary: { type: 'string', description: 'A one-line human summary of the design (garment, colours, team, number) for the artist.' },
+          sizes: { type: 'array', items: { type: 'string' }, description: 'Sizes required, if known.' },
+        },
+        required: ['kind'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'checkReviewStatus',
+      description:
+        "Check where the customer's design is in artist review (pending with the artist, changes requested, artist-approved, or ready to print). " +
+        "Use it when the customer asks 'is it ready?' or after they've submitted a design. " +
+        "If it is 'artist_approved', invite the customer to AGREE to the proof so it can go to print — you cannot agree for them. If 'ready_for_print', proceed to quote/checkout. If still pending, say so honestly.",
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'submitTeamOrder',
+      description:
+        "Send the coach's finished team order — design + roster — to our ARTIST for review, the same production-authority gate as submitForReview but for a whole team. " +
+        "Call this when the coach says the design and roster both look good and wants to proceed ('submit', 'looks good, order it', 'send it in'). " +
+        "Prefer letting the coach use the on-screen 'Submit team order' button once they reach the 3D preview — only call this tool if they ask verbally instead of clicking it. " +
+        "After submitting, tell the coach it is with our artist and you will confirm once approved — do NOT tell them it is production-ready yourself.",
+      parameters: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string', description: 'A one-line human summary of the team order (team name, sport, colours, player count) for the artist.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'recommendSize',
+      description:
+        "Recommend a size for an item, GROUNDED in this store's real size chart — never invent or guess a size. " +
+        "Ask at most 2-4 targeted sizing questions first, varying by category: for jeans/shorts, ask their usual WAIST size (a number); " +
+        "for tops/tees/hoodies/dresses/jerseys, ask their usual letter size (XS/S/M/L/XL…) at a similar brand, or a chest/bust measurement if they don't know it; " +
+        "for teamwear (a coach/team order), ask their usual size and whether it's for an adult or youth player. " +
+        "Call this ONLY once you have at least one concrete answer (a waist number, a usual letter size, or a measurement) — do not call it speculatively. " +
+        "If the response comes back with ok:false or no recommendedSize, that means we genuinely do not have real size data for this category yet — " +
+        "tell the customer honestly that we can't confirm a size for that item rather than guessing one.",
+      parameters: {
+        type: 'object',
+        properties: {
+          category: { type: 'string', description: 'The kind of item, in the customer\'s words, e.g. "jeans", "shorts", "t-shirt", "jersey", "dress".' },
+          usualSize: { type: 'string', description: 'The size they say they usually wear (e.g. "32", "Medium", "L"). Optional.' },
+          waistIn: { type: 'number', description: 'Waist measurement in inches, if given directly. Optional.' },
+          chestIn: { type: 'number', description: 'Chest/bust measurement in inches, if given directly. Optional.' },
+          division: { type: 'string', enum: ['adult', 'youth'], description: 'Teamwear only — adult or youth player. Optional.' },
+        },
+        required: [],
       },
     },
   },
@@ -558,7 +725,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
 ];
 
 // ── UI Tool Names ─────────────────────────────────────────────────────
-const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator']);
+const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D']);
 
 // ── Capability registry: project-configurable toolset ─────────────────
 // The agent's toolset is NOT a fixed array — it is assembled per turn from the
@@ -746,10 +913,61 @@ async function enforceItemDesignability(
   if (call?.function?.name !== 'showItems') return null;
   let args: any = {};
   try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
-  const products = args?.products;
+  let products = args?.products;
   if (!Array.isArray(products) || !products.length) return null;
 
   const skus = [...new Set(products.map((p: any) => String(p?.sku || '').trim().toUpperCase()).filter(Boolean))];
+
+  /* EXISTENCE, before anything else (grounding incident, 2026-08-23).
+   *
+   * A model with nothing real to show — a retrieval failure it never surfaced,
+   * a provider outage — has invented a whole product: a plausible SKU, a
+   * price, an image URL. The designability check below only ever asks "can
+   * this SKU be customised," so a SKU that does not exist at all reads as
+   * 'unknown' and is treated exactly like a real, unproven one — it renders
+   * with whatever price/image the model made up. This is the same lesson as
+   * `enforceNamedSku`: wording ("never invent products") does not hold, so it
+   * is settled here too, with the SAME existence endpoint that guard already
+   * uses. Anything not found is dropped outright — never labelled, never kept
+   * "to be safe." A codeless item (no sku at all) is a different, legitimate
+   * case handled further below; this only strikes items claiming a SKU that
+   * is not real. */
+  if (skus.length) {
+    try {
+      const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+      const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/skus/exists`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId,
+                   'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+        body: JSON.stringify({ skus }),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (res.ok) {
+        const found = new Set<string>(((await res.json())?.found || []).map((x: string) => x.toUpperCase()));
+        const real = products.filter((p: any) => {
+          const sku = String(p?.sku || '').trim().toUpperCase();
+          return !sku || found.has(sku);   // codeless items pass through to the case below
+        });
+        if (real.length !== products.length) {
+          const fake = products.filter((p: any) => !real.includes(p)).map((p: any) => p.sku);
+          console.warn(`[AgentService] showItems: dropped ${fake.length} item(s) with a SKU not in the catalogue: ${fake.join(', ')}`);
+          if (!real.length) {
+            return {
+              success: false,
+              removedNotFound: fake,
+              instruction: 'None of those items exist in the real catalogue — do not describe or apologise for them. '
+                + 'Say you could not find matching products and ask a clarifying question instead.',
+            };
+          }
+          products = real;
+          args.products = real;
+          call.function.arguments = JSON.stringify(args);
+        }
+      }
+    } catch {
+      // Best-effort, same stance as the sibling guards: never block the panel on a validation hiccup.
+    }
+  }
 
   /* An item with NO style code cannot be designed, quoted or ordered.
    *
@@ -1505,6 +1723,394 @@ async function resolveQuoteItemSkus(tenantId: string, items: any[]): Promise<any
   }));
 }
 
+/**
+ * CDL: read a customer's attached design image and match it to the template
+ * library. The image never touches the LLM prompt — it's held server-side for
+ * the turn and passed here. Delegates the vision + match to product-service's
+ * /cdl/analyze (same engine as the standalone CDL studio), then trims the
+ * response to what the model needs to drive the next step (decision + the style
+ * code to design on + the colours it read).
+ */
+async function analyzeDesign(
+  tenantId: string,
+  image: { imageBase64?: string; imageUrl?: string },
+  rawArgs: string,
+): Promise<unknown> {
+  if (!image?.imageBase64 && !image?.imageUrl) {
+    return { ok: false, message: 'No design image is attached to this turn. Ask the customer to upload their design, or describe it so we can generate one.' };
+  }
+  let sizes: string[] | undefined;
+  try { const a = JSON.parse(rawArgs || '{}'); if (Array.isArray(a?.sizes)) sizes = a.sizes; } catch { /* optional */ }
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId,
+                 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ imageBase64: image.imageBase64, imageUrl: image.imageUrl, sizes }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) return { ok: false, message: 'The design analyser is unavailable right now. Try again in a moment.' };
+    const j: any = await res.json();
+    const a = j?.analysis || {};
+    const m = j?.match || {};
+    // The matcher wraps each hit as { score, template: {...} } — the style code
+    // lives on best.template, not best directly.
+    const bestT = m?.best?.template || m?.best;
+    // FAITHFUL PROOF (Path A): parametric colour zones cannot reproduce an all-
+    // over artwork / logo (Rink Rippers renders as muddy stripes). So when the
+    // customer UPLOADED a design and it matched a make-able style, composite their
+    // actual artwork onto that style's garment via image-gen — the proof then
+    // looks like their design. Best-effort: a failure just omits the proof.
+    let proofId: string | null = null;
+    if (m?.decision === 'use' && bestT?.parentSku && (image.imageBase64 || image.imageUrl)) {
+      try {
+        const pr = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/proof`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+          body: JSON.stringify({ sku: bestT.parentSku, artworkBase64: image.imageBase64, artworkUrl: image.imageUrl }),
+          signal: AbortSignal.timeout(90000),
+        });
+        if (pr.ok) { const pj: any = await pr.json(); proofId = pj?.proofId || null; }
+      } catch { /* proof is best-effort */ }
+    }
+    return {
+      ok: true,
+      decision: m?.decision || (bestT ? 'use' : 'create'),   // 'use' | 'create'
+      design: {
+        sport: a.sport, garmentType: a.garmentType, division: a.division,
+        colours: a.colors || [], keywords: a.keywords || [],
+        elements: a.elements || {},       // { logo, name, number, allOverPattern }
+        summary: a.summary,
+      },
+      // On 'use' → the real style code to hand to showConfigurator.
+      template: bestT?.parentSku ? { sku: bestT.parentSku, name: bestT.name, sizes: bestT.sizes } : null,
+      // Deterministic configurator config (colours mapped to the palette + text) —
+      // the server, not the model, decides how the design renders (colour fix).
+      suggestedConfig: j?.suggestedConfig || null,
+      // Faithful proof image id (their artwork on our garment) — shown big.
+      proofId,
+      // A couple of alternates the model can offer if the customer dislikes the top match.
+      alternates: (m?.results || []).slice(1, 4)
+        .map((r: any) => r?.template || r)
+        .filter((t: any) => t?.parentSku)
+        .map((t: any) => ({ sku: t.parentSku, name: t.name })),
+    };
+  } catch (err) {
+    console.error('[AgentService] analyzeDesign error:', err);
+    return { ok: false, message: 'Could not analyse the design right now.' };
+  }
+}
+
+/**
+ * CDL "design it in chat" (Door A): generate a jersey concept from the
+ * customer's brief (nano-banana via product-service), then analyse + match it to
+ * a make-able template — the same use/create decision as an upload. The concept
+ * image itself never enters the LLM prompt (it's ~1–2MB); we return a short
+ * conceptId the panel fetches, plus the decision/design/template the model needs.
+ */
+async function generateDesign(tenantId: string, rawArgs: string): Promise<any> {
+  let brief = ''; let sizes: string[] | undefined;
+  try { const a = JSON.parse(rawArgs || '{}'); brief = String(a?.brief || '').trim(); if (Array.isArray(a?.sizes)) sizes = a.sizes; } catch { /* */ }
+  if (!brief) return { ok: false, message: 'Ask the customer to describe the design (colours, team, number, style).' };
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/design`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ brief, sizes }),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!res.ok) return { ok: false, message: 'The design generator is busy right now — try again in a moment.' };
+    const j: any = await res.json();
+    const a = j?.analysis || {};
+    const m = j?.match || {};
+    const bestT = m?.best?.template || m?.best;
+    return {
+      ok: true,
+      conceptId: j?.conceptId || null,           // panel fetches the concept image by this id
+      decision: m?.decision || (bestT ? 'use' : 'create'),
+      design: {
+        sport: a.sport, garmentType: a.garmentType, division: a.division,
+        colours: a.colors || [], keywords: a.keywords || [], elements: a.elements || {}, summary: a.summary,
+      },
+      template: bestT?.parentSku ? { sku: bestT.parentSku, name: bestT.name, sizes: bestT.sizes } : null,
+      suggestedConfig: j?.suggestedConfig || null,
+      alternates: (m?.results || []).slice(1, 4).map((r: any) => r?.template || r).filter((t: any) => t?.parentSku).map((t: any) => ({ sku: t.parentSku, name: t.name })),
+    };
+  } catch (err) {
+    console.error('[AgentService] generateDesign error:', err);
+    return { ok: false, message: 'Could not generate the design right now.' };
+  }
+}
+
+/**
+ * Coach Team-Order Journey (Step 3): generate up to four FLAT 2D team-jersey
+ * views (front/back/left/right) from the accumulated brief, via
+ * product-service's `/cdl/flat-views` (same base URL pattern as generateDesign
+ * → `/cdl/design`). Unlike generateDesign/analyzeDesign there is no
+ * decision/template matching here — this stays 2D-only, no 3D bake, and no
+ * catalogue-template lookup. An uploaded team logo attached this turn is
+ * threaded through the same way analyzeDesign receives it (`turnImage`),
+ * becoming the seed artwork the four views are generated from.
+ */
+async function generateTeamDesign(
+  tenantId: string,
+  image: { imageBase64?: string; imageUrl?: string } | undefined,
+  rawArgs: string,
+): Promise<any> {
+  let brief = ''; let sourceId = ''; let sku = '';
+  try {
+    const a = JSON.parse(rawArgs || '{}');
+    brief = String(a?.brief || '').trim();
+    sourceId = String(a?.sourceId || '').trim();
+    sku = String(a?.sku || '').trim();
+  } catch { /* */ }
+  if (!brief && !sourceId && !image?.imageBase64 && !image?.imageUrl) {
+    return { ok: false, message: "Ask the coach to describe the team's look (sport, colours, garment, lettering), or attach the team logo." };
+  }
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/flat-views`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({
+        brief,
+        ...(sourceId ? { sourceId } : {}),
+        ...(image?.imageBase64 ? { artworkBase64: image.imageBase64 } : {}),
+        ...(image?.imageUrl ? { artworkUrl: image.imageUrl } : {}),
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!res.ok) return { ok: false, message: 'The team design generator is busy right now — try again in a moment.' };
+    const j: any = await res.json();
+    if (!j?.ok) return { ok: false, message: j?.message || 'Could not generate the team views right now.' };
+    return {
+      ok: true,
+      frontId: j.frontId, backId: j.backId, leftId: j.leftId, rightId: j.rightId,
+      frontError: j.frontError, backError: j.backError, leftError: j.leftError, rightError: j.rightError,
+      brief,
+      ...(sku ? { sku } : {}),
+      instruction: 'The four views (front/back/left/right, whichever generated) are now shown to the coach. Tell them briefly what is shown and invite them to approve or ask for a change. The panel itself offers the "approve, go to roster" step — you do not need another tool call for that.',
+    };
+  } catch (err) {
+    console.error('[AgentService] generateTeamDesign error:', err);
+    return { ok: false, message: 'Could not generate the team design right now.' };
+  }
+}
+
+/** uploadPhotosFor3D is deliberately server-thin: the actual bake happens
+ *  CLIENT-SIDE in PhotoUploadDesignPanel once the customer submits their real
+ *  photos (POST /api/cdl/bake3d, not this function). This tool's only job is
+ *  to hand back an ok:true so the UI dispatch layer opens the upload panel —
+ *  mirrors generateTeamDesign's dispatch-then-uiAction shape without the
+ *  network round trip generateTeamDesign needs (there is no server-side
+ *  generation step here, just a phase switch). */
+async function uploadPhotosFor3D(rawArgs: string): Promise<any> {
+  let sku = '';
+  try {
+    const a = JSON.parse(rawArgs || '{}');
+    sku = String(a?.sku || '').trim();
+  } catch { /* */ }
+  return {
+    ok: true,
+    ...(sku ? { sku } : {}),
+    instruction: 'The real-photo upload panel is now shown to the customer. They will upload up to 4 real photos (front required) of their actual garment and the 3D bake runs when they submit — you do not do anything further here; just tell them briefly the panel is open and to add their photos.',
+  };
+}
+
+/** CDL: submit the current design for artist review (the production-authority
+ *  gate). The artist signs off before anything prints; the agent can never
+ *  approve for them. */
+async function submitForReview(tenantId: string, sessionId: string, rawArgs: string): Promise<any> {
+  let args: any = {};
+  try { args = JSON.parse(rawArgs || '{}'); } catch { /* */ }
+  const kind = args?.kind === 'create' ? 'create' : 'use';
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ sessionId, kind, sku: args?.sku, summary: args?.summary, sizes: args?.sizes }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { ok: false, message: 'Could not submit for review right now.' };
+    const j: any = await res.json();
+    return {
+      ok: true, jobId: j.jobId, status: j.status, kind,
+      instruction: kind === 'create'
+        ? 'Submitted as a NEW design. Tell the customer our artist will generate the cut pieces at every size and finalise it, then you will confirm once approved. Do NOT promise a timeline you were not given.'
+        : 'Submitted to the artist for a production check. Tell the customer it is with our artist and you will confirm once approved. Do NOT call it production-ready yourself.',
+    };
+  } catch (err) {
+    console.error('[AgentService] submitForReview error:', err);
+    return { ok: false, message: 'Could not submit for review right now.' };
+  }
+}
+
+/**
+ * Coach Team-Order Journey (Step 6): submit the team's finished design +
+ * roster for artist review — the same lifecycle as submitForReview
+ * (POST :projectId/cdl/review, kind 'use'), sourcing sku the same way
+ * submitForReview does (a model-supplied or journeyState-known style code).
+ *
+ * HONEST LIMITATION: the roster and four flat-view ids only ever exist in the
+ * BROWSER's journey state — the server-side `journeyState` this function
+ * receives (unlike the client's React JourneyState) never accumulates them,
+ * so a chat-triggered submit here goes through WITHOUT roster/flatViews on
+ * the review record. The reliable, fully-populated path is the "Submit team
+ * order" button in ConfiguratorPanel (teamPreview phase), which posts the
+ * browser's actual roster + views directly. This tool exists so a coach who
+ * says "submit it" in chat still gets a real jobId rather than silence.
+ */
+async function submitTeamOrder(tenantId: string, sessionId: string, journeyState: any, rawArgs: string): Promise<any> {
+  let args: any = {};
+  try { args = JSON.parse(rawArgs || '{}'); } catch { /* */ }
+  const sku = String(args?.sku || journeyState?.activeSku || '').trim() || undefined;
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ sessionId, kind: 'use', sku, summary: args?.summary }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { ok: false, message: 'Could not submit the team order right now.' };
+    const j: any = await res.json();
+    return {
+      ok: true, jobId: j.jobId, status: j.status,
+      instruction: 'Submitted the team order to our artist. Tell the coach it is with our artist and you will confirm once approved — do NOT call it production-ready yourself. If the roster or design views look incomplete on the artist side, tell the coach to use the "Submit team order" button on the 3D preview instead, which carries the full roster.',
+    };
+  } catch (err) {
+    console.error('[AgentService] submitTeamOrder error:', err);
+    return { ok: false, message: 'Could not submit the team order right now.' };
+  }
+}
+
+/** CDL: report where the design sits in artist review. The customer may only be
+ *  invited to agree once the artist has approved; neither gate acts for the other. */
+async function checkReviewStatus(tenantId: string, sessionId: string): Promise<any> {
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/reviews?sessionId=${encodeURIComponent(sessionId)}`, {
+      headers: { 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return { ok: false, message: 'Could not check the review status.' };
+    const j: any = await res.json();
+    const latest = (j.reviews || []).slice(-1)[0];
+    if (!latest) return { ok: true, status: 'none', instruction: 'No design has been submitted for review yet. Submit one with submitForReview once the customer is happy.' };
+    const map: Record<string, string> = {
+      pending_artist: 'Still with our artist for review — tell the customer honestly it is being checked; do NOT say it is ready.',
+      changes_requested: `Our artist asked for changes${latest.artist?.notes ? ` (${latest.artist.notes})` : ''} — relay this and help the customer revise.`,
+      artist_approved: 'The artist has APPROVED the proof. Invite the customer to AGREE to it so it can go to print — you cannot agree for them.',
+      customer_agreed: 'The customer has agreed; it is being finalised for print.',
+      ready_for_print: 'Approved by artist AND agreed by the customer — it is READY FOR PRINT. Proceed to quote/checkout.',
+    };
+    return { ok: true, jobId: latest.jobId, status: latest.status, kind: latest.kind, instruction: map[latest.status] || 'Report the status honestly.' };
+  } catch (err) {
+    console.error('[AgentService] checkReviewStatus error:', err);
+    return { ok: false, message: 'Could not check the review status.' };
+  }
+}
+
+/**
+ * Fitment guide (v1): call product-service's `/sizing/recommend`, which is
+ * backed by SizingService's real per-tenant size-chart lookup (never an LLM
+ * guess). Mirrors analyzeDesign's fetch shape/error handling exactly.
+ */
+async function recommendSize(tenantId: string, rawArgs: string): Promise<any> {
+  let args: any = {};
+  try { args = JSON.parse(rawArgs || '{}'); } catch { /* */ }
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/sizing/recommend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({
+        category: args?.category,
+        usualSize: args?.usualSize,
+        waistIn: typeof args?.waistIn === 'number' ? args.waistIn : undefined,
+        chestIn: typeof args?.chestIn === 'number' ? args.chestIn : undefined,
+        division: args?.division,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { ok: false, message: 'The sizing guide is unavailable right now.' };
+    const data: any = await res.json();
+    /* State the number this returns, verbatim — nothing else (2026-08-24 live
+     * finding). A prior version of this result had no such instruction: the
+     * model received `recommendedSize:"34"` and still told the customer "36,"
+     * inventing a stretch-fabric justification the real size chart says
+     * nothing about. The tool firing correctly is not enough on its own — the
+     * same "settle it in code" lesson as enforceItemDesignability, applied to
+     * a text answer instead of a UI render. */
+    return {
+      ...data,
+      instruction: data.recommendedSize
+        ? `State the size as exactly "${data.recommendedSize}" — do not round up or down, and do not invent a reason (stretch fabric, fit style, etc.) not present in this result.`
+        : 'No real size chart data matched — say plainly you cannot confirm a size for this yet. Do not guess one.',
+    };
+  } catch (err) {
+    console.error('[AgentService] recommendSize error:', err);
+    return { ok: false, message: 'Could not look up a size recommendation right now.' };
+  }
+}
+
+/* An explicit sizing question ("what size should I get", "I don't know my
+ * size, my waist is 35 inches") does not reliably make the model call
+ * recommendSize on its own — live-tested 2026-08-24: it consistently answers
+ * through the normal clarify/showItems path instead, even with a concrete
+ * measurement stated. Same lesson as enforceNamedSku/enforceItemDesignability:
+ * wording does not hold, so it is settled in code. Conservative regex (only
+ * fires on an unmistakable sizing ask); the forced call still lets the MODEL
+ * extract category/measurement from free text, since that generalises far
+ * better than hand-parsing arbitrary phrasing. */
+const SIZE_QUESTION_RE = /\b(what|which)('?s| is| are)?\s+size\b|\bsize\s+should\s+i\b|\bwhat\s+size\s+am\s+i\b|\bdon'?t\s+know\s+(my|what)\s+size\b|\bwaist\s+(is|measurement)\b|\b\d{2,3}\s*(inch|in|cm)\s*waist\b|\bwaist\s+of\s+\d{2,3}\b/i;
+
+async function maybeForceSizeRecommendation(
+  tenantId: string,
+  conversation: any[],
+  activeTools: OpenAI.ChatCompletionTool[],
+  capabilities: string[] | undefined,
+  uiToolCalls: any[],
+  emit: (event: string, data: any) => void,
+  model: string,
+  llm: OpenAI,
+): Promise<void> {
+  if (!capabilities?.includes('fitmentGuide')) return;
+  const lastUser = [...conversation].reverse().find((m) => m?.role === 'user' && typeof m.content === 'string');
+  const text = String(lastUser?.content || '');
+  if (!SIZE_QUESTION_RE.test(text)) return;
+  try {
+    const forced = await llm.chat.completions.create({
+      model,
+      messages: [
+        ...conversation,
+        {
+          role: 'system',
+          content: 'The customer just asked a sizing question. Before anything else, call recommendSize with the item category and whatever measurement or usual size they gave.',
+        },
+      ],
+      tools: activeTools,
+      tool_choice: { type: 'function', function: { name: 'recommendSize' } },
+    });
+    const fmsg = forced.choices[0].message;
+    const call = fmsg.tool_calls?.[0];
+    if (!call || call.type !== 'function') {
+      console.warn('[AgentService] forced recommendSize produced no tool call');
+      return;
+    }
+    conversation.push(fmsg);
+    const result = await recommendSize(tenantId, call.function.arguments);
+    conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    uiToolCalls.push(call);
+    emit('uiAction', { name: 'recommendSize', arguments: result });
+  } catch (err) {
+    console.warn('[AgentService] maybeForceSizeRecommendation failed:', (err as Error).message);
+  }
+}
+
 async function lookupOptions(tenantId: string, rawArgs: string): Promise<unknown> {
   let sku = '';
   try { sku = String(JSON.parse(rawArgs || '{}').sku || '').trim(); } catch { /* fall through */ }
@@ -1565,7 +2171,7 @@ async function lookupRelated(tenantId: string, rawArgs: string): Promise<unknown
     return { found: false, sku, message: 'Relationship lookup failed.' };
   }
 }
-const CAPABILITY_TO_TOOL: Record<string, string> = {
+const CAPABILITY_TO_TOOL: Record<string, string | string[]> = {
   products: 'showItems',
   steps: 'showGuide',
   quote: 'updateQuote',
@@ -1576,6 +2182,23 @@ const CAPABILITY_TO_TOOL: Record<string, string> = {
   configurator: 'showConfigurator',
   roster: 'readRoster',
   teamColours: 'getTeamColours',
+  // CDL "design line": both front doors — analyse an uploaded design AND generate
+  // one from a description — the configurator to render the matched template, and
+  // the artist-review gate (submit + status) that guards production.
+  customDesign: ['analyzeDesign', 'generateDesign', 'showConfigurator', 'submitForReview', 'checkReviewStatus'],
+  // Coach team-order journey (Wednesday thin slice) — a NEW, separate capability
+  // key rather than folding into customDesign, so it's Augusta-only opt-in and
+  // never changes what other tenants' agents can call.
+  teamOrder: ['generateTeamDesign', 'submitTeamOrder'],
+  // Real-photo 3D match — upload up to 4 REAL photos of an actual garment and
+  // bake them onto the real 3D mesh. A separate, new capability (not folded
+  // into customDesign/teamOrder) so it stays an explicit per-tenant opt-in —
+  // today only Augusta, since it needs a renderable style with a real mesh.
+  photoUpload3D: 'uploadPhotosFor3D',
+  // Fitment guide (v1) — sizing questions + a size recommendation grounded in a
+  // real per-tenant size chart. Opt-in per tenant: only enabled where we have
+  // verified real size data (see SizingService for the grounding notes).
+  fitmentGuide: 'recommendSize',
 };
 /** Every capability id an admin can enable (used by the back office to render toggles). */
 export const AVAILABLE_CAPABILITIES = Object.keys(CAPABILITY_TO_TOOL);
@@ -1584,7 +2207,11 @@ export const AVAILABLE_CAPABILITIES = Object.keys(CAPABILITY_TO_TOOL);
  *  Empty/undefined → all tools (back-compat for projects not yet configured). */
 export function buildToolset(enabled?: string[], entityModel?: { label?: string; labelPlural?: string }): OpenAI.ChatCompletionTool[] {
   const allow = new Set(UNIVERSAL_TOOL_NAMES);
-  if (enabled?.length) for (const cap of enabled) { const t = CAPABILITY_TO_TOOL[cap]; if (t) allow.add(t); }
+  if (enabled?.length) for (const cap of enabled) {
+    const t = CAPABILITY_TO_TOOL[cap];
+    if (Array.isArray(t)) t.forEach((x) => allow.add(x));
+    else if (t) allow.add(t);
+  }
   const picked = enabled?.length
     ? tools.filter((t) => t.type !== 'function' || allow.has(t.function.name))
     : tools;
@@ -1625,6 +2252,11 @@ export interface ChatRequest {
   sessionId?: string;
   /** Durable customer identity when signed in (long-term memory key). */
   customerId?: string;
+  /** CDL: a design image the customer attached THIS turn (data URL or raw base64).
+   *  Never entered into the LLM prompt — held server-side and read by analyzeDesign. */
+  imageBase64?: string;
+  /** CDL: a design image referenced by URL instead of uploaded bytes. */
+  imageUrl?: string;
 }
 
 export interface ChatResponse {
@@ -2269,6 +2901,9 @@ export class AgentService {
    */
   async processChat(request: ChatRequest): Promise<ChatResponse> {
     const { tenantId = 'caroma' } = request;
+    // CDL: design image held server-side for this turn (mirrors processChatStream).
+    const turnImage = { imageBase64: request.imageBase64, imageUrl: request.imageUrl };
+    const hasDesignImage = !!(turnImage.imageBase64 || turnImage.imageUrl);
     const trace: TraceEntry[] = [];
 
     // ── Step -1: Server-owned memory — reconstruct transcript + journey state ──
@@ -2278,6 +2913,7 @@ export class AgentService {
     const stored = await this.sessionStore.load(sessionId, tenantId);
     const { messages, journeyState } = this.hydrate(request, stored);
     const state = stored?.state ?? request.state; // legacy UI-state (analytics only)
+    const turnIndex = (stored?.turnCount || 0) + 1; // used to key per-tool-call trace entries (steps[])
     trace.push({
       step: 'session',
       detail: stored
@@ -2355,6 +2991,18 @@ export class AgentService {
       ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
       ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
       { role: 'system', content: intentGuidance },
+      ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
+        `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
+        `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
+      ...(hasDesignImage ? [{ role: 'system', content:
+        '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
+        'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
+        'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
+      ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
+        '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer. ' +
+        'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — "design me a…", "can you make a…", "create a…" — call generateDesign with their brief FIRST; do NOT answer with searchKnowledge/showItems catalogue cards. ' +
+        'Only use searchKnowledge/showItems when they want to BROWSE existing products. Iterations ("make the sleeves brighter") → generateDesign again. ' +
+        'When the customer is happy or says "send it to your artist/for review", call submitForReview (kind "use" or "create"); when they ask "is it ready?", call checkReviewStatus. A custom design needs artist approval AND customer agreement before print — never call it production-ready yourself.' }] : []),
       ...activeMessages
     ];
 
@@ -2367,6 +3015,8 @@ export class AgentService {
     let forcedUi = false;            // panel-render enforcement fired already?
     let finalMessage: any = null;
     let mustClarifyGender = false;   // gender gate fired → guarantee a clarify panel (post-turn)
+    let cdlUseSku: string | null = null;  // CDL: analyzeDesign matched a real template → force the configurator
+    let cdlSuggested: any = null;         // CDL: server-built configurator config (colours+text mapped to the palette)
     const uiToolCalls: any[] = [];
     const wantUiTool = this.requiredUiTool(intent, { customised: brandHubProfile?.model?.customised, capabilities: projectConfig.capabilities });
 
@@ -2377,6 +3027,7 @@ export class AgentService {
     this.noteShownItems(conversation, journeyState);
     await this.noteNamedStyle(tenantId, conversation, journeyState, projectConfig);
     const researchedThisTurn = await this.maybeResearchOrg(tenantId, projectConfig, intent, journeyState, conversation, uiToolCalls);
+    await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, () => {}, model, llm);
 
     // ── Step 5: Generation — controlled tool-calling loop ───────────
     while (loops < maxLoops) {
@@ -2406,12 +3057,14 @@ export class AgentService {
         // it on retrieval meant a pure design turn rendered nothing at all.
         // Never force a UI render on the research turn — the colour-confirmation
         // card owns the panel and the customer must confirm first.
-        if (!forceText && !researchedThisTurn && (hadRetrieval || wantUiTool === 'showConfigurator') && wantUiTool && !forcedUi &&
+        // CDL match forces the configurator regardless of the intent-derived want.
+        const effWantUi = cdlUseSku ? 'showConfigurator' : wantUiTool;
+        if (!forceText && !researchedThisTurn && (hadRetrieval || effWantUi === 'showConfigurator') && effWantUi && !forcedUi &&
             !intent.panelRenderBlocked &&
-            !uiToolCalls.some((c) => c.function?.name === wantUiTool)) {
+            !uiToolCalls.some((c) => c.function?.name === effWantUi)) {
           forcedUi = true;
-          trace.push({ step: 'forced-ui', detail: `${wantUiTool} (model answered in prose)` });
-          await this.forceUiTool(tenantId, conversation, activeTools, wantUiTool, uiToolCalls, () => {}, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+          trace.push({ step: 'forced-ui', detail: `${effWantUi}${cdlUseSku ? ` (CDL match ${cdlUseSku})` : ''} (model answered in prose)` });
+          await this.forceUiTool(tenantId, conversation, activeTools, effWantUi, uiToolCalls, () => {}, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
         }
         break;
       }
@@ -2426,10 +3079,30 @@ export class AgentService {
         if (call.function.name === 'findRelated' || call.function.name === 'getProductOptions'
             || call.function.name === 'findEntity' || call.function.name === 'registerEntity'
             || call.function.name === 'requestArtwork' || call.function.name === 'checkArtworkApproval'
-            || call.function.name === 'readRoster' || call.function.name === 'getTeamColours') {
+            || call.function.name === 'readRoster' || call.function.name === 'getTeamColours'
+            || call.function.name === 'analyzeDesign' || call.function.name === 'generateDesign'
+            || call.function.name === 'generateTeamDesign' || call.function.name === 'submitTeamOrder'
+            || call.function.name === 'submitForReview' || call.function.name === 'checkReviewStatus'
+            || call.function.name === 'recommendSize' || call.function.name === 'uploadPhotosFor3D') {
           hadRetrieval = true;
           const result = call.function.name === 'getTeamColours'
             ? await getTeamColours(tenantId, call.function.arguments)
+            : call.function.name === 'analyzeDesign'
+            ? await analyzeDesign(tenantId, turnImage, call.function.arguments)
+            : call.function.name === 'generateDesign'
+            ? await generateDesign(tenantId, call.function.arguments)
+            : call.function.name === 'generateTeamDesign'
+            ? await generateTeamDesign(tenantId, turnImage, call.function.arguments)
+            : call.function.name === 'uploadPhotosFor3D'
+            ? await uploadPhotosFor3D(call.function.arguments)
+            : call.function.name === 'submitTeamOrder'
+            ? await submitTeamOrder(tenantId, sessionId, journeyState, call.function.arguments)
+            : call.function.name === 'submitForReview'
+            ? await submitForReview(tenantId, sessionId, call.function.arguments)
+            : call.function.name === 'checkReviewStatus'
+            ? await checkReviewStatus(tenantId, sessionId)
+            : call.function.name === 'recommendSize'
+            ? await recommendSize(tenantId, call.function.arguments)
             : call.function.name === 'readRoster'
             ? await readRoster(tenantId, call.function.arguments)
             : call.function.name === 'findRelated'
@@ -2443,7 +3116,58 @@ export class AgentService {
                   : call.function.name === 'checkArtworkApproval'
                     ? await checkArtworkApproval(tenantId, sessionId)
                     : await lookupOptions(tenantId, call.function.arguments);
+          // CDL: a matched template ('use') must land the customer in the 3D
+          // configurator. Render it deterministically now — a CDL data tool sets
+          // didSearch=false, so the loop would otherwise speak and exit before the
+          // match is ever shown.
+          if ((call.function.name === 'analyzeDesign' || call.function.name === 'generateDesign')
+              && (result as any)?.decision === 'use' && (result as any)?.template?.sku) {
+            cdlUseSku = String((result as any).template.sku);
+            if ((result as any).suggestedConfig?.sku) cdlSuggested = (result as any).suggestedConfig;
+          }
           conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+          {
+            const _s = summarizeToolCall(call.function.name, safeParseArgs(call.function.arguments), result);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
+          }
+          // Coach team-order journey: a successful generateTeamDesign must land
+          // the coach on the teamDesign panel with the four views — mirrors the
+          // cdlUseSku → showConfigurator push just below, but for its OWN tool
+          // name (there is no template/decision to resolve here, so no forced
+          // showConfigurator).
+          if (call.function.name === 'generateTeamDesign' && (result as any)?.ok
+              && !uiToolCalls.some((c) => c.function?.name === 'generateTeamDesign')) {
+            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'generateTeamDesign', arguments: JSON.stringify(result) } } as any);
+          }
+          // Real-photo 3D match: a successful uploadPhotosFor3D must land the
+          // customer on the photo-upload panel — same double-write pattern as
+          // generateTeamDesign just above, under its OWN tool name.
+          if (call.function.name === 'uploadPhotosFor3D' && (result as any)?.ok
+              && !uiToolCalls.some((c) => c.function?.name === 'uploadPhotosFor3D')) {
+            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'uploadPhotosFor3D', arguments: JSON.stringify(result) } } as any);
+          }
+          // Fitment guide: a real recommendation (or an honest "no chart yet")
+          // renders as a small card — same double-write pattern as
+          // generateTeamDesign just above, under recommendSize's own name.
+          if (call.function.name === 'recommendSize'
+              && !uiToolCalls.some((c) => c.function?.name === 'recommendSize')) {
+            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'recommendSize', arguments: JSON.stringify(result) } } as any);
+          }
+          if (cdlUseSku && !forcedUi && !intent.panelRenderBlocked &&
+              !uiToolCalls.some((c) => c.function?.name === 'showConfigurator')) {
+            forcedUi = true;
+            if (cdlSuggested?.sku) {
+              // Colour fix: server-built config (all analysed colours mapped to the
+              // style palette), not model-built — the buffered path returns
+              // uiToolCalls directly, so no emit is needed.
+              trace.push({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku}, server config)` });
+              uiToolCalls.push({ id: `cdl_${cdlUseSku}`, type: 'function', function: { name: 'showConfigurator', arguments: JSON.stringify(cdlSuggested) } } as any);
+              conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already on the right in their colours on style ${cdlUseSku}. Do NOT call showConfigurator again this turn; tell them it's shown and invite tweaks or sending it to the artist.` });
+            } else {
+              trace.push({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku})` });
+              await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, () => {}, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+            }
+          }
           continue;
         }
 
@@ -2478,12 +3202,22 @@ export class AgentService {
               tool_call_id: call.id,
               content: JSON.stringify(await markDesignable(tenantId, toolResult)),
             });
+            {
+              const _s = summarizeToolCall('searchKnowledge', args, toolResult);
+              void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'searchKnowledge', ..._s, ts: new Date().toISOString() });
+            }
           } catch (err) {
             console.error('[AgentService] Knowledge search error:', err);
             conversation.push({
               role: 'tool',
               tool_call_id: call.id,
               content: JSON.stringify({ found: false, message: 'Knowledge search failed.' }),
+            });
+            void this.sessionStore.appendStep(sessionId, tenantId, {
+              turnIndex, tool: 'searchKnowledge',
+              argsSummary: summarizeToolCall('searchKnowledge', safeParseArgs(call.function.arguments), {}).argsSummary,
+              resultSummary: 'search failed',
+              ts: new Date().toISOString(),
             });
           }
         } else if (UI_TOOL_NAMES.has(call.function.name)) {
@@ -2541,6 +3275,10 @@ export class AgentService {
               team: research.team, mascot: research.mascot, colours: cols, confidence: research.confidence,
               note: 'This is shown to the customer for confirmation. Once they confirm, use the mapped palette colour names (the "our X" ones) for searchKnowledge and rendering — do not invent colours. Never recreate the logo.',
             }) });
+            {
+              const _s = summarizeToolCall('researchSchool', safeParseArgs(call.function.arguments), research);
+              void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'researchSchool', ..._s, ts: new Date().toISOString() });
+            }
             continue;
           }
                     // P0-04: updateQuote is SERVER-AUTHORITATIVE and is NOT loop-guarded —
@@ -2581,6 +3319,10 @@ export class AgentService {
                 note: 'Totals are authoritative (server-computed from the catalogue + tenant pricing). Quote these exact figures; never state different numbers.',
               }),
             });
+            {
+              const _s = summarizeToolCall('updateQuote', parsedArgs, quote);
+              void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'updateQuote', ..._s, ts: new Date().toISOString() });
+            }
             {
               const _lu = [...conversation].reverse().find((m: any) => m?.role === 'user');
               const _xsell = this.crossSellDirective(projectConfig?.commerceMode, String(_lu?.content || ''), quote, journeyState);
@@ -2646,6 +3388,10 @@ export class AgentService {
             tool_call_id: call.id,
             content: JSON.stringify(itemVerdict || verdict),
           });
+          {
+            const _s = summarizeToolCall(call.function.name, parsedArgs, itemVerdict || verdict);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
+          }
         }
       }
 
@@ -2737,6 +3483,11 @@ export class AgentService {
     emit: (event: string, data: any) => void,
   ): Promise<void> {
     const { tenantId = 'caroma' } = request;
+    // CDL: a design image attached this turn is held server-side (never in the
+    // prompt) and read by analyzeDesign. A note in the conversation tells the
+    // model to call that tool.
+    const turnImage = { imageBase64: request.imageBase64, imageUrl: request.imageUrl };
+    const hasDesignImage = !!(turnImage.imageBase64 || turnImage.imageUrl);
     const trace: TraceEntry[] = [];
     const pushTrace = (t: TraceEntry) => { trace.push(t); emit('trace', t); };
 
@@ -2746,6 +3497,7 @@ export class AgentService {
     const stored = await this.sessionStore.load(sessionId, tenantId);
     const { messages, journeyState } = this.hydrate(request, stored);
     const state = stored?.state ?? request.state;
+    const turnIndex = (stored?.turnCount || 0) + 1; // used to key per-tool-call trace entries (steps[])
     pushTrace({ step: 'session', detail: stored ? `resumed ${sessionId.slice(0, 8)} (turn ${(stored.turnCount || 0) + 1}, ${messages.length} msg, ledger v${journeyState.version})` : `new ${sessionId.slice(0, 8)}` });
 
     // Published project config (model + persona + journey guidance)
@@ -2791,6 +3543,18 @@ export class AgentService {
       ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
       ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
       { role: 'system', content: intentGuidance },
+      ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
+        `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
+        `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
+      ...(hasDesignImage ? [{ role: 'system', content:
+        '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
+        'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
+        'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
+      ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
+        '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer, so they never need another tool. ' +
+        'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — e.g. "design me a…", "can you make a…", "I want a jersey that…", "create a…" — call generateDesign with their brief FIRST. Do NOT answer such a request with searchKnowledge/showItems catalogue cards. ' +
+        'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
+        'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
       ...messages,
     ];
 
@@ -2804,6 +3568,8 @@ export class AgentService {
     let forcedUi = false;               // panel-render enforcement fired already?
     let forcedSearch = false;           // post-clarify "don't defer, search now" nudge fired already? (ANF-10)
     let mustClarifyGender = false;      // gender gate fired → guarantee a clarify panel (post-turn)
+    let cdlUseSku: string | null = null;  // CDL: analyzeDesign matched a real template → force the configurator
+    let cdlSuggested: any = null;         // CDL: server-built configurator config (colours+text mapped to the palette)
     const uiToolCalls: any[] = [];
     const wantUiTool = this.requiredUiTool(intent, { customised: brandHubProfile?.model?.customised, capabilities: projectConfig.capabilities });
 
@@ -2813,6 +3579,7 @@ export class AgentService {
     this.noteShownItems(conversation, journeyState);
     await this.noteNamedStyle(tenantId, conversation, journeyState, projectConfig);
     const researchedThisTurn = await this.maybeResearchOrg(tenantId, projectConfig, intent, journeyState, conversation, uiToolCalls, emit);
+    await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, emit, model, llm);
 
     while (loops < maxLoops && !readyToSpeak) {
       loops++;
@@ -2840,11 +3607,17 @@ export class AgentService {
         // clarifying form and an empty panel instead of a garment. This path is
         // the one the storefront uses; the fix had only ever been applied to the
         // other one.
-        if (!researchedThisTurn && (hadRetrieval || wantUiTool === 'showConfigurator') && wantUiTool && !forcedUi &&
+        // CDL: a matched template ('use') forces the configurator even though the
+        // intent-derived want isn't showConfigurator (an uploaded design isn't a
+        // catalogue search).
+        const effWantUi = cdlUseSku ? 'showConfigurator' : wantUiTool;
+        pushTrace({ step: 'forced-ui?', detail: `cdlUseSku=${cdlUseSku ?? '—'} effWantUi=${effWantUi ?? '—'} forcedUi=${forcedUi} blocked=${intent.panelRenderBlocked} already=${uiToolCalls.some((c) => c.function?.name === effWantUi)}` });
+        if (!researchedThisTurn && (hadRetrieval || effWantUi === 'showConfigurator') && effWantUi && !forcedUi &&
             !intent.panelRenderBlocked &&
-            !uiToolCalls.some((c) => c.function?.name === wantUiTool)) {
+            !uiToolCalls.some((c) => c.function?.name === effWantUi)) {
           forcedUi = true;
-          await this.forceUiTool(tenantId, conversation, activeTools, wantUiTool, uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+          pushTrace({ step: 'forced-ui', detail: `${effWantUi}${cdlUseSku ? ` (CDL ${cdlUseSku})` : ''}` });
+          await this.forceUiTool(tenantId, conversation, activeTools, effWantUi, uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
         }
         // ANF-10: the model DEFERRED — it returned prose only ("let me find some
         // options… give me a moment!") with NO search this turn, while a product
@@ -2875,7 +3648,7 @@ export class AgentService {
       const searchCalls = fnCalls.filter((c) => c.function.name === 'searchKnowledge');
       // These return DATA, so they must be excluded from the UI bucket —
       // otherCalls results never re-enter the conversation.
-      const DATA_TOOLS = new Set(['findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval']);
+      const DATA_TOOLS = new Set(['findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D']);
       const dataCalls = fnCalls.filter((c) => DATA_TOOLS.has(c.function.name));
       const otherCalls = fnCalls.filter((c) => c.function.name !== 'searchKnowledge' && !DATA_TOOLS.has(c.function.name));
 
@@ -2884,8 +3657,25 @@ export class AgentService {
         const results = await Promise.all(
           dataCalls.map(async (call) => ({
             id: call.id,
-            content: JSON.stringify(call.function.name === 'findRelated'
+            name: call.function.name,
+            value: call.function.name === 'findRelated'
               ? await lookupRelated(tenantId, call.function.arguments)
+              : call.function.name === 'analyzeDesign'
+                ? await analyzeDesign(tenantId, turnImage, call.function.arguments)
+              : call.function.name === 'generateDesign'
+                ? await generateDesign(tenantId, call.function.arguments)
+              : call.function.name === 'generateTeamDesign'
+                ? await generateTeamDesign(tenantId, turnImage, call.function.arguments)
+              : call.function.name === 'uploadPhotosFor3D'
+                ? await uploadPhotosFor3D(call.function.arguments)
+              : call.function.name === 'submitTeamOrder'
+                ? await submitTeamOrder(tenantId, sessionId, journeyState, call.function.arguments)
+              : call.function.name === 'submitForReview'
+                ? await submitForReview(tenantId, sessionId, call.function.arguments)
+              : call.function.name === 'checkReviewStatus'
+                ? await checkReviewStatus(tenantId, sessionId)
+              : call.function.name === 'recommendSize'
+                ? await recommendSize(tenantId, call.function.arguments)
               : call.function.name === 'findEntity'
                 ? await lookupEntities(tenantId, call.function.arguments)
                 : call.function.name === 'registerEntity'
@@ -2894,10 +3684,85 @@ export class AgentService {
                     ? await requestArtwork(tenantId, sessionId, call.function.arguments)
                     : call.function.name === 'checkArtworkApproval'
                       ? await checkArtworkApproval(tenantId, sessionId)
-                      : await lookupOptions(tenantId, call.function.arguments)),
+                      : await lookupOptions(tenantId, call.function.arguments),
           })),
         );
-        for (const r of results) conversation.push({ role: 'tool', tool_call_id: r.id, content: r.content });
+        for (const r of results) {
+          // CDL: matched template ('use') → force the configurator downstream.
+          if ((r.name === 'analyzeDesign' || r.name === 'generateDesign')
+              && (r.value as any)?.decision === 'use' && (r.value as any)?.template?.sku) {
+            cdlUseSku = String((r.value as any).template.sku);
+            if ((r.value as any).suggestedConfig?.sku) cdlSuggested = (r.value as any).suggestedConfig;
+          }
+          // Door A: a generated concept image → show it in the panel (fetched by
+          // id). Emitted live over SSE only; it is not a journey-state action, so
+          // it does not go through the reducer/UI enforcement.
+          if (r.name === 'generateDesign' && (r.value as any)?.conceptId) {
+            emit('uiAction', { name: 'showConcept', arguments: { conceptId: (r.value as any).conceptId } });
+          }
+          // Door B: the FAITHFUL proof (their artwork on our garment) — the hero
+          // image for artwork-heavy uploads that colour zones can't reproduce.
+          if (r.name === 'analyzeDesign' && (r.value as any)?.proofId) {
+            emit('uiAction', { name: 'showProof', arguments: { proofId: (r.value as any).proofId } });
+          }
+          // Coach team-order journey: a successful generateTeamDesign lands the
+          // coach on the teamDesign panel with the four views — same "emit +
+          // uiToolCalls" double-write the cdlUseSku → showConfigurator push uses
+          // just below, but under its OWN tool name (no template/decision here).
+          if (r.name === 'generateTeamDesign' && (r.value as any)?.ok) {
+            emit('uiAction', { name: 'generateTeamDesign', arguments: r.value });
+            if (!uiToolCalls.some((c) => c.function?.name === 'generateTeamDesign')) {
+              uiToolCalls.push({ id: r.id, type: 'function', function: { name: 'generateTeamDesign', arguments: JSON.stringify(r.value) } } as any);
+            }
+          }
+          // Real-photo 3D match: a successful uploadPhotosFor3D opens the
+          // photo-upload panel — same double-write as generateTeamDesign above.
+          if (r.name === 'uploadPhotosFor3D' && (r.value as any)?.ok) {
+            emit('uiAction', { name: 'uploadPhotosFor3D', arguments: r.value });
+            if (!uiToolCalls.some((c) => c.function?.name === 'uploadPhotosFor3D')) {
+              uiToolCalls.push({ id: r.id, type: 'function', function: { name: 'uploadPhotosFor3D', arguments: JSON.stringify(r.value) } } as any);
+            }
+          }
+          // Fitment guide: emit the recommendation (or the honest "no chart
+          // yet" result) as its own small card — same double-write as
+          // generateTeamDesign just above, under recommendSize's own name.
+          if (r.name === 'recommendSize') {
+            emit('uiAction', { name: 'recommendSize', arguments: r.value });
+            if (!uiToolCalls.some((c) => c.function?.name === 'recommendSize')) {
+              uiToolCalls.push({ id: r.id, type: 'function', function: { name: 'recommendSize', arguments: JSON.stringify(r.value) } } as any);
+            }
+          }
+          conversation.push({ role: 'tool', tool_call_id: r.id, content: JSON.stringify(r.value) });
+          {
+            const origCall = dataCalls.find((c) => c.id === r.id);
+            const _s = summarizeToolCall(r.name, safeParseArgs(origCall?.function.arguments), r.value);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: r.name, ..._s, ts: new Date().toISOString() });
+          }
+        }
+        // A CDL data tool sets didSearch=false, so the loop would set readyToSpeak
+        // and exit before the model ever renders the match. Render it here, now,
+        // deterministically — the matched style is producible by definition.
+        if (cdlUseSku && !forcedUi && !intent.panelRenderBlocked &&
+            !uiToolCalls.some((c) => c.function?.name === 'showConfigurator')) {
+          forcedUi = true;
+          if (cdlSuggested?.sku) {
+            // Colour fix: the SERVER decides the configurator config (all analysed
+            // colours mapped to the style's palette + any read-off name/number),
+            // instead of the model — which was dropping colours and rendering a
+            // single accent. The render service picks the design line when none is
+            // named and cycles the colours across every zone.
+            pushTrace({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku}, server config)` });
+            uiToolCalls.push({ id: `cdl_${cdlUseSku}`, type: 'function', function: { name: 'showConfigurator', arguments: JSON.stringify(cdlSuggested) } } as any);
+            emit('uiAction', { name: 'showConfigurator', arguments: cdlSuggested });
+            // Tell the model it's already rendered (a plain system note — NOT a tool
+            // result, which would be an orphaned tool_call and 400 the next turn) so
+            // it speaks instead of re-emitting showConfigurator with worse colours.
+            conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already on the right in their colours (${(cdlSuggested.colours || []).join(', ') || 'their palette'}) on style ${cdlUseSku}. Do NOT call showConfigurator again this turn. Tell them their design is shown, invite tweaks to colours/name/number, or offer to send it to the artist for review.` });
+          } else {
+            pushTrace({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku})` });
+            await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+          }
+        }
       }
 
       // Searches run in PARALLEL (the big latency win for multi-fixture builds:
@@ -2918,13 +3783,18 @@ export class AgentService {
               // Same annotation as the non-streaming path — this is the one the
               // storefront actually uses, so an omission here is invisible in
               // tests and total in production (the AUG-38 failure, repeated).
-              return { id: call.id, content: JSON.stringify(await markDesignable(tenantId, r)) };
+              const marked = await markDesignable(tenantId, r);
+              return { id: call.id, content: JSON.stringify(marked), args, result: marked };
             } catch {
-              return { id: call.id, content: JSON.stringify({ found: false, message: 'Knowledge search failed.' }) };
+              return { id: call.id, content: JSON.stringify({ found: false, message: 'Knowledge search failed.' }), args: safeParseArgs(call.function.arguments), result: { found: false } };
             }
           }),
         );
-        for (const r of results) conversation.push({ role: 'tool', tool_call_id: r.id, content: r.content });
+        for (const r of results) {
+          conversation.push({ role: 'tool', tool_call_id: r.id, content: r.content });
+          const _s = summarizeToolCall('searchKnowledge', (r as any).args, (r as any).result);
+          void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'searchKnowledge', ..._s, ts: new Date().toISOString() });
+        }
         for (const call of capped) conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ found: false, message: 'Search limit reached for this turn.' }) });
       }
 
@@ -2980,6 +3850,10 @@ export class AgentService {
             team: research.team, mascot: research.mascot, colours: cols, confidence: research.confidence,
             note: 'Shown to the customer for confirmation. Once confirmed, use the mapped palette colour names for searchKnowledge and rendering — never invent colours or recreate the logo.',
           }) });
+          {
+            const _s = summarizeToolCall('researchSchool', safeParseArgs(call.function.arguments), research);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'researchSchool', ..._s, ts: new Date().toISOString() });
+          }
           continue;
         }
                 // P0-04: updateQuote is SERVER-AUTHORITATIVE (not loop-guarded). Rehydrate
@@ -3016,6 +3890,10 @@ export class AgentService {
             lineCount: quote.lines.length, validation: quote.validation,
             note: 'Totals are authoritative (server-computed). Quote these exact figures; never state different numbers.',
           }) });
+          {
+            const _s = summarizeToolCall('updateQuote', parsedArgs, quote);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'updateQuote', ..._s, ts: new Date().toISOString() });
+          }
           {
             const _lu = [...conversation].reverse().find((m: any) => m?.role === 'user');
             const _xsell = this.crossSellDirective(projectConfig?.commerceMode, String(_lu?.content || ''), quote, journeyState);
@@ -3077,12 +3955,20 @@ export class AgentService {
          * model's question stand until they pick one. */
         if (verdict.designableAlternatives) {
           conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(verdict) });
+          {
+            const _s = summarizeToolCall(call.function.name, parsedArgs, verdict);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
+          }
           continue;
         }
 
         uiToolCalls.push(call);
         emit('uiAction', { name: call.function.name, arguments: emitArgs });
         conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(itemVerdict || verdict) });
+        {
+          const _s = summarizeToolCall(call.function.name, parsedArgs, itemVerdict || verdict);
+          void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
+        }
       }
       if (!didSearch) readyToSpeak = true; // UI-only round → speak next
     }

@@ -54,7 +54,7 @@ const PUBLIC_ROUTES = [
 // Domains where anonymous (guest) access is allowed — customer-facing storefront
 // surfaces. A guest chatting with a public brand storefront has no token, and the
 // projectId in the URL identifies which brand they're talking to.
-const ANONYMOUS_DOMAINS = new Set(['commerce', 'products']);
+const ANONYMOUS_DOMAINS = new Set(['commerce', 'products', 'cdl']);
 
 @Injectable()
 export class AuthGuard implements NestMiddleware {

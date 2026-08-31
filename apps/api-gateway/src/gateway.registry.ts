@@ -9,6 +9,7 @@ import { Request, Response, NextFunction } from 'express';
 export const DOMAIN_REGISTRY: Record<string, string> = {
   commerce:      process.env.AGENT_SERVICE_URL      || 'http://localhost:3004',
   products:      process.env.PRODUCT_SERVICE_URL    || 'http://localhost:8083',
+  cdl:           process.env.PRODUCT_SERVICE_URL    || 'http://localhost:8083',  // CDL lives in product-service
   projects:      process.env.PROJECT_SERVICE_URL    || 'http://localhost:8082',
   organizations: process.env.ORG_SERVICE_URL        || 'http://localhost:8085',
   analytics:     process.env.ANALYTICS_SERVICE_URL  || 'http://localhost:8086',
@@ -24,7 +25,7 @@ export const SERVICE_REGISTRY: Record<string, string> = DOMAIN_REGISTRY;
 const PLATFORM_DOMAINS = new Set(['auth', 'organizations', 'projects']);
 // Tenant-scoped domains carry the projectId as the first path segment:
 //   /api/v1/:projectId/<domain>/...
-const PROJECT_DOMAINS = new Set(['commerce', 'products', 'analytics', 'leads', 'data']);
+const PROJECT_DOMAINS = new Set(['commerce', 'products', 'cdl', 'analytics', 'leads', 'data']);
 
 /**
  * Parse an /api/v1/... path into its projectId (if tenant-scoped) and domain.

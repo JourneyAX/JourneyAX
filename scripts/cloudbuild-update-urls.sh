@@ -67,6 +67,7 @@ PROJECT_URL=$(get_url "PROJECT_SERVICE_URL")
 PRODUCT_URL=$(get_url "PRODUCT_SERVICE_URL")
 ORG_URL=$(get_url "ORGANIZATION_SERVICE_URL")
 AGENT_URL=$(get_url "AGENT_COMMERCE_SERVICE_URL")
+RETEXTURE_URL=$(get_url "RETEXTURE_SERVICE_URL")
 
 COMMON_SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
 
@@ -118,7 +119,11 @@ gcloud run services update agent-commerce-service \
 
 # ── (d) product-service → project ────────────────────────────────────────────
 PRODUCT_ENV="NODE_ENV=production,SERVICE_NAME=product-service,ENVIRONMENT=${ENVIRONMENT}"
-[ -n "${PROJECT_URL}" ] && PRODUCT_ENV="${PRODUCT_ENV},PROJECT_SERVICE_URL=${PROJECT_URL}"
+[ -n "${PROJECT_URL}" ]   && PRODUCT_ENV="${PRODUCT_ENV},PROJECT_SERVICE_URL=${PROJECT_URL}"
+# CDL 3D bake (P2): product-service calls the retexture-service to wrap a design
+# onto the real mesh. Without this URL, bake3d returns "not configured" and the
+# storefront falls back to the flat proof.
+[ -n "${RETEXTURE_URL}" ] && PRODUCT_ENV="${PRODUCT_ENV},RETEXTURE_SERVICE_URL=${RETEXTURE_URL}"
 
 echo "🔧 Updating product-service..."
 gcloud run services update product-service \

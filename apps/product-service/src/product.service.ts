@@ -68,6 +68,10 @@ interface KnowledgeDocument {
     images?: string[];
     finishes?: string[];
     url?: string;
+    // PlaceMakers backfill (building-materials tenant): full category hierarchy
+    // and per-branch stock — optional/undefined for tenants without them.
+    categoryPath?: string[];
+    stock?: { branchCount: number; availableBranchCount: number; branches?: { code: string; inStock: boolean }[] };
   };
   embedding?: number[];
   crawledAt?: Date;
@@ -303,31 +307,24 @@ export class ProductService {
     const col = await this.getCollection();
     const limit = options.limit || 8;
 
-    const filter: Record<string, unknown> = {};
+    // Each optional dimension (brand/category/text) contributes its own $or
+    // clause; all contributed clauses are ANDed together at the end. Keeping
+    // them separate (rather than merging into one shared $or, as before) avoids
+    // a brand-isolation bug: a single flat $or would let a text match alone
+    // satisfy the filter even without the tenant/brand match.
+    const andClauses: Record<string, unknown>[] = [];
 
     if (options.brand) {
-      filter['$or'] = [
-        { brand: options.brand },
-        { 'metadata.brand': options.brand }
-      ];
+      andClauses.push({ $or: [{ brand: options.brand }, { 'metadata.brand': options.brand }] });
     }
-    if (options.type) filter['metadata.type'] = expandTypeFilter(options.type);
+    if (options.type) andClauses.push({ 'metadata.type': expandTypeFilter(options.type) });
 
     if (options.category) {
-      const categoryOr = [
+      andClauses.push({ $or: [
         { 'metadata.category': options.category },
         { 'metadata.category': { $exists: false } },
-        { 'metadata.category': null }
-      ];
-      if (filter['$or']) {
-        filter['$and'] = [
-          { $or: filter['$or'] as any[] },
-          { $or: categoryOr }
-        ];
-        delete filter['$or'];
-      } else {
-        filter['$or'] = categoryOr;
-      }
+        { 'metadata.category': null },
+      ] });
     }
 
     const words = query
@@ -337,8 +334,21 @@ export class ProductService {
 
     if (words.length > 0) {
       const regexPattern = words.join('|');
-      filter.chunk = { $regex: new RegExp(regexPattern, 'i') };
+      const regex = new RegExp(regexPattern, 'i');
+      /* Domain-keyword wiring (PlaceMakers NZ trade-vocab grounding): a query word
+       * like "casement" or "GIB" often does not appear verbatim in a product's
+       * `chunk` text — it appears only in the additive `metadata.domainKeywords`
+       * synonym set generated per-category. Matching EITHER surface means the
+       * regex fallback can still find a product whose real name uses different
+       * words than the customer typed. Tenants without domainKeywords simply
+       * never match this clause — safe cross-tenant. */
+      andClauses.push({ $or: [
+        { chunk: { $regex: regex } },
+        { 'metadata.domainKeywords': { $regex: regex } },
+      ] });
     }
+
+    const filter: Record<string, unknown> = andClauses.length > 1 ? { $and: andClauses } : (andClauses[0] || {});
 
     const results = await col
       .find(filter)
@@ -425,9 +435,17 @@ export class ProductService {
     if (!tokens.length) return;
     for (const r of results) {
       const title = String((r.document as any)?.title || (r.document as any)?.metadata?.title || '').toLowerCase();
-      if (!title) continue;
+      // Additive: also credit a hit against the generated domain-keyword synonym
+      // set (PlaceMakers NZ trade vocab), so a query using "casement"/"GIB"/etc.
+      // still nudges a semantically-close product ahead of a merely-adjacent one.
+      // Tenants with no domainKeywords contribute nothing extra here.
+      const domainKeywords: string[] = (r.document as any)?.metadata?.domainKeywords || [];
+      if (!title && !domainKeywords.length) continue;
       let hits = 0;
-      for (const t of tokens) if (title.includes(t)) hits++;
+      for (const t of tokens) {
+        if (title && title.includes(t)) hits++;
+        else if (domainKeywords.some((k) => k.includes(t))) hits++;
+      }
       (r as any).score = (r.score || 0) + Math.min(hits, 3) * 0.04;
     }
     results.sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -548,6 +566,8 @@ export class ProductService {
             specs: specs,
             description: meta.description || '',
             url: r.document.metadata?.url || r.document.sourceUrl,
+            categoryPath: r.document.metadata?.categoryPath,
+            stock: r.document.metadata?.stock,
             documents: meta.documents || [],
             content: contentChunk.slice(0, charSliceLimit) + '... [Content truncated due to token budget]'
           });
@@ -567,6 +587,8 @@ export class ProductService {
           specs: specs,
           description: meta.description || '',
           url: r.document.metadata?.url || r.document.sourceUrl,
+          categoryPath: r.document.metadata?.categoryPath,
+          stock: r.document.metadata?.stock,
           documents: meta.documents || [],
           content: contentChunk
         });

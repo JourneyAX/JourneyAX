@@ -25,11 +25,12 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
   private client: MongoClient | null = null;
   private db: Db | null = null;
 
-  async onModuleInit() {
+  private async getDb(): Promise<Db | null> {
+    if (this.db) return this.db;
     const uri = process.env.MONGODB_URI;
     if (!uri) {
       this.logger.warn('MONGODB_URI not set — analytics will return empty data');
-      return;
+      return null;
     }
     try {
       this.client = await new MongoClient(uri, {
@@ -38,9 +39,15 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       }).connect();
       this.db = this.client.db(KNOWLEDGE_DB);
       this.logger.log(`Connected to MongoDB (${KNOWLEDGE_DB})`);
+      return this.db;
     } catch (e: any) {
       this.logger.error(`MongoDB connection failed: ${e.message}`);
+      return null;
     }
+  }
+
+  async onModuleInit() {
+    await this.getDb();
   }
 
   async onModuleDestroy() {
@@ -49,51 +56,70 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
 
   /** Full insights payload — sessions, funnel, intents, recent, quotes, orders, knowledgeDocs. */
   async computeInsights(projectId: string): Promise<Record<string, unknown>> {
-    if (!this.db) {
+    const db = await this.getDb();
+    if (!db) {
       return this.emptyInsights(projectId);
     }
 
-    const sessions  = this.db.collection('sessions');
-    const documents = this.db.collection('documents');
-    const quotes    = this.db.collection('quotes');
-    const orders    = this.db.collection('orders');
+    const sessions  = db.collection('sessions');
+    const documents = db.collection('documents');
+    const quotes    = db.collection('quotes');
+    const orders    = db.collection('orders');
 
     const tenantFilter = { tenantId: projectId };
     const since7d  = new Date(Date.now() - 7  * 24 * 3600 * 1000);
     const since24h = new Date(Date.now() - 24 *      3600 * 1000);
+    const since14d = new Date(Date.now() - 14 * 24 * 3600 * 1000);
 
-    const [
-      total, last7d, last24h,
-      stageAgg, intentAgg, turnAgg,
-      recent, quoteDocs, orderDocs, docs,
-    ] = await Promise.all([
-      sessions.countDocuments(tenantFilter),
-      sessions.countDocuments({ ...tenantFilter, updatedAt: { $gte: since7d } }),
-      sessions.countDocuments({ ...tenantFilter, updatedAt: { $gte: since24h } }),
-      sessions.aggregate([
-        { $match: tenantFilter },
-        { $group: { _id: { $ifNull: ['$lastIntent.stage', 'intro'] }, n: { $sum: 1 } } },
-      ]).toArray(),
-      sessions.aggregate([
-        { $match: { ...tenantFilter, 'lastIntent.intent': { $exists: true } } },
-        { $group: { _id: '$lastIntent.intent', n: { $sum: 1 } } },
-        { $sort: { n: -1 } }, { $limit: 8 },
-      ]).toArray(),
-      sessions.aggregate([
-        { $match: tenantFilter },
-        { $group: { _id: null, turns: { $sum: { $ifNull: ['$turnCount', 0] } } } },
-      ]).toArray(),
-      sessions.find(tenantFilter).sort({ updatedAt: -1 }).limit(10)
-        .project({ _id: 0, sessionId: 1, lastIntent: 1, turnCount: 1, updatedAt: 1, 'state.phase': 1 })
-        .toArray(),
-      quotes.find(tenantFilter).sort({ createdAt: -1 }).limit(25)
-        .project({ _id: 0, quoteId: 1, sessionId: 1, title: 1, total: 1, symbol: 1, status: 1,
-                   createdAt: 1, updatedAt: 1, lines: 1 }).toArray(),
-      orders.find(tenantFilter).sort({ createdAt: -1 }).limit(25)
-        .project({ _id: 0, orderId: 1, quoteId: 1, status: 1, total: 1, currency: 1,
-                   createdAt: 1, paidAt: 1 }).toArray(),
-      documents.countDocuments({ projectId }),
-    ]);
+    try {
+      const [
+        total, last7d, last24h,
+        stageAgg, intentAgg, turnAgg,
+        recent, quoteDocs, orderDocs, docs, dailyAgg,
+      ] = await Promise.all([
+        sessions.countDocuments(tenantFilter),
+        sessions.countDocuments({ ...tenantFilter, updatedAt: { $gte: since7d } }),
+        sessions.countDocuments({ ...tenantFilter, updatedAt: { $gte: since24h } }),
+        sessions.aggregate([
+          { $match: tenantFilter },
+          { $group: { _id: { $ifNull: ['$lastIntent.stage', 'intro'] }, n: { $sum: 1 } } },
+        ]).toArray(),
+        sessions.aggregate([
+          { $match: { ...tenantFilter, 'lastIntent.intent': { $exists: true } } },
+          { $group: { _id: '$lastIntent.intent', n: { $sum: 1 } } },
+          { $sort: { n: -1 } }, { $limit: 8 },
+        ]).toArray(),
+        sessions.aggregate([
+          { $match: tenantFilter },
+          { $group: { _id: null, turns: { $sum: { $ifNull: ['$turnCount', 0] } } } },
+        ]).toArray(),
+        sessions.find(tenantFilter, { projection: { _id: 0, sessionId: 1, lastIntent: 1, turnCount: 1, updatedAt: 1, 'state.phase': 1 } })
+          .sort({ updatedAt: -1 }).limit(10).toArray(),
+        quotes.find(tenantFilter, { projection: { _id: 0, quoteId: 1, sessionId: 1, title: 1, total: 1, symbol: 1, status: 1, createdAt: 1, updatedAt: 1, lines: 1 } })
+          .sort({ createdAt: -1 }).limit(25).toArray(),
+        orders.find(tenantFilter, { projection: { _id: 0, orderId: 1, quoteId: 1, status: 1, total: 1, currency: 1, createdAt: 1, paidAt: 1 } })
+          .sort({ createdAt: -1 }).limit(25).toArray(),
+        documents.countDocuments({ projectId }),
+        // Sessions grouped by day (last 14 days) — real day-by-day activity for
+        // the trend chart. Grouped on updatedAt since that's what every session
+        // write touches (createdAt is only set once, updatedAt on every turn).
+        sessions.aggregate([
+          { $match: { ...tenantFilter, updatedAt: { $gte: since14d } } },
+          { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$updatedAt' } }, n: { $sum: 1 } } },
+          { $sort: { _id: 1 } },
+        ]).toArray(),
+      ]);
+
+    // Daily sessions trend: fill in the missing days as 0 so the chart has a
+    // continuous 14-point series rather than gaps where no session touched.
+    const dailyCounts = new Map<string, number>();
+    for (const d of dailyAgg as any[]) dailyCounts.set(d._id, d.n);
+    const sessionsByDay: { date: string; count: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 3600 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      sessionsByDay.push({ date: key, count: dailyCounts.get(key) || 0 });
+    }
 
     // Funnel: cumulative — a session that reached stage N also passed all prior stages
     const stageCounts: Record<string, number> = Object.fromEntries(STAGES.map(s => [s, 0]));
@@ -146,10 +172,39 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       orders:       ordersOut,
       ordersPaid:   ordersOut.filter(o => o.status === 'paid').length,
       knowledgeDocs: docs,
+      sessionsByDay,
     };
+    } catch (err: any) {
+      this.logger.error(`Error computing insights for ${projectId}: ${err.message}`);
+      return this.emptyInsights(projectId);
+    }
+  }
+
+  /**
+   * Full transcript for ONE session — the real `messages[]` SessionStore
+   * writes every turn (see `apps/agent-commerce-service/src/pipeline/
+   * session-store.ts`). `computeInsights`'s `recent` list only ever projects
+   * light fields (intent/phase/turnCount) — this is the drill-down "what did
+   * the customer actually ask, what happened" view on top of the same data.
+   * Tenant-scoped so a sessionId can't be replayed to read another project's
+   * conversation.
+   */
+  async getTranscript(projectId: string, sessionId: string): Promise<Record<string, unknown>> {
+    if (!this.db) return { sessionId, messages: [], found: false };
+    const doc = await this.db.collection('sessions').findOne(
+      { sessionId, tenantId: projectId },
+      { projection: { _id: 0, sessionId: 1, messages: 1, lastIntent: 1, turnCount: 1, updatedAt: 1, createdAt: 1, 'state.phase': 1, steps: 1 } },
+    );
+    if (!doc) return { sessionId, messages: [], found: false };
+    return { ...doc, found: true };
   }
 
   private emptyInsights(projectId: string) {
+    const sessionsByDay = Array.from({ length: 14 }, (_, idx) => {
+      const i = 13 - idx;
+      const d = new Date(Date.now() - i * 24 * 3600 * 1000);
+      return { date: d.toISOString().slice(0, 10), count: 0 };
+    });
     return {
       projectId,
       sessions:     { total: 0, last7d: 0, last24h: 0, totalTurns: 0 },
@@ -160,6 +215,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       orders:       [],
       ordersPaid:   0,
       knowledgeDocs: 0,
+      sessionsByDay,
     };
   }
 }

@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, scopeTenant } from "../../../lib/require-auth";
 
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function GET(req: Request) {
   try {

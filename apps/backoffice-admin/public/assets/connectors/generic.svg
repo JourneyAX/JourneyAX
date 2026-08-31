@@ -1,0 +1,6 @@
+<!-- placeholder mark (not a brand) — generic REST/API plug icon, neutral gray -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Generic REST connector">
+  <title>Generic REST API connector</title>
+  <rect width="24" height="24" rx="5" fill="#4B4B4B"/>
+  <path d="M9 3.5v3M15 3.5v3M7.5 6.5h9a1 1 0 011 1v3.2c0 3-2.2 5.3-5 5.7v2.1h1.5a1 1 0 010 2h-5a1 1 0 010-2H10.5v-2.1c-2.8-.4-5-2.7-5-5.7V7.5a1 1 0 011-1z" fill="#FFFFFF"/>
+</svg>

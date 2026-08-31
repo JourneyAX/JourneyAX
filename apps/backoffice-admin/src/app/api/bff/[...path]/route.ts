@@ -23,7 +23,7 @@ const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
 const GATEWAY = process.env.GATEWAY_URL
   || process.env.PROJECT_SERVICE_URL  // legacy — remove once GATEWAY_URL is set
   || process.env.NEXT_PUBLIC_PROJECT_API
-  || 'http://localhost:8080';
+  || 'http://localhost:3010';
 
 const DOWNSTREAM: Record<string, string> = {
   projects:      GATEWAY,

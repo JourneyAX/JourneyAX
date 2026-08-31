@@ -17,6 +17,7 @@
 import React, { useEffect, useState } from "react";
 import { Plug, Save, FlaskConical } from "lucide-react";
 import { projectApi, type Project } from "../lib/api";
+import { Connectors } from "./Connectors";
 
 const DOMAINS: { id: 'knowledge' | 'commerce'; label: string; hint: string }[] = [
   { id: 'knowledge', label: 'Knowledge / retrieval', hint: "What the agent's searchKnowledge queries — the grounding source for recommendations." },
@@ -30,7 +31,7 @@ const PLATFORM_OPTIONS = [
   { id: 'woocommerce', label: 'WooCommerce', available: false },
 ];
 
-export function IntegrationsConfig({ project, onSaved }: { project: Project; onSaved: () => void }) {
+export function IntegrationsConfig({ project, onSaved, onNavigate }: { project: Project; onSaved: () => void; onNavigate?: (tab: "integrations" | "channels") => void }) {
   const ct0 = project.integrations?.commercetools || { enabled: false };
   const plat0 = project.integrations?.platforms || {};
 
@@ -113,6 +114,9 @@ export function IntegrationsConfig({ project, onSaved }: { project: Project; onS
       </div>
 
       {error && <div className="panel" style={{ borderColor: "#B7392D", color: "#B7392D" }}>{error}</div>}
+
+      {/* Connectors gallery — visual front door for the dropdown-driven config below */}
+      <Connectors onNavigate={onNavigate} />
 
       {/* Per-domain platform switch */}
       <div className="panel">

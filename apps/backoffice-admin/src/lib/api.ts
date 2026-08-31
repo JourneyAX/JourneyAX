@@ -57,7 +57,12 @@ export interface Project {
   status: string;
   scope: { rooms: string[]; finishes: string[]; categories: string[]; complianceTags?: string[] };
   pricing: { currency: string; symbol: string; taxRate: number; discountRate: number };
-  persona: { systemName: string; systemPromptOverrides: string; greetingMessage?: string; journeyGuidance?: string };
+  persona: {
+    systemName: string; systemPromptOverrides: string; greetingMessage?: string; journeyGuidance?: string;
+    // Raw Journey Builder canvas graph — persisted alongside the compiled `journeyGuidance`
+    // prose so re-opening the canvas loads real nodes instead of re-parsing text.
+    journeyGraph?: { nodes: any[]; edges: any[] };
+  };
   theme: ProjectTheme;
   ai?: {
     provider: string; model: string; temperature: number; embeddingModel?: string;
@@ -156,6 +161,12 @@ export const CAPABILITY_CATALOG: { id: string; label: string; description: strin
   { id: 'choice',       label: 'Decisions',              description: 'Present selectable path decisions (e.g. DIY vs professional)' },
   { id: 'steps',        label: 'Step-by-step guides',    description: 'Interactive checklists (troubleshooting / install steps)' },
   { id: 'configurator', label: '3D configurator',        description: 'Open an interactive 3D product designer (colours, name/number, live preview)' },
+  { id: 'roster',       label: 'Team roster',            description: 'Read a pasted roster (name/number/size per player) for a team order' },
+  { id: 'teamColours',  label: 'Team colours lookup',     description: 'Look up a school/team’s official colours to ground a design' },
+  { id: 'customDesign', label: 'Custom design upload',    description: 'Match a customer-uploaded design to a make-able template and apply it in 3D' },
+  { id: 'teamOrder',    label: 'Team design generation',  description: 'Generate flat front/back/sleeve views for a whole team from a text brief' },
+  { id: 'photoUpload3D', label: 'Real-photo 3D match',    description: 'Upload up to 4 real photos of an actual garment and bake them onto the real 3D mesh (no AI-generated artwork)' },
+  { id: 'fitmentGuide', label: 'Fitment / sizing guide',  description: 'Ask a few sizing questions and recommend a size, grounded in a real per-tenant size chart' },
 ];
 
 // ── Auth header ────────────────────────────────────────────────────────

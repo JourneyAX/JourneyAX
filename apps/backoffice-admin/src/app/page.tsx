@@ -36,6 +36,8 @@ import { NotificationsConfig } from '../components/NotificationsConfig';
 import { AccountView } from '../components/AccountView';
 import { OnboardWizard } from '../components/OnboardWizard';
 import { BusinessRules } from '../components/BusinessRules';
+import { Merchandising } from '../components/Merchandising';
+import { JourneyBuilder } from '../components/JourneyBuilder';
 import { AiOrchestration } from '../components/AiOrchestration';
 import { KnowledgeBase } from '../components/KnowledgeBase';
 import { ChannelsConfig } from '../components/ChannelsConfig';
@@ -55,14 +57,28 @@ export default function BackOfficeSPA() {
   const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
   const [onboardOpen, setOnboardOpen] = useState(false);
 
+  // A config-save reload (loadProjects) is async; the admin can switch to a
+  // DIFFERENT project while it's still in flight. Without a guard, the stale
+  // reload resolves later and unconditionally overwrites `currentProject` back
+  // to whatever it was reloading — silently undoing the switch and leaking one
+  // project's config (e.g. Augusta's 3D settings) into another's screen. Pin
+  // the project this call was made for and drop the result if the admin has
+  // since selected something else, mirroring the same fix already applied to
+  // the storefront's ChatPanel conversation-switch race.
+  const currentProjectIdRef = React.useRef<string | undefined>(undefined);
+  currentProjectIdRef.current = currentProject?.projectId;
+
   const loadProjects = React.useCallback(async (preferId?: string) => {
+    const startedForId = preferId ?? currentProjectIdRef.current;
     try {
       // Archived projects are hidden from the workspace switcher (kept in the DB,
       // restorable) — so the dropdown shows only live customers.
       const list = (await projectApi.list()).filter((p) => p.status !== 'archived');
       setProjects(list);
+      if (startedForId !== undefined && currentProjectIdRef.current !== startedForId) return;
       const stored = preferId || (typeof window !== 'undefined' ? sessionStorage.getItem('jax_project') : null);
       const pick = list.find((p) => p.projectId === stored) || list[0] || null;
+      if (startedForId !== undefined && currentProjectIdRef.current !== startedForId) return;
       setCurrentProject(pick);
       if (pick && typeof window !== 'undefined') sessionStorage.setItem('jax_project', pick.projectId);
     } catch {
@@ -78,7 +94,7 @@ export default function BackOfficeSPA() {
     if (typeof window !== 'undefined') sessionStorage.setItem('jax_project', p.projectId);
     setTenantMenuOpen(false);
   };
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'builder' | 'catalog' | 'orders' | 'analytics' | 'embed' | 'channels' | 'integrations' | 'business' | 'orchestration' | 'rules' | 'knowledge' | 'platform-ops' | 'users-roles' | 'notifications' | 'account'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'builder' | 'journeyBuilder' | 'catalog' | 'orders' | 'analytics' | 'merchandising' | 'embed' | 'channels' | 'integrations' | 'business' | 'orchestration' | 'rules' | 'knowledge' | 'platform-ops' | 'users-roles' | 'notifications' | 'account'>('dashboard');
   
   // R4: restore session from the HttpOnly cookie via the BFF (no token in JS).
   useEffect(() => {
@@ -241,6 +257,17 @@ export default function BackOfficeSPA() {
   // ── 2. CONSOLE BACK-OFFICE APP VIEW ───────────────────────────────────────
   // Nav sections + labels are resolved from the active project (config-driven).
   const consoleSections = resolveConsoleSections(currentProject);
+
+  // Each workspace in the switcher IS a distinct AI agent (own config, own
+  // capabilities, own catalogue) — these helpers surface that identity in the
+  // UI instead of the switcher reading like a list of database rows.
+  const projectStatusPillClass = (status?: string) =>
+    status === 'active' ? 'p-active' : status === 'draft' ? 'p-draft' : 'p-inactive';
+  const projectAgentIdentity = (p: Project) => {
+    const toolCount = p.capabilities?.length ?? 0;
+    const platform = p.integrations?.platforms?.commerce || p.integrations?.platforms?.knowledge || 'standalone';
+    return `${toolCount} tool${toolCount === 1 ? '' : 's'} active · ${platform}`;
+  };
   return (
     <div className="board">
       
@@ -302,7 +329,21 @@ export default function BackOfficeSPA() {
               <div className="mh-brand" style={{ background: currentProject?.theme?.primaryColor || 'var(--jx-yellow)', color: currentProject?.theme?.accentColor || 'var(--jx-black)' }}>
                 {(currentProject?.companyName || 'JX').slice(0, 2).toUpperCase()}
               </div>
-              <div className="mh-name">{currentProject?.companyName || 'Select workspace'}</div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div className="mh-name">{currentProject?.companyName || 'Select workspace'}</div>
+                  {currentProject && (
+                    <span className={`pill ${projectStatusPillClass(currentProject.status)}`} style={{ fontSize: '8.5px', padding: '1.5px 7px' }}>
+                      {currentProject.status}
+                    </span>
+                  )}
+                </div>
+                {currentProject && (
+                  <div style={{ fontSize: '10px', color: 'var(--jx-gray-500)', marginTop: '1px', textAlign: 'left' }}>
+                    {projectAgentIdentity(currentProject)}
+                  </div>
+                )}
+              </div>
               <ChevronDown size={14} style={{ color: 'var(--jx-gray-500)' }} />
             </button>
 
@@ -322,9 +363,16 @@ export default function BackOfficeSPA() {
                       <span style={{ width: '24px', height: '24px', borderRadius: '6px', background: p.theme?.primaryColor || 'var(--jx-yellow)', color: p.theme?.accentColor || 'var(--jx-black)', fontSize: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)' }}>
                         {p.companyName.slice(0, 2).toUpperCase()}
                       </span>
-                      <span style={{ flex: 1 }}>
-                        <b style={{ fontSize: '12.5px', color: 'var(--jx-black)', display: 'block' }}>{p.companyName}</b>
-                        <span style={{ fontSize: '10.5px', color: 'var(--jx-gray-500)' }}>{p.projectId} · {p.status}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <b style={{ fontSize: '12.5px', color: 'var(--jx-black)' }}>{p.companyName}</b>
+                          <span className={`pill ${projectStatusPillClass(p.status)}`} style={{ fontSize: '8.5px', padding: '1.5px 6px' }}>
+                            {p.status}
+                          </span>
+                        </span>
+                        <span style={{ fontSize: '10.5px', color: 'var(--jx-gray-500)', display: 'block', marginTop: '1px' }}>
+                          {projectAgentIdentity(p)}
+                        </span>
                       </span>
                     </button>
                   ))}
@@ -402,6 +450,14 @@ export default function BackOfficeSPA() {
             ? <AnalyticsLive project={currentProject} />
             : <div className="panel">Select a workspace.</div>)}
 
+          {activeTab === 'merchandising' && (currentProject
+            ? <Merchandising projectId={currentProject.projectId} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {activeTab === 'journeyBuilder' && (currentProject
+            ? <JourneyBuilder projectId={currentProject.projectId} />
+            : <div className="panel">Select a workspace.</div>)}
+
           {/* F. CHANNELS VIEW */}
           {activeTab === 'channels' && (
             <>
@@ -426,7 +482,7 @@ export default function BackOfficeSPA() {
             <>
               <div className="crumb">JourneyAX / Integrations & Adapters</div>
               {currentProject
-                ? <IntegrationsConfig project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} />
+                ? <IntegrationsConfig project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} onNavigate={setActiveTab} />
                 : <div className="panel">Select a workspace to configure its integrations.</div>}
             </>
           )}

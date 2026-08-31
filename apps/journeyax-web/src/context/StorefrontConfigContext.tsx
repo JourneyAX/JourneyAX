@@ -90,6 +90,7 @@ function applyTheme(theme: StorefrontConfig['theme']) {
 
 export function StorefrontConfigProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<StorefrontConfig>(DEFAULT);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -97,14 +98,29 @@ export function StorefrontConfigProvider({ children }: { children: React.ReactNo
     // (multi-storefront routing); domain-based resolution happens server-side.
     fetch('/api/config' + (typeof window !== 'undefined' ? window.location.search : ''))
       .then((r) => r.json())
-      .then((c: StorefrontConfig) => {
+      .then((c: any) => {
         if (!alive) return;
+        if (c.error) {
+          setError(c.message || 'Project does not exist.');
+          return;
+        }
         setConfig({ ...DEFAULT, ...c, labels: { ...DEFAULT.labels, ...(c.labels || {}) } });
         applyTheme(c.theme || {});
       })
       .catch(() => { /* keep defaults */ });
     return () => { alive = false; };
   }, []);
+
+  if (error) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f9fafb' }}>
+        <div style={{ textAlign: 'center', padding: '2rem', backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', maxWidth: '400px' }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem' }}>Project Unavailable</h1>
+          <p style={{ color: '#4b5563' }}>{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return <Ctx.Provider value={config}>{children}</Ctx.Provider>;
 }

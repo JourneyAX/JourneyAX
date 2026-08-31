@@ -1,0 +1,16 @@
+# Geometry + imaging (keep this in Python — this is what it is for)
+numpy
+scipy
+pillow
+trimesh
+pygltflib
+scikit-learn
+rembg
+onnxruntime
+# Background-removal model dep pulled by rembg, pinned loosely
+# Service
+fastapi
+uvicorn[standard]
+requests
+python-multipart
+pydantic

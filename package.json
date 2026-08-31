@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "clean": "rm -rf node_modules .turbo apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist",
+    "clean": "rm -rf node_modules .turbo apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist apps/*/.venv packages/*/.venv",
     "dev:all": "npm run clean && npm install && npm run build && turbo run dev --concurrency=20",
     "dev": "turbo run dev --concurrency=20",
     "build": "turbo run build",

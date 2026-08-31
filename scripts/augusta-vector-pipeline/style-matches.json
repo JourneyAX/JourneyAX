@@ -1,0 +1,51 @@
+{
+  "schema": "journeyax.augusta.style-match.v1",
+  "matches": [
+    {
+      "design": "hockey-blue-black",
+      "sourceFront": "/Users/mahaveer/Desktop/Augusta Demo/hockey-F.jpg",
+      "sourceBack": "/Users/mahaveer/Desktop/Augusta Demo/hockey-B.jpg",
+      "acceptedStyle": "228103",
+      "construction": "traditional lace-up hockey jersey",
+      "confidence": "high",
+      "reason": "The reference and Augusta style both use a lace-up neck, set-in long sleeves, shoulder construction, and hockey body proportions."
+    },
+    {
+      "design": "rats-yellow-blue",
+      "sourceFront": "/Users/mahaveer/Desktop/Augusta Demo/Rats.webp",
+      "sourceBack": "/Users/mahaveer/Desktop/Augusta Demo/ratsback.jpg",
+      "acceptedStyle": "228108",
+      "construction": "Pro V-neck hockey jersey",
+      "confidence": "high",
+      "reason": "The V/miter neck and long-sleeve hockey construction match 228108; the attached baseball and flag-football GLBs do not."
+    },
+    {
+      "design": "rinkster-black-orange",
+      "sourceFront": "/Users/mahaveer/Desktop/Augusta Demo/rinkster-F.jpeg",
+      "sourceBack": "/Users/mahaveer/Desktop/Augusta Demo/rinkster-B.jpeg",
+      "acceptedStyle": "228162",
+      "construction": "FreeStyle Essential Series 2.0 V-neck hockey jersey",
+      "confidence": "high",
+      "reason": "The user supplied the authoritative 228162 configurator. Live asset inspection confirmed its hockey construction, size-L production SVG, OBJ/MTL model, normal map and decoration locations. This supersedes the earlier provisional 228108 match."
+    },
+    {
+      "design": "rink-rippers-purple-lime-orange",
+      "sourceFront": "/Users/mahaveer/Desktop/Augusta Demo/momentec_motocross_jersey_mockup.png",
+      "sourceBack": null,
+      "acceptedStyle": "228103",
+      "construction": "FreeStyle Performance Series traditional lace-up hockey jersey",
+      "confidence": "high",
+      "reason": "The image filename says motocross, but the garment has the boxy hockey body, traditional lace-up neckline, set-in long sleeves, and reinforced shoulder/elbow construction of 228103. Momentec's product page and 2025-2026 hockey catalog independently confirm those attributes."
+    }
+  ],
+  "rejectedModelMatches": [
+    {
+      "style": "227132",
+      "reason": "Two-button short-sleeve baseball construction; invalid for all three long-sleeve hockey references."
+    },
+    {
+      "style": "228187",
+      "reason": "Reversible short-sleeve flag-football construction; invalid for the V-neck hockey references."
+    }
+  ]
+}

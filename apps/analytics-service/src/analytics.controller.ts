@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Headers, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Query, Param, Headers, UnauthorizedException, Inject } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 
 /**
@@ -13,7 +13,7 @@ import { AnalyticsService } from './analytics.service';
  */
 @Controller('api/v1/analytics')
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(@Inject(AnalyticsService) private readonly analyticsService: AnalyticsService) {}
 
   @Get('health')
   health() {
@@ -38,7 +38,29 @@ export class AnalyticsController {
     // Gate: must come through the gateway (x-user-email is injected by AuthGuard)
     if (!userEmail) throw new UnauthorizedException('Missing gateway identity headers');
 
-    return this.analyticsService.computeInsights(projectId);
+    try {
+      return await this.analyticsService.computeInsights(projectId);
+    } catch (e: any) {
+      console.error('[AnalyticsController] getInsights error:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Real conversation transcript for ONE session — the drill-down from the
+   * "recent sessions" list in /insights. Same auth gate as /insights.
+   *
+   *   GET /api/v1/analytics/session/:sessionId/transcript?projectId=…
+   */
+  @Get('session/:sessionId/transcript')
+  async getTranscript(
+    @Param('sessionId') sessionId: string,
+    @Query('projectId') projectId: string,
+    @Headers('x-user-email') userEmail: string,
+  ) {
+    if (!projectId) return { error: 'projectId required' };
+    if (!userEmail) throw new UnauthorizedException('Missing gateway identity headers');
+    return this.analyticsService.getTranscript(projectId, sessionId);
   }
 
   /** Legacy stub — kept so existing integrations don't 404. */

@@ -33,6 +33,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { activeSessionId } from '@/lib/conversations';
 import { useJourney } from '@/context/JourneyContext';
+import CustomDesign3D from './CustomDesign3D';
 
 interface RenderResult {
   /** The style the server actually rendered. The identity shown to the customer
@@ -109,6 +110,14 @@ export default function ConfiguratorPanel() {
   const { state, dispatch } = useJourney();
   const design = state.design || {};
 
+  /* CDL (custom design) — the customer's OWN artwork goes on the real mesh via
+     the dedicated CustomDesign3D stage (Job 2), which owns its own scene. When
+     it's active we suppress the parametric mesh entirely so two WebGL gardens
+     don't fight over the stage. sourceId is the proof (upload) or concept
+     (generated) handle to decompose + place. */
+  const cdlSource = state.proofId || state.conceptId || '';
+  const cdlActive = !!cdlSource && !!design.sku;
+
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [render, setRender] = useState<RenderResult>({});
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'flat' | 'photo' | 'failed'>('idle');
@@ -122,6 +131,13 @@ export default function ConfiguratorPanel() {
   const [variants, setVariants] = useState<{ x: number; y: number } | null>(null);
   const [rackOpen, setRackOpen] = useState(false);
   const [pricing, setPricing] = useState(false);
+  /* Coach team-order journey (Step 6) — submitting the roster + design to the
+   * artist review lifecycle. The roster and four flat views only ever exist in
+   * THIS browser's journey state, so the button posts them directly rather
+   * than routing through the chat agent (which has no server-side copy of
+   * either). */
+  const [teamSubmitting, setTeamSubmitting] = useState(false);
+  const [teamSubmitResult, setTeamSubmitResult] = useState<{ ok: boolean; jobId?: string; message?: string } | null>(null);
   /* What the kit currently comes to, for the pill and the rack.
    *
    * Priced by the SAME server engine as the quote screen, never added up here:
@@ -233,6 +249,9 @@ export default function ConfiguratorPanel() {
      real server-side composite rather than a local redraw. */
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    // CustomDesign3D owns the stage for custom designs — don't also fetch/build
+    // the parametric render underneath it.
+    if (cdlActive) { setStatus('idle'); return; }
     if (!design.sku) { setRender({}); setStatus('idle'); return; }
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
@@ -634,7 +653,7 @@ export default function ConfiguratorPanel() {
               {[designLabel && `${designLabel} design`, `Style ${shownSku}`].filter(Boolean).join('  ·  ')}
             </div>
           </div>
-          {!!colours.length && (
+          {!state.proofId && !!colours.length && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {colours.map((name) => {
                 const hex = inks[name];
@@ -668,6 +687,41 @@ export default function ConfiguratorPanel() {
       <div style={{ flex: 1, minHeight: 0, position: 'relative',
                     borderRadius: 14, overflow: 'hidden', background: 'var(--stage-bg, #fff)' }}>
         <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
+
+        {/* CDL (Job 2): the customer's OWN design ON the real garment mesh,
+            editable. The decomposed pattern wraps the mesh; the logo, name and
+            number are draggable surface decals. Replaces the old flat baked
+            proof — this is truthful-to-print and interactive. */}
+        {cdlActive && (
+          <CustomDesign3D
+            sku={design.sku!}
+            sourceId={cdlSource}
+            project={project}
+            teamName={design.name}
+            number={design.number}
+            colours={(design as any).colours || colours}
+            designLine={design.designLine}
+            palette={(design as any).palette}
+            roster={state.roster}
+          />
+        )}
+
+        {/* CDL Door A: the AI-generated concept the customer described, pinned
+            beside their garment so they can see "what I asked for" next to "what
+            we make". The 3D mesh is the real, producible template. */}
+        {!!state.conceptId && (
+          <div style={{ position: 'absolute', top: 10, left: 10, width: 96, borderRadius: 10, overflow: 'hidden',
+                        border: '1px solid var(--border)', background: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.12)' }}>
+            <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase',
+                          color: muted, padding: '4px 6px 2px' }}>Your concept</div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/cdl/concept/${encodeURIComponent(state.conceptId)}${project ? `?project=${encodeURIComponent(project)}` : ''}`}
+              alt="Your AI-generated design concept"
+              style={{ display: 'block', width: '100%', height: 'auto' }}
+            />
+          </div>
+        )}
 
         {/* THE RACK — top corner. What else can hang in this kit, grouped by the
             catalogue's own garment types. Not a curated "these go together"
@@ -1015,7 +1069,7 @@ export default function ConfiguratorPanel() {
                         objectFit: 'contain', padding: 16 }} />
         )}
 
-        {view !== 'ready' && view !== 'flat' && view !== 'photo' && (
+        {!cdlActive && view !== 'ready' && view !== 'flat' && view !== 'photo' && (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
                         background: 'var(--stage-bg, #fff)', fontSize: 13, color: muted,
                         textAlign: 'center', padding: 24, lineHeight: 1.6 }}>
@@ -1028,7 +1082,7 @@ export default function ConfiguratorPanel() {
 
       {/* Honest reporting rather than a silent substitution: a colour the brand
           does not stock must never be quietly swapped for one it does. */}
-      {!!render.rejectedColours?.length && (
+      {!state.proofId && !!render.rejectedColours?.length && (
         <p style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--warning)' }}>
           {`${render.rejectedColours.join(', ')} ${render.rejectedColours.length === 1 ? 'is not a colour' : 'are not colours'} `
            + `this brand stocks, so ${render.rejectedColours.length === 1 ? 'it was' : 'they were'} left off rather than `
@@ -1040,9 +1094,16 @@ export default function ConfiguratorPanel() {
       {/* When no design line was named the server applies the style's widest one
           so the colours are visible at all. Naming it keeps the caption honest —
           the customer is looking at a specific design, not a generic garment. */}
-      {render.designLineDefaulted && render.appliedDesignLine && (
+      {!state.proofId && render.designLineDefaulted && render.appliedDesignLine && (
         <p style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-secondary)' }}>
           {`Shown in the "${render.appliedDesignLine}" design — say the word and I'll switch it.`}
+        </p>
+      )}
+      {/* CDL (Job 2): the design is live on the real mesh and editable on the
+          garment — the parametric colour-zone caption/notes below don't apply. */}
+      {cdlActive && (
+        <p style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+          Your design is on the real jersey — drag the logo, name or number to reposition it. Our artist confirms the print before production.
         </p>
       )}
 
@@ -1052,6 +1113,85 @@ export default function ConfiguratorPanel() {
           read as a picture with nothing to do. It belongs under the garment,
           next to what the kit currently costs. The hint is here because the
           garment IS clickable and nothing said so. */}
+      {/* Flat layer editor — only the FALLBACK now, for a custom design with no
+          live 3D mesh. When the design is on the real mesh (cdlActive) editing
+          happens on the garment itself, so this second editor would confuse. */}
+      {!cdlActive && (!!state.proofId || !!state.conceptId) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => dispatch({ type: 'SET_PHASE', phase: 'designEditor' })}
+            style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer',
+                     background: 'var(--surface,#fff)', color: 'var(--text)', fontSize: 12.5, fontWeight: 700 }}>
+            ✏️ Edit design (layers)
+          </button>
+          <span style={{ fontSize: 11.5, color: muted }}>Move the logo, change the number, swap the pattern — then export an editable file.</span>
+        </div>
+      )}
+
+      {/* CDL Job 2 → move the design forward once it's on the garment. */}
+      {cdlActive && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => dispatch({ type: 'ADD_TO_KIT', item: {
+              sku: design.sku!, garmentType: currentType, name: design.name, number: design.number,
+            } })}
+            style={{ padding: '9px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                     background: 'var(--gold,#c41e3a)', color: '#fff', fontSize: 12.5, fontWeight: 700 }}>
+            Looks right — add to the kit
+          </button>
+          <span style={{ fontSize: 11.5, color: muted }}>Then we send it to our artist to confirm the print.</span>
+        </div>
+      )}
+
+      {/* Coach team-order journey (Step 6) — the roster + four flat views this
+          browser is holding are what actually go to the artist. Posted straight
+          from here rather than through the chat agent, which never sees either. */}
+      {state.phase === 'teamPreview' && !!state.roster?.length && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            disabled={teamSubmitting}
+            onClick={async () => {
+              setTeamSubmitting(true);
+              setTeamSubmitResult(null);
+              try {
+                const res = await fetch(`/api/cdl/review?project=${encodeURIComponent(project)}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    sessionId: activeSessionId(cfg.projectId),
+                    kind: 'use',
+                    sku: design.sku,
+                    conceptId: state.conceptId,
+                    summary: `${design.name || 'Team'} order — ${state.roster!.length} player${state.roster!.length === 1 ? '' : 's'}`,
+                    roster: state.roster,
+                    flatViews: state.teamDesign,
+                  }),
+                });
+                const j = await res.json();
+                setTeamSubmitResult(j?.ok ? { ok: true, jobId: j.jobId } : { ok: false, message: j?.message || j?.error || 'Could not submit the order.' });
+              } catch (e: any) {
+                setTeamSubmitResult({ ok: false, message: e?.message || 'Network error submitting the order.' });
+              } finally {
+                setTeamSubmitting(false);
+              }
+            }}
+            style={{ padding: '9px 18px', borderRadius: 8, border: 'none', cursor: teamSubmitting ? 'default' : 'pointer',
+                     opacity: teamSubmitting ? 0.6 : 1,
+                     background: 'var(--gold,#c41e3a)', color: '#fff', fontSize: 12.5, fontWeight: 700 }}>
+            {teamSubmitting ? 'Submitting…' : 'Submit team order'}
+          </button>
+          {teamSubmitResult?.ok && (
+            <span style={{ fontSize: 11.5, color: muted }}>Sent to our artist for review (job {teamSubmitResult.jobId}).</span>
+          )}
+          {teamSubmitResult && !teamSubmitResult.ok && (
+            <span style={{ fontSize: 11.5, color: '#B58A3C' }}>{teamSubmitResult.message}</span>
+          )}
+          {!teamSubmitResult && (
+            <span style={{ fontSize: 11.5, color: muted }}>{state.roster!.length} player{state.roster!.length === 1 ? '' : 's'} — sends the design and roster to our artist.</span>
+          )}
+        </div>
+      )}
+
       {!!shownSku && status === 'ready' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {inKit ? (

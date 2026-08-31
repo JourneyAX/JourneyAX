@@ -16,8 +16,13 @@ import WarrantyPanel from './panels/WarrantyPanel';
 import ConceptsPanel from './panels/ConceptsPanel';
 import ConfiguratorPanel from './panels/ConfiguratorPanel';
 import CandyDesignPanel from './panels/CandyDesignPanel';
+import DesignEditorPanel from './panels/DesignEditorPanel';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import ResearchPanel from './panels/ResearchPanel';
+import TeamDesignPanel from './panels/TeamDesignPanel';
+import TeamRosterPanel from './panels/TeamRosterPanel';
+import SizeRecommendationPanel from './panels/SizeRecommendationPanel';
+import PhotoUploadDesignPanel from './panels/PhotoUploadDesignPanel';
 
 export default function ProjectPanel() {
   const { state } = useJourney();
@@ -47,6 +52,12 @@ export default function ProjectPanel() {
       {state.phase === 'ordered' && <OrderedPanel />}
       {state.phase === 'concepts' && <ConceptsPanel />}
       {state.phase === 'configurator' && (isCandy ? <CandyDesignPanel /> : <ConfiguratorPanel />)}
+      {state.phase === 'designEditor' && <DesignEditorPanel />}
+      {state.phase === 'teamDesign' && <TeamDesignPanel />}
+      {state.phase === 'teamRoster' && <TeamRosterPanel />}
+      {state.phase === 'teamPreview' && <ConfiguratorPanel />}
+      {state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
+      {state.phase === 'photoUploadDesign' && <PhotoUploadDesignPanel />}
     </div>
   );
 }

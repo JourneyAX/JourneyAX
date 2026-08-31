@@ -18,6 +18,7 @@
 | `product-service` | NestJS | **Cloud Run** | Vector search + embeddings |
 | `organization-service` | NestJS | **Cloud Run** | Billing containers |
 | `agent-commerce-service` | NestJS (SSE) | **Cloud Run** | LLM agent stream |
+| `retexture-service` | **Python (FastAPI)** | **Cloud Run (public)** | CDL 3D bake: wraps a custom design onto the real per-SKU mesh. Own Dockerfile (`apps/retexture-service/Dockerfile`), 2 vCPU / 2Gi, 900s timeout, concurrency 1, scale-to-zero. Public because the browser loads the baked GLB from its `/jobs/<id>/…` URLs (see §retexture below) |
 | `analytics-service` / `data-service` / `lead-service` | NestJS | **Cloud Run — deploy later / not always** | Off the A&F path; deploy only when needed |
 | Cache | Redis | **Upstash Redis (serverless)** | Per-request billing, scale-to-zero, free tier; wired via existing `@journeyax/cache` (`REDIS_URL`) |
 | Database | Mongo | **Atlas M0** (already connected) | Free, managed, vector search |
@@ -178,3 +179,58 @@ Plus a **secrets manifest** (names → Secret Manager), per §4. **No `output: '
 5. **v1 scope:** 6 core services (gateway/auth/project/product/org/agent) + 2 Vercel apps; defer analytics/data/lead? → **yes.**
 
 Give me your calls (2–5) and I'll produce the Dockerfiles, the `deploy-services.yml`, and a P0 setup checklist you can run.
+
+---
+
+## §retexture — deploying the CDL 3D bake service (P5)
+
+`retexture-service` is the only **Python** service. It bakes a customer's design
+onto the real per-SKU 3D mesh (render each view → Gemini paints it → back-project
+into a UV atlas → `retextured.glb`). It rides the **same 4-step Cloud Build
+pipeline** as the NestJS services, with three deltas already wired into the scripts:
+
+1. **Own Dockerfile** — `apps/retexture-service/Dockerfile` (python:3.12-slim +
+   `libgomp1/libgl1/libglib2.0-0` for onnxruntime/pillow; pre-downloads the rembg
+   `u2net` model; runs `uvicorn app.main:app --port $PORT`). `cloudbuild-build-push.sh`
+   auto-uses a per-service `Dockerfile` (with the **service dir** as context) when
+   present, else the shared Node `Dockerfile.template`.
+2. **Resources** (`cloudbuild-deploy.sh` case) — **2 vCPU / 2Gi**, `--timeout=900s`
+   (a 4096 quality bake runs ~2–3 min), **`--concurrency=1`** (one bake saturates
+   the CPU), `--min-instances=0` (scale-to-zero), `PORT=8091`.
+3. **Public + URL wiring** — retexture-service is `--allow-unauthenticated` because
+   the browser loads the baked GLB/atlas directly from `…/jobs/<id>/…` (cross-origin,
+   no Google ID token possible). `cloudbuild-update-urls.sh` injects
+   `RETEXTURE_SERVICE_URL` into **product-service** so `bake3d` can reach it.
+   Secrets it needs: `GEMINI_API_KEY`, `INTERNAL_API_KEY` (both already in Secret
+   Manager). Hardened by `X-Internal-Key` on `/retexture` + opaque job ids on `/jobs`.
+
+### Deploy caveats (UAT-acceptable; fix before production)
+- **Ephemeral `/jobs`.** Cloud Run's filesystem is per-instance and ephemeral, so a
+  baked GLB is only served by the instance that made it (fine for the immediate
+  load right after a bake, at concurrency 1). **Production:** write outputs to a
+  per-project **GCS bucket** and return **signed URLs** (then retexture-service can
+  go private again).
+- **Web → product-service reachability for `bake3d`.** The storefront BFF
+  `/api/cdl/bake3d` calls `PRODUCT_SERVICE_URL` **directly** (same pattern as
+  `/cdl/flat` and `/cdl/decompose`), but product-service is private. Unlike those
+  two, `bake3d` is **JSON in/out**, so the clean fix is to route it **through the
+  public gateway** (`/api/v1/{project}/cdl/bake3d`) rather than direct — or make
+  product-service reachable from Vercel via an ID token. Pre-existing for the CDL
+  binary routes; not introduced by P5.
+- **Cold start.** First request boots Python + loads the model (~10–20s) before the
+  ~2–3 min bake. Acceptable for UAT; set `min-instances=1` if a warm bake path is
+  wanted (costs ~always-on CPU).
+
+### One-time GCP setup for this service
+- Ensure `GEMINI_API_KEY` + `INTERNAL_API_KEY` exist in Secret Manager (they do —
+  product/agent already mount them).
+- The Artifact Registry repo (`journeyax-services`) and Cloud Build trigger already
+  cover it — `retexture-service` is now in `ALL_SVCS` (`cloudbuild-detect.sh`), so a
+  push to the QA branch builds+deploys it automatically.
+
+### Local verification done (this pass)
+- Dockerfile paths + all 4 pipeline scripts syntax-checked; `requirements.txt`
+  proven installable on Python 3.12 (P1). **A local `docker build` was NOT run
+  here** (no Docker daemon in this environment) — run `docker build -f
+  apps/retexture-service/Dockerfile apps/retexture-service` once on a Docker host to
+  confirm the image before the first cloud deploy.

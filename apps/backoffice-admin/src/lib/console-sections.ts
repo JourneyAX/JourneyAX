@@ -22,10 +22,12 @@ export interface SectionDef {
 /** All sections the platform knows about, with vertical-neutral default labels. */
 export const SECTION_CATALOG: SectionDef[] = [
   { id: 'dashboard',    defaultLabel: 'Dashboard',            group: 'Main',     status: 'live' },
-  { id: 'builder',      defaultLabel: 'Journey Builder',      group: 'Main',     status: 'live' },
+  { id: 'builder',      defaultLabel: 'Journey Overview',     group: 'Main',     status: 'live' },
+  { id: 'journeyBuilder', defaultLabel: 'Journey Builder',    group: 'Main',     status: 'live' },
   { id: 'catalog',      defaultLabel: 'Catalogue',            group: 'Main',     status: 'live' },
   { id: 'orders',       defaultLabel: 'Orders',               group: 'Main',     status: 'live' },
   { id: 'analytics',    defaultLabel: 'Analytics',            group: 'Main',     status: 'live' },
+  { id: 'merchandising', defaultLabel: 'Merchandising',       group: 'Main',     status: 'live' },
   { id: 'embed',        defaultLabel: 'Agent Embed',          group: 'Platform', status: 'live' },
   { id: 'channels',     defaultLabel: 'Channels',             group: 'Platform', status: 'live' },
   { id: 'integrations', defaultLabel: 'Integrations & Adapters', group: 'Platform', status: 'live' },

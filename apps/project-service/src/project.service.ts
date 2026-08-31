@@ -4,7 +4,7 @@ import { Db, Collection } from 'mongodb';
 import {
   ProjectConfig, CreateProjectDto, UpdateProjectDto,
   ProjectIsolationContext, ProjectStatus, ProjectMember, MemberRole,
-  BusinessRule, CreateBusinessRuleDto, UpdateBusinessRuleDto,
+  BusinessRule, CreateBusinessRuleDto, UpdateBusinessRuleDto, RuleStatus,
   ConfigVersion,
 } from './project.types';
 
@@ -133,8 +133,16 @@ export class ProjectService {
       this.versionsCol = db.collection<ConfigVersion>(VERSIONS);
       this.isConnected = true;
       await this.ensureIndexes();
-      await this.seedProjects();
-      await this.seedRules();
+      
+      // Do not seed local mock data into remote/QA/Prod clusters
+      if (!uri.includes('mongodb.net')) {
+        await this.seedProjects();
+        await this.seedRules();
+        console.log('[ProjectService] Seeded local mock data.');
+      } else {
+        console.log('[ProjectService] Connected to remote cluster — skipping local seeds.');
+      }
+      
       console.log('[ProjectService] Connected — indexes ready. Primary isolation key: projectId');
     } catch (err: any) {
       console.warn('[ProjectService] MongoDB unavailable:', err.message);
@@ -185,6 +193,7 @@ export class ProjectService {
         'Recommend only kitchen/laundry products (sink mixers, kitchen sinks, laundry tubs). Do NOT recommend bathroom-specific products.',
       priority: 10,
       isActive: true,
+      status: 'published',
     },
     {
       ruleId: 'caroma-max-3-questions',
@@ -195,6 +204,7 @@ export class ProjectService {
       action: 'Ask at most 3 clarifying questions, then present a plan even if info is partial.',
       priority: 20,
       isActive: true,
+      status: 'published',
     },
     {
       ruleId: 'caroma-plumber-safety',
@@ -205,6 +215,7 @@ export class ProjectService {
       action: 'Recommend a licensed plumber and offer to book an appointment before finalising.',
       priority: 30,
       isActive: true,
+      status: 'published',
     },
   ];
 
@@ -227,11 +238,23 @@ export class ProjectService {
       .toArray();
   }
 
-  /** Active rules only — this is what the agent loads each turn. */
+  /**
+   * Active rules only — this is what the agent loads each turn.
+   * Only 'published' rules are honoured. Rules with no `status` field (pre-existing,
+   * pre-publish-gate data) are treated as published for backward compatibility —
+   * zero-migration-risk fallback, see docs on the publish gate.
+   */
   async getActiveRules(projectId: string): Promise<BusinessRule[]> {
     if (!this.isConnected) return [];
     return this.rulesCol
-      .find({ projectId, isActive: true }, { projection: { _id: 0 } })
+      .find(
+        {
+          projectId,
+          isActive: true,
+          $or: [{ status: 'published' }, { status: { $exists: false } }],
+        },
+        { projection: { _id: 0 } },
+      )
       .sort({ priority: 1 })
       .toArray();
   }
@@ -248,6 +271,7 @@ export class ProjectService {
       action: dto.action,
       priority: dto.priority ?? 100,
       isActive: dto.isActive ?? true,
+      status: dto.status ?? 'draft',
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -270,6 +294,19 @@ export class ProjectService {
     const res = await this.rulesCol.deleteOne({ ruleId, projectId });
     if (res.deletedCount === 0) return { success: false, message: `Rule '${ruleId}' not found.` };
     return { success: true };
+  }
+
+  /** Publish gate: flips a rule to 'published' so getActiveRules (and thus the agent) honours it. */
+  async publishRule(projectId: string, ruleId: string): Promise<{ success: boolean; message?: string; rule?: BusinessRule }> {
+    if (!this.isConnected) return { success: false, message: 'Database unavailable.' };
+    const now = new Date();
+    const res = await this.rulesCol.findOneAndUpdate(
+      { ruleId, projectId },
+      { $set: { status: 'published' as RuleStatus, updatedAt: now } },
+      { returnDocument: 'after', projection: { _id: 0 } },
+    );
+    if (!res) return { success: false, message: `Rule '${ruleId}' not found.` };
+    return { success: true, rule: res as unknown as BusinessRule };
   }
 
   // ── Cache ──────────────────────────────────────────────────────
@@ -332,10 +369,14 @@ export class ProjectService {
           this.setCached(c);
           return c;
         }
-      } catch {}
+        return null; // DB connected but project not found, do not fall back to seeds
+      } catch (err: any) {
+        console.error('[ProjectService] DB Error fetching project:', err.message);
+        return null;
+      }
     }
 
-    // Fallback to seeds
+    // Fallback to seeds only if no DB connection
     return this.SEEDS.find(s => s.projectId === pid) ?? null;
   }
 

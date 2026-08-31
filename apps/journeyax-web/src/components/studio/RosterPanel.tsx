@@ -19,7 +19,7 @@ interface Mapping {
   role: 'name' | 'number' | 'size' | 'ignore';
   garment?: string; because: string; confidence: 'high' | 'low';
 }
-interface Row {
+export interface Row {
   line: number; name?: string; number?: string;
   sizes: Record<string, string>; issues: string[];
 }
@@ -39,13 +39,17 @@ interface Quote {
 }
 
 export default function RosterPanel({
-  project, garments, skuByGarment, sizeScale, teamName,
+  project, garments, skuByGarment, sizeScale, teamName, onRosterReady,
 }: {
   project: string;
   garments: string[];
   skuByGarment: Record<string, string>;
   sizeScale: string[];
   teamName: string;
+  /** Optional — fired once a roster has been priced successfully. Lets a
+   *  caller (e.g. the chat-driven team-order flow) know it's safe to move on
+   *  to the next step. Unused by /studio, which reviews the roster in place. */
+  onRosterReady?: (rows: Row[]) => void;
 }) {
   const [text, setText] = useState('');
   const [parsed, setParsed] = useState<Parsed>({});
@@ -135,7 +139,7 @@ export default function RosterPanel({
       });
       const d = await res.json();
       if (d?.error) { setQuoteError(d.error); setQuote(null); }
-      else setQuote(d.quote);
+      else { setQuote(d.quote); onRosterReady?.(checked); }
     } catch {
       setQuoteError('Could not reach the quote service.');
     } finally { setBusy(false); }
@@ -326,6 +330,12 @@ export default function RosterPanel({
           <div style={{ fontSize: 10.5, color: '#666', marginTop: 6 }}>
             Priced from the catalogue — {checked.length} players, {units} garments.
           </div>
+          {onRosterReady && (
+            <button style={{ ...C.btn(true, false), marginTop: 14, width: '100%' }}
+                    onClick={() => onRosterReady(checked)}>
+              Continue to 3D preview →
+            </button>
+          )}
         </div>
       )}
     </div>

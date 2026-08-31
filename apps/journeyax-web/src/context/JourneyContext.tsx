@@ -3,7 +3,8 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect } from 'react';
 import {
   JourneyState, INITIAL_STATE, Phase, ClarifyAnswers, DynamicQuestion, RecommendedProduct,
-  FINISHES, DEFAULT_ADDONS, formatAUD, getStockInfo, BOMLine, QuoteTotals, ServerQuote
+  FINISHES, DEFAULT_ADDONS, formatAUD, getStockInfo, BOMLine, QuoteTotals, ServerQuote,
+  TeamDesignViews, RosterRow
 } from '@/lib/types';
 
 type Action =
@@ -31,12 +32,20 @@ type Action =
   | { type: 'SET_CHOICE'; choice: import('../lib/types').JourneyChoice }
   | { type: 'SET_DESIGN'; design: Partial<import('../lib/types').DesignSpec> }
   | { type: 'CLEAR_DESIGN' }
+  | { type: 'SET_CONCEPT'; conceptId: string }
+  | { type: 'SET_PROOF'; proofId: string }
   | { type: 'ADD_TO_KIT'; item: import('../lib/types').KitItem }
   | { type: 'REMOVE_FROM_KIT'; sku: string }
   | { type: 'LOAD_KIT_ITEM'; sku: string }
   | { type: 'SELECT_CHOICE'; value: string }
   | { type: 'SET_INSTALL_GUIDE'; installGuide: import('../lib/types').InstallGuide }
   | { type: 'SET_WARRANTY'; warranty: import('../lib/types').WarrantyInfo }
+  // Coach team-order journey
+  | { type: 'SET_TEAM_DESIGN'; teamDesign: Partial<TeamDesignViews> }
+  | { type: 'SET_ROSTER'; roster: RosterRow[] }
+  | { type: 'SET_SELECTED_PLAYER'; index: number }
+  // Fitment guide
+  | { type: 'SET_SIZE_RECOMMENDATION'; sizeRecommendation: import('../lib/types').SizeRecommendation }
   | { type: 'RESTORE'; state: Partial<JourneyState> }
   | { type: 'RESET' };
 
@@ -218,8 +227,17 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       // Moving to a different style starts a fresh garment. Merging across a
       // style change is what let the panel show the PREVIOUS item while the
       // agent narrated the new one — colours, design line and lettering all
-      // belong to the style they were chosen for.
+      // belong to the style they were chosen for. (conceptId is kept — it is the
+      // "your concept" reference for the design the customer is actively making.)
       return { ...state, design: {} };
+    case 'SET_CONCEPT':
+      // CDL Door A: pin the AI-generated concept image (by id) for this design.
+      return { ...state, conceptId: action.conceptId };
+    case 'SET_PROOF':
+      // CDL Path A: the faithful "your artwork on our garment" proof — becomes
+      // the hero image for artwork-heavy uploads. Also lands us on the
+      // configurator phase so the panel shows it.
+      return { ...state, proofId: action.proofId, phase: 'configurator' };
     case 'SET_CHOICE':
       return { ...state, phase: 'choice', choice: action.choice };
     case 'SELECT_CHOICE':
@@ -228,6 +246,18 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       return { ...state, phase: 'install', installGuide: action.installGuide };
     case 'SET_WARRANTY':
       return { ...state, phase: 'warranty', warranty: action.warranty };
+    case 'SET_SIZE_RECOMMENDATION':
+      return { ...state, phase: 'sizeRecommendation', sizeRecommendation: action.sizeRecommendation };
+    case 'SET_TEAM_DESIGN':
+      // Merge, never replace: a design "edit" re-generates all 4 views, but the
+      // running brief and any view that failed this round should not vanish.
+      return { ...state, phase: 'teamDesign', teamDesign: { ...(state.teamDesign || {}), ...action.teamDesign } };
+    case 'SET_ROSTER':
+      // Roster is set but the phase move is a SEPARATE, explicit step (the coach
+      // reviews the parsed roster before moving on) — see 'teamRoster' phase.
+      return { ...state, roster: action.roster };
+    case 'SET_SELECTED_PLAYER':
+      return { ...state, selectedPlayerIdx: action.index };
     case 'RESET':
       return { ...INITIAL_STATE };
     default:

@@ -211,7 +211,7 @@ button {
    ============================================================ */
 .board { width: 100%; min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; align-items: stretch; }
 .center-wrap { display: flex; flex-direction: column; min-width: 0; min-height: 100vh; }
-.miniheader { height: 44px; background: var(--jx-white); border-bottom: 1px solid var(--jx-gray-200); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; z-index: 30; flex-shrink: 0; }
+.miniheader { min-height: 44px; background: var(--jx-white); border-bottom: 1px solid var(--jx-gray-200); display: flex; align-items: center; justify-content: space-between; padding: 6px 24px; position: sticky; top: 0; z-index: 30; flex-shrink: 0; }
 .mh-left { display: flex; align-items: center; gap: 10px; }
 .mh-right { display: flex; align-items: center; gap: 10px; }
 .mh-logo { height: 16px; width: auto; }

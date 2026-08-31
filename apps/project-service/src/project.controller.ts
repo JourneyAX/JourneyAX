@@ -16,9 +16,12 @@ import {
  * receive UNREDACTED connector secrets; everyone else (browser/operator) gets
  * masked hints. Interim control until workload identity/mTLS + a KMS vault land.
  */
-const INTERNAL_KEY = process.env.INTERNAL_API_KEY || '';
+// Read lazily, not at module-eval time — ESM import hoisting can run this
+// before main.ts's dotenv.config(), which would permanently bake in an empty
+// key for the life of the process (see permission.guard.ts's identical fix).
 function isInternal(key?: string): boolean {
-  return Boolean(INTERNAL_KEY) && key === INTERNAL_KEY;
+  const internalKey = process.env.INTERNAL_API_KEY || '';
+  return Boolean(internalKey) && key === internalKey;
 }
 
 /**
@@ -310,6 +313,7 @@ export class ProjectController {
   }
 
   @Post(':projectId/rules')
+  @RequirePermission('config.edit')
   async createRule(
     @Param('projectId') projectId: string,
     @Body() dto: CreateBusinessRuleDto,
@@ -323,6 +327,7 @@ export class ProjectController {
   }
 
   @Patch(':projectId/rules/:ruleId')
+  @RequirePermission('config.edit')
   async updateRule(
     @Param('projectId') projectId: string,
     @Param('ruleId') ruleId: string,
@@ -334,11 +339,24 @@ export class ProjectController {
   }
 
   @Delete(':projectId/rules/:ruleId')
+  @RequirePermission('config.edit')
   async deleteRule(
     @Param('projectId') projectId: string,
     @Param('ruleId') ruleId: string,
   ) {
     const result = await this.projectService.deleteRule(projectId, ruleId);
+    if (!result.success) throw new NotFoundException(result.message);
+    return result;
+  }
+
+  /** Publish gate: flips a rule to 'published' so getActiveRules (and thus the agent) honours it. */
+  @Post(':projectId/rules/:ruleId/publish')
+  @RequirePermission('config.publish')
+  async publishRule(
+    @Param('projectId') projectId: string,
+    @Param('ruleId') ruleId: string,
+  ) {
+    const result = await this.projectService.publishRule(projectId, ruleId);
     if (!result.success) throw new NotFoundException(result.message);
     return result;
   }

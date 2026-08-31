@@ -21,9 +21,13 @@ import { can, type Permission } from '@journeyax/shared-types';
 export const PERMISSION_KEY = 'requiredPermission';
 export const RequirePermission = (permission: Permission) => SetMetadata(PERMISSION_KEY, permission);
 
-const INTERNAL_KEY = process.env.INTERNAL_API_KEY;
-const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
-const AUTH_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8080';
+// Read lazily (inside canActivate), not at module-eval time: ESM import
+// hoisting can load this module before main.ts's dotenv.config() has run,
+// which would permanently bake in an empty INTERNAL_KEY for the life of the
+// process — silently rejecting every internal-key-authenticated request.
+const internalKey = () => process.env.INTERNAL_API_KEY;
+const devBypass = () => process.env.AUTH_DEV_BYPASS === 'true';
+const authUrl = () => process.env.AUTH_SERVICE_URL || 'http://localhost:8080';
 
 // A standalone Reflector (its .get just calls Reflect.getMetadata) — no DI
 // needed, so the guard works even when applied via @UseGuards(ClassName) where
@@ -39,7 +43,8 @@ export class PermissionGuard implements CanActivate {
     const req = context.switchToHttp().getRequest();
 
     // 1. Internal service-to-service call.
-    if (INTERNAL_KEY && req.headers['x-internal-key'] === INTERNAL_KEY) return true;
+    const internalKeyValue = internalKey();
+    if (internalKeyValue && req.headers['x-internal-key'] === internalKeyValue) return true;
 
     // 2. Trusted permissions header injected by the gateway.
     const headerPerms = String(req.headers['x-user-permissions'] || '')
@@ -51,7 +56,7 @@ export class PermissionGuard implements CanActivate {
     const token = authz.startsWith('Bearer ') ? authz.slice(7).trim() : '';
     if (token) {
       try {
-        const r = await fetch(`${AUTH_URL}/api/v1/auth/verify`, {
+        const r = await fetch(`${authUrl()}/api/v1/auth/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
@@ -68,7 +73,7 @@ export class PermissionGuard implements CanActivate {
       }
     }
 
-    if (DEV_BYPASS) return true;
+    if (devBypass()) return true;
     throw new ForbiddenException(`This action requires the '${required}' permission.`);
   }
 }

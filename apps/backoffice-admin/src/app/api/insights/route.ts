@@ -15,7 +15,7 @@ const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
 
 const GATEWAY = process.env.GATEWAY_URL
   || process.env.PROJECT_SERVICE_URL  // legacy fallback
-  || 'http://localhost:8080';
+  || 'http://localhost:3010';
 
 export async function GET(req: Request) {
   try {

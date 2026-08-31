@@ -313,6 +313,43 @@ async function cacheInvalidateDomain(tenantId: string, domain: string): Promise<
 @Injectable()
 export class GatewayService {
   /**
+   * Validate that a tenant is active. Caches the result to avoid spamming the project service.
+   */
+  private async validateTenant(tenantId: string): Promise<boolean> {
+    if (tenantId === 'system' || tenantId === 'global' || tenantId === 'platform') return true;
+    const key = `tenant_status:${tenantId}`;
+    const cached = await cacheGet(key);
+    if (cached !== null) {
+      return cached.active === true;
+    }
+
+    const projectServiceUrl = SERVICE_REGISTRY['projects'];
+    if (!projectServiceUrl) return true;
+
+    try {
+      const googleIdToken = await getIdToken(projectServiceUrl);
+      const res = await fetch(`${projectServiceUrl}/api/v1/projects/${encodeURIComponent(tenantId)}/published`, {
+        headers: {
+          'X-Tenant-ID': tenantId,
+          ...authorizationHeader(googleIdToken, undefined)
+        }
+      });
+      if (!res.ok) {
+        cacheSet(key, { active: false }, 60); // fire-and-forget
+        return false;
+      }
+      const data = await res.json();
+      // If the API returns published config, it means it's active. 
+      // It returns fallback draft if not published. We just check if it returned 200 OK.
+      cacheSet(key, { active: true }, 60);
+      return true;
+    } catch (e) {
+      console.warn(`[Gateway] Error validating tenant ${tenantId}, failing open:`, (e as Error).message);
+      return true;
+    }
+  }
+
+  /**
    * Proxy a request to the resolved backend service.
    */
   async proxyRequest(
@@ -329,8 +366,22 @@ export class GatewayService {
       };
     }
 
-    const tenantId = String(headers['x-tenant-id'] || 'caroma');
-    const { domain } = parseRoute(path);
+    const { projectId, domain } = parseRoute(path);
+    const queryMatch = path.match(/[?&]projectId=([^&]+)/);
+    const queryProjectId = queryMatch ? decodeURIComponent(queryMatch[1]) : null;
+    const effectiveProjectId = projectId || queryProjectId;
+    const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || 'caroma');
+
+    // ── Edge Validation ──────────────────────────────────────────────────
+    if (domain !== 'auth' && domain !== 'projects' && domain !== 'organizations') {
+      const isValid = await this.validateTenant(tenantId);
+      if (!isValid) {
+        return {
+          status: 403,
+          data: { error: 'Forbidden', message: 'Project does not exist or is disabled.' },
+        };
+      }
+    }
 
     // ── Cache read (GET only) ────────────────────────────────────────────
     if (isCacheable(method, path)) {
@@ -420,6 +471,21 @@ export class GatewayService {
     }
     const downstreamUrl = `${resolved.baseUrl}${path}`;
     console.log(`[Gateway] Streaming → ${downstreamUrl}`);
+
+    const { projectId, domain } = parseRoute(path);
+    const queryMatch = path.match(/[?&]projectId=([^&]+)/);
+    const queryProjectId = queryMatch ? decodeURIComponent(queryMatch[1]) : null;
+    const effectiveProjectId = projectId || queryProjectId;
+    const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || 'caroma');
+
+    // ── Edge Validation ──────────────────────────────────────────────────
+    if (domain !== 'auth' && domain !== 'projects' && domain !== 'organizations') {
+      const isValid = await this.validateTenant(tenantId);
+      if (!isValid) {
+        res.status(403).json({ error: 'Forbidden', message: 'Project does not exist or is disabled.' });
+        return;
+      }
+    }
 
     const googleIdToken = await getIdToken(resolved.baseUrl);
 
