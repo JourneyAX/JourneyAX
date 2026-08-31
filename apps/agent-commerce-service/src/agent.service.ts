@@ -3064,6 +3064,12 @@ export class AgentService {
         'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — "design me a…", "can you make a…", "create a…" — call generateDesign with their brief FIRST; do NOT answer with searchKnowledge/showItems catalogue cards. ' +
         'Only use searchKnowledge/showItems when they want to BROWSE existing products. Iterations ("make the sleeves brighter") → generateDesign again. ' +
         'When the customer is happy or says "send it to your artist/for review", call submitForReview (kind "use" or "create"); when they ask "is it ready?", call checkReviewStatus. A custom design needs artist approval AND customer agreement before print — never call it production-ready yourself.' }] : []),
+      ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
+        '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for building projects (decking, fencing, wall lining, retaining). ' +
+        'When the customer asks to plan, size, estimate, or get materials for a project (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType, lengthM, widthM, material)! ' +
+        'Do NOT answer with loose unbundled product cards (showItems) when a whole project materials plan is requested — the customer wants the complete bill of materials rendered on the right panel.' }] : []),
+      ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
+        '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
       ...activeMessages
     ];
 

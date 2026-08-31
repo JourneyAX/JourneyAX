@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 40" fill="none">
+  <!-- PlaceMakers Official Brand Device -->
+  <g transform="translate(0, 4)">
+    <!-- Red Accent Slanted Wedge -->
+    <path d="M4 28 L14 4 L22 4 L12 28 Z" fill="#E31E24" />
+    <path d="M16 28 L26 4 L34 4 L24 28 Z" fill="#E31E24" />
+    <!-- Yellow/Orange Accent -->
+    <path d="M28 28 L38 4 L44 4 L34 28 Z" fill="#FFB81C" />
+  </g>
+  <!-- Text Wordmark -->
+  <text x="48" y="27" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="21" fill="#FFFFFF" letter-spacing="-0.5">
+    Place<tspan fill="#FFB81C">Makers</tspan>
+  </text>
+  <text x="180" y="16" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="8" fill="#93C5FD" letter-spacing="0.5">
+    NZ
+  </text>
+</svg>

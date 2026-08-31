@@ -756,14 +756,21 @@ export default function ChatPanel() {
           "Team Kit Builder / Augusta Team Outfitter" title+subtitle and the
           "Online" status badge were noise the customer didn't need. */}
       <div className="chat-header">
-        {cfg.theme?.logoUrl
-          ? <img className="chat-header__logo" src={cfg.theme.logoUrl} alt={cfg.companyName || 'Brand'} />
-          : null}
-        {/* The logo already says who this is. Setting the name beside a
-            wordmark prints the brand twice — the logo carries its own
-            typography and lock-up, and the text competes with it. The name is
-            only written out when there is no logo to carry it. */}
-        {!cfg.theme?.logoUrl && (
+        <img
+          className="chat-header__logo"
+          src={cfg.theme?.logoUrl || (cfg.projectId === 'placemakers' ? '/brands/placemakers.svg' : '')}
+          alt={cfg.companyName || 'Brand'}
+          onError={(e) => {
+            const img = e.target as HTMLImageElement;
+            if (cfg.projectId === 'placemakers' && !img.src.endsWith('/brands/placemakers.svg')) {
+              img.src = '/brands/placemakers.svg';
+            } else {
+              img.style.display = 'none';
+            }
+          }}
+          style={{ maxHeight: '36px', width: 'auto', display: 'block' }}
+        />
+        {(!cfg.theme?.logoUrl && cfg.projectId !== 'placemakers') && (
           <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>
         )}
         <div className="chat-header__actions">
