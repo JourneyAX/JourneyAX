@@ -6,7 +6,59 @@ export type Phase = 'intro' | 'research' | 'clarify' | 'validating' | 'products'
   | 'sizeRecommendation'
   // Real-photo 3D match: upload up to 4 real photos of an actual garment, baked
   // onto the real 3D mesh (distinct from teamDesign's AI-generated views).
-  | 'photoUploadDesign';
+  | 'photoUploadDesign'
+  // PlaceMakers deterministic project & materials planner (decking, fencing, wall lining, retaining).
+  | 'projectPlan';
+
+// ── PlaceMakers Project Plan & Materials Engine ────────────────────────
+export interface ProjectMaterialItem {
+  category: string;
+  name: string;
+  sku?: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  estimatedUnitPriceNzd?: number;
+  estimatedTotalPriceNzd?: number;
+}
+
+export interface ProjectPlan {
+  projectName: string;
+  projectType: 'decking' | 'fencing' | 'lining' | 'retaining' | 'cladding';
+  dimensions: string;
+  areaM2?: number;
+  materials: ProjectMaterialItem[];
+  toolsNeeded: string[];
+  nzBuildingNotes: string[];
+  totalEstimateNzd?: number;
+  currency: string;
+  branchAvailability?: {
+    recommendedBranch: string;
+    status: 'In Stock' | 'Order Needed';
+    pickupTimeframe: string;
+  };
+}
+
+export interface BranchStockItem {
+  branchCode: string;
+  branchName: string;
+  region: string;
+  address: string;
+  phone: string;
+  openingHours: string;
+  stockQty: number;
+  status: 'In Stock' | 'Low Stock' | 'Order on Request';
+  clickAndCollectReady: boolean;
+  collectionTimeframe: string;
+  hiabDeliveryAvailable: boolean;
+}
+
+export interface BranchStockResponse {
+  sku: string;
+  productTitle: string;
+  requestedBranch?: string;
+  branches: BranchStockItem[];
+}
 
 // ── Coach team-order journey ────────────────────────────────────────────
 /** The four flat 2D design views (front/back/left/right), each a concept id
@@ -363,6 +415,9 @@ export interface JourneyState {
   selectedPlayerIdx?: number;
   // Fitment guide
   sizeRecommendation?: SizeRecommendation;
+  // PlaceMakers Project Plan & Branch Stock
+  projectPlan?: ProjectPlan;
+  branchStock?: BranchStockResponse;
 }
 
 export const INITIAL_STATE: JourneyState = {

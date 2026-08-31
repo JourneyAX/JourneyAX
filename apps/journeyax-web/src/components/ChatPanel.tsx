@@ -551,6 +551,14 @@ export default function ChatPanel() {
              * client-side. */
             dispatch({ type: 'SET_SIZE_RECOMMENDATION', sizeRecommendation: action.arguments });
             hasPhaseChange = true;
+          } else if (action.name === 'buildProjectPlan') {
+            /* PlaceMakers deterministic project & materials planner */
+            dispatch({ type: 'SET_PROJECT_PLAN', projectPlan: action.arguments });
+            dispatch({ type: 'SET_PHASE', phase: 'projectPlan' });
+            hasPhaseChange = true;
+          } else if (action.name === 'checkBranchStock') {
+            /* PlaceMakers branch stock fulfillment lookup */
+            dispatch({ type: 'SET_BRANCH_STOCK', branchStock: action.arguments });
           }
         }
         // If AI called updateQuote but forgot setPhase('quote'), do it

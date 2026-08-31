@@ -4,6 +4,8 @@ import { adapterRegistry, createPublishedConfigResolver } from '@journeyax/integ
 import { getChatClient } from './llm/provider';
 import { QuoteService } from './commerce/quote.service';
 import { SchoolResearchService } from './commerce/school-research.service';
+import { ProjectCalculatorService } from './commerce/project-calculator.service';
+import { BranchStockService } from './commerce/branch-stock.service';
 import {
   JourneyState, emptyJourneyState, reduceActions, alreadyPresented,
   renderJourneyStateBlock,
@@ -722,18 +724,57 @@ const tools: OpenAI.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'buildProjectPlan',
+      description:
+        "CALCULATE a complete authoritative bill-of-materials and project plan for DIY and trade building projects (Decking, Fencing, Wall Lining, Retaining, Cladding). " +
+        "Call this whenever a customer asks to plan, size, estimate, or calculate materials for a project (e.g. 'help me plan a 4x3m deck', 'estimate materials for a 20m fence', 'how much GIB board for 40m2 wall'). " +
+        "It deterministically computes structural bearers, joists, palings/boards, fasteners, concrete, tools needed, and NZ Building Code compliance notes, and opens the interactive Project Plan on the right panel.",
+      parameters: {
+        type: 'object',
+        properties: {
+          projectType: {
+            type: 'string',
+            enum: ['decking', 'fencing', 'lining', 'retaining', 'cladding'],
+            description: 'The type of building project.',
+          },
+          lengthM: { type: 'number', description: 'Length of the deck, fence, or room in metres.' },
+          widthM: { type: 'number', description: 'Width of the deck or room in metres.' },
+          heightM: { type: 'number', description: 'Height of the fence, deck, or wall in metres (optional).' },
+          areaM2: { type: 'number', description: 'Total wall surface area in square metres (for wall lining).' },
+          material: { type: 'string', description: 'Material preference if stated (e.g. "Kwila", "Radiata Pine H3.2", "Composite", "GIB Aqualine").' },
+        },
+        required: ['projectType'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'checkBranchStock',
+      description:
+        "Check real-time stock availability, inventory counts, and Click & Collect pickup readiness across PlaceMakers NZ branches (Mount Wellington, Cook Street, Albany, Riccarton, Te Rapa, Petone). " +
+        "Use when a customer asks about stock at a branch or where they can collect materials today (e.g. 'Can I collect this from Mt Wellington?', 'Do you have stock in Cook St?').",
+      parameters: {
+        type: 'object',
+        properties: {
+          sku: { type: 'string', description: 'The product SKU code or identifier.' },
+          productTitle: { type: 'string', description: 'Product title or description.' },
+          branch: { type: 'string', description: 'Preferred branch name or region (e.g. "Mt Wellington", "Cook St", "Albany").' },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 // ── UI Tool Names ─────────────────────────────────────────────────────
-const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D']);
+const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
 
 // ── Capability registry: project-configurable toolset ─────────────────
-// The agent's toolset is NOT a fixed array — it is assembled per turn from the
-// project's ENABLED capabilities (ProjectConfig.capabilities, edited in the back
-// office). Universal capabilities are always on; business capabilities are opt-in
-// per project, so a products business, a services business, and a uniform program
-// each get a different toolset from the same generic core — no code change.
-const UNIVERSAL_TOOL_NAMES = new Set(['searchKnowledge', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'setPhase']);
+const UNIVERSAL_TOOL_NAMES = new Set(['searchKnowledge', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'setPhase', 'buildProjectPlan', 'checkBranchStock']);
 
 /** Persist a customer-named entity through the BUSINESS port. Provenance is
  *  recorded as customer-stated so nothing here is mistaken for verified fact. */
@@ -2111,6 +2152,26 @@ async function maybeForceSizeRecommendation(
   }
 }
 
+function handleBuildProjectPlan(rawArgs: string): any {
+  let args: any = {};
+  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
+  const projectType = String(args.projectType || 'decking').toLowerCase();
+  if (projectType === 'fencing') {
+    return ProjectCalculatorService.calculateFencing(args.lengthM || 15, args.heightM || 1.8, args.material || 'Timber Palings');
+  }
+  if (projectType === 'lining') {
+    return ProjectCalculatorService.calculateWallLining(args.areaM2 || 35, args.material || 'GIB Standard 10mm');
+  }
+  // Default to decking
+  return ProjectCalculatorService.calculateDecking(args.lengthM || 4, args.widthM || 3, args.material || 'Kwila', args.heightM || 0.4);
+}
+
+function handleCheckBranchStock(rawArgs: string): any {
+  let args: any = {};
+  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
+  return BranchStockService.getStockForSku(args.sku || 'PM-TIMBER-100', args.productTitle || 'Building Material / Tool', args.branch);
+}
+
 async function lookupOptions(tenantId: string, rawArgs: string): Promise<unknown> {
   let sku = '';
   try { sku = String(JSON.parse(rawArgs || '{}').sku || '').trim(); } catch { /* fall through */ }
@@ -3083,9 +3144,14 @@ export class AgentService {
             || call.function.name === 'analyzeDesign' || call.function.name === 'generateDesign'
             || call.function.name === 'generateTeamDesign' || call.function.name === 'submitTeamOrder'
             || call.function.name === 'submitForReview' || call.function.name === 'checkReviewStatus'
-            || call.function.name === 'recommendSize' || call.function.name === 'uploadPhotosFor3D') {
+            || call.function.name === 'recommendSize' || call.function.name === 'uploadPhotosFor3D'
+            || call.function.name === 'buildProjectPlan' || call.function.name === 'checkBranchStock') {
           hadRetrieval = true;
-          const result = call.function.name === 'getTeamColours'
+          const result = call.function.name === 'buildProjectPlan'
+            ? handleBuildProjectPlan(call.function.arguments)
+            : call.function.name === 'checkBranchStock'
+            ? handleCheckBranchStock(call.function.arguments)
+            : call.function.name === 'getTeamColours'
             ? await getTeamColours(tenantId, call.function.arguments)
             : call.function.name === 'analyzeDesign'
             ? await analyzeDesign(tenantId, turnImage, call.function.arguments)
@@ -3129,6 +3195,16 @@ export class AgentService {
           {
             const _s = summarizeToolCall(call.function.name, safeParseArgs(call.function.arguments), result);
             void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
+          }
+          // PlaceMakers Project Plan: successful calculation pushes to UI
+          if (call.function.name === 'buildProjectPlan' && (result as any)?.ok
+              && !uiToolCalls.some((c) => c.function?.name === 'buildProjectPlan')) {
+            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'buildProjectPlan', arguments: JSON.stringify(result) } } as any);
+          }
+          // PlaceMakers Branch Stock: successful lookup pushes to UI
+          if (call.function.name === 'checkBranchStock' && (result as any)?.ok
+              && !uiToolCalls.some((c) => c.function?.name === 'checkBranchStock')) {
+            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'checkBranchStock', arguments: JSON.stringify(result) } } as any);
           }
           // Coach team-order journey: a successful generateTeamDesign must land
           // the coach on the teamDesign panel with the four views — mirrors the

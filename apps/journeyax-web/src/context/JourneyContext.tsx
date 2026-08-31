@@ -46,6 +46,9 @@ type Action =
   | { type: 'SET_SELECTED_PLAYER'; index: number }
   // Fitment guide
   | { type: 'SET_SIZE_RECOMMENDATION'; sizeRecommendation: import('../lib/types').SizeRecommendation }
+  // PlaceMakers Project Plan & Branch Stock
+  | { type: 'SET_PROJECT_PLAN'; projectPlan: import('../lib/types').ProjectPlan }
+  | { type: 'SET_BRANCH_STOCK'; branchStock: import('../lib/types').BranchStockResponse }
   | { type: 'RESTORE'; state: Partial<JourneyState> }
   | { type: 'RESET' };
 
@@ -258,6 +261,10 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       return { ...state, roster: action.roster };
     case 'SET_SELECTED_PLAYER':
       return { ...state, selectedPlayerIdx: action.index };
+    case 'SET_PROJECT_PLAN':
+      return { ...state, phase: 'projectPlan', projectPlan: action.projectPlan };
+    case 'SET_BRANCH_STOCK':
+      return { ...state, branchStock: action.branchStock };
     case 'RESET':
       return { ...INITIAL_STATE };
     default:

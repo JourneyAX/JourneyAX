@@ -23,6 +23,7 @@ import TeamDesignPanel from './panels/TeamDesignPanel';
 import TeamRosterPanel from './panels/TeamRosterPanel';
 import SizeRecommendationPanel from './panels/SizeRecommendationPanel';
 import PhotoUploadDesignPanel from './panels/PhotoUploadDesignPanel';
+import ProjectPlanPanel from './panels/ProjectPlanPanel';
 
 export default function ProjectPanel() {
   const { state } = useJourney();
@@ -58,6 +59,7 @@ export default function ProjectPanel() {
       {state.phase === 'teamPreview' && <ConfiguratorPanel />}
       {state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
       {state.phase === 'photoUploadDesign' && <PhotoUploadDesignPanel />}
+      {state.phase === 'projectPlan' && <ProjectPlanPanel />}
     </div>
   );
 }
