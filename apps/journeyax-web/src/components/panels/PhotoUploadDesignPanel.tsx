@@ -40,16 +40,46 @@ const SLOTS: { key: SlotKey; label: string; required?: boolean }[] = [
   { key: 'right', label: 'Right sleeve' },
 ];
 
-/** Same pattern as ChatPanel's readImageFile — a FileReader → data URL promise,
- *  reused here instead of reinvented since it's exactly what the bake endpoint
- *  wants for `front`/`back`/`left`/`right` (a data: URL or bare base64). */
-function readImageFile(file: File): Promise<string> {
+function readImageFile(file: File, maxDimension = 2048, quality = 0.88): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) { reject(new Error('That file is not an image.')); return; }
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Could not read that file.'));
-    reader.readAsDataURL(file);
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        // Fallback to FileReader
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Could not read that file.'));
+        reader.readAsDataURL(file);
+        return;
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+      const targetMime = file.type === 'image/png' && file.size > 1.5 * 1024 * 1024 ? 'image/jpeg' : file.type || 'image/jpeg';
+      resolve(canvas.toDataURL(targetMime, quality));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not process that image file.'));
+    };
+    img.src = url;
   });
 }
 
