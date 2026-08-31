@@ -352,7 +352,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch('/api/order' + (typeof window !== 'undefined' ? window.location.search : ''), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteId: quote.quoteId, idempotencyKey: quote.quoteId }),
+        body: JSON.stringify({ quoteId: quote.quoteId, idempotencyKey: quote.quoteId, quote }),
       });
       const data = await res.json();
       if (data?.success && data?.checkoutUrl) {

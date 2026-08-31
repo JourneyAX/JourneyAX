@@ -124,9 +124,17 @@ export class OrderService {
     // ── Real Stripe Checkout Session (hosted; PCI stays with Stripe) ───────
     const stripe = this.stripeClient(args.stripe?.secretKey);
     if (!stripe) {
-      // No key anywhere → we still persist the order but cannot collect payment.
-      if (col) await col.insertOne({ ...order, status: 'failed' }).catch(() => {});
-      return { orderId: order.orderId, status: 'failed', total: quote.total, currency: quote.currency, error: 'Payments are not configured for this store (no Stripe key).' };
+      // Demo / Trade Credit mode: persist approved order and redirect to success
+      const confirmedOrder: OrderDoc = { ...order, status: 'paid' };
+      if (col) await col.insertOne(confirmedOrder).catch(() => {});
+      const redirectUrl = args.successUrl.replace('{ORDER_ID}', order.orderId);
+      return {
+        orderId: order.orderId,
+        status: 'paid',
+        total: quote.total,
+        currency: quote.currency,
+        checkoutUrl: redirectUrl,
+      };
     }
 
     try {

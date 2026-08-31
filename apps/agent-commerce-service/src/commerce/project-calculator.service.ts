@@ -377,4 +377,159 @@ export class ProjectCalculatorService {
       },
     };
   }
+
+  /**
+   * Calculate complete PlaceMakers Laundry Room Makeover package
+   * Includes 5 trades: Modular Cabinetry Suite, Deep Laundry Tub & Benchtop, Gooseneck Tapware & Waste, GIB Aqualine Moisture Linings, and Pull-out Laundry Accessories.
+   */
+  static calculateLaundryRoom(
+    wallWidthM: number = 2.0,
+    style: string = 'Modern White Gloss',
+    budgetNzd: number = 5000
+  ): ProjectPlanResult {
+    const w = Math.max(1.2, wallWidthM || 2.0);
+    const materials: MaterialItem[] = [
+      {
+        category: 'Cabinetry & Modular Storage',
+        name: `Modern Laundry Modular Base Cabinet 600mm (2 Soft-Close Drawers, ${style})`,
+        sku: '7834115',
+        description: 'Moisture-resistant 16mm HMR carcass with Blum soft-close drawer runners for heavy detergent storage.',
+        quantity: 1,
+        unit: 'unit',
+        estimatedUnitPriceNzd: 580,
+        estimatedTotalPriceNzd: 580,
+      },
+      {
+        category: 'Cabinetry & Modular Storage',
+        name: `Modular Base Single Door Cabinet 450mm (${style})`,
+        sku: '7834112',
+        description: 'Compact base cupboard with adjustable shelf for plumbing access and bucket storage.',
+        quantity: 1,
+        unit: 'unit',
+        estimatedUnitPriceNzd: 420,
+        estimatedTotalPriceNzd: 420,
+      },
+      {
+        category: 'Cabinetry & Modular Storage',
+        name: `Overhead Wall Cabinet 900mm (Double Soft-Close Doors, ${style})`,
+        sku: '7834225',
+        description: 'Double overhead wall storage with concealed mounting rail and 2 adjustable shelves.',
+        quantity: 1,
+        unit: 'unit',
+        estimatedUnitPriceNzd: 520,
+        estimatedTotalPriceNzd: 520,
+      },
+      {
+        category: 'Cabinetry & Modular Storage',
+        name: `Tall Broom & Linen Storage Tower 600mm (2100mm Full Height)`,
+        sku: '7834330',
+        description: 'Full-height utility tower with dedicated broom slot, ironing board divider, and upper linen shelving.',
+        quantity: 1,
+        unit: 'unit',
+        estimatedUnitPriceNzd: 890,
+        estimatedTotalPriceNzd: 890,
+      },
+      {
+        category: 'Laundry Tubs & Benchtops',
+        name: 'White Kordura Solid Surface Seamless Benchtop (20mm, Custom Cut)',
+        sku: 'BENCH-KORD-2000',
+        description: 'Non-porous, antibacterial solid surface benchtop pre-rebated for undermount tub.',
+        quantity: 1,
+        unit: 'benchtop',
+        estimatedUnitPriceNzd: 420,
+        estimatedTotalPriceNzd: 420,
+      },
+      {
+        category: 'Laundry Tubs & Benchtops',
+        name: 'Robinhood SuperTub Deep Stainless Steel Laundry Tub & Sink (45L Capacity)',
+        sku: '7834650',
+        description: 'High-grade 304 stainless steel deep tub with side bypass waste for washing machine discharge.',
+        quantity: 1,
+        unit: 'tub',
+        estimatedUnitPriceNzd: 640,
+        estimatedTotalPriceNzd: 640,
+      },
+      {
+        category: 'Tapware & Plumbing',
+        name: 'High-Arch Gooseneck Pull-Out Spray Laundry Sink Mixer (Matte Black / Chrome)',
+        sku: '7834880',
+        description: 'WELS 4-Star (7.5L/min) swivel gooseneck mixer with dual spray pull-out aerator for easy tub cleaning.',
+        quantity: 1,
+        unit: 'mixer',
+        estimatedUnitPriceNzd: 320,
+        estimatedTotalPriceNzd: 320,
+      },
+      {
+        category: 'Tapware & Plumbing',
+        name: 'Dual Appliance Washing Machine Mini Ball Stop Taps & Waste Trap Kit',
+        sku: 'PLUMB-WASH-KIT',
+        description: 'Quarter-turn ceramic disc washing machine isolation valves and anti-siphon waste kit.',
+        quantity: 1,
+        unit: 'kit',
+        estimatedUnitPriceNzd: 115,
+        estimatedTotalPriceNzd: 115,
+      },
+      {
+        category: 'Wet Wall Linings & Waterproofing',
+        name: 'GIB Aqualine 10mm Moisture-Resistant Plasterboard (2400 x 1200mm, 4 Sheets)',
+        sku: 'GIB-AQUA-10-4PK',
+        description: 'Water-resistant core wall lining preventing mould and moisture ingress behind laundry wet zone.',
+        quantity: 4,
+        unit: 'sheets',
+        estimatedUnitPriceNzd: 48.5,
+        estimatedTotalPriceNzd: 194,
+      },
+      {
+        category: 'Wet Wall Linings & Waterproofing',
+        name: 'AquaStop Wet Area Waterproofing Under-tile Membrane Kit (15L + Bandage)',
+        sku: 'AQUA-MEM-15L',
+        description: 'Class III high-extensibility liquid waterproofing membrane complying with AS/NZS 4858.',
+        quantity: 1,
+        unit: 'kit',
+        estimatedUnitPriceNzd: 185,
+        estimatedTotalPriceNzd: 185,
+      },
+      {
+        category: 'Accessories & Storage',
+        name: 'Concealed Pull-Out Twin Laundry Hamper (2 x 35L Bins, Soft-Close)',
+        sku: '7834910',
+        description: 'Integrated base unit hamper on smooth undermount runners for sorting whites and colours.',
+        quantity: 1,
+        unit: 'unit',
+        estimatedUnitPriceNzd: 280,
+        estimatedTotalPriceNzd: 280,
+      },
+    ];
+
+    const totalEstimateNzd = parseFloat(materials.reduce((acc, m) => acc + m.estimatedTotalPriceNzd, 0).toFixed(2));
+
+    return {
+      ok: true,
+      projectName: `Complete PlaceMakers ${w.toFixed(1)}m Laundry Room Makeover Package`,
+      projectType: 'laundry' as any,
+      dimensions: `${w.toFixed(1)}m Wall Run (Full Multi-Trade Solution)`,
+      areaM2: parseFloat((w * 2.4).toFixed(1)),
+      materials,
+      toolsNeeded: [
+        'Cordless Drill & Driver Set (with 35mm hinge bit)',
+        'Spirit Level (1200mm) & Stud Finder',
+        'Caulking Gun (for sanitary silicone & adhesive)',
+        'Adjustable Pipe Wrench & PTFE Thread Tape',
+        'Jigsaw or Circular Saw (for benchtop cutouts)',
+        'Heavy-Duty Dust Mask & Protective Eye Wear',
+      ],
+      nzBuildingNotes: [
+        'NZ Building Code E3/AS1 (Internal Moisture): Laundry wet splashback zones require impervious wall linings (GIB Aqualine).',
+        'AS/NZS 3500.2 (Sanitary Plumbing & Drainage): Washing machine waste pipe must terminate into an approved trapped waste or tundish.',
+        'Electrical Safety: Ensure GPOs (power sockets) maintain at least 300mm horizontal separation from open water sources / tub rim.',
+      ],
+      totalEstimateNzd,
+      currency: 'NZD',
+      branchAvailability: {
+        recommendedBranch: 'PlaceMakers Mt Wellington (Auckland)',
+        status: 'In Stock',
+        pickupTimeframe: 'Ready for 60-Minute Click & Collect or Next-Day Hiab Site Delivery',
+      },
+    };
+  }
 }
