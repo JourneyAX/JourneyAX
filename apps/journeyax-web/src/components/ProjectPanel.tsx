@@ -24,6 +24,7 @@ import TeamRosterPanel from './panels/TeamRosterPanel';
 import SizeRecommendationPanel from './panels/SizeRecommendationPanel';
 import PhotoUploadDesignPanel from './panels/PhotoUploadDesignPanel';
 import ProjectPlanPanel from './panels/ProjectPlanPanel';
+import SpacePlannerPanel from './panels/SpacePlannerPanel';
 
 export default function ProjectPanel() {
   const { state } = useJourney();
@@ -60,6 +61,7 @@ export default function ProjectPanel() {
       {state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
       {state.phase === 'photoUploadDesign' && <PhotoUploadDesignPanel />}
       {state.phase === 'projectPlan' && <ProjectPlanPanel />}
+      {state.phase === 'spacePlanner' && <SpacePlannerPanel />}
     </div>
   );
 }

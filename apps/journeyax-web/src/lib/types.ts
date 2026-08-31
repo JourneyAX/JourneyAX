@@ -8,7 +8,9 @@ export type Phase = 'intro' | 'research' | 'clarify' | 'validating' | 'products'
   // onto the real 3D mesh (distinct from teamDesign's AI-generated views).
   | 'photoUploadDesign'
   // PlaceMakers deterministic project & materials planner (decking, fencing, wall lining, retaining).
-  | 'projectPlan';
+  | 'projectPlan'
+  // PlaceMakers 3D / 2D Space & Modular Cabinet Planner (kitchen, laundry, bathroom).
+  | 'spacePlanner';
 
 // ── PlaceMakers Project Plan & Materials Engine ────────────────────────
 export interface ProjectMaterialItem {

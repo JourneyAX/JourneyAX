@@ -22,19 +22,21 @@ export default function QuotePanel() {
    * swept candy into the bathroom bucket, so M&M'S saw finishes + "how many
    * bathrooms" + a basin dress ring. */
   const productType = cfg.configurator?.productType;
-  const isFixtures = !productType || productType === 'fixtures';
+  const isCaroma = cfg.projectId === 'caroma';
+  const isPlaceMakers = cfg.projectId === 'placemakers';
+  const isFixtures = isCaroma && (!productType || productType === 'fixtures');
 
   /* Money is formatted in the quote's OWN currency — the authoritative quote
-   * carries its symbol (USD for Augusta), so a US-priced cap must never be shown
+   * carries its symbol (USD for Augusta, NZD for PlaceMakers), so a US-priced cap must never be shown
    * with an A$. A genuinely unknown price reads "Price on request"; a real zero
    * (a $0 discount) reads as zero, not as unknown. */
-  const symbol = state.serverQuote?.symbol || '$';
+  const symbol = state.serverQuote?.symbol || (isPlaceMakers ? '$' : '$');
   const money = (n: number | null | undefined, { zeroIsReal = false } = {}): string => {
     if (n === null || n === undefined || Number.isNaN(n)) return 'Price on request';
     if (n === 0 && !zeroIsReal) return 'Price on request';
-    return symbol + Math.round(n).toLocaleString('en-US');
+    return symbol + Math.round(n).toLocaleString('en-US') + (isPlaceMakers ? ' NZD' : '');
   };
-  const taxLabel = isFixtures ? 'GST' : 'Tax';
+  const taxLabel = isPlaceMakers ? '15% NZ GST' : isCaroma ? 'GST' : 'Tax';
 
   return (
     <>
@@ -45,21 +47,50 @@ export default function QuotePanel() {
             <div className="quote-header__eyebrow">
               Project Quote · Live {state.jobId ? `· Job ID: ${state.jobId}` : ''}
             </div>
-            <h2 className="quote-header__heading">{quoteTitle}</h2>
+            <h2 className="quote-header__heading">{quoteTitle || (isPlaceMakers ? 'PlaceMakers Order Summary' : 'Project Quote')}</h2>
           </div>
           <div className="quote-header__badge">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
               <path d="M5 13l4 4L19 7" stroke="var(--success)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="quote-header__badge-text">Compatibility validated</span>
+            <span className="quote-header__badge-text">{isPlaceMakers ? 'NZ Building Code Verified' : 'Compatibility validated'}</span>
           </div>
         </div>
-        <p className="quote-desc">Edit anything below — {isFixtures ? 'quantities, finish, extras' : 'quantities and options'}. I re-validate and re-price as you go.</p>
+        <p className="quote-desc">
+          {isPlaceMakers
+            ? 'Review your PlaceMakers materials list below. Select branch fulfillment or site delivery before placing your order.'
+            : `Edit anything below — ${isFixtures ? 'quantities, finish, extras' : 'quantities and options'}. I re-validate and re-price as you go.`}
+        </p>
+
+        {/* PlaceMakers Branch Fulfillment Card */}
+        {isPlaceMakers && (
+          <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#002855', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                📍 Branch Fulfillment &amp; Pickup
+              </span>
+              <span style={{ fontSize: '12px', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                60-Min Click &amp; Collect
+              </span>
+            </div>
+            <select
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 600, color: '#1e293b', background: '#fff' }}
+              defaultValue="PlaceMakers Mt Wellington (Auckland)"
+            >
+              <option value="PlaceMakers Mt Wellington (Auckland)">PlaceMakers Mount Wellington (106 Carbine Rd) · In Stock</option>
+              <option value="PlaceMakers Cook Street (Auckland Central)">PlaceMakers Cook Street (124 Cook St) · In Stock</option>
+              <option value="PlaceMakers Albany (North Shore)">PlaceMakers Albany (21 Corinthian Dr) · In Stock</option>
+              <option value="PlaceMakers Te Rapa (Hamilton)">PlaceMakers Te Rapa (Maui St) · In Stock</option>
+              <option value="PlaceMakers Petone (Wellington)">PlaceMakers Petone (43 Bouverie St) · In Stock</option>
+              <option value="PlaceMakers Riccarton (Christchurch)">PlaceMakers Riccarton (Mandeville St) · In Stock</option>
+            </select>
+          </div>
+        )}
 
         {/* Job Details Section */}
         {(state.installationSummary || state.warrantySummary) && (
           <div className="job-details-section" style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '8px', marginBottom: '24px', border: '1px solid #E5E1D9' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', marginBottom: '12px' }}>Job Scope & Guidelines</h3>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', marginBottom: '12px' }}>Job Scope &amp; Guidelines</h3>
             
             {state.installationSummary && (
               <div style={{ marginBottom: '12px' }}>
@@ -70,15 +101,14 @@ export default function QuotePanel() {
             
             {state.warrantySummary && (
               <div>
-                <strong style={{ fontSize: '13px', color: 'var(--success)', display: 'block', marginBottom: '4px' }}>Warranty & Compliance:</strong>
+                <strong style={{ fontSize: '13px', color: 'var(--success)', display: 'block', marginBottom: '4px' }}>Warranty &amp; Compliance:</strong>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{state.warrantySummary}</p>
               </div>
             )}
           </div>
         )}
 
-        {/* Finish selector — a fixtures concept (plumbing finish). A garment's
-            colour/design is chosen on the model, not here. */}
+        {/* Finish selector — Caroma only */}
         {isFixtures && (
           <div className="finish-selector">
             <div>
@@ -104,57 +134,60 @@ export default function QuotePanel() {
           </div>
         )}
 
-        {/* Quantity stepper — one "bathrooms" quantity is a fixtures notion. A
-            kit's quantities are per line (per size, from the roster), so the
-            single stepper is hidden and each line shows its own quantity. */}
+        {/* Bathrooms counter — Caroma only */}
         {isFixtures && (
-          <div className="qty-selector">
+          <div className="qty-section">
             <div>
-              <div className="qty-selector__label">Quantity</div>
-              <div className="qty-selector__desc">How many bathrooms — each gets its own in-wall parts</div>
+              <div className="qty-label">Quantity</div>
+              <div className="qty-desc">How many bathrooms — each gets its own in-wall parts</div>
             </div>
-            <div className="qty-stepper">
-              <button className="qty-stepper__btn" onClick={() => dispatch({ type: 'SET_QTY', qty: qty - 1 })}>−</button>
-              <div className="qty-stepper__value">{qty}</div>
-              <button className="qty-stepper__btn" onClick={() => dispatch({ type: 'SET_QTY', qty: qty + 1 })}>+</button>
+            <div className="qty-controls">
+              <button
+                className="qty-btn"
+                onClick={() => dispatch({ type: 'SET_QTY', qty: Math.max(1, qty - 1) })}
+              >
+                −
+              </button>
+              <span className="qty-val">{qty}</span>
+              <button
+                className="qty-btn"
+                onClick={() => dispatch({ type: 'SET_QTY', qty: qty + 1 })}
+              >
+                +
+              </button>
             </div>
           </div>
         )}
 
-        {/* Line items */}
-        <div className="bom-label">{isFixtures ? 'Bill of materials' : 'Your items'}</div>
-        <div className="bom-table">
+        {/* Bill of Materials list */}
+        <div className="bom-section">
+          <div className="bom-label">Bill of Materials</div>
           {bom.map((line, i) => (
-            <div
-              key={`${line.key}-${i}`}
-              className={`bom-row ${line.required ? 'bom-row--auto' : ''}`}
-            >
-              <div className="bom-row__image">
-                {line.imageUrl ? (
-                  <img src={line.imageUrl} alt={line.name} />
-                ) : (
-                  <span>{line.category || 'Product'}</span>
-                )}
-              </div>
-              <div className="bom-row__info">
-                <div className="bom-row__name-row">
-                  <span className="bom-row__name">{line.name}</span>
-                  {line.required && (
-                    <span className="bom-row__auto-badge">Auto-added · required</span>
-                  )}
+            <div key={`${line.key}-${i}`} className="bom-row">
+              {line.imageUrl ? (
+                <img src={line.imageUrl} alt={line.name} className="bom-row__thumb" />
+              ) : (
+                <div className="bom-row__thumb bom-row__thumb--empty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#002855', color: '#fff', fontSize: '18px' }}>
+                  📦
                 </div>
-                <div className="bom-row__spec">{line.spec}</div>
+              )}
+              <div className="bom-row__main">
+                <div className="bom-row__name">{line.name}</div>
+                {line.required && (
+                  <span className="bom-row__badge">Auto-added · required</span>
+                )}
+                {line.reason && (
+                  <div className="bom-row__reason">{line.reason}</div>
+                )}
                 <div className="bom-row__meta">
                   {line.sku && <span className="bom-row__sku">SKU {line.sku}</span>}
-                  <span className="bom-row__stock" style={{ color: line.stock.color }}>
-                    <span className="bom-row__stock-dot" style={{ background: line.stock.color }} />
-                    {line.stock.label}
+                  <span className="bom-row__stock">
+                    <span className="bom-row__stock-dot" style={{ background: line.stock?.color || '#059669' }} />
+                    {line.stock?.label || 'In stock'}
                   </span>
                 </div>
               </div>
               <div className="bom-row__pricing">
-                {/* Each line carries its OWN quantity — a server quote prices per
-                    size, so the row must not multiply by a single global qty. */}
                 <div className="bom-row__total">{money(line.lineTotal)}</div>
                 <div className="bom-row__unit">{money(line.price)} × {line.quantity ?? qty}</div>
                 {line.required && isFixtures && (
@@ -165,41 +198,39 @@ export default function QuotePanel() {
           ))}
         </div>
 
-        {/* Optional add-ons — the defaults are Caroma plumbing extras (dress
-            ring, towel rail, Caroma Care). Shown only for a fixtures tenant;
-            a kit's extras come from the agent as real line items. */}
+        {/* Optional add-ons — Caroma only */}
         {isFixtures && (
-        <div>
-        <div className="bom-label">Optional for this project</div>
-        <div className="addons-section">
-          {DEFAULT_ADDONS.map(addon => {
-            const isSelected = selectedAddons.includes(addon.id);
-            return (
-              <div
-                key={addon.id}
-                className={`addon-card ${isSelected ? 'addon-card--selected' : ''}`}
-                onClick={() => dispatch({ type: 'TOGGLE_ADDON', id: addon.id })}
-              >
-                <div className="addon-card__check">
-                  {isSelected && (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                      <path d="M5 13l4 4L19 7" stroke="var(--surface)" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div className="addon-card__name">{addon.name}</div>
-                  <div className="addon-card__desc">{addon.desc}</div>
-                </div>
-                <div className="addon-card__price">{money(addon.price)}/ea</div>
-              </div>
-            );
-          })}
-        </div>
-        </div>
+          <div>
+            <div className="bom-label">Optional for this project</div>
+            <div className="addons-section">
+              {DEFAULT_ADDONS.map(addon => {
+                const isSelected = selectedAddons.includes(addon.id);
+                return (
+                  <div
+                    key={addon.id}
+                    className={`addon-card ${isSelected ? 'addon-card--selected' : ''}`}
+                    onClick={() => dispatch({ type: 'TOGGLE_ADDON', id: addon.id })}
+                  >
+                    <div className="addon-card__check">
+                      {isSelected && (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                          <path d="M5 13l4 4L19 7" stroke="var(--surface)" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div className="addon-card__name">{addon.name}</div>
+                      <div className="addon-card__desc">{addon.desc}</div>
+                    </div>
+                    <div className="addon-card__price">{money(addon.price)}/ea</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
-        {/* Insight strip — Caroma-specific copy (EasySwitch, caroma.com RRP). */}
+        {/* Insight strip — Caroma only */}
         {isFixtures && (
           <div className="insight-strip">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">

@@ -559,6 +559,10 @@ export default function ChatPanel() {
           } else if (action.name === 'checkBranchStock') {
             /* PlaceMakers branch stock fulfillment lookup */
             dispatch({ type: 'SET_BRANCH_STOCK', branchStock: action.arguments });
+          } else if (action.name === 'openSpacePlanner') {
+            /* PlaceMakers 3D / 2D modular space & cabinet planner */
+            dispatch({ type: 'SET_PHASE', phase: 'spacePlanner' });
+            hasPhaseChange = true;
           }
         }
         // If AI called updateQuote but forgot setPhase('quote'), do it
@@ -758,17 +762,17 @@ export default function ChatPanel() {
       <div className="chat-header">
         <img
           className="chat-header__logo"
-          src={cfg.theme?.logoUrl || (cfg.projectId === 'placemakers' ? '/brands/placemakers.svg' : '')}
-          alt={cfg.companyName || 'Brand'}
+          src={cfg.theme?.logoUrl || (cfg.projectId === 'placemakers' ? '/brands/placemakers.png' : '')}
+          alt={cfg.companyName || 'PlaceMakers'}
           onError={(e) => {
             const img = e.target as HTMLImageElement;
-            if (cfg.projectId === 'placemakers' && !img.src.endsWith('/brands/placemakers.svg')) {
-              img.src = '/brands/placemakers.svg';
+            if (cfg.projectId === 'placemakers' && !img.src.endsWith('/brands/placemakers.png')) {
+              img.src = '/brands/placemakers.png';
             } else {
               img.style.display = 'none';
             }
           }}
-          style={{ maxHeight: '36px', width: 'auto', display: 'block' }}
+          style={{ height: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
         />
         {(!cfg.theme?.logoUrl && cfg.projectId !== 'placemakers') && (
           <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>

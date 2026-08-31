@@ -768,13 +768,31 @@ const tools: OpenAI.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'openSpacePlanner',
+      description:
+        "LAUNCH the interactive 3D and 2D PlaceMakers Space & Modular Cabinet Planner on the right panel. " +
+        "Call this whenever the customer wants to build or plan a laundry cabinet, kitchen modular units, bathroom vanity & tower, or modular cabinetry space (e.g. 'I want to build a laundry cabinet', 'plan kitchen cabinets', 'space planner for laundry'). " +
+        "It provides a live 3D visual canvas where customers can configure and place modular cabinets, choose finishes, and generate a live bill of materials.",
+      parameters: {
+        type: 'object',
+        properties: {
+          roomType: { type: 'string', enum: ['laundry', 'kitchen', 'bathroom', 'utility'], description: 'The room type (e.g. laundry, kitchen, bathroom).' },
+          wallWidthMm: { type: 'number', description: 'Wall width in millimetres if specified (e.g. 2000).' },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 // ── UI Tool Names ─────────────────────────────────────────────────────
-const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
+const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner']);
 
 // ── Capability registry: project-configurable toolset ─────────────────
-const UNIVERSAL_TOOL_NAMES = new Set(['searchKnowledge', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'setPhase', 'buildProjectPlan', 'checkBranchStock']);
+const UNIVERSAL_TOOL_NAMES = new Set(['searchKnowledge', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'setPhase', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner']);
 
 /** Persist a customer-named entity through the BUSINESS port. Provenance is
  *  recorded as customer-stated so nothing here is mistaken for verified fact. */
@@ -3068,6 +3086,9 @@ export class AgentService {
         '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for building projects (decking, fencing, wall lining, retaining). ' +
         'When the customer asks to plan, size, estimate, or get materials for a project (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType, lengthM, widthM, material)! ' +
         'Do NOT answer with loose unbundled product cards (showItems) when a whole project materials plan is requested — the customer wants the complete bill of materials rendered on the right panel.' }] : []),
+      ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
+        '[SPACE & CABINET PLANNER] When the customer asks to build or plan a laundry cabinet, kitchen modular units, bathroom vanity & tower, or custom cabinetry space (e.g. "I want to build a laundry cabinet", "help me build laundry cabinets", "plan my laundry cabinet space"), you MUST CALL openSpacePlanner immediately in this turn so the interactive PlaceMakers 3D / 2D Space & Cabinet Planner opens on the right panel! ' +
+        'Tell them warmly that you have launched the 3D space planner where they can customize cabinet layout, modular widths, and finishes.' }] : []),
       ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
         '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
       ...activeMessages
@@ -3151,9 +3172,12 @@ export class AgentService {
             || call.function.name === 'generateTeamDesign' || call.function.name === 'submitTeamOrder'
             || call.function.name === 'submitForReview' || call.function.name === 'checkReviewStatus'
             || call.function.name === 'recommendSize' || call.function.name === 'uploadPhotosFor3D'
-            || call.function.name === 'buildProjectPlan' || call.function.name === 'checkBranchStock') {
+            || call.function.name === 'buildProjectPlan' || call.function.name === 'checkBranchStock'
+            || call.function.name === 'openSpacePlanner') {
           hadRetrieval = true;
-          const result = call.function.name === 'buildProjectPlan'
+          const result = call.function.name === 'openSpacePlanner'
+            ? { ok: true, roomType: 'laundry', message: 'PlaceMakers Space Planner launched' }
+            : call.function.name === 'buildProjectPlan'
             ? handleBuildProjectPlan(call.function.arguments)
             : call.function.name === 'checkBranchStock'
             ? handleCheckBranchStock(call.function.arguments)
@@ -3211,6 +3235,11 @@ export class AgentService {
           if (call.function.name === 'checkBranchStock' && (result as any)?.ok
               && !uiToolCalls.some((c) => c.function?.name === 'checkBranchStock')) {
             uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'checkBranchStock', arguments: JSON.stringify(result) } } as any);
+          }
+          // PlaceMakers Space Planner: launches 3D/2D space planner UI
+          if (call.function.name === 'openSpacePlanner'
+              && !uiToolCalls.some((c) => c.function?.name === 'openSpacePlanner')) {
+            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'openSpacePlanner', arguments: call.function.arguments || '{}' } } as any);
           }
           // Coach team-order journey: a successful generateTeamDesign must land
           // the coach on the teamDesign panel with the four views — mirrors the
