@@ -7,6 +7,7 @@
  * working even if streaming is unavailable.
  */
 import { resolveTenant } from '../../../../lib/tenant';
+import { upstreamAuthHeaders, unauthorized } from '../../../../lib/bff-auth';
 
 // Vercel streaming contract. Without these, Vercel runs this handler as a
 // default Node serverless function with a ~15s wall-clock cap and may buffer the
@@ -27,13 +28,16 @@ export async function POST(req: Request) {
   const body = await req.json();
   // Multi-storefront routing: ?project → X-Tenant-ID header → Host domain → env.
   const tenantId = await resolveTenant(req);
-  const authHeader = req.headers.get('authorization');
+  // The signed-in customer's token rides the HttpOnly cookie → forwarded as a
+  // Bearer so the gateway sees a real user. No session → 401 (no anonymous).
+  const auth = upstreamAuthHeaders(req);
+  if (!auth) return unauthorized();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Tenant-ID': tenantId,
+    ...auth,
   };
-  if (authHeader) headers['Authorization'] = authHeader;
 
   try {
     const upstream = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/chat/stream`, {

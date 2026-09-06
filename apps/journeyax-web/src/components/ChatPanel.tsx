@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   type Conversation, resolveActiveConversation, saveConversations, setActiveConversation,
   messagesKey, sessionKey, journeyKey, newId, summarise,
@@ -140,6 +141,7 @@ export default function ChatPanel() {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>('');
+  const { user: authUser, logout } = useAuth();
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
@@ -216,7 +218,7 @@ export default function ChatPanel() {
       const saved = localStorage.getItem(messagesKey(cfg.projectId, id));
       const parsed = saved ? JSON.parse(saved) : null;
       setMessages(Array.isArray(parsed) && parsed.length ? parsed : []);
-      setDisplayName(localStorage.getItem(`jx_name::${cfg.projectId || 'default'}`) || '');
+      setDisplayName(authUser?.fullName || authUser?.email || '');
     } catch { setMessages([]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.projectId]);
@@ -312,19 +314,13 @@ export default function ChatPanel() {
     setConvoMenuOpen(false);
   }, [convoId, cfg.projectId, dispatch, restoreJourney]);
 
-  // Lightweight customer sign-in: captures a display name for the session (real
-  // storefront accounts/long-term memory land later). Honest affordance, not a
-  // dead button — it greets them and persists across refresh.
-  const onSignIn = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const key = `jx_name::${cfg.projectId || 'default'}`;
-    const current = localStorage.getItem(key) || '';
-    const next = window.prompt('Your name (so we can personalise your kit):', current);
-    if (next === null) return;
-    const trimmed = next.trim();
-    localStorage.setItem(key, trimmed);
-    setDisplayName(trimmed);
-  }, [cfg.projectId]);
+  // Real sign-in (cookie session via the BFF). The header shows who's signed in;
+  // clicking it signs out — the gate in page.tsx then shows the login screen.
+  const onSignIn = useCallback(async () => {
+    if (!authUser) return;
+    if (typeof window !== 'undefined' && !window.confirm(`Sign out ${authUser.fullName || authUser.email}?`)) return;
+    await logout();
+  }, [authUser, logout]);
 
   const sendToAI = useCallback(async (newMessages: any[]) => {
     setIsLoading(true);

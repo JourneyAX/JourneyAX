@@ -15,6 +15,7 @@
  */
 
 import { resolveTenant } from '../../../lib/tenant';
+import { upstreamAuthHeaders, unauthorized } from '../../../lib/bff-auth';
 
 // Vercel duration contract. This buffered endpoint is the fallback the client
 // uses when the SSE stream errors — it runs the FULL agent turn in one request,
@@ -34,15 +35,16 @@ export async function POST(req: Request) {
   // Forward auth + tenant headers from the browser if present
   // Multi-storefront routing: ?project → X-Tenant-ID header → Host domain → env.
   const tenantId = await resolveTenant(req);
-  const authHeader = req.headers.get('authorization');
+  // Signed-in customer's token from the HttpOnly cookie → Bearer upstream.
+  // No session → 401 (anonymous access is off).
+  const auth = upstreamAuthHeaders(req);
+  if (!auth) return unauthorized();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Tenant-ID': tenantId,
+    ...auth,
   };
-  if (authHeader) {
-    headers['Authorization'] = authHeader;
-  }
 
   try {
     const response = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/chat`, {

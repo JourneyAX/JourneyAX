@@ -5,13 +5,16 @@
  * a branch calls this directly, no chat turn needed.
  */
 import { resolveTenant } from '../../../lib/tenant';
+import { upstreamAuthHeaders, unauthorized } from '../../../lib/bff-auth';
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: Request) {
   const body = await req.json();
   const tenantId = await resolveTenant(req);
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId };
+  const auth = upstreamAuthHeaders(req);
+  if (!auth) return unauthorized();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, ...auth };
 
   try {
     const res = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/branch-stock`, {

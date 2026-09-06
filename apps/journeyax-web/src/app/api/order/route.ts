@@ -5,15 +5,16 @@
  * validation and payment. Tenant is resolved per request (multi-storefront).
  */
 import { resolveTenant } from '../../../lib/tenant';
+import { upstreamAuthHeaders, unauthorized } from '../../../lib/bff-auth';
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: Request) {
   const body = await req.json();
   const tenantId = await resolveTenant(req);
-  const authHeader = req.headers.get('authorization');
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId };
-  if (authHeader) headers['Authorization'] = authHeader;
+  const auth = upstreamAuthHeaders(req);
+  if (!auth) return unauthorized();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, ...auth };
 
   try {
     const res = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/order`, {
