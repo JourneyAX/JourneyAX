@@ -33,6 +33,8 @@ function expandTypeFilter(type: string): unknown {
   }
 }
 import { resolveNeeds, isReliableCharacter } from './needs-vocabulary';
+import { getDomainGlossary, expandWithGlossary } from './domain-glossary';
+import { fuzzyWordMatch, emphasizePrimaryClause } from './query-shaping';
 import { RenderService } from './render.service';
 
 const VECTOR_INDEX_NAME = 'vector_index';
@@ -120,7 +122,11 @@ export class ProductService {
 
   // ── OpenAI Embedding ────────────────────────────────────────────────
   private getOpenAI(): OpenAI {
-    if (!this.openai) this.openai = new OpenAI();
+    // No timeout was ever set here (SDK default: 10 minutes, no retry) — every
+    // searchKnowledge call embeds the query through this client, so a stuck
+    // embeddings request hangs the customer's turn the same way an unbounded
+    // chat-completion call does. Same fix as agent-commerce-service.
+    if (!this.openai) this.openai = new OpenAI({ timeout: 30_000, maxRetries: 2 });
     return this.openai;
   }
 
@@ -307,6 +313,43 @@ export class ProductService {
     const col = await this.getCollection();
     const limit = options.limit || 8;
 
+    const words = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'how'].includes(w));
+
+    /* An unanchored $regex OR-scan across `chunk`/`domainKeywords` can't use
+     * any index, so it degrades to a full collection scan. Invisible on a
+     * small tenant; on PlaceMakers (82k+ product documents) it regularly blew
+     * past MongoDB's own 60s server-side query timeout, hanging the chat turn
+     * that triggered it. Try the real text index first (indexed, scales fine)
+     * and only fall back to the old regex scan if that errors — e.g. the
+     * index is missing on an environment that hasn't run the migration yet. */
+    if (words.length > 0) {
+      try {
+        const textFilter: Record<string, unknown> = { $text: { $search: words.join(' ') } };
+        if (options.brand) textFilter.$or = [{ brand: options.brand }, { 'metadata.brand': options.brand }];
+        if (options.type) textFilter['metadata.type'] = expandTypeFilter(options.type);
+        if (options.category) {
+          textFilter.$and = [{ $or: [
+            { 'metadata.category': options.category },
+            { 'metadata.category': { $exists: false } },
+            { 'metadata.category': null },
+          ] }];
+        }
+        const results = await col
+          .find(textFilter, { projection: { score: { $meta: 'textScore' } } })
+          .sort({ score: { $meta: 'textScore' } })
+          .limit(limit)
+          .toArray();
+        if (results.length > 0) {
+          return results.map((doc, i) => ({ document: doc as KnowledgeDocument, score: 1 - i * 0.1 }));
+        }
+      } catch (err) {
+        console.warn('  [ProductService] $text fallback errored (falling back to regex scan):', (err as Error).message);
+      }
+    }
+
     // Each optional dimension (brand/category/text) contributes its own $or
     // clause; all contributed clauses are ANDed together at the end. Keeping
     // them separate (rather than merging into one shared $or, as before) avoids
@@ -326,11 +369,6 @@ export class ProductService {
         { 'metadata.category': null },
       ] });
     }
-
-    const words = query
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(w => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'how'].includes(w));
 
     if (words.length > 0) {
       const regexPattern = words.join('|');
@@ -441,10 +479,20 @@ export class ProductService {
       // Tenants with no domainKeywords contribute nothing extra here.
       const domainKeywords: string[] = (r.document as any)?.metadata?.domainKeywords || [];
       if (!title && !domainKeywords.length) continue;
+      const titleWords = title ? title.split(/[^a-z0-9]+/).filter((w) => w.length >= 3) : [];
       let hits = 0;
       for (const t of tokens) {
-        if (title && title.includes(t)) hits++;
-        else if (domainKeywords.some((k) => k.includes(t))) hits++;
+        // Exact substring first (cheap, and catches a token embedded inside a
+        // longer title word, e.g. "gib" is never a whole word on its own here).
+        if (title && title.includes(t)) { hits++; continue; }
+        if (domainKeywords.some((k) => k.includes(t))) { hits++; continue; }
+        // Fall back to fuzzy word-level matching for a MISSPELLED query token
+        // ("timbr" for "timber"). Exact substring can never catch a typo no
+        // matter how large the candidate pool is — this is the actual gap, not
+        // pool size. Whole-word comparison only (not substring), so a fuzzy
+        // match can't fire on an unrelated word that merely happens to be close
+        // in length.
+        if (titleWords.some((w) => fuzzyWordMatch(t, w))) hits++;
       }
       (r as any).score = (r.score || 0) + Math.min(hits, 3) * 0.04;
     }
@@ -464,9 +512,14 @@ export class ProductService {
     results: any[];
     message?: string;
   }> {
-    // Over-fetch when a gender filter is on so we still return a full set after
-    // dropping the wrong gender (the vector index has no gender to filter on).
-    const fetchLimit = gender ? Math.max(limit * 4, 24) : limit;
+    // Over-fetch unconditionally, then trim to `limit` after lexicalRerank (step
+    // 2.5 below) has had a real candidate pool to work with. Fetching exactly
+    // `limit` from pure vector similarity meant lexicalRerank could only reorder
+    // whichever 5-8 items embedding distance happened to surface — it could never
+    // recover a real, in-title match (a genuine Formply/purlin SKU) that simply
+    // wasn't in that narrow top-K to begin with. Same over-fetch-then-trim shape
+    // already proven below for the gender filter; generalised to every query.
+    const fetchLimit = Math.max(limit * 4, 24);
     // Step 0: NEEDS → measured vocabulary (AUG-67). "modern" is meaningless to the
     // index; 'bold — accents dominate' is what the visual reader actually wrote.
     // Additive: an unrecognised need leaves the query exactly as it was.
@@ -475,13 +528,31 @@ export class ProductService {
       console.log(`  [ProductService] NEEDS "${needs.matched.join(', ')}" → ${needs.character.join(' | ')}`);
     }
 
-    // Step 1: Generate embedding (on the needs-expanded query)
-    const queryEmbedding = await this.embedText(needs.expandedQuery);
+    // Step 0.5a: PRIMARY-CLAUSE EMPHASIS → a compound query like "purlins for a
+    // shed roof" embeds as one blended vector, and "shed" (a strong cluster of
+    // its own) can outweigh "purlin" (the actual subject). Repeating the clause
+    // before the first preposition gives it more weight without discarding the
+    // rest of the sentence. Pure sentence structure, no tenant vocabulary.
+    const emphasized = emphasizePrimaryClause(needs.expandedQuery);
+
+    // Step 0.5b: DOMAIN GLOSSARY → trade slang / colloquial terms ("noggin",
+    // "gib", "tanking") a per-tenant glossary already generates during ingestion
+    // but that, until now, no query ever actually read. Additive, tenant-generic:
+    // a tenant with no glossary (or no match) gets the query back unchanged.
+    const db = await this.getDb();
+    const glossaryTerms = await getDomainGlossary(db, brand);
+    const glossary = expandWithGlossary(emphasized, glossaryTerms);
+    if (glossary.matched.length) {
+      console.log(`  [ProductService] GLOSSARY "${glossary.matched.join(', ')}" → +${glossary.addedKeywords.join(', ')}`);
+    }
+
+    // Step 1: Generate embedding (on the fully-expanded query)
+    const queryEmbedding = await this.embedText(glossary.expandedQuery);
 
     // Step 2: Execute search
     let rawResults = await this.searchRaw(
       queryEmbedding.length > 0 ? queryEmbedding : null,
-      { query: needs.expandedQuery, brand, type, category, limit: fetchLimit }
+      { query: glossary.expandedQuery, brand, type, category, limit: fetchLimit }
     );
 
     // Step 2.4: Reward documents whose MEASURED character matches the need, and
@@ -505,6 +576,16 @@ export class ProductService {
     // query's distinctive words above pure-semantic near-misses. Generic (no
     // hardcoded sport list): a small additive boost per matched query token, so it
     // only reorders genuine ties and never overrides a strong semantic winner.
+    // Rerank against the CUSTOMER's own words, not the glossary-expanded text.
+    // Tried reranking against the expansion too, on the theory that "noggins"
+    // → added "timber"/"framing" would nudge up real framing products — it did,
+    // but a broad appended category word (glossary's "gib" → "wallboard") also
+    // gave an unrelated generic wallboard SHEET an exact-substring lexical boost
+    // over the actually-correct "Jointing Compound" for "gib stoping compound",
+    // a real, confirmed regression. The glossary's job is recall (bring the
+    // right candidates into the pool via the embedding, step 0.5b above) — this
+    // step's job is precision, ranking within that pool by the customer's own
+    // literal words, not a broad category term added on their behalf.
     this.lexicalRerank(query, rawResults);
 
     // Step 2.7: GENDER FILTER (apparel). The retrieval index carries no gender — it
@@ -532,6 +613,10 @@ export class ProductService {
         } catch { /* filter is best-effort — never fail a search on it */ }
       }
       rawResults = rawResults.slice(0, limit);
+    } else {
+      // No gender filter to trim after — but we still over-fetched above so
+      // lexicalRerank had a real pool to reorder, so trim back to `limit` here.
+      rawResults = rawResults.slice(0, limit);
     }
 
     // Step 3: Apply RAG-aware Token Budgeting (max 1500 tokens)
@@ -545,7 +630,12 @@ export class ProductService {
       // metadata is missing — content parsing misses PIM images (they're on
       // stshared…blob.core.windows.net, not cdn.) and yields noisier specs.
       const specs = (meta.specs && Object.keys(meta.specs).length) ? meta.specs : this.parseSpecs(r.document.content);
-      const images = (Array.isArray(meta.images) && meta.images.length) ? meta.images : this.parseImages(r.document.content);
+      // Some tenants' ingestion (e.g. PlaceMakers) writes metadata.imageUrl (singular)
+      // rather than metadata.images (plural) — fall back to it before parsing content,
+      // matching the pattern already used in readPricebook() below.
+      const images = (Array.isArray(meta.images) && meta.images.length)
+        ? meta.images
+        : (meta.imageUrl ? [meta.imageUrl] : this.parseImages(r.document.content));
       const contentChunk = r.document.chunk || '';
 
       const chunkTokens = Math.ceil(contentChunk.length / 4);
@@ -807,6 +897,16 @@ export class ProductService {
         ['documents', { 'metadata.brand': 1, 'metadata.specs.Item Code': 1 }],
         /* The back-office catalogue list: filter by tenant + kind, newest first. */
         ['documents', { 'metadata.brand': 1, 'metadata.type': 1, updatedAt: -1 }],
+        /* getCatalogue()/getCatalogueItem() now read the clean, deduplicated
+         * `products` collection instead of live-aggregating `documents` — for a
+         * tenant the size of PlaceMakers (82k+ raw ingested documents), that
+         * aggregation's sort+group over the whole matched set was exceeding
+         * MongoDB's own 60s server-side query timeout on every single page load.
+         * `products` is ~half the row count and needs its own supporting
+         * indexes for the listing's default sort and the detail page's
+         * by-URL lookup. */
+        ['products', { projectId: 1, name: 1 }],
+        ['products', { projectId: 1, url: 1 }],
       ];
       if (dryRun) return { ...base, changed: specs.length, details: { wouldEnsure: specs.length } };
       let n = 0;
@@ -2627,57 +2727,77 @@ export class ProductService {
 
   // ── Backoffice Catalogue APIs ──────────────────────────────────────────
 
+  /**
+   * Reads the clean, deduplicated `products` collection (one row per real
+   * product) rather than live-aggregating `documents` (the raw RAG ingestion
+   * corpus — one row per crawled chunk, with a full embedding vector each).
+   * The old implementation ran a sort+group over every matched chunk on every
+   * page load; for a tenant the size of PlaceMakers (82,044 product-type
+   * documents) that aggregation regularly exceeded MongoDB's own 60s
+   * server-side query timeout, so the back-office Catalogue page never
+   * finished loading. `products` is ~half the row count and needs no
+   * per-request dedup — it already IS deduplicated at ingest time.
+   */
   async getCatalogue(projectId: string, q: string | undefined, limit: number) {
-    const col = await this.getCollection();
-    const match: any = { "metadata.brand": projectId, "metadata.type": "product" };
-    if (q) match.$and = [{ $or: [{ title: { $regex: q, $options: "i" } }, { "metadata.sku": { $regex: q, $options: "i" } }] }];
+    const db = await this.getDb();
+    const col = db.collection('products');
+    const filter: any = { projectId };
+    if (q) filter.$or = [{ name: { $regex: q, $options: 'i' } }, { parentSku: { $regex: q, $options: 'i' } }];
 
-    const rows = await col.aggregate([
-      { $match: match },
-      { $project: {
-          sourceUrl: 1, title: 1, updatedAt: 1,
-          "metadata.sku": 1, "metadata.price": 1, "metadata.currency": 1,
-          "metadata.category": 1, "metadata.collection": 1, "metadata.images": 1,
-          "metadata.availability": 1, "metadata.specs": 1,
-      } },
-      { $sort: { updatedAt: -1 } },
-      { $group: {
-          _id: "$sourceUrl",
-          titles: { $addToSet: "$title" },
-          sku: { $first: "$metadata.sku" },
-          price: { $first: "$metadata.price" },
-          currency: { $first: "$metadata.currency" },
-          category: { $first: "$metadata.category" },
-          collection: { $first: "$metadata.collection" },
-          image: { $first: { $arrayElemAt: ["$metadata.images", 0] } },
-          availability: { $first: "$metadata.availability" },
-          specCount: { $first: { $size: { $objectToArray: { $ifNull: ["$metadata.specs", {}] } } } },
-          updatedAt: { $first: "$updatedAt" },
-      } },
-      { $limit: limit },
-    ]).toArray();
-
-    for (const r of rows as any[]) {
-      const clean = (r.titles as string[])
-        .filter((t: string) => t && !/^[-–—\s]/.test(t))
-        .sort((a: string, b: string) => b.length - a.length);
-      r.title = clean[0] || (r.titles as string[]).sort((a: string, b: string) => b.length - a.length)[0] || r.sku || "Untitled";
-      delete r.titles;
-    }
-    rows.sort((a: any, b: any) => String(a.title).localeCompare(String(b.title)));
-
-    const total = await col.aggregate([
-      { $match: { "metadata.brand": projectId, "metadata.type": "product" } },
-      { $group: { _id: "$sourceUrl" } }, { $count: "n" },
-    ]).toArray();
+    const [rows, total] = await Promise.all([
+      col.find(filter)
+        .project({ url: 1, name: 1, parentSku: 1, priceUSD: 1, category: 1, categoryPath: 1, images: 1, availability: 1, features: 1, updatedAt: 1 })
+        .sort({ name: 1 })
+        .limit(limit)
+        .toArray(),
+      col.countDocuments(filter),
+    ]);
 
     return {
-      products: rows.map(({ _id, ...r }) => ({ url: _id, ...r })),
-      totalProducts: total[0]?.n ?? 0,
+      products: (rows as any[]).map((r) => ({
+        url: r.url || '',
+        title: r.name || r.parentSku || 'Untitled',
+        sku: r.parentSku || '',
+        price: typeof r.priceUSD?.min === 'number' ? r.priceUSD.min : undefined,
+        category: r.category || (Array.isArray(r.categoryPath) ? r.categoryPath[r.categoryPath.length - 1] : undefined),
+        image: Array.isArray(r.images) && r.images.length ? r.images[0] : undefined,
+        availability: typeof r.availability === 'boolean' ? (r.availability ? 'In Stock' : 'Out of Stock') : (r.availability || undefined),
+        specCount: Array.isArray(r.features) ? r.features.length : 0,
+        updatedAt: r.updatedAt,
+      })),
+      totalProducts: total,
     };
   }
 
+  /**
+   * Tries the same `products` collection the listing above now reads (fast,
+   * indexed by url). Falls back to the original chunk-merge lookup against
+   * `documents` for any tenant/item not present there — so tenants that were
+   * already working this way keep working unchanged.
+   */
   async getCatalogueItem(projectId: string, url: string) {
+    const db = await this.getDb();
+    const p = await db.collection('products').findOne({ projectId, url });
+    if (p) {
+      return {
+        url,
+        title: p.name || p.parentSku || 'Untitled',
+        sku: p.parentSku || '',
+        price: typeof p.priceUSD?.min === 'number' ? p.priceUSD.min : undefined,
+        category: p.category || (Array.isArray(p.categoryPath) ? p.categoryPath[p.categoryPath.length - 1] : undefined),
+        collection: undefined,
+        description: p.description || p.narrative || '',
+        availability: typeof p.availability === 'boolean' ? (p.availability ? 'In Stock' : 'Out of Stock') : (p.availability || undefined),
+        specs: {},
+        images: Array.isArray(p.images) ? p.images : [],
+        variants: Array.isArray(p.variants) ? p.variants : [],
+        documents: [],
+        finishes: Array.isArray(p.colors) ? p.colors : [],
+        updatedAt: p.updatedAt,
+        chunks: [],
+      };
+    }
+
     const col = await this.getCollection();
     const chunks = await col
       .find({ $and: [{ $or: [{ projectId }, { "metadata.brand": projectId }] }, { sourceUrl: url }] })

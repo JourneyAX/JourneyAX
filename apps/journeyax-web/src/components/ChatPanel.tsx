@@ -560,7 +560,11 @@ export default function ChatPanel() {
             /* PlaceMakers branch stock fulfillment lookup */
             dispatch({ type: 'SET_BRANCH_STOCK', branchStock: action.arguments });
           } else if (action.name === 'openSpacePlanner') {
-            /* PlaceMakers 3D / 2D modular space & cabinet planner */
+            /* PlaceMakers 3D / 2D modular space & cabinet planner — carry the
+             * tool call's own roomType/wallWidthMm through, so the panel opens
+             * on what the customer actually asked for instead of always
+             * defaulting to a laundry, 2.4m wall. */
+            dispatch({ type: 'SET_SPACE_PLANNER_PARAMS', params: action.arguments || {} });
             dispatch({ type: 'SET_PHASE', phase: 'spacePlanner' });
             hasPhaseChange = true;
           }
@@ -760,23 +764,28 @@ export default function ChatPanel() {
           "Team Kit Builder / Augusta Team Outfitter" title+subtitle and the
           "Online" status badge were noise the customer didn't need. */}
       <div className="chat-header">
-        <img
-          className="chat-header__logo"
-          src={cfg.theme?.logoUrl || (cfg.projectId === 'placemakers' ? '/brands/placemakers.png' : '')}
-          alt={cfg.companyName || 'PlaceMakers'}
-          onError={(e) => {
-            const img = e.target as HTMLImageElement;
-            if (cfg.projectId === 'placemakers' && !img.src.endsWith('/brands/placemakers.png')) {
-              img.src = '/brands/placemakers.png';
-            } else {
-              img.style.display = 'none';
-            }
-          }}
-          style={{ height: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
-        />
-        {(!cfg.theme?.logoUrl && cfg.projectId !== 'placemakers') && (
-          <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>
-        )}
+        {(() => {
+          const logoSrc = cfg.theme?.logoUrl || (cfg.projectId === 'placemakers' ? '/brands/placemakers.png' : null);
+          if (!logoSrc) {
+            return <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>;
+          }
+          return (
+            <img
+              className="chat-header__logo"
+              src={logoSrc}
+              alt={cfg.companyName || 'Brand Logo'}
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                if (cfg.projectId === 'placemakers' && !img.src.endsWith('/brands/placemakers.png')) {
+                  img.src = '/brands/placemakers.png';
+                } else {
+                  img.style.display = 'none';
+                }
+              }}
+              style={{ height: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
+            />
+          );
+        })()}
         <div className="chat-header__actions">
           {/* View bag — persistent return path to the retail bag. Shown once the
               bag has items and we're not already on it; the complete-the-look

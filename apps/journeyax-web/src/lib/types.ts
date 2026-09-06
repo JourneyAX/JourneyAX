@@ -322,6 +322,10 @@ export interface ServerQuoteLine {
   url?: string;
   reason?: string;
   required?: boolean;
+  /** Set once a real per-branch check has run (QuotePanel's branch picker) —
+   *  richer than the plain `inStock` boolean, which is whatever the
+   *  quote-building tool set (usually just `true`) until this exists. */
+  branchStock?: { status: string; stockQty: number; collectionTimeframe: string; clickAndCollectReady: boolean };
 }
 export interface ServerQuote {
   quoteId: string;
@@ -420,6 +424,16 @@ export interface JourneyState {
   // PlaceMakers Project Plan & Branch Stock
   projectPlan?: ProjectPlan;
   branchStock?: BranchStockResponse;
+  /** openSpacePlanner's own tool-call arguments (room type, wall width,
+   *  install type, finish) — read by SpacePlannerPanel so it opens on what
+   *  the customer actually asked for instead of always defaulting to a
+   *  laundry, 2.4m wall, DIY, white gloss. */
+  spacePlannerParams?: { roomType?: string; wallWidthMm?: number; installType?: 'diy' | 'trade'; finish?: string };
+  /** QuotePanel's branch picker (PlaceMakers) — the customer's actual choice,
+   *  once they've picked one and it's been checked. Undefined until then, so
+   *  the panel can tell "not yet checked" apart from "checked, this branch". */
+  selectedBranch?: string;
+  selectedBranchName?: string;
 }
 
 export const INITIAL_STATE: JourneyState = {

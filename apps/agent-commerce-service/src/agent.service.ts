@@ -91,9 +91,24 @@ function isReasoningModel(model: string): boolean {
   return /^(gpt-5|o[134])/.test(model);
 }
 
-/** Apply the project's configured temperature — but only where the model supports it. */
-function genParams(model: string, temperature?: number): { temperature?: number } {
-  if (typeof temperature === 'number' && !isReasoningModel(model)) return { temperature };
+/** Apply the project's configured temperature — but only where the model supports it.
+ *  Plain 'gpt-5' gets `reasoning_effort:'low'` instead: at the default effort, a turn
+ *  carrying this agent's full journeyGuidance + tool schema can take 60-90s+ per
+ *  completion, and a multi-tool troubleshooting turn (JOURNEY 4: showGuide +
+ *  searchKnowledge + showItems) chains several of those sequentially — compounding
+ *  past two minutes with no error, just silence. 'low' keeps tool-call selection
+ *  reliable while cutting that reasoning overhead sharply — confirmed live on gpt-5.
+ *
+ *  This does NOT extend to every reasoning model: gpt-5.5 (Caroma's model) 400s on
+ *  chat.completions the moment reasoning_effort is combined with tool calling —
+ *  "Function tools with reasoning_effort are not supported for gpt-5.5... set
+ *  reasoning_effort to 'none'." — a live regression caught during PlaceMakers
+ *  verification. o-series and other gpt-5 variants (mini/nano) are unverified either
+ *  way, so this stays scoped to the one exact model where both the original hang and
+ *  this fix were proven, rather than guessing at a shared param across the family. */
+function genParams(model: string, temperature?: number): { temperature?: number; reasoning_effort?: 'low' } {
+  if (isReasoningModel(model)) return model === 'gpt-5' ? { reasoning_effort: 'low' } : {};
+  if (typeof temperature === 'number') return { temperature };
   return {};
 }
 
@@ -781,6 +796,8 @@ const tools: OpenAI.ChatCompletionTool[] = [
         properties: {
           roomType: { type: 'string', enum: ['laundry', 'kitchen', 'bathroom', 'utility'], description: 'The room type (e.g. laundry, kitchen, bathroom).' },
           wallWidthMm: { type: 'number', description: 'Wall width in millimetres if specified (e.g. 2000).' },
+          installType: { type: 'string', enum: ['diy', 'trade'], description: "Pass this ONLY if the customer already stated it in their message (e.g. 'trade installer', 'DIY', 'myself') — pre-selects the panel's install toggle so it matches what they said instead of defaulting to DIY. Omit if not stated." },
+          finish: { type: 'string', enum: ['white-gloss', 'anthracite', 'natural-oak', 'coastal-elm'], description: "Pass this ONLY if the customer already stated a style/finish preference (e.g. 'modern gloss white' → white-gloss, 'dark charcoal' → anthracite, 'warm timber' → natural-oak, 'grey timber' → coastal-elm). Omit if not stated." },
         },
         required: [],
       },
@@ -2757,7 +2774,15 @@ export class AgentService {
   }
 
   constructor() {
-    this.openai = new OpenAI();
+    // No timeout was ever set here — the SDK default is 10 MINUTES with no
+    // retry, so an occasionally-stuck completion call (observed tonight,
+    // repeatedly, on multi-tool-call turns) hangs the entire customer-facing
+    // chat turn instead of failing fast. A legitimate slow-but-progressing
+    // gpt-5 generation (multi-tool decision + a long response) completes well
+    // inside 60s in measured testing; a call stuck at zero token progress for
+    // that long is hung, not slow, and should be retried rather than left to
+    // hang toward the 10-minute ceiling.
+    this.openai = new OpenAI({ timeout: 60_000, maxRetries: 2 });
     this.intentResolver = new IntentResolver(this.openai, this.model);
     this.configLoader = new ConfigLoader();
     this.sessionStore = new SessionStore();
@@ -3083,14 +3108,24 @@ export class AgentService {
         'Only use searchKnowledge/showItems when they want to BROWSE existing products. Iterations ("make the sleeves brighter") → generateDesign again. ' +
         'When the customer is happy or says "send it to your artist/for review", call submitForReview (kind "use" or "create"); when they ask "is it ready?", call checkReviewStatus. A custom design needs artist approval AND customer agreement before print — never call it production-ready yourself.' }] : []),
       ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-        '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for building projects (decking, fencing, wall lining, retaining). ' +
-        'When the customer asks to plan, size, estimate, or get materials for a project (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType, lengthM, widthM, material)! ' +
-        'Do NOT answer with loose unbundled product cards (showItems) when a whole project materials plan is requested — the customer wants the complete bill of materials rendered on the right panel.' }] : []),
+        '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for STRUCTURAL building projects (decking, fencing, wall lining, retaining, cladding) — NOT rooms. ' +
+        'When the customer asks to plan, size, estimate, or get materials for one of those (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType: "decking" | "fencing" | "lining" | "retaining" | "cladding" — never "laundry"/"bathroom"/"kitchen", those are rooms, see below). ' +
+        'CRITICAL RULE FOR ROOM MAKEOVERS: a laundry, bathroom or kitchen makeover is NOT a buildProjectPlan call — it is a ROOM, so it always goes through openSpacePlanner instead (see the room-discovery block below). NEVER suggest a single cabinet in isolation for a room makeover! A room makeover is a complete 5-trade project covering (1) Cabinetry & Modular Storage, (2) Sanitaryware & SuperTubs, (3) Tapware & Plumbing Valves, (4) Wet-Wall Linings (GIB Aqualine) & Waterproofing Membranes, and (5) Functional Accessories & Hampers. ' +
+        'Before asking anything, check what the customer already told you in THIS message (a size, a style word like "modern", "trade installer" vs "DIY") — never re-ask for something they already gave you. Only ask clarifying questions for whatever is still missing (dimensions, style preference, DIY vs. Trade installation), and if all of that is already there, skip straight to calling the right tool (buildProjectPlan for a structural project, openSpacePlanner for a room) to present the complete plan on the right panel.' }] : []),
       ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-        '[SPACE & CABINET PLANNER] When the customer asks to build or plan a laundry cabinet, kitchen modular units, bathroom vanity & tower, or custom cabinetry space (e.g. "I want to build a laundry cabinet", "help me build laundry cabinets", "plan my laundry cabinet space"), you MUST CALL openSpacePlanner immediately in this turn so the interactive PlaceMakers 3D / 2D Space & Cabinet Planner opens on the right panel! ' +
-        'Tell them warmly that you have launched the 3D space planner where they can customize cabinet layout, modular widths, and finishes.' }] : []),
+        '[CONSULTATIVE SALES REP PARTNERSHIP & ROOM DISCOVERY] You are an experienced PlaceMakers Project Consultant & Sales Rep partnering with the customer to design their space. ' +
+        'When the customer asks to build or plan a laundry cabinet, room makeover, or kitchen space (e.g. "I want to build a laundry cabinet", "plan my laundry space", "laundry room makeover"): ' +
+        '1. Engage warmly as a pair-planning sales rep: congratulate their project, explain that you will build it together step-by-step. ' +
+        '2. Check what they already told you in THIS message before asking anything else, then ask ONLY about whichever of these 4 is still missing — never re-ask one they already answered, and skip this step entirely if all 4 are already known: (a) Wall Width / Room Run (e.g., 1.8m compact, 2.4m standard, 3.0m spacious), (b) Style & Finish (Modern Gloss White, Natural Warm Oak Timber Veneer, or Architectural Charcoal), (c) Appliance & Tub Cavity (front-loader washer/dryer overhang + Robinhood SuperTub), and (d) Installation preference (DIY with tool checklist vs. PlaceMakers Certified Trade Installation). ' +
+        '3. Call openSpacePlanner to open the interactive 3D WebGL Room Designer with real PlaceMakers modular cabinets and live 5-trade BOM on the right panel. ' +
+        '4. Provide interactive choice chips (via presentChoice or structured options) so the customer can effortlessly select their wall run or style in chat!' }] : []),
       ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
         '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
+      ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
+        '[REACT FLUID JOURNEY TRANSITIONS] You are an intelligent ReAct agent supporting 5 interconnected journeys (Shop, Plan Your Space, Services, Tools, and Customer Service). ' +
+        'Customers can pivot between journeys at any time (e.g. asking for trade installation or branch pickup in the middle of a 3D room plan). ' +
+        'Preserve all room dimensions, active materials, and customer context during transitions. ' +
+        'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
       ...activeMessages
     ];
 
@@ -3759,7 +3794,7 @@ export class AgentService {
       const searchCalls = fnCalls.filter((c) => c.function.name === 'searchKnowledge');
       // These return DATA, so they must be excluded from the UI bucket —
       // otherCalls results never re-enter the conversation.
-      const DATA_TOOLS = new Set(['findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D']);
+      const DATA_TOOLS = new Set(['findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
       const dataCalls = fnCalls.filter((c) => DATA_TOOLS.has(c.function.name));
       const otherCalls = fnCalls.filter((c) => c.function.name !== 'searchKnowledge' && !DATA_TOOLS.has(c.function.name));
 
@@ -3795,7 +3830,11 @@ export class AgentService {
                     ? await requestArtwork(tenantId, sessionId, call.function.arguments)
                     : call.function.name === 'checkArtworkApproval'
                       ? await checkArtworkApproval(tenantId, sessionId)
-                      : await lookupOptions(tenantId, call.function.arguments),
+                      : call.function.name === 'buildProjectPlan'
+                        ? handleBuildProjectPlan(call.function.arguments)
+                        : call.function.name === 'checkBranchStock'
+                          ? handleCheckBranchStock(call.function.arguments)
+                          : await lookupOptions(tenantId, call.function.arguments),
           })),
         );
         for (const r of results) {
@@ -3841,6 +3880,21 @@ export class AgentService {
             emit('uiAction', { name: 'recommendSize', arguments: r.value });
             if (!uiToolCalls.some((c) => c.function?.name === 'recommendSize')) {
               uiToolCalls.push({ id: r.id, type: 'function', function: { name: 'recommendSize', arguments: JSON.stringify(r.value) } } as any);
+            }
+          }
+          // PlaceMakers project/materials plan and branch stock: these used to
+          // fall through to the generic otherCalls path below, which only ever
+          // ran validateDesign() (a no-op stub for anything but showConfigurator)
+          // and emitted the customer's raw request args as if they were the
+          // answer — so the panel got no bill-of-materials/stock data at all,
+          // while the model still narrated "I've generated your plan" because a
+          // bare `{success:true}` is all it was ever told. Same double-write as
+          // generateTeamDesign/recommendSize above, now with the REAL computed
+          // result (materials list, totals; branch stock counts).
+          if ((r.name === 'buildProjectPlan' || r.name === 'checkBranchStock') && (r.value as any)?.ok) {
+            emit('uiAction', { name: r.name, arguments: r.value });
+            if (!uiToolCalls.some((c) => c.function?.name === r.name)) {
+              uiToolCalls.push({ id: r.id, type: 'function', function: { name: r.name, arguments: JSON.stringify(r.value) } } as any);
             }
           }
           conversation.push({ role: 'tool', tool_call_id: r.id, content: JSON.stringify(r.value) });

@@ -22,6 +22,32 @@ export interface IntroConfig {
   heroSubtitle?: string;
 }
 
+export interface DynamicComponentConfig {
+  productCard?: {
+    layout?: 'standard' | 'technical' | 'compact';
+    showBranchStock?: boolean;
+    showSpecs?: boolean;
+    badgeFields?: string[];
+  };
+  quoteCard?: {
+    layout?: 'multi-trade-bom' | 'retail-summary';
+    showTradeDiscounts?: boolean;
+    fulfillmentOptions?: ('branch-pickup' | 'delivery' | 'trade-dispatch')[];
+    defaultBranch?: string;
+  };
+  spacePlanner?: {
+    enabled: boolean;
+    roomTypes?: string[];
+    defaultRoom?: string;
+  };
+  discoveryQuestions?: Array<{
+    id: string;
+    trigger: string;
+    questions: string[];
+    options?: string[];
+  }>;
+}
+
 export interface StorefrontConfig {
   projectId: string;
   companyName: string;
@@ -34,6 +60,10 @@ export interface StorefrontConfig {
   intro?: IntroConfig | null;
   /** Commerce surface: 'cart' (B2C retail) vs 'quote' (B2B project quote). */
   commerceMode: 'quote' | 'cart';
+  /** CMS-driven dynamic components configuration */
+  components?: DynamicComponentConfig | null;
+  /** Multi-trade solution bundle templates */
+  multiTradeBundles?: any[] | null;
 }
 
 const DEFAULT: StorefrontConfig = {
@@ -46,6 +76,8 @@ const DEFAULT: StorefrontConfig = {
   capabilities: [],
   configurator: null,
   commerceMode: 'quote',
+  components: null,
+  multiTradeBundles: null,
 };
 
 const Ctx = createContext<StorefrontConfig>(DEFAULT);

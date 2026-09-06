@@ -61,7 +61,20 @@ export default function ProjectPanel() {
       {state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
       {state.phase === 'photoUploadDesign' && <PhotoUploadDesignPanel />}
       {state.phase === 'projectPlan' && <ProjectPlanPanel />}
-      {state.phase === 'spacePlanner' && <SpacePlannerPanel />}
+      {state.phase === 'spacePlanner' && (
+        <SpacePlannerPanel
+          // Keyed on the params themselves: a later openSpacePlanner call (the
+          // customer refining "actually make it dark charcoal, trade install")
+          // must re-initialize the panel's state, not silently no-op because
+          // React sees the same component instance already mounted from the
+          // first call.
+          key={JSON.stringify(state.spacePlannerParams || {})}
+          initialRoomType={state.spacePlannerParams?.roomType}
+          initialWallWidthMm={state.spacePlannerParams?.wallWidthMm}
+          initialInstallType={state.spacePlannerParams?.installType}
+          initialFinishId={state.spacePlannerParams?.finish}
+        />
+      )}
     </div>
   );
 }

@@ -49,6 +49,8 @@ type Action =
   // PlaceMakers Project Plan & Branch Stock
   | { type: 'SET_PROJECT_PLAN'; projectPlan: import('../lib/types').ProjectPlan }
   | { type: 'SET_BRANCH_STOCK'; branchStock: import('../lib/types').BranchStockResponse }
+  | { type: 'APPLY_QUOTE_BRANCH_STOCK'; branch: string; branchName: string; bySku: Record<string, { status: string; stockQty: number; collectionTimeframe: string; clickAndCollectReady: boolean }> }
+  | { type: 'SET_SPACE_PLANNER_PARAMS'; params: { roomType?: string; wallWidthMm?: number } }
   | { type: 'RESTORE'; state: Partial<JourneyState> }
   | { type: 'RESET' };
 
@@ -265,6 +267,27 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       return { ...state, phase: 'projectPlan', projectPlan: action.projectPlan };
     case 'SET_BRANCH_STOCK':
       return { ...state, branchStock: action.branchStock };
+    case 'APPLY_QUOTE_BRANCH_STOCK': {
+      // Patches the AUTHORITATIVE server quote's own lines with a real,
+      // per-branch stock check — until this fires, every line's `inStock` is
+      // whatever the quote-building tool set (usually just `true`), not
+      // anything branch-specific. Never touches price/totals; those stay
+      // server-owned exactly as P0-04 established.
+      if (!state.serverQuote) return { ...state, selectedBranch: action.branch, selectedBranchName: action.branchName };
+      const lines = state.serverQuote.lines.map((l) => {
+        const s = action.bySku[l.sku];
+        if (!s) return l;
+        return { ...l, inStock: s.clickAndCollectReady, branchStock: s };
+      });
+      return {
+        ...state,
+        selectedBranch: action.branch,
+        selectedBranchName: action.branchName,
+        serverQuote: { ...state.serverQuote, lines },
+      };
+    }
+    case 'SET_SPACE_PLANNER_PARAMS':
+      return { ...state, spacePlannerParams: action.params };
     case 'RESET':
       return { ...INITIAL_STATE };
     default:
@@ -322,7 +345,15 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         reason: l.reason,
         quantity: l.quantity,
         lineTotal: l.lineTotal,
-        stock: { label: l.inStock ? 'In stock' : 'Out of stock', color: l.inStock ? '#4E7C59' : '#B58A3C' },
+        // A real branch check (l.branchStock) overrides the generic "In
+        // stock"/"Out of stock" fallback with the actual per-branch status
+        // and collection timeframe once the customer has picked a branch.
+        stock: l.branchStock
+          ? {
+              label: `${l.branchStock.status}${l.branchStock.clickAndCollectReady ? ` · ${l.branchStock.collectionTimeframe}` : ''}`,
+              color: l.branchStock.status === 'In Stock' ? '#4E7C59' : l.branchStock.status === 'Low Stock' ? '#B58A3C' : '#B00020',
+            }
+          : { label: l.inStock ? 'In stock' : 'Out of stock', color: l.inStock ? '#4E7C59' : '#B58A3C' },
       }))
     : (state.customBom || []);
   const totals: QuoteTotals = sq

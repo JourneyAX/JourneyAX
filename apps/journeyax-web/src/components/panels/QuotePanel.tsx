@@ -1,8 +1,34 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { FINISHES, DEFAULT_ADDONS } from '@/lib/types';
+
+const PM_BRANCHES = [
+  { value: 'Mt Wellington', label: 'PlaceMakers Mount Wellington (106 Carbine Rd)' },
+  { value: 'Cook Street', label: 'PlaceMakers Cook Street (124 Cook St)' },
+  { value: 'Albany', label: 'PlaceMakers Albany (21 Corinthian Dr)' },
+  { value: 'Te Rapa', label: 'PlaceMakers Te Rapa (Maui St)' },
+  { value: 'Petone', label: 'PlaceMakers Petone (43 Bouverie St)' },
+  { value: 'Riccarton', label: 'PlaceMakers Riccarton (Mandeville St)' },
+];
+
+/** A hotlinked PlaceMakers CDN image can 202/challenge on first load (same WAF
+ *  gate as the Space Planner's cabinet cards) — a bare <img> with no fallback
+ *  just renders the browser's broken-image icon. Degrade to the same on-brand
+ *  📦 placeholder the "no imageUrl at all" case already uses. */
+function BomThumb({ imageUrl, name }: { imageUrl?: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  if (imageUrl && !failed) {
+    return <img src={imageUrl} alt={name} className="bom-row__thumb" onError={() => setFailed(true)} />;
+  }
+  return (
+    <div className="bom-row__thumb bom-row__thumb--empty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#002855', color: '#fff', fontSize: '18px' }}>
+      📦
+    </div>
+  );
+}
 
 export default function QuotePanel() {
   const { state, dispatch, bom, totals, quoteTitle, handleApprove, handleTryRemove } = useJourney();
@@ -37,6 +63,48 @@ export default function QuotePanel() {
     return symbol + Math.round(n).toLocaleString('en-US') + (isPlaceMakers ? ' NZD' : '');
   };
   const taxLabel = isPlaceMakers ? '15% NZ GST' : isCaroma ? 'GST' : 'Tax';
+
+  /* Real per-branch stock check (PlaceMakers) — the dropdown used to be
+   * decorative: no onChange, nothing it selected was ever checked, and the
+   * "In Stock" badge was just whatever the quote-building tool hardcoded.
+   * Calls the SAME BranchStockService the chat's checkBranchStock tool uses,
+   * so picking a branch here and asking about it in chat can never disagree. */
+  const [checkingBranch, setCheckingBranch] = useState(false);
+  const [branchCheckError, setBranchCheckError] = useState<string | null>(null);
+  const bomSkuSig = bom.map((l) => l.sku).filter(Boolean).join(',');
+
+  const checkBranch = async (branch: string) => {
+    if (!bomSkuSig) return;
+    setCheckingBranch(true);
+    setBranchCheckError(null);
+    try {
+      const items = bom.filter((l) => l.sku).map((l) => ({ sku: l.sku, productTitle: l.name }));
+      const res = await fetch('/api/branch-stock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, branch }),
+      });
+      const data = await res.json();
+      if (!data?.ok) throw new Error('check failed');
+      const bySku: Record<string, any> = {};
+      for (const r of data.results || []) bySku[r.sku] = r;
+      dispatch({ type: 'APPLY_QUOTE_BRANCH_STOCK', branch, branchName: data.branchName || branch, bySku });
+    } catch {
+      setBranchCheckError('Could not check stock right now — try again.');
+    } finally {
+      setCheckingBranch(false);
+    }
+  };
+
+  // Auto-check the default branch as soon as a real quote with SKUs exists —
+  // otherwise the panel would show "In Stock" for a branch nobody picked and
+  // nothing anyone actually checked.
+  useEffect(() => {
+    if (isPlaceMakers && bomSkuSig && !state.selectedBranch) {
+      checkBranch(PM_BRANCHES[0].value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaceMakers, bomSkuSig, state.selectedBranch]);
 
   return (
     <>
@@ -74,16 +142,26 @@ export default function QuotePanel() {
               </span>
             </div>
             <select
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 600, color: '#1e293b', background: '#fff' }}
-              defaultValue="PlaceMakers Mt Wellington (Auckland)"
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 600, color: '#1e293b', background: '#fff', opacity: checkingBranch ? 0.6 : 1 }}
+              value={state.selectedBranch || PM_BRANCHES[0].value}
+              disabled={checkingBranch}
+              onChange={(e) => checkBranch(e.target.value)}
             >
-              <option value="PlaceMakers Mt Wellington (Auckland)">PlaceMakers Mount Wellington (106 Carbine Rd) · In Stock</option>
-              <option value="PlaceMakers Cook Street (Auckland Central)">PlaceMakers Cook Street (124 Cook St) · In Stock</option>
-              <option value="PlaceMakers Albany (North Shore)">PlaceMakers Albany (21 Corinthian Dr) · In Stock</option>
-              <option value="PlaceMakers Te Rapa (Hamilton)">PlaceMakers Te Rapa (Maui St) · In Stock</option>
-              <option value="PlaceMakers Petone (Wellington)">PlaceMakers Petone (43 Bouverie St) · In Stock</option>
-              <option value="PlaceMakers Riccarton (Christchurch)">PlaceMakers Riccarton (Mandeville St) · In Stock</option>
+              {PM_BRANCHES.map((b) => (
+                <option key={b.value} value={b.value}>{b.label}</option>
+              ))}
             </select>
+            <p style={{ fontSize: '12px', marginTop: '8px', marginBottom: 0 }}>
+              {checkingBranch ? (
+                <span style={{ color: '#64748b' }}>Checking real stock at this branch…</span>
+              ) : branchCheckError ? (
+                <span style={{ color: '#B00020' }}>⚠ {branchCheckError}</span>
+              ) : state.selectedBranchName ? (
+                <span style={{ color: '#059669', fontWeight: 600 }}>
+                  ✓ Checked — {bom.filter((l) => l.stock?.color === '#4E7C59').length} of {bom.length} item{bom.length === 1 ? '' : 's'} ready for Click &amp; Collect at {state.selectedBranchName}
+                </span>
+              ) : null}
+            </p>
           </div>
         )}
 
@@ -164,13 +242,7 @@ export default function QuotePanel() {
           <div className="bom-label">Bill of Materials</div>
           {bom.map((line, i) => (
             <div key={`${line.key}-${i}`} className="bom-row">
-              {line.imageUrl ? (
-                <img src={line.imageUrl} alt={line.name} className="bom-row__thumb" />
-              ) : (
-                <div className="bom-row__thumb bom-row__thumb--empty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#002855', color: '#fff', fontSize: '18px' }}>
-                  📦
-                </div>
-              )}
+              <BomThumb imageUrl={line.imageUrl} name={line.name} />
               <div className="bom-row__main">
                 <div className="bom-row__name">{line.name}</div>
                 {line.required && (

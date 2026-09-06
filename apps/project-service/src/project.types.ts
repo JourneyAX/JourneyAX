@@ -282,9 +282,14 @@ export interface ProjectConfig {
   // Commerce surface for the storefront's closing step. DECLARED per brand — never
   // inferred from other config — so a B2C retailer never inherits the B2B project
   // -quote template (finishes, BOM, "how many bathrooms"). Unset ⇒ 'quote'.
-  //   'quote' → B2B project quote (Caroma fixtures, Augusta team kits)
+  //   'quote' → B2B project quote (Caroma fixtures, Augusta team kits, PlaceMakers trade BOMs)
   //   'cart'  → B2C retail bag + checkout (Abercrombie, M&M'S)
   commerceMode?: CommerceMode;
+
+  /** Dynamic CMS-driven component layouts and visualizer configuration */
+  components?: DynamicComponentConfig;
+  /** Configuration-driven multi-trade solution bundle templates */
+  multiTradeBundles?: MultiTradeBundleTemplate[];
 
   // ── Metadata ──────────────────────────────────────────────────
   createdAt: string;
@@ -541,3 +546,43 @@ export interface UpdateBusinessRuleDto {
   isActive?: boolean;
   status?: RuleStatus;
 }
+
+export interface DynamicComponentConfig {
+  productCard?: {
+    layout?: 'standard' | 'technical' | 'compact';
+    showBranchStock?: boolean;
+    showSpecs?: boolean;
+    badgeFields?: string[];
+  };
+  quoteCard?: {
+    layout?: 'multi-trade-bom' | 'retail-summary';
+    showTradeDiscounts?: boolean;
+    fulfillmentOptions?: ('branch-pickup' | 'delivery' | 'trade-dispatch')[];
+    defaultBranch?: string;
+  };
+  spacePlanner?: {
+    enabled: boolean;
+    roomTypes?: string[];
+    defaultRoom?: string;
+  };
+  discoveryQuestions?: Array<{
+    id: string;
+    trigger: string;
+    questions: string[];
+    options?: string[];
+  }>;
+}
+
+export interface MultiTradeBundleTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  trades: Array<{
+    tradeName: string;
+    tradeCode: string;
+    required: boolean;
+    defaultSkus: string[];
+  }>;
+}
+

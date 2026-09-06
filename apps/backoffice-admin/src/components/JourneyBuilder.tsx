@@ -421,7 +421,15 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
           {error}
         </div>
       )}
-      <div style={{ flex: 1, minHeight: 620 }}>
+      {/* A concrete height, not flex:1 — this page is normal page-flow (no
+          viewport-height app shell above it), so "height: 100%"/flex:1 have no
+          real ancestor to resolve against and the container silently grows to
+          whatever its content naturally sizes to. Confirmed live: with real
+          node data loaded for the first time, the panel measured 2830px tall
+          instead of the intended ~620px, and React Flow's fitView (correctly)
+          fit to THAT — so a populated graph looked empty because reaching it
+          needed page-scrolling, not canvas-panning. */}
+      <div style={{ height: 620 }}>
         <NodeCanvas<JourneyNodeData>
           nodes={nodes}
           edges={edges}

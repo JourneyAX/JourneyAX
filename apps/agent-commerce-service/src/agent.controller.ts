@@ -7,6 +7,7 @@ import { OrderService } from './commerce/order.service';
 import { RosterService } from './commerce/roster.service';
 import { SchoolResearchService } from './commerce/school-research.service';
 import { WhatsAppService } from './commerce/whatsapp.service';
+import { BranchStockService } from './commerce/branch-stock.service';
 import { ConfigLoader } from './pipeline/config-loader';
 import { SessionStore } from './pipeline/session-store';
 
@@ -61,6 +62,40 @@ export class JourneyAXController {
     });
   }
 
+
+  /**
+   * Direct branch-stock check for a set of quote lines — no chat turn needed.
+   *
+   * Powers the storefront's branch-picker dropdown (QuotePanel): the customer
+   * picks a branch, we look up real per-SKU stock right there. Reuses the SAME
+   * BranchStockService the chat's checkBranchStock tool already calls, so the
+   * numbers a customer sees by picking a branch and by asking in chat can
+   * never disagree with each other.
+   */
+  @Post('branch-stock')
+  async checkBranchStockDirect(
+    @Param('projectId') _projectId: string,
+    @Body() body: { items?: { sku?: string; productTitle?: string }[]; branch?: string },
+  ) {
+    const items = Array.isArray(body?.items) ? body.items : [];
+    const branch = String(body?.branch || '').trim();
+    let branchName = branch;
+    const results = items
+      .filter((it) => it?.sku)
+      .map((it) => {
+        const r = BranchStockService.getStockForSku(String(it.sku), it.productTitle || 'Building Material / Tool', branch);
+        const top = r.branches[0];
+        if (top?.branchName) branchName = top.branchName;
+        return {
+          sku: String(it.sku),
+          status: top?.status || 'Order on Request',
+          stockQty: top?.stockQty ?? 0,
+          clickAndCollectReady: !!top?.clickAndCollectReady,
+          collectionTimeframe: top?.collectionTimeframe || 'Transfer from DC (2 days)',
+        };
+      });
+    return { ok: true, branch, branchName, results };
+  }
 
   /**
    * Read a pasted roster and PROPOSE how to interpret it (AUG-32).

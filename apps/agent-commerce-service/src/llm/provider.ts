@@ -107,9 +107,18 @@ export function getChatClient(config?: string | LlmClientConfig): OpenAI {
   const cached = clients.get(cacheKey);
   if (cached) return cached;
 
+  // A reasoning model (gpt-5) with a long journeyGuidance system prompt and a
+  // full tool schema can legitimately take well over 60s to produce a single
+  // completion — at maxRetries:2 the SDK was silently retrying a merely-slow
+  // call, restarting the same expensive reasoning from scratch each time and
+  // compounding a ~70s wait into a 150-180s customer-facing hang. Widening the
+  // per-attempt budget and cutting retries to 1 favours letting one real
+  // attempt finish over blindly repeating an already-in-flight slow call.
   const client = new OpenAI({
     ...(r.baseURL ? { baseURL: r.baseURL } : {}),
     apiKey: r.apiKey || 'missing',
+    timeout: 90_000,
+    maxRetries: 1,
   });
   clients.set(cacheKey, client);
   return client;

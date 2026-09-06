@@ -50,6 +50,7 @@ export class StandaloneKnowledgeAdapter implements KnowledgePort {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': ctx.tenantId },
         body: JSON.stringify(team),
+        signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) return { ok: false, message: `Could not save the team (HTTP ${res.status}).` };
       return (await res.json()) as { ok: boolean; message: string };
@@ -65,6 +66,7 @@ export class StandaloneKnowledgeAdapter implements KnowledgePort {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': ctx.tenantId },
         body: JSON.stringify({ query, ...where }),
+        signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) return empty;
       return (await res.json()) as KnowledgeTeams;
@@ -80,6 +82,7 @@ export class StandaloneKnowledgeAdapter implements KnowledgePort {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': ctx.tenantId },
         body: JSON.stringify({ sku }),
+        signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) return empty;
       return (await res.json()) as KnowledgeOptions;
@@ -95,6 +98,7 @@ export class StandaloneKnowledgeAdapter implements KnowledgePort {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': ctx.tenantId },
         body: JSON.stringify({ sku }),
+        signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) return empty;
       return (await res.json()) as KnowledgeRelated;
@@ -117,6 +121,7 @@ export class StandaloneKnowledgeAdapter implements KnowledgePort {
           limit: q.limit ?? 8,
           gender: q.gender,
         }),
+        signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) {
         return {

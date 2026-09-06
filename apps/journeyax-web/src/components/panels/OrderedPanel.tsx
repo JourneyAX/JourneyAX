@@ -18,9 +18,9 @@ export default function OrderedPanel() {
   const { state, totals, handleRestart } = useJourney();
   const cfg = useStorefrontConfig();
   const { orderId, placedOrder } = state;
-  // A fixtures tenant validates "bathrooms" with EasySwitch parts; a garment
-  // tenant orders a kit. Keep the confirmation in the tenant's own language.
-  const isFixtures = !cfg.configurator || cfg.configurator.productType !== 'garment';
+  const isCaroma = cfg.projectId === 'caroma';
+  const isPlaceMakers = cfg.projectId === 'placemakers';
+  const isFixtures = isCaroma && (!cfg.configurator || cfg.configurator.productType !== 'garment');
 
   const paid = placedOrder?.status === 'paid';
   const money = (n?: number | null) =>
@@ -29,7 +29,7 @@ export default function OrderedPanel() {
       : null;
   // The order's own total when we have it; the in-tab figure is only a fallback
   // for a journey that never left for payment.
-  const total = money(placedOrder?.total) ?? formatAUD(totals.total);
+  const total = money(placedOrder?.total) ?? (isPlaceMakers ? `$${totals.total.toFixed(2)} NZD` : formatAUD(totals.total));
   const lines = placedOrder?.lines || [];
 
   return (
@@ -42,18 +42,17 @@ export default function OrderedPanel() {
       <div className="ordered-panel__eyebrow">
         {paid ? 'Payment received' : 'Order created'} · {placedOrder?.orderId || orderId}
       </div>
-      <h2 className="ordered-panel__heading">{paid ? 'You’re all set.' : 'Converted to order.'}</h2>
+      <h2 className="ordered-panel__heading">{paid ? 'You’re all set.' : (isPlaceMakers ? 'PlaceMakers Order Confirmed' : 'Converted to order.')}</h2>
       <p className="ordered-panel__desc">
-        {/* Claim only what actually happened. The previous copy promised a
-            confirmation and spec sheet "on the way to your account" — nothing
-            sends either, so it was a promise the product does not keep. */}
         {paid
           ? `Payment confirmed and your order is locked in at this price — every item, size and quantity as shown. ${
               placedOrder?.leadTimeSummary
               || 'It moves into production next; quote the order number above with any question.'}`
-          : isFixtures
-            ? `${state.qty} validated bathroom${state.qty > 1 ? 's' : ''} — every fixture, finish and required EasySwitch in-wall body — locked in at your price.`
-            : 'Your order is locked in at your price — every item, size and quantity confirmed.'}
+          : isPlaceMakers
+            ? 'Your PlaceMakers order is locked in and ready for 60-Minute Branch Pickup at your selected branch (or scheduled site delivery). Quote the order reference number above upon arrival.'
+            : isFixtures
+              ? `${state.qty} validated bathroom${state.qty > 1 ? 's' : ''} — every fixture, finish and required EasySwitch in-wall body — locked in at your price.`
+              : 'Your order is locked in at your price — every item, size and quantity confirmed.'}
       </p>
 
       {/* What was bought. A confirmation without the items is a receipt with the

@@ -7,11 +7,13 @@
     <!-- Yellow/Orange Accent -->
     <path d="M28 28 L38 4 L44 4 L34 28 Z" fill="#FFB81C" />
   </g>
-  <!-- Text Wordmark -->
-  <text x="48" y="27" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="21" fill="#FFFFFF" letter-spacing="-0.5">
-    Place<tspan fill="#FFB81C">Makers</tspan>
+  <!-- Text Wordmark — dark-on-light, since this app's header/sidebar is white
+       (the original white/light-blue fills were designed for PlaceMakers'
+       own dark teal header and were invisible here). -->
+  <text x="48" y="27" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="21" fill="#111111" letter-spacing="-0.5">
+    Place<tspan fill="#E31E24">Makers</tspan>
   </text>
-  <text x="180" y="16" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="8" fill="#93C5FD" letter-spacing="0.5">
+  <text x="180" y="16" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="8" fill="#6B7280" letter-spacing="0.5">
     NZ
   </text>
 </svg>

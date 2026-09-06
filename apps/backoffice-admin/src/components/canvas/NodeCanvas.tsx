@@ -57,7 +57,7 @@
  * yourself — NodeCanvas already provides its own internally, so a bare
  * <NodeCanvas {...props} /> works standalone.
  */
-import React, { ReactNode, useCallback, useRef, useState } from "react";
+import React, { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -138,10 +138,26 @@ function NodeCanvasInner<NodeData extends Record<string, any>, EdgeData extends 
   } = props;
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savingLocal, setSavingLocal] = useState(false);
   const [publishingLocal, setPublishingLocal] = useState(false);
+
+  // The `fitView` prop below only fits ONCE, on ReactFlow's own initial mount —
+  // but every consumer here loads its nodes asynchronously (a project fetch
+  // completing after mount), so that first fit runs against an empty node
+  // list and never re-fires once the real nodes arrive. Nodes then render
+  // correctly in the DOM but sit far outside the still-empty-state viewport —
+  // a populated graph reads as a blank canvas. Re-fit once, the first time
+  // nodes actually appear, and never again (so it doesn't fight the user
+  // panning/zooming while editing).
+  const hasAutoFitRef = useRef(false);
+  useEffect(() => {
+    if (nodes.length > 0 && !hasAutoFitRef.current) {
+      hasAutoFitRef.current = true;
+      requestAnimationFrame(() => fitView({ padding: 0.2 }));
+    }
+  }, [nodes.length, fitView]);
 
   const selectedNode = (nodes.find((n) => n.id === selectedId) as Node<NodeData> | undefined) || null;
 

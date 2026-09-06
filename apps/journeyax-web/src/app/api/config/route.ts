@@ -51,6 +51,8 @@ export async function GET(req: Request) {
         heroHeadline: typeof p.intro.heroHeadline === 'string' ? p.intro.heroHeadline : undefined,
         heroSubtitle: typeof p.intro.heroSubtitle === 'string' ? p.intro.heroSubtitle : undefined,
       } : null,
+      components: p?.components || null,
+      multiTradeBundles: p?.multiTradeBundles || null,
     });
   } catch {
     return json(fallback(PROJECT_ID));
@@ -58,6 +60,41 @@ export async function GET(req: Request) {
 }
 
 function fallback(projectId: string) {
+  if (projectId === 'placemakers') {
+    return {
+      projectId: 'placemakers',
+      companyName: 'PlaceMakers (Fletcher Building)',
+      theme: {
+        primaryColor: '#E31E24',
+        accentColor: '#111111',
+        fontFamily: "'Arial', 'Helvetica Neue', sans-serif",
+        logoUrl: '/brands/placemakers.png',
+        visualizerEnabled: true,
+      },
+      labels: { items: 'Trade Building Products', itemsSingular: 'Product', headerTitle: 'PlaceMakers Project Consultant' },
+      greeting: "Kia ora! I'm your PlaceMakers project and materials consultant. Whether you're planning a complete laundry or bathroom makeover, building a compliant deck, or estimating materials across our branches, how can I help you today?",
+      systemName: 'PlaceMakers Consultant',
+      capabilities: ['products', 'quote', 'steps', 'installGuide', 'warranty', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner'],
+      commerceMode: 'quote',
+      components: {
+        productCard: { layout: 'technical', showBranchStock: true, showSpecs: true },
+        quoteCard: { layout: 'multi-trade-bom', showTradeDiscounts: true, fulfillmentOptions: ['branch-pickup', 'delivery', 'trade-dispatch'], defaultBranch: 'Mount Wellington / Cook St' },
+        spacePlanner: { enabled: true, roomTypes: ['laundry', 'bathroom', 'decking'], defaultRoom: 'laundry' },
+      },
+      intro: {
+        heroHeadline: 'Build it right with PlaceMakers.',
+        heroSubtitle: 'Instant multi-trade material estimation, compliant project packs, and 60-minute branch pickup.',
+        inputPlaceholder: 'e.g. I want to plan a complete laundry makeover for a 2.4m space...',
+        starters: [
+          { label: '🧺 Laundry Room Makeover', prompt: 'I want to do a complete laundry room makeover with cabinetry, tub, and wall linings.' },
+          { label: '🪵 Kwila Deck Estimator', prompt: 'Estimate Kwila decking, SG8 framing, and stainless screws for a 5m x 4m deck.' },
+          { label: '🛁 GIB Aqualine & Wet Walls', prompt: 'What moisture-resistant linings and waterproofing do I need for my wet area?' },
+          { label: '📍 Branch Stock Check', prompt: 'Check stock availability for Robinhood SuperTub and GIB Aqualine at Mt Wellington branch.' },
+        ],
+      },
+    };
+  }
+
   return {
     projectId,
     companyName: 'JourneyAX',
@@ -66,6 +103,8 @@ function fallback(projectId: string) {
     greeting: '',
     systemName: '',
     commerceMode: 'quote',
+    components: null,
+    multiTradeBundles: null,
   };
 }
 
