@@ -434,7 +434,48 @@ export interface JourneyState {
    *  the panel can tell "not yet checked" apart from "checked, this branch". */
   selectedBranch?: string;
   selectedBranchName?: string;
+
+  // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ──────────────────
+  /** Cards on the stage, most-recent last. `activeCardId` (default: the last
+   *  one) picks which renders full-size; earlier cards are a history strip.
+   *  Legacy phase-driven state (recommendedProducts, serverQuote, …) still
+   *  gets mirrored into a card by the reducer so nothing regresses while the
+   *  agent side migrates to presentation tools that emit cards directly. */
+  cards: CardInstance[];
+  activeCardId?: string;
+  /** Floating command bar's "Working for Ns" strip — set on send, cleared a
+   *  moment after the reply lands. Not persisted across a reload. */
+  working?: {
+    startedAt: number;
+    label?: string;
+    heard?: string;
+    steps: { title: string; detail?: string; status?: 'done' | 'running' | 'pending' }[];
+    lastReply?: string;
+  } | null;
 }
+
+/** A card on the stage: which template resolves it (by cardType, via
+ *  resolveTemplate) and the server-joined data it binds to. Mirrors
+ *  @journeyax/ui-cards' CardInstance; kept local so this file has no runtime
+ *  dependency on the package (types only). */
+export interface CardInstance {
+  id: string;
+  cardType:
+    | 'hero' | 'clarify' | 'products' | 'productDetail' | 'comparison' | 'bundle'
+    | 'quote' | 'cart' | 'orderStatus' | 'guide' | 'plan' | 'accessories'
+    | 'warranty' | 'fitment' | 'disclosure' | 'suggestions' | 'working';
+  state: Record<string, unknown>;
+  variant?: string;
+  streamId?: string;
+  createdAt?: string;
+}
+
+/** Phases still rendered by a legacy React panel, not a card template.
+ *  CardStage takes over every other phase once `state.cards` is non-empty. */
+export const LEGACY_CARD_PHASES: Phase[] = [
+  'configurator', 'designEditor', 'concepts', 'teamDesign', 'teamRoster',
+  'teamPreview', 'photoUploadDesign', 'spacePlanner',
+];
 
 export const INITIAL_STATE: JourneyState = {
   phase: 'intro',
@@ -460,6 +501,8 @@ export const INITIAL_STATE: JourneyState = {
   showToast: false,
   orderId: null,
   isThinking: false,
+  cards: [],
+  working: null,
 };
 
 // ── Product data (from wireframe — real Caroma products) ───────────────

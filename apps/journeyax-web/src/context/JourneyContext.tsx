@@ -4,8 +4,13 @@ import React, { createContext, useContext, useReducer, useCallback, useRef, useE
 import {
   JourneyState, INITIAL_STATE, Phase, ClarifyAnswers, DynamicQuestion, RecommendedProduct,
   FINISHES, DEFAULT_ADDONS, formatAUD, getStockInfo, BOMLine, QuoteTotals, ServerQuote,
-  TeamDesignViews, RosterRow
+  TeamDesignViews, RosterRow, CardInstance
 } from '@/lib/types';
+import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import {
+  mapProductsCard, mapQuoteCard, mapGuideCard, mapAccessoriesCard, mapClarifyCard,
+  mapWarrantyCard, mapFitmentCard, mapPlanCard, mapOrderStatusCard, mapHeroCard,
+} from '@/lib/cards/mappers';
 
 type Action =
   | { type: 'SET_PHASE'; phase: Phase }
@@ -52,7 +57,18 @@ type Action =
   | { type: 'APPLY_QUOTE_BRANCH_STOCK'; branch: string; branchName: string; bySku: Record<string, { status: string; stockQty: number; collectionTimeframe: string; clickAndCollectReady: boolean }> }
   | { type: 'SET_SPACE_PLANNER_PARAMS'; params: { roomType?: string; wallWidthMm?: number } }
   | { type: 'RESTORE'; state: Partial<JourneyState> }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ──────────────────
+  // Pure card-stack ops. Cfg-aware MAPPING (legacy state → CardInstance,
+  // e.g. reading cfg.fulfilment.branches into a quote card) happens in
+  // JourneyProvider's card-sync effect below, which has access to
+  // useStorefrontConfig() — the reducer itself stays config-free.
+  | { type: 'PUSH_CARD'; card: CardInstance }
+  | { type: 'SET_ACTIVE_CARD'; id: string }
+  | { type: 'POP_CARD'; id?: string }
+  | { type: 'PATCH_CARD'; id: string; state: Record<string, unknown> }
+  | { type: 'SET_WORKING'; working: JourneyState['working'] }
+  | { type: 'CLEAR_CARDS' };
 
 function reducer(state: JourneyState, action: Action): JourneyState {
   switch (action.type) {
@@ -288,6 +304,40 @@ function reducer(state: JourneyState, action: Action): JourneyState {
     }
     case 'SET_SPACE_PLANNER_PARAMS':
       return { ...state, spacePlannerParams: action.params };
+
+    // ── Card CMS (v3) ──────────────────────────────────────────────────
+    case 'PUSH_CARD': {
+      // A card REPLACES the most recent card of the same cardType (the agent
+      // re-presenting products/a quote updates what's on stage, it doesn't
+      // pile up a duplicate) unless the card opts into stacking via
+      // variant:'append' (suggestion chips under whatever is already active).
+      const append = action.card.variant === 'append';
+      const cards = append
+        ? [...state.cards, action.card]
+        : [...state.cards.filter((c) => c.cardType !== action.card.cardType), action.card];
+      // Cap the history strip so a long session doesn't grow this forever.
+      const trimmed = cards.length > 12 ? cards.slice(cards.length - 12) : cards;
+      return { ...state, cards: trimmed, activeCardId: action.card.id };
+    }
+    case 'SET_ACTIVE_CARD':
+      return state.cards.some((c) => c.id === action.id) ? { ...state, activeCardId: action.id } : state;
+    case 'POP_CARD': {
+      const id = action.id ?? state.activeCardId;
+      if (!id) return state;
+      const cards = state.cards.filter((c) => c.id !== id);
+      const activeCardId = state.activeCardId === id ? cards[cards.length - 1]?.id : state.activeCardId;
+      return { ...state, cards, activeCardId };
+    }
+    case 'PATCH_CARD':
+      return {
+        ...state,
+        cards: state.cards.map((c) => (c.id === action.id ? { ...c, state: { ...c.state, ...action.state } } : c)),
+      };
+    case 'SET_WORKING':
+      return { ...state, working: action.working };
+    case 'CLEAR_CARDS':
+      return { ...state, cards: [], activeCardId: undefined };
+
     case 'RESET':
       return { ...INITIAL_STATE };
     default:
@@ -326,6 +376,82 @@ const JourneyContext = createContext<JourneyContextType | null>(null);
 
 export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const cfg = useStorefrontConfig();
+
+  // ── Card CMS card-sync (v3) ──────────────────────────────────────────
+  // Mirrors legacy phase-driving state into `state.cards` so CardStage can
+  // render it through a tenant's template instead of the matching React
+  // panel. Lives here (not in the reducer) because several of these mappings
+  // need `cfg` (fulfilment branches, intro copy) and the reducer is
+  // deliberately config-free — see docs/v3-card-cms-architecture.md.
+  const nextCardId = useRef(0);
+  const newId = (cardType: string) => `${cardType}-${Date.now()}-${nextCardId.current++}`;
+
+  useEffect(() => {
+    if (state.recommendedProducts.length === 0) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('products'), cardType: 'products', state: mapProductsCard(state.recommendedProducts) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.recommendedProducts]);
+
+  useEffect(() => {
+    if (!state.serverQuote) return;
+    dispatch({
+      type: 'PUSH_CARD',
+      card: {
+        id: newId('quote'), cardType: 'quote',
+        state: mapQuoteCard(state.serverQuote, { fulfilment: cfg.fulfilment, selectedBranch: state.selectedBranch, selectedBranchName: state.selectedBranchName }),
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.serverQuote, state.selectedBranch, state.selectedBranchName]);
+
+  useEffect(() => {
+    if (state.guideSteps.length === 0) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('guide'), cardType: 'guide', state: mapGuideCard(state.guideSteps) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.guideSteps]);
+
+  useEffect(() => {
+    if (!state.accessories?.length) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('accessories'), cardType: 'accessories', state: mapAccessoriesCard(state.accessories) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.accessories]);
+
+  useEffect(() => {
+    if (state.dynamicQuestions.length === 0) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('clarify'), cardType: 'clarify', state: mapClarifyCard(state.dynamicQuestions) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.dynamicQuestions]);
+
+  useEffect(() => {
+    if (!state.warranty) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('warranty'), cardType: 'warranty', state: mapWarrantyCard(state.warranty) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.warranty]);
+
+  useEffect(() => {
+    if (!state.sizeRecommendation) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('fitment'), cardType: 'fitment', state: mapFitmentCard(state.sizeRecommendation) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sizeRecommendation]);
+
+  useEffect(() => {
+    if (!state.projectPlan) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('plan'), cardType: 'plan', state: mapPlanCard(state.projectPlan) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.projectPlan]);
+
+  useEffect(() => {
+    if (!state.placedOrder) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('orderStatus'), cardType: 'orderStatus', state: mapOrderStatusCard(state.placedOrder) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.placedOrder]);
+
+  useEffect(() => {
+    if (state.phase !== 'intro' || state.cards.length > 0) return;
+    dispatch({ type: 'PUSH_CARD', card: { id: newId('hero'), cardType: 'hero', state: mapHeroCard(cfg.intro, cfg.companyName, cfg.greeting) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase, cfg.intro, cfg.companyName, cfg.greeting]);
 
   // P0-04: when the server quote is present it is the SINGLE source of truth for
   // both line items and money. The legacy browser-side calculateTotals path is a

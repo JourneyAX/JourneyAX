@@ -25,6 +25,8 @@ import SizeRecommendationPanel from './panels/SizeRecommendationPanel';
 import PhotoUploadDesignPanel from './panels/PhotoUploadDesignPanel';
 import ProjectPlanPanel from './panels/ProjectPlanPanel';
 import SpacePlannerPanel from './panels/SpacePlannerPanel';
+import CardStage from './cards/CardStage';
+import { LEGACY_CARD_PHASES } from '@/lib/types';
 
 export default function ProjectPanel() {
   const { state } = useJourney();
@@ -38,29 +40,39 @@ export default function ProjectPanel() {
   // never inherits the fixtures/quote template. Default 'quote' (Caroma/Augusta).
   const isCart = cfg?.commerceMode === 'cart';
 
+  // Card CMS (v3): once the agent's output has been mirrored into a card
+  // (see JourneyContext's card-sync effects) it renders through CardStage —
+  // a tenant's json-render template, not this file's hardcoded panels — for
+  // every phase that isn't still a bespoke React experience (3D configurator,
+  // team design, space planner, …; see LEGACY_CARD_PHASES). This is additive:
+  // the panels below stay as the fallback for those phases and for the one
+  // render before the first card-sync effect fires.
+  const useCardStage = state.cards.length > 0 && !LEGACY_CARD_PHASES.includes(state.phase);
+
   return (
     <div className="project-panel">
-      {state.phase === 'intro' && <HeroPanel />}
-      {state.phase === 'research' && <ResearchPanel />}
-      {state.phase === 'clarify' && <ClarifyPanel />}
-      {state.phase === 'validating' && <ValidatingPanel />}
-      {state.phase === 'products' && <ProductsPanel />}
-      {state.phase === 'accessories' && <AccessoriesPanel />}
-      {state.phase === 'choice' && <ChoicePanel />}
-      {state.phase === 'install' && <InstallGuidePanel />}
-      {state.phase === 'warranty' && <WarrantyPanel />}
-      {state.phase === 'guide' && <GuidePanel />}
-      {state.phase === 'quote' && (isCart ? <RetailCartPanel /> : <QuotePanel />)}
-      {state.phase === 'ordered' && <OrderedPanel />}
+      {useCardStage && <CardStage />}
+      {!useCardStage && state.phase === 'intro' && <HeroPanel />}
+      {!useCardStage && state.phase === 'research' && <ResearchPanel />}
+      {!useCardStage && state.phase === 'clarify' && <ClarifyPanel />}
+      {!useCardStage && state.phase === 'validating' && <ValidatingPanel />}
+      {!useCardStage && state.phase === 'products' && <ProductsPanel />}
+      {!useCardStage && state.phase === 'accessories' && <AccessoriesPanel />}
+      {!useCardStage && state.phase === 'choice' && <ChoicePanel />}
+      {!useCardStage && state.phase === 'install' && <InstallGuidePanel />}
+      {!useCardStage && state.phase === 'warranty' && <WarrantyPanel />}
+      {!useCardStage && state.phase === 'guide' && <GuidePanel />}
+      {!useCardStage && state.phase === 'quote' && (isCart ? <RetailCartPanel /> : <QuotePanel />)}
+      {!useCardStage && state.phase === 'ordered' && <OrderedPanel />}
       {state.phase === 'concepts' && <ConceptsPanel />}
       {state.phase === 'configurator' && (isCandy ? <CandyDesignPanel /> : <ConfiguratorPanel />)}
       {state.phase === 'designEditor' && <DesignEditorPanel />}
       {state.phase === 'teamDesign' && <TeamDesignPanel />}
       {state.phase === 'teamRoster' && <TeamRosterPanel />}
       {state.phase === 'teamPreview' && <ConfiguratorPanel />}
-      {state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
+      {!useCardStage && state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
       {state.phase === 'photoUploadDesign' && <PhotoUploadDesignPanel />}
-      {state.phase === 'projectPlan' && <ProjectPlanPanel />}
+      {!useCardStage && state.phase === 'projectPlan' && <ProjectPlanPanel />}
       {state.phase === 'spacePlanner' && (
         <SpacePlannerPanel
           // Keyed on the params themselves: a later openSpacePlanner call (the

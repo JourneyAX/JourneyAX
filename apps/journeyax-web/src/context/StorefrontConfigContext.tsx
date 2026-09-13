@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
+import { mergeTokens, applyTokens, type UiTheme } from '@journeyax/ui-cards';
 
 export interface ConfiguratorConfig {
   enabled?: boolean;
@@ -64,6 +65,23 @@ export interface StorefrontConfig {
   components?: DynamicComponentConfig | null;
   /** Multi-trade solution bundle templates */
   multiTradeBundles?: any[] | null;
+
+  // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ──────────────────
+  /** Theme layers 1+2: `--jx-*` design tokens + per-card settings. */
+  uiTheme?: UiTheme | null;
+  /** Layer 3: tenant overrides of the platform default card templates,
+   *  keyed by cardType (json-render spec). Consumed by `resolveTemplate`. */
+  cardTemplates?: Record<string, { cardType: string; spec: unknown; variant?: string }> | null;
+  /** How this tenant fulfils an order — the quote/cart card's branch picker
+   *  reads this instead of a hardcoded branch list. */
+  fulfilment?: FulfilmentConfig | null;
+}
+
+export interface FulfilmentConfig {
+  mode?: 'delivery' | 'collect' | 'both';
+  label?: string;
+  badge?: string;
+  branches?: { id: string; name: string; address?: string }[];
 }
 
 const DEFAULT: StorefrontConfig = {
@@ -78,6 +96,9 @@ const DEFAULT: StorefrontConfig = {
   commerceMode: 'quote',
   components: null,
   multiTradeBundles: null,
+  uiTheme: null,
+  cardTemplates: null,
+  fulfilment: null,
 };
 
 const Ctx = createContext<StorefrontConfig>(DEFAULT);
@@ -120,6 +141,30 @@ function applyTheme(theme: StorefrontConfig['theme']) {
   if (theme.sidebarColor) root.setProperty('--sidebar-bg', theme.sidebarColor);
 }
 
+/**
+ * v3 Card CMS theming: emit `--jx-*` tokens for the card catalog. A tenant
+ * that hasn't opened the theming studio yet has no `uiTheme.tokens` — derive
+ * a sane one from the legacy `theme` block so cards still look on-brand
+ * (primary→brand, accent→accent/text, font→display) rather than falling all
+ * the way back to the platform's neutral defaults.
+ */
+function applyCardTheme(uiTheme: UiTheme | null | undefined, legacyTheme: StorefrontConfig['theme']) {
+  if (uiTheme?.tokens) {
+    applyTokens(mergeTokens(uiTheme.tokens));
+    return;
+  }
+  const colors: Record<string, string> = {};
+  if (legacyTheme.primaryColor) colors.brand = legacyTheme.primaryColor;
+  if (legacyTheme.accentColor) {
+    colors.accent = legacyTheme.accentColor;
+    if (!isLightHex(legacyTheme.accentColor)) colors.text = legacyTheme.accentColor;
+  }
+  const derived: Record<string, unknown> = {};
+  if (Object.keys(colors).length) derived.colors = colors;
+  if (legacyTheme.fontFamily) derived.font = { display: legacyTheme.fontFamily };
+  applyTokens(mergeTokens(derived as Partial<import('@journeyax/ui-cards').ThemeTokens>));
+}
+
 export function StorefrontConfigProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<StorefrontConfig>(DEFAULT);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +183,7 @@ export function StorefrontConfigProvider({ children }: { children: React.ReactNo
         }
         setConfig({ ...DEFAULT, ...c, labels: { ...DEFAULT.labels, ...(c.labels || {}) } });
         applyTheme(c.theme || {});
+        applyCardTheme(c.uiTheme || null, c.theme || {});
       })
       .catch(() => { /* keep defaults */ });
     return () => { alive = false; };
