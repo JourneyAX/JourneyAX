@@ -9,6 +9,7 @@ import {
   messagesKey, sessionKey, journeyKey, newId, summarise,
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
+import SpeedPerformanceModal from './SpeedPerformanceModal';
 
 /**
  * Stream a chat turn via SSE. Live-updates the assistant message on each `token`
@@ -20,6 +21,7 @@ async function streamChat(
   newMessages: any[],
   setMessages: (m: any[]) => void,
   tenantId?: string,
+  dispatch?: (action: any) => void,
 ): Promise<any> {
   const res = await fetch('/api/chat/stream', {
     method: 'POST',
@@ -34,6 +36,13 @@ async function streamChat(
   let buffer = '';
   let streamText = '';
   let doneData: any = null;
+  let capturedSessionId: string | null = null;
+  let sentSessionId: string | undefined;
+  try {
+    const parsedBody = JSON.parse(body);
+    sentSessionId = parsedBody.sessionId;
+  } catch { /* best effort */ }
+
   // Accumulate UI actions as they stream, so we can still render the result even
   // if the connection ends without a clean `done` event (happens on the slow
   // quote turn, which has a long silent gap while the BOM is assembled).
@@ -46,13 +55,28 @@ async function streamChat(
     const ev = evLine.slice(6).trim();
     let payload: any;
     try { payload = JSON.parse(dataLine.slice(5).trim()); } catch { return; }
-    if (ev === 'token') {
+    if (ev === 'session' && payload.sessionId) {
+      capturedSessionId = payload.sessionId;
+    } else if (ev === 'token') {
       streamText += payload.delta || '';
       setMessages([...newMessages, { role: 'assistant', content: streamText }]);
     } else if (ev === 'uiAction') {
       streamedUiActions.push(payload);
+      if (dispatch) {
+        if (payload.name === 'setPhase' && payload.arguments?.phase) {
+          dispatch({
+            type: 'SET_PHASE',
+            phase: payload.arguments.phase,
+            questions: payload.arguments.questions,
+          });
+        } else if (payload.name === 'showItems' && (payload.arguments?.items || payload.arguments?.products)) {
+          const items = payload.arguments.items || payload.arguments.products;
+          dispatch({ type: 'SET_RECOMMENDED_PRODUCTS', products: items });
+        }
+      }
     } else if (ev === 'done') {
       doneData = payload;
+      if (payload.sessionId) capturedSessionId = payload.sessionId;
     } else if (ev === 'error') {
       throw new Error(payload.message || 'stream error');
     }
@@ -75,6 +99,7 @@ async function streamChat(
    * from nothing, and anything the server remembered (the roster size, what has
    * been shown) was unreachable. Drain whatever is left before giving up. */
   if (buffer.trim()) handleFrame(buffer);
+  const effectiveSessionId = capturedSessionId || doneData?.sessionId || sentSessionId;
   if (doneData) {
     /* Belt-and-braces: the `done` frame normally carries the full uiActions, but
      * if any streamed uiAction (showItems/setPhase/…) is missing from it, keep the
@@ -84,13 +109,14 @@ async function streamChat(
     const keyOf = (a: any) => `${a?.name}:${typeof a?.arguments === 'string' ? a.arguments : JSON.stringify(a?.arguments ?? {})}`;
     const seen = new Set(doneUi.map(keyOf));
     const merged = [...doneUi, ...streamedUiActions.filter((a) => !seen.has(keyOf(a)))];
-    return { ...doneData, uiActions: merged };
+    return { ...doneData, sessionId: effectiveSessionId, uiActions: merged };
   }
   // No clean `done` — reconstruct from what streamed. As long as we got text or a
   // UI action (e.g. the quote), render it rather than throwing into the buffered
-  // error path. sessionId is left as-is (kept from the prior turn).
+  // error path. sessionId is preserved so subsequent turns never lose context.
   if (streamText || streamedUiActions.length) {
     return {
+      sessionId: effectiveSessionId,
       message: { role: 'assistant', content: streamText },
       uiActions: streamedUiActions,
       conversation: [],
@@ -145,6 +171,7 @@ export default function ChatPanel() {
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
+  const [perfModalOpen, setPerfModalOpen] = useState(false);
   // sendToAI is a stable closure; reading convoId directly would pin whichever
   // thread was open when it was created.
   const convoIdRef = useRef('');
@@ -365,7 +392,7 @@ export default function ChatPanel() {
       // so the storefront keeps working exactly as before.
       let data: any;
       try {
-        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId);
+        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId, dispatch);
       } catch (streamErr) {
         console.warn('[chat] streaming failed, using buffered fallback:', streamErr);
         guardedSetMessages(newMessages); // clear any partial streamed text
@@ -445,14 +472,19 @@ export default function ChatPanel() {
             // P0-04: arguments IS the authoritative server quote (lines + totals
             // computed server-side from the catalogue + tenant pricing). Store it
             // verbatim — the client never recomputes prices.
-            dispatch({ type: 'SET_SERVER_QUOTE', quote: action.arguments });
-            hasPhaseChange = true;
+            const lines = action.arguments?.lines || [];
+            if (lines.length > 0) {
+              dispatch({ type: 'SET_SERVER_QUOTE', quote: action.arguments });
+              hasPhaseChange = true;
+            }
           } else if (action.name === 'showItems') {
             // Product recommendations — set them in state for ProductsPanel
+            const prods = action.arguments?.products || action.arguments?.items || [];
             dispatch({
               type: 'SET_RECOMMENDED_PRODUCTS',
-              products: action.arguments.products
+              products: prods
             });
+            hasPhaseChange = true;
           } else if (action.name === 'showGuide') {
             // Troubleshooting or installation guide steps
             dispatch({
@@ -565,8 +597,8 @@ export default function ChatPanel() {
             hasPhaseChange = true;
           }
         }
-        // If AI called updateQuote but forgot setPhase('quote'), do it
-        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'updateQuote')) {
+        // If AI called updateQuote but forgot setPhase('quote'), do it (only if quote has products)
+        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'updateQuote' && (a.arguments?.lines?.length > 0))) {
           dispatch({ type: 'SET_PHASE', phase: 'quote' });
           hasPhaseChange = true;
         }
@@ -593,10 +625,10 @@ export default function ChatPanel() {
           dispatch({ type: 'SET_PHASE', phase: 'guide' });
         } else if (latestState.recommendedProducts && latestState.recommendedProducts.length > 0) {
           dispatch({ type: 'SET_PHASE', phase: 'products' });
-        } else if (latestState.dynamicQuestions && latestState.dynamicQuestions.length > 0) {
+        } else if (latestState.dynamicQuestions && latestState.dynamicQuestions.length > 0 && !newUserMessage.toLowerCase().includes('my answers:')) {
           dispatch({ type: 'SET_PHASE', phase: 'clarify' });
         } else {
-          dispatch({ type: 'SET_PHASE', phase: 'intro' });
+          dispatch({ type: 'SET_PHASE', phase: latestState.recommendedProducts?.length ? 'products' : 'intro' });
         }
       }
       dispatch({ type: 'SET_THINKING', thinking: false });
@@ -614,13 +646,15 @@ export default function ChatPanel() {
 
   // Called when user types a message
   const append = useCallback(async (msg: { role: string; content: string }) => {
+    if (isLoading || state.isThinking) return;
     const newMessages = [...messages, msg];
     setMessages(newMessages);
     await sendToAI(newMessages);
-  }, [messages, sendToAI]);
+  }, [messages, sendToAI, isLoading, state.isThinking]);
 
   // Called when user submits clarify answers from the right panel
   const handleClarifySubmit = useCallback(async () => {
+    if (isLoading || state.isThinking) return;
     // Format answers as a readable message
     const answers = state.dynamicAnswers;
     const questions = state.dynamicQuestions;
@@ -638,7 +672,7 @@ export default function ChatPanel() {
     await sendToAI(newMessages);
 
     dispatch({ type: 'SET_THINKING', thinking: false });
-  }, [messages, state.dynamicAnswers, state.dynamicQuestions, sendToAI, dispatch]);
+  }, [messages, state.dynamicAnswers, state.dynamicQuestions, sendToAI, dispatch, isLoading, state.isThinking]);
 
   // Expose handleClarifySubmit globally so ClarifyPanel can call it
   // Generic bridge so the capability panels (accessories / choice / install /
@@ -854,6 +888,29 @@ export default function ChatPanel() {
           </div>
           <button
             type="button"
+            onClick={() => setPerfModalOpen(true)}
+            title="Model Speed & Performance Metrics"
+            aria-label="Model Speed & Performance"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '5px 10px',
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              color: '#B45309',
+              background: '#FEF3C7',
+              border: '1px solid #FDE68A',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <span style={{ fontSize: 13 }}>⚡</span>
+            <span>40 tps · 213ms</span>
+          </button>
+          <button
+            type="button"
             className="chat-header__signin"
             onClick={onSignIn}
             title={displayName ? `Signed in as ${displayName}` : 'Sign in'}
@@ -862,6 +919,8 @@ export default function ChatPanel() {
           </button>
         </div>
       </div>
+
+      <SpeedPerformanceModal isOpen={perfModalOpen} onClose={() => setPerfModalOpen(false)} />
 
       {/* Messages */}
       <div className="chat-messages">

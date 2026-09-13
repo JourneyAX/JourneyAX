@@ -486,7 +486,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'updateQuote',
-      description: 'Assemble the final quote (Bill of Materials). You propose ONLY the SKUs and quantities — the server looks up the real price, stock and totals from the catalogue and the tenant\'s pricing config. NEVER provide prices or totals yourself; they are computed authoritatively server-side. Include only real SKUs returned by searchKnowledge.',
+      description: 'Assemble the final quote (Bill of Materials). You propose ONLY real SKUs and quantities from the catalogue — the server looks up the real price, stock and totals. NEVER call updateQuote with 0 items or for an assessment summary. A quote MUST contain at least one real product SKU to order. For diagnostic guides or troubleshooting without products, call showGuide. For product recommendations, call showItems.',
       parameters: {
         type: 'object',
         properties: {
@@ -1346,6 +1346,180 @@ async function findCatalogueMatch(tenantId: string, query: string): Promise<any 
     const arr = j?.results || j?.items || (Array.isArray(j) ? j : []);
     return Array.isArray(arr) && arr.length ? arr[0] : null;
   } catch { return null; }
+}
+
+function extractSearchQuery(lastUserText: string, messages?: any[]): string {
+  const lt = lastUserText.toLowerCase();
+
+  // Combine with previous user messages to preserve the original topic
+  const historyText = Array.isArray(messages)
+    ? messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content || '')).join(' ').toLowerCase()
+    : '';
+  const combined = `${historyText} ${lt}`;
+
+  // If the user answered clarification questions, extract their chosen values!
+  if (lt.includes('my answers:') || lt.includes('->') || lt.includes('→')) {
+    const answers = [...lastUserText.matchAll(/(?:→|->)\s*([^\n\r?]+)/g)]
+      .map(m => m[1].trim().replace(/\s*\([^)]*\)/g, ''))
+      .filter(Boolean);
+
+    const allAnswersStr = answers.join(' ').toLowerCase();
+
+    // Check specific options first
+    if (allAnswersStr.includes('vitex')) return 'Vitex decking timber';
+    if (allAnswersStr.includes('kwila')) return 'Kwila decking timber';
+    if (allAnswersStr.includes('radiata')) return 'Radiata pine decking timber';
+    if (allAnswersStr.includes('composite')) return 'composite decking';
+    if (allAnswersStr.includes('aqualine')) return 'GIB Aqualine plasterboard moisture resistant';
+    if (allAnswersStr.includes('standard') && (combined.includes('gib') || combined.includes('plasterboard') || combined.includes('wall'))) return 'GIB Standard plasterboard';
+    if (allAnswersStr.includes('braceline')) return 'GIB Braceline wallboard';
+
+    // Did the original question or current turn have a specific product topic?
+    if (combined.includes('adhesiv') || combined.includes('sealant') || combined.includes('silicone') || combined.includes('glue')) {
+      return 'construction adhesives sealants silicone';
+    }
+    if (combined.includes('hinge') || combined.includes('joiner') || combined.includes('hardware') || combined.includes('bracket')) {
+      return 'cabinet hinges hardware joinery fasteners';
+    }
+    if (combined.includes('landscap') || combined.includes('retaining') || combined.includes('sleeper')) {
+      return 'landscaping timber retaining sleepers H4';
+    }
+    if (combined.includes('deck')) {
+      return 'decking timber kwila vitex';
+    }
+    if (combined.includes('gib') || combined.includes('plasterboard') || combined.includes('wallboard')) {
+      return 'GIB plasterboard standard aqualine';
+    }
+    if (combined.includes('timber') || combined.includes('framing') || combined.includes('radiata')) {
+      return 'radiata pine SG8 framing timber';
+    }
+
+    // Check answers for domain areas
+    if (allAnswersStr.includes('shower') || allAnswersStr.includes('mixer') || allAnswersStr.includes('tapware') || allAnswersStr.includes('cartridge')) {
+      return 'shower mixer tapware cartridge';
+    }
+    if (allAnswersStr.includes('toilet') || allAnswersStr.includes('cistern') || allAnswersStr.includes('flush')) {
+      return 'toilet suite cistern valve';
+    }
+    if (allAnswersStr.includes('basin') || allAnswersStr.includes('sink') || allAnswersStr.includes('vanity')) {
+      return 'bathroom vanity basin mixer';
+    }
+    if (allAnswersStr.includes('building materials') || allAnswersStr.includes('timber')) {
+      return 'radiata pine SG8 framing timber';
+    }
+    if (allAnswersStr.includes('bathroom') || allAnswersStr.includes('plumbing')) {
+      return 'bathroom vanity shower tapware';
+    }
+    if (allAnswersStr.includes('laundry')) {
+      return 'laundry cabinet supertub storage';
+    }
+    if (allAnswersStr.includes('outdoor')) {
+      return 'decking timber landscaping';
+    }
+
+    // Fallback to the most specific answer (avoiding generic "DIY home renovation" or "Branch pickup")
+    const specificAnswer = answers.find(a => {
+      const al = a.toLowerCase();
+      return !al.includes('diy') && !al.includes('branch pickup') && !al.includes('delivery') && !al.includes('contractor') && !al.includes('licensed');
+    });
+    if (specificAnswer) {
+      return specificAnswer.slice(0, 50).trim();
+    }
+    if (answers.length > 0) {
+      return answers[0].slice(0, 50).trim();
+    }
+  }
+
+  // Standalone user queries
+  if (lt.includes('vitex')) return 'Vitex decking timber';
+  if (lt.includes('kwila')) return 'Kwila decking timber';
+  if (lt.includes('lining') || lt.includes('waterproof') || lt.includes('wet area') || lt.includes('shower')) return 'moisture resistant linings waterproofing';
+  if (lt.includes('adhesiv') || lt.includes('sealant') || lt.includes('glue') || lt.includes('silicone') || lt.includes('gib fix') || lt.includes('sikaflex')) return 'construction adhesives sealants silicone';
+  if (lt.includes('hinge') || lt.includes('joiner') || lt.includes('hardware') || lt.includes('bracket') || lt.includes('runner') || lt.includes('handle')) return 'cabinet hinges hardware joinery fasteners';
+  if (lt.includes('landscap') || lt.includes('retaining') || lt.includes('sleeper') || lt.includes('h4') || lt.includes('h5')) return 'landscaping timber retaining sleepers H4';
+  if (lt.includes('deck')) return 'decking timber';
+  if (lt.includes('radiata') || lt.includes('pine') || lt.includes('framing') || lt.includes('timber') || lt.includes('stud') || lt.includes('joist') || lt.includes('sg8')) return 'radiata pine SG8 framing timber';
+  if (lt.includes('gib') || lt.includes('plasterboard') || lt.includes('wallboard')) return 'GIB plasterboard wallboard standard aqualine';
+  if (lt.includes('laundry') || lt.includes('cabinet') || lt.includes('tub') || lt.includes('supertub')) return 'laundry cabinet supertub storage';
+  if (lt.includes('bathroom') || lt.includes('vanity') || lt.includes('toilet') || lt.includes('tiles')) return 'bathroom vanity shower tapware';
+  if (lt.includes('kitchen')) return 'kitchen cabinets modular';
+  if (lt.includes('leak') || lt.includes('drip')) return 'shower mixer valve seal';
+  return lastUserText.replace(/^my answers:/i, '').slice(0, 60).trim() || 'building materials';
+}
+
+function normalizeTradeProduct(it: any): any {
+  const name = it.name || it.title || 'Trade Building Product';
+  const category = it.category || (Array.isArray(it.categoryPath) ? it.categoryPath[it.categoryPath.length - 1] : 'Building Products');
+  const description = it.description || it.content || it.summary || '';
+  
+  const features: string[] = Array.isArray(it.features) && it.features.length ? it.features : [];
+  if (!features.length) {
+    const text = `${name} ${description}`.toLowerCase();
+    if (text.includes('aqualine') || text.includes('waterproof') || text.includes('wet area') || text.includes('shower') || text.includes('lining')) {
+      features.push('NZS 3604 Verified', 'Moisture Resistant Core', 'Tapered Edge Finish');
+    } else if (text.includes('gib') || text.includes('plasterboard') || text.includes('wallboard')) {
+      features.push('NZ Standard 10mm/13mm', 'Smooth Paper Facing', 'Acoustic & Fire Rated');
+    } else if (text.includes('adhesive') || text.includes('sealant') || text.includes('silicone') || text.includes('glue') || text.includes('sikaflex')) {
+      features.push('High Initial Grab', 'Gap Filling Formulation', 'NZ Weatherproof Rating');
+    } else if (text.includes('hinge') || text.includes('joinery') || text.includes('hardware') || text.includes('bracket')) {
+      features.push('Corrosion Resistant Steel', 'Smooth Action Pivot', 'Trade Fastener Pack Included');
+    } else if (text.includes('sleeper') || text.includes('retaining') || text.includes('h4') || text.includes('h5') || text.includes('landscap')) {
+      features.push('H4/H5 Ground Contact Treated', 'Heavy Duty Structural Retention', 'Rot & Fungal Resistant');
+    } else if (text.includes('decking') || text.includes('kwila')) {
+      features.push('Exterior Durability', 'Pre-finished Weather Coating', 'Anti-Slip Profile');
+    } else if (text.includes('sg8') || text.includes('radiata') || text.includes('timber') || text.includes('framing')) {
+      features.push('SG8 Structural Grade', 'H3.2 CCA / Boron Treated', 'Kiln Dried & Gauged Radiata Pine');
+    } else {
+      features.push('Trade Grade Material', 'PlaceMakers Branch Stocked', 'NZ Building Code Compliant');
+    }
+  }
+
+  const specs: Record<string, string> = { ...(it.specs || {}) };
+  if (!Object.keys(specs).length) {
+    specs['Building Standard'] = 'NZS 3604:2011 Compliant';
+    specs['Trade Category'] = category;
+    const dimMatch = name.match(/(\d+\s*x\s*\d+(?:\s*x\s*[\d.]+mm)?)/i);
+    if (dimMatch) specs['Dimensions'] = dimMatch[1];
+    const thickMatch = name.match(/([\d.]+\s*mm)/i);
+    if (thickMatch) specs['Thickness'] = thickMatch[1];
+    specs['Store Pickup'] = '60-Min Click & Collect (Mt Wellington / Cook St)';
+  }
+
+  let imageUrl = it.imageUrl || it.images?.[0] || '';
+  const isPlacemakersWafUrl = typeof imageUrl === 'string' && imageUrl.includes('placemakers.co.nz/online/medias');
+  if (!imageUrl || isPlacemakersWafUrl) {
+    const text = `${name} ${category}`.toLowerCase();
+    if (text.includes('aqualine') || text.includes('gib') || text.includes('plasterboard') || text.includes('wallboard') || text.includes('lining')) {
+      imageUrl = 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=600&auto=format&fit=crop&q=80';
+    } else if (text.includes('shower') || text.includes('acrylic') || text.includes('bath') || text.includes('enclosure')) {
+      imageUrl = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80';
+    } else if (text.includes('hinge') || text.includes('joinery') || text.includes('hardware') || text.includes('bracket')) {
+      imageUrl = 'https://images.unsplash.com/photo-1530124566582-a618bc2615dc?w=600&auto=format&fit=crop&q=80';
+    } else if (text.includes('adhesive') || text.includes('sealant') || text.includes('silicone') || text.includes('glue') || text.includes('sikaflex')) {
+      imageUrl = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80';
+    } else if (text.includes('landscap') || text.includes('retaining') || text.includes('sleeper') || text.includes('h4') || text.includes('h5')) {
+      imageUrl = 'https://images.unsplash.com/photo-1541888946425-d0fbb186c5f7?w=600&auto=format&fit=crop&q=80';
+    } else if (text.includes('deck') || text.includes('kwila')) {
+      imageUrl = 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?w=600&auto=format&fit=crop&q=80';
+    } else if (text.includes('timber') || text.includes('framing') || text.includes('stud') || text.includes('joist') || text.includes('sg8') || text.includes('radiata') || text.includes('pine')) {
+      imageUrl = 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80';
+    } else {
+      imageUrl = 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80';
+    }
+  }
+
+  return {
+    ...it,
+    name,
+    title: name,
+    category,
+    description,
+    features,
+    specs,
+    imageUrl,
+    images: [imageUrl, ...(it.images || [])],
+    url: it.url || (it.sku ? `https://www.placemakers.co.nz/online/p/${it.sku}` : 'https://www.placemakers.co.nz/online'),
+  };
 }
 
 async function groundItemFacts(tenantId: string, call: any): Promise<void> {
@@ -2367,6 +2541,55 @@ export interface ChatResponse {
   trace?: TraceEntry[];
 }
 
+function findBalancedToolCall(buffer: string): { fullMatch: string; toolName: string; rawArgs: string; endIndex: number } | null {
+  const prefixMatch = /TOOL_CALL:\s*([a-zA-Z0-9_]+)\s*\(/i.exec(buffer);
+  if (!prefixMatch) return null;
+
+  const startIndex = prefixMatch.index;
+  const toolName = prefixMatch[1];
+  const parenOpenIndex = startIndex + prefixMatch[0].length - 1;
+
+  let depth = 0;
+  let inString = false;
+  let quoteChar = '';
+  let escape = false;
+
+  for (let i = parenOpenIndex; i < buffer.length; i++) {
+    const ch = buffer[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escape = true;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === quoteChar) {
+        inString = false;
+      }
+    } else {
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+      } else if (ch === '(') {
+        depth++;
+      } else if (ch === ')') {
+        depth--;
+        if (depth === 0) {
+          const rawArgs = buffer.slice(parenOpenIndex + 1, i);
+          const fullMatch = buffer.slice(startIndex, i + 1);
+          return { fullMatch, toolName, rawArgs, endIndex: i + 1 };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 @Injectable()
 export class AgentService {
   private openai: OpenAI;
@@ -2512,6 +2735,808 @@ export class AgentService {
     const qs: any[] = [{ id: 'gender', title: 'Who are you shopping for?', options: ['Men', 'Women', 'Kids'] }];
     if (!intent?.dimensions?.occasion) qs.push({ id: 'occasion', title: "What's the occasion?", options: ['Casual', 'Work', 'Date', 'Party', 'Vacation'] });
     return { name: 'setPhase', arguments: { phase: 'clarify', questions: qs } };
+  }
+
+  /**
+   * Model-led Product Grounding for Open Models (Gemma 2 9B / MLX / Cloud Run):
+   * Resolves products dynamically based on model output or explicit user request,
+   * without pre-injecting random products or hardcoded question forms.
+   */
+  private async resolveOpenModelProducts(
+    tenantId: string,
+    userText: string,
+    modelText: string,
+    intent: IntentResult,
+    uiToolCalls: any[],
+    emit?: (event: string, data: any) => void,
+    pushTrace?: (entry: TraceEntry) => void,
+  ): Promise<void> {
+    const cleanUser = (userText || '').toLowerCase().trim();
+
+    // Direct policy, FAQ, return questions -> no product cards
+    if (
+      intent.stage === 'faq' ||
+      intent.space === 'policy' ||
+      /\b(return|returns|refund|refunds|exchange|warranty|guarantee|policy|hours|location|branch|contact|invoice|terms)\b/i.test(cleanUser)
+    ) {
+      return;
+    }
+
+    // 1. Check if model or user mentioned specific PlaceMakers SKU codes (6-8 digit numbers)
+    const skuRegex = /(?:sku\s*[:#]?\s*|\/p\/|\b)(\d{6,8})\b/gi;
+    const foundSkus: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = skuRegex.exec(modelText || '')) !== null) {
+      const s = match[1];
+      if (s.length >= 6 && !foundSkus.includes(s)) {
+        foundSkus.push(s);
+      }
+    }
+
+    let itemsToRender: any[] = [];
+
+    // 2. Exact SKU search
+    if (foundSkus.length > 0) {
+      try {
+        const knowledge = await adapterRegistry.getKnowledge(tenantId);
+        for (const sku of foundSkus.slice(0, 4)) {
+          const res: any = await knowledge.search({ tenantId }, { query: sku, limit: 2 });
+          const hits = res?.results || res?.products || res?.items || [];
+          for (const h of hits) {
+            if (h && !itemsToRender.some((it) => it.sku === h.sku || it.id === h.sku)) {
+              itemsToRender.push(normalizeTradeProduct(h));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[agent] SKU lookup error:', err);
+      }
+    }
+
+    // 3. Explicit product inquiries (e.g. "show me kwila decking", "adhesives", "my answers:", or intent.stage === 'products')
+    const isExplicitProductRequest =
+      /\b(show me|looking for|buy|price of|options for|decking|timber|framing|lining|adhesive|gib|screws|bracket|vanity|shower|toilet)\b/i.test(cleanUser) ||
+      cleanUser.includes('my answers:') ||
+      intent.stage === 'products';
+
+    if (itemsToRender.length === 0 && isExplicitProductRequest) {
+      const query = extractSearchQuery(userText, []);
+      if (query && query !== 'building materials' && query.length >= 3) {
+        try {
+          const knowledge = await adapterRegistry.getKnowledge(tenantId);
+          const rawResults: any = await knowledge.search({ tenantId }, { query, type: 'product', limit: 6 });
+          const prods = rawResults?.results || rawResults?.products || rawResults?.items || [];
+          if (prods.length) {
+            itemsToRender = prods.slice(0, 6).map(normalizeTradeProduct);
+          }
+        } catch (err) {
+          console.warn('[agent] Product query search error:', err);
+        }
+      }
+    }
+
+    // 4. If items found, emit showItems and setPhase: 'products'
+    if (itemsToRender.length > 0) {
+      const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
+      uiToolCalls.push({
+        id: `open_model_products_${Date.now()}`,
+        type: 'function',
+        function: { name: 'showItems', arguments: JSON.stringify(showItemsAction.arguments) },
+      });
+      if (emit) emit('uiAction', showItemsAction);
+
+      const setPhaseAction = { name: 'setPhase', arguments: { phase: 'products' } };
+      uiToolCalls.push({
+        id: `open_model_phase_${Date.now()}`,
+        type: 'function',
+        function: { name: 'setPhase', arguments: JSON.stringify(setPhaseAction.arguments) },
+      });
+      if (emit) emit('uiAction', setPhaseAction);
+
+      if (pushTrace) {
+        pushTrace({ step: 'retrieval', detail: `rendered ${itemsToRender.length} product card(s) on right panel` });
+      }
+    }
+  }
+
+  /**
+   * Prompts open models (e.g. PlaceMakers Gemma 27B / MLX) with trade consultant persona,
+   * tool syntax instructions, and diagnostic question capabilities.
+   */
+  private buildOpenModelTradePrompt(): string {
+    return (
+      `You are an expert PlaceMakers trade specialist and project consultant in New Zealand.\n` +
+      `Provide practical, professional trade advice adhering to NZ building standards (NZS 3604).\n` +
+      `Tone: Professional, direct, trade-certified consultant. Do NOT use cheesy conversational filler (NEVER say "Oh no, leaking bathroom is never fun!" or generic robotic empathy). Be authoritative, pragmatic, and helpful.\n` +
+      `You have access to tools to control the UI and lookup data:\n` +
+      `1. DIAGNOSTIC & CLARIFYING QUESTIONS (Interactive Right Panel):\n` +
+      `When a customer has a repair, leak, moisture issue, or an open-ended project scope (e.g. bathroom leaking, wet area lining, deck planning, laundry makeover), you MUST ask 2-3 targeted diagnostic questions so the customer can select options on the interactive right panel.\n` +
+      `Emit a TOOL_CALL line:\n` +
+      `TOOL_CALL: setPhase({"phase": "clarify", "questions": [{"id": "<id>", "title": "<diagnostic question>", "options": ["<opt1>", "<opt2>", "<opt3>", "<opt4>"]}]})\n` +
+      `Example for leak/plumbing repair:\n` +
+      `TOOL_CALL: setPhase({"phase": "clarify", "questions": [{"id": "leak_location", "title": "Where is the leak located?", "options": ["Shower enclosure / tray", "Toilet suite / cistern", "Vanity basin / mixer tap", "In-wall / ceiling pipework"]}, {"id": "leak_severity", "title": "What is the severity of the leak?", "options": ["Active flooding (need isolation)", "Constant slow drip", "Moisture seepage / dampness"]}]})\n` +
+      `2. PRODUCT & CATALOG SEARCH:\n` +
+      `TOOL_CALL: searchKnowledge({"query": "<product or materials search query>"})\n` +
+      `3. BRANCH STOCK & AVAILABILITY:\n` +
+      `TOOL_CALL: checkBranchStock({"sku": "<sku>", "branch": "<branch name>"})\n` +
+      `4. STRUCTURAL PROJECT PLAN:\n` +
+      `TOOL_CALL: buildProjectPlan({"projectType": "decking"|"fencing"|"lining"|"retaining"|"cladding", "length": <number>, "width": <number>})\n\n` +
+      `CRITICAL RULES:\n` +
+      `- When diagnosing an issue or clarifying scope, ALWAYS emit TOOL_CALL: setPhase with dynamic questions tailored to what the customer asked.\n` +
+      `- In your chat prose, explain the trade diagnostic approach professionally and direct the customer to tap their answers on the right panel.\n` +
+      `- Never quote internal rules or echo customer inputs verbatim.`
+    );
+  }
+
+  /**
+   * Executes tools decided by open models (e.g. Gemma 2 9B) via prompt tool decision syntax.
+   * Model can emit:
+   *   TOOL_CALL: searchKnowledge({"query": "..."})
+   *   TOOL_CALL: checkBranchStock({"sku": "...", "branch": "..."})
+   *   TOOL_CALL: setPhase({"phase": "clarify", "questions": [...]})
+   */
+  private async executeOpenModelToolCalls(
+    tenantId: string,
+    rawModelText: string,
+    intent: IntentResult,
+    uiToolCalls: any[],
+    emit?: (event: string, data: any) => void,
+    pushTrace?: (entry: TraceEntry) => void,
+  ): Promise<boolean> {
+    let executedAny = false;
+    let searchStr = rawModelText || '';
+
+    while (true) {
+      const tool = findBalancedToolCall(searchStr);
+      if (!tool) break;
+      const { toolName, rawArgs, endIndex } = tool;
+      searchStr = searchStr.slice(endIndex);
+
+      let args: any = {};
+      try {
+        args = JSON.parse(rawArgs);
+      } catch {
+        try {
+          args = JSON.parse(rawArgs.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":'));
+        } catch {
+          console.warn('[agent] Failed to parse tool call args:', rawArgs);
+        }
+      }
+
+      console.log(`[JourneyAX:ToolDecision] 🛠️ Model decided to invoke tool: ${toolName}(${JSON.stringify(args)})`);
+      if (pushTrace) {
+        pushTrace({ step: 'tool-call', detail: `${toolName}(${JSON.stringify(args)})`, data: args });
+      }
+
+      if (toolName === 'searchKnowledge') {
+        const query = args.query || args.q || '';
+        if (query) {
+          try {
+            const knowledge = await adapterRegistry.getKnowledge(tenantId);
+            const res: any = await knowledge.search({ tenantId }, { query, type: 'product', limit: 6 });
+            const prods = res?.results || res?.products || res?.items || [];
+            console.log(`[JourneyAX:ToolResult] 📦 searchKnowledge("${query}") returned ${prods.length} product(s)`);
+            if (prods.length) {
+              const itemsToRender = prods.slice(0, 6).map(normalizeTradeProduct);
+              const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
+              uiToolCalls.push({
+                id: `model_tool_search_${Date.now()}`,
+                type: 'function',
+                function: { name: 'showItems', arguments: JSON.stringify(showItemsAction.arguments) },
+              });
+              if (emit) emit('uiAction', showItemsAction);
+
+              const setPhaseAction = { name: 'setPhase', arguments: { phase: 'products' } };
+              uiToolCalls.push({
+                id: `model_tool_phase_${Date.now()}`,
+                type: 'function',
+                function: { name: 'setPhase', arguments: JSON.stringify(setPhaseAction.arguments) },
+              });
+              if (emit) emit('uiAction', setPhaseAction);
+
+              executedAny = true;
+            }
+          } catch (err) {
+            console.warn('[agent] searchKnowledge tool execution failed:', err);
+          }
+        }
+      } else if (toolName === 'checkBranchStock') {
+        const sku = args.sku || '';
+        const branch = args.branch || '';
+        const stockResult = handleCheckBranchStock(JSON.stringify(args));
+        if (stockResult?.ok) {
+          uiToolCalls.push({
+            id: `model_tool_stock_${Date.now()}`,
+            type: 'function',
+            function: { name: 'checkBranchStock', arguments: JSON.stringify(stockResult) },
+          });
+          if (emit) emit('uiAction', { name: 'checkBranchStock', arguments: stockResult });
+          executedAny = true;
+        }
+        if (sku) {
+          try {
+            const knowledge = await adapterRegistry.getKnowledge(tenantId);
+            const res: any = await knowledge.search({ tenantId }, { query: sku, limit: 2 });
+            const prods = res?.results || res?.products || res?.items || [];
+            console.log(`[JourneyAX:ToolResult] 🏢 checkBranchStock("${sku}", "${branch}") found ${prods.length} item(s)`);
+            if (prods.length) {
+              const itemsToRender = prods.slice(0, 2).map(normalizeTradeProduct);
+              const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
+              uiToolCalls.push({
+                id: `model_tool_stock_items_${Date.now()}`,
+                type: 'function',
+                function: { name: 'showItems', arguments: JSON.stringify(showItemsAction.arguments) },
+              });
+              if (emit) emit('uiAction', showItemsAction);
+              executedAny = true;
+            }
+          } catch (err) {
+            console.warn('[agent] checkBranchStock tool execution failed:', err);
+          }
+        }
+      } else if (toolName === 'buildProjectPlan') {
+        try {
+          const planResult = handleBuildProjectPlan(JSON.stringify(args));
+          if (planResult?.ok) {
+            console.log(`[JourneyAX:ToolResult] 📐 buildProjectPlan computed plan: ${planResult.projectType}`);
+            const planAction = { name: 'buildProjectPlan', arguments: planResult };
+            uiToolCalls.push({
+              id: `model_tool_plan_${Date.now()}`,
+              type: 'function',
+              function: { name: 'buildProjectPlan', arguments: JSON.stringify(planResult) },
+            });
+            if (emit) emit('uiAction', planAction);
+            executedAny = true;
+          }
+        } catch (err) {
+          console.warn('[agent] buildProjectPlan tool execution failed:', err);
+        }
+      } else if (toolName === 'setPhase') {
+        const phase = args.phase || 'clarify';
+        let questions = Array.isArray(args.questions) ? args.questions : [];
+        if (questions.length === 0 && phase === 'clarify') {
+          const fallback = this.buildDomainClarify(rawModelText, intent, rawModelText);
+          if (fallback) questions = fallback.questions;
+        }
+        if (questions.length > 0) {
+          console.log(`[JourneyAX:ToolResult] 📋 Model generated ${questions.length} diagnostic question(s) via setPhase:`, questions.map((q: any) => q.title));
+          const setPhaseAction = { name: 'setPhase', arguments: { phase, questions } };
+          uiToolCalls.push({
+            id: `model_tool_phase_${Date.now()}`,
+            type: 'function',
+            function: { name: 'setPhase', arguments: JSON.stringify(setPhaseAction.arguments) },
+          });
+          if (emit) emit('uiAction', setPhaseAction);
+          executedAny = true;
+        }
+      }
+    }
+
+    return executedAny;
+  }
+
+  /**
+   * Extracts diagnostic and clarifying questions directly from the model's generated text response
+   * when the model asked questions in natural language instead of emitting a formal TOOL_CALL.
+   */
+  private extractQuestionsFromModelResponse(
+    modelText: string,
+    userText: string,
+    intent: IntentResult,
+  ): { name: 'setPhase'; arguments: { phase: 'clarify'; questions: any[] } } | null {
+    if (!modelText) return null;
+    const mt = modelText.trim();
+    const lt = (userText || '').toLowerCase();
+
+    // Check if the model asked a question in its response text
+    if (!mt.includes('?') && !mt.toLowerCase().includes('narrow down') && !mt.toLowerCase().includes('where')) {
+      return null;
+    }
+
+    const questions: any[] = [];
+
+    // Pattern: Model asks "Is it coming from X, the Y, a Z, or somewhere else?"
+    const orChoiceRegex = /(?:is it (?:coming )?from|is it|do you need|are you looking for|is the leak in|which)\s+([^?]+)\?/i;
+    const match = orChoiceRegex.exec(mt);
+
+    if (match && match[1]) {
+      const rawOptions = match[1]
+        .split(/(?:,|\bor\b)/i)
+        .map((s) => s.trim().replace(/^(the|a|an)\s+/i, ''))
+        .filter((s) => s.length > 1 && !/^(either|both)$/i.test(s));
+
+      if (rawOptions.length >= 2) {
+        const titleMatch = /(?:narrow down|figure out|determine|check)\s+([^.!?]+)/i.exec(mt);
+        const title = titleMatch
+          ? titleMatch[1].trim().replace(/^where\s+/i, 'Where ') + '?'
+          : 'Where is the leak located or coming from?';
+
+        const formattedOptions = rawOptions.map((opt) => {
+          const lOpt = opt.toLowerCase();
+          if (lOpt.includes('shower')) return 'Shower enclosure / mixer / tray';
+          if (lOpt.includes('toilet')) return 'Toilet suite / cistern / inlet';
+          if (lOpt.includes('sink') || lOpt.includes('basin')) return 'Vanity basin / mixer tap / waste pipe';
+          if (lOpt.includes('somewhere else') || lOpt.includes('wall') || lOpt.includes('pipe')) return 'Behind wall / in-wall pipework';
+          return opt.charAt(0).toUpperCase() + opt.slice(1);
+        });
+
+        questions.push({
+          id: 'leak_location',
+          title: title.charAt(0).toUpperCase() + title.slice(1),
+          options: formattedOptions,
+        });
+
+        if (lt.includes('leak') || mt.toLowerCase().includes('leak')) {
+          questions.push({
+            id: 'leak_urgency',
+            title: 'What is the severity of the leak?',
+            options: [
+              'Active leak (need water isolated now)',
+              'Slow drip / gradual moisture buildup',
+              'Water damage / subfloor & lining dampness',
+            ],
+          });
+        }
+      }
+    }
+
+    // If options couldn't be extracted regex-wise but the model asked diagnostic questions,
+    // construct cards aligned with the model's topic
+    if (questions.length === 0 && (mt.includes('?') || intent.intent === 'leak_repair')) {
+      const fallback = this.buildDomainClarify(userText, intent, modelText);
+      if (fallback) return { name: 'setPhase', arguments: { phase: 'clarify', questions: fallback.questions } };
+    }
+
+    if (questions.length > 0) {
+      return {
+        name: 'setPhase',
+        arguments: {
+          phase: 'clarify',
+          questions,
+        },
+      };
+    }
+
+    return null;
+  }
+
+  /* Universal Clarify Generator: Ensures that whenever a customer request has
+   * wide/broad context (e.g., wet area linings, remodeling, laundry makeover, decking,
+   * leaks) without specific SKUs, the right panel ALWAYS renders interactive
+   * question cards with selectable options — consistently across ALL models (Gemma, OpenAI, etc.). */
+  private buildDomainClarify(
+    userText: string,
+    intent: IntentResult,
+    modelText: string,
+  ): { phase: 'clarify'; questions: any[]; chatLead: string } | null {
+    const qLower = (userText || '').toLowerCase().trim();
+    const mLower = (modelText || '').toLowerCase().trim();
+    const combined = `${qLower} ${mLower}`;
+
+    // 1. If customer already answered clarification questions, DO NOT re-clarify!
+    if (qLower.startsWith('my answers:') || qLower.includes('my answers:')) {
+      return null;
+    }
+
+    // 2. Specific product search bypass: if asking for a specific SKU or direct product code
+    if (/\b(sku\s*\d+|code\s*\d+|price of\s+[a-z0-9]+|buy now|add to cart)\b/.test(qLower) && !/\b(remodel|makeover|renovat|build|plan|how|what do i need)\b/.test(qLower)) {
+      return null;
+    }
+
+    // 3. Wet Area / Moisture / Waterproofing / Linings
+    if (
+      combined.includes('lining') ||
+      combined.includes('moisture') ||
+      combined.includes('waterproof') ||
+      combined.includes('wet area') ||
+      combined.includes('aquachek') ||
+      combined.includes('aqualine') ||
+      combined.includes('villaboard')
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'surface_lining',
+            title: 'What surface are you lining in your wet area?',
+            options: [
+              'Tiled shower / bath (requires waterproof membrane)',
+              'Acrylic shower wall liner',
+              'GIB Aqualine plasterboard (painted wet area)',
+              'Fibre cement / Villaboard underlay',
+            ],
+          },
+          {
+            id: 'substrate_floor',
+            title: 'What is your flooring or substrate?',
+            options: [
+              'Concrete slab floor',
+              'Timber floorboards / Particle board',
+              'Plywood subfloor',
+              'Existing wall / floor over-boarding',
+            ],
+          },
+          {
+            id: 'accessories_ventilation',
+            title: 'Any special fixtures or ventilation requirements?',
+            options: [
+              'Heated towel rail placement',
+              'Extraction / ventilation fan ducting',
+              'Both towel rail & ventilation fan',
+              'Standard shower enclosure only',
+            ],
+          },
+        ],
+        chatLead:
+          'Got it — we can help you with your wet area linings and waterproofing! I’ve popped a few quick questions on the right so I can pinpoint your exact space requirements and pull up the right NZS 3604-compliant linings, waterproofing systems, and trade packs.\n\nCan you tap the options on the right that best match what you’re planning?',
+      };
+    }
+
+    // 3b. Leak Repair / Plumbing Issues (Bathroom / Kitchen / Laundry Leak)
+    if (
+      combined.includes('leak') ||
+      combined.includes('leaking') ||
+      combined.includes('dripping') ||
+      intent.intent === 'leak_repair'
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'leak_location',
+            title: 'Where is the leak located or coming from?',
+            options: [
+              'Shower enclosure / mixer / tray',
+              'Toilet suite / cistern / inlet valve',
+              'Vanity basin / tapware / waste pipe',
+              'Behind wall / ceiling / in-wall pipework',
+            ],
+          },
+          {
+            id: 'leak_urgency',
+            title: 'What is the severity of the leak?',
+            options: [
+              'Active leak (need water isolated now)',
+              'Slow drip / gradual moisture buildup',
+              'Water damage / subfloor & lining dampness',
+            ],
+          },
+          {
+            id: 'repair_approach',
+            title: 'What repair or replacement are you planning?',
+            options: [
+              'DIY replacement parts (valves, seals, tapware)',
+              'Waterproofing membrane & lining repair',
+              'Licensed Trade Plumber installation required',
+            ],
+          },
+        ],
+        chatLead:
+          'A leaking bathroom can cause serious subfloor and lining damage if not caught early! I’ve put a few quick diagnostic questions on the right so we can identify the source and get you the right repair parts or compliant waterproofing solutions.\n\nCould you select where the leak is coming from on the right?',
+      };
+    }
+
+    // 4. Bathroom Remodel / Renovation
+    if (
+      combined.includes('remodel') ||
+      combined.includes('bathroom makeover') ||
+      combined.includes('renovate bathroom') ||
+      combined.includes('bathroom renovation') ||
+      intent.intent === 'bathroom_remodel'
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'remodel_scope',
+            title: 'What is the primary scope of your bathroom project?',
+            options: [
+              'Full bathroom makeover (vanity, shower, toilet, tiles)',
+              'Shower & vanity upgrade only',
+              'Toilet suite & tapware replacement',
+              'DIY repairs & cosmetic refresh',
+            ],
+          },
+          {
+            id: 'finish_style',
+            title: 'What finish or aesthetic do you prefer?',
+            options: [
+              'Modern Chrome',
+              'Matte Black contemporary',
+              'Brushed Brass / Gold luxury',
+              'Classic White / Neutral',
+            ],
+          },
+          {
+            id: 'bathroom_size',
+            title: 'What is the layout or size of your bathroom?',
+            options: [
+              'Compact ensuite (under 4m²)',
+              'Standard family bathroom (4m² to 7m²)',
+              'Large master bathroom (8m²+)',
+            ],
+          },
+        ],
+        chatLead:
+          'Exciting project! To help plan your bathroom renovation properly, I’ve popped a few quick questions on the right to understand your scope, layout, and finish preferences.\n\nCan you tap the options on the right that match what you have in mind?',
+      };
+    }
+
+    // 5. Laundry Makeover / Cabinets
+    if (
+      combined.includes('laundry') ||
+      combined.includes('laundry cabinet') ||
+      combined.includes('tub')
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'laundry_width',
+            title: 'What space / width are you planning for?',
+            options: [
+              'Compact space (under 1.5m)',
+              'Standard laundry wall (1.8m to 2.4m)',
+              'Full dedicated laundry room (3m+)',
+            ],
+          },
+          {
+            id: 'cabinet_storage',
+            title: 'What storage configuration do you need?',
+            options: [
+              'Modular base & overhead wall cabinets',
+              'Continuous benchtop over washing machine',
+              'Tub unit with bypass storage',
+              'Custom shelving & utility pantry',
+            ],
+          },
+          {
+            id: 'plumbing_protection',
+            title: 'Do you require plumbing fixtures or moisture barriers?',
+            options: [
+              'Laundry tub & mixer tap',
+              'Wall cavity moisture underlay / foil roll',
+              'Both plumbing tapware & moisture underlay',
+              'Cabinetry only',
+            ],
+          },
+        ],
+        chatLead:
+          'A well-organised laundry makes a huge difference! I’ve popped a few quick questions on the right so I can pinpoint the right cabinet dimensions, storage units, and moisture protection for your space.\n\nCan you tap the options on the right that best describe your setup?',
+      };
+    }
+
+    // 6. Decking / Outdoor Timber
+    if (
+      combined.includes('deck') ||
+      combined.includes('decking') ||
+      combined.includes('timber deck')
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'timber_species',
+            title: 'What decking timber material do you prefer?',
+            options: [
+              'Radiata Pine (H3.2 Premium Grip Tread)',
+              'Kwila Hardwood (Smooth / Reeded)',
+              'Vitex Hardwood',
+              'Composite Low-Maintenance Decking',
+            ],
+          },
+          {
+            id: 'deck_size',
+            title: 'What is the approximate size of your deck?',
+            options: [
+              'Small deck / landing (under 15m²)',
+              'Medium family deck (15m² to 30m²)',
+              'Large entertaining deck (30m²+)',
+            ],
+          },
+          {
+            id: 'deck_height',
+            title: 'What is the ground elevation or foundation?',
+            options: [
+              'Low ground-level (under 1m, no consent required)',
+              'Elevated deck (requires balustrades / handrails)',
+              'Rebuilding over existing subframe',
+            ],
+          },
+        ],
+        chatLead:
+          'Building a deck is a great way to expand your outdoor living! I’ve put three quick picks on the right to pinpoint your timber species, dimensions, and height requirements under NZS 3604.\n\nCan you tap the options that best match your project?',
+      };
+    }
+
+    // 7. Plumbing Leak / Repair
+    if (
+      combined.includes('leak') ||
+      combined.includes('drip') ||
+      combined.includes('seeping') ||
+      intent.intent === 'leak_repair'
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'leak_location',
+            title: 'Where are you seeing the leak?',
+            options: [
+              'From the showerhead / handset',
+              'Shower mixer / tap body or base',
+              'Shower tray or screen perimeter seal',
+              'Under vanity / waste pipe',
+            ],
+          },
+          {
+            id: 'leak_timing',
+            title: 'When does it leak?',
+            options: [
+              'Only when the shower/tap is running',
+              'Dripping continuously 24/7',
+              'Weeping slowly after taps are turned off',
+            ],
+          },
+          {
+            id: 'water_volume',
+            title: 'How much water are we talking?',
+            options: [
+              'Steady drip',
+              'Slow trickle / damp patch',
+              'Active running water',
+            ],
+          },
+        ],
+        chatLead:
+          'Got it — we can help you track this down and sort it. I’ve popped a few quick questions on the right so I can pinpoint the cause and suggest the right fix and parts.\n\nCan you tap the options that best match what you’re seeing?',
+      };
+    }
+
+    // 8. Timber Framing & Structural Timber
+    if (
+      combined.includes('framing') ||
+      combined.includes('timber for framing') ||
+      combined.includes('framing timber') ||
+      combined.includes('studs') ||
+      combined.includes('joists')
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'framing_application',
+            title: 'What type of framing are you building?',
+            options: [
+              'Internal non-load bearing wall framing',
+              'External load-bearing framing',
+              'Subfloor framing & floor joists',
+              'Deck / outdoor subframe',
+            ],
+          },
+          {
+            id: 'treatment_grade',
+            title: 'What timber grade / treatment is required?',
+            options: [
+              'SG8 Kiln Dried H1.2 Pink Pine (Standard Internal)',
+              'SG8 Treated H3.2 (Wet Areas & Exterior Cavities)',
+              'H4 Ground Contact Treated Timber',
+              'Untreated Radiata Pine',
+            ],
+          },
+          {
+            id: 'timber_dimensions',
+            title: 'What stud or framing sizing do you need?',
+            options: [
+              '90x45 standard wall studs & plates',
+              '140x45 thicker exterior cavity wall framing',
+              '190x45 or 240x45 floor joists / rafters',
+              'Assorted framing pack / take-off schedule',
+            ],
+          },
+        ],
+        chatLead:
+          'PlaceMakers is New Zealand’s leading timber merchant — we have all your framing sorted under NZS 3604! I’ve popped three quick questions on the right so I can pinpoint the exact SG8 grade, treatment, and sizes for your build.\n\nCan you tap the options that best match your framing job?',
+      };
+    }
+
+    // 9. Kitchen Makeover / Cabinets
+    if (
+      combined.includes('kitchen') ||
+      combined.includes('kitchen cabinet') ||
+      combined.includes('kitchen makeover') ||
+      combined.includes('kitchen renovation')
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'kitchen_layout',
+            title: 'What is the layout of your kitchen?',
+            options: [
+              'L-shaped modular kitchen layout',
+              'U-shaped kitchen with breakfast bar',
+              'Straight single wall / Galley run',
+              'Kitchen island + separate pantry run',
+            ],
+          },
+          {
+            id: 'cabinet_finish',
+            title: 'What cabinet door and drawer style do you prefer?',
+            options: [
+              'Modern Gloss White minimalist',
+              'Warm Natural Oak Timber Veneer',
+              'Architectural Charcoal / Matte Black',
+              'Classic Shaker Style Profile',
+            ],
+          },
+          {
+            id: 'benchtop_sink',
+            title: 'What benchtop material and sink configuration?',
+            options: [
+              'Engineered quartz stone + undermount sink',
+              'Durable laminate benchtop + drop-in sink',
+              'Solid timber benchtop + granite composite sink',
+              'Cabinetry only (benchtop already sorted)',
+            ],
+          },
+        ],
+        chatLead:
+          'Planning a kitchen is an exciting project! To help put together the right modular layout, cabinetry, and benchtops for your space, I’ve put a few quick questions on the right.\n\nCan you tap the options that best match your vision?',
+      };
+    }
+
+    // 8. General Discovery fallback (if context is wide and lacks specifics)
+    // ONLY for broad project remodeling/discovery journeys — never for general questions or policy inquiries
+    if (
+      intent.intent !== 'general_question' &&
+      intent.retrievalType !== 'faq' &&
+      intent.space !== 'policy' &&
+      intent.stage !== 'faq' &&
+      (intent.stage === 'intro' ||
+        intent.stage === 'clarify' ||
+        !intent.needsRetrieval ||
+        (intent.missingInfo && intent.missingInfo.length > 0))
+    ) {
+      return {
+        phase: 'clarify',
+        questions: [
+          {
+            id: 'project_type',
+            title: 'What type of project are you working on?',
+            options: [
+              'DIY home renovation',
+              'Licensed building trade / contractor',
+              'Quick repair or replacement',
+              'Planning & cost estimation',
+            ],
+          },
+          {
+            id: 'project_scope',
+            title: 'What is your primary area of focus?',
+            options: [
+              'Bathroom / Plumbing',
+              'Building Materials & Timber',
+              'Laundry & Storage',
+              'Outdoor / Decking',
+            ],
+          },
+          {
+            id: 'timing_fulfillment',
+            title: 'What is your timeframe and fulfillment preference?',
+            options: [
+              'Branch pickup (60-minute Click & Collect)',
+              'Delivery to site',
+              'Just researching options & prices',
+            ],
+          },
+        ],
+        chatLead:
+          'Kia ora! To make sure I get you the exact right materials and specifications for your project, I’ve put a few quick questions on the right panel.\n\nCan you tap the options that best describe what you need?',
+      };
+    }
+
+    return null;
   }
 
   /* DETERMINISTIC COMPLETE-THE-LOOK (cross-sell). For a retail cart brand, the MOMENT
@@ -3029,6 +4054,7 @@ export class AgentService {
     const projectConfig = await this.configLoader.loadProjectConfig(tenantId);
     const model = projectConfig.model || this.model;   // per-project reasoning model
     const llm = getChatClient({ provider: projectConfig.provider, apiKey: projectConfig.apiKey, baseUrl: projectConfig.baseUrl }); // per-project provider + key
+    console.log(`[JourneyAX] 🚀 Invoking LLM for tenant="${tenantId}" | provider="${projectConfig.provider || 'openai'}" | model="${model}" | url="${projectConfig.baseUrl || 'https://api.openai.com/v1'}"`);
     const configBlock = this.configLoader.renderConfigBlock(projectConfig);
     // High-level orientation so the agent starts knowing who this business is
     // (AUG-14). Cached; never blocks the turn.
@@ -3046,6 +4072,18 @@ export class AgentService {
       detail: `${intent.intent} · dims=${dimStr} · space=${intent.space} · stage=${intent.stage} · mode=${intent.mode} · confidence=${intent.confidence}`,
       data: intent,
     });
+
+    // ── Consultative Clarification Gate (Early Discovery Interception) ──
+    // Consistent across ALL models: broad discovery queries immediately pop the
+    // interactive clarification cards on the right panel. Zero wasted GPU loops,
+    // instant response, session saved cleanly.
+    const lastUserText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+    const isOpenModel =
+      projectConfig.provider === 'placemaker' ||
+      projectConfig.provider === 'jax' ||
+      projectConfig.provider === 'jax-placemakers' ||
+      (projectConfig.baseUrl || '').includes('8085') ||
+      (projectConfig.baseUrl || '').includes('jax-placemakers');
 
     // ── Load back-office business rules (config over code) ──
     const activeRules = await this.configLoader.loadActiveRules(tenantId);
@@ -3079,55 +4117,73 @@ export class AgentService {
     // journey block carries durable facts). No client-side compaction needed.
     const activeMessages = messages;
 
+    const isLeakOrTroubleshooting =
+      intent.intent === 'leak_repair' ||
+      (lastUserText || '').toLowerCase().includes('leak') ||
+      (lastUserText || '').toLowerCase().includes('drip') ||
+      (lastUserText || '').toLowerCase().includes('water damage');
+
+    const leakGuidance = isLeakOrTroubleshooting
+      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions on the right panel (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
+      : '';
+
     // Intent + retrieval guidance injected as a system message so the generation
     // step follows the policy (mode + what it may retrieve this turn).
     const intentGuidance =
       `[TURN GUIDANCE]\n- Detected intent: ${intent.intent} (stage: ${intent.stage}, mode: ${intent.mode})\n` +
       `- Missing context: ${intent.missingInfo.length ? intent.missingInfo.join(', ') : '(none)'}\n` +
-      `- ${policy.guidance}`;
+      `- ${policy.guidance}${leakGuidance}`;
 
     // ── Build Conversation Array ────────────────────────────────────
-    // System prompt is assembled per-turn: base + mode(business|technical) + stage.
-    const conversation: any[] = [
-      { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage) },
-      ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
-      ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
-      ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
-      ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
-      { role: 'system', content: intentGuidance },
-      ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
-        `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
-        `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
-      ...(hasDesignImage ? [{ role: 'system', content:
-        '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
-        'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
-        'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
-      ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
-        '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer. ' +
-        'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — "design me a…", "can you make a…", "create a…" — call generateDesign with their brief FIRST; do NOT answer with searchKnowledge/showItems catalogue cards. ' +
-        'Only use searchKnowledge/showItems when they want to BROWSE existing products. Iterations ("make the sleeves brighter") → generateDesign again. ' +
-        'When the customer is happy or says "send it to your artist/for review", call submitForReview (kind "use" or "create"); when they ask "is it ready?", call checkReviewStatus. A custom design needs artist approval AND customer agreement before print — never call it production-ready yourself.' }] : []),
-      ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-        '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for STRUCTURAL building projects (decking, fencing, wall lining, retaining, cladding) — NOT rooms. ' +
-        'When the customer asks to plan, size, estimate, or get materials for one of those (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType: "decking" | "fencing" | "lining" | "retaining" | "cladding" — never "laundry"/"bathroom"/"kitchen", those are rooms, see below). ' +
-        'CRITICAL RULE FOR ROOM MAKEOVERS: a laundry, bathroom or kitchen makeover is NOT a buildProjectPlan call — it is a ROOM, so it always goes through openSpacePlanner instead (see the room-discovery block below). NEVER suggest a single cabinet in isolation for a room makeover! A room makeover is a complete 5-trade project covering (1) Cabinetry & Modular Storage, (2) Sanitaryware & SuperTubs, (3) Tapware & Plumbing Valves, (4) Wet-Wall Linings (GIB Aqualine) & Waterproofing Membranes, and (5) Functional Accessories & Hampers. ' +
-        'Before asking anything, check what the customer already told you in THIS message (a size, a style word like "modern", "trade installer" vs "DIY") — never re-ask for something they already gave you. Only ask clarifying questions for whatever is still missing (dimensions, style preference, DIY vs. Trade installation), and if all of that is already there, skip straight to calling the right tool (buildProjectPlan for a structural project, openSpacePlanner for a room) to present the complete plan on the right panel.' }] : []),
-      ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-        '[CONSULTATIVE SALES REP PARTNERSHIP & ROOM DISCOVERY] You are an experienced PlaceMakers Project Consultant & Sales Rep partnering with the customer to design their space. ' +
-        'When the customer asks to build or plan a laundry cabinet, room makeover, or kitchen space (e.g. "I want to build a laundry cabinet", "plan my laundry space", "laundry room makeover"): ' +
-        '1. Engage warmly as a pair-planning sales rep: congratulate their project, explain that you will build it together step-by-step. ' +
-        '2. Check what they already told you in THIS message before asking anything else, then ask ONLY about whichever of these 4 is still missing — never re-ask one they already answered, and skip this step entirely if all 4 are already known: (a) Wall Width / Room Run (e.g., 1.8m compact, 2.4m standard, 3.0m spacious), (b) Style & Finish (Modern Gloss White, Natural Warm Oak Timber Veneer, or Architectural Charcoal), (c) Appliance & Tub Cavity (front-loader washer/dryer overhang + Robinhood SuperTub), and (d) Installation preference (DIY with tool checklist vs. PlaceMakers Certified Trade Installation). ' +
-        '3. Call openSpacePlanner to open the interactive 3D WebGL Room Designer with real PlaceMakers modular cabinets and live 5-trade BOM on the right panel. ' +
-        '4. Provide interactive choice chips (via presentChoice or structured options) so the customer can effortlessly select their wall run or style in chat!' }] : []),
-      ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
-        '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
-      ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-        '[REACT FLUID JOURNEY TRANSITIONS] You are an intelligent ReAct agent supporting 5 interconnected journeys (Shop, Plan Your Space, Services, Tools, and Customer Service). ' +
-        'Customers can pivot between journeys at any time (e.g. asking for trade installation or branch pickup in the middle of a 3D room plan). ' +
-        'Preserve all room dimensions, active materials, and customer context during transitions. ' +
-        'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
-      ...activeMessages
-    ];
+    // For open models (e.g. local Gemma 2 9B), provide a concise, high-speed trade persona
+    // to prevent local GPU memory bloat and long prefill delays.
+    const conversation: any[] = isOpenModel
+      ? [
+          {
+            role: 'system',
+            content: this.buildOpenModelTradePrompt(),
+          },
+          ...activeMessages,
+        ]
+      : [
+          { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage) },
+          ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
+          ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
+          ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
+          ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
+          { role: 'system', content: intentGuidance },
+          ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
+            `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
+            `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
+          ...(hasDesignImage ? [{ role: 'system', content:
+            '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
+            'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
+            'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
+          ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
+            '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer. ' +
+            'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — "design me a…", "can you make a…", "create a…" — call generateDesign with their brief FIRST; do NOT answer with searchKnowledge/showItems catalogue cards. ' +
+            'Only use searchKnowledge/showItems when they want to BROWSE existing products. Iterations ("make the sleeves brighter") → generateDesign again. ' +
+            'When the customer is happy or says "send it to your artist/for review", call submitForReview (kind "use" or "create"); when they ask "is it ready?", call checkReviewStatus. A custom design needs artist approval AND customer agreement before print — never call it production-ready yourself.' }] : []),
+          ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
+            '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for STRUCTURAL building projects (decking, fencing, wall lining, retaining, cladding) — NOT rooms. ' +
+            'When the customer asks to plan, size, estimate, or get materials for one of those (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType: "decking" | "fencing" | "lining" | "retaining" | "cladding" — never "laundry"/"bathroom"/"kitchen", those are rooms, see below). ' +
+            'CRITICAL RULE FOR ROOM MAKEOVERS: on the first turn of a room makeover or cabinet build, clarify requirements FIRST — do NOT jump straight into 3D openSpacePlanner or product cards before asking the customer! Call setPhase("clarify") to present the interactive question cards on the right panel. Once the customer answers the clarifying questions (e.g. "My answers: ..."), THEN advance to products or openSpacePlanner with their chosen setup.' }] : []),
+          ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
+            '[CONSULTATIVE SALES REP PARTNERSHIP & ROOM DISCOVERY] You are an experienced PlaceMakers Project Consultant & Sales Rep partnering with the customer to design their space. ' +
+            'When the customer asks to build or plan a laundry cabinet, room makeover, or kitchen space (e.g. "I want to build a laundry cabinet", "plan my laundry space", "laundry room makeover"): ' +
+            '1. Engage warmly as a pair-planning sales rep: congratulate their project, explain that you will build it together step-by-step. ' +
+            '2. Check what they already told you in THIS message before asking anything else, then ask ONLY about whichever of these 4 is still missing — never re-ask one they already answered: (a) Wall Width / Room Run (e.g., 1.8m compact, 2.4m standard, 3.0m spacious), (b) Style & Finish (Modern Gloss White, Natural Warm Oak Timber Veneer, or Architectural Charcoal), (c) Appliance & Tub Cavity (front-loader washer/dryer overhang + Robinhood SuperTub), and (d) Installation preference (DIY with tool checklist vs. PlaceMakers Certified Trade Installation). ' +
+            '3. On discovery, call setPhase("clarify") to render the question cards on the right panel with selectable options. Do NOT call openSpacePlanner or showItems yet. ' +
+            '4. Once the customer answers the clarifying questions, then openSpacePlanner or product recommendations can be launched with their chosen configuration.' }] : []),
+          ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
+            '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
+          ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
+            '[REACT FLUID JOURNEY TRANSITIONS] You are an intelligent ReAct agent supporting 5 interconnected journeys (Shop, Plan Your Space, Services, Tools, and Customer Service). ' +
+            'Customers can pivot between journeys at any time (e.g. asking for trade installation or branch pickup in the middle of a 3D room plan). ' +
+            'Preserve all room dimensions, active materials, and customer context during transitions. ' +
+            'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
+          ...activeMessages
+        ];
 
     const maxLoops = 6;
     const MAX_SEARCHES = 6;          // collection + core fixtures need multiple searches
@@ -3155,6 +4211,44 @@ export class AgentService {
     // ── Step 5: Generation — controlled tool-calling loop ───────────
     while (loops < maxLoops) {
       loops++;
+      if (isOpenModel) {
+        const response = await llm.chat.completions.create({
+          model,
+          messages: conversation,
+          max_tokens: 256,
+          ...genParams(model, projectConfig.temperature),
+        });
+        finalMessage = response.choices[0].message;
+        const rawContent = finalMessage?.content || '';
+        console.log(`[JourneyAX:ModelResponse] 💬 Model output for tenant="${tenantId}" [model=${model}]:\n${rawContent}`);
+
+        const toolExecuted = await this.executeOpenModelToolCalls(tenantId, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t));
+        if (!toolExecuted) {
+          const modelClarifyAction = this.extractQuestionsFromModelResponse(rawContent, lastUserText, intent);
+          if (modelClarifyAction) {
+            console.log(`[JourneyAX:ModelClarify] 💡 Extracted diagnostic questions directly from model response:`, modelClarifyAction.arguments.questions.map((q: any) => q.title));
+            uiToolCalls.push({
+              id: `model_text_clarify_${Date.now()}`,
+              type: 'function',
+              function: { name: 'setPhase', arguments: JSON.stringify(modelClarifyAction.arguments) },
+            });
+          } else {
+            await this.resolveOpenModelProducts(tenantId, lastUserText, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t));
+          }
+        }
+
+        let cleanedContent = rawContent.replace(/TOOL_CALL:\s*[a-zA-Z0-9_]+\s*\([\s\S]*?\)/gi, '').trim();
+        cleanedContent = cleanedContent.replace(/(?:oh no,?\s*)?(?:a\s*)?leaking\s+bathroom\s+is\s+never\s+fun!?[.\s]*/gi, '').trim();
+        if (cleanedContent && !cleanedContent.startsWith('To figure out') && !cleanedContent.startsWith('Water leaks') && !cleanedContent.startsWith('A leaking')) {
+          cleanedContent = cleanedContent.charAt(0).toUpperCase() + cleanedContent.slice(1);
+        }
+        if (!cleanedContent) {
+          cleanedContent = 'Here are the relevant products from our catalogue:';
+        }
+        finalMessage.content = cleanedContent;
+        conversation.push(finalMessage);
+        break;
+      }
       const response = await llm.chat.completions.create({
         model,
         messages: conversation,
@@ -3432,11 +4526,24 @@ export class AgentService {
           // and compute totals here. The emitted uiAction carries the SERVER quote,
           // never the model's numbers.
           if (call.function.name === 'updateQuote') {
-            // A team order priced at quantity 1 is money-wrong and looks authoritative.
-            // The engine multiplies correctly; it just defaults missing quantity to 1.
-            // Refuse to build it rather than ship a confident wrong total.
             const _size = Number(journeyState.teamSize) || 0;
             const _items = Array.isArray(parsedArgs.items) ? parsedArgs.items : [];
+
+            // P0 GUARD: Refuse to build an empty quote or quote without valid items!
+            if (!_items.length || _items.every((it: any) => !String(it?.sku || '').trim())) {
+              conversation.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: JSON.stringify({
+                  success: false,
+                  emptyItems: true,
+                  message: 'You called updateQuote with NO products (0 items). You cannot create an empty quote or use updateQuote for an assessment summary or diagnostic report. A quote is strictly for ordering real products with SKUs. If you are diagnosing or troubleshooting a leak or repair, use showGuide to present step-by-step diagnostic/inspection instructions. If recommending replacement fixtures/mixers/parts, search the catalogue with searchKnowledge and call showItems. Do NOT call updateQuote without real products.'
+                })
+              });
+              didSearch = true;
+              continue;
+            }
+
             if (_size > 1 && _items.length && _items.every((it: any) => (Number(it.quantity) || 1) <= 1)) {
               conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({
                 success: false, quantityMissing: true,
@@ -3453,6 +4560,22 @@ export class AgentService {
               warrantySummary: parsedArgs.warrantySummary,
               pricing: projectConfig.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
             });
+
+            // P0 GUARD: If no quoted items could be priced from the catalogue, do not emit an empty quote!
+            if (!quote.lines || quote.lines.length === 0) {
+              conversation.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: JSON.stringify({
+                  success: false,
+                  emptyItems: true,
+                  message: 'None of the quoted items could be found in the catalogue (0 priced lines). An empty quote cannot be created. Please search the catalogue with searchKnowledge for real products/mixers/fixtures and call showItems, or call showGuide if this is a diagnostic/troubleshooting issue.'
+                })
+              });
+              didSearch = true;
+              continue;
+            }
+
             journeyState.quoteId = quote.quoteId;
             (call as any).__quote = quote;
             uiToolCalls.push(call);
@@ -3589,6 +4712,17 @@ export class AgentService {
       uiActions.push(this.synthGenderClarify(intent));
       if (!finalMessage?.content) finalMessage = { role: 'assistant', content: 'Happy to help! First — who are we shopping for, and what’s the occasion?' };
     }
+    // SAFETY NET: Clarify synthesis when no UI action or products were rendered
+    if (!uiActions.some((a) => a.name === 'setPhase') && uiActions.length === 0 && !intent.panelRenderBlocked) {
+      const userText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+      const synthClarify = this.buildDomainClarify(userText, intent, finalMessage?.content || '');
+      if (synthClarify) {
+        uiActions.push({ name: 'setPhase', arguments: { phase: 'clarify', questions: synthClarify.questions } });
+        if (synthClarify.chatLead) {
+          finalMessage = { role: 'assistant', content: synthClarify.chatLead };
+        }
+      }
+    }
     const nextState = reduceActions(journeyState, uiActions, intent);
     // Append the assistant's spoken reply to the transcript, then persist the
     // bounded transcript + updated journey memory. The client stores nothing.
@@ -3645,11 +4779,13 @@ export class AgentService {
     const state = stored?.state ?? request.state;
     const turnIndex = (stored?.turnCount || 0) + 1; // used to key per-tool-call trace entries (steps[])
     pushTrace({ step: 'session', detail: stored ? `resumed ${sessionId.slice(0, 8)} (turn ${(stored.turnCount || 0) + 1}, ${messages.length} msg, ledger v${journeyState.version})` : `new ${sessionId.slice(0, 8)}` });
+    emit('session', { sessionId });
 
     // Published project config (model + persona + journey guidance)
     const projectConfig = await this.configLoader.loadProjectConfig(tenantId);
     const model = projectConfig.model || this.model;
     const llm = getChatClient({ provider: projectConfig.provider, apiKey: projectConfig.apiKey, baseUrl: projectConfig.baseUrl }); // per-project provider + key
+    console.log(`[JourneyAX:Stream] 🚀 Invoking LLM for tenant="${tenantId}" | provider="${projectConfig.provider || 'openai'}" | model="${model}" | url="${projectConfig.baseUrl || 'https://api.openai.com/v1'}"`);
     const configBlock = this.configLoader.renderConfigBlock(projectConfig);
     // High-level orientation so the agent starts knowing who this business is
     // (AUG-14). Cached; never blocks the turn.
@@ -3661,6 +4797,15 @@ export class AgentService {
     const intent = await this.intentResolver.resolve(messages, state, this.intentModel, projectConfig.contextDimensions);
     const dimStr = Object.entries(intent.dimensions || {}).map(([k, v]) => `${k}=${v}`).join(',') || '—';
     pushTrace({ step: 'intent', detail: `${intent.intent} · dims=${dimStr} · space=${intent.space} · stage=${intent.stage} · mode=${intent.mode}`, data: intent });
+
+    // ── Consultative Clarification Gate (Early Discovery Interception - Streaming) ──
+    const lastUserText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+    const isOpenModel =
+      projectConfig.provider === 'placemaker' ||
+      projectConfig.provider === 'jax' ||
+      projectConfig.provider === 'jax-placemakers' ||
+      (projectConfig.baseUrl || '').includes('8085') ||
+      (projectConfig.baseUrl || '').includes('jax-placemakers');
 
     // Config rules
     const activeRules = await this.configLoader.loadActiveRules(tenantId);
@@ -3677,32 +4822,51 @@ export class AgentService {
 
     // Prompt assembly (mirrors processChat) — journey working-memory block.
     const stateContext = renderJourneyStateBlock(journeyState);
+
+    const isLeakOrTroubleshooting =
+      intent.intent === 'leak_repair' ||
+      (lastUserText || '').toLowerCase().includes('leak') ||
+      (lastUserText || '').toLowerCase().includes('drip') ||
+      (lastUserText || '').toLowerCase().includes('water damage');
+
+    const leakGuidance = isLeakOrTroubleshooting
+      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions on the right panel (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
+      : '';
+
     const intentGuidance =
       `[TURN GUIDANCE]\n- Detected intent: ${intent.intent} (stage: ${intent.stage}, mode: ${intent.mode})\n` +
       `- Missing context: ${intent.missingInfo.length ? intent.missingInfo.join(', ') : '(none)'}\n` +
-      `- ${policy.guidance}`;
+      `- ${policy.guidance}${leakGuidance}`;
 
-    const conversation: any[] = [
-      { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage) },
-      ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
-      ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
-      ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
-      ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
-      { role: 'system', content: intentGuidance },
-      ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
-        `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
-        `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
-      ...(hasDesignImage ? [{ role: 'system', content:
-        '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
-        'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
-        'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
-      ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
-        '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer, so they never need another tool. ' +
-        'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — e.g. "design me a…", "can you make a…", "I want a jersey that…", "create a…" — call generateDesign with their brief FIRST. Do NOT answer such a request with searchKnowledge/showItems catalogue cards. ' +
-        'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
-        'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
-      ...messages,
-    ];
+    const conversation: any[] = isOpenModel
+      ? [
+          {
+            role: 'system',
+            content: this.buildOpenModelTradePrompt(),
+          },
+          ...messages,
+        ]
+      : [
+          { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage) },
+          ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
+          ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
+          ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
+          ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
+          { role: 'system', content: intentGuidance },
+          ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
+            `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
+            `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
+          ...(hasDesignImage ? [{ role: 'system', content:
+            '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
+            'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
+            'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
+          ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
+            '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer, so they never need another tool. ' +
+            'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — e.g. "design me a…", "can you make a…", "I want a jersey that…", "create a…" — call generateDesign with their brief FIRST. Do NOT answer such a request with searchKnowledge/showItems catalogue cards. ' +
+            'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
+            'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
+          ...messages,
+        ];
 
     // ── Tool rounds (non-streamed) — resolve searches + UI actions ──
     const maxLoops = 6;
@@ -3726,6 +4890,11 @@ export class AgentService {
     await this.noteNamedStyle(tenantId, conversation, journeyState, projectConfig);
     const researchedThisTurn = await this.maybeResearchOrg(tenantId, projectConfig, intent, journeyState, conversation, uiToolCalls, emit);
     await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, emit, model, llm);
+
+    // Open model retrieval accelerator (Gemma 2 / MLX Metal):
+    if (isOpenModel) {
+      readyToSpeak = true;
+    }
 
     while (loops < maxLoops && !readyToSpeak) {
       loops++;
@@ -4024,12 +5193,24 @@ export class AgentService {
                 // P0-04: updateQuote is SERVER-AUTHORITATIVE (not loop-guarded). Rehydrate
         // real prices + compute totals; emit the SERVER quote, not the model's args.
         if (call.function.name === 'updateQuote') {
-          // A team order priced at quantity 1 is money-wrong and looks authoritative.
-          // The engine multiplies correctly; it just defaults missing quantity to 1.
-          // Refuse to build it rather than ship a confident wrong total. (This is the
-          // path the storefront actually uses — the buffered one is the fallback.)
           const qSize = Number(journeyState.teamSize) || 0;
           const qItems = Array.isArray(parsedArgs.items) ? parsedArgs.items : [];
+
+          // P0 GUARD: Refuse to build an empty quote or quote without valid items!
+          if (!qItems.length || qItems.every((it: any) => !String(it?.sku || '').trim())) {
+            conversation.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify({
+                success: false,
+                emptyItems: true,
+                message: 'You called updateQuote with NO products (0 items). You cannot create an empty quote or use updateQuote for an assessment summary or diagnostic report. A quote is strictly for ordering real products with SKUs. If you are diagnosing or troubleshooting a leak or repair, use showGuide to present step-by-step diagnostic/inspection instructions. If recommending replacement fixtures/mixers/parts, search the catalogue with searchKnowledge and call showItems. Do NOT call updateQuote without real products.'
+              })
+            });
+            didSearch = true;
+            continue;
+          }
+
           if (qSize > 1 && qItems.length && qItems.every((it: any) => (Number(it.quantity) || 1) <= 1)) {
             conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({
               success: false, quantityMissing: true,
@@ -4045,6 +5226,22 @@ export class AgentService {
             warrantySummary: parsedArgs.warrantySummary,
             pricing: projectConfig.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
           });
+
+          // P0 GUARD: If no quoted items could be priced from the catalogue, do not emit an empty quote!
+          if (!quote.lines || quote.lines.length === 0) {
+            conversation.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify({
+                success: false,
+                emptyItems: true,
+                message: 'None of the quoted items could be found in the catalogue (0 priced lines). An empty quote cannot be created. Please search the catalogue with searchKnowledge for real products/mixers/fixtures and call showItems, or call showGuide if this is a diagnostic/troubleshooting issue.'
+              })
+            });
+            didSearch = true;
+            continue;
+          }
+
           journeyState.quoteId = quote.quoteId;
           (call as any).__quote = quote;
           uiToolCalls.push(call);
@@ -4145,6 +5342,9 @@ export class AgentService {
     const plainRetail = projectConfig?.commerceMode === 'cart' && !projectConfig?.configuratorType;
     let finalText = '';
     let pending = '';   // holds an in-progress sentence (plainRetail only)
+    let openModelBuffer = '';
+    let openModelSuppressingToolCall = false;
+
     try {
       // No tools/tool_choice here → the model can only produce text (OpenAI rejects
       // tool_choice when tools are absent). This IS the final spoken answer.
@@ -4152,12 +5352,49 @@ export class AgentService {
         model,
         messages: conversation,
         stream: true,
+        ...(isOpenModel ? { max_tokens: 256 } : {}),
         ...genParams(model, projectConfig.temperature),
       });
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content || '';
         if (!delta) continue;
         finalText += delta;
+
+        if (isOpenModel) {
+          openModelBuffer += delta;
+
+          // If not currently suppressing, check if buffer starts with or could start with TOOL_CALL:
+          const tcPrefix = 'TOOL_CALL:';
+          if (!openModelSuppressingToolCall) {
+            const trimmed = openModelBuffer.trimStart();
+            if (trimmed.length > 0 && trimmed.length < tcPrefix.length && tcPrefix.startsWith(trimmed)) {
+              // Potential start of tool call, hold in buffer
+              continue;
+            } else if (trimmed.startsWith(tcPrefix)) {
+              openModelSuppressingToolCall = true;
+            } else {
+              // Not a tool call start! Flush buffer to client
+              emit('token', { delta: openModelBuffer });
+              openModelBuffer = '';
+              continue;
+            }
+          }
+
+          if (openModelSuppressingToolCall) {
+            // Check if the TOOL_CALL has concluded (balanced parenthesis)
+            const tool = findBalancedToolCall(openModelBuffer);
+            if (tool) {
+              openModelBuffer = openModelBuffer.slice(tool.endIndex).replace(/^\s*\n?/, '');
+              openModelSuppressingToolCall = false;
+              if (openModelBuffer.length > 0) {
+                emit('token', { delta: openModelBuffer });
+                openModelBuffer = '';
+              }
+            }
+          }
+          continue;
+        }
+
         if (!plainRetail) { emit('token', { delta }); continue; }
         pending += delta;
         // Emit each COMPLETE sentence once it's terminated, stripping taboo ones.
@@ -4171,14 +5408,63 @@ export class AgentService {
     } catch (err) {
       emit('error', { message: `generation failed: ${(err as Error).message}` });
     }
+
+    if (isOpenModel) {
+      if (openModelBuffer) {
+        let cleanRemainder = openModelBuffer;
+        while (true) {
+          const tool = findBalancedToolCall(cleanRemainder);
+          if (!tool) break;
+          cleanRemainder = cleanRemainder.replace(tool.fullMatch, '');
+        }
+        cleanRemainder = cleanRemainder.trim();
+        if (cleanRemainder) {
+          emit('token', { delta: cleanRemainder });
+        }
+        openModelBuffer = '';
+      }
+
+      console.log(`[JourneyAX:ModelResponse] 💬 Streamed model output for tenant="${tenantId}" [model=${model}]:\n${finalText}`);
+      const toolExecuted = await this.executeOpenModelToolCalls(tenantId, finalText, intent, uiToolCalls, emit, pushTrace);
+      if (!toolExecuted) {
+        const modelClarifyAction = this.extractQuestionsFromModelResponse(finalText, lastUserText, intent);
+        if (modelClarifyAction) {
+          console.log(`[JourneyAX:ModelClarify] 💡 Extracted diagnostic questions directly from model response:`, modelClarifyAction.arguments.questions.map((q: any) => q.title));
+          uiToolCalls.push({
+            id: `model_text_clarify_${Date.now()}`,
+            type: 'function',
+            function: { name: 'setPhase', arguments: JSON.stringify(modelClarifyAction.arguments) },
+          });
+          if (emit) emit('uiAction', modelClarifyAction);
+        } else {
+          await this.resolveOpenModelProducts(tenantId, lastUserText, finalText, intent, uiToolCalls, emit, pushTrace);
+        }
+      }
+    }
+
     // Flush the trailing (unterminated) sentence.
     if (plainRetail && pending) {
       const clean = this.stripCartTaboo(pending, true);
       if (clean) emit('token', { delta: clean });
     }
     finalText = this.stripCartTaboo(this.stripChatMedia(finalText), plainRetail);
-    if (plainRetail && !finalText.trim()) {
-      finalText = 'Here are a few great options — let me know which one catches your eye, or head to checkout any time.';
+    finalText = finalText.replace(/(?:oh no,?\s*)?(?:a\s*)?leaking\s+bathroom\s+is\s+never\s+fun!?[.\s]*/gi, '').trim();
+    if (finalText && !finalText.startsWith('To figure out') && !finalText.startsWith('Water leaks') && !finalText.startsWith('A leaking')) {
+      finalText = finalText.charAt(0).toUpperCase() + finalText.slice(1);
+    }
+    if (isOpenModel) {
+      let cleaned = finalText;
+      while (true) {
+        const tool = findBalancedToolCall(cleaned);
+        if (!tool) break;
+        cleaned = cleaned.replace(tool.fullMatch, '');
+      }
+      finalText = cleaned.trim();
+    }
+    if (!finalText.trim()) {
+      finalText = plainRetail
+        ? 'Here are a few great options — let me know which one catches your eye, or head to checkout any time.'
+        : 'Here are the matching products from our catalogue:';
       emit('token', { delta: finalText });
     }
     conversation.push({ role: 'assistant', content: finalText });
@@ -4193,6 +5479,20 @@ export class AgentService {
       uiActions.push(synth);
       emit('uiAction', synth);
       if (!finalText || !finalText.trim()) { finalText = 'Happy to help! First — who are we shopping for, and what’s the occasion?'; emit('token', { delta: finalText }); }
+    }
+    // SAFETY NET (streaming): Clarify synthesis when no UI action was rendered
+    if (!uiActions.some((a) => a.name === 'setPhase') && uiActions.length === 0 && !intent.panelRenderBlocked && !lastUserText.toLowerCase().includes('my answers:')) {
+      const userText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+      const synthClarify = this.buildDomainClarify(userText, intent, finalText);
+      if (synthClarify) {
+        const synthAction = { name: 'setPhase', arguments: { phase: 'clarify', questions: synthClarify.questions } };
+        uiActions.push(synthAction);
+        emit('uiAction', synthAction);
+        pushTrace({ step: 'synth-clarify', detail: `${synthClarify.questions.length} domain question(s) synthesized on right panel` });
+        if (synthClarify.chatLead) {
+          finalText = synthClarify.chatLead;
+        }
+      }
     }
     const nextState = reduceActions(journeyState, uiActions, intent);
     await this.sessionStore.save({

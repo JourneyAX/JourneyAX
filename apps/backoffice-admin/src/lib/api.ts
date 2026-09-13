@@ -141,6 +141,8 @@ export const INGEST_STAGES: { id: string; label: string }[] = [
 ];
 
 export const LLM_OPTIONS: Record<string, { label: string; models: string[]; keyEnv?: string; keyHelp?: string }> = {
+  jax: { label: 'JAX Enterprise Model (NVIDIA L4 Cloud)', models: ['jax-placemakers-1.0', 'placemaker-gemma-9b-fused'], keyHelp: 'Cloud Run L4 GPU - No key needed' },
+  placemaker: { label: 'PlaceMaker Custom Model (JAX / GPU)', models: ['jax-placemakers-1.0', 'placemaker-gemma-9b-fused'], keyHelp: 'Local (:8085) or Cloud GPU - No key needed' },
   openai:    { label: 'OpenAI',              models: ['gpt-5', 'gpt-5-mini', 'o3', 'o4-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'], keyEnv: 'OPENAI_API_KEY',    keyHelp: 'sk-…' },
   anthropic: { label: 'Anthropic (Claude)',  models: ['claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5'], keyEnv: 'ANTHROPIC_API_KEY', keyHelp: 'sk-ant-…' },
   gemini:    { label: 'Google Gemini',       models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'], keyEnv: 'GEMINI_API_KEY',   keyHelp: 'AIza…' },

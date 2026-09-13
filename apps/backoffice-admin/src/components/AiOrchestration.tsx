@@ -194,13 +194,13 @@ export function AiOrchestration({ project, onSaved }: { project: Project; onSave
               onChange={(e) => setApiKey(e.target.value)}
               autoComplete="off"
               placeholder={
-                provider === "ollama"
-                  ? "Not required for self-hosted Ollama"
+                provider === "ollama" || provider === "placemaker"
+                  ? "Not required for local PlaceMaker Gemma model"
                   : project.ai?.apiKeyConfigured
                     ? "Enter a new key to replace the stored one…"
                     : `Paste this project's key (${LLM_OPTIONS[provider]?.keyHelp || "…"})`
               }
-              disabled={provider === "ollama"}
+              disabled={provider === "ollama" || provider === "placemaker"}
               style={{ flex: 1, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 12.5 }}
             />
             <button

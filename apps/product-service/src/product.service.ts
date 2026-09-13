@@ -27,7 +27,8 @@ function expandTypeFilter(type: string): unknown {
     case 'care':
     case 'styling':      return { $in: ['sizing', 'fit', 'measurement', 'care', 'styling'] };
     case 'faq':
-    case 'warranty':     return { $in: ['faq', 'policy', 'technical', 'sizing', 'fit', 'measurement', 'care'] };
+    case 'policy':
+    case 'warranty':     return { $in: ['faq', 'policy', 'technical', 'sizing', 'fit', 'measurement', 'care', 'general'] };
     case 'troubleshooting': return { $in: ['troubleshooting', 'technical'] };
     default:             return type; // product / design / collection — exact
   }
@@ -131,23 +132,19 @@ export class ProductService {
   }
 
   async embedText(text: string): Promise<number[]> {
+    const tEmbedStart = Date.now();
     try {
       const response = await this.getOpenAI().embeddings.create({
         model: EMBEDDING_MODEL,
         input: text,
       });
+      const tEmbed = Date.now() - tEmbedStart;
+      console.log(`  [ProductService:Timing] ⏱️ OpenAI Embedding generated in ${tEmbed}ms (len: ${text.length})`);
       return response.data[0].embedding;
     } catch (err) {
-      /* Do not keep a client that has proven broken.
-       *
-       * The client is built once and cached — so a key that was bad at first
-       * use (quota exhausted, mid-rotation) kept THIS process on the regex
-       * fallback forever, even after the key was fixed. Dropping the client
-       * makes the next call rebuild from the current environment: the service
-       * heals as soon as the key does, instead of degrading every search until
-       * someone thinks to restart it. */
+      const tEmbed = Date.now() - tEmbedStart;
       this.openai = undefined as any;
-      console.warn('[ProductService] Embedding failed, will use regex fallback:', err);
+      console.warn(`  [ProductService:Timing] ⚠️ Embedding failed after ${tEmbed}ms, using fallback:`, err);
       return [];
     }
   }
@@ -275,13 +272,15 @@ export class ProductService {
       filter['metadata.category'] = options.category;
     }
 
+    const numCandidates = Math.max(limit, Math.min(limit * 3, 72));
+
     const pipeline: object[] = [
       {
         $vectorSearch: {
           index: VECTOR_INDEX_NAME,
           path: 'embedding',
           queryVector: queryEmbedding,
-          numCandidates: limit * 10,
+          numCandidates: numCandidates,
           limit: limit,
           ...(Object.keys(filter).length > 0 ? { filter } : {}),
         },
@@ -298,7 +297,12 @@ export class ProductService {
       },
     ];
 
+    const tVecStart = Date.now();
     const results = await col.aggregate(pipeline).toArray();
+    const tVec = Date.now() - tVecStart;
+    console.log(
+      `  [ProductService:Timing] ⏱️ Atlas $vectorSearch took ${tVec}ms (numCandidates=${numCandidates}, limit=${limit}, found=${results.length}, filter=${JSON.stringify(filter)})`
+    );
     return results.map((doc) => ({
       document: doc as unknown as KnowledgeDocument,
       score: (doc as any).score || 0,
@@ -512,6 +516,7 @@ export class ProductService {
     results: any[];
     message?: string;
   }> {
+    const tSearchStart = Date.now();
     // Over-fetch unconditionally, then trim to `limit` after lexicalRerank (step
     // 2.5 below) has had a real candidate pool to work with. Fetching exactly
     // `limit` from pure vector similarity meant lexicalRerank could only reorder
@@ -539,11 +544,15 @@ export class ProductService {
     // "gib", "tanking") a per-tenant glossary already generates during ingestion
     // but that, until now, no query ever actually read. Additive, tenant-generic:
     // a tenant with no glossary (or no match) gets the query back unchanged.
+    const tGlossStart = Date.now();
     const db = await this.getDb();
     const glossaryTerms = await getDomainGlossary(db, brand);
+    const tGloss = Date.now() - tGlossStart;
     const glossary = expandWithGlossary(emphasized, glossaryTerms);
     if (glossary.matched.length) {
-      console.log(`  [ProductService] GLOSSARY "${glossary.matched.join(', ')}" → +${glossary.addedKeywords.join(', ')}`);
+      console.log(`  [ProductService:Timing] ⏱️ Domain Glossary loaded in ${tGloss}ms ("${glossary.matched.join(', ')}" → +${glossary.addedKeywords.join(', ')})`);
+    } else {
+      console.log(`  [ProductService:Timing] ⏱️ Domain Glossary loaded in ${tGloss}ms (${glossaryTerms.length} terms)`);
     }
 
     // Step 1: Generate embedding (on the fully-expanded query)
@@ -705,6 +714,7 @@ export class ProductService {
     try {
       const skus = [...new Set(budgetedResults.map((r: any) => r.sku).filter(Boolean))];
       if (skus.length) {
+        const tEnrichStart = Date.now();
         const db = await this.getDb();
         const canon = await db.collection('products')
           .find(
@@ -722,8 +732,15 @@ export class ProductService {
           if (Array.isArray(c.completeTheLook) && c.completeTheLook.length) r.completeTheLook = c.completeTheLook.slice(0, 12);
           if (c.originalPrice?.min) r.originalPrice = c.originalPrice.min;
         }
+        const tEnrich = Date.now() - tEnrichStart;
+        console.log(`  [ProductService:Timing] ⏱️ Product variant enrichment took ${tEnrich}ms for ${skus.length} SKUs`);
       }
     } catch { /* enrichment is best-effort — never fail a search over it */ }
+
+    const tTotal = Date.now() - tSearchStart;
+    console.log(
+      `  [ProductService:Timing] ⏱️ Total Search Roundtrip: ${tTotal}ms | Query: "${query}" | Results: ${budgetedResults.length}`
+    );
 
     return {
       found: true,

@@ -18,6 +18,52 @@
  */
 import OpenAI from 'openai';
 import { createHash } from 'crypto';
+import { execSync } from 'child_process';
+
+let cachedGcpToken: { token: string; expiresAt: number; audience: string } | null = null;
+
+/** Obtain Google Cloud identity token for service-to-service Cloud Run authentication. */
+async function getGcpIdentityToken(targetAudience: string): Promise<string> {
+  const now = Date.now();
+  if (cachedGcpToken && cachedGcpToken.audience === targetAudience && cachedGcpToken.expiresAt > now + 60_000) {
+    return cachedGcpToken.token;
+  }
+
+  // 1. Running inside GCP Cloud Run (Metadata service)
+  try {
+    const res = await fetch(`http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(targetAudience)}`, {
+      headers: { 'Metadata-Flavor': 'Google' },
+      signal: AbortSignal.timeout(1200),
+    });
+    if (res.ok) {
+      const token = (await res.text()).trim();
+      cachedGcpToken = { token, expiresAt: now + 50 * 60 * 1000, audience: targetAudience };
+      return token;
+    }
+  } catch {
+    // Non-GCP runtime
+  }
+
+  // 2. Explicit environment variable override
+  if (process.env.GCP_ID_TOKEN || process.env.PLACEMAKER_MODEL_TOKEN) {
+    const token = (process.env.GCP_ID_TOKEN || process.env.PLACEMAKER_MODEL_TOKEN)!.trim();
+    cachedGcpToken = { token, expiresAt: now + 50 * 60 * 1000, audience: targetAudience };
+    return token;
+  }
+
+  // 3. Local development machine fallback (gcloud CLI)
+  try {
+    const token = execSync('gcloud auth print-identity-token', { encoding: 'utf8', timeout: 5000 }).trim();
+    if (token) {
+      cachedGcpToken = { token, expiresAt: now + 45 * 60 * 1000, audience: targetAudience };
+      return token;
+    }
+  } catch {
+    // gcloud not in PATH or unauthenticated
+  }
+
+  return '';
+}
 
 export interface LlmClientConfig {
   provider?: string;
@@ -50,6 +96,17 @@ function resolve(provider: string, projectKey?: string, baseUrlOverride?: string
         baseURL: baseUrlOverride || 'https://generativelanguage.googleapis.com/v1beta/openai/',
         apiKey,
         ok: !!apiKey,
+      };
+    }
+    case 'jax':
+    case 'jax-placemakers':
+    case 'placemaker':
+    case 'placemaker-gemma': {
+      // JAX PlaceMakers custom model server (Cloud Run NVIDIA L4 GPU / local fallback)
+      return {
+        baseURL: baseUrlOverride || process.env.JAX_PLACEMAKERS_MODEL_URL || process.env.PLACEMAKER_MODEL_URL || 'http://localhost:8085/v1',
+        apiKey: (projectKey && projectKey.trim()) || 'journeyax-l4-gpu',
+        ok: true,
       };
     }
     case 'ollama': {
@@ -114,11 +171,28 @@ export function getChatClient(config?: string | LlmClientConfig): OpenAI {
   // compounding a ~70s wait into a 150-180s customer-facing hang. Widening the
   // per-attempt budget and cutting retries to 1 favours letting one real
   // attempt finish over blindly repeating an already-in-flight slow call.
+  const isCloudRun = !!(r.baseURL && r.baseURL.includes('.run.app'));
   const client = new OpenAI({
     ...(r.baseURL ? { baseURL: r.baseURL } : {}),
     apiKey: r.apiKey || 'missing',
     timeout: 90_000,
     maxRetries: 1,
+    ...(isCloudRun ? {
+      fetch: async (url: any, init: any = {}) => {
+        try {
+          const origin = new URL(r.baseURL!).origin;
+          const token = await getGcpIdentityToken(origin);
+          if (token) {
+            const headers = new Headers(init?.headers || {});
+            headers.set('Authorization', `Bearer ${token}`);
+            init.headers = headers;
+          }
+        } catch (e: any) {
+          console.warn('[llm/provider] failed to inject GCP token:', e.message);
+        }
+        return fetch(url, init);
+      },
+    } : {}),
   });
   clients.set(cacheKey, client);
   return client;

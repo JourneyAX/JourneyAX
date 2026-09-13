@@ -37,7 +37,7 @@ export default function QuotePanel() {
   const ordering = !!state.ordering;
   const orderError = state.orderError;
   const warnings = state.serverQuote?.validation?.warnings || [];
-  const canOrder = !state.serverQuote || state.serverQuote.validation.ok;
+  const canOrder = (!state.serverQuote || state.serverQuote.validation.ok) && bom.length > 0;
 
   /* This panel began as Caroma's bathroom BOM — finish swatches, a "how many
    * bathrooms" stepper, plumbing add-ons, GST. None of that belongs on a team
@@ -240,38 +240,44 @@ export default function QuotePanel() {
         {/* Bill of Materials list */}
         <div className="bom-section">
           <div className="bom-label">Bill of Materials</div>
-          {bom.map((line, i) => (
-            <div key={`${line.key}-${i}`} className="bom-row">
-              <BomThumb imageUrl={line.imageUrl} name={line.name} />
-              <div className="bom-row__main">
-                <div className="bom-row__name">{line.name}</div>
-                {line.required && (
-                  <span className="bom-row__badge">Auto-added · required</span>
-                )}
-                {line.reason && (
-                  <div className="bom-row__reason">{line.reason}</div>
-                )}
-                <div className="bom-row__meta">
-                  {line.sku && <span className="bom-row__sku">SKU {line.sku}</span>}
-                  <span className="bom-row__stock">
-                    <span className="bom-row__stock-dot" style={{ background: line.stock?.color || '#059669' }} />
-                    {line.stock?.label || 'In stock'}
-                  </span>
+          {bom.length === 0 ? (
+            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13.5px' }}>
+              No product items in this quote yet. Ask for recommendations or describe what you need to build an itemised bill of materials.
+            </div>
+          ) : (
+            bom.map((line, i) => (
+              <div key={`${line.key}-${i}`} className="bom-row">
+                <BomThumb imageUrl={line.imageUrl} name={line.name} />
+                <div className="bom-row__main">
+                  <div className="bom-row__name">{line.name}</div>
+                  {line.required && (
+                    <span className="bom-row__badge">Auto-added · required</span>
+                  )}
+                  {line.reason && (
+                    <div className="bom-row__reason">{line.reason}</div>
+                  )}
+                  <div className="bom-row__meta">
+                    {line.sku && <span className="bom-row__sku">SKU {line.sku}</span>}
+                    <span className="bom-row__stock">
+                      <span className="bom-row__stock-dot" style={{ background: line.stock?.color || '#059669' }} />
+                      {line.stock?.label || 'In stock'}
+                    </span>
+                  </div>
+                </div>
+                <div className="bom-row__pricing">
+                  <div className="bom-row__total">{money(line.lineTotal)}</div>
+                  <div className="bom-row__unit">{money(line.price)} × {line.quantity ?? qty}</div>
+                  {line.required && isFixtures && (
+                    <button className="bom-row__remove" onClick={handleTryRemove}>remove</button>
+                  )}
                 </div>
               </div>
-              <div className="bom-row__pricing">
-                <div className="bom-row__total">{money(line.lineTotal)}</div>
-                <div className="bom-row__unit">{money(line.price)} × {line.quantity ?? qty}</div>
-                {line.required && isFixtures && (
-                  <button className="bom-row__remove" onClick={handleTryRemove}>remove</button>
-                )}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
-        {/* Optional add-ons — Caroma only */}
-        {isFixtures && (
+        {/* Optional add-ons — Caroma only (only show when products exist in BOM) */}
+        {isFixtures && bom.length > 0 && (
           <div>
             <div className="bom-label">Optional for this project</div>
             <div className="addons-section">

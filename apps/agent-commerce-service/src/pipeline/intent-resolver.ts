@@ -51,9 +51,11 @@ Classify from the CONVERSATION FLOW, not keywords:
 - Early discovery — you have not yet asked clarifying questions, or key context is still missing →
   needsRetrieval=false, retrievalType="none" (ask questions first).
 - IMPORTANT — advancement: once the assistant has ALREADY asked clarifying questions and the
-  customer is now answering them (or has otherwise given enough to act), discovery is COMPLETE.
-  Advance the stage (usually to "products") and set needsRetrieval=true. Do NOT keep the customer
-  in discovery once they have answered — that is the most common failure.
+  customer is now answering them (or has otherwise given enough to act), discovery is COMPLETE:
+  • If diagnosing a leak, plumbing fault, moisture damage, or technical how-to → stage="installation", retrievalType="troubleshooting" or "installation".
+  • If shopping for or selecting products, materials, or fixtures → stage="products", retrievalType="product".
+  • NEVER set stage="quote" upon answering clarifying questions. Stage="quote" is ONLY for when concrete products/items have already been shown or specified and the customer asks to price, quote, or finalize them (e.g. "quote me", "build my quote", "how much for these", "ready to order").
+  Set needsRetrieval=true. Do NOT keep the customer in discovery once they have answered — that is the most common failure.
 - GUIDED OPENING (default): on the customer's FIRST substantive message of a new journey — when they
   describe an OCCASION, PROJECT or GOAL (a party, wedding, remodel, team kit, celebration) rather than
   naming ONE specific product to see — classify stage="intro" and needsRetrieval=false, EVEN IF they
@@ -64,7 +66,7 @@ Classify from the CONVERSATION FLOW, not keywords:
   specific NAMED product or style ("show me the Tulip favours", "open the designer for the cake box").
 - Match retrievalType to the need: "product" to choose/compare fixtures; "design"/"collection" for
   inspiration or a whole-room look; "troubleshooting" for a fault/leak (safety+diagnosis first);
-  "installation" for how-to; "faq" for warranty/policy.
+  "installation" for how-to; "faq" for warranty/policy/returns/store-info.
 - panelRenderBlocked: set true ONLY when the customer explicitly opts out of seeing items rendered on
   the panel THIS turn ("don't render yet", "just tell me what to look for", "don't choose for me",
   "I'll pick from the panel — don't render it"). This is rare; most browsing turns leave it false.

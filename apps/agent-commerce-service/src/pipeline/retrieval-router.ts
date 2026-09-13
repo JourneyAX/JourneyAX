@@ -15,6 +15,23 @@ export interface RetrievalPolicy {
 }
 
 export function buildRetrievalPolicy(intent: IntentResult): RetrievalPolicy {
+  // Policy, FAQ, Warranty, and General Inquiries: ALWAYS allow retrieval even if stage was intro
+  if (
+    intent.intent === 'general_question' ||
+    intent.retrievalType === 'faq' ||
+    intent.space === 'policy' ||
+    intent.stage === 'faq'
+  ) {
+    return {
+      allowRetrieval: true,
+      allowedTypes: ['faq', 'policy', 'general', 'product'],
+      guidance:
+        'RETRIEVAL POLICY: The customer is asking a direct question (policy, return, warranty, shipping, store info, FAQ). ' +
+        'Call searchKnowledge with type:"faq" or type:"general" to retrieve the authoritative answer. ' +
+        'Answer their question directly, concisely, and warmly. Do NOT call setPhase("clarify").',
+    };
+  }
+
   // Early discovery: ask first, do not retrieve.
   if (!intent.needsRetrieval || intent.stage === 'intro') {
     return {

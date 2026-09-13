@@ -437,6 +437,13 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__journeyDispatch = dispatch;
+      (window as any).__journeyState = state;
+    }
+  }, [state, dispatch]);
+
   return (
     <JourneyContext.Provider
       value={{

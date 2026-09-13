@@ -121,7 +121,7 @@ export class StandaloneKnowledgeAdapter implements KnowledgePort {
           limit: q.limit ?? 8,
           gender: q.gender,
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(30000),
       });
       if (!res.ok) {
         return {

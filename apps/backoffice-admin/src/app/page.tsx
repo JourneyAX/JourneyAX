@@ -110,6 +110,10 @@ export default function BackOfficeSPA() {
             setCurrentUser(data.user);
             if (typeof window !== 'undefined') sessionStorage.setItem('jax_user', JSON.stringify(data.user));
             loadProjects();
+            if (typeof window !== 'undefined') {
+              const tab = new URLSearchParams(window.location.search).get('tab');
+              if (tab) setActiveTab(tab as typeof activeTab);
+            }
           }
         }
       } catch { /* not signed in */ }

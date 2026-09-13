@@ -80,13 +80,22 @@ export default function ClarifyPanel() {
       <div className="clarify-panel__footer">
         <button
           className="clarify-build-btn"
-          disabled={!isDynamicClarifyComplete}
+          disabled={!isDynamicClarifyComplete || state.isThinking}
           onClick={handleSubmit}
         >
-          Submit my answers
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>
-            <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          {state.isThinking ? (
+            <>
+              Finding products...
+              <span className="thinking__dot" style={{ marginLeft: 8 }} />
+            </>
+          ) : (
+            <>
+              Submit my answers
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>
+                <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </>
+          )}
         </button>
       </div>
     </div>
