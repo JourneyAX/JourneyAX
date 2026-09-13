@@ -1,0 +1,47 @@
+{
+  "name": "@journeyax/ui-cards",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JourneyAX card catalog: json-render catalog + neutral primitives. Tenant card templates live in Mongo, not here.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog/index.d.ts",
+      "require": "./dist/catalog/index.js",
+      "import": "./dist/catalog/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "require": "./dist/react.js",
+      "import": "./dist/react.js"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@json-render/core": "0.20.0",
+    "@json-render/react": "0.20.0",
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "typescript": "^5"
+  },
+  "files": [
+    "dist",
+    "styles.css"
+  ]
+}

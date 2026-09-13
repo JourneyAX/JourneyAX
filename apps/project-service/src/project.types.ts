@@ -17,6 +17,12 @@
  *   tenant_configs  { projectId }  ← this service's collection
  */
 
+import type { UiTheme, DEFAULT_TEMPLATES, CardType } from '@journeyax/ui-cards';
+
+/** json-render flat spec, as typed by the platform default templates
+ *  (avoids a direct dependency on @json-render/core from this service). */
+export type CardSpec = (typeof DEFAULT_TEMPLATES)[CardType];
+
 export type ProjectStatus = 'active' | 'draft' | 'archived';
 
 /** The storefront's closing surface. 'quote' = B2B project quote (BOM, finishes,
@@ -291,6 +297,16 @@ export interface ProjectConfig {
   /** Configuration-driven multi-trade solution bundle templates */
   multiTradeBundles?: MultiTradeBundleTemplate[];
 
+  // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ─────────────────
+  /** Layer 1+2: theme tokens (`--jx-*` CSS vars) + per-card settings. */
+  uiTheme?: UiTheme;
+  /** Layer 3: tenant card templates (json-render specs) keyed by cardType.
+   *  Overrides `DEFAULT_TEMPLATES[cardType]` wholesale. */
+  cardTemplates?: Record<string, CardTemplateDoc>;
+  /** How this tenant fulfils an order (delivery / collect) + its branch list —
+   *  read by the quote/cart cards via `selectBranch`. Config, never code. */
+  fulfilment?: FulfilmentConfig;
+
   // ── Metadata ──────────────────────────────────────────────────
   createdAt: string;
   updatedAt: string;
@@ -422,6 +438,32 @@ export interface UpdateProjectDto {
   intro?: IntroConfig;
   /** Commerce surface: 'quote' (B2B project quote) vs 'cart' (B2C retail). */
   commerceMode?: CommerceMode;
+  /** Card CMS layers 1+2 (tokens + per-card settings). Replaced wholesale. */
+  uiTheme?: UiTheme;
+  /** Fulfilment mode + branches for the quote/cart cards. Replaced wholesale. */
+  fulfilment?: FulfilmentConfig;
+  /** Layer 3: wholesale replacement of every override. Each entry is validated
+   *  like PUT /cards/:cardType; prefer that endpoint for single-card edits. */
+  cardTemplates?: Record<string, CardTemplateDoc>;
+}
+
+// ── Card CMS (v3) ─────────────────────────────────────────────────────
+/** One tenant card template override, stored at `cardTemplates[cardType]`. */
+export interface CardTemplateDoc {
+  cardType: string;
+  variant?: string;
+  /** json-render flat spec: `{ root, elements: { [key]: { type, props, children?, … } } }`. */
+  spec: CardSpec;
+  updatedAt: string;           // ISO
+  updatedBy?: string;
+  note?: string;
+}
+
+export interface FulfilmentConfig {
+  mode?: 'delivery' | 'collect' | 'both';
+  label?: string;              // "Branch fulfilment & pickup"
+  badge?: string;              // "60-min Click & Collect"
+  branches?: { id: string; name: string; address?: string }[];
 }
 
 /**

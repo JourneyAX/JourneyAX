@@ -20,7 +20,8 @@
     "pdf-parse": "^2.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "@journeyax/ui-cards": "*"
   },
   "devDependencies": {
     "@types/node": "^20",

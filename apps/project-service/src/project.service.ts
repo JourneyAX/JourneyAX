@@ -5,8 +5,9 @@ import {
   ProjectConfig, CreateProjectDto, UpdateProjectDto,
   ProjectIsolationContext, ProjectStatus, ProjectMember, MemberRole,
   BusinessRule, CreateBusinessRuleDto, UpdateBusinessRuleDto, RuleStatus,
-  ConfigVersion,
+  ConfigVersion, CardTemplateDoc, CardSpec,
 } from './project.types';
+import { primitives, CARD_TYPE_NAMES, DEFAULT_TEMPLATES, type CardType } from '@journeyax/ui-cards';
 
 const DB_NAME   = 'journeyax';
 const PROJECTS  = 'tenant_configs';    // existing collection — backwards compat
@@ -519,6 +520,12 @@ export class ProjectService {
     // Storefront opening-screen copy (starters + input placeholder) — set per
     // tenant so the example is vertical-true, not a hardcoded generic one.
     if ((dto as any).intro) $set.intro = (dto as any).intro;
+    // Card CMS (v3): tokens + per-card settings, and fulfilment, are coherent
+    // units — replaced wholesale like `business`. cardTemplates arrives already
+    // validated + stamped by the controller (see validateCardTemplates).
+    if (dto.uiTheme && typeof dto.uiTheme === 'object') $set.uiTheme = dto.uiTheme;
+    if (dto.fulfilment && typeof dto.fulfilment === 'object') $set.fulfilment = dto.fulfilment;
+    if (dto.cardTemplates && typeof dto.cardTemplates === 'object') $set.cardTemplates = dto.cardTemplates;
     for (const [k, v] of Object.entries((dto as any).labels || {})) $set[`labels.${k}`] = v;
 
     // Deep-merge sub-documents (only update provided keys)
@@ -583,6 +590,80 @@ export class ProjectService {
 
     this.bust(pid);
     return { success: true };
+  }
+
+  // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ─────────────────────
+  // Layer 3 of the tenant theme: one json-render spec per card type, stored on
+  // the DRAFT at `cardTemplates[cardType]` and published with the rest of the
+  // config. A tenant override replaces the platform default wholesale; removing
+  // it falls back to DEFAULT_TEMPLATES. Specs are validated against the
+  // primitive catalog before they are stored so a broken template never reaches
+  // the storefront renderer.
+
+  /** Every card type with the spec the DRAFT currently resolves to. */
+  async listCardTemplates(projectId: string): Promise<{
+    cards: Array<{
+      cardType: CardType;
+      source: 'tenant' | 'default';
+      spec: CardSpec;
+      settings: unknown | null;
+      updatedAt?: string;
+      updatedBy?: string;
+      note?: string;
+    }>;
+  } | null> {
+    const project = await this.getProject(projectId);
+    if (!project) return null;
+    const overrides = project.cardTemplates || {};
+    const cards = CARD_TYPE_NAMES.map((cardType) => {
+      const doc = overrides[cardType];
+      const settings = project.uiTheme?.cards?.[cardType] ?? null;
+      if (doc && doc.spec) {
+        return {
+          cardType, source: 'tenant' as const, spec: doc.spec, settings,
+          updatedAt: doc.updatedAt, updatedBy: doc.updatedBy, note: doc.note,
+        };
+      }
+      return { cardType, source: 'default' as const, spec: DEFAULT_TEMPLATES[cardType], settings };
+    });
+    return { cards };
+  }
+
+  /** Upsert a tenant override on the draft; bumps `version` like updateProject. */
+  async upsertCardTemplate(
+    projectId: string,
+    cardType: CardType,
+    doc: CardTemplateDoc,
+  ): Promise<{ success: boolean; message?: string; cardTemplate?: CardTemplateDoc }> {
+    if (!this.isConnected) return { success: false, message: 'Database not available.' };
+    const pid = projectId.toLowerCase();
+    const result = await this.projectsCol.updateOne(
+      { projectId: pid },
+      { $set: { [`cardTemplates.${cardType}`]: doc, updatedAt: doc.updatedAt }, $inc: { version: 1 } },
+    );
+    if (result.matchedCount === 0) return { success: false, message: `Project '${pid}' not found.` };
+    this.bust(pid);
+    return { success: true, cardTemplate: doc };
+  }
+
+  /** Remove a tenant override (back to the platform default); bumps `version`. */
+  async removeCardTemplate(
+    projectId: string,
+    cardType: CardType,
+  ): Promise<{ success: boolean; message?: string; removed?: boolean }> {
+    if (!this.isConnected) return { success: false, message: 'Database not available.' };
+    const pid = projectId.toLowerCase();
+    const existing = await this.projectsCol.findOne({ projectId: pid }, { projection: { [`cardTemplates.${cardType}`]: 1 } });
+    if (!existing) return { success: false, message: `Project '${pid}' not found.` };
+    const had = Boolean((existing as any).cardTemplates?.[cardType]);
+    if (had) {
+      await this.projectsCol.updateOne(
+        { projectId: pid },
+        { $unset: { [`cardTemplates.${cardType}`]: '' }, $set: { updatedAt: new Date().toISOString() }, $inc: { version: 1 } },
+      );
+      this.bust(pid);
+    }
+    return { success: true, removed: had };
   }
 
   // ── Config versioning (FR-CONFIG-002: draft → publish → rollback) ──────────
@@ -795,6 +876,107 @@ function maskHint(v: unknown): string | undefined {
 }
 
 /** Return a copy with integration + AI secrets replaced by a masked hint + `configured` flag. */
+// ── Card template validation (v3 Card CMS) ─────────────────────────────────
+// Structural checks a template must pass before it is stored: it is a
+// json-render flat spec whose every element uses a catalog primitive and whose
+// every child / root reference resolves. Prop-level (zod) validation is the
+// renderer's job at runtime; this guards the shape the renderer relies on.
+
+export const PRIMITIVE_NAMES: ReadonlySet<string> = new Set(Object.keys(primitives));
+
+export function isCardType(x: unknown): x is CardType {
+  return typeof x === 'string' && (CARD_TYPE_NAMES as string[]).includes(x);
+}
+
+/** Returns an empty list when `spec` is valid, else every problem found. */
+export function validateCardSpec(spec: unknown): string[] {
+  const problems: string[] = [];
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+    return ['spec must be an object of shape { root: string, elements: { [key]: { type, props, children? } } }'];
+  }
+  const { root, elements } = spec as { root?: unknown; elements?: unknown };
+  if (typeof root !== 'string' || !root.trim()) problems.push('spec.root must be a non-empty string');
+  if (!elements || typeof elements !== 'object' || Array.isArray(elements)) {
+    problems.push('spec.elements must be an object keyed by element id');
+    return problems;
+  }
+  const els = elements as Record<string, any>;
+  const keys = Object.keys(els);
+  if (keys.length === 0) problems.push('spec.elements is empty');
+  if (typeof root === 'string' && root.trim() && !(root in els)) {
+    problems.push(`spec.root '${root}' does not exist in spec.elements`);
+  }
+  for (const key of keys) {
+    const el = els[key];
+    if (!el || typeof el !== 'object' || Array.isArray(el)) {
+      problems.push(`elements.${key} must be an object`);
+      continue;
+    }
+    if (typeof el.type !== 'string' || !PRIMITIVE_NAMES.has(el.type)) {
+      problems.push(`elements.${key}.type '${String(el.type)}' is not a catalog primitive (allowed: ${[...PRIMITIVE_NAMES].join(', ')})`);
+    }
+    if (el.props !== undefined && (typeof el.props !== 'object' || el.props === null || Array.isArray(el.props))) {
+      problems.push(`elements.${key}.props must be an object when present`);
+    }
+    if (el.children !== undefined) {
+      if (!Array.isArray(el.children)) {
+        problems.push(`elements.${key}.children must be an array of element keys`);
+      } else {
+        for (const child of el.children) {
+          if (typeof child !== 'string') problems.push(`elements.${key}.children contains a non-string entry`);
+          else if (!(child in els)) problems.push(`elements.${key}.children references missing element '${child}'`);
+        }
+      }
+    }
+    if (el.slots !== undefined) {
+      if (!el.slots || typeof el.slots !== 'object' || Array.isArray(el.slots)) {
+        problems.push(`elements.${key}.slots must be an object of slotName → element keys`);
+      } else {
+        for (const [slot, list] of Object.entries(el.slots as Record<string, unknown>)) {
+          if (!Array.isArray(list)) { problems.push(`elements.${key}.slots.${slot} must be an array of element keys`); continue; }
+          for (const child of list) {
+            if (typeof child !== 'string') problems.push(`elements.${key}.slots.${slot} contains a non-string entry`);
+            else if (!(child in els)) problems.push(`elements.${key}.slots.${slot} references missing element '${child}'`);
+          }
+        }
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * Validate a whole `cardTemplates` map (PATCH path) and return it normalised —
+ * every entry stamped with cardType + updatedAt. Throws nothing; the caller
+ * turns `problems` into a 400.
+ */
+export function validateCardTemplates(
+  input: unknown,
+  updatedBy?: string,
+): { problems: string[]; templates: Record<string, CardTemplateDoc> } {
+  const problems: string[] = [];
+  const templates: Record<string, CardTemplateDoc> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { problems: ['cardTemplates must be an object keyed by cardType'], templates };
+  }
+  const now = new Date().toISOString();
+  for (const [key, raw] of Object.entries(input as Record<string, any>)) {
+    if (!isCardType(key)) { problems.push(`cardTemplates.${key}: unknown cardType (allowed: ${CARD_TYPE_NAMES.join(', ')})`); continue; }
+    const spec = raw && typeof raw === 'object' ? raw.spec : undefined;
+    const specProblems = validateCardSpec(spec);
+    if (specProblems.length) { problems.push(...specProblems.map((p) => `cardTemplates.${key}: ${p}`)); continue; }
+    templates[key] = {
+      cardType: key,
+      spec,
+      ...(typeof raw.variant === 'string' ? { variant: raw.variant } : {}),
+      ...(typeof raw.note === 'string' ? { note: raw.note } : {}),
+      updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : now,
+      ...(typeof raw.updatedBy === 'string' ? { updatedBy: raw.updatedBy } : updatedBy ? { updatedBy } : {}),
+    };
+  }
+  return { problems, templates };
+}
+
 export function redactSecrets<T extends { integrations?: any; ai?: any }>(config: T): T {
   if (!config) return config;
   let out: any = config;

@@ -53,6 +53,14 @@ export async function GET(req: Request) {
       } : null,
       components: p?.components || null,
       multiTradeBundles: p?.multiTradeBundles || null,
+      // Card CMS (v3 — docs/v3-card-cms-architecture.md): the three theme layers
+      // pass straight through from the published snapshot. `uiTheme` → --jx-* vars
+      // + per-card settings; `cardTemplates` → tenant json-render overrides
+      // (resolveTemplate falls back to DEFAULT_TEMPLATES); `fulfilment` → mode,
+      // labels and the branch list the quote/cart cards offer via selectBranch.
+      uiTheme: p?.uiTheme && typeof p.uiTheme === 'object' ? p.uiTheme : null,
+      cardTemplates: p?.cardTemplates && typeof p.cardTemplates === 'object' ? p.cardTemplates : null,
+      fulfilment: p?.fulfilment && typeof p.fulfilment === 'object' ? p.fulfilment : null,
     });
   } catch {
     return json(fallback(PROJECT_ID));
@@ -92,6 +100,24 @@ function fallback(projectId: string) {
           { label: '📍 Branch Stock Check', prompt: 'Check stock availability for Robinhood SuperTub and GIB Aqualine at Mt Wellington branch.' },
         ],
       },
+      uiTheme: null,
+      cardTemplates: null,
+      // Branch list the storefront used to hardcode (QuotePanel PM_BRANCHES) —
+      // now config so the quote card reads `cfg.fulfilment.branches`. `id` keeps
+      // the value the branch-stock endpoint already understands.
+      fulfilment: {
+        mode: 'both',
+        label: 'Branch fulfilment & pickup',
+        badge: '60-min Click & Collect',
+        branches: [
+          { id: 'Mt Wellington', name: 'PlaceMakers Mount Wellington', address: '106 Carbine Rd' },
+          { id: 'Cook Street', name: 'PlaceMakers Cook Street', address: '124 Cook St' },
+          { id: 'Albany', name: 'PlaceMakers Albany', address: '21 Corinthian Dr' },
+          { id: 'Te Rapa', name: 'PlaceMakers Te Rapa', address: 'Maui St' },
+          { id: 'Petone', name: 'PlaceMakers Petone', address: '43 Bouverie St' },
+          { id: 'Riccarton', name: 'PlaceMakers Riccarton', address: 'Mandeville St' },
+        ],
+      },
     };
   }
 
@@ -105,6 +131,9 @@ function fallback(projectId: string) {
     commerceMode: 'quote',
     components: null,
     multiTradeBundles: null,
+    uiTheme: null,
+    cardTemplates: null,
+    fulfilment: null,
   };
 }
 

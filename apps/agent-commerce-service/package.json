@@ -21,7 +21,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "stripe": "^22.3.2",
-    "@journeyax/cache": "*"
+    "@journeyax/cache": "*",
+    "@journeyax/ui-cards": "*"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

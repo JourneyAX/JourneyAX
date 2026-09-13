@@ -1,14 +1,15 @@
 import {
-  Controller, Get, Post, Patch, Delete,
+  Controller, Get, Post, Put, Patch, Delete,
   Body, Param, Query, Headers,
   NotFoundException, BadRequestException,
   Inject, UseGuards,
 } from '@nestjs/common';
 import { PermissionGuard, RequirePermission } from './permission.guard';
-import { ProjectService, redactSecrets } from './project.service';
+import { ProjectService, redactSecrets, isCardType, validateCardSpec } from './project.service';
 import {
   CreateProjectDto, UpdateProjectDto, MemberRole,
   CreateBusinessRuleDto, UpdateBusinessRuleDto,
+  CardTemplateDoc,
 } from './project.types';
 
 /**
@@ -357,6 +358,63 @@ export class ProjectController {
     @Param('ruleId') ruleId: string,
   ) {
     const result = await this.projectService.publishRule(projectId, ruleId);
+    if (!result.success) throw new NotFoundException(result.message);
+    return result;
+  }
+
+  // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ────────────────────
+  // Layer 3 of the tenant theme: one json-render spec per card type. GET is
+  // unguarded (read-only, mirrors /rules); PUT/DELETE write the DRAFT and
+  // require config.edit like every other config mutation. Cards take effect
+  // once the draft is published, same as everything else on the project doc.
+  //
+  //   GET    /api/v1/projects/:projectId/cards              every card type, tenant override or platform default
+  //   PUT    /api/v1/projects/:projectId/cards/:cardType     upsert a tenant override (draft)
+  //   DELETE /api/v1/projects/:projectId/cards/:cardType     remove the override (falls back to default)
+
+  @Get(':projectId/cards')
+  async listCards(@Param('projectId') projectId: string) {
+    const result = await this.projectService.listCardTemplates(projectId);
+    if (!result) throw new NotFoundException(`Project '${projectId}' not found.`);
+    return result;
+  }
+
+  @Put(':projectId/cards/:cardType')
+  @RequirePermission('config.edit')
+  async putCard(
+    @Param('projectId') projectId: string,
+    @Param('cardType') cardType: string,
+    @Body() body: { spec: unknown; note?: string; variant?: string },
+  ) {
+    if (!isCardType(cardType)) {
+      throw new BadRequestException(`Unknown cardType '${cardType}'.`);
+    }
+    const problems = validateCardSpec(body?.spec);
+    if (problems.length) {
+      throw new BadRequestException({ message: 'Invalid card spec.', problems });
+    }
+    const doc: CardTemplateDoc = {
+      cardType,
+      spec: body.spec as CardTemplateDoc['spec'],
+      updatedAt: new Date().toISOString(),
+      ...(body.variant ? { variant: body.variant } : {}),
+      ...(body.note ? { note: body.note } : {}),
+    };
+    const result = await this.projectService.upsertCardTemplate(projectId, cardType, doc);
+    if (!result.success) throw new NotFoundException(result.message);
+    return result;
+  }
+
+  @Delete(':projectId/cards/:cardType')
+  @RequirePermission('config.edit')
+  async deleteCard(
+    @Param('projectId') projectId: string,
+    @Param('cardType') cardType: string,
+  ) {
+    if (!isCardType(cardType)) {
+      throw new BadRequestException(`Unknown cardType '${cardType}'.`);
+    }
+    const result = await this.projectService.removeCardTemplate(projectId, cardType);
     if (!result.success) throw new NotFoundException(result.message);
     return result;
   }
