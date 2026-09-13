@@ -2108,3 +2108,197 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v3 Card CMS — focus mode shell (docs/v3-card-cms-architecture.md)
+   Floating command bar + working strip, shown once a card is on stage.
+   Every colour falls back to the existing --gold/--dark/--surface tokens so
+   this looks right even before --jx-* is set (pre-hydration / no uiTheme).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+[data-focus-mode="true"] {
+  flex: 0 0 0 !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden;
+  border-right: none !important;
+}
+
+.focus-mode__reopen {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 40;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--jx-radius-pill, 999px);
+  border: 1px solid var(--jx-color-border, var(--border));
+  background: var(--jx-color-surface, var(--surface));
+  color: var(--jx-color-text, var(--text));
+  box-shadow: var(--jx-shadow-sm, 0 1px 3px rgba(0,0,0,0.08));
+  cursor: pointer;
+}
+
+.focus-mode__drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  z-index: 39;
+  background: var(--jx-color-surface, var(--surface));
+  border-right: 1px solid var(--jx-color-border, var(--border));
+  box-shadow: var(--jx-shadow-lg, 0 14px 40px rgba(0,0,0,0.18));
+  padding: 64px 16px 16px;
+  overflow-y: auto;
+}
+
+.floating-stack {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(760px, calc(100vw - 48px));
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Never sits over a card's own footer CTA — the stage adds matching
+     bottom padding (see .card-stage below) so nothing is ever covered. */
+}
+
+.command-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 68px;
+  padding: 0 10px 0 16px;
+  background: var(--jx-color-surface, var(--surface));
+  border: 1px solid var(--jx-color-border, var(--border));
+  border-radius: var(--jx-radius-lg, 20px);
+  box-shadow: var(--jx-shadow-lg, 0 14px 40px rgba(11,42,86,0.16));
+}
+.command-bar__icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--jx-color-text-muted, var(--text-secondary));
+  padding: 6px;
+}
+.command-bar__input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--jx-color-text, var(--text));
+}
+.command-bar__input::placeholder { color: var(--jx-color-text-muted, var(--text-secondary)); }
+.command-bar__chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--jx-color-text, var(--text));
+  border: 1px solid var(--jx-color-border, var(--border));
+  background: transparent;
+  padding: 7px 11px;
+  border-radius: var(--jx-radius-md, 10px);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.command-bar__round {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.command-bar__round--send { background: var(--jx-color-brand, var(--gold)); color: var(--jx-color-brand-text, #fff); }
+.command-bar__round--stop { background: var(--jx-color-inverse, #0A0A0A); color: var(--jx-color-inverse-text, #fff); }
+.command-bar__round--mic {
+  background: var(--jx-color-accent-soft, rgba(0,0,0,0.06));
+  color: var(--jx-color-accent, var(--gold));
+  box-shadow: 0 0 0 6px transparent;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+.command-bar__round--mic[data-listening="true"] {
+  background: var(--jx-color-accent, var(--gold));
+  color: #fff;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--jx-color-accent, var(--gold)) 18%, transparent);
+}
+
+.working-strip { pointer-events: auto; }
+.working-strip__collapsed {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--jx-color-border, var(--border));
+  border-radius: var(--jx-radius-md, 12px);
+  background: var(--jx-color-surface-alt, var(--surface));
+  box-shadow: var(--jx-shadow-md, 0 6px 18px rgba(11,42,86,0.08));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.working-strip__dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--jx-color-accent, var(--gold));
+  animation: workingPulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes workingPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.7); } }
+.working-strip__elapsed { font-size: 13px; font-weight: 700; color: var(--jx-color-text, var(--text)); white-space: nowrap; }
+.working-strip__label { font-size: 13px; color: var(--jx-color-text-muted, var(--text-secondary)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.working-strip__chevron { color: var(--jx-color-text-muted, var(--text-secondary)); font-size: 11px; }
+.working-strip__expanded {
+  position: relative;
+  border: 1px solid var(--jx-color-border, var(--border));
+  border-radius: var(--jx-radius-md, 12px);
+  background: var(--jx-color-surface, var(--surface));
+  box-shadow: var(--jx-shadow-lg, 0 14px 40px rgba(11,42,86,0.16));
+  padding: 14px 16px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.working-strip__collapse {
+  position: absolute;
+  top: 10px; right: 10px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--jx-color-text-muted, var(--text-secondary));
+  padding: 4px;
+}
+
+/* CardStage — the stage bottom padding keeps a quote/cart card's own totals
+   bar clear of the floating command bar docked above it. */
+.card-stage {
+  max-width: var(--jx-x-stage-max-width, 900px);
+  margin: 0 auto;
+  padding: 28px 24px 180px;
+  box-sizing: border-box;
+}
+.card-stage-history {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.card-stage-history-chip {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: var(--jx-radius-pill, 999px);
+  border: 1px solid var(--jx-color-border, var(--border));
+  background: var(--jx-color-surface, var(--surface));
+  color: var(--jx-color-text-muted, var(--text-secondary));
+  cursor: pointer;
+}
+.card-stage-suggestions { margin-top: 16px; }
+
+@media (max-width: 860px) {
+  .floating-stack { width: calc(100vw - 24px); bottom: 12px; }
+  .focus-mode__drawer { width: 100vw; }
+}

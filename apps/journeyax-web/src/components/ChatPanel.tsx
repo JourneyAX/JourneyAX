@@ -10,6 +10,36 @@ import {
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
 import SpeedPerformanceModal from './SpeedPerformanceModal';
+import CommandBar from './shell/CommandBar';
+import WorkingStrip from './shell/WorkingStrip';
+import { uiActionToCards } from '@/lib/cards/uiActionToCards';
+
+/** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
+ *  Deliberately generic — a tenant's own vocabulary lives in the card's own
+ *  text, this is just "what is the agent doing right now". */
+const TOOL_TRACE_LABEL: Record<string, string> = {
+  searchKnowledge: 'Searching the catalogue',
+  getProductOptions: 'Checking real options',
+  findRelated: 'Finding related items',
+  showItems: 'Picking products',
+  updateQuote: 'Building your quote',
+  showGuide: 'Putting together a guide',
+  showAddons: 'Checking accessories',
+  presentChoice: 'Weighing your options',
+  showDocuments: 'Pulling up documents',
+  showInfo: 'Checking warranty & compliance',
+  recommendSize: 'Working out your size',
+  buildProjectPlan: 'Building your project plan',
+  checkBranchStock: 'Checking branch stock',
+  openSpacePlanner: 'Opening the planner',
+  researchSchool: 'Researching your school',
+  showConfigurator: 'Opening the designer',
+  generateTeamDesign: 'Generating your design',
+  readRoster: 'Reading your roster',
+};
+function traceLabel(name: string): string {
+  return TOOL_TRACE_LABEL[name] || `Running ${name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()}`;
+}
 
 /**
  * Stream a chat turn via SSE. Live-updates the assistant message on each `token`
@@ -22,14 +52,29 @@ async function streamChat(
   setMessages: (m: any[]) => void,
   tenantId?: string,
   dispatch?: (action: any) => void,
+  heardText?: string,
+  signal?: AbortSignal,
+  startedAt: number = Date.now(),
 ): Promise<any> {
   const res = await fetch('/api/chat/stream', {
     method: 'POST',
     // Pin the chat to the tenant this storefront resolved (multi-storefront routing).
     headers: { 'Content-Type': 'application/json', ...(tenantId ? { 'X-Tenant-ID': tenantId } : {}) },
     body,
+    signal,
   });
   if (!res.ok || !res.body) throw new Error('stream unavailable');
+
+  // Working strip trace (v3 Card CMS) — local to this call; dispatched wholesale
+  // via SET_WORKING so the reducer stays a plain merge, no read-modify-write.
+  // `startedAt` is the caller's value (sendToAI) so the elapsed timer and the
+  // post-turn auto-clear compare the same instant, not two different clocks.
+  const workingSteps: { title: string; detail?: string; status?: 'done' | 'running' | 'pending' }[] = [];
+  const pushStep = (name: string) => {
+    if (workingSteps.length) workingSteps[workingSteps.length - 1].status = 'done';
+    workingSteps.push({ title: traceLabel(name), status: 'running' });
+    dispatch?.({ type: 'SET_WORKING', working: { startedAt, heard: heardText, steps: [...workingSteps] } });
+  };
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -62,21 +107,35 @@ async function streamChat(
       setMessages([...newMessages, { role: 'assistant', content: streamText }]);
     } else if (ev === 'uiAction') {
       streamedUiActions.push(payload);
+      pushStep(payload.name);
       if (dispatch) {
         if (payload.name === 'setPhase' && payload.arguments?.phase) {
-          dispatch({
-            type: 'SET_PHASE',
-            phase: payload.arguments.phase,
-            questions: payload.arguments.questions,
-          });
+          dispatch({ type: 'SET_PHASE', phase: payload.arguments.phase });
+          // BUG FIX (docs/v3-card-cms-architecture.md): SET_PHASE has no
+          // `questions` field — a clarify move used to drop them mid-stream
+          // until the buffered `done` payload repeated the same uiActions a
+          // turn later. Dispatch them as their own action instead.
+          if (payload.arguments.phase === 'clarify' && Array.isArray(payload.arguments.questions)) {
+            dispatch({ type: 'SET_DYNAMIC_QUESTIONS', questions: payload.arguments.questions });
+          }
         } else if (payload.name === 'showItems' && (payload.arguments?.items || payload.arguments?.products)) {
           const items = payload.arguments.items || payload.arguments.products;
           dispatch({ type: 'SET_RECOMMENDED_PRODUCTS', products: items });
+        }
+        // Forward-compatible: once the agent's presentation layer attaches an
+        // enriched `card` to the frame directly (docs §5), render it too.
+        if (payload.card) {
+          for (const card of uiActionToCards(payload)) dispatch({ type: 'PUSH_CARD', card });
         }
       }
     } else if (ev === 'done') {
       doneData = payload;
       if (payload.sessionId) capturedSessionId = payload.sessionId;
+      if (workingSteps.length) workingSteps[workingSteps.length - 1].status = 'done';
+      dispatch?.({
+        type: 'SET_WORKING',
+        working: { startedAt, heard: heardText, steps: [...workingSteps], lastReply: payload.message?.content || streamText },
+      });
     } else if (ev === 'error') {
       throw new Error(payload.message || 'stream error');
     }
@@ -172,6 +231,14 @@ export default function ChatPanel() {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
   const [perfModalOpen, setPerfModalOpen] = useState(false);
+  const [convoDrawerOpen, setConvoDrawerOpen] = useState(false);
+  // Embed mode (?embed=1) already forces the single-column CSS layout
+  // (globals.css `.app-layout--embed`) — focus mode's floating bar doesn't
+  // add value there and would fight that layout, so it opts out.
+  const [embedSingleColumn, setEmbedSingleColumn] = useState(false);
+  useEffect(() => {
+    setEmbedSingleColumn(new URLSearchParams(window.location.search).get('embed') === '1');
+  }, []);
   // sendToAI is a stable closure; reading convoId directly would pin whichever
   // thread was open when it was created.
   const convoIdRef = useRef('');
@@ -185,6 +252,9 @@ export default function ChatPanel() {
   const pendingImageRef = useRef<{ dataUrl: string; name: string } | null>(null);
   pendingImageRef.current = pendingImage;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // v3 Card CMS: lets the CommandBar's stop button cancel an in-flight streamed turn.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const stopStreaming = useCallback(() => { abortControllerRef.current?.abort(); }, []);
   const readImageFile = useCallback((file: File | null | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
@@ -359,6 +429,7 @@ export default function ChatPanel() {
     // gets persisted under the NEW conversation's localStorage key, silently
     // resurrecting the old thread's transcript.
     const startedConvoId = convoIdRef.current;
+    const myWorkingStartedAt = Date.now();
     const isCurrent = () => convoIdRef.current === startedConvoId;
     const guardedSetMessages = (m: any[]) => { if (isCurrent()) setMessages(m); };
 
@@ -388,12 +459,21 @@ export default function ChatPanel() {
       });
       if (attachedImage) { setPendingImage(null); pendingImageRef.current = null; }
 
+      // Working strip (v3 Card CMS): visible the instant the turn starts, not
+      // only once the first tool call streams back.
+      dispatch({ type: 'SET_WORKING', working: { startedAt: myWorkingStartedAt, heard: newUserMessage, steps: [] } });
+      abortControllerRef.current = new AbortController();
+
       // Try streaming first; on ANY failure fall back to the buffered endpoint
       // so the storefront keeps working exactly as before.
       let data: any;
       try {
-        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId, dispatch);
+        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId, dispatch, newUserMessage, abortControllerRef.current.signal, myWorkingStartedAt);
       } catch (streamErr) {
+        if ((streamErr as any)?.name === 'AbortError') {
+          if (isCurrent()) { dispatch({ type: 'SET_THINKING', thinking: false }); dispatch({ type: 'SET_WORKING', working: null }); }
+          return;
+        }
         console.warn('[chat] streaming failed, using buffered fallback:', streamErr);
         guardedSetMessages(newMessages); // clear any partial streamed text
         const res = await fetch('/api/chat', {
@@ -641,6 +721,14 @@ export default function ChatPanel() {
       }
     } finally {
       setIsLoading(false);
+      // Working strip: leave the last reply visible a moment (the collapsed
+      // strip shows it), then clear — but only if this thread is still current
+      // and nothing newer has already started a fresh turn.
+      setTimeout(() => {
+        if (isCurrent() && stateRef.current.working?.startedAt === myWorkingStartedAt) {
+          dispatch({ type: 'SET_WORKING', working: null });
+        }
+      }, 4000);
     }
   }, [dispatch]);
 
@@ -788,14 +876,72 @@ export default function ChatPanel() {
     // greeting (persona.greetingMessage) when set.
     .map(m => (m.id === 'welcome' && cfg.greeting ? { ...m, text: cfg.greeting } : m));
 
+  // Focus mode (v3 Card CMS): once a card is on stage, the 40% chat column
+  // collapses and the conversation moves into a floating command bar docked
+  // above the stage — see docs/v3-card-cms-architecture.md and the PlaceMakers
+  // Voice Bar artboards. A tenant can opt out via uiTheme.layout.focusMode.
+  const focusModeAllowed = (cfg.uiTheme as any)?.layout?.focusMode !== 'split';
+  const focusMode = focusModeAllowed && state.phase !== 'intro' && state.cards.length > 0 && !embedSingleColumn;
+  const primaryActionLabel = (cfg.uiTheme as any)?.layout?.commandBar?.primaryAction
+    || (state.serverQuote || bom.length ? 'Build my quote' : null);
+  const commandBarPlaceholder = (cfg.uiTheme as any)?.layout?.commandBar?.placeholder || introPlaceholder;
+  const voiceEnabled = (cfg.uiTheme as any)?.layout?.commandBar?.voice !== false;
+
   return (
-    <div className="chat-panel" data-sidebar={cfg.theme?.sidebarStyle || 'light'}>
+    <div className="chat-panel" data-sidebar={cfg.theme?.sidebarStyle || 'light'} data-focus-mode={focusMode}>
+      {focusMode && (
+        <>
+          <button
+            type="button"
+            className="focus-mode__reopen"
+            onClick={() => setConvoDrawerOpen((v) => !v)}
+            aria-label={convoDrawerOpen ? 'Hide conversation' : 'Show conversation'}
+          >
+            {convoDrawerOpen ? 'Hide conversation' : '💬 Conversation'}
+          </button>
+          {convoDrawerOpen && (
+            <div className="focus-mode__drawer">
+              <div className="chat-messages">
+                {allMessages.map((msg) => <MessageBubble key={msg.id} message={msg} />)}
+                {(state.isThinking || isLoading) && (
+                  <div className="thinking"><span className="thinking__dot" /><span className="thinking__dot" /><span className="thinking__dot" /></div>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="floating-stack">
+            <WorkingStrip working={state.working} />
+            <CommandBar
+              value={prompt}
+              onChange={setPrompt}
+              onSubmit={onSubmit}
+              onKeyDown={onKeyDown}
+              onAttachClick={() => fileInputRef.current?.click()}
+              placeholder={commandBarPlaceholder}
+              primaryAction={primaryActionLabel ? { label: primaryActionLabel, onClick: () => { const w = window as any; w.__handleBuildQuote?.(); } } : null}
+              isLoading={isLoading}
+              onStop={stopStreaming}
+              voiceEnabled={voiceEnabled}
+            />
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => { readImageFile(e.target.files?.[0]); e.target.value = ''; }}
+          />
+        </>
+      )}
+      <div className="chat-panel__legacy" style={focusMode ? { display: 'none' } : undefined}>
       {/* Header — the brand's own logo + name, and sign-in. Nothing else: the
           "Team Kit Builder / Augusta Team Outfitter" title+subtitle and the
           "Online" status badge were noise the customer didn't need. */}
       <div className="chat-header">
         {(() => {
-          const logoSrc = cfg.theme?.logoUrl || (cfg.projectId === 'placemakers' ? '/brands/placemakers.png' : null);
+          // Config-driven only — every tenant's logo (or lack of one) lives in
+          // its own theme.logoUrl, never a code-level tenant literal.
+          const logoSrc = cfg.theme?.logoUrl || null;
           if (!logoSrc) {
             return <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>;
           }
@@ -804,14 +950,7 @@ export default function ChatPanel() {
               className="chat-header__logo"
               src={logoSrc}
               alt={cfg.companyName || 'Brand Logo'}
-              onError={(e) => {
-                const img = e.target as HTMLImageElement;
-                if (cfg.projectId === 'placemakers' && !img.src.endsWith('/brands/placemakers.png')) {
-                  img.src = '/brands/placemakers.png';
-                } else {
-                  img.style.display = 'none';
-                }
-              }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
               style={{ height: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
             />
           );
@@ -1001,6 +1140,7 @@ export default function ChatPanel() {
             </svg>
           </button>
         </form>
+      </div>
       </div>
     </div>
   );
