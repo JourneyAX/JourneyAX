@@ -307,16 +307,21 @@ function reducer(state: JourneyState, action: Action): JourneyState {
 
     // ── Card CMS (v3) ──────────────────────────────────────────────────
     case 'PUSH_CARD': {
-      // A card REPLACES the most recent card of the same cardType (the agent
-      // re-presenting products/a quote updates what's on stage, it doesn't
-      // pile up a duplicate) unless the card opts into stacking via
-      // variant:'append' (suggestion chips under whatever is already active).
+      // Cards live inline in the thread, so they are part of the record: a
+      // clarify card the customer answered two turns ago stays where it was
+      // when the agent asks something new. A card only REPLACES the previous
+      // one of its type when both belong to the same turn (same `createdAt`
+      // thread position — e.g. the quote re-rendered after a branch pick, or
+      // products re-presented mid-stream), which keeps a turn from stacking
+      // duplicates without erasing history. variant:'append' always stacks.
       const append = action.card.variant === 'append';
-      const cards = append
-        ? [...state.cards, action.card]
-        : [...state.cards.filter((c) => c.cardType !== action.card.cardType), action.card];
-      // Cap the history strip so a long session doesn't grow this forever.
-      const trimmed = cards.length > 12 ? cards.slice(cards.length - 12) : cards;
+      const last = append ? undefined : [...state.cards].reverse().find((c) => c.cardType === action.card.cardType);
+      const sameTurn = !!last && last.createdAt === action.card.createdAt;
+      const cards = sameTurn
+        ? state.cards.map((c) => (c.id === last!.id ? action.card : c))
+        : [...state.cards, action.card];
+      // Cap so a long session doesn't grow this forever.
+      const trimmed = cards.length > 24 ? cards.slice(cards.length - 24) : cards;
       return { ...state, cards: trimmed, activeCardId: action.card.id };
     }
     case 'SET_ACTIVE_CARD':
@@ -493,11 +498,18 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.placedOrder]);
 
+  // The hero ("Start here — <headline>") is OPT-IN, unlike every other card
+  // type (which a tenant switches off). In the single-thread layout the
+  // greeting message + starter pills already open the conversation, and a
+  // big welcome block landing in the middle of the thread read as clutter
+  // (it also re-appeared on every return to the intro phase). A tenant that
+  // wants it enables `hero` explicitly in Cards & Theme.
   useEffect(() => {
+    if (cfg.uiTheme?.cards?.hero?.enabled !== true) return;
     if (state.phase !== 'intro' || state.cards.length > 0) return;
     pushCard({ id: newId('hero'), cardType: 'hero', state: mapHeroCard(cfg.intro, cfg.companyName, cfg.greeting) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase, cfg.intro, cfg.companyName, cfg.greeting]);
+  }, [state.phase, cfg.intro, cfg.companyName, cfg.greeting, cfg.uiTheme?.cards?.hero?.enabled]);
 
   // P0-04: when the server quote is present it is the SINGLE source of truth for
   // both line items and money. The legacy browser-side calculateTotals path is a

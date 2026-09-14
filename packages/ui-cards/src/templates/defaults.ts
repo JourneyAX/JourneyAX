@@ -25,16 +25,20 @@ const productTile = (prefix: string, opts: { showReason?: boolean; cta?: 'addToC
   const k = (s: string) => `${prefix}-${s}`;
   const cta = opts.cta || 'selectItem';
   return {
+    // Compact tile — three across inside a 620px conversation column, a short
+    // 4:3 picture (or icon when the catalogue has none), name, the agent's
+    // one-line reason, SKU + stock, price + add. Sized for reading in a
+    // thread, not as a product-listing page.
     [k('card')]: el('Card', { pad: 'sm', gap: 'sm', interactive: true }, {
       children: [k('img'), k('body'), k('foot')],
       on: { press: { action: 'viewProduct', params: { sku: I('sku') } } },
     }),
-    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), ratio: '1:1', radius: 'sm', fallbackIcon: 'box' }),
-    [k('body')]: el('Box', { gap: 'xs' }, { children: [k('badges'), k('title'), k('reason'), k('meta')] }),
-    [k('badges')]: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: [k('rec')] }),
-    [k('rec')]: el('Badge', { text: 'Recommended', tone: 'brand', icon: 'spark', uppercase: true }, { visible: [{ $item: 'recommended', eq: true }] }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), ratio: '4:3', radius: 'sm', fallbackIcon: 'box' }),
+    [k('body')]: el('Box', { gap: 'xs', flex: 1 }, { children: [k('badges'), k('title'), k('reason'), k('meta')] }),
+    [k('badges')]: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: [k('rec')], visible: [{ $item: 'recommended', eq: true }] }),
+    [k('rec')]: el('Badge', { text: 'Recommended', tone: 'brand', icon: 'spark', uppercase: true }),
     [k('title')]: el('Text', { text: I('title'), variant: 'subheading', lines: 2 }),
-    [k('reason')]: el('Text', { text: I('reason'), variant: 'small', tone: 'muted', lines: 2 }, { visible: [{ $item: 'reason' }] }),
+    [k('reason')]: el('Text', { text: I('reason'), variant: 'small', tone: 'muted', lines: 3 }, { visible: [{ $item: 'reason' }] }),
     [k('meta')]: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: [k('sku'), k('stock')] }),
     [k('sku')]: el('Text', { text: I('sku'), variant: 'mono', tone: 'muted' }),
     [k('stock')]: el('StatusDot', { label: I('stockLabel'), tone: 'success' }, { visible: [{ $item: 'stockLabel' }] }),
@@ -92,23 +96,29 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     chips: el('Chips', { items: S('/chips'), action: 'sendMessage', valueKey: 'text' }, { visible: [S('/chips')] }),
   }),
 
+  // Every question is independently answerable; a tapped chip stays lit
+  // (`answer`) and the footer counts progress — nothing submits until the
+  // last one is picked (the storefront owns that, see CardStage/ChatPanel).
   clarify: spec('root', {
-    root: el('Box', { gap: 'lg', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'qs'] }),
+    root: el('Box', { gap: '0', maxWidth: '760px' }, { children: ['head', 'qs', 'foot'] }),
+    head: el('Box', { gap: 'xs', pad: 'md' }, { children: ['eyebrow', 'title'] }),
     eyebrow: el('Text', { text: 'A couple of quick questions', variant: 'eyebrow' }),
-    title: el('Text', { text: 'Help me narrow it down', variant: 'title' }),
-    qs: el('Box', { gap: 'md' }, { children: ['q'], repeat: { statePath: '/questions', key: 'id' } }),
-    q: el('Card', { pad: 'md', gap: 'sm' }, { children: ['qt', 'qopts'] }),
-    qt: el('Text', { text: I('text'), variant: 'heading' }),
-    qopts: el('Chips', { items: I('options'), action: 'chooseOption', valueKey: 'value', params: { questionId: I('id') } }),
+    title: el('Text', { text: 'Help me narrow it down', variant: 'heading' }),
+    qs: el('Box', { gap: '0' }, { children: ['q'], repeat: { statePath: '/questions', key: 'id' } }),
+    q: el('Box', { pad: 'md', gap: 'sm' }, { children: ['qt', 'qopts'] }),
+    qt: el('Text', { text: I('text'), variant: 'subheading' }),
+    qopts: el('Chips', { items: I('options'), selected: I('answer'), action: 'chooseOption', valueKey: 'value', params: { questionId: I('id') } }),
+    foot: el('Box', { pad: 'sm', bg: 'surface-alt' }, { children: ['prog'], visible: [S('/progress')] }),
+    prog: el('Text', { text: S('/progress'), variant: 'small', tone: 'muted' }),
   }),
 
   products: spec('root', {
-    root: el('Box', { gap: 'md' }, { children: ['head', 'grid', 'foot'] }),
+    root: el('Box', { gap: 'md', pad: 'md' }, { children: ['head', 'grid', 'foot'] }),
     head: el('Box', { gap: 'xs' }, { children: ['eyebrow', 'title', 'intro'] }),
     eyebrow: el('Text', { text: 'Recommended for you', variant: 'eyebrow' }),
     title: el('Text', { text: S('/heading'), variant: 'title' }, { visible: [S('/heading')] }),
     intro: el('Text', { text: S('/intro'), variant: 'body', tone: 'muted' }, { visible: [S('/intro')] }),
-    grid: el('Grid', { minItemWidth: '230px', gap: 'md' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
+    grid: el('Grid', { minItemWidth: '170px', gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
     ...productTile('p', { cta: 'addToCart' }),
     foot: el('Box', { direction: 'row', justify: 'end', gap: 'sm' }, { children: ['addall'] }),
     addall: el('Button', { label: 'Add all to quote', variant: 'secondary', icon: 'cart' }, { on: { press: { action: 'addAllToCart' } } }),

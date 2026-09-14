@@ -521,6 +521,8 @@ body {
   padding: 12px 16px;
   font-size: 14.5px;
   line-height: 1.55;
+  /* "My answers:" from a clarify card is one line per question. */
+  white-space: pre-line;
 }
 
 .msg__note {

@@ -92,6 +92,7 @@
 .jx-chips { display: flex; gap: 8px; } .jx-chips.jx-wrap { flex-wrap: wrap; }
 .jx-chip { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: var(--jx-radius-pill); border: 1px solid var(--jx-color-border); background: var(--jx-color-surface); color: var(--jx-color-text); cursor: pointer; }
 .jx-chip:hover { border-color: var(--jx-color-accent); color: var(--jx-color-accent); }
+.jx-chip.jx-selected, .jx-chip.jx-selected:hover { background: var(--jx-color-brand); border-color: var(--jx-color-brand); color: var(--jx-color-brand-text); }
 .jx-kv { display: flex; flex-direction: column; gap: 2px; font-size: 13px; } .jx-kv.jx-inline { flex-direction: row; justify-content: space-between; gap: 12px; }
 .jx-kv-label { color: var(--jx-color-text-muted); font-size: 12px; } .jx-kv-value { font-weight: 500; }
 .jx-table-wrap { overflow-x: auto; }

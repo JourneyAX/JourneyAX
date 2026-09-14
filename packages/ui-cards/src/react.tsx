@@ -198,9 +198,12 @@ const components = {
     const fire = useEmitValue({ action: 'sendMessage', valueKey: 'text', ...props });
     return (
       <div className={cls('jx-chips', props.wrap !== false && 'jx-wrap', props.className)}>
-        {items.map((c, i) => (
-          <button key={i} type="button" className={cls('jx-chip', toneCls(props.tone))} onClick={() => fire(c)}>{c}</button>
-        ))}
+        {items.map((c, i) => {
+          const on = props.selected !== undefined && props.selected !== null && String(props.selected) === c;
+          return (
+            <button key={i} type="button" className={cls('jx-chip', toneCls(props.tone), on && 'jx-selected')} aria-pressed={on} onClick={() => fire(c)}>{c}</button>
+          );
+        })}
       </div>
     );
   },

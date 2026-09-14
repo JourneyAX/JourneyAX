@@ -195,10 +195,11 @@ export const primitives = {
     props: z.object({ size: spacing.optional(), grow: z.boolean().optional() }),
   },
   Chips: {
-    description: 'Row of tappable suggestion chips; tapping emits `select` with the chip text.',
+    description: 'Row of tappable suggestion chips; tapping emits `select` with the chip text. Bind `selected` to show which chip is currently chosen.',
     props: z.object({
       ...valueAction,
       items: dyn(z.array(z.string())),
+      selected: dyn(z.string()).optional(),
       tone: tone.optional(),
       wrap: z.boolean().optional(),
       className: z.string().optional(),

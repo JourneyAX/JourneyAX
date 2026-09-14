@@ -777,6 +777,22 @@ export default function ChatPanel() {
     return () => { delete (window as any).__handleClarifySubmit; };
   }, [handleClarifySubmit]);
 
+  // Clarify card: send once EVERY question has an answer — read from the
+  // committed reducer state, never from inside the chip's click handler
+  // (which is where the "→ Not answered" bug lived: a one-question card
+  // submitted on the first tap, before that tap's answer had landed). One
+  // send per question set: a new SET_DYNAMIC_QUESTIONS from the agent resets
+  // the answers and is a fresh set.
+  const clarifySentForRef = useRef<unknown>(null);
+  useEffect(() => {
+    const qs = state.dynamicQuestions;
+    if (state.phase !== 'clarify' || qs.length === 0) return;
+    if (clarifySentForRef.current === qs) return;
+    if (!qs.every((q) => !!state.dynamicAnswers[q.id])) return;
+    clarifySentForRef.current = qs;
+    void handleClarifySubmit();
+  }, [state.dynamicQuestions, state.dynamicAnswers, state.phase, handleClarifySubmit]);
+
   // Called when user clicks "Build Quote" on ProductsPanel
   const handleBuildQuote = useCallback(async (summary?: string) => {
     /* Spell out WHAT to quote.

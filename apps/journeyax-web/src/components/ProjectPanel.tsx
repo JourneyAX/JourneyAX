@@ -1,7 +1,6 @@
 'use client';
 
 import { useJourney } from '@/context/JourneyContext';
-import HeroPanel from './panels/HeroPanel';
 import ClarifyPanel from './panels/ClarifyPanel';
 import ValidatingPanel from './panels/ValidatingPanel';
 import ProductsPanel from './panels/ProductsPanel';
@@ -55,7 +54,8 @@ export default function ProjectPanel() {
 
   return (
     <div className="project-panel">
-      {!useCards && state.phase === 'intro' && <HeroPanel />}
+      {/* No intro fallback: the thread opens with the greeting + starter
+          pills; the hero block is an opt-in card (JourneyContext). */}
       {!useCards && state.phase === 'research' && <ResearchPanel />}
       {!useCards && state.phase === 'clarify' && <ClarifyPanel />}
       {!useCards && state.phase === 'validating' && <ValidatingPanel />}

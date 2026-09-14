@@ -152,7 +152,9 @@ export const CARD_TYPES = {
     title: 'Clarifying questions',
     description: 'Up to three questions with tappable options.',
     state: z.object({
-      questions: z.array(z.object({ id: z.string(), text: z.string(), options: z.array(z.string()), multi: z.boolean().optional() })).max(3),
+      questions: z.array(z.object({ id: z.string(), text: z.string(), options: z.array(z.string()), multi: z.boolean().optional(), answer: z.string().optional() })).max(3),
+      /** "2 of 3 answered — …" footer; the storefront keeps it current as chips are tapped. */
+      progress: z.string().optional(),
     }),
   },
   suggestions: {

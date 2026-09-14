@@ -16,6 +16,7 @@ import { CardRenderer } from '@journeyax/ui-cards/react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
+import { mapClarifyCard } from '@/lib/cards/mappers';
 import type { CardInstance } from '@/lib/types';
 
 /**
@@ -49,9 +50,15 @@ export function useCardActions() {
         const value = String(params?.value ?? '');
         if (!questionId) break;
         dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value });
-        // Fire once every question on the active clarify card has an answer.
-        const remaining = state.dynamicQuestions.filter((q) => q.id !== questionId && !state.dynamicAnswers[q.id]);
-        if (remaining.length === 0) w.__handleClarifySubmit?.();
+        // Light the chosen chip and update the "n of m answered" footer on
+        // the clarify card itself. Submission is NOT decided here: this
+        // handler used to call __handleClarifySubmit synchronously, before
+        // the dispatch above had committed, so a one-question card sent
+        // "→ Not answered" on the very first tap. ChatPanel now watches the
+        // committed answers and sends once every question has one.
+        const answers = { ...state.dynamicAnswers, [questionId]: value };
+        const card = [...state.cards].reverse().find((c) => c.cardType === 'clarify');
+        if (card) dispatch({ type: 'PATCH_CARD', id: card.id, state: mapClarifyCard(state.dynamicQuestions, answers) });
         break;
       }
       case 'viewProduct': {

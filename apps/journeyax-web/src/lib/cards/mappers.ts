@@ -27,14 +27,26 @@ const stockLabel = (l: { inStock?: boolean; branchStock?: { status: string; clic
   return l.inStock === false ? 'Out of stock' : l.inStock === true ? 'In stock' : undefined;
 };
 
+/** A model occasionally puts a refusal ("I'm sorry, but I can't assist with
+ *  that request.") in the per-item `description` slot instead of a reason.
+ *  That is not a reason to buy anything — hide it rather than print it. */
+const REFUSAL_RE = /^\s*(?:i['’]m sorry|i am sorry|sorry[,.]|i can(?:no|['’])t (?:assist|help)|i['’]m unable|as an ai)/i;
+const usableReason = (s?: string | null) => (s && !REFUSAL_RE.test(s) ? s : undefined);
+
 export function mapProductsCard(products: RecommendedProduct[], heading?: string) {
+  // A catalogue with no real photography often points every product at the
+  // same "no image" placeholder. One identical picture repeated across the
+  // whole set says nothing about any product — drop it and let the tile fall
+  // back to its icon (data-driven; no tenant URL pattern baked in here).
+  const urls = products.map((p) => p.imageUrl).filter(Boolean) as string[];
+  const sharedPlaceholder = products.length > 1 && urls.length === products.length && new Set(urls).size === 1;
   return {
     heading,
     products: products.map((p, i) => ({
       sku: p.sku || `unsku-${i}`,
       title: p.name,
-      description: p.description,
-      imageUrl: p.imageUrl || null,
+      description: usableReason(p.description),
+      imageUrl: sharedPlaceholder ? null : p.imageUrl || null,
       price: p.price ?? null,
       category: p.category,
       url: p.url,
@@ -45,7 +57,7 @@ export function mapProductsCard(products: RecommendedProduct[], heading?: string
       // card, the top recommendation MOST of all. Withholding it from i===0
       // was backwards: a customer sees "Recommended" on the one item with no
       // stated reason why, while every other item explains itself.
-      reason: p.description,
+      reason: usableReason(p.description),
     })),
   };
 }
@@ -152,8 +164,25 @@ export function mapAccessoriesCard(items: AccessoryItem[]) {
   };
 }
 
-export function mapClarifyCard(questions: DynamicQuestion[]) {
-  return { questions: questions.slice(0, 3).map((q) => ({ id: q.id, text: q.title, options: q.options })) };
+/** Clarify card state from the questions + whatever has been answered so far.
+ *  Re-run on every tapped chip (CardStage patches the card with the result)
+ *  so the chosen chip stays lit and the footer counts progress. */
+export function mapClarifyCard(questions: DynamicQuestion[], answers: Record<string, string> = {}) {
+  const qs = questions.slice(0, 3);
+  const answered = qs.filter((q) => !!answers[q.id]).length;
+  const total = qs.length;
+  const left = total - answered;
+  const progress = total === 0
+    ? undefined
+    : left === 0
+      ? `All ${total === 1 ? 'set' : `${total} answered`} — sending your answers…`
+      : total === 1
+        ? 'Pick one to continue.'
+        : `${answered} of ${total} answered — pick the ${left === 1 ? 'last one' : 'rest'} whenever you're ready, nothing sends until then.`;
+  return {
+    questions: qs.map((q) => ({ id: q.id, text: q.title, options: q.options, answer: answers[q.id] })),
+    progress,
+  };
 }
 
 export function mapWarrantyCard(w: WarrantyInfo) {
