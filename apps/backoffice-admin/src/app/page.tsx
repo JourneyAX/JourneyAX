@@ -37,6 +37,7 @@ import { AccountView } from '../components/AccountView';
 import { OnboardWizard } from '../components/OnboardWizard';
 import { BusinessRules } from '../components/BusinessRules';
 import { Merchandising } from '../components/Merchandising';
+import { CardsTheme } from '../components/CardsTheme';
 import { JourneyBuilder } from '../components/JourneyBuilder';
 import { AiOrchestration } from '../components/AiOrchestration';
 import { KnowledgeBase } from '../components/KnowledgeBase';
@@ -94,7 +95,7 @@ export default function BackOfficeSPA() {
     if (typeof window !== 'undefined') sessionStorage.setItem('jax_project', p.projectId);
     setTenantMenuOpen(false);
   };
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'builder' | 'journeyBuilder' | 'catalog' | 'orders' | 'analytics' | 'merchandising' | 'embed' | 'channels' | 'integrations' | 'business' | 'orchestration' | 'rules' | 'knowledge' | 'platform-ops' | 'users-roles' | 'notifications' | 'account'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'builder' | 'journeyBuilder' | 'catalog' | 'orders' | 'analytics' | 'merchandising' | 'cards' | 'embed' | 'channels' | 'integrations' | 'business' | 'orchestration' | 'rules' | 'knowledge' | 'platform-ops' | 'users-roles' | 'notifications' | 'account'>('dashboard');
   
   // R4: restore session from the HttpOnly cookie via the BFF (no token in JS).
   useEffect(() => {
@@ -456,6 +457,10 @@ export default function BackOfficeSPA() {
 
           {activeTab === 'merchandising' && (currentProject
             ? <Merchandising projectId={currentProject.projectId} />
+            : <div className="panel">Select a workspace.</div>)}
+
+          {activeTab === 'cards' && (currentProject
+            ? <CardsTheme project={currentProject} onSaved={() => loadProjects(currentProject.projectId)} />
             : <div className="panel">Select a workspace.</div>)}
 
           {activeTab === 'journeyBuilder' && (currentProject

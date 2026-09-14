@@ -87,6 +87,12 @@ export interface Project {
   updatedAt?: string;       // last draft edit (vs. published → "unpublished changes")
   version?: number;         // draft mutation counter
   channels?: Record<string, boolean>;
+  // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ──────────────────
+  /** Theme layers 1+2: --jx-* design tokens + per-card settings. */
+  uiTheme?: import('@journeyax/ui-cards').UiTheme;
+  /** Layer 3: tenant overrides of the platform default card templates. */
+  cardTemplates?: Record<string, { cardType: string; spec: unknown; variant?: string; note?: string; updatedAt?: string }>;
+  fulfilment?: { mode?: 'delivery' | 'collect' | 'both'; label?: string; badge?: string; branches?: { id: string; name: string; address?: string }[] };
   integrations?: {
     whatsapp?: { enabled: boolean; phoneNumberId?: string; accessToken?: string; verifyToken?: string; wabaId?: string };
     shopify?: { enabled: boolean; shopDomain?: string; accessToken?: string };
@@ -221,6 +227,41 @@ export const projectApi = {
     req<ConfigVersionMeta[]>(`${SERVICES.project}/api/v1/projects/${projectId}/versions`),
   rollback: (projectId: string, version: number) =>
     req<any>(`${SERVICES.project}/api/v1/projects/${projectId}/rollback/${version}`, { method: 'POST' }),
+};
+
+// ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ────────────────────────
+// The "Cards & Theme" studio's API surface. Reads the DRAFT (same convention
+// as every other config screen in this app — publish is a separate, explicit
+// step via projectApi.publish). Card specs are validated server-side
+// (project-service's validateCardSpec) before they're ever stored, so a
+// malformed template can't reach the storefront renderer.
+export interface CardListEntry {
+  cardType: string;
+  source: 'tenant' | 'default';
+  spec: any;
+  settings: Record<string, unknown> | null;
+  updatedAt?: string;
+  updatedBy?: string;
+  note?: string;
+}
+
+export const cardsApi = {
+  list: (projectId: string) =>
+    req<{ cards: CardListEntry[] }>(`${SERVICES.project}/api/v1/projects/${projectId}/cards`),
+  putCard: (projectId: string, cardType: string, spec: unknown, opts?: { note?: string; variant?: string }) =>
+    req<{ success: boolean; cardTemplate?: any }>(`${SERVICES.project}/api/v1/projects/${projectId}/cards/${cardType}`, {
+      method: 'PUT',
+      body: JSON.stringify({ spec, ...(opts?.note ? { note: opts.note } : {}), ...(opts?.variant ? { variant: opts.variant } : {}) }),
+    }),
+  deleteCard: (projectId: string, cardType: string) =>
+    req<{ success: boolean; removed?: boolean }>(`${SERVICES.project}/api/v1/projects/${projectId}/cards/${cardType}`, { method: 'DELETE' }),
+  /** Theme tokens + per-card settings are layers 1+2 — plain fields on the
+   *  project doc, so they PATCH through the same endpoint every other config
+   *  screen uses rather than a card-specific route. */
+  patchTheme: (projectId: string, uiTheme: import('@journeyax/ui-cards').UiTheme) =>
+    projectApi.update(projectId, { uiTheme }),
+  patchFulfilment: (projectId: string, fulfilment: Project['fulfilment']) =>
+    projectApi.update(projectId, { fulfilment }),
 };
 
 export interface ConfigVersionMeta {

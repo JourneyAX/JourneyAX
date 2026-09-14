@@ -28,6 +28,9 @@ export const SECTION_CATALOG: SectionDef[] = [
   { id: 'orders',       defaultLabel: 'Orders',               group: 'Main',     status: 'live' },
   { id: 'analytics',    defaultLabel: 'Analytics',            group: 'Main',     status: 'live' },
   { id: 'merchandising', defaultLabel: 'Merchandising',       group: 'Main',     status: 'live' },
+  // v3 Card CMS (docs/v3-card-cms-architecture.md) — theme tokens + per-card
+  // json-render template overrides. See apps/backoffice-admin/src/components/CardsTheme.tsx.
+  { id: 'cards',         defaultLabel: 'Cards & Theme',       group: 'Main',     status: 'live' },
   { id: 'embed',        defaultLabel: 'Agent Embed',          group: 'Platform', status: 'live' },
   { id: 'channels',     defaultLabel: 'Channels',             group: 'Platform', status: 'live' },
   { id: 'integrations', defaultLabel: 'Integrations & Adapters', group: 'Platform', status: 'live' },

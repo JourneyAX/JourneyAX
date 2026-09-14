@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
+// Card CMS (v3) base styles for the Cards & Theme studio's live previews —
+// see docs/v3-card-cms-architecture.md. Namespaced under .jx-root / --jx-color-*
+// (distinct from this app's own --jx-yellow/--jx-black brand tokens).
+import "@journeyax/ui-cards/styles.css";
 
 export const metadata: Metadata = {
   title: "JourneyAX | Back-Office Console",
