@@ -227,31 +227,34 @@ body {
   gap: 10px;
 }
 
+/* Sign in reads as the header's one real CTA — filled with the tenant's own
+   brand colour (--gold; NOT redefined by [data-sidebar="dark"], unlike
+   --dark/--surface, so this stays correct on every tenant), not just
+   outlined, so it doesn't wash out against a light header (an all-
+   transparent, thin-border treatment disappeared entirely on a light tenant
+   like Caroma — a filled tan/cyan/whatever-the-brand-is button never does). */
 .chat-header__signin {
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--border-dark);
-  padding: 6px 14px;
+  color: #fff;
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  padding: 7px 16px;
   border-radius: 2px;              /* square, matching the panel's edges */
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  max-width: 120px;
+  transition: opacity 0.15s;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chat-header__signin:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
+.chat-header__signin:hover { opacity: 0.85; }
 
-/* Conversations — switch threads, or start a clean one. Same square, quiet
-   treatment as Sign in: these are utilities beside the brand, not calls to
-   action competing with the chat itself. */
+/* Conversations — switch threads, or start a clean one. A light, filled
+   surface (not bare transparent-on-transparent) so these read as real
+   controls against any tenant's header, light or dark. */
 .chat-header__convos {
   position: relative;
   display: flex;
@@ -262,39 +265,33 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--border-dark);
+  width: 30px;
+  height: 30px;
+  color: var(--text-dim);
+  background: var(--surface-hover);
+  border: 1px solid transparent;
   border-radius: 2px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
-.chat-header__iconbtn:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
+.chat-header__iconbtn:hover { background: var(--gold); color: #fff; }
 
-/* View bag — a real CTA (the way back to checkout), so slightly more present
-   than the quiet icon utilities: icon + live item count in an accent badge. */
+/* Cart — a real CTA (the way to review/check out), so slightly more present
+   than the quiet icon utilities: icon + live item count, filled surface. */
 .chat-header__bag {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 28px;
-  padding: 0 10px;
-  color: var(--text-primary);
-  background: transparent;
-  border: 1px solid var(--border-dark);
+  height: 30px;
+  padding: 0 11px;
+  color: var(--text-dim);
+  background: var(--surface-hover);
+  border: 1px solid transparent;
   border-radius: 2px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
-.chat-header__bag:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
+.chat-header__bag:hover { background: var(--gold); color: #fff; }
 .chat-header__bag-count {
   display: inline-flex;
   align-items: center;

@@ -235,6 +235,12 @@ export default function ChatPanel() {
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
   const [perfModalOpen, setPerfModalOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  // A broken theme.logoUrl (real example: Caroma's /assets/caroma-logo.svg
+  // 404s) used to just vanish — onError hid the <img> with no fallback,
+  // leaving the header with NO brand identity at all. Fall back to the text
+  // wordmark instead, same as the "no logo configured" case already does.
+  const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => { setLogoFailed(false); }, [cfg.theme?.logoUrl]);
   // sendToAI is a stable closure; reading convoId directly would pin whichever
   // thread was open when it was created.
   const convoIdRef = useRef('');
@@ -917,7 +923,7 @@ export default function ChatPanel() {
           // Config-driven only — every tenant's logo (or lack of one) lives in
           // its own theme.logoUrl, never a code-level tenant literal.
           const logoSrc = cfg.theme?.logoUrl || null;
-          if (!logoSrc) {
+          if (!logoSrc || logoFailed) {
             return <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>;
           }
           return (
@@ -925,7 +931,7 @@ export default function ChatPanel() {
               className="chat-header__logo"
               src={logoSrc}
               alt={cfg.companyName || 'Brand Logo'}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              onError={() => setLogoFailed(true)}
               style={{ height: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
             />
           );

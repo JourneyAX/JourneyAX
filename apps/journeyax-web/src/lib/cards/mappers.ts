@@ -40,7 +40,12 @@ export function mapProductsCard(products: RecommendedProduct[], heading?: string
       url: p.url,
       specs: p.specs,
       recommended: i === 0,
-      reason: i === 0 ? undefined : p.description,
+      // `description` IS the agent's own stated reason this product fits the
+      // request (RecommendedProduct's own doc comment) — show it on every
+      // card, the top recommendation MOST of all. Withholding it from i===0
+      // was backwards: a customer sees "Recommended" on the one item with no
+      // stated reason why, while every other item explains itself.
+      reason: p.description,
     })),
   };
 }
