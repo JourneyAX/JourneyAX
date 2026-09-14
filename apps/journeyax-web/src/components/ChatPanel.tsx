@@ -9,7 +9,6 @@ import {
   messagesKey, sessionKey, journeyKey, newId, summarise,
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
-import SpeedPerformanceModal from './SpeedPerformanceModal';
 import WorkingStrip from './shell/WorkingStrip';
 import CartDrawer from './CartDrawer';
 import ProjectPanel from './ProjectPanel';
@@ -235,7 +234,6 @@ export default function ChatPanel() {
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
-  const [perfModalOpen, setPerfModalOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   // A broken theme.logoUrl (real example: Caroma's /assets/caroma-logo.svg
   // 404s) used to just vanish — onError hid the <img> with no fallback,
@@ -319,7 +317,10 @@ export default function ChatPanel() {
       const saved = localStorage.getItem(messagesKey(cfg.projectId, id));
       const parsed = saved ? JSON.parse(saved) : null;
       setMessages(Array.isArray(parsed) && parsed.length ? parsed : []);
-      setDisplayName(authUser?.fullName || authUser?.email || '');
+      // The header shows the LOGIN name (e.g. "admin"), not the first word of
+      // the full name ("Platform" from "Platform Admin" read like a tenant).
+      const login = String(authUser?.email || '').split('@')[0];
+      setDisplayName(login || authUser?.fullName || '');
     } catch { setMessages([]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.projectId]);
@@ -975,22 +976,22 @@ export default function ChatPanel() {
           {/* Cart — every commerce mode, not just retail: the quote/BOM is just
               as much "what's in my cart" as a B2C bag. Opens a drawer over the
               thread rather than a separate stage — see CartDrawer.tsx. */}
-          {bagCount > 0 && (
-            <button
-              type="button"
-              className="chat-header__bag"
-              onClick={() => setCartOpen((v) => !v)}
-              title="View your cart"
-              aria-label={`View your cart, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
-              aria-expanded={cartOpen}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-                <path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-              <span className="chat-header__bag-count">{bagCount}</span>
-            </button>
-          )}
+          {/* Always present (an empty cart is still a place to look), the count
+              badge only once there is something in it. */}
+          <button
+            type="button"
+            className="chat-header__bag"
+            onClick={() => setCartOpen((v) => !v)}
+            title={isCart ? 'View your bag' : 'View your quote'}
+            aria-label={`View your ${isCart ? 'bag' : 'quote'}, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
+            aria-expanded={cartOpen}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+              <path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            {bagCount > 0 && <span className="chat-header__bag-count">{bagCount}</span>}
+          </button>
           {/* Conversations. One customer has more than one job — this season's
               volleyball kit, next month's caps — and each deserves its own
               thread with its own context, plus a way back to the earlier one. */}
@@ -1044,39 +1045,22 @@ export default function ChatPanel() {
           </div>
           <button
             type="button"
-            onClick={() => setPerfModalOpen(true)}
-            title="Model Speed & Performance Metrics"
-            aria-label="Model Speed & Performance"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 10px',
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#B45309',
-              background: '#FEF3C7',
-              border: '1px solid #FDE68A',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <span style={{ fontSize: 13 }}>⚡</span>
-            <span>40 tps · 213ms</span>
-          </button>
-          <button
-            type="button"
             className="chat-header__signin"
             onClick={onSignIn}
-            title={displayName ? `Signed in as ${displayName}` : 'Sign in'}
+            title={displayName ? `Signed in as ${displayName} — click to sign out` : 'Sign in'}
           >
-            {displayName ? displayName.split(' ')[0] : 'Sign in'}
+            {displayName ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                <span>{displayName}</span>
+              </>
+            ) : 'Sign in'}
           </button>
         </div>
       </div>
-
-      <SpeedPerformanceModal isOpen={perfModalOpen} onClose={() => setPerfModalOpen(false)} />
 
       {/* The conversation — text and cards interleaved in one scrolling
           thread, in the order they actually happened. */}

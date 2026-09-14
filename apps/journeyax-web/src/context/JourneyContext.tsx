@@ -420,7 +420,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (state.recommendedProducts.length === 0) return;
-    pushCard({ id: newId('products'), cardType: 'products', state: mapProductsCard(state.recommendedProducts) });
+    pushCard({ id: newId('products'), cardType: 'products', state: mapProductsCard(state.recommendedProducts, undefined, cfg.commerceMode === 'cart' ? 'bag' : 'quote') });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.recommendedProducts]);
 
@@ -437,6 +437,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       state: mapQuoteCard(state.serverQuote, {
         fulfilment: cfg.fulfilment, selectedBranch: state.selectedBranch, selectedBranchName: state.selectedBranchName,
         quoteIntro: cfg.quoteIntro, complianceBadge: cfg.complianceBadge,
+        closing: cfg.commerceMode === 'cart' ? 'bag' : 'quote',
       }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

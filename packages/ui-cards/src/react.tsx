@@ -5,7 +5,7 @@
  * tenant-agnostic by construction: every visual decision comes from
  * (a) the template spec (Mongo) and (b) `--jx-*` theme tokens.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { createRenderer, useActions } from '@json-render/react';
 import type { Spec } from '@json-render/core';
 import { catalog } from './catalog';
@@ -177,7 +177,7 @@ const components = {
       type="button"
       className={cls('jx-btn', `jx-btn-${props.variant || 'primary'}`, `jx-size-${props.size || 'md'}`, props.fullWidth && 'jx-full', props.className)}
       disabled={!!props.disabled || !!props.loading}
-      onClick={() => emit('press')}
+      onClick={(e) => { e.stopPropagation(); emit('press'); }}
       style={props.style}
     >
       {props.icon ? <JxIcon name={props.icon} size="sm" /> : null}
@@ -186,7 +186,7 @@ const components = {
     </button>
   ),
   Link: ({ props, emit }: RP) => (
-    <a className={cls('jx-link', toneCls(props.tone), props.className)} href={props.href} target={props.external ? '_blank' : undefined} rel={props.external ? 'noopener noreferrer' : undefined} onClick={() => emit('press')}>
+    <a className={cls('jx-link', toneCls(props.tone), props.className)} href={props.href} target={props.external ? '_blank' : undefined} rel={props.external ? 'noopener noreferrer' : undefined} onClick={(e) => { e.stopPropagation(); emit('press'); }}>
       {props.label}
     </a>
   ),
@@ -201,7 +201,7 @@ const components = {
         {items.map((c, i) => {
           const on = props.selected !== undefined && props.selected !== null && String(props.selected) === c;
           return (
-            <button key={i} type="button" className={cls('jx-chip', toneCls(props.tone), on && 'jx-selected')} aria-pressed={on} onClick={() => fire(c)}>{c}</button>
+            <button key={i} type="button" className={cls('jx-chip', toneCls(props.tone), on && 'jx-selected')} aria-pressed={on} onClick={(e) => { e.stopPropagation(); fire(c); }}>{c}</button>
           );
         })}
       </div>
@@ -278,7 +278,7 @@ const components = {
     return (
       <div className={cls('jx-swatches', `jx-size-${props.size || 'md'}`)}>
         {items.map((s, i) => (
-          <button key={s?.id ?? i} type="button" title={s?.label} className={cls('jx-swatch', props.selected === s?.id && 'jx-selected')} onClick={() => emit(`select:${s?.id ?? i}`)} style={{ background: s?.hex, backgroundImage: s?.imageUrl ? `url(${s.imageUrl})` : undefined }} />
+          <button key={s?.id ?? i} type="button" title={s?.label} className={cls('jx-swatch', props.selected === s?.id && 'jx-selected')} onClick={(e) => { e.stopPropagation(); emit(`select:${s?.id ?? i}`); }} style={{ background: s?.hex, backgroundImage: s?.imageUrl ? `url(${s.imageUrl})` : undefined }} />
         ))}
       </div>
     );
@@ -290,9 +290,9 @@ const components = {
     const min = props.min ?? 0, max = props.max ?? 999;
     return (
       <div className={cls('jx-qty', `jx-size-${props.size || 'md'}`)}>
-        <button type="button" onClick={() => emit(`change:${Math.max(min, v - 1)}`)} disabled={v <= min}>−</button>
+        <button type="button" onClick={(e) => { e.stopPropagation(); emit(`change:${Math.max(min, v - 1)}`); }} disabled={v <= min}>−</button>
         <span>{v}</span>
-        <button type="button" onClick={() => emit(`change:${Math.min(max, v + 1)}`)} disabled={v >= max}>+</button>
+        <button type="button" onClick={(e) => { e.stopPropagation(); emit(`change:${Math.min(max, v + 1)}`); }} disabled={v >= max}>+</button>
       </div>
     );
   },
@@ -370,11 +370,44 @@ export interface CardRendererProps {
  * Renders one card: template + state → DOM. Wrap it in a `.jx-root` so the
  * theme variables and base styles apply.
  */
+/** JSON-pointer read ("/products/0/sku") against a card's state. */
+function readPointer(root: unknown, pointer: string): unknown {
+  let cur: any = root;
+  for (const seg of pointer.split('/').slice(1)) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = cur[seg.replace(/~1/g, '/').replace(/~0/g, '~')];
+  }
+  return cur;
+}
+
 export function CardRenderer({ template, state, settings, onAction, loading, className, stateKey }: CardRendererProps) {
   const merged = useMemo(() => ({ ...(template.state || {}), ...state, settings: settings || {} }), [template, state, settings]);
+  const mergedRef = useRef(merged);
+  mergedRef.current = merged;
+  // json-render resolves an `{ $item: "sku" }` inside an element's `on.<event>
+  // .params` to the item's STATE PATH ("/products/0/sku" — two-way-binding
+  // semantics), not its value; element props (`items`, `text`, …) do get
+  // values. Caught live: "Add" sent `Add SKU /products/0/sku to my bag`.
+  // Every template binds action params with `$item`, so resolve those paths
+  // against this card's state here, once, before the storefront sees them.
+  const onActionResolved = useMemo(() => {
+    if (!onAction) return undefined;
+    return (name: string, params?: Record<string, unknown>) => {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(params || {})) {
+        if (typeof v === 'string' && v.startsWith('/')) {
+          const val = readPointer(mergedRef.current, v);
+          out[k] = val === undefined ? v : val;
+        } else {
+          out[k] = v;
+        }
+      }
+      onAction(name, out);
+    };
+  }, [onAction]);
   return (
     <div className={cls('jx-root', className)}>
-      <CatalogRenderer key={stateKey} spec={template} state={merged} onAction={onAction} loading={loading} />
+      <CatalogRenderer key={stateKey} spec={template} state={merged} onAction={onActionResolved} loading={loading} />
     </div>
   );
 }

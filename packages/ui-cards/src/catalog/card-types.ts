@@ -71,12 +71,14 @@ export const CARD_TYPES = {
       intro: z.string().optional(),
       products: z.array(ProductFact),
       layout: z.enum(['grid', 'list', 'carousel']).optional(),
+      /** The tenant's closing-surface word — "bag" (retail) or "quote" (trade) — for CTA labels. */
+      closing: z.string().optional(),
     }),
   },
   productDetail: {
     title: 'Product detail',
     description: 'One product with gallery, specs, availability and actions.',
-    state: z.object({ product: ProductFact, related: z.array(ProductFact).optional() }),
+    state: z.object({ product: ProductFact, related: z.array(ProductFact).optional(), closing: z.string().optional() }),
   },
   comparison: {
     title: 'Comparison',

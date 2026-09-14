@@ -35,11 +35,19 @@ import type { CardInstance } from '@/lib/types';
  */
 export function useCardActions() {
   const { state, dispatch, handleApprove } = useJourney();
+  const cfg = useStorefrontConfig();
   const stateRef = useRef(state);
   stateRef.current = state;
+  // The closing surface's own word — a retail brand has a bag, a trade brand
+  // a quote — so the message the agent receives matches its vocabulary. Read
+  // through a ref: this callback is deliberately stable (see above) and the
+  // config arrives after first render, so a plain closure kept "quote".
+  const closingRef = useRef<'bag' | 'quote'>('quote');
+  closingRef.current = cfg.commerceMode === 'cart' ? 'bag' : 'quote';
 
   return useCallback((name: string, params?: Record<string, unknown>) => {
     const state = stateRef.current;
+    const closing = closingRef.current;
     const w = typeof window !== 'undefined' ? (window as any) : {};
     switch (name) {
       case 'sendMessage':
@@ -71,7 +79,7 @@ export function useCardActions() {
             card: {
               id: `productDetail-${sku}-${Date.now()}`,
               cardType: 'productDetail',
-              state: { product: { sku, title: p.name, description: p.description, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, specs: p.specs } },
+              state: { product: { sku, title: p.name, description: p.description, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, specs: p.specs }, closing },
               createdAt: String(count ?? 0),
             },
           });
@@ -79,7 +87,7 @@ export function useCardActions() {
         break;
       }
       case 'addToCart':
-        w.__handleBuildQuote?.(params?.sku ? `Add SKU ${params.sku} (qty ${params?.qty ?? 1}) to my quote.` : undefined);
+        w.__handleBuildQuote?.(params?.sku ? `Add SKU ${params.sku} (qty ${params?.qty ?? 1}) to my ${closing}.` : undefined);
         break;
       case 'addAllToCart':
         w.__handleBuildQuote?.();
@@ -90,7 +98,7 @@ export function useCardActions() {
         w.__handleBuildQuote?.(`Change the quantity of SKU ${params?.sku} to ${params?.qty}.`);
         break;
       case 'removeFromCart':
-        w.__handleBuildQuote?.(`Remove SKU ${params?.sku} from my quote.`);
+        w.__handleBuildQuote?.(`Remove SKU ${params?.sku} from my ${closing}.`);
         break;
       case 'selectBranch': {
         const branchId = String(params?.branchId ?? '');

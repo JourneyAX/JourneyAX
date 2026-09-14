@@ -2621,7 +2621,10 @@ interface RetrievalContext { brief: string; answers: string[] }
 function deriveRetrievalContext(messages: Array<{ role: string; content: unknown }>): RetrievalContext {
   const text = (c: unknown): string =>
     typeof c === 'string' ? c : Array.isArray(c) ? c.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join(' ') : String(c ?? '');
-  const users = messages.filter((m) => m.role === 'user').map((m) => text(m.content).trim()).filter(Boolean);
+  // Storefront-generated cart commands ("Add SKU X (qty 1) to my bag.") are
+  // instructions, not briefs — never search them.
+  const isCartCommand = (t: string) => /^(?:Add SKU \S+ \(qty \d+\) to my|Remove SKU \S+ from my|Change the quantity of SKU \S+ to \d+)/i.test(t.trim());
+  const users = messages.filter((m) => m.role === 'user').map((m) => text(m.content).trim()).filter((t) => t && !isCartCommand(t));
   const isAnswers = (t: string) => /^\s*my answers:/i.test(t);
   const briefs = users.filter((t) => !isAnswers(t));
   // Prefer the latest brief that actually describes something (≥4 words) over
@@ -3097,7 +3100,10 @@ export class AgentService {
       const prods = res?.results || res?.products || res?.items || [];
       console.log(`[JourneyAX:ToolResult] 📦 searchKnowledge("${query}") returned ${prods.length} product(s)`);
       if (!prods.length) return false;
-      const itemsToRender = prods.slice(0, 6).map(normalizeTradeProduct);
+      // Retrieval can return the same SKU twice (variant rows) — one tile each.
+      const seen = new Set<string>();
+      const unique = prods.filter((p: any) => { const k = String(p?.sku || '').toUpperCase(); if (!k) return true; if (seen.has(k)) return false; seen.add(k); return true; });
+      const itemsToRender = unique.slice(0, 6).map(normalizeTradeProduct);
       const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
       uiToolCalls.push({
         id: `model_tool_search_${Date.now()}`,
@@ -3154,6 +3160,81 @@ export class AgentService {
     const shown = await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit);
     if (shown) stats.searched = true;
     return shown;
+  }
+
+  /**
+   * The storefront's own cart controls send a fixed sentence — "Add SKU X
+   * (qty N) to my bag.", "Remove SKU X from my quote.", "Change the quantity
+   * of SKU X to N." — and the model was expected to turn that into an
+   * updateQuote call. It did not reliably: on a retail tenant it replied
+   * "I've added …" with no tool call, and in a fresh session "that SKU isn't
+   * available" (it had never retrieved it). A tap on Add is not a request to
+   * be interpreted; it is an instruction with a real code in it. Apply it
+   * here, deterministically, through the same authoritative QuoteService the
+   * updateQuote tool uses, emit the resulting quote as that tool's action,
+   * and tell the model it already happened so it just confirms.
+   */
+  private async applyStorefrontCartCommand(
+    tenantId: string,
+    sessionId: string,
+    text: string,
+    journeyState: any,
+    projectConfig: any,
+    uiToolCalls: any[],
+    conversation: any[],
+    emit?: (event: string, data: any) => void,
+  ): Promise<boolean> {
+    const t = (text || '').trim();
+    const add = t.match(/^Add SKU (\S+) \(qty (\d+)\) to my (?:bag|quote|cart)\.?$/i);
+    const remove = t.match(/^Remove SKU (\S+) from my (?:bag|quote|cart)\.?$/i);
+    const change = t.match(/^Change the quantity of SKU (\S+) to (\d+)\.?$/i);
+    if (!add && !remove && !change) return false;
+
+    const current = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
+    const qty = new Map<string, number>();
+    for (const l of current?.lines || []) if (l?.sku) qty.set(String(l.sku).toUpperCase(), Math.max(1, Number(l.quantity) || 1));
+    const key = (add?.[1] || remove?.[1] || change?.[1] || '').toUpperCase();
+    if (add) qty.set(key, (qty.get(key) || 0) + Math.max(1, Number(add[2]) || 1));
+    else if (remove) qty.delete(key);
+    else if (change) { const n = Number(change[2]) || 0; if (n <= 0) qty.delete(key); else qty.set(key, n); }
+
+    const isCart = projectConfig?.commerceMode === 'cart';
+    const bagWord = isCart ? 'bag' : 'quote';
+    const items = [...qty.entries()].map(([sku, quantity]) => ({ sku, quantity }));
+    if (!items.length) {
+      // Nothing left to price. The storefront keeps its last quote card; the
+      // model just acknowledges. (An empty quote cannot be emitted — the
+      // authoritative-quote contract refuses zero lines.)
+      conversation.push({ role: 'system', content: `[${bagWord.toUpperCase()} UPDATED] The customer removed the last item; their ${bagWord} is now empty. Confirm that in one short sentence and offer to find something else. Do NOT call updateQuote.` });
+      return true;
+    }
+    const quote = await this.quoteService.build({
+      tenantId, sessionId,
+      title: current?.title || (isCart ? 'Your bag' : 'Your quote'),
+      items,
+      pricing: projectConfig.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
+    });
+    if (!quote.lines?.length) {
+      console.warn(`[agent] storefront cart command: SKU ${key} not priceable for tenant ${tenantId} (pricebook returned no line)`);
+      conversation.push({ role: 'system', content: `[${bagWord.toUpperCase()} NOT UPDATED] SKU ${key} could not be priced from the catalogue, so nothing was added. Say so in one sentence and offer to find the right item. Do NOT call updateQuote.` });
+      return true;
+    }
+    journeyState.quoteId = quote.quoteId;
+    const call: any = {
+      id: `storefront_cart_${Date.now()}`,
+      type: 'function',
+      function: { name: 'updateQuote', arguments: JSON.stringify({ items }) },
+      __quote: quote,
+    };
+    uiToolCalls.push(call);
+    if (emit) emit('uiAction', { name: 'updateQuote', arguments: quote });
+    const lines = quote.lines.map((l) => `${l.name} × ${l.quantity}${l.unitPrice !== null ? ` @ ${quote.symbol || ''}${l.unitPrice}` : ''}`).join('; ');
+    console.log(`[agent] storefront cart command applied (${add ? 'add' : remove ? 'remove' : 'qty'} ${key}) → ${quote.lines.length} line(s), total ${quote.total}`);
+    conversation.push({ role: 'system', content:
+      `[${bagWord.toUpperCase()} UPDATED — already applied by the customer's own tap, server-authoritative] ` +
+      `${bagWord} now: ${lines}. Total ${quote.symbol || ''}${quote.total} ${quote.currency || ''}. The updated ${bagWord} card is already on screen. ` +
+      `Reply in ONE short sentence confirming what changed, then offer one natural next step. Do NOT call updateQuote, searchKnowledge or showItems this turn, and do not restate the line items.` });
+    return true;
   }
 
   private async executeOpenModelToolCalls(
@@ -4488,6 +4569,8 @@ export class AgentService {
     const researchedThisTurn = await this.maybeResearchOrg(tenantId, projectConfig, intent, journeyState, conversation, uiToolCalls);
     await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, () => {}, model, llm);
 
+    const cartCommandApplied = await this.applyStorefrontCartCommand(tenantId, sessionId, lastUserText, journeyState, projectConfig, uiToolCalls, conversation);
+
     // ── Step 5: Generation — controlled tool-calling loop ───────────
     while (loops < maxLoops) {
       loops++;
@@ -4504,7 +4587,7 @@ export class AgentService {
 
         const searchStats = { searched: false };
         let toolExecuted = await this.executeOpenModelToolCalls(tenantId, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t), retrievalCtx, searchStats, allowDomainClarify);
-        if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, undefined, (t) => trace.push(t), { journeyState, intent })) toolExecuted = true;
+        if (!cartCommandApplied && await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, undefined, (t) => trace.push(t), { journeyState, intent })) toolExecuted = true;
         if (!toolExecuted) {
           const modelClarifyAction = this.extractQuestionsFromModelResponse(rawContent, lastUserText, intent, allowDomainClarify);
           if (modelClarifyAction) {
@@ -5200,6 +5283,7 @@ export class AgentService {
     let searchCount = 0;
     let hadRetrieval = false;
     let readyToSpeak = false;
+    let cartCommandApplied = false;   // storefront Add/Remove tap already executed server-side
     let forcedUi = false;               // panel-render enforcement fired already?
     let forcedSearch = false;           // post-clarify "don't defer, search now" nudge fired already? (ANF-10)
     let mustClarifyGender = false;      // gender gate fired → guarantee a clarify panel (post-turn)
@@ -5215,6 +5299,10 @@ export class AgentService {
     await this.noteNamedStyle(tenantId, conversation, journeyState, projectConfig);
     const researchedThisTurn = await this.maybeResearchOrg(tenantId, projectConfig, intent, journeyState, conversation, uiToolCalls, emit);
     await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, emit, model, llm);
+    // A storefront cart tap is executed here, not interpreted by the model;
+    // when it was one, skip the tool rounds — the model only confirms.
+    cartCommandApplied = await this.applyStorefrontCartCommand(tenantId, sessionId, lastUserText, journeyState, projectConfig, uiToolCalls, conversation, emit);
+    if (cartCommandApplied) readyToSpeak = true;
 
     // Open model retrieval accelerator (Gemma 2 / MLX Metal):
     if (isOpenModel) {
@@ -5788,7 +5876,7 @@ export class AgentService {
       console.log(`[JourneyAX:ModelResponse] 💬 Streamed model output for tenant="${tenantId}" [model=${model}]:\n${finalText}`);
       const searchStats = { searched: false };
       let toolExecuted = await this.executeOpenModelToolCalls(tenantId, finalText, intent, uiToolCalls, emit, pushTrace, retrievalCtx, searchStats, allowDomainClarify);
-      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, emit, pushTrace, { journeyState, intent })) toolExecuted = true;
+      if (!cartCommandApplied && await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, emit, pushTrace, { journeyState, intent })) toolExecuted = true;
       if (!toolExecuted) {
         const modelClarifyAction = this.extractQuestionsFromModelResponse(finalText, lastUserText, intent, allowDomainClarify);
         if (modelClarifyAction) {

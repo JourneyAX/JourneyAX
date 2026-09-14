@@ -38,16 +38,20 @@ const usableReason = (s?: string | null, title?: string) => {
   return s;
 };
 
-export function mapProductsCard(products: RecommendedProduct[], heading?: string) {
+export function mapProductsCard(products: RecommendedProduct[], heading?: string, closing: 'bag' | 'quote' = 'quote') {
   // A catalogue with no real photography often points every product at the
   // same "no image" placeholder. One identical picture repeated across the
   // whole set says nothing about any product — drop it and let the tile fall
   // back to its icon (data-driven; no tenant URL pattern baked in here).
-  const urls = products.map((p) => p.imageUrl).filter(Boolean) as string[];
-  const sharedPlaceholder = products.length > 1 && urls.length === products.length && new Set(urls).size === 1;
+  // One tile per SKU — a duplicate row from retrieval also duplicated a React key.
+  const seen = new Set<string>();
+  const list = products.filter((p) => { const k = String(p.sku || '').toUpperCase(); if (!k) return true; if (seen.has(k)) return false; seen.add(k); return true; });
+  const urls = list.map((p) => p.imageUrl).filter(Boolean) as string[];
+  const sharedPlaceholder = list.length > 1 && urls.length === list.length && new Set(urls).size === 1;
   return {
     heading,
-    products: products.map((p, i) => ({
+    closing,
+    products: list.map((p, i) => ({
       sku: p.sku || `unsku-${i}`,
       title: p.name,
       description: usableReason(p.description, p.name),
@@ -100,6 +104,8 @@ export function mapQuoteCard(quote: ServerQuote, opts: {
    *  what used to be `cfg.projectId === 'placemakers'` text baked into
    *  QuotePanel.tsx. Absent = the card's own generic default. */
   quoteIntro?: string | null;
+  /** 'bag' for a retail tenant — the card then reads as a bag, not a project quote with a job id. */
+  closing?: 'bag' | 'quote';
   complianceBadge?: string | null;
 } = {}) {
   const branches = opts.fulfilment?.branches || [];
@@ -110,9 +116,13 @@ export function mapQuoteCard(quote: ServerQuote, opts: {
   return {
     quoteId: quote.quoteId,
     heading: quote.title,
-    eyebrow: `Project Quote · Live · Job ID: ${quote.quoteId}`,
-    sub: opts.quoteIntro || 'Review your order below — I’ll re-validate and re-price as you go.',
-    compliance: opts.complianceBadge || 'Compatibility validated',
+    eyebrow: opts.closing === 'bag'
+      ? `Your bag · ${quote.lines.length} item${quote.lines.length === 1 ? '' : 's'}`
+      : `Project Quote · Live · Job ID: ${quote.quoteId}`,
+    sub: opts.quoteIntro || (opts.closing === 'bag'
+      ? 'Review what’s in your bag — prices and stock are checked live.'
+      : 'Review your order below — I’ll re-validate and re-price as you go.'),
+    compliance: opts.closing === 'bag' ? (opts.complianceBadge || undefined) : (opts.complianceBadge || 'Compatibility validated'),
     lines: quote.lines.map((l) => ({
       sku: l.sku,
       title: l.name,

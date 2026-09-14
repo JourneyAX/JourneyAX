@@ -121,7 +121,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     grid: el('Grid', { minItemWidth: '170px', gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
     ...productTile('p', { cta: 'addToCart' }),
     foot: el('Box', { direction: 'row', justify: 'end', gap: 'sm' }, { children: ['addall'] }),
-    addall: el('Button', { label: 'Add all to quote', variant: 'secondary', icon: 'cart' }, { on: { press: { action: 'addAllToCart' } } }),
+    addall: el('Button', { label: { $template: 'Add all to ${/closing}' }, variant: 'secondary', icon: 'cart' }, { on: { press: { action: 'addAllToCart' } } }),
   }),
 
   productDetail: spec('root', {
@@ -137,7 +137,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     specs: el('Box', { gap: 'xs' }, { children: ['spec'], repeat: { statePath: '/product/specList', key: 'label' } }),
     spec: el('KeyValue', { label: I('label'), value: I('value'), inline: true }),
     actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'ask'] }),
-    add: el('Button', { label: 'Add to quote', variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1 } } } }),
+    add: el('Button', { label: { $template: 'Add to ${/closing}' }, variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1 } } } }),
     ask: el('Button', { label: 'Ask about this', variant: 'secondary' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Tell me more about ${/product/title}' } } } } }),
   }),
 
