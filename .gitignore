@@ -22,3 +22,8 @@ artifacts/
 apps/product-service/tmp_proof/
 apps/journeyax-web/src/scripts/_tmp*
 apps/journeyax-web/src/scripts/tmp*
+
+# GCP service account keys (long-lived credentials) — never committed
+*-sa-key.json
+*service-account*.json
+secrets/

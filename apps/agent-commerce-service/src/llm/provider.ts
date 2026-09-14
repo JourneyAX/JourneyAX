@@ -19,8 +19,32 @@
 import OpenAI from 'openai';
 import { createHash } from 'crypto';
 import { execSync } from 'child_process';
+import { GoogleAuth } from 'google-auth-library';
 
 let cachedGcpToken: { token: string; expiresAt: number; audience: string } | null = null;
+
+/**
+ * A service-account-backed ID token client, keyed by the key file so a config
+ * change (or the same process outliving a key rotation) doesn't reuse a stale
+ * client. `google-auth-library` reads `GOOGLE_APPLICATION_CREDENTIALS` itself
+ * via Application Default Credentials — no argument needed.
+ */
+let cachedAuthClient: { keyPath: string; promise: Promise<import('google-auth-library').IdTokenClient> } | null = null;
+
+async function getServiceAccountIdToken(targetAudience: string): Promise<string> {
+  const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (!keyPath) return '';
+  try {
+    if (!cachedAuthClient || cachedAuthClient.keyPath !== keyPath) {
+      cachedAuthClient = { keyPath, promise: new GoogleAuth().getIdTokenClient(targetAudience) };
+    }
+    const client = await cachedAuthClient.promise;
+    return (await client.idTokenProvider.fetchIdToken(targetAudience)) || '';
+  } catch (e: any) {
+    console.warn('[llm/provider] service-account ID token fetch failed:', e.message);
+    return '';
+  }
+}
 
 /** Obtain Google Cloud identity token for service-to-service Cloud Run authentication. */
 async function getGcpIdentityToken(targetAudience: string): Promise<string> {
@@ -29,7 +53,9 @@ async function getGcpIdentityToken(targetAudience: string): Promise<string> {
     return cachedGcpToken.token;
   }
 
-  // 1. Running inside GCP Cloud Run (Metadata service)
+  // 1. Running inside GCP Cloud Run (Metadata service) — the real production
+  // path. Uses the Cloud Run service's own attached identity; nothing to
+  // configure.
   try {
     const res = await fetch(`http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(targetAudience)}`, {
       headers: { 'Metadata-Flavor': 'Google' },
@@ -44,16 +70,39 @@ async function getGcpIdentityToken(targetAudience: string): Promise<string> {
     // Non-GCP runtime
   }
 
-  // 2. Explicit environment variable override
+  // 2. Dedicated service account key (local dev / any non-GCP host). Preferred
+  // over the gcloud CLI fallback below: a service account never needs
+  // interactive reauth, so local dev doesn't silently 401 whenever a
+  // developer's personal `gcloud auth login` session (Workspace reauth
+  // policy) lapses.
+  {
+    const token = await getServiceAccountIdToken(targetAudience);
+    if (token) {
+      cachedGcpToken = { token, expiresAt: now + 50 * 60 * 1000, audience: targetAudience };
+      return token;
+    }
+  }
+
+  // 3. Explicit environment variable override
   if (process.env.GCP_ID_TOKEN || process.env.PLACEMAKER_MODEL_TOKEN) {
     const token = (process.env.GCP_ID_TOKEN || process.env.PLACEMAKER_MODEL_TOKEN)!.trim();
     cachedGcpToken = { token, expiresAt: now + 50 * 60 * 1000, audience: targetAudience };
     return token;
   }
 
-  // 3. Local development machine fallback (gcloud CLI)
+  // 4. Local development machine fallback (gcloud CLI, personal login — needs
+  // periodic interactive reauth under a Workspace reauth policy; prefer #2
+  // above where possible). MUST pass --audiences:
+  // without it, `gcloud auth print-identity-token` mints a token whose `aud`
+  // claim is gcloud's own default client, not this Cloud Run service — Cloud
+  // Run's IAM front door then rejects it with exactly the symptom this was
+  // built to fix, a 401 `Bearer error="invalid_token"`, before the request
+  // ever reaches the model server.
   try {
-    const token = execSync('gcloud auth print-identity-token', { encoding: 'utf8', timeout: 5000 }).trim();
+    const token = execSync(
+      `gcloud auth print-identity-token --audiences=${JSON.stringify(targetAudience)}`,
+      { encoding: 'utf8', timeout: 5000 },
+    ).trim();
     if (token) {
       cachedGcpToken = { token, expiresAt: now + 45 * 60 * 1000, audience: targetAudience };
       return token;
