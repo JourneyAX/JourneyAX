@@ -2657,6 +2657,19 @@ function effectiveSearchQuery(modelQuery: unknown, ctx?: RetrievalContext): stri
   return composed;
 }
 
+/**
+ * Output budget for an open (self-hosted) model — config-driven per tenant
+ * (`ProjectConfig.maxTokens`). The old fixed 256 was enough for prose plus
+ * ONE TOOL_CALL; a reply that searched AND asked clarify questions got its
+ * second call cut mid-JSON ("tap an option below" with no options rendered).
+ * Default 768; clamped so a typo can't disable the budget or run away.
+ */
+function openModelMaxTokens(projectConfig: any): number {
+  const n = Number(projectConfig?.maxTokens);
+  if (!Number.isFinite(n) || n <= 0) return 768;
+  return Math.min(Math.max(Math.round(n), 128), 4096);
+}
+
 /** Names of the items a card is rendering this turn (showItems / presentComparison). */
 function shownItemNames(uiToolCalls: any[]): string[] {
   const names: string[] = [];
@@ -4482,7 +4495,7 @@ export class AgentService {
         const response = await llm.chat.completions.create({
           model,
           messages: conversation,
-          max_tokens: 256,
+          max_tokens: openModelMaxTokens(projectConfig),
           ...genParams(model, projectConfig.temperature),
         });
         finalMessage = response.choices[0].message;
@@ -5685,7 +5698,7 @@ export class AgentService {
         model,
         messages: conversation,
         stream: true,
-        ...(isOpenModel ? { max_tokens: 256 } : {}),
+        ...(isOpenModel ? { max_tokens: openModelMaxTokens(projectConfig) } : {}),
         ...genParams(model, projectConfig.temperature),
       });
       for await (const chunk of stream) {

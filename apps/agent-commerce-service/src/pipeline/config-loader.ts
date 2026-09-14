@@ -25,6 +25,7 @@ export interface LoadedProjectConfig {
   provider?: string;              // ai.provider — openai | anthropic | gemini | ollama
   model?: string;                 // ai.model — per-project reasoning model
   temperature?: number;           // ai.temperature
+  maxTokens?: number;             // ai.maxTokens — open-model reply budget (default 768 in the agent)
   apiKey?: string;                // ai.apiKey — per-project LLM key (un-redacted via internal-key fetch)
   baseUrl?: string;               // ai.baseUrl — optional endpoint override
   companyName?: string;           // the business's CURRENT trading name
@@ -96,6 +97,7 @@ export class ConfigLoader {
         provider: p?.ai?.provider,
         model: p?.ai?.model,
         temperature: p?.ai?.temperature,
+        maxTokens: p?.ai?.maxTokens,
         apiKey: p?.ai?.apiKey,
         baseUrl: p?.ai?.baseUrl,
         companyName: p?.companyName || p?.name,

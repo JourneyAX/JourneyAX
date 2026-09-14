@@ -98,6 +98,10 @@ export interface ProjectAiConfig {
   provider: string;            // "openai" | "anthropic" | "gemini" | "ollama"
   model: string;               // "gpt-4o" | "claude-sonnet-5" | "gemini-2.5-pro" | "llama3.3:70b"
   temperature: number;         // 0.0 – 1.0
+  /** Output budget per reply for a self-hosted/open model (TOOL_CALL syntax
+   *  tenants). Default 768 in the agent; 256 was too small for prose + two
+   *  tool calls (search + clarify) in one reply. */
+  maxTokens?: number;
   embeddingModel?: string;     // "text-embedding-3-small" | "voyage-3-large"
   /** Model used for bulk INGESTION work (product narratives, catalogue
    *  extraction). Separate from the conversational `model` so heavy offline jobs
