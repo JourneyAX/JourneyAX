@@ -325,8 +325,29 @@ const components = {
   },
 };
 
+/**
+ * `createRenderer` invokes each registry component with the RAW json-render
+ * shape — `{ element: { type, props, ... }, children, slots, emit, on,
+ * bindings, loading }` — not a flattened `props` key (that flattening is
+ * `defineRegistry`'s job, and this file deliberately uses the lighter
+ * `createRenderer` API for its simpler `onAction` prop instead of the full
+ * state-store/provider wiring `defineRegistry` needs). Every primitive above
+ * is written against the flattened `{ props, children, emit, loading }`
+ * shape (RP), so adapt here, once, rather than threading `element.props`
+ * through all 24 of them. Caught live (2026-09-13): every card crashed with
+ * "Cannot read properties of undefined (reading '<prop>')" — `props` was
+ * undefined because it was never being unwrapped from `element`.
+ */
+function adaptForCreateRenderer(map: Record<string, (rp: RP) => React.ReactElement | null>) {
+  const out: Record<string, React.ComponentType<any>> = {};
+  for (const [name, fn] of Object.entries(map)) {
+    out[name] = ({ element, children, slots, emit, loading }: any) => fn({ props: element?.props || {}, children, slots, emit, loading });
+  }
+  return out;
+}
+
 /** The renderer bound to the platform catalog. */
-export const CatalogRenderer = createRenderer(catalog as any, components as any);
+export const CatalogRenderer = createRenderer(catalog as any, adaptForCreateRenderer(components) as any);
 
 export interface CardRendererProps {
   /** Template spec from Mongo (or platform default). */

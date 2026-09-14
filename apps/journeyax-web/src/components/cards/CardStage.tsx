@@ -6,18 +6,34 @@
  * that has migrated. Legacy phases in LEGACY_CARD_PHASES still render their
  * bespoke React panel (see ProjectPanel.tsx) until they migrate too.
  */
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { CardRenderer } from '@journeyax/ui-cards/react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
 import type { CardInstance } from '@/lib/types';
 
-/** Action → storefront behaviour (docs/v3-card-cms-architecture.md §"Storefront action → behaviour map"). */
+/**
+ * Action → storefront behaviour (docs/v3-card-cms-architecture.md
+ * §"Storefront action → behaviour map").
+ *
+ * Caught live (2026-09-13): `createRenderer` sets up its action wiring once
+ * per mount and the card stays mounted (same `stateKey`) across an entire
+ * clarify flow, so a plain `useCallback([state, ...])` closure went stale
+ * after the card's FIRST render — every chooseOption call kept checking
+ * against the empty `dynamicAnswers` from the moment the card appeared, so
+ * "every question answered" never became true no matter how many chips were
+ * tapped, even though each individual SET_DYNAMIC_ANSWER dispatch landed
+ * correctly. `onAction` is now referentially stable (empty dep array) and
+ * reads current state through a ref updated on every render instead.
+ */
 function useCardActions() {
   const { state, dispatch, handleApprove } = useJourney();
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   return useCallback((name: string, params?: Record<string, unknown>) => {
+    const state = stateRef.current;
     const w = typeof window !== 'undefined' ? (window as any) : {};
     switch (name) {
       case 'sendMessage':
@@ -94,7 +110,8 @@ function useCardActions() {
       default:
         break;
     }
-  }, [state, dispatch, handleApprove]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, handleApprove]);
 }
 
 export default function CardStage() {
