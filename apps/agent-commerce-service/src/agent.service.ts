@@ -4385,6 +4385,13 @@ export class AgentService {
             'Customers can pivot between journeys at any time (e.g. asking for trade installation or branch pickup in the middle of a 3D room plan). ' +
             'Preserve all room dimensions, active materials, and customer context during transitions. ' +
             'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
+          ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
+            '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
+            'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
+            'Keep your text to the one-line verdict; the table carries the facts.' }] : []),
+          ...((projectConfig.capabilities || []).includes('products') ? [{ role: 'system', content:
+            '[CARDS CARRY THE ITEMS] If you call showItems this turn, the customer sees every item as a card (name, image, price, and your per-item `description` as the reason) directly under your text. ' +
+            'Your text must NOT list the items — no "1. Name: …" / "2. Name: …", no bullets, no naming each one in turn. Write 2-3 sentences at most: your lead pick and why, how they fit what was asked — then one next-step question.' }] : []),
           ...activeMessages
         ];
 
@@ -5105,6 +5112,9 @@ export class AgentService {
             '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
             'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
             'Keep your text to the one-line verdict; the table carries the facts.' }] : []),
+          ...((projectConfig.capabilities || []).includes('products') ? [{ role: 'system', content:
+            '[CARDS CARRY THE ITEMS] If you call showItems this turn, the customer sees every item as a card (name, image, price, and your per-item `description` as the reason) directly under your text. ' +
+            'Your text must NOT list the items — no "1. Name: …" / "2. Name: …", no bullets, no naming each one in turn. Write 2-3 sentences at most: your lead pick and why, how they fit what was asked — then one next-step question.' }] : []),
           ...messages,
         ];
 
