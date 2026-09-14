@@ -10,6 +10,9 @@ import {
   JourneyState, emptyJourneyState, reduceActions, alreadyPresented,
   renderJourneyStateBlock,
 } from './pipeline/journey-memory';
+import { verifyComparisonProvenance } from './presentation/provenance';
+import { sanitizeChips, fenceSearchResultText } from './presentation/fencing';
+import { skillIndexBlock, loadSkillBody } from './skills/loader';
 
 /** Keep transcripts bounded (context editing) — recent turns are enough; the
  *  journey-memory block carries the durable facts. */
@@ -714,6 +717,62 @@ const tools: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      // ── Presentation contract additions (v3 Card CMS, docs/v3-card-cms-
+      // architecture.md — modelled on anthropics/commerce-agents' present_*
+      // tools): the model's judgment is which SKUs, in what order, and why —
+      // every fact is joined server-side from records already seen this
+      // session, never re-typed by the model. See enforceItemDesignability's
+      // presentComparison/presentSuggestions branches for the provenance and
+      // sanitisation this contract requires before either ever renders.
+      name: 'presentComparison',
+      description: 'Compare two to four products the customer is deciding between, side by side on named dimensions (price, size, material, warranty — whatever they actually raised). Use when they have narrowed to a few finalists — never as a first response to a broad ask; searchKnowledge + showItems comes first. Not needed when one product answers the request, or when the differences are better said in a sentence than a table. Every SKU MUST already have been returned by searchKnowledge or shown in showItems this conversation — a SKU that does not exist in the real catalogue is dropped before this renders, and specs must come from what was actually retrieved, never invented.',
+      parameters: {
+        type: 'object',
+        properties: {
+          skus: { type: 'array', items: { type: 'string' }, description: 'Two to four real SKUs, in the order they should be compared.' },
+          dimensions: { type: 'array', items: { type: 'string' }, description: 'What is being compared, in the order to show it — e.g. ["Price","Capacity","Warranty"].' },
+          rows: {
+            type: 'array',
+            items: { type: 'array', items: { type: 'string' } },
+            description: 'One row per dimension (same order as `dimensions`), one cell per SKU (same order as `skus`). Values must come from real specs already retrieved this conversation.',
+          },
+          verdict: { type: 'string', description: 'One sentence naming the trade-off, or your recommendation, if you have one.' },
+        },
+        required: ['skus', 'dimensions', 'rows'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'presentSuggestions',
+      description: "Offer up to four short next-step suggestions as tappable chips (e.g. \"Show me cheaper options\", \"Compare with X\", \"Add to quote\"). Call it in the same round as the turn's last card, or right after your text when the turn has no card. A tapped chip is sent back as the customer's next message worded exactly as shown — word each one as something the CUSTOMER would say, not an instruction to yourself. Not needed when the natural next step is obvious from the card alone, or on a turn that already ends in a question.",
+      parameters: {
+        type: 'object',
+        properties: {
+          chips: { type: 'array', items: { type: 'string' }, description: "Up to four short chips, in the customer's voice, each under 80 characters." },
+        },
+        required: ['chips'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'loadSkill',
+      description: "Load the full technique for one named skill (from the skills list in your system prompt) when its description applies to this turn. The system prompt only ever carries each skill's name and one-line summary — call this to read the actual guidance before acting on it.",
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'The exact skill name as listed in the system prompt.' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'showConfigurator',
       description:
         'CALL THIS — do not describe the design in words instead. If you find yourself about to write "let us visualise", "here is how it would look" or "let me show you", call this tool in the SAME turn: the customer sees nothing until you do. '
@@ -806,10 +865,13 @@ const tools: OpenAI.ChatCompletionTool[] = [
 ];
 
 // ── UI Tool Names ─────────────────────────────────────────────────────
-const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner']);
+const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner', 'presentComparison', 'presentSuggestions']);
 
 // ── Capability registry: project-configurable toolset ─────────────────
-const UNIVERSAL_TOOL_NAMES = new Set(['searchKnowledge', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'setPhase', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner']);
+// `presentSuggestions` is universal — like commerce-agents' present_suggestions,
+// every turn may offer next-step chips regardless of which product/quote
+// capabilities this tenant has enabled.
+const UNIVERSAL_TOOL_NAMES = new Set(['searchKnowledge', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'setPhase', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner', 'presentSuggestions', 'loadSkill']);
 
 /** Persist a customer-named entity through the BUSINESS port. Provenance is
  *  recorded as customer-stated so nothing here is mistaken for verified fact. */
@@ -986,6 +1048,20 @@ async function enforceNamedSku(tenantId: string, conversation: any[], call: any)
 async function enforceItemDesignability(
   tenantId: string, call: any, designFirst = false,
 ): Promise<Record<string, unknown> | null> {
+  // v3 Card CMS presentation contract (docs/v3-card-cms-architecture.md):
+  // reuse this function's existing wiring at all three dispatch sites rather
+  // than adding new call sites — mutating `call.function.arguments` in place
+  // is exactly the pattern that already gets picked up everywhere `parsedArgs`/
+  // `emitArgs` is re-read after this call returns.
+  if (call?.function?.name === 'presentComparison') return verifyComparisonProvenance(tenantId, call);
+  if (call?.function?.name === 'presentSuggestions') {
+    try {
+      const a = JSON.parse(call.function.arguments || '{}');
+      a.chips = sanitizeChips(a.chips);
+      call.function.arguments = JSON.stringify(a);
+    } catch { /* malformed JSON — leave call.function.arguments as-is; the tool schema requires `chips` so a bad payload surfaces downstream */ }
+    return null;
+  }
   if (call?.function?.name !== 'showItems') return null;
   let args: any = {};
   try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
@@ -2442,7 +2518,9 @@ async function lookupRelated(tenantId: string, rawArgs: string): Promise<unknown
   }
 }
 const CAPABILITY_TO_TOOL: Record<string, string | string[]> = {
-  products: 'showItems',
+  // presentComparison rides with the same 'products' capability — a tenant
+  // that can list products can also compare a shortlist of them.
+  products: ['showItems', 'presentComparison'],
   steps: 'showGuide',
   quote: 'updateQuote',
   accessories: 'showAddons',
@@ -4088,6 +4166,7 @@ export class AgentService {
     // ── Load back-office business rules (config over code) ──
     const activeRules = await this.configLoader.loadActiveRules(tenantId);
     const rulesBlock = this.configLoader.renderRulesBlock(activeRules);
+    const skillsBlock = skillIndexBlock(tenantId);
     trace.push({
       step: 'config-rules',
       detail: activeRules.length ? `${activeRules.length} active rule(s) loaded` : 'no rules configured',
@@ -4150,6 +4229,11 @@ export class AgentService {
           ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
           ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
           ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
+          // v3 Card CMS skills (docs/v3-card-cms-architecture.md): name + one-line
+          // "not needed when" description only — the full technique loads on
+          // demand via the loadSkill tool, so a rarely-needed skill never
+          // occupies every turn's context.
+          ...(skillsBlock ? [{ role: 'system', content: skillsBlock }] : []),
           ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
           { role: 'system', content: intentGuidance },
           ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
@@ -4411,6 +4495,20 @@ export class AgentService {
           continue;
         }
 
+        if (call.function.name === 'loadSkill') {
+          // v3 Card CMS skills (docs/v3-card-cms-architecture.md): the system
+          // prompt only ever carries the name + one-line description; the full
+          // technique is fetched here, on demand, so it never occupies context
+          // on a turn that doesn't need it.
+          let skillArgs: any = {};
+          try { skillArgs = JSON.parse(call.function.arguments || '{}'); } catch { /* keep {} */ }
+          const body = loadSkillBody(tenantId, String(skillArgs?.name || ''));
+          conversation.push({
+            role: 'tool', tool_call_id: call.id,
+            content: JSON.stringify(body ? { found: true, name: skillArgs.name, body } : { found: false, message: `No skill named '${skillArgs?.name}'.` }),
+          });
+          continue;
+        }
         if (call.function.name === 'searchKnowledge') {
           didSearch = true;
           if (searchCount >= MAX_SEARCHES) {
@@ -4437,10 +4535,15 @@ export class AgentService {
               // a "men's" journey never surfaces women's products — hard filter, not a hint.
               { query: args.query, type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
             );
+            const markedResult = await markDesignable(tenantId, toolResult);
             conversation.push({
               role: 'tool',
               tool_call_id: call.id,
-              content: JSON.stringify(await markDesignable(tenantId, toolResult)),
+              // Fencing (docs/v3-card-cms-architecture.md): scraped/ingested
+              // prose (a description, a document body) is now clearly labelled
+              // as data before it reaches the model — structural fields (sku,
+              // price) are untouched, so parsing behaviour is unchanged.
+              content: JSON.stringify(fenceSearchResultText(markedResult)),
             });
             {
               const _s = summarizeToolCall('searchKnowledge', args, toolResult);
@@ -4810,6 +4913,7 @@ export class AgentService {
     // Config rules
     const activeRules = await this.configLoader.loadActiveRules(tenantId);
     const rulesBlock = this.configLoader.renderRulesBlock(activeRules);
+    const skillsBlock = skillIndexBlock(tenantId);
     pushTrace({ step: 'config-rules', detail: activeRules.length ? `${activeRules.length} active rule(s) loaded` : 'no rules configured' });
 
     // Retrieval policy + enforcement
@@ -4851,6 +4955,11 @@ export class AgentService {
           ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
           ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
           ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
+          // v3 Card CMS skills (docs/v3-card-cms-architecture.md): name + one-line
+          // "not needed when" description only — the full technique loads on
+          // demand via the loadSkill tool, so a rarely-needed skill never
+          // occupies every turn's context.
+          ...(skillsBlock ? [{ role: 'system', content: skillsBlock }] : []),
           ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
           { role: 'system', content: intentGuidance },
           ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
@@ -5118,7 +5227,8 @@ export class AgentService {
               // storefront actually uses, so an omission here is invisible in
               // tests and total in production (the AUG-38 failure, repeated).
               const marked = await markDesignable(tenantId, r);
-              return { id: call.id, content: JSON.stringify(marked), args, result: marked };
+              // Fencing — see the buffered path's identical comment.
+              return { id: call.id, content: JSON.stringify(fenceSearchResultText(marked)), args, result: marked };
             } catch {
               return { id: call.id, content: JSON.stringify({ found: false, message: 'Knowledge search failed.' }), args: safeParseArgs(call.function.arguments), result: { found: false } };
             }
@@ -5134,6 +5244,19 @@ export class AgentService {
 
       // UI tool calls — sequential (fast) with the clarify integrity enforcement.
       for (const call of otherCalls) {
+        if (call.function.name === 'loadSkill') {
+          // v3 Card CMS skills — see the buffered path's identical branch for
+          // why the body is fetched here rather than always sitting in the
+          // prompt. Not a SKU-bearing tool, so it skips enforceNamedSku.
+          let skillArgs: any = {};
+          try { skillArgs = JSON.parse(call.function.arguments || '{}'); } catch { /* keep {} */ }
+          const body = loadSkillBody(tenantId, String(skillArgs?.name || ''));
+          conversation.push({
+            role: 'tool', tool_call_id: call.id,
+            content: JSON.stringify(body ? { found: true, name: skillArgs.name, body } : { found: false, message: `No skill named '${skillArgs?.name}'.` }),
+          });
+          continue;
+        }
         await enforceNamedSku(tenantId, conversation, call);     // identity wins over the model
         const parsedArgs = (() => { try { return JSON.parse(call.function.arguments); } catch { return {}; } })();
         if (!UI_TOOL_NAMES.has(call.function.name)) {
