@@ -25,9 +25,21 @@ import SizeRecommendationPanel from './panels/SizeRecommendationPanel';
 import PhotoUploadDesignPanel from './panels/PhotoUploadDesignPanel';
 import ProjectPlanPanel from './panels/ProjectPlanPanel';
 import SpacePlannerPanel from './panels/SpacePlannerPanel';
-import CardStage from './cards/CardStage';
 import { LEGACY_CARD_PHASES } from '@/lib/types';
 
+/**
+ * The non-card fallback surface (docs/v3-card-cms-architecture.md).
+ *
+ * Cards now render INLINE in ChatPanel's own conversation thread (see
+ * CardStage.tsx's CardTile + ChatPanel's timeline builder) — this component
+ * no longer picks between a card stage and a legacy panel. It renders ONLY
+ * the phases that are still a bespoke React experience (3D configurator,
+ * team design, space planner, …; LEGACY_CARD_PHASES) — ChatPanel mounts it
+ * inline, as the thread's current turn, when `state.phase` is one of those —
+ * plus the pre-first-card-push fallback for every other phase, for the
+ * brief render before a tenant's first card-sync effect fires, or a card
+ * type a tenant has disabled in Cards & Theme.
+ */
 export default function ProjectPanel() {
   const { state } = useJourney();
   const cfg = useStorefrontConfig() as any;
@@ -39,40 +51,31 @@ export default function ProjectPanel() {
   // checkout); 'quote' → the B2B project quote (BOM, finishes). A retail tenant
   // never inherits the fixtures/quote template. Default 'quote' (Caroma/Augusta).
   const isCart = cfg?.commerceMode === 'cart';
-
-  // Card CMS (v3): once the agent's output has been mirrored into a card
-  // (see JourneyContext's card-sync effects) it renders through CardStage —
-  // a tenant's json-render template, not this file's hardcoded panels — for
-  // every phase that isn't still a bespoke React experience (3D configurator,
-  // team design, space planner, …; see LEGACY_CARD_PHASES). This is additive:
-  // the panels below stay as the fallback for those phases and for the one
-  // render before the first card-sync effect fires.
-  const useCardStage = state.cards.length > 0 && !LEGACY_CARD_PHASES.includes(state.phase);
+  const useCards = state.cards.length > 0 && !LEGACY_CARD_PHASES.includes(state.phase);
 
   return (
     <div className="project-panel">
-      {useCardStage && <CardStage />}
-      {!useCardStage && state.phase === 'intro' && <HeroPanel />}
-      {!useCardStage && state.phase === 'research' && <ResearchPanel />}
-      {!useCardStage && state.phase === 'clarify' && <ClarifyPanel />}
-      {!useCardStage && state.phase === 'validating' && <ValidatingPanel />}
-      {!useCardStage && state.phase === 'products' && <ProductsPanel />}
-      {!useCardStage && state.phase === 'accessories' && <AccessoriesPanel />}
-      {!useCardStage && state.phase === 'choice' && <ChoicePanel />}
-      {!useCardStage && state.phase === 'install' && <InstallGuidePanel />}
-      {!useCardStage && state.phase === 'warranty' && <WarrantyPanel />}
-      {!useCardStage && state.phase === 'guide' && <GuidePanel />}
-      {!useCardStage && state.phase === 'quote' && (isCart ? <RetailCartPanel /> : <QuotePanel />)}
-      {!useCardStage && state.phase === 'ordered' && <OrderedPanel />}
+      {!useCards && state.phase === 'intro' && <HeroPanel />}
+      {!useCards && state.phase === 'research' && <ResearchPanel />}
+      {!useCards && state.phase === 'clarify' && <ClarifyPanel />}
+      {!useCards && state.phase === 'validating' && <ValidatingPanel />}
+      {!useCards && state.phase === 'products' && <ProductsPanel />}
+      {!useCards && state.phase === 'accessories' && <AccessoriesPanel />}
+      {!useCards && state.phase === 'choice' && <ChoicePanel />}
+      {!useCards && state.phase === 'install' && <InstallGuidePanel />}
+      {!useCards && state.phase === 'warranty' && <WarrantyPanel />}
+      {!useCards && state.phase === 'guide' && <GuidePanel />}
+      {!useCards && state.phase === 'quote' && (isCart ? <RetailCartPanel /> : <QuotePanel />)}
+      {!useCards && state.phase === 'ordered' && <OrderedPanel />}
       {state.phase === 'concepts' && <ConceptsPanel />}
       {state.phase === 'configurator' && (isCandy ? <CandyDesignPanel /> : <ConfiguratorPanel />)}
       {state.phase === 'designEditor' && <DesignEditorPanel />}
       {state.phase === 'teamDesign' && <TeamDesignPanel />}
       {state.phase === 'teamRoster' && <TeamRosterPanel />}
       {state.phase === 'teamPreview' && <ConfiguratorPanel />}
-      {!useCardStage && state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
+      {!useCards && state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
       {state.phase === 'photoUploadDesign' && <PhotoUploadDesignPanel />}
-      {!useCardStage && state.phase === 'projectPlan' && <ProjectPlanPanel />}
+      {!useCards && state.phase === 'projectPlan' && <ProjectPlanPanel />}
       {state.phase === 'spacePlanner' && (
         <SpacePlannerPanel
           // Keyed on the params themselves: a later openSpacePlanner call (the

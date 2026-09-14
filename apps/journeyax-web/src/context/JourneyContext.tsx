@@ -392,9 +392,16 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   // sees a card type at all. Centralised here rather than in each effect
   // below so a disabled card type is skipped consistently and the reducer
   // stays config-free (see file-header note above).
+  //
+  // `createdAt` is stamped with how many messages existed in the thread at
+  // push time (ChatPanel keeps `window.__journeyMessageCount` current) — the
+  // key ChatPanel's timeline builder uses to place this card right after the
+  // turn that produced it, inline in the conversation, instead of in a
+  // separate stage. Not a wall-clock timestamp; a position in the thread.
   const pushCard = useCallback((card: CardInstance) => {
     if (cfg.uiTheme?.cards?.[card.cardType]?.enabled === false) return;
-    dispatch({ type: 'PUSH_CARD', card });
+    const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
+    dispatch({ type: 'PUSH_CARD', card: { ...card, createdAt: String(count ?? 0) } });
   }, [cfg.uiTheme, dispatch]);
 
   useEffect(() => {

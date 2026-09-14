@@ -10,9 +10,12 @@ import {
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
 import SpeedPerformanceModal from './SpeedPerformanceModal';
-import CommandBar from './shell/CommandBar';
 import WorkingStrip from './shell/WorkingStrip';
+import CartDrawer from './CartDrawer';
+import ProjectPanel from './ProjectPanel';
 import { uiActionToCards } from '@/lib/cards/uiActionToCards';
+import { CardTile, useCardActions } from './cards/CardStage';
+import type { CardInstance } from '@/lib/types';
 
 /** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
  *  Deliberately generic — a tenant's own vocabulary lives in the card's own
@@ -231,14 +234,7 @@ export default function ChatPanel() {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
   const [perfModalOpen, setPerfModalOpen] = useState(false);
-  const [convoDrawerOpen, setConvoDrawerOpen] = useState(false);
-  // Embed mode (?embed=1) already forces the single-column CSS layout
-  // (globals.css `.app-layout--embed`) — focus mode's floating bar doesn't
-  // add value there and would fight that layout, so it opts out.
-  const [embedSingleColumn, setEmbedSingleColumn] = useState(false);
-  useEffect(() => {
-    setEmbedSingleColumn(new URLSearchParams(window.location.search).get('embed') === '1');
-  }, []);
+  const [cartOpen, setCartOpen] = useState(false);
   // sendToAI is a stable closure; reading convoId directly would pin whichever
   // thread was open when it was created.
   const convoIdRef = useRef('');
@@ -876,67 +872,46 @@ export default function ChatPanel() {
     // greeting (persona.greetingMessage) when set.
     .map(m => (m.id === 'welcome' && cfg.greeting ? { ...m, text: cfg.greeting } : m));
 
-  // Focus mode (v3 Card CMS): once a card is on stage, the 40% chat column
-  // collapses and the conversation moves into a floating command bar docked
-  // above the stage — see docs/v3-card-cms-architecture.md and the PlaceMakers
-  // Voice Bar artboards. A tenant can opt out via uiTheme.layout.focusMode.
-  const focusModeAllowed = (cfg.uiTheme as any)?.layout?.focusMode !== 'split';
-  const focusMode = focusModeAllowed && state.phase !== 'intro' && state.cards.length > 0 && !embedSingleColumn;
-  const primaryActionLabel = (cfg.uiTheme as any)?.layout?.commandBar?.primaryAction
-    || (state.serverQuote || bom.length ? 'Build my quote' : null);
-  const commandBarPlaceholder = (cfg.uiTheme as any)?.layout?.commandBar?.placeholder || introPlaceholder;
-  const voiceEnabled = (cfg.uiTheme as any)?.layout?.commandBar?.voice !== false;
+  // Single ChatGPT/Claude-style thread (docs/v3-card-cms-architecture.md,
+  // "PlaceMakers Conversation" mockup): cards render INLINE, at the point in
+  // the conversation that produced them, never in a separate stage. JourneyContext's
+  // pushCard() stamps each card's `createdAt` with how many messages existed
+  // in the thread at push time — it reads that count from this global, kept
+  // current here on every render (cheap: a number, not the array itself).
+  useEffect(() => {
+    (window as any).__journeyMessageCount = allMessages.length;
+  });
+
+  const onCardAction = useCardActions();
+
+  // Interleave: walk the messages in order, and after message index i, place
+  // any card whose stamped count is i+1 (created once that many messages
+  // existed). A card whose count doesn't land on any message index — stale
+  // read, or a wholesale conversation replace that changed the count the
+  // card was stamped against — still renders: appended at the end, sorted by
+  // its own count, rather than silently dropped.
+  const cardsByCount = new Map<number, CardInstance[]>();
+  for (const card of state.cards) {
+    const n = Number(card.createdAt) || 0;
+    (cardsByCount.get(n) || cardsByCount.set(n, []).get(n)!).push(card);
+  }
+  const timeline: Array<{ kind: 'msg'; msg: (typeof allMessages)[number] } | { kind: 'card'; card: CardInstance }> = [];
+  const placedCounts = new Set<number>();
+  allMessages.forEach((msg, i) => {
+    timeline.push({ kind: 'msg', msg });
+    const here = cardsByCount.get(i + 1);
+    if (here) { here.forEach((card) => timeline.push({ kind: 'card', card })); placedCounts.add(i + 1); }
+  });
+  const strayCards = [...cardsByCount.entries()].filter(([n]) => !placedCounts.has(n)).flatMap(([, cards]) => cards);
+  strayCards.forEach((card) => timeline.push({ kind: 'card', card }));
+
+  const showWorking = state.isThinking || isLoading;
 
   return (
-    <div className="chat-panel" data-sidebar={cfg.theme?.sidebarStyle || 'light'} data-focus-mode={focusMode}>
-      {focusMode && (
-        <>
-          <button
-            type="button"
-            className="focus-mode__reopen"
-            onClick={() => setConvoDrawerOpen((v) => !v)}
-            aria-label={convoDrawerOpen ? 'Hide conversation' : 'Show conversation'}
-          >
-            {convoDrawerOpen ? 'Hide conversation' : '💬 Conversation'}
-          </button>
-          {convoDrawerOpen && (
-            <div className="focus-mode__drawer">
-              <div className="chat-messages">
-                {allMessages.map((msg) => <MessageBubble key={msg.id} message={msg} />)}
-                {(state.isThinking || isLoading) && (
-                  <div className="thinking"><span className="thinking__dot" /><span className="thinking__dot" /><span className="thinking__dot" /></div>
-                )}
-              </div>
-            </div>
-          )}
-          <div className="floating-stack">
-            <WorkingStrip working={state.working} />
-            <CommandBar
-              value={prompt}
-              onChange={setPrompt}
-              onSubmit={onSubmit}
-              onKeyDown={onKeyDown}
-              onAttachClick={() => fileInputRef.current?.click()}
-              placeholder={commandBarPlaceholder}
-              primaryAction={primaryActionLabel ? { label: primaryActionLabel, onClick: () => { const w = window as any; w.__handleBuildQuote?.(); } } : null}
-              isLoading={isLoading}
-              onStop={stopStreaming}
-              voiceEnabled={voiceEnabled}
-            />
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(e) => { readImageFile(e.target.files?.[0]); e.target.value = ''; }}
-          />
-        </>
-      )}
-      <div className="chat-panel__legacy" style={focusMode ? { display: 'none' } : undefined}>
-      {/* Header — the brand's own logo + name, and sign-in. Nothing else: the
-          "Team Kit Builder / Augusta Team Outfitter" title+subtitle and the
-          "Online" status badge were noise the customer didn't need. */}
+    <div className="chat-panel" data-sidebar={cfg.theme?.sidebarStyle || 'light'}>
+      {/* Header — brand, then the header utility cluster: cart, conversation
+          history, sign-in. One continuous thread below owns everything else —
+          see the "PlaceMakers Conversation" mockup this header/layout follows. */}
       <div className="chat-header">
         {(() => {
           // Config-driven only — every tenant's logo (or lack of one) lives in
@@ -956,16 +931,17 @@ export default function ChatPanel() {
           );
         })()}
         <div className="chat-header__actions">
-          {/* View bag — persistent return path to the retail bag. Shown once the
-              bag has items and we're not already on it; the complete-the-look
-              step otherwise leaves the shopper with no way back to checkout. */}
-          {isCart && bagCount > 0 && state.phase !== 'quote' && (
+          {/* Cart — every commerce mode, not just retail: the quote/BOM is just
+              as much "what's in my cart" as a B2C bag. Opens a drawer over the
+              thread rather than a separate stage — see CartDrawer.tsx. */}
+          {bagCount > 0 && (
             <button
               type="button"
               className="chat-header__bag"
-              onClick={() => dispatch({ type: 'SET_PHASE', phase: 'quote' })}
-              title="View your bag"
-              aria-label={`View your bag, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
+              onClick={() => setCartOpen((v) => !v)}
+              title="View your cart"
+              aria-label={`View your cart, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
+              aria-expanded={cartOpen}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
@@ -1061,18 +1037,23 @@ export default function ChatPanel() {
 
       <SpeedPerformanceModal isOpen={perfModalOpen} onClose={() => setPerfModalOpen(false)} />
 
-      {/* Messages */}
+      {/* The conversation — text and cards interleaved in one scrolling
+          thread, in the order they actually happened. */}
       <div className="chat-messages">
-        {allMessages.map(msg => (
-          <MessageBubble key={msg.id} message={msg} />
-        ))}
-        {(state.isThinking || isLoading) && (
-          <div className="thinking">
-            <span className="thinking__dot" />
-            <span className="thinking__dot" />
-            <span className="thinking__dot" />
-          </div>
-        )}
+        {timeline.map((item) => item.kind === 'msg'
+          ? <MessageBubble key={item.msg.id} message={item.msg} />
+          : <CardTile key={item.card.id} card={item.card} onAction={onCardAction} />)}
+        {/* ProjectPanel: a still-bespoke, non-card experience (3D
+            configurator, team roster, space planner, …; LEGACY_CARD_PHASES),
+            or the fallback for a phase with no card yet — the brief render
+            before a tenant's first card-sync effect fires, or a card type
+            that tenant has disabled in Cards & Theme. Renders nothing (an
+            empty wrapper) once real cards are covering the current phase;
+            mounted unconditionally so its own per-phase logic can decide. */}
+        <ProjectPanel />
+        {/* In progress — inline, where the reply will land, never a strip
+            that can be scrolled away from. */}
+        {showWorking && <WorkingStrip working={state.working} />}
         <div ref={messagesEndRef} />
       </div>
 
@@ -1141,7 +1122,7 @@ export default function ChatPanel() {
           </button>
         </form>
       </div>
-      </div>
+      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
     </div>
   );
 }

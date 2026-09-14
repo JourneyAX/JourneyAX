@@ -127,23 +127,24 @@ body {
   overflow: hidden;
 }
 
-/* ── LEFT PANEL (40%) ───────────────────────────────────────────────── */
+/* ── The whole page: one continuous conversation ───────────────────────
+   docs/v3-card-cms-architecture.md, "PlaceMakers Conversation" mockup.
+   ChatPanel IS the page (see page.tsx) — no separate stage column; text,
+   inline cards and legacy panels all scroll together in .chat-messages. */
 .chat-panel {
-  flex: 0 0 40%;
-  max-width: 40%;
+  flex: 1;
+  width: 100%;
   display: flex;
   flex-direction: column;
   background: var(--sidebar-bg, var(--surface));
-  border-right: 1px solid var(--border);
 }
 
-/* Config-driven dark sidebar (AUG-49). A tenant whose brand runs dark
+/* Config-driven dark theme (AUG-49). A tenant whose brand runs dark
    (Momentec black/graphite, Augusta red-on-black) sets theme.sidebarStyle:
    'dark'. Rather than restyle every element, we REDEFINE the colour variables
    scoped to the panel — everything inside that reads --surface/--text/--border/
    the chat-bubble vars flips to a legible dark theme automatically, while the
-   brand accent (--gold) still drives buttons and the user bubble. The right 60%
-   panel is untouched and stays light. */
+   brand accent (--gold) still drives buttons and the user bubble. */
 .chat-panel[data-sidebar="dark"] {
   --surface:        rgba(255,255,255,0.05);
   --surface-alt:    rgba(255,255,255,0.07);
@@ -400,22 +401,58 @@ body {
   letter-spacing: 0.02em;
 }
 
-/* Messages area */
+/* Messages area — a single centered reading column (not full page width;
+   full-width text/cards at 1200px+ read as badly as full-width text in a
+   book). Cards and legacy panels size themselves within this same column,
+   so nothing needs its own width rule to line up with the conversation. */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 28px;
+  padding: 28px 24px 220px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .chat-messages::-webkit-scrollbar { width: 9px; }
 .chat-messages::-webkit-scrollbar-thumb { background: #DDD7CB; border-radius: 0; }
 .chat-messages::-webkit-scrollbar-track { background: transparent; }
 
+/* A card, rendered inline at its place in the thread. The template itself
+   (@journeyax/ui-cards) already draws its own internal chrome; this wrapper
+   just keeps every card's outer edge consistent — same border/radius/shadow
+   language regardless of card type — and never wider than a comfortable
+   line of text. */
+.chat-inline-card {
+  width: 100%;
+  max-width: 640px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  border: 1px solid var(--jx-color-border, var(--border));
+  border-radius: var(--jx-radius-lg, 14px);
+  background: var(--jx-color-surface, var(--surface));
+  box-shadow: var(--jx-shadow-md, 0 1px 2px rgba(20,20,19,0.05), 0 8px 24px rgba(20,20,19,0.06));
+  overflow: hidden;
+}
+
+/* Project Panel's legacy React experiences (3D configurator, team roster,
+   space planner, …) render inline the same way, at their natural width. */
+.chat-messages > .project-panel { width: 100%; max-width: 100%; }
+.project-panel:empty { display: none; }
+
 /* Message bubbles */
-.msg { max-width: 92%; animation: fadeIn 0.3s both; }
+/* flex-shrink:0 on every direct child of .chat-messages below: a flex column
+   shrinks its items by default when content outgrows the viewport, and
+   .chat-messages relies on ITS OWN overflow-y:auto to grow past the
+   viewport instead — without this, a tall item (a card, the hero fallback,
+   a legacy panel) gets silently compressed below its natural height, which
+   .msg's plain text just overflowed invisibly but a bordered, overflow:
+   hidden card clips outright. */
+.msg { max-width: 92%; flex-shrink: 0; animation: fadeIn 0.3s both; }
 .msg--ai { align-self: flex-start; display: flex; flex-direction: column; gap: 6px; }
 .msg--user { align-self: flex-end; }
 .msg--note { align-self: flex-start; max-width: 94%; }
@@ -507,14 +544,18 @@ body {
 .thinking__dot:nth-child(2) { animation-delay: 0.2s; }
 .thinking__dot:nth-child(3) { animation-delay: 0.4s; }
 
-/* Input area */
+/* Input area — same centered column as the thread above it, not full page
+   width (see .chat-messages). Sits below .chat-messages in the panel's own
+   flex column, so it stays put while only the thread scrolls — no position:
+   sticky needed. */
 .chat-input-area {
-  padding: 24px 32px 32px;
+  padding: 20px 24px 28px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   position: relative;
   z-index: 10;
 }
+.chat-input-area > * { max-width: 820px; margin-left: auto; margin-right: auto; }
 
 .chat-suggestions {
   display: flex;
@@ -575,21 +616,54 @@ body {
 
 .chat-send-btn:hover { background: var(--gold); }
 
-/* ── RIGHT PANEL (60%) ──────────────────────────────────────────────── */
+/* Inline in the thread now (docs/v3-card-cms-architecture.md) — a normal
+   flow child of .chat-messages, not its own full-height 60% column, so no
+   flex-grow/height/background of its own by default. A LEGACY_CARD_PHASES
+   experience that genuinely needs a defined canvas height (3D configurator,
+   space planner, …) sets that on its own inner root, not here. */
 .project-panel {
-  flex: 1;
-  overflow-y: auto;
   position: relative;
-  height: 100%;
-  /* The stage is WHITE, not the page's beige. The left 40% carries the brand's
-     dark colour (data-sidebar="dark"); the right 60% stays a clean white canvas
-     so garments, colour cards and concepts read true. */
-  background: var(--stage-bg, #fff);
+  flex-shrink: 0;
 }
 
-.project-panel::-webkit-scrollbar { width: 9px; }
-.project-panel::-webkit-scrollbar-thumb { background: #DDD7CB; border-radius: 0; }
-.project-panel::-webkit-scrollbar-track { background: transparent; }
+/* The still-card-less fallback surfaces (hero/clarify/products/…, shown
+   before a tenant's first card-sync effect fires, or for a card type that
+   tenant has disabled) get a light card-like frame so they read as one more
+   turn's content, consistent with .chat-inline-card, rather than a bare
+   block of un-boxed text sitting directly on the page background.
+   ALWAYS a light card, regardless of the tenant's chat-panel theme: a dark-
+   brand tenant's [data-sidebar="dark"] redefines --text/--text-secondary/…
+   to near-white for the message bubbles around it (correctly — that's the
+   point of the dark sidebar), and this box now sits nested inside that
+   scope and would otherwise inherit near-white text on its own white
+   background. Reset the tokens these legacy panels read back to their
+   light values here, scoped to this box only. */
+.chat-messages .project-panel:not(:empty) {
+  background: var(--stage-bg, #fff);
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  padding: 28px;
+  overflow: hidden;
+  --surface:        #FFFFFF;
+  --surface-alt:    #FCFBF7;
+  --surface-hover:  #F3EFE7;
+  --dark:           #17140F;
+  --text:           #17140F;
+  --text-dark-alt:  #3A362E;
+  --text-body:      #2E2A23;
+  --text-muted:     #A29A8B;
+  --text-light:     #8A857C;
+  --text-lighter:   #948E82;
+  --text-dim:       #4A453C;
+  --text-secondary: #6B655B;
+  --border:         #E7E2D8;
+  --border-light:   #EDE9E0;
+  --border-dark:    #E4DFD4;
+  --border-input:   #E1DBCF;
+  --chat-ai-bg:     #F5F2EC;
+  --chat-ai-border: #EAE5DB;
+  color: var(--text);
+}
 
 /* ── Hero Panel ─────────────────────────────────────────────────────── */
 .hero-panel {
@@ -601,6 +675,18 @@ body {
   flex-direction: column;
   justify-content: center;
 }
+/* Inline in the thread (docs/v3-card-cms-architecture.md): the 100%-height,
+   centered-in-a-tall-stage treatment above assumed a fixed-height stage
+   column that no longer exists — ChatPanel's .chat-messages is a normal
+   scrolling flow, so min-height:100% had nothing definite to resolve
+   against. Sized to sit as one more turn in the conversation instead. */
+.chat-messages .hero-panel {
+  max-width: 100%;
+  padding: 0;
+  min-height: 0;
+}
+.chat-messages .hero-panel__heading { font-size: 30px; }
+.chat-messages .hero-panel__desc { font-size: 15px; margin-bottom: 24px; }
 
 .hero-panel__eyebrow {
   font-family: var(--font-heading);
@@ -1832,9 +1918,8 @@ body {
 
 /* ── Responsive ─────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .app-layout { flex-direction: column; }
-  .chat-panel { flex: none; max-width: 100%; height: 50vh; }
-  .project-panel { height: 50vh; }
+  .chat-messages { padding-left: 16px; padding-right: 16px; }
+  .chat-input-area { padding-left: 16px; padding-right: 16px; }
   .hero-panel { padding: 32px; }
   .hero-panel__heading { font-size: 32px; }
   .clarify-panel { padding: 32px; }
@@ -1929,13 +2014,10 @@ body {
 }
 
 /* ── Embed mode (?embed=1) — the AX surface inside an iframe on a customer site ──
-   Single column, agent on top, context panel below; no page chrome. */
-.app-layout--embed { flex-direction: column; height: 100vh; overflow-y: auto; }
-.app-layout--embed .chat-panel {
-  flex: none; max-width: 100%; width: 100%;
-  min-height: 46vh; border-right: none; border-bottom: 1px solid var(--border);
-}
-.app-layout--embed .project-panel { width: 100%; height: auto; min-height: 0; flex: 1; }
+   Same single-column thread as the full storefront, just filling the iframe
+   with no page chrome around it. */
+.app-layout--embed { height: 100vh; overflow: hidden; }
+.app-layout--embed .chat-panel { width: 100%; height: 100%; }
 /* Drop the marketing hero in the tight embed — go straight to the agent. */
 .app-layout--embed .hero-panel { display: none; }
 
@@ -2110,126 +2192,14 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   v3 Card CMS — focus mode shell (docs/v3-card-cms-architecture.md)
-   Floating command bar + working strip, shown once a card is on stage.
-   Every colour falls back to the existing --gold/--dark/--surface tokens so
-   this looks right even before --jx-* is set (pre-hydration / no uiTheme).
+   v3 Card CMS — the working indicator (docs/v3-card-cms-architecture.md)
+   Renders INLINE in .chat-messages, at the position of the turn currently
+   in progress — see ChatPanel.tsx. Every colour falls back to the existing
+   --gold/--dark/--surface tokens so this looks right even before --jx-* is
+   set (pre-hydration / no uiTheme).
    ═══════════════════════════════════════════════════════════════════════ */
 
-[data-focus-mode="true"] {
-  flex: 0 0 0 !important;
-  max-width: 0 !important;
-  min-width: 0 !important;
-  overflow: hidden;
-  border-right: none !important;
-}
-
-.focus-mode__reopen {
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 40;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  padding: 8px 14px;
-  border-radius: var(--jx-radius-pill, 999px);
-  border: 1px solid var(--jx-color-border, var(--border));
-  background: var(--jx-color-surface, var(--surface));
-  color: var(--jx-color-text, var(--text));
-  box-shadow: var(--jx-shadow-sm, 0 1px 3px rgba(0,0,0,0.08));
-  cursor: pointer;
-}
-
-.focus-mode__drawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: min(420px, 92vw);
-  z-index: 39;
-  background: var(--jx-color-surface, var(--surface));
-  border-right: 1px solid var(--jx-color-border, var(--border));
-  box-shadow: var(--jx-shadow-lg, 0 14px 40px rgba(0,0,0,0.18));
-  padding: 64px 16px 16px;
-  overflow-y: auto;
-}
-
-.floating-stack {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  width: min(760px, calc(100vw - 48px));
-  z-index: 45;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  /* Never sits over a card's own footer CTA — the stage adds matching
-     bottom padding (see .card-stage below) so nothing is ever covered. */
-}
-
-.command-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 68px;
-  padding: 0 10px 0 16px;
-  background: var(--jx-color-surface, var(--surface));
-  border: 1px solid var(--jx-color-border, var(--border));
-  border-radius: var(--jx-radius-lg, 20px);
-  box-shadow: var(--jx-shadow-lg, 0 14px 40px rgba(11,42,86,0.16));
-}
-.command-bar__icon-btn {
-  display: flex; align-items: center; justify-content: center;
-  border: none; background: transparent; cursor: pointer;
-  color: var(--jx-color-text-muted, var(--text-secondary));
-  padding: 6px;
-}
-.command-bar__input {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  font: inherit;
-  font-size: 15px;
-  color: var(--jx-color-text, var(--text));
-}
-.command-bar__input::placeholder { color: var(--jx-color-text-muted, var(--text-secondary)); }
-.command-bar__chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12.5px; font-weight: 600;
-  color: var(--jx-color-text, var(--text));
-  border: 1px solid var(--jx-color-border, var(--border));
-  background: transparent;
-  padding: 7px 11px;
-  border-radius: var(--jx-radius-md, 10px);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.command-bar__round {
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  border: none;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.command-bar__round--send { background: var(--jx-color-brand, var(--gold)); color: var(--jx-color-brand-text, #fff); }
-.command-bar__round--stop { background: var(--jx-color-inverse, #0A0A0A); color: var(--jx-color-inverse-text, #fff); }
-.command-bar__round--mic {
-  background: var(--jx-color-accent-soft, rgba(0,0,0,0.06));
-  color: var(--jx-color-accent, var(--gold));
-  box-shadow: 0 0 0 6px transparent;
-  transition: box-shadow 0.2s ease, background 0.2s ease;
-}
-.command-bar__round--mic[data-listening="true"] {
-  background: var(--jx-color-accent, var(--gold));
-  color: #fff;
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--jx-color-accent, var(--gold)) 18%, transparent);
-}
-
-.working-strip { pointer-events: auto; }
+.working-strip { pointer-events: auto; align-self: flex-start; width: 100%; max-width: 640px; flex-shrink: 0; }
 .working-strip__collapsed {
   width: 100%;
   display: flex;
@@ -2273,32 +2243,75 @@ body {
   padding: 4px;
 }
 
-/* CardStage — the stage bottom padding keeps a quote/cart card's own totals
-   bar clear of the floating command bar docked above it. */
-.card-stage {
-  max-width: var(--jx-x-stage-max-width, 900px);
-  margin: 0 auto;
-  padding: 28px 24px 180px;
-  box-sizing: border-box;
+/* ═══════════════════════════════════════════════════════════════════════
+   Cart drawer — the header cart icon's slide-in panel (CartDrawer.tsx,
+   "PlaceMakers Conversation" mockup). Opens OVER the thread; the thread
+   itself never resizes to make room, unlike the old persistent 3-column
+   layout this replaced.
+   ═══════════════════════════════════════════════════════════════════════ */
+.cart-drawer-scrim {
+  position: fixed; inset: 0; background: rgba(20,20,19,0.32); z-index: 49;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
 }
-.card-stage-history {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+.cart-drawer-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
+/* ALWAYS a light drawer, regardless of the tenant's chat theme — same reason
+   and same token reset as .chat-messages .project-panel above: nested inside
+   [data-sidebar="dark"] (a dark-brand tenant's message-bubble theme), --dark/
+   --surface/etc. resolve to near-white-on-white without this. */
+.cart-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw; z-index: 50;
+  background: #FFFFFF; box-shadow: -12px 0 40px rgba(20,20,19,0.18);
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform 0.22s ease;
+  --surface:        #FFFFFF;
+  --surface-hover:  #F3EFE7;
+  --dark:           #17140F;
+  --gold:           #A67C4E;
+  --text:           #17140F;
+  --text-secondary: #6B655B;
+  --text-muted:     #A29A8B;
+  --border:         #E7E2D8;
+  --border-light:   #EDE9E0;
+  --success:        #4E7C59;
+  color: var(--text);
 }
-.card-stage-history-chip {
-  font-size: 12px;
-  padding: 6px 12px;
-  border-radius: var(--jx-radius-pill, 999px);
-  border: 1px solid var(--jx-color-border, var(--border));
-  background: var(--jx-color-surface, var(--surface));
-  color: var(--jx-color-text-muted, var(--text-secondary));
-  cursor: pointer;
+.cart-drawer[data-open="true"] { transform: translateX(0); }
+.cart-drawer__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
-.card-stage-suggestions { margin-top: 16px; }
+.cart-drawer__head h2 { font-family: var(--font-heading); font-size: 16px; margin: 0; color: var(--text); }
+.cart-drawer__close {
+  width: 32px; height: 32px; border-radius: 2px; border: none; background: var(--surface-hover); color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.cart-drawer__close:hover { color: var(--text); }
+.cart-drawer__lines { flex: 1; overflow-y: auto; padding: 4px 14px; }
+.cart-drawer__empty { padding: 24px 8px; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+.cart-drawer__line { display: flex; gap: 12px; padding: 12px 6px; border-bottom: 1px solid var(--border-light); }
+.cart-drawer__line:last-child { border-bottom: none; }
+.cart-drawer__thumb {
+  width: 48px; height: 48px; flex-shrink: 0; border-radius: 6px; overflow: hidden;
+  background: var(--surface-hover); display: flex; align-items: center; justify-content: center; font-size: 17px;
+}
+.cart-drawer__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.cart-drawer__info { flex: 1; min-width: 0; }
+.cart-drawer__name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.35; }
+.cart-drawer__meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.cart-drawer__stock { font-size: 11px; margin-top: 3px; font-weight: 600; }
+.cart-drawer__remove { margin-top: 4px; font-size: 11.5px; color: var(--text-muted); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+.cart-drawer__remove:hover { color: var(--text); }
+.cart-drawer__foot { border-top: 1px solid var(--border); padding: 16px 20px 20px; flex-shrink: 0; }
+.cart-drawer__row { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); padding: 3px 0; }
+.cart-drawer__row--total { font-size: 15px; font-weight: 700; color: var(--text); padding-top: 10px; margin-top: 6px; border-top: 1px solid var(--border-light); }
+.cart-drawer__cta {
+  width: 100%; margin-top: 14px; padding: 12px; border: none; border-radius: 2px;
+  background: var(--dark); color: var(--surface, #fff); font-weight: 700; font-size: 13.5px; cursor: pointer;
+}
+.cart-drawer__cta:hover { background: var(--gold); }
+.cart-drawer__cta:disabled { opacity: 0.6; cursor: default; }
 
 @media (max-width: 860px) {
-  .floating-stack { width: calc(100vw - 24px); bottom: 12px; }
-  .focus-mode__drawer { width: 100vw; }
+  .cart-drawer { width: 100vw; }
 }
+

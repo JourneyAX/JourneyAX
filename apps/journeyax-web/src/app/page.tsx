@@ -5,7 +5,6 @@ import { JourneyProvider } from '@/context/JourneyContext';
 import { StorefrontConfigProvider } from '@/context/StorefrontConfigContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import ChatPanel from '@/components/ChatPanel';
-import ProjectPanel from '@/components/ProjectPanel';
 import EasySwitchToast from '@/components/EasySwitchToast';
 import LoginScreen from '@/components/LoginScreen';
 
@@ -13,6 +12,11 @@ import LoginScreen from '@/components/LoginScreen';
  * Sign-in gate. Anonymous access is off: no valid session → the login screen,
  * never the chat. While the first session check is in flight we render nothing
  * rather than flashing the login form at a customer who is already signed in.
+ *
+ * Single-column shell (docs/v3-card-cms-architecture.md, "PlaceMakers
+ * Conversation" mockup): ChatPanel IS the page — the conversation, its inline
+ * cards, and the still-bespoke legacy panels (3D configurator, …) all render
+ * inside its own scrolling thread. No separate stage column.
  */
 function Gate({ embed }: { embed: boolean }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -22,7 +26,6 @@ function Gate({ embed }: { embed: boolean }) {
     <JourneyProvider>
       <div className={`app-layout${embed ? ' app-layout--embed' : ''}`}>
         <ChatPanel />
-        <ProjectPanel />
         {!embed && <EasySwitchToast />}
       </div>
     </JourneyProvider>

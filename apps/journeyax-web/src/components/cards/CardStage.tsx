@@ -1,12 +1,17 @@
 'use client';
 
 /**
- * CardStage — renders the active card (docs/v3-card-cms-architecture.md).
- * Replaces the flat phase→panel switch in ProjectPanel for every card type
- * that has migrated. Legacy phases in LEGACY_CARD_PHASES still render their
- * bespoke React panel (see ProjectPanel.tsx) until they migrate too.
+ * Inline card rendering (docs/v3-card-cms-architecture.md).
+ *
+ * Cards used to render one-at-a-time in a separate "stage" column, with older
+ * cards demoted to small history chips. The storefront is now a single
+ * ChatGPT/Claude-style thread: every card renders INLINE, in place, as part
+ * of the turn that produced it — see ChatPanel.tsx's timeline builder, which
+ * interleaves `state.cards` with the message list and renders each one with
+ * `<CardTile>`. `useCardActions` (the action → behaviour switch) is unchanged
+ * and shared by every `<CardTile>` instance.
  */
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { CardRenderer } from '@journeyax/ui-cards/react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
@@ -27,7 +32,7 @@ import type { CardInstance } from '@/lib/types';
  * correctly. `onAction` is now referentially stable (empty dep array) and
  * reads current state through a ref updated on every render instead.
  */
-function useCardActions() {
+export function useCardActions() {
   const { state, dispatch, handleApprove } = useJourney();
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -53,12 +58,14 @@ function useCardActions() {
         const sku = String(params?.sku ?? '');
         const p = state.recommendedProducts.find((r) => r.sku === sku);
         if (p) {
+          const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
           dispatch({
             type: 'PUSH_CARD',
             card: {
               id: `productDetail-${sku}-${Date.now()}`,
               cardType: 'productDetail',
               state: { product: { sku, title: p.name, description: p.description, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, specs: p.specs } },
+              createdAt: String(count ?? 0),
             },
           });
         }
@@ -114,56 +121,18 @@ function useCardActions() {
   }, [dispatch, handleApprove]);
 }
 
-export default function CardStage() {
-  const { state, dispatch } = useJourney();
+/** One card, rendered inline at its place in the conversation thread. */
+export function CardTile({ card, onAction }: { card: CardInstance; onAction: (name: string, params?: Record<string, unknown>) => void }) {
   const cfg = useStorefrontConfig();
-  const onAction = useCardActions();
-
-  const activeCard: CardInstance | undefined = useMemo(
-    () => state.cards.find((c) => c.id === state.activeCardId) || state.cards[state.cards.length - 1],
-    [state.cards, state.activeCardId],
-  );
-  const suggestionsCard = useMemo(
-    () => [...state.cards].reverse().find((c) => c.cardType === 'suggestions'),
-    [state.cards],
-  );
-  const history = useMemo(
-    () => state.cards.filter((c) => c.cardType !== 'suggestions' && c.id !== activeCard?.id).slice(-5),
-    [state.cards, activeCard],
-  );
-
-  if (!activeCard) return null;
-
   return (
-    <div className="jx-root card-stage" data-card-type={activeCard.cardType}>
-      {history.length > 0 && (
-        <div className="card-stage-history">
-          {history.map((c) => (
-            <button key={c.id} type="button" className="card-stage-history-chip" onClick={() => dispatch({ type: 'SET_ACTIVE_CARD', id: c.id })}>
-              {String((c.state as any)?.heading || (c.state as any)?.title || c.cardType)}
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="jx-root chat-inline-card" data-card-type={card.cardType}>
       <CardRenderer
-        key={activeCard.id}
-        template={resolveTemplate(cfg, activeCard.cardType)}
-        state={activeCard.state}
-        settings={cfg.uiTheme?.cards?.[activeCard.cardType]?.options}
+        template={resolveTemplate(cfg, card.cardType)}
+        state={card.state}
+        settings={cfg.uiTheme?.cards?.[card.cardType]?.options}
         onAction={onAction}
-        stateKey={activeCard.id}
+        stateKey={card.id}
       />
-      {suggestionsCard && (
-        <div className="card-stage-suggestions">
-          <CardRenderer
-            key={suggestionsCard.id}
-            template={resolveTemplate(cfg, 'suggestions')}
-            state={suggestionsCard.state}
-            onAction={onAction}
-            stateKey={suggestionsCard.id}
-          />
-        </div>
-      )}
     </div>
   );
 }
