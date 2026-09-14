@@ -527,6 +527,8 @@ export class ProjectService {
     if (dto.fulfilment && typeof dto.fulfilment === 'object') $set.fulfilment = dto.fulfilment;
     if (dto.cardTemplates && typeof dto.cardTemplates === 'object') $set.cardTemplates = dto.cardTemplates;
     for (const [k, v] of Object.entries((dto as any).labels || {})) $set[`labels.${k}`] = v;
+    if (typeof dto.quoteIntro === 'string') $set.quoteIntro = dto.quoteIntro;
+    if (typeof dto.complianceBadge === 'string') $set.complianceBadge = dto.complianceBadge;
 
     // Deep-merge sub-documents (only update provided keys)
     for (const [k, v] of Object.entries(dto.scope    || {})) $set[`scope.${k}`]    = v;

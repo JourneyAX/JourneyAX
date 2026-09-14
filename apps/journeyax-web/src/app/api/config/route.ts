@@ -61,6 +61,10 @@ export async function GET(req: Request) {
       uiTheme: p?.uiTheme && typeof p.uiTheme === 'object' ? p.uiTheme : null,
       cardTemplates: p?.cardTemplates && typeof p.cardTemplates === 'object' ? p.cardTemplates : null,
       fulfilment: p?.fulfilment && typeof p.fulfilment === 'object' ? p.fulfilment : null,
+      // Quote card copy (mapQuoteCard's sub/compliance) — real config, not a
+      // tenant-name literal in the panel. Absent = the card's generic default.
+      quoteIntro: typeof p?.quoteIntro === 'string' ? p.quoteIntro : null,
+      complianceBadge: typeof p?.complianceBadge === 'string' ? p.complianceBadge : null,
     });
   } catch {
     return json(fallback(PROJECT_ID));
@@ -118,6 +122,10 @@ function fallback(projectId: string) {
           { id: 'Riccarton', name: 'PlaceMakers Riccarton', address: 'Mandeville St' },
         ],
       },
+      // Real quote-card copy (mapQuoteCard's sub/compliance) — was hardcoded
+      // `isPlaceMakers` text inside QuotePanel.tsx; now config, same as fulfilment above.
+      quoteIntro: 'Review your PlaceMakers materials list below. Select branch fulfillment or site delivery before placing your order.',
+      complianceBadge: 'NZ Building Code Verified',
     };
   }
 
@@ -134,6 +142,8 @@ function fallback(projectId: string) {
     uiTheme: null,
     cardTemplates: null,
     fulfilment: null,
+    quoteIntro: null,
+    complianceBadge: null,
   };
 }
 

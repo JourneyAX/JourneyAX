@@ -18,9 +18,9 @@ export default function OrderedPanel() {
   const { state, totals, handleRestart } = useJourney();
   const cfg = useStorefrontConfig();
   const { orderId, placedOrder } = state;
-  const isCaroma = cfg.projectId === 'caroma';
-  const isPlaceMakers = cfg.projectId === 'placemakers';
-  const isFixtures = isCaroma && (!cfg.configurator || cfg.configurator.productType !== 'garment');
+  const productType = cfg.configurator?.productType;
+  const isFixtures = !productType || productType === 'fixtures';
+  const branches = cfg.fulfilment?.branches;
 
   const paid = placedOrder?.status === 'paid';
   const money = (n?: number | null) =>
@@ -28,8 +28,12 @@ export default function OrderedPanel() {
       ? (placedOrder?.symbol ? `${placedOrder.symbol}${n.toFixed(2)}` : formatAUD(n))
       : null;
   // The order's own total when we have it; the in-tab figure is only a fallback
-  // for a journey that never left for payment.
-  const total = money(placedOrder?.total) ?? (isPlaceMakers ? `$${totals.total.toFixed(2)} NZD` : formatAUD(totals.total));
+  // for a journey that never left for payment. Currency comes from the
+  // authoritative quote, same rule as QuotePanel's `money()`.
+  const inTabSymbol = state.serverQuote?.symbol || '$';
+  const inTabCurrency = state.serverQuote?.currency;
+  const total = money(placedOrder?.total)
+    ?? (inTabCurrency ? `${inTabSymbol}${totals.total.toFixed(2)} ${inTabCurrency}` : formatAUD(totals.total));
   const lines = placedOrder?.lines || [];
 
   return (
@@ -42,14 +46,14 @@ export default function OrderedPanel() {
       <div className="ordered-panel__eyebrow">
         {paid ? 'Payment received' : 'Order created'} · {placedOrder?.orderId || orderId}
       </div>
-      <h2 className="ordered-panel__heading">{paid ? 'You’re all set.' : (isPlaceMakers ? 'PlaceMakers Order Confirmed' : 'Converted to order.')}</h2>
+      <h2 className="ordered-panel__heading">{paid ? 'You’re all set.' : (branches?.length ? `${cfg.companyName} Order Confirmed` : 'Converted to order.')}</h2>
       <p className="ordered-panel__desc">
         {paid
           ? `Payment confirmed and your order is locked in at this price — every item, size and quantity as shown. ${
               placedOrder?.leadTimeSummary
               || 'It moves into production next; quote the order number above with any question.'}`
-          : isPlaceMakers
-            ? 'Your PlaceMakers order is locked in and ready for 60-Minute Branch Pickup at your selected branch (or scheduled site delivery). Quote the order reference number above upon arrival.'
+          : branches?.length
+            ? `Your order is locked in and ready for ${cfg.fulfilment?.badge || 'pickup'} at your selected branch${cfg.fulfilment?.mode === 'both' ? ' (or scheduled site delivery)' : ''}. Quote the order reference number above upon arrival.`
             : isFixtures
               ? `${state.qty} validated bathroom${state.qty > 1 ? 's' : ''} — every fixture, finish and required EasySwitch in-wall body — locked in at your price.`
               : 'Your order is locked in at your price — every item, size and quantity confirmed.'}

@@ -75,6 +75,10 @@ export interface StorefrontConfig {
   /** How this tenant fulfils an order — the quote/cart card's branch picker
    *  reads this instead of a hardcoded branch list. */
   fulfilment?: FulfilmentConfig | null;
+  /** Quote card copy (mapQuoteCard's sub/compliance) — config, not a
+   *  `projectId === 'placemakers'` literal inside a shared panel. */
+  quoteIntro?: string | null;
+  complianceBadge?: string | null;
 }
 
 export interface FulfilmentConfig {
@@ -99,6 +103,8 @@ const DEFAULT: StorefrontConfig = {
   uiTheme: null,
   cardTemplates: null,
   fulfilment: null,
+  quoteIntro: null,
+  complianceBadge: null,
 };
 
 const Ctx = createContext<StorefrontConfig>(DEFAULT);

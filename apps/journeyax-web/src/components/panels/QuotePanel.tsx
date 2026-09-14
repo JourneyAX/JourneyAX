@@ -5,15 +5,6 @@ import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { FINISHES, DEFAULT_ADDONS } from '@/lib/types';
 
-const PM_BRANCHES = [
-  { value: 'Mt Wellington', label: 'PlaceMakers Mount Wellington (106 Carbine Rd)' },
-  { value: 'Cook Street', label: 'PlaceMakers Cook Street (124 Cook St)' },
-  { value: 'Albany', label: 'PlaceMakers Albany (21 Corinthian Dr)' },
-  { value: 'Te Rapa', label: 'PlaceMakers Te Rapa (Maui St)' },
-  { value: 'Petone', label: 'PlaceMakers Petone (43 Bouverie St)' },
-  { value: 'Riccarton', label: 'PlaceMakers Riccarton (Mandeville St)' },
-];
-
 /** A hotlinked PlaceMakers CDN image can 202/challenge on first load (same WAF
  *  gate as the Space Planner's cabinet cards) — a bare <img> with no fallback
  *  just renders the browser's broken-image icon. Degrade to the same on-brand
@@ -42,31 +33,31 @@ export default function QuotePanel() {
   /* This panel began as Caroma's bathroom BOM — finish swatches, a "how many
    * bathrooms" stepper, plumbing add-ons, GST. None of that belongs on a team
    * kit OR on personalised candy. Those controls are FIXTURES-ONLY, so they show
-   * only for a fixtures tenant (Caroma has no configurator, or productType
-   * 'fixtures') and disappear for every other vertical — garment (Augusta),
-   * candy (M&M'S) and anything added later. The old test `!== 'garment'` wrongly
-   * swept candy into the bathroom bucket, so M&M'S saw finishes + "how many
-   * bathrooms" + a basin dress ring. */
+   * only when the tenant has no configurator, or its configurator is explicitly
+   * 'fixtures' — disappearing for every other vertical: garment (Augusta),
+   * candy (M&M'S) and anything added later. */
   const productType = cfg.configurator?.productType;
-  const isCaroma = cfg.projectId === 'caroma';
-  const isPlaceMakers = cfg.projectId === 'placemakers';
-  const isFixtures = isCaroma && (!productType || productType === 'fixtures');
+  const isFixtures = !productType || productType === 'fixtures';
 
   /* Money is formatted in the quote's OWN currency — the authoritative quote
-   * carries its symbol (USD for Augusta, NZD for PlaceMakers), so a US-priced cap must never be shown
-   * with an A$. A genuinely unknown price reads "Price on request"; a real zero
-   * (a $0 discount) reads as zero, not as unknown. */
-  const symbol = state.serverQuote?.symbol || (isPlaceMakers ? '$' : '$');
+   * carries its own symbol/currency code (USD for Augusta, NZD for PlaceMakers),
+   * so a US-priced cap must never be shown with an A$. A genuinely unknown price
+   * reads "Price on request"; a real zero (a $0 discount) reads as zero, not as
+   * unknown. */
+  const symbol = state.serverQuote?.symbol || '$';
+  const currencyCode = state.serverQuote?.currency;
   const money = (n: number | null | undefined, { zeroIsReal = false } = {}): string => {
     if (n === null || n === undefined || Number.isNaN(n)) return 'Price on request';
     if (n === 0 && !zeroIsReal) return 'Price on request';
-    return symbol + Math.round(n).toLocaleString('en-US') + (isPlaceMakers ? ' NZD' : '');
+    return symbol + Math.round(n).toLocaleString('en-US') + (currencyCode ? ` ${currencyCode}` : '');
   };
-  const taxLabel = isPlaceMakers ? '15% NZ GST' : isCaroma ? 'GST' : 'Tax';
+  const taxRate = state.serverQuote?.taxRate;
+  const taxLabel = taxRate != null ? `${Math.round(taxRate * 100)}% tax` : 'Tax';
 
-  /* Real per-branch stock check (PlaceMakers) — the dropdown used to be
-   * decorative: no onChange, nothing it selected was ever checked, and the
-   * "In Stock" badge was just whatever the quote-building tool hardcoded.
+  /* Real per-branch stock check — config-driven fulfilment (cfg.fulfilment),
+   * not a PlaceMakers-only dropdown. The dropdown used to be decorative for
+   * every OTHER tenant: no onChange, nothing it selected was ever checked, and
+   * the "In Stock" badge was just whatever the quote-building tool hardcoded.
    * Calls the SAME BranchStockService the chat's checkBranchStock tool uses,
    * so picking a branch here and asking about it in chat can never disagree. */
   const [checkingBranch, setCheckingBranch] = useState(false);
@@ -96,15 +87,9 @@ export default function QuotePanel() {
     }
   };
 
-  // Auto-check the default branch as soon as a real quote with SKUs exists —
-  // otherwise the panel would show "In Stock" for a branch nobody picked and
-  // nothing anyone actually checked.
-  useEffect(() => {
-    if (isPlaceMakers && bomSkuSig && !state.selectedBranch) {
-      checkBranch(PM_BRANCHES[0].value);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaceMakers, bomSkuSig, state.selectedBranch]);
+  // Auto-check of the first configured branch now happens once, generically,
+  // in JourneyContext's card-sync effect (cfg.fulfilment.branches[0]) — this
+  // panel no longer needs its own PlaceMakers-only copy of that logic.
 
   return (
     <>
@@ -115,40 +100,43 @@ export default function QuotePanel() {
             <div className="quote-header__eyebrow">
               Project Quote · Live {state.jobId ? `· Job ID: ${state.jobId}` : ''}
             </div>
-            <h2 className="quote-header__heading">{quoteTitle || (isPlaceMakers ? 'PlaceMakers Order Summary' : 'Project Quote')}</h2>
+            <h2 className="quote-header__heading">{quoteTitle || 'Project Quote'}</h2>
           </div>
           <div className="quote-header__badge">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
               <path d="M5 13l4 4L19 7" stroke="var(--success)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="quote-header__badge-text">{isPlaceMakers ? 'NZ Building Code Verified' : 'Compatibility validated'}</span>
+            <span className="quote-header__badge-text">{cfg.complianceBadge || 'Compatibility validated'}</span>
           </div>
         </div>
         <p className="quote-desc">
-          {isPlaceMakers
-            ? 'Review your PlaceMakers materials list below. Select branch fulfillment or site delivery before placing your order.'
+          {cfg.quoteIntro
+            ? cfg.quoteIntro
             : `Edit anything below — ${isFixtures ? 'quantities, finish, extras' : 'quantities and options'}. I re-validate and re-price as you go.`}
         </p>
 
-        {/* PlaceMakers Branch Fulfillment Card */}
-        {isPlaceMakers && (
+        {/* Branch Fulfillment Card — config-driven (cfg.fulfilment), same
+            component for every tenant that declares branches. */}
+        {!!cfg.fulfilment?.branches?.length && (
           <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
               <span style={{ fontSize: '13px', fontWeight: 700, color: '#002855', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                📍 Branch Fulfillment &amp; Pickup
+                📍 {cfg.fulfilment.label || 'Branch Fulfillment & Pickup'}
               </span>
-              <span style={{ fontSize: '12px', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
-                60-Min Click &amp; Collect
-              </span>
+              {cfg.fulfilment.badge && (
+                <span style={{ fontSize: '12px', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                  {cfg.fulfilment.badge}
+                </span>
+              )}
             </div>
             <select
               style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 600, color: '#1e293b', background: '#fff', opacity: checkingBranch ? 0.6 : 1 }}
-              value={state.selectedBranch || PM_BRANCHES[0].value}
+              value={state.selectedBranch || cfg.fulfilment.branches[0].id}
               disabled={checkingBranch}
               onChange={(e) => checkBranch(e.target.value)}
             >
-              {PM_BRANCHES.map((b) => (
-                <option key={b.value} value={b.value}>{b.label}</option>
+              {cfg.fulfilment.branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.address ? `${b.name} (${b.address})` : b.name}</option>
               ))}
             </select>
             <p style={{ fontSize: '12px', marginTop: '8px', marginBottom: 0 }}>

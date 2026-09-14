@@ -399,11 +399,43 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       type: 'PUSH_CARD',
       card: {
         id: newId('quote'), cardType: 'quote',
-        state: mapQuoteCard(state.serverQuote, { fulfilment: cfg.fulfilment, selectedBranch: state.selectedBranch, selectedBranchName: state.selectedBranchName }),
+        state: mapQuoteCard(state.serverQuote, {
+          fulfilment: cfg.fulfilment, selectedBranch: state.selectedBranch, selectedBranchName: state.selectedBranchName,
+          quoteIntro: cfg.quoteIntro, complianceBadge: cfg.complianceBadge,
+        }),
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.serverQuote, state.selectedBranch, state.selectedBranchName]);
+
+  // Auto-check the FIRST configured branch as soon as a real quote with SKUs
+  // exists — was PlaceMakers-only (`isPlaceMakers && bomSkuSig && !state.
+  // selectedBranch` inside QuotePanel.tsx); now runs for any tenant whose
+  // config actually lists fulfilment branches, so the "In Stock" status shown
+  // is real from the first render instead of requiring an extra click.
+  useEffect(() => {
+    const branches = cfg.fulfilment?.branches;
+    const skus = state.serverQuote?.lines?.filter((l) => l.sku).map((l) => l.sku);
+    if (!branches?.length || !skus?.length || state.selectedBranch) return;
+    const branchId = branches[0].id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = state.serverQuote!.lines.filter((l) => l.sku).map((l) => ({ sku: l.sku, productTitle: l.name }));
+        const res = await fetch('/api/branch-stock', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items, branch: branchId }),
+        });
+        const data = await res.json();
+        if (cancelled || !data?.ok) return;
+        const bySku: Record<string, any> = {};
+        for (const r of data.results || []) bySku[r.sku] = r;
+        dispatch({ type: 'APPLY_QUOTE_BRANCH_STOCK', branch: branchId, branchName: data.branchName || branchId, bySku });
+      } catch { /* best-effort — the branch selector still works manually */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.serverQuote, cfg.fulfilment, state.selectedBranch]);
 
   useEffect(() => {
     if (state.guideSteps.length === 0) return;

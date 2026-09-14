@@ -272,6 +272,14 @@ export interface ProjectConfig {
     itemsSingular?: string;  // singular ("Product", "Service")
     headerTitle?: string;    // storefront header subtitle ("Bathroom Configurator")
   };
+  // v3 Card CMS quote-card copy (docs/v3-card-cms-architecture.md) — the two
+  // pieces of the old PlaceMakers-only hardcoded QuotePanel that were real,
+  // tenant-specific content rather than layout: the intro line under the
+  // heading, and a top-of-quote compliance badge (e.g. "NZ Building Code
+  // Verified"). Both optional; absent = the generic default the quote card
+  // template already falls back to. Config, not code — see mapQuoteCard.
+  quoteIntro?: string;
+  complianceBadge?: string;
   // Back-office console per-project nav config: which sections show + how they're
   // labelled. Empty = full catalog with default labels. See console-sections.ts.
   console?: {
@@ -428,6 +436,8 @@ export interface UpdateProjectDto {
   integrations?: Partial<ProjectIntegrations>;
   capabilities?: string[];
   labels?: { items?: string; itemsSingular?: string; headerTitle?: string };
+  quoteIntro?: string;
+  complianceBadge?: string;
   console?: { labels?: Record<string, string>; hidden?: string[]; order?: string[] };
   knowledgeSource?: KnowledgeSourceConfig;
   notifications?: Record<string, boolean>;

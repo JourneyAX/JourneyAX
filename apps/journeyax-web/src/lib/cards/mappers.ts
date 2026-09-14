@@ -45,15 +45,27 @@ export function mapProductsCard(products: RecommendedProduct[], heading?: string
   };
 }
 
-export function mapQuoteCard(quote: ServerQuote, opts: { fulfilment?: FulfilmentConfig | null; selectedBranch?: string; selectedBranchName?: string } = {}) {
+export function mapQuoteCard(quote: ServerQuote, opts: {
+  fulfilment?: FulfilmentConfig | null;
+  selectedBranch?: string;
+  selectedBranchName?: string;
+  /** Config-driven quote copy (project.quoteIntro/complianceBadge) — replaces
+   *  what used to be `cfg.projectId === 'placemakers'` text baked into
+   *  QuotePanel.tsx. Absent = the card's own generic default. */
+  quoteIntro?: string | null;
+  complianceBadge?: string | null;
+} = {}) {
   const branches = opts.fulfilment?.branches || [];
+  const readyCount = quote.lines.filter((l) => l.branchStock?.clickAndCollectReady ?? l.inStock).length;
   const status = opts.selectedBranchName
-    ? `Checked — ${quote.lines.length} of ${quote.lines.length} items at ${opts.selectedBranchName}`
+    ? `Checked — ${readyCount} of ${quote.lines.length} item${quote.lines.length === 1 ? '' : 's'} ready for Click & Collect at ${opts.selectedBranchName}`
     : undefined;
   return {
     quoteId: quote.quoteId,
     heading: quote.title,
     eyebrow: `Project Quote · Live · Job ID: ${quote.quoteId}`,
+    sub: opts.quoteIntro || 'Review your order below — I’ll re-validate and re-price as you go.',
+    compliance: opts.complianceBadge || 'Compatibility validated',
     lines: quote.lines.map((l) => ({
       sku: l.sku,
       title: l.name,
