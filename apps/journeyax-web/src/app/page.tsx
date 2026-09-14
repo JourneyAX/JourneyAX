@@ -6,10 +6,8 @@ import { StorefrontConfigProvider } from '@/context/StorefrontConfigContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import ChatPanel from '@/components/ChatPanel';
 import ProjectPanel from '@/components/ProjectPanel';
-import CartPanel from '@/components/CartPanel';
 import EasySwitchToast from '@/components/EasySwitchToast';
 import LoginScreen from '@/components/LoginScreen';
-import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 
 /**
  * Sign-in gate. Anonymous access is off: no valid session → the login screen,
@@ -18,16 +16,13 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
  */
 function Gate({ embed }: { embed: boolean }) {
   const { isAuthenticated, isLoading } = useAuth();
-  const cfg = useStorefrontConfig();
-  const showCartPanel = (cfg.uiTheme as any)?.layout?.cartPanel !== false;
   if (isLoading) return null;
   if (!isAuthenticated) return <LoginScreen />;
   return (
     <JourneyProvider>
-      <div className={`app-layout${embed ? ' app-layout--embed' : ''}${showCartPanel && !embed ? ' app-layout--with-cart' : ''}`}>
+      <div className={`app-layout${embed ? ' app-layout--embed' : ''}`}>
         <ChatPanel />
         <ProjectPanel />
-        {showCartPanel && !embed && <CartPanel />}
         {!embed && <EasySwitchToast />}
       </div>
     </JourneyProvider>

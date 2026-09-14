@@ -120,18 +120,8 @@ export interface UiTheme {
   /** Layout knobs for the storefront shell. */
   layout?: {
     chatWidth?: string;          // e.g. '40%'
-    /** 'split' (default) — conversation stays permanently visible alongside
-     *  the stage, ACME-commerce-reference style. 'floating-bar' opts a
-     *  tenant OUT into the compact voice-bar shell (chat collapses into a
-     *  floating command bar once a card is on stage) — the exception now,
-     *  not the default. */
     focusMode?: 'floating-bar' | 'split';
     commandBar?: { placeholder?: string; primaryAction?: string; voice?: boolean };
     stageMaxWidth?: string;
-    /** Persistent Cart/Quote summary column (third column, ACME-reference
-     *  style) — always visible once the journey has real line items,
-     *  independent of whatever the center stage is showing. Default true;
-     *  a tenant can opt out. */
-    cartPanel?: boolean;
   };
 }

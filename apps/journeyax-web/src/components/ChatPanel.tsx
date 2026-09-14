@@ -876,14 +876,11 @@ export default function ChatPanel() {
     // greeting (persona.greetingMessage) when set.
     .map(m => (m.id === 'welcome' && cfg.greeting ? { ...m, text: cfg.greeting } : m));
 
-  // Focus mode (v3 Card CMS): the DEFAULT storefront shell keeps the
-  // conversation permanently visible alongside the stage — ACME-commerce-
-  // reference style (the running thread and the cart are never one click
-  // away). A tenant can opt INTO the older compact voice-bar shell (chat
-  // collapses into a floating command bar once a card is on stage — see
-  // docs/v3-card-cms-architecture.md and the PlaceMakers Voice Bar
-  // artboards) via uiTheme.layout.focusMode: 'floating-bar'.
-  const focusModeAllowed = (cfg.uiTheme as any)?.layout?.focusMode === 'floating-bar';
+  // Focus mode (v3 Card CMS): once a card is on stage, the 40% chat column
+  // collapses and the conversation moves into a floating command bar docked
+  // above the stage — see docs/v3-card-cms-architecture.md and the PlaceMakers
+  // Voice Bar artboards. A tenant can opt out via uiTheme.layout.focusMode.
+  const focusModeAllowed = (cfg.uiTheme as any)?.layout?.focusMode !== 'split';
   const focusMode = focusModeAllowed && state.phase !== 'intro' && state.cards.length > 0 && !embedSingleColumn;
   const primaryActionLabel = (cfg.uiTheme as any)?.layout?.commandBar?.primaryAction
     || (state.serverQuote || bom.length ? 'Build my quote' : null);
