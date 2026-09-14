@@ -212,6 +212,19 @@ export interface Accessory {
   required?: boolean;
 }
 
+/** presentComparison payload: two to four SKUs (already shown this
+ *  conversation) compared on named dimensions; rows[i] lines up with
+ *  dimensions[i], cells with skus. Facts are joined from the shown products. */
+export interface ComparisonData {
+  skus: string[];
+  dimensions: string[];
+  rows: (string | number | null)[][];
+  verdict?: string;
+  /** Catalogue facts the server joined for each SKU (title/price/image) —
+   *  present when the agent looked them up; the storefront never invents them. */
+  products?: { sku: string; name?: string; title?: string; price?: number | null; imageUrl?: string | null; url?: string; category?: string }[];
+}
+
 export interface RecommendedProduct {
   name: string;
   sku?: string;
@@ -382,6 +395,7 @@ export interface JourneyState {
   dynamicQuestions: DynamicQuestion[];
   dynamicAnswers: Record<string, string>;
   recommendedProducts: RecommendedProduct[];
+  comparison?: ComparisonData | null;
   guideSteps: GuideStep[];
   quoteTitle?: string;
   customBom?: BOMLine[];

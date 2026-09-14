@@ -84,7 +84,9 @@ export const CARD_TYPES = {
     state: z.object({
       products: z.array(ProductFact).min(2).max(4),
       dimensions: z.array(z.string()),
+      /** Table-ready: rows[i] = [dimension, cell per product]; columns = ['', ...titles]. */
       rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))),
+      columns: z.array(z.string()).optional(),
       verdict: z.string().optional(),
     }),
   },

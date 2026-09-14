@@ -3,7 +3,7 @@
    Tokens extracted from Caroma Setup Assistant wireframe
    ═══════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Alegreya+Sans:wght@400;500;700;800&display=swap');
 
 /* ── Reset ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -149,9 +149,12 @@ body {
    where the mockup puts it — the customer's own bubbles and the agent's
    avatar. Everything else reads the normal light tokens. */
 .chat-panel[data-sidebar="dark"] {
-  --chat-user-bg:   var(--sidebar-bg, #17140F);
-  --chat-user-text: #FFFFFF;
-  --avatar-bg:      var(--sidebar-bg, #17140F);
+  /* A tenant with explicit uiTheme tokens sets --site-* at :root
+     (StorefrontConfigContext) — e.g. a dark-page brand whose bubbles/avatar
+     carry the brand colour, not the header colour. Those win here. */
+  --chat-user-bg:   var(--site-user-bg, var(--sidebar-bg, #17140F));
+  --chat-user-text: var(--site-user-text, #FFFFFF);
+  --avatar-bg:      var(--site-avatar-bg, var(--sidebar-bg, #17140F));
 }
 .chat-panel[data-sidebar="dark"] .chat-header {
   background: var(--sidebar-bg, #17140F);
@@ -231,9 +234,9 @@ body {
 }
 
 .chat-header__logo {
-  height: 30px;
+  height: 36px;
   width: auto;
-  max-width: 132px;
+  max-width: 150px;
   object-fit: contain;
   object-position: left center;
 }
@@ -256,7 +259,7 @@ body {
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: #fff;
+  color: var(--gold-text, #fff);
   background: var(--gold);
   border: 1px solid var(--gold);
   padding: 7px 16px;
@@ -292,7 +295,7 @@ body {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.chat-header__iconbtn:hover { background: var(--gold); color: #fff; }
+.chat-header__iconbtn:hover { background: var(--gold); color: var(--gold-text, #fff); }
 
 /* Cart — a real CTA (the way to review/check out), so slightly more present
    than the quiet icon utilities: icon + live item count, filled surface. */
@@ -309,7 +312,7 @@ body {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.chat-header__bag:hover { background: var(--gold); color: #fff; }
+.chat-header__bag:hover { background: var(--gold); color: var(--gold-text, #fff); }
 .chat-header__bag-count {
   display: inline-flex;
   align-items: center;
@@ -320,7 +323,7 @@ body {
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  color: var(--surface, #fff);
+  color: var(--gold-text, var(--surface, #fff));
   background: var(--gold);
   border-radius: 999px;
 }
@@ -487,7 +490,7 @@ body {
   height: 32px;
   border-radius: 9px;
   background: var(--avatar-bg, var(--dark));
-  color: #FFFFFF;
+  color: var(--avatar-text, #FFFFFF);
   display: flex;
   align-items: center;
   justify-content: center;

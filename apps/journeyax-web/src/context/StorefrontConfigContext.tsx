@@ -154,9 +154,49 @@ function applyTheme(theme: StorefrontConfig['theme']) {
  * (primary→brand, accent→accent/text, font→display) rather than falling all
  * the way back to the platform's neutral defaults.
  */
+/**
+ * A tenant that HAS opened the theming studio (explicit `uiTheme.tokens`)
+ * gets one theme, not two: the same tokens that skin the cards also drive
+ * the storefront shell's own variables (page/surface/text/border/brand), so
+ * a dark-brand site (Dragon Shield: charcoal page, black header, yellow
+ * CTA) renders as itself instead of as light cards floating on a light
+ * default page. Tenants without tokens keep the legacy `theme` mapping.
+ * Text-on-brand and the user bubble follow the tokens too — a yellow CTA
+ * with white text is the classic "exact colours, unreadable" failure.
+ */
+function applySiteVarsFromTokens(t: import('@journeyax/ui-cards').ThemeTokens) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement.style;
+  const c = t.colors;
+  const set = (k: string, v?: string) => { if (v) root.setProperty(k, v); };
+  set('--bg', c.bg); set('--surface', c.surface); set('--surface-alt', c.surfaceAlt); set('--surface-hover', c.muted);
+  set('--stage-bg', c.surface);
+  for (const k of ['--border', '--border-light', '--border-input', '--border-dark']) set(k, c.border);
+  for (const k of ['--text', '--dark', '--text-body']) set(k, c.text);
+  for (const k of ['--text-secondary', '--text-dim', '--text-dark-alt', '--text-muted', '--text-light', '--text-lighter', '--text-faint']) set(k, c.textMuted);
+  set('--gold', c.brand); set('--gold-light', c.brand); set('--gold-text', c.brandText); set('--auto-text', c.accent);
+  set('--chat-ai-bg', c.surfaceAlt); set('--chat-ai-border', c.border);
+  set('--success', c.success); set('--warning', c.warning);
+  set('--font-heading', t.font.display); set('--font-body', t.font.body);
+  document.body.style.fontFamily = t.font.body;
+  // Dark page: the default near-black user bubble/avatar would vanish into
+  // it — carry the brand colour instead (how such sites accent on dark).
+  const darkPage = !isLightHex(c.bg);
+  const userBg = darkPage ? c.brand : c.inverse;
+  const userText = darkPage ? c.brandText : c.inverseText;
+  set('--chat-user-bg', userBg); set('--chat-user-text', userText);
+  set('--avatar-bg', userBg); set('--avatar-text', userText);
+  // The dark-header scope (.chat-panel[data-sidebar="dark"]) redefines the
+  // bubble/avatar vars from the header colour; these --site-* values take
+  // precedence there so tokens stay authoritative.
+  set('--site-user-bg', userBg); set('--site-user-text', userText); set('--site-avatar-bg', userBg);
+}
+
 function applyCardTheme(uiTheme: UiTheme | null | undefined, legacyTheme: StorefrontConfig['theme']) {
   if (uiTheme?.tokens) {
-    applyTokens(mergeTokens(uiTheme.tokens));
+    const merged = mergeTokens(uiTheme.tokens);
+    applyTokens(merged);
+    applySiteVarsFromTokens(merged);
     return;
   }
   const colors: Record<string, string> = {};

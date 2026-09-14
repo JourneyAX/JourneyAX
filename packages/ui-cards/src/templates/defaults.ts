@@ -125,7 +125,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   productDetail: spec('root', {
-    root: el('Box', { direction: 'row', gap: 'lg', wrap: true }, { children: ['gallery', 'info'] }),
+    root: el('Box', { pad: 'md', direction: 'row', gap: 'lg', wrap: true }, { children: ['gallery', 'info'] }),
     gallery: el('Box', { flex: '1 1 320px', gap: 'sm' }, { children: ['hero'] }),
     hero: el('Image', { src: S('/product/imageUrl'), alt: S('/product/title'), ratio: '1:1', radius: 'md', fallbackIcon: 'box' }),
     info: el('Box', { flex: '1 1 360px', gap: 'md' }, { children: ['brand', 'title', 'price', 'stock', 'desc', 'specs', 'actions'] }),
@@ -142,7 +142,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   comparison: spec('root', {
-    root: el('Box', { gap: 'md' }, { children: ['eyebrow', 'title', 'table', 'verdict'] }),
+    root: el('Box', { pad: 'md', gap: 'md' }, { children: ['eyebrow', 'title', 'table', 'verdict'] }),
     eyebrow: el('Text', { text: 'Side by side', variant: 'eyebrow' }),
     title: el('Text', { text: 'Comparison', variant: 'title' }),
     table: el('Table', { columns: S('/columns'), rows: S('/rows') }),
@@ -150,7 +150,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   bundle: spec('root', {
-    root: el('Box', { gap: 'md' }, { children: ['eyebrow', 'title', 'why', 'grid', 'foot'] }),
+    root: el('Box', { pad: 'md', gap: 'md' }, { children: ['eyebrow', 'title', 'why', 'grid', 'foot'] }),
     eyebrow: el('Text', { text: 'Everything you need', variant: 'eyebrow' }),
     title: el('Text', { text: S('/heading'), variant: 'title' }),
     why: el('Text', { text: S('/why'), variant: 'body', tone: 'muted' }, { visible: [S('/why')] }),
@@ -162,7 +162,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   quote: spec('root', {
-    root: el('Box', { gap: 'lg', maxWidth: '900px' }, { children: ['head', 'fulfil', 'notes', 'bomLabel', 'lines', 'totals'] }),
+    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '900px' }, { children: ['head', 'fulfil', 'notes', 'bomLabel', 'lines', 'totals'] }),
     head: el('Box', { direction: 'row', justify: 'between', align: 'start', gap: 'md', wrap: true }, { children: ['headL', 'compliance'] }),
     headL: el('Box', { gap: 'xs' }, { children: ['eyebrow', 'title', 'sub'] }),
     eyebrow: el('Text', { text: S('/eyebrow'), variant: 'eyebrow' }, { visible: [S('/eyebrow')] }),
@@ -188,7 +188,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   cart: spec('root', {
-    root: el('Box', { gap: 'lg', maxWidth: '900px' }, { children: ['title', 'lines', 'totals'] }),
+    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '900px' }, { children: ['title', 'lines', 'totals'] }),
     title: el('Text', { text: 'Your bag', variant: 'title' }),
     lines: el('Box', { border: true, bg: 'surface', radius: 'md', overflow: 'hidden' }, { children: ['c-row'], repeat: { statePath: '/lines', key: 'sku' } }),
     ...quoteLine('c'),
@@ -197,7 +197,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   orderStatus: spec('root', {
-    root: el('Box', { gap: 'lg', maxWidth: '760px' }, { children: ['ok', 'title', 'meta', 'timeline', 'lines'] }),
+    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '760px' }, { children: ['ok', 'title', 'meta', 'timeline', 'lines'] }),
     ok: el('Alert', { title: 'Order confirmed', text: S('/statusText'), tone: 'success' }),
     title: el('Text', { text: { $template: 'Order ${/orderId}' }, variant: 'title' }),
     meta: el('Box', { direction: 'row', gap: 'lg', wrap: true }, { children: ['st', 'pl', 'tt'] }),
@@ -210,7 +210,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   guide: spec('root', {
-    root: el('Box', { gap: 'lg', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'safety', 'sections', 'products'] }),
+    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'safety', 'sections', 'products'] }),
     eyebrow: el('Text', { text: 'Guide', variant: 'eyebrow' }),
     title: el('Text', { text: S('/heading'), variant: 'title' }),
     safety: el('Alert', { title: 'Before you start', text: S('/safety'), tone: 'warning' }, { visible: [S('/safety')] }),
@@ -224,7 +224,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   plan: spec('root', {
-    root: el('Box', { gap: 'lg', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'steps', 'tot'] }),
+    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'steps', 'tot'] }),
     eyebrow: el('Text', { text: 'Your plan', variant: 'eyebrow' }),
     title: el('Text', { text: S('/heading'), variant: 'title' }),
     steps: el('Steps', { items: S('/steps') }),
@@ -232,7 +232,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   accessories: spec('root', {
-    root: el('Box', { gap: 'lg' }, { children: ['eyebrow', 'title', 'groups'] }),
+    root: el('Box', { pad: 'md', gap: 'lg' }, { children: ['eyebrow', 'title', 'groups'] }),
     eyebrow: el('Text', { text: 'Goes with it', variant: 'eyebrow' }),
     title: el('Text', { text: 'Accessories & add-ons', variant: 'title' }),
     groups: el('Box', { gap: 'lg' }, { children: ['grp'], repeat: { statePath: '/groups', key: 'key' } }),
@@ -244,7 +244,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   warranty: spec('root', {
-    root: el('Box', { gap: 'md', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'items'] }),
+    root: el('Box', { pad: 'md', gap: 'md', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'items'] }),
     eyebrow: el('Text', { text: 'Peace of mind', variant: 'eyebrow' }),
     title: el('Text', { text: 'Warranty & compliance', variant: 'title' }),
     items: el('Box', { gap: 'sm' }, { children: ['w'], repeat: { statePath: '/items', key: 'title' } }),
@@ -257,7 +257,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   fitment: spec('root', {
-    root: el('Box', { gap: 'md', maxWidth: '640px' }, { children: ['eyebrow', 'rec', 'basis', 'alts'] }),
+    root: el('Box', { pad: 'md', gap: 'md', maxWidth: '640px' }, { children: ['eyebrow', 'rec', 'basis', 'alts'] }),
     eyebrow: el('Text', { text: 'Fit recommendation', variant: 'eyebrow' }),
     rec: el('Alert', { title: S('/recommendation'), text: S('/confidenceText'), tone: 'success', icon: 'ruler' }),
     basis: el('Box', { gap: 'xs' }, { children: ['b'], repeat: { statePath: '/basis', key: 'label' } }),

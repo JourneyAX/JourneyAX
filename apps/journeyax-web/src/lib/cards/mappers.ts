@@ -13,7 +13,7 @@
  */
 import type {
   RecommendedProduct, ServerQuote, GuideStep, AccessoryItem, DynamicQuestion,
-  WarrantyInfo, SizeRecommendation, ProjectPlan, JourneyState,
+  WarrantyInfo, SizeRecommendation, ProjectPlan, JourneyState, ComparisonData,
 } from '@/lib/types';
 import type { FulfilmentConfig } from '@/context/StorefrontConfigContext';
 
@@ -31,7 +31,12 @@ const stockLabel = (l: { inStock?: boolean; branchStock?: { status: string; clic
  *  that request.") in the per-item `description` slot instead of a reason.
  *  That is not a reason to buy anything — hide it rather than print it. */
 const REFUSAL_RE = /^\s*(?:i['’]m sorry|i am sorry|sorry[,.]|i can(?:no|['’])t (?:assist|help)|i['’]m unable|as an ai)/i;
-const usableReason = (s?: string | null) => (s && !REFUSAL_RE.test(s) ? s : undefined);
+const usableReason = (s?: string | null, title?: string) => {
+  if (!s || REFUSAL_RE.test(s)) return undefined;
+  // A "reason" that merely repeats the product name says nothing — hide it.
+  if (title && s.trim().toLowerCase() === title.trim().toLowerCase()) return undefined;
+  return s;
+};
 
 export function mapProductsCard(products: RecommendedProduct[], heading?: string) {
   // A catalogue with no real photography often points every product at the
@@ -45,7 +50,7 @@ export function mapProductsCard(products: RecommendedProduct[], heading?: string
     products: products.map((p, i) => ({
       sku: p.sku || `unsku-${i}`,
       title: p.name,
-      description: usableReason(p.description),
+      description: usableReason(p.description, p.name),
       imageUrl: sharedPlaceholder ? null : p.imageUrl || null,
       price: p.price ?? null,
       category: p.category,
@@ -57,8 +62,33 @@ export function mapProductsCard(products: RecommendedProduct[], heading?: string
       // card, the top recommendation MOST of all. Withholding it from i===0
       // was backwards: a customer sees "Recommended" on the one item with no
       // stated reason why, while every other item explains itself.
-      reason: usableReason(p.description),
+      reason: usableReason(p.description, p.name),
     })),
+  };
+}
+
+/** Comparison card: the agent's dimensions × SKUs matrix, with each column
+ *  headed by the real product (title joined from what was shown this
+ *  conversation — the model never re-types a name). */
+export function mapComparisonCard(cmp: ComparisonData, shown: RecommendedProduct[]) {
+  const bySku = new Map(shown.filter((p) => p.sku).map((p) => [String(p.sku).toUpperCase(), p]));
+  const joined = new Map((cmp.products || []).map((p) => [String(p.sku).toUpperCase(), p]));
+  const products = cmp.skus.map((sku) => {
+    const key = String(sku).toUpperCase();
+    const s = joined.get(key);   // server-joined catalogue facts win
+    const p = bySku.get(key);    // else what was shown this conversation
+    if (s && (s.title || s.name)) return { sku, title: String(s.title || s.name), imageUrl: s.imageUrl || null, price: s.price ?? null, category: s.category, url: s.url };
+    return p
+      ? { sku, title: p.name, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, url: p.url, specs: p.specs }
+      : { sku, title: sku };
+  });
+  const rows = cmp.dimensions.map((d, i) => [d, ...(cmp.rows[i] || []).map((c) => (c === undefined ? null : c))]);
+  return {
+    products,
+    dimensions: cmp.dimensions,
+    rows,
+    columns: ['', ...products.map((p) => p.title)],
+    verdict: usableReason(cmp.verdict),
   };
 }
 

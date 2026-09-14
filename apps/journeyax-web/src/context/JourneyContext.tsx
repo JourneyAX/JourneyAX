@@ -2,14 +2,14 @@
 
 import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect } from 'react';
 import {
-  JourneyState, INITIAL_STATE, Phase, ClarifyAnswers, DynamicQuestion, RecommendedProduct,
+  JourneyState, INITIAL_STATE, Phase, ClarifyAnswers, DynamicQuestion, RecommendedProduct, ComparisonData,
   FINISHES, DEFAULT_ADDONS, formatAUD, getStockInfo, BOMLine, QuoteTotals, ServerQuote,
   TeamDesignViews, RosterRow, CardInstance
 } from '@/lib/types';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import {
   mapProductsCard, mapQuoteCard, mapGuideCard, mapAccessoriesCard, mapClarifyCard,
-  mapWarrantyCard, mapFitmentCard, mapPlanCard, mapOrderStatusCard, mapHeroCard,
+  mapWarrantyCard, mapFitmentCard, mapPlanCard, mapOrderStatusCard, mapHeroCard, mapComparisonCard,
 } from '@/lib/cards/mappers';
 
 type Action =
@@ -23,6 +23,7 @@ type Action =
   | { type: 'SET_DYNAMIC_QUESTIONS'; questions: DynamicQuestion[] }
   | { type: 'SET_DYNAMIC_ANSWER'; questionId: string; value: string }
   | { type: 'SET_RECOMMENDED_PRODUCTS'; products: RecommendedProduct[] }
+  | { type: 'SET_COMPARISON'; comparison: ComparisonData | null }
   | { type: 'SET_FINISH'; finish: string }
   | { type: 'SET_QTY'; qty: number }
   | { type: 'TOGGLE_ADDON'; id: string }
@@ -167,6 +168,8 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       return { ...state, dynamicQuestions: action.questions, dynamicAnswers: {} };
     case 'SET_DYNAMIC_ANSWER':
       return { ...state, dynamicAnswers: { ...state.dynamicAnswers, [action.questionId]: action.value } };
+    case 'SET_COMPARISON':
+      return { ...state, comparison: action.comparison };
     case 'SET_RECOMMENDED_PRODUCTS':
       /* Presenting products OWNS the panel. The panel renders purely by phase, so
        * setting the products without moving the phase left a stale garment on
@@ -420,6 +423,12 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     pushCard({ id: newId('products'), cardType: 'products', state: mapProductsCard(state.recommendedProducts) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.recommendedProducts]);
+
+  useEffect(() => {
+    if (!state.comparison) return;
+    pushCard({ id: newId('comparison'), cardType: 'comparison', state: mapComparisonCard(state.comparison, state.recommendedProducts) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.comparison]);
 
   useEffect(() => {
     if (!state.serverQuote) return;
