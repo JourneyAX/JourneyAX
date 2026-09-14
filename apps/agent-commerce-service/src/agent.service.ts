@@ -1552,79 +1552,36 @@ function extractSearchQuery(lastUserText: string, messages?: any[]): string {
   return lastUserText.replace(/^my answers:/i, '').slice(0, 60).trim() || 'building materials';
 }
 
+/**
+ * Normalise a retrieved catalogue record for showItems on the open-model
+ * path. FACTS ONLY. The previous version of this function invented, from
+ * keyword matches on the name, feature bullets ("NZS 3604 Verified",
+ * "Moisture Resistant Core"), a specs table ("Building Standard: NZS
+ * 3604:2011 Compliant", "Store Pickup: 60-Min Click & Collect (Mt Wellington
+ * / Cook St)"), an Unsplash stock photo (the construction-worker picture on
+ * every PlaceMakers tile) and a placemakers.co.nz URL — for ANY tenant.
+ * Fabricated compliance claims are a liability, and none of it was
+ * config-driven. Anything the record does not carry is left absent; the card
+ * templates already hide absent fields and fall back to an icon.
+ */
 function normalizeTradeProduct(it: any): any {
-  const name = it.name || it.title || 'Trade Building Product';
-  const category = it.category || (Array.isArray(it.categoryPath) ? it.categoryPath[it.categoryPath.length - 1] : 'Building Products');
-  const description = it.description || it.content || it.summary || '';
-  
-  const features: string[] = Array.isArray(it.features) && it.features.length ? it.features : [];
-  if (!features.length) {
-    const text = `${name} ${description}`.toLowerCase();
-    if (text.includes('aqualine') || text.includes('waterproof') || text.includes('wet area') || text.includes('shower') || text.includes('lining')) {
-      features.push('NZS 3604 Verified', 'Moisture Resistant Core', 'Tapered Edge Finish');
-    } else if (text.includes('gib') || text.includes('plasterboard') || text.includes('wallboard')) {
-      features.push('NZ Standard 10mm/13mm', 'Smooth Paper Facing', 'Acoustic & Fire Rated');
-    } else if (text.includes('adhesive') || text.includes('sealant') || text.includes('silicone') || text.includes('glue') || text.includes('sikaflex')) {
-      features.push('High Initial Grab', 'Gap Filling Formulation', 'NZ Weatherproof Rating');
-    } else if (text.includes('hinge') || text.includes('joinery') || text.includes('hardware') || text.includes('bracket')) {
-      features.push('Corrosion Resistant Steel', 'Smooth Action Pivot', 'Trade Fastener Pack Included');
-    } else if (text.includes('sleeper') || text.includes('retaining') || text.includes('h4') || text.includes('h5') || text.includes('landscap')) {
-      features.push('H4/H5 Ground Contact Treated', 'Heavy Duty Structural Retention', 'Rot & Fungal Resistant');
-    } else if (text.includes('decking') || text.includes('kwila')) {
-      features.push('Exterior Durability', 'Pre-finished Weather Coating', 'Anti-Slip Profile');
-    } else if (text.includes('sg8') || text.includes('radiata') || text.includes('timber') || text.includes('framing')) {
-      features.push('SG8 Structural Grade', 'H3.2 CCA / Boron Treated', 'Kiln Dried & Gauged Radiata Pine');
-    } else {
-      features.push('Trade Grade Material', 'PlaceMakers Branch Stocked', 'NZ Building Code Compliant');
-    }
-  }
-
-  const specs: Record<string, string> = { ...(it.specs || {}) };
-  if (!Object.keys(specs).length) {
-    specs['Building Standard'] = 'NZS 3604:2011 Compliant';
-    specs['Trade Category'] = category;
-    const dimMatch = name.match(/(\d+\s*x\s*\d+(?:\s*x\s*[\d.]+mm)?)/i);
-    if (dimMatch) specs['Dimensions'] = dimMatch[1];
-    const thickMatch = name.match(/([\d.]+\s*mm)/i);
-    if (thickMatch) specs['Thickness'] = thickMatch[1];
-    specs['Store Pickup'] = '60-Min Click & Collect (Mt Wellington / Cook St)';
-  }
-
-  let imageUrl = it.imageUrl || it.images?.[0] || '';
-  const isPlacemakersWafUrl = typeof imageUrl === 'string' && imageUrl.includes('placemakers.co.nz/online/medias');
-  if (!imageUrl || isPlacemakersWafUrl) {
-    const text = `${name} ${category}`.toLowerCase();
-    if (text.includes('aqualine') || text.includes('gib') || text.includes('plasterboard') || text.includes('wallboard') || text.includes('lining')) {
-      imageUrl = 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=600&auto=format&fit=crop&q=80';
-    } else if (text.includes('shower') || text.includes('acrylic') || text.includes('bath') || text.includes('enclosure')) {
-      imageUrl = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80';
-    } else if (text.includes('hinge') || text.includes('joinery') || text.includes('hardware') || text.includes('bracket')) {
-      imageUrl = 'https://images.unsplash.com/photo-1530124566582-a618bc2615dc?w=600&auto=format&fit=crop&q=80';
-    } else if (text.includes('adhesive') || text.includes('sealant') || text.includes('silicone') || text.includes('glue') || text.includes('sikaflex')) {
-      imageUrl = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80';
-    } else if (text.includes('landscap') || text.includes('retaining') || text.includes('sleeper') || text.includes('h4') || text.includes('h5')) {
-      imageUrl = 'https://images.unsplash.com/photo-1541888946425-d0fbb186c5f7?w=600&auto=format&fit=crop&q=80';
-    } else if (text.includes('deck') || text.includes('kwila')) {
-      imageUrl = 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?w=600&auto=format&fit=crop&q=80';
-    } else if (text.includes('timber') || text.includes('framing') || text.includes('stud') || text.includes('joist') || text.includes('sg8') || text.includes('radiata') || text.includes('pine')) {
-      imageUrl = 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80';
-    } else {
-      imageUrl = 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80';
-    }
-  }
-
-  return {
-    ...it,
-    name,
-    title: name,
-    category,
-    description,
-    features,
-    specs,
-    imageUrl,
-    images: [imageUrl, ...(it.images || [])],
-    url: it.url || (it.sku ? `https://www.placemakers.co.nz/online/p/${it.sku}` : 'https://www.placemakers.co.nz/online'),
-  };
+  const name = String(it.name || it.title || '').trim();
+  const category = it.category || (Array.isArray(it.categoryPath) && it.categoryPath.length ? it.categoryPath[it.categoryPath.length - 1] : undefined);
+  // `content` is the record's vectorised search text (name repeated, category
+  // path, "Also searched as: …" synonyms) — retrieval fodder, not something a
+  // customer should read as the reason to buy. Only a real description counts.
+  const description = String(it.description || it.summary || '').trim() || undefined;
+  const features: string[] | undefined = Array.isArray(it.features) && it.features.length ? it.features : undefined;
+  const specs: Record<string, string> | undefined = it.specs && typeof it.specs === 'object' && Object.keys(it.specs).length ? it.specs : undefined;
+  const imageUrl = it.imageUrl || (Array.isArray(it.images) ? it.images[0] : undefined) || undefined;
+  const out: any = { ...it, name, title: name };
+  if (category) out.category = category;
+  if (description) out.description = description;
+  if (features) out.features = features;
+  if (specs) out.specs = specs;
+  if (imageUrl) out.imageUrl = imageUrl;
+  if (it.url) out.url = it.url;
+  return out;
 }
 
 async function groundItemFacts(tenantId: string, call: any): Promise<void> {
