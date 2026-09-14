@@ -316,6 +316,12 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       // duplicates without erasing history. variant:'append' always stacks.
       const append = action.card.variant === 'append';
       const last = append ? undefined : [...state.cards].reverse().find((c) => c.cardType === action.card.cardType);
+      // The card-sync effects re-run on mount / RESTORE (their source state
+      // is already populated) and twice under StrictMode — a push whose
+      // content is identical to the latest card of its type is that replay,
+      // not a new card. This is what put a second "Start here" / a blank
+      // duplicate clarify card into the thread after a reload.
+      if (last && JSON.stringify(last.state) === JSON.stringify(action.card.state)) return state;
       const sameTurn = !!last && last.createdAt === action.card.createdAt;
       const cards = sameTurn
         ? state.cards.map((c) => (c.id === last!.id ? action.card : c))
@@ -470,7 +476,9 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (state.dynamicQuestions.length === 0) return;
-    pushCard({ id: newId('clarify'), cardType: 'clarify', state: mapClarifyCard(state.dynamicQuestions) });
+    // Answers included so a restored thread re-derives the SAME card state it
+    // saved (chips lit, footer counted) and the reducer's replay guard holds.
+    pushCard({ id: newId('clarify'), cardType: 'clarify', state: mapClarifyCard(state.dynamicQuestions, state.dynamicAnswers) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.dynamicQuestions]);
 
