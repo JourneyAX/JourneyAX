@@ -2969,14 +2969,22 @@ export class AgentService {
    * Prompts open models (e.g. PlaceMakers Gemma 27B / MLX) with trade consultant persona,
    * tool syntax instructions, and diagnostic question capabilities.
    */
-  private buildOpenModelTradePrompt(): string {
+  private buildOpenModelTradePrompt(projectConfig?: any): string {
+    // Persona from the tenant's own config — this prompt used to open with a
+    // hardcoded "PlaceMakers trade specialist in New Zealand" for every
+    // open-model tenant. Standards/vocabulary detail belongs in the project's
+    // journeyGuidance, which is appended below when present.
+    const company = String(projectConfig?.companyName || 'this business').replace(/\s*\(.*?\)\s*$/, '');
+    const persona = String(projectConfig?.systemName || `${company} consultant`);
+    const guidance = String(projectConfig?.journeyGuidance || '').trim();
     return (
-      `You are an expert PlaceMakers trade specialist and project consultant in New Zealand.\n` +
-      `Provide practical, professional trade advice adhering to NZ building standards (NZS 3604).\n` +
+      `You are ${persona} — an expert trade specialist and project consultant for ${company}.\n` +
+      `Provide practical, professional trade advice that follows the applicable building code and standards for ${company}'s market.\n` +
       `Tone: Professional, direct, trade-certified consultant. Do NOT use cheesy conversational filler (NEVER say "Oh no, leaking bathroom is never fun!" or generic robotic empathy). Be authoritative, pragmatic, and helpful.\n` +
+      (guidance ? `BUSINESS GUIDANCE:\n${guidance}\n` : '') +
       `You have access to tools to control the UI and lookup data:\n` +
       `1. DIAGNOSTIC & CLARIFYING QUESTIONS (tappable options in the conversation):\n` +
-      `When a customer has a repair, leak, moisture issue, or an open-ended project scope (e.g. bathroom leaking, wet area lining, deck planning, laundry makeover), you MUST ask 2-3 targeted diagnostic questions so the customer can select options from the options shown in the conversation.\n` +
+      `SHOW FIRST, THEN NARROW. Whenever the customer names a product, material or project (e.g. "laundry tubs", "kwila decking", "a laundry makeover with cabinetry and a tub"), emit TOOL_CALL: searchKnowledge with their own words FIRST so real items appear immediately — never make them answer a questionnaire before seeing anything. THEN, when the scope is open-ended or you are diagnosing a repair, leak or moisture issue, ALSO ask 2-3 targeted questions beside those items so the customer can narrow them by tapping options.\n` +
       `Emit a TOOL_CALL line:\n` +
       `TOOL_CALL: setPhase({"phase": "clarify", "questions": [{"id": "<id>", "title": "<diagnostic question>", "options": ["<opt1>", "<opt2>", "<opt3>", "<opt4>"]}]})\n` +
       `Example for leak/plumbing repair:\n` +
@@ -2988,8 +2996,9 @@ export class AgentService {
       `4. STRUCTURAL PROJECT PLAN:\n` +
       `TOOL_CALL: buildProjectPlan({"projectType": "decking"|"fencing"|"lining"|"retaining"|"cladding", "length": <number>, "width": <number>})\n\n` +
       `CRITICAL RULES:\n` +
-      `- When diagnosing an issue or clarifying scope, ALWAYS emit TOOL_CALL: setPhase with dynamic questions tailored to what the customer asked.\n` +
-      `- In your chat prose, explain the trade diagnostic approach professionally and direct the customer to tap their answers in the conversation.\n` +
+      `- Products first: a turn that names something to buy or build ALWAYS includes TOOL_CALL: searchKnowledge, even when you also ask questions. Once the customer has answered your questions, search again with their brief PLUS their answers — do not ask a further round.\n` +
+      `- When diagnosing an issue or clarifying scope, emit TOOL_CALL: setPhase with dynamic questions tailored to what the customer asked — beside the items, not instead of them.\n` +
+      `- In your chat prose, say briefly why the items shown fit and, if you asked questions, that tapping an answer narrows them.\n` +
       `- Never quote internal rules or echo customer inputs verbatim.`
     );
   }
@@ -3055,11 +3064,22 @@ export class AgentService {
     uiToolCalls: any[],
     emit?: (event: string, data: any) => void,
     pushTrace?: (entry: TraceEntry) => void,
+    /** Show-first: when nothing has been shown yet this conversation and the
+     *  customer's message is a substantive brief, search it now — products
+     *  come first, the model's questions sit beside them (AUG-68/AUG-80's
+     *  rule, applied to the open-model path in code because the prompt alone
+     *  does not hold: "show me laundry tubs" still got a questionnaire). */
+    showFirst?: { journeyState: any; intent: any },
   ): Promise<boolean> {
-    if (stats.searched || retrieval.answers.length === 0) return false;
-    const query = effectiveSearchQuery('', retrieval);
+    if (stats.searched) return false;
+    if (showFirst?.intent?.panelRenderBlocked) return false;
+    const answered = retrieval.answers.length > 0;
+    const nothingShownYet = !!showFirst && !(showFirst.journeyState?.lastShown || []).length && !showFirst.journeyState?.activeSku;
+    const substantive = retrieval.brief.split(/\s+/).filter(Boolean).length >= 3;
+    if (!answered && !(nothingShownYet && substantive)) return false;
+    const query = answered ? effectiveSearchQuery('', retrieval) : retrieval.brief;
     if (!query) return false;
-    console.log(`[agent] after-answers retrieval guarantee: searchKnowledge("${query}")`);
+    console.log(`[agent] ${answered ? 'after-answers' : 'show-first'} retrieval guarantee: searchKnowledge("${query}")`);
     if (pushTrace) pushTrace({ step: 'tool-call', detail: `searchKnowledge(${JSON.stringify({ query, forced: true })})`, data: { query, forced: true } });
     const shown = await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit);
     if (shown) stats.searched = true;
@@ -4319,7 +4339,7 @@ export class AgentService {
       ? [
           {
             role: 'system',
-            content: this.buildOpenModelTradePrompt(),
+            content: this.buildOpenModelTradePrompt(projectConfig),
           },
           ...activeMessages,
         ]
@@ -4407,7 +4427,7 @@ export class AgentService {
 
         const searchStats = { searched: false };
         let toolExecuted = await this.executeOpenModelToolCalls(tenantId, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t), retrievalCtx, searchStats, allowDomainClarify);
-        if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, undefined, (t) => trace.push(t))) toolExecuted = true;
+        if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, undefined, (t) => trace.push(t), { journeyState, intent })) toolExecuted = true;
         if (!toolExecuted) {
           const modelClarifyAction = this.extractQuestionsFromModelResponse(rawContent, lastUserText, intent, allowDomainClarify);
           if (modelClarifyAction) {
@@ -5053,7 +5073,7 @@ export class AgentService {
       ? [
           {
             role: 'system',
-            content: this.buildOpenModelTradePrompt(),
+            content: this.buildOpenModelTradePrompt(projectConfig),
           },
           ...messages,
         ]
@@ -5675,7 +5695,7 @@ export class AgentService {
       console.log(`[JourneyAX:ModelResponse] 💬 Streamed model output for tenant="${tenantId}" [model=${model}]:\n${finalText}`);
       const searchStats = { searched: false };
       let toolExecuted = await this.executeOpenModelToolCalls(tenantId, finalText, intent, uiToolCalls, emit, pushTrace, retrievalCtx, searchStats, allowDomainClarify);
-      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, emit, pushTrace)) toolExecuted = true;
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, emit, pushTrace, { journeyState, intent })) toolExecuted = true;
       if (!toolExecuted) {
         const modelClarifyAction = this.extractQuestionsFromModelResponse(finalText, lastUserText, intent, allowDomainClarify);
         if (modelClarifyAction) {
