@@ -387,23 +387,30 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const nextCardId = useRef(0);
   const newId = (cardType: string) => `${cardType}-${Date.now()}-${nextCardId.current++}`;
 
+  // Backoffice "Cards & Theme" → Card gallery's per-card-type "Enabled"
+  // checkbox (CardsTheme.tsx) — the ONE place that decides whether a tenant
+  // sees a card type at all. Centralised here rather than in each effect
+  // below so a disabled card type is skipped consistently and the reducer
+  // stays config-free (see file-header note above).
+  const pushCard = useCallback((card: CardInstance) => {
+    if (cfg.uiTheme?.cards?.[card.cardType]?.enabled === false) return;
+    dispatch({ type: 'PUSH_CARD', card });
+  }, [cfg.uiTheme, dispatch]);
+
   useEffect(() => {
     if (state.recommendedProducts.length === 0) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('products'), cardType: 'products', state: mapProductsCard(state.recommendedProducts) } });
+    pushCard({ id: newId('products'), cardType: 'products', state: mapProductsCard(state.recommendedProducts) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.recommendedProducts]);
 
   useEffect(() => {
     if (!state.serverQuote) return;
-    dispatch({
-      type: 'PUSH_CARD',
-      card: {
-        id: newId('quote'), cardType: 'quote',
-        state: mapQuoteCard(state.serverQuote, {
-          fulfilment: cfg.fulfilment, selectedBranch: state.selectedBranch, selectedBranchName: state.selectedBranchName,
-          quoteIntro: cfg.quoteIntro, complianceBadge: cfg.complianceBadge,
-        }),
-      },
+    pushCard({
+      id: newId('quote'), cardType: 'quote',
+      state: mapQuoteCard(state.serverQuote, {
+        fulfilment: cfg.fulfilment, selectedBranch: state.selectedBranch, selectedBranchName: state.selectedBranchName,
+        quoteIntro: cfg.quoteIntro, complianceBadge: cfg.complianceBadge,
+      }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.serverQuote, state.selectedBranch, state.selectedBranchName]);
@@ -439,49 +446,49 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (state.guideSteps.length === 0) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('guide'), cardType: 'guide', state: mapGuideCard(state.guideSteps) } });
+    pushCard({ id: newId('guide'), cardType: 'guide', state: mapGuideCard(state.guideSteps) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.guideSteps]);
 
   useEffect(() => {
     if (!state.accessories?.length) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('accessories'), cardType: 'accessories', state: mapAccessoriesCard(state.accessories) } });
+    pushCard({ id: newId('accessories'), cardType: 'accessories', state: mapAccessoriesCard(state.accessories) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.accessories]);
 
   useEffect(() => {
     if (state.dynamicQuestions.length === 0) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('clarify'), cardType: 'clarify', state: mapClarifyCard(state.dynamicQuestions) } });
+    pushCard({ id: newId('clarify'), cardType: 'clarify', state: mapClarifyCard(state.dynamicQuestions) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.dynamicQuestions]);
 
   useEffect(() => {
     if (!state.warranty) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('warranty'), cardType: 'warranty', state: mapWarrantyCard(state.warranty) } });
+    pushCard({ id: newId('warranty'), cardType: 'warranty', state: mapWarrantyCard(state.warranty) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.warranty]);
 
   useEffect(() => {
     if (!state.sizeRecommendation) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('fitment'), cardType: 'fitment', state: mapFitmentCard(state.sizeRecommendation) } });
+    pushCard({ id: newId('fitment'), cardType: 'fitment', state: mapFitmentCard(state.sizeRecommendation) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sizeRecommendation]);
 
   useEffect(() => {
     if (!state.projectPlan) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('plan'), cardType: 'plan', state: mapPlanCard(state.projectPlan) } });
+    pushCard({ id: newId('plan'), cardType: 'plan', state: mapPlanCard(state.projectPlan) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.projectPlan]);
 
   useEffect(() => {
     if (!state.placedOrder) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('orderStatus'), cardType: 'orderStatus', state: mapOrderStatusCard(state.placedOrder) } });
+    pushCard({ id: newId('orderStatus'), cardType: 'orderStatus', state: mapOrderStatusCard(state.placedOrder) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.placedOrder]);
 
   useEffect(() => {
     if (state.phase !== 'intro' || state.cards.length > 0) return;
-    dispatch({ type: 'PUSH_CARD', card: { id: newId('hero'), cardType: 'hero', state: mapHeroCard(cfg.intro, cfg.companyName, cfg.greeting) } });
+    pushCard({ id: newId('hero'), cardType: 'hero', state: mapHeroCard(cfg.intro, cfg.companyName, cfg.greeting) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, cfg.intro, cfg.companyName, cfg.greeting]);
 

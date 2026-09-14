@@ -29,24 +29,33 @@ function cssVarStyle(tokens: ThemeTokens): React.CSSProperties {
 }
 
 /** Wraps a card in the same box the storefront renders it in — bg + padding —
- *  so a preview here looks like the real stage, not a bare component. */
-function PreviewFrame({ tokens, children, minHeight = 160 }: { tokens: ThemeTokens; children: React.ReactNode; minHeight?: number }) {
+ *  so a preview here looks like the real stage, not a bare component.
+ *  `maxHeight` caps + scrolls it: without one, a long card (e.g. "products",
+ *  which samples multiple items) stretches its grid tile far taller than a
+ *  short one (e.g. "comparison"), so the Enabled/Edit-template row underneath
+ *  lands at a different height in every column — the gallery's alignment
+ *  complaint. Density views (gallery grid) pass a cap; the single-card views
+ *  (tokens/editor/compare) leave it unset and render at natural height. */
+function PreviewFrame({ tokens, children, minHeight = 160, maxHeight }: { tokens: ThemeTokens; children: React.ReactNode; minHeight?: number; maxHeight?: number }) {
   return (
     <div
       className="jx-root"
-      style={{ ...cssVarStyle(tokens), background: "var(--jx-color-bg)", padding: 20, borderRadius: 10, minHeight, boxSizing: "border-box" }}
+      style={{
+        ...cssVarStyle(tokens), background: "var(--jx-color-bg)", padding: 20, borderRadius: 10, minHeight, boxSizing: "border-box",
+        ...(maxHeight ? { maxHeight, overflowY: "auto" } : {}),
+      }}
     >
       {children}
     </div>
   );
 }
 
-function CardPreview({ cardType, spec, tokens, settings }: { cardType: CardType; spec: any; tokens: ThemeTokens; settings?: Record<string, unknown> }) {
+function CardPreview({ cardType, spec, tokens, settings, maxHeight }: { cardType: CardType; spec: any; tokens: ThemeTokens; settings?: Record<string, unknown>; maxHeight?: number }) {
   const [failed, setFailed] = useState<string | null>(null);
   if (failed) return <div style={badStyle}>Could not render: {failed}</div>;
   try {
     return (
-      <PreviewFrame tokens={tokens}>
+      <PreviewFrame tokens={tokens} maxHeight={maxHeight}>
         <CardRenderer template={spec} state={sampleStateFor(cardType)} settings={settings} stateKey={cardType} />
       </PreviewFrame>
     );
@@ -319,7 +328,7 @@ function GalleryTab({
               </span>
             </div>
             <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>{CARD_TYPES[cardType].description}</p>
-            <CardPreview cardType={cardType} spec={spec} tokens={tokens} settings={settings as any} />
+            <CardPreview cardType={cardType} spec={spec} tokens={tokens} settings={settings as any} maxHeight={320} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 <input type="checkbox" checked={enabled} onChange={(e) => onSaveSettings(cardType, { enabled: e.target.checked })} />
