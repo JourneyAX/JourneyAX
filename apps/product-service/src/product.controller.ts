@@ -253,6 +253,13 @@ export class ProductController {
     return { found };
   }
 
+  /** Exact-code catalogue facts (name/price/image/url) for presentation tools that carry only SKUs. */
+  @Post('skus/lookup')
+  async skusLookup(@Param('projectId') projectId: string, @Body() body: { skus: string[] }) {
+    const products = await this.productService.lookupSkus((projectId || '').toLowerCase(), body?.skus || []);
+    return { products };
+  }
+
   /** Which of these styles can be custom-designed (AUG-25). Three-valued. */
   @Post('designability')
   async designability(@Param('projectId') projectId: string, @Body() body: { skus: string[] }) {

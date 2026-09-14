@@ -10,7 +10,7 @@ import {
   JourneyState, emptyJourneyState, reduceActions, alreadyPresented,
   renderJourneyStateBlock,
 } from './pipeline/journey-memory';
-import { verifyComparisonProvenance } from './presentation/provenance';
+import { verifyComparisonProvenance, lookupSkuFacts } from './presentation/provenance';
 import { sanitizeChips, fenceSearchResultText } from './presentation/fencing';
 import { skillIndexBlock, loadSkillBody } from './skills/loader';
 
@@ -725,7 +725,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
       // presentComparison/presentSuggestions branches for the provenance and
       // sanitisation this contract requires before either ever renders.
       name: 'presentComparison',
-      description: 'Compare two to four products the customer is deciding between, side by side on named dimensions (price, size, material, warranty — whatever they actually raised). Use when they have narrowed to a few finalists — never as a first response to a broad ask; searchKnowledge + showItems comes first. Not needed when one product answers the request, or when the differences are better said in a sentence than a table. Every SKU MUST already have been returned by searchKnowledge or shown in showItems this conversation — a SKU that does not exist in the real catalogue is dropped before this renders, and specs must come from what was actually retrieved, never invented.',
+      description: 'Compare two to four products the customer is deciding between, side by side on named dimensions (price, size, material, warranty — whatever they actually raised). Use when they have narrowed to a few finalists, AND whenever they ask what the DIFFERENCE is between two named products, ranges or variants ("Matte vs Dual Matte", "standard or Japanese size") — for that ask, searchKnowledge each one, showItems the real matches, then present them side by side in the SAME turn; a prose-only answer to a "which is different how" question is a miss. Never as a first response to a broad ask; searchKnowledge + showItems comes first. Not needed when one product answers the request, or when the differences are better said in a sentence than a table. Every SKU MUST already have been returned by searchKnowledge or shown in showItems this conversation — a SKU that does not exist in the real catalogue is dropped before this renders, and specs must come from what was actually retrieved, never invented.',
       parameters: {
         type: 'object',
         properties: {
@@ -1045,6 +1045,31 @@ async function enforceNamedSku(tenantId: string, conversation: any[], call: any)
  *   up, or the configurator already opened), and even then only when a
  *   designable garment survives to offer in its place.
  */
+/**
+ * presentComparison carries only SKUs + the model's cells; the column
+ * headers (name, price, image) are catalogue FACTS and get joined here from
+ * the real records — the model never re-types them, and a comparison the
+ * model raised without a preceding showItems (seen live: "Matte vs Dual
+ * Matte" answered straight from the comparison tool) still shows product
+ * names instead of bare SKU codes. Best-effort: a lookup miss leaves the SKU.
+ */
+async function attachComparisonFacts(tenantId: string, call: any): Promise<void> {
+  let args: any;
+  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return; }
+  const skus: string[] = Array.isArray(args?.skus) ? args.skus.map((s: unknown) => String(s || '').trim()).filter(Boolean) : [];
+  if (!skus.length) return;
+  // Exact-code lookup (products/skus/lookup) — semantic search ranks a code's
+  // neighbours, not the code, so it cannot be used to join a SKU to its name.
+  const facts = await lookupSkuFacts(tenantId, skus);
+  if (!facts.length) return;
+  const byCode = new Map(facts.map((f) => [f.sku.toUpperCase(), f]));
+  args.products = skus.map((sku) => {
+    const f = byCode.get(sku.toUpperCase());
+    return f ? { sku, title: f.name, price: f.price, imageUrl: f.imageUrl, url: f.url, category: f.category } : { sku };
+  });
+  call.function.arguments = JSON.stringify(args);
+}
+
 async function enforceItemDesignability(
   tenantId: string, call: any, designFirst = false,
 ): Promise<Record<string, unknown> | null> {
@@ -1053,7 +1078,11 @@ async function enforceItemDesignability(
   // than adding new call sites — mutating `call.function.arguments` in place
   // is exactly the pattern that already gets picked up everywhere `parsedArgs`/
   // `emitArgs` is re-read after this call returns.
-  if (call?.function?.name === 'presentComparison') return verifyComparisonProvenance(tenantId, call);
+  if (call?.function?.name === 'presentComparison') {
+    const refusal = await verifyComparisonProvenance(tenantId, call);
+    if (!refusal) await attachComparisonFacts(tenantId, call);
+    return refusal;
+  }
   if (call?.function?.name === 'presentSuggestions') {
     try {
       const a = JSON.parse(call.function.arguments || '{}');
@@ -2619,6 +2648,68 @@ export interface ChatResponse {
   trace?: TraceEntry[];
 }
 
+/**
+ * What the customer is actually shopping for, reconstructed from the thread:
+ * their latest substantive brief plus every clarify answer they have given.
+ *
+ * Seen live on PlaceMakers (open model, TOOL_CALL syntax): after the customer
+ * tapped clarify chips, the model called searchKnowledge("Dedicated space")
+ * and, on a blank card, searchKnowledge("Not answered") — the LAST message
+ * verbatim, not the laundry-makeover brief — and the catalogue dutifully
+ * returned garden sheds. Retrieval is only as good as the query; a query that
+ * merely echoes an answer or a placeholder gets the real brief folded in.
+ */
+interface RetrievalContext { brief: string; answers: string[] }
+
+function deriveRetrievalContext(messages: Array<{ role: string; content: unknown }>): RetrievalContext {
+  const text = (c: unknown): string =>
+    typeof c === 'string' ? c : Array.isArray(c) ? c.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join(' ') : String(c ?? '');
+  const users = messages.filter((m) => m.role === 'user').map((m) => text(m.content).trim()).filter(Boolean);
+  const isAnswers = (t: string) => /^\s*my answers:/i.test(t);
+  const briefs = users.filter((t) => !isAnswers(t));
+  // Prefer the latest brief that actually describes something (≥4 words) over
+  // a "yes, add both" style confirmation; fall back to the latest non-answer.
+  const brief = [...briefs].reverse().find((t) => t.split(/\s+/).length >= 4) || briefs[briefs.length - 1] || '';
+  const answers: string[] = [];
+  for (const t of users) {
+    if (!isAnswers(t)) continue;
+    for (const line of t.split('\n')) {
+      const m = line.match(/→\s*(.+)$/);
+      const v = m?.[1]?.trim();
+      if (v && !/^not answered$/i.test(v)) answers.push(v);
+    }
+  }
+  return { brief: brief.slice(0, 300), answers };
+}
+
+/** The model's query, or the brief + answers folded in when the query alone
+ *  is not a search (an echoed clarify answer, "Not answered", a lone word). */
+function effectiveSearchQuery(modelQuery: unknown, ctx?: RetrievalContext): string {
+  const q = String(modelQuery ?? '').trim();
+  if (!ctx) return q;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const nq = norm(q);
+  const echoesAnswer = !!nq && ctx.answers.some((a) => { const na = norm(a); return na === nq || na.includes(nq); });
+  const placeholder = /not answered/i.test(q);
+  const tooShort = nq.split(' ').filter(Boolean).length < 2;
+  if (q && !placeholder && !echoesAnswer && !tooShort) return q;
+  const composed = [ctx.brief, ...ctx.answers, echoesAnswer || placeholder ? '' : q]
+    .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 400);
+  if (!composed) return q;
+  console.log(`[agent] searchKnowledge: weak model query "${q}" → "${composed}"`);
+  return composed;
+}
+
+/** "What's the difference between X and Y", "X vs Y", "compare A with B". */
+function isComparisonAsk(text: string): boolean {
+  const t = (text || '').toLowerCase();
+  if (t.length > 400) return false;
+  return /\b(difference|differ|differences)\b.*\b(between|and|vs|versus)\b/.test(t)
+    || /\b(compare|comparison|compared)\b/.test(t)
+    || /\b\w+\s+(vs\.?|versus)\s+\w+/.test(t)
+    || /\bwhich (one )?(is|should i)\b.*\b(or)\b/.test(t);
+}
+
 function findBalancedToolCall(buffer: string): { fullMatch: string; toolName: string; rawArgs: string; endIndex: number } | null {
   const prefixMatch = /TOOL_CALL:\s*([a-zA-Z0-9_]+)\s*\(/i.exec(buffer);
   if (!prefixMatch) return null;
@@ -2927,7 +3018,7 @@ export class AgentService {
       `Provide practical, professional trade advice adhering to NZ building standards (NZS 3604).\n` +
       `Tone: Professional, direct, trade-certified consultant. Do NOT use cheesy conversational filler (NEVER say "Oh no, leaking bathroom is never fun!" or generic robotic empathy). Be authoritative, pragmatic, and helpful.\n` +
       `You have access to tools to control the UI and lookup data:\n` +
-      `1. DIAGNOSTIC & CLARIFYING QUESTIONS (Interactive Right Panel):\n` +
+      `1. DIAGNOSTIC & CLARIFYING QUESTIONS (tappable options in the conversation):\n` +
       `When a customer has a repair, leak, moisture issue, or an open-ended project scope (e.g. bathroom leaking, wet area lining, deck planning, laundry makeover), you MUST ask 2-3 targeted diagnostic questions so the customer can select options from the options shown in the conversation.\n` +
       `Emit a TOOL_CALL line:\n` +
       `TOOL_CALL: setPhase({"phase": "clarify", "questions": [{"id": "<id>", "title": "<diagnostic question>", "options": ["<opt1>", "<opt2>", "<opt3>", "<opt4>"]}]})\n` +
@@ -2953,6 +3044,71 @@ export class AgentService {
    *   TOOL_CALL: checkBranchStock({"sku": "...", "branch": "..."})
    *   TOOL_CALL: setPhase({"phase": "clarify", "questions": [...]})
    */
+  /**
+   * Catalogue search → showItems + setPhase(products) for the open-model
+   * (TOOL_CALL text) path. Shared by the model's own searchKnowledge call and
+   * the after-answers guarantee below. True when something was shown.
+   */
+  private async runOpenModelSearch(
+    tenantId: string,
+    query: string,
+    uiToolCalls: any[],
+    emit?: (event: string, data: any) => void,
+  ): Promise<boolean> {
+    try {
+      const knowledge = await adapterRegistry.getKnowledge(tenantId);
+      const res: any = await knowledge.search({ tenantId }, { query, type: 'product', limit: 6 });
+      const prods = res?.results || res?.products || res?.items || [];
+      console.log(`[JourneyAX:ToolResult] 📦 searchKnowledge("${query}") returned ${prods.length} product(s)`);
+      if (!prods.length) return false;
+      const itemsToRender = prods.slice(0, 6).map(normalizeTradeProduct);
+      const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
+      uiToolCalls.push({
+        id: `model_tool_search_${Date.now()}`,
+        type: 'function',
+        function: { name: 'showItems', arguments: JSON.stringify(showItemsAction.arguments) },
+      });
+      if (emit) emit('uiAction', showItemsAction);
+      const setPhaseAction = { name: 'setPhase', arguments: { phase: 'products' } };
+      uiToolCalls.push({
+        id: `model_tool_phase_${Date.now()}`,
+        type: 'function',
+        function: { name: 'setPhase', arguments: JSON.stringify(setPhaseAction.arguments) },
+      });
+      if (emit) emit('uiAction', setPhaseAction);
+      return true;
+    } catch (err) {
+      console.warn('[agent] searchKnowledge tool execution failed:', err);
+      return false;
+    }
+  }
+
+  /**
+   * "Do NOT keep the customer in discovery once they have answered — that is
+   * the most common failure" (the intent resolver's own rule). The open model
+   * on PlaceMakers kept doing exactly that: three rounds of clarify after
+   * "My answers:" and never a search. Once the customer has answered at
+   * least one round and this turn ran no catalogue search, run one from the
+   * brief + answers and show what came back beside whatever the model said.
+   */
+  private async ensureRetrievalAfterAnswers(
+    tenantId: string,
+    retrieval: RetrievalContext,
+    stats: { searched: boolean },
+    uiToolCalls: any[],
+    emit?: (event: string, data: any) => void,
+    pushTrace?: (entry: TraceEntry) => void,
+  ): Promise<boolean> {
+    if (stats.searched || retrieval.answers.length === 0) return false;
+    const query = effectiveSearchQuery('', retrieval);
+    if (!query) return false;
+    console.log(`[agent] after-answers retrieval guarantee: searchKnowledge("${query}")`);
+    if (pushTrace) pushTrace({ step: 'tool-call', detail: `searchKnowledge(${JSON.stringify({ query, forced: true })})`, data: { query, forced: true } });
+    const shown = await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit);
+    if (shown) stats.searched = true;
+    return shown;
+  }
+
   private async executeOpenModelToolCalls(
     tenantId: string,
     rawModelText: string,
@@ -2960,6 +3116,11 @@ export class AgentService {
     uiToolCalls: any[],
     emit?: (event: string, data: any) => void,
     pushTrace?: (entry: TraceEntry) => void,
+    retrieval?: RetrievalContext,
+    /** Out-param: did a catalogue search actually run this turn? */
+    stats?: { searched: boolean },
+    /** Tenant capability 'domainClarify' — the built-in trade question bank is opt-in. */
+    allowDomainClarify = false,
   ): Promise<boolean> {
     let executedAny = false;
     let searchStr = rawModelText || '';
@@ -2987,36 +3148,10 @@ export class AgentService {
       }
 
       if (toolName === 'searchKnowledge') {
-        const query = args.query || args.q || '';
-        if (query) {
-          try {
-            const knowledge = await adapterRegistry.getKnowledge(tenantId);
-            const res: any = await knowledge.search({ tenantId }, { query, type: 'product', limit: 6 });
-            const prods = res?.results || res?.products || res?.items || [];
-            console.log(`[JourneyAX:ToolResult] 📦 searchKnowledge("${query}") returned ${prods.length} product(s)`);
-            if (prods.length) {
-              const itemsToRender = prods.slice(0, 6).map(normalizeTradeProduct);
-              const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
-              uiToolCalls.push({
-                id: `model_tool_search_${Date.now()}`,
-                type: 'function',
-                function: { name: 'showItems', arguments: JSON.stringify(showItemsAction.arguments) },
-              });
-              if (emit) emit('uiAction', showItemsAction);
-
-              const setPhaseAction = { name: 'setPhase', arguments: { phase: 'products' } };
-              uiToolCalls.push({
-                id: `model_tool_phase_${Date.now()}`,
-                type: 'function',
-                function: { name: 'setPhase', arguments: JSON.stringify(setPhaseAction.arguments) },
-              });
-              if (emit) emit('uiAction', setPhaseAction);
-
-              executedAny = true;
-            }
-          } catch (err) {
-            console.warn('[agent] searchKnowledge tool execution failed:', err);
-          }
+        const query = effectiveSearchQuery(args.query || args.q || '', retrieval);
+        if (query && await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit)) {
+          executedAny = true;
+          if (stats) stats.searched = true;
         }
       } else if (toolName === 'checkBranchStock') {
         const sku = args.sku || '';
@@ -3072,7 +3207,7 @@ export class AgentService {
       } else if (toolName === 'setPhase') {
         const phase = args.phase || 'clarify';
         let questions = Array.isArray(args.questions) ? args.questions : [];
-        if (questions.length === 0 && phase === 'clarify') {
+        if (questions.length === 0 && phase === 'clarify' && allowDomainClarify) {
           const fallback = this.buildDomainClarify(rawModelText, intent, rawModelText);
           if (fallback) questions = fallback.questions;
         }
@@ -3101,6 +3236,7 @@ export class AgentService {
     modelText: string,
     userText: string,
     intent: IntentResult,
+    allowDomainClarify = false,
   ): { name: 'setPhase'; arguments: { phase: 'clarify'; questions: any[] } } | null {
     if (!modelText) return null;
     const mt = modelText.trim();
@@ -3160,7 +3296,7 @@ export class AgentService {
 
     // If options couldn't be extracted regex-wise but the model asked diagnostic questions,
     // construct cards aligned with the model's topic
-    if (questions.length === 0 && (mt.includes('?') || intent.intent === 'leak_repair')) {
+    if (questions.length === 0 && allowDomainClarify && (mt.includes('?') || intent.intent === 'leak_repair')) {
       const fallback = this.buildDomainClarify(userText, intent, modelText);
       if (fallback) return { name: 'setPhase', arguments: { phase: 'clarify', questions: fallback.questions } };
     }
@@ -4156,6 +4292,12 @@ export class AgentService {
     // interactive clarification cards in the conversation. Zero wasted GPU loops,
     // instant response, session saved cleanly.
     const lastUserText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+    const retrievalCtx = deriveRetrievalContext(messages);
+    // The built-in trade diagnostic question bank (wet areas, leaks, linings —
+    // NZ building-supply vocabulary) is a per-tenant capability, never a
+    // platform default: it surfaced "GIB Aqualine plasterboard" options on a
+    // card-sleeve store because the model's prose mentioned "moisture".
+    const allowDomainClarify = (projectConfig.capabilities || []).includes('domainClarify');
     const isOpenModel =
       projectConfig.provider === 'placemaker' ||
       projectConfig.provider === 'jax' ||
@@ -4306,9 +4448,11 @@ export class AgentService {
         const rawContent = finalMessage?.content || '';
         console.log(`[JourneyAX:ModelResponse] 💬 Model output for tenant="${tenantId}" [model=${model}]:\n${rawContent}`);
 
-        const toolExecuted = await this.executeOpenModelToolCalls(tenantId, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t));
+        const searchStats = { searched: false };
+        let toolExecuted = await this.executeOpenModelToolCalls(tenantId, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t), retrievalCtx, searchStats, allowDomainClarify);
+        if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, undefined, (t) => trace.push(t))) toolExecuted = true;
         if (!toolExecuted) {
-          const modelClarifyAction = this.extractQuestionsFromModelResponse(rawContent, lastUserText, intent);
+          const modelClarifyAction = this.extractQuestionsFromModelResponse(rawContent, lastUserText, intent, allowDomainClarify);
           if (modelClarifyAction) {
             console.log(`[JourneyAX:ModelClarify] 💡 Extracted diagnostic questions directly from model response:`, modelClarifyAction.arguments.questions.map((q: any) => q.title));
             uiToolCalls.push({
@@ -4533,7 +4677,7 @@ export class AgentService {
               { tenantId },
               // Gender is injected SERVER-SIDE from the resolved intent (not the model) so
               // a "men's" journey never surfaces women's products — hard filter, not a hint.
-              { query: args.query, type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
+              { query: effectiveSearchQuery(args.query, retrievalCtx), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
             );
             const markedResult = await markDesignable(tenantId, toolResult);
             conversation.push({
@@ -4816,7 +4960,7 @@ export class AgentService {
       if (!finalMessage?.content) finalMessage = { role: 'assistant', content: 'Happy to help! First — who are we shopping for, and what’s the occasion?' };
     }
     // SAFETY NET: Clarify synthesis when no UI action or products were rendered
-    if (!uiActions.some((a) => a.name === 'setPhase') && uiActions.length === 0 && !intent.panelRenderBlocked) {
+    if (allowDomainClarify && !uiActions.some((a) => a.name === 'setPhase') && uiActions.length === 0 && !intent.panelRenderBlocked) {
       const userText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
       const synthClarify = this.buildDomainClarify(userText, intent, finalMessage?.content || '');
       if (synthClarify) {
@@ -4903,6 +5047,12 @@ export class AgentService {
 
     // ── Consultative Clarification Gate (Early Discovery Interception - Streaming) ──
     const lastUserText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+    const retrievalCtx = deriveRetrievalContext(messages);
+    // The built-in trade diagnostic question bank (wet areas, leaks, linings —
+    // NZ building-supply vocabulary) is a per-tenant capability, never a
+    // platform default: it surfaced "GIB Aqualine plasterboard" options on a
+    // card-sleeve store because the model's prose mentioned "moisture".
+    const allowDomainClarify = (projectConfig.capabilities || []).includes('domainClarify');
     const isOpenModel =
       projectConfig.provider === 'placemaker' ||
       projectConfig.provider === 'jax' ||
@@ -4974,6 +5124,10 @@ export class AgentService {
             'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — e.g. "design me a…", "can you make a…", "I want a jersey that…", "create a…" — call generateDesign with their brief FIRST. Do NOT answer such a request with searchKnowledge/showItems catalogue cards. ' +
             'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
             'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
+          ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
+            '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
+            'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
+            'Keep your text to the one-line verdict; the table carries the facts.' }] : []),
           ...messages,
         ];
 
@@ -5562,9 +5716,11 @@ export class AgentService {
       }
 
       console.log(`[JourneyAX:ModelResponse] 💬 Streamed model output for tenant="${tenantId}" [model=${model}]:\n${finalText}`);
-      const toolExecuted = await this.executeOpenModelToolCalls(tenantId, finalText, intent, uiToolCalls, emit, pushTrace);
+      const searchStats = { searched: false };
+      let toolExecuted = await this.executeOpenModelToolCalls(tenantId, finalText, intent, uiToolCalls, emit, pushTrace, retrievalCtx, searchStats, allowDomainClarify);
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, emit, pushTrace)) toolExecuted = true;
       if (!toolExecuted) {
-        const modelClarifyAction = this.extractQuestionsFromModelResponse(finalText, lastUserText, intent);
+        const modelClarifyAction = this.extractQuestionsFromModelResponse(finalText, lastUserText, intent, allowDomainClarify);
         if (modelClarifyAction) {
           console.log(`[JourneyAX:ModelClarify] 💡 Extracted diagnostic questions directly from model response:`, modelClarifyAction.arguments.questions.map((q: any) => q.title));
           uiToolCalls.push({
@@ -5622,7 +5778,7 @@ export class AgentService {
       if (!finalText || !finalText.trim()) { finalText = 'Happy to help! First — who are we shopping for, and what’s the occasion?'; emit('token', { delta: finalText }); }
     }
     // SAFETY NET (streaming): Clarify synthesis when no UI action was rendered
-    if (!uiActions.some((a) => a.name === 'setPhase') && uiActions.length === 0 && !intent.panelRenderBlocked && !lastUserText.toLowerCase().includes('my answers:')) {
+    if (allowDomainClarify && !uiActions.some((a) => a.name === 'setPhase') && uiActions.length === 0 && !intent.panelRenderBlocked && !lastUserText.toLowerCase().includes('my answers:')) {
       const userText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
       const synthClarify = this.buildDomainClarify(userText, intent, finalText);
       if (synthClarify) {

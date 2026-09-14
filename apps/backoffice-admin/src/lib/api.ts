@@ -175,6 +175,7 @@ export const CAPABILITY_CATALOG: { id: string; label: string; description: strin
   { id: 'teamOrder',    label: 'Team design generation',  description: 'Generate flat front/back/sleeve views for a whole team from a text brief' },
   { id: 'photoUpload3D', label: 'Real-photo 3D match',    description: 'Upload up to 4 real photos of an actual garment and bake them onto the real 3D mesh (no AI-generated artwork)' },
   { id: 'fitmentGuide', label: 'Fitment / sizing guide',  description: 'Ask a few sizing questions and recommend a size, grounded in a real per-tenant size chart' },
+  { id: 'domainClarify', label: 'Trade diagnostic questions', description: 'When the agent asks about wet areas, leaks or linings without giving options, fall back to the built-in trade question set (NZ building-supply vocabulary). Off by default — only for building/plumbing supply brands.' },
   { id: 'openSpacePlanner', label: 'Interactive space planner', description: 'Open a live 3D/2D room or space planner (e.g. cabinetry, modular units) the customer configures directly' },
   { id: 'buildProjectPlan', label: 'Structural project plan', description: 'Calculate a materials plan for a structural build (decking, fencing, framing, cladding) from dimensions' },
   { id: 'checkBranchStock', label: 'Branch stock lookup', description: 'Check real, live stock and pickup/delivery availability at a specific branch or location' },

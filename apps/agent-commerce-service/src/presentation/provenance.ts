@@ -33,6 +33,27 @@ async function skusThatExist(tenantId: string, skus: string[]): Promise<Set<stri
   }
 }
 
+export interface SkuFact { sku: string; name: string; price: number | null; imageUrl: string | null; url?: string; category?: string }
+
+/** Exact-code catalogue facts for SKUs the model named — same endpoint
+ *  family and same best-effort stance as `skusThatExist`. */
+export async function lookupSkuFacts(tenantId: string, skus: string[]): Promise<SkuFact[]> {
+  if (!skus.length) return [];
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/skus/lookup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ skus }),
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return [];
+    return (((await res.json())?.products || []) as SkuFact[]);
+  } catch {
+    return [];
+  }
+}
+
 export interface ComparisonProvenanceResult {
   /** null when every SKU checked out — caller makes no change. */
   refusal: Record<string, unknown> | null;

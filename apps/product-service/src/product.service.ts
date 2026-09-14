@@ -1492,6 +1492,47 @@ export class ProductService {
     return rows.map((r: any) => String(r.parentSku).toUpperCase());
   }
 
+  /**
+   * Catalogue FACTS for known SKUs (name, price, image, url, category) — the
+   * exact-code counterpart of `existingSkus`, for presentation tools that
+   * carry only codes (presentComparison) and must never let the model re-type
+   * a name or price. Semantic search is the wrong tool for this: a query of
+   * "AT-11002" ranks neighbours, not the code itself.
+   */
+  async lookupSkus(brand: string, skus: string[]): Promise<Array<{ sku: string; name: string; price: number | null; imageUrl: string | null; url?: string; category?: string }>> {
+    const clean = [...new Set((skus || []).map((s) => String(s || '').trim().toUpperCase()).filter((s) => s.length >= 3 && s.length <= 40))];
+    if (!clean.length) return [];
+    const db = await this.getDb();
+    const rows = await db.collection('products')
+      .find(
+        { projectId: brand, $or: [{ parentSku: { $in: clean } }, { sku: { $in: clean } }] },
+        { projection: { _id: 0, sku: 1, parentSku: 1, name: 1, title: 1, price: 1, 'metadata.price': 1, imageUrl: 1, images: 1, image: 1, url: 1, productUrl: 1, category: 1, categoryPath: 1 } },
+      )
+      .limit(clean.length * 4)
+      .toArray();
+    const bySku = new Map<string, any>();
+    for (const r of rows as any[]) {
+      for (const code of [r.parentSku, r.sku]) {
+        const key = String(code || '').toUpperCase();
+        if (key && clean.includes(key) && !bySku.has(key)) bySku.set(key, r);
+      }
+    }
+    return clean.filter((k) => bySku.has(k)).map((k) => {
+      const r = bySku.get(k);
+      // Search results read price from metadata.price (see the search mapper); same source here.
+      const raw = r.price ?? r.metadata?.price;
+      const price = typeof raw === 'number' ? raw : Number.isFinite(parseFloat(raw)) ? parseFloat(raw) : null;
+      return {
+        sku: k,
+        name: String(r.name || r.title || k),
+        price,
+        imageUrl: r.imageUrl || r.image || (Array.isArray(r.images) ? r.images[0] : null) || null,
+        url: r.url || r.productUrl || undefined,
+        category: r.category || (Array.isArray(r.categoryPath) ? r.categoryPath[r.categoryPath.length - 1] : undefined),
+      };
+    });
+  }
+
   /** The imaging-platform config for this project (AUG-21). Read from the
    *  project's own configurator block so hosts, cameras and template slot names
    *  are never hardcoded to one vendor. */
