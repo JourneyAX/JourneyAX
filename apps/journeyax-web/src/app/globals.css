@@ -591,6 +591,51 @@ body {
 .project-panel::-webkit-scrollbar-thumb { background: #DDD7CB; border-radius: 0; }
 .project-panel::-webkit-scrollbar-track { background: transparent; }
 
+/* Three-column shell (chat 34% / stage flex / cart 300-320px) when the
+   persistent Cart panel is on — see CartPanel.tsx. */
+.app-layout--with-cart .chat-panel { flex: 0 0 34%; max-width: 34%; }
+
+/* ── CART PANEL (persistent, ACME-reference third column) ─────────────── */
+.cart-panel {
+  flex: 0 0 320px;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  height: 100%;
+  overflow-y: auto;
+}
+.cart-panel__header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 20px 20px 14px; border-bottom: 1px solid var(--border);
+}
+.cart-panel__title { font-family: var(--font-display, inherit); font-weight: 700; font-size: 16px; color: var(--dark); }
+.cart-panel__count { font-size: 12px; color: var(--text-muted); background: var(--surface-alt); padding: 3px 9px; border-radius: 999px; }
+.cart-panel__lines { flex: 1; overflow-y: auto; padding: 8px 14px; }
+.cart-panel__line { display: flex; gap: 12px; padding: 12px 6px; border-bottom: 1px solid var(--border); }
+.cart-panel__line:last-child { border-bottom: none; }
+.cart-panel__thumb {
+  width: 52px; height: 52px; flex-shrink: 0; border-radius: 8px; overflow: hidden;
+  background: var(--surface-alt); display: flex; align-items: center; justify-content: center; font-size: 18px;
+}
+.cart-panel__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.cart-panel__info { flex: 1; min-width: 0; }
+.cart-panel__name { font-size: 13px; font-weight: 600; color: var(--dark); line-height: 1.35; }
+.cart-panel__meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.cart-panel__stock { font-size: 11px; margin-top: 3px; font-weight: 600; }
+.cart-panel__remove { margin-top: 4px; font-size: 11.5px; color: var(--text-muted); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+.cart-panel__remove:hover { color: var(--dark); }
+.cart-panel__footer { border-top: 1px solid var(--border); padding: 16px 20px; }
+.cart-panel__totals-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); padding: 3px 0; }
+.cart-panel__totals-row--total { font-size: 15px; font-weight: 700; color: var(--dark); padding-top: 8px; margin-top: 4px; border-top: 1px solid var(--border); }
+.cart-panel__cta {
+  width: 100%; margin-top: 14px; padding: 12px; border: none; border-radius: 10px;
+  background: var(--dark); color: var(--surface); font-weight: 700; font-size: 13.5px; cursor: pointer;
+}
+.cart-panel__cta:hover { opacity: 0.92; }
+.cart-panel__cta:disabled { opacity: 0.6; cursor: default; }
+
 /* ── Hero Panel ─────────────────────────────────────────────────────── */
 .hero-panel {
   max-width: 760px;
@@ -1834,7 +1879,9 @@ body {
 @media (max-width: 900px) {
   .app-layout { flex-direction: column; }
   .chat-panel { flex: none; max-width: 100%; height: 50vh; }
+  .app-layout--with-cart .chat-panel { max-width: 100%; }
   .project-panel { height: 50vh; }
+  .cart-panel { flex: none; max-width: 100%; width: 100%; height: auto; max-height: 40vh; border-left: none; border-top: 1px solid var(--border); }
   .hero-panel { padding: 32px; }
   .hero-panel__heading { font-size: 32px; }
   .clarify-panel { padding: 32px; }
