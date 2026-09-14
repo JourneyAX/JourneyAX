@@ -137,23 +137,6 @@ body {
   border-right: 1px solid var(--border);
 }
 
-/* The non-focus-mode content (header + .chat-messages + input row) was an
-   unstyled block, sized to its own content. That was invisible while chat
-   was hidden by default once a card appeared (focus mode); now that the
-   conversation stays permanently on screen (persistent chat, ACME reference
-   layout — see ChatPanel.tsx), a long thread inside a height-constrained
-   .chat-panel (any narrow-viewport stack) needs this wrapper to actually
-   participate in the flex layout and clip, so .chat-messages' own
-   `flex:1; overflow-y:auto` can do its job instead of the whole thread
-   bleeding out past the panel's box. */
-.chat-panel__legacy {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
 /* Config-driven dark sidebar (AUG-49). A tenant whose brand runs dark
    (Momentec black/graphite, Augusta red-on-black) sets theme.sidebarStyle:
    'dark'. Rather than restyle every element, we REDEFINE the colour variables
@@ -1896,28 +1879,9 @@ body {
 @media (max-width: 900px) {
   .app-layout { flex-direction: column; }
   .chat-panel { flex: none; max-width: 100%; height: 50vh; }
+  .app-layout--with-cart .chat-panel { max-width: 100%; }
   .project-panel { height: 50vh; }
-
-  /* With the persistent Cart panel ALSO stacking on a narrow viewport, three
-     full-size blocks don't fit — the stage (products/quote, what the
-     customer actually came to see) must stay primary. Every rule here is
-     scoped to `.app-layout--with-cart` (not bare `.chat-panel` etc.) so it
-     reliably outranks — same specificity, later in the cascade — the
-     desktop-width `.app-layout--with-cart .chat-panel { flex: 0 0 34% }`
-     rule above; mixing specificities here previously let that 34% flex-basis
-     leak into the mobile column layout and crush the stage down to ~80px.
-     Chat shrinks, the Cart collapses to a compact summary bar (count + total
-     + CTA, no line list — full detail is one tap into "View order summary"/
-     the stage's own quote card), and the stage gets whatever's left. */
-  .app-layout--with-cart .chat-panel { flex: none; max-width: 100%; height: 34vh; }
-  .app-layout--with-cart .project-panel { flex: 1; height: auto; min-height: 0; }
-  .app-layout--with-cart .cart-panel {
-    flex: none; max-width: 100%; width: 100%; height: auto; max-height: none;
-    border-left: none; border-top: 1px solid var(--border);
-  }
-  .app-layout--with-cart .cart-panel__lines { display: none; }
-  .app-layout--with-cart .cart-panel__totals-row:not(.cart-panel__totals-row--total) { display: none; }
-
+  .cart-panel { flex: none; max-width: 100%; width: 100%; height: auto; max-height: 40vh; border-left: none; border-top: 1px solid var(--border); }
   .hero-panel { padding: 32px; }
   .hero-panel__heading { font-size: 32px; }
   .clarify-panel { padding: 32px; }
