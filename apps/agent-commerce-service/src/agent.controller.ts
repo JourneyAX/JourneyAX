@@ -226,7 +226,7 @@ export class JourneyAXController {
     @Body() body: {
       message?: string;
       messages?: any[];
-      customerId?: string;
+      customerId?: string; demoPrincipalId?: string;
       state?: {
         phase?: string;
         bom?: any[];
@@ -251,7 +251,7 @@ export class JourneyAXController {
       const result = await this.agentService.processChat({
         message: body.message,
         messages: body.messages,
-        customerId: body.customerId,
+        customerId: body.customerId, demoPrincipalId: body.demoPrincipalId,
         state: body.state,
         tenantId,
         sessionId: body.sessionId,
@@ -280,7 +280,7 @@ export class JourneyAXController {
   async chatStream(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
-    @Body() body: { message?: string; messages?: any[]; customerId?: string; state?: any; tenantId?: string; sessionId?: string; imageBase64?: string; imageUrl?: string },
+    @Body() body: { message?: string; messages?: any[]; customerId?: string; state?: any; tenantId?: string; sessionId?: string; imageBase64?: string; imageUrl?: string; demoPrincipalId?: string },
     @Res() res: Response,
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || 'caroma').toLowerCase();
@@ -314,7 +314,7 @@ export class JourneyAXController {
 
     try {
       await this.agentService.processChatStream(
-        { message: body.message, messages: body.messages, customerId: body.customerId, state: body.state, tenantId, sessionId: body.sessionId, imageBase64: body.imageBase64, imageUrl: body.imageUrl },
+        { message: body.message, messages: body.messages, customerId: body.customerId, demoPrincipalId: body.demoPrincipalId, state: body.state, tenantId, sessionId: body.sessionId, imageBase64: body.imageBase64, imageUrl: body.imageUrl },
         emit,
       );
     } catch (error: any) {

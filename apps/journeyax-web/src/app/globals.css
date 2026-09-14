@@ -2314,3 +2314,43 @@ body {
   .cart-drawer { width: 100vw; }
 }
 
+
+/* Sample-customer demo picker (header) — a real control, styled like the
+   header's other chips so it reads the same on a light or dark header. */
+.chat-header__demo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--surface-hover);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  max-width: 220px;
+}
+.chat-header__demo:hover { border-color: var(--gold); }
+.chat-header__demo select {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  max-width: 180px;
+  text-overflow: ellipsis;
+}
+.chat-header__demo select option { color: #17140F; background: #fff; }
+.chat-panel[data-sidebar="dark"] .chat-header__demo { color: #fff; background: rgba(255,255,255,0.12); }
+/* The demo disclaimer under the composer, beside the capability hint. */
+.chat-demo-note {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.chat-demo-note b { color: var(--text-secondary); font-weight: 600; }

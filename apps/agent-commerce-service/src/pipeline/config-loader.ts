@@ -26,6 +26,9 @@ export interface LoadedProjectConfig {
   model?: string;                 // ai.model — per-project reasoning model
   temperature?: number;           // ai.temperature
   maxTokens?: number;             // ai.maxTokens — open-model reply budget (default 768 in the agent)
+  /** Sample-customer demo fixtures (profiles, orders, offers, inventory) — read
+   *  through the customerHistory tools, bound to the request's demo principal. */
+  demoCustomers?: any;
   apiKey?: string;                // ai.apiKey — per-project LLM key (un-redacted via internal-key fetch)
   baseUrl?: string;               // ai.baseUrl — optional endpoint override
   companyName?: string;           // the business's CURRENT trading name
@@ -98,6 +101,7 @@ export class ConfigLoader {
         model: p?.ai?.model,
         temperature: p?.ai?.temperature,
         maxTokens: p?.ai?.maxTokens,
+        demoCustomers: p?.demoCustomers && typeof p.demoCustomers === 'object' ? p.demoCustomers : undefined,
         apiKey: p?.ai?.apiKey,
         baseUrl: p?.ai?.baseUrl,
         companyName: p?.companyName || p?.name,

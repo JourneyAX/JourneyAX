@@ -65,6 +65,20 @@ export async function GET(req: Request) {
       // tenant-name literal in the panel. Absent = the card's generic default.
       quoteIntro: typeof p?.quoteIntro === 'string' ? p.quoteIntro : null,
       complianceBadge: typeof p?.complianceBadge === 'string' ? p.complianceBadge : null,
+      // Sample-customer demo: only the PUBLIC profile list reaches the browser
+      // (name, country, role, scenario, suggested asks). Orders, offers and
+      // inventory stay server-side and are read through the agent's tools,
+      // bound to the profile the customer picks — never sent wholesale.
+      demoCustomers: p?.demoCustomers?.enabled && Array.isArray(p.demoCustomers.profiles) ? {
+        label: typeof p.demoCustomers.label === 'string' ? p.demoCustomers.label : 'Explore a sample customer',
+        disclaimer: typeof p.demoCustomers.disclaimer === 'string' ? p.demoCustomers.disclaimer : 'Demo data — all customers, orders, prices and stock are fictional.',
+        profiles: p.demoCustomers.profiles.filter((x: any) => x && x.id && x.name).map((x: any) => ({
+          id: String(x.id), name: String(x.name), role: String(x.role || 'customer'),
+          country: x.country ? String(x.country) : null, scenario: x.scenario ? String(x.scenario) : null,
+          summary: x.summary ? String(x.summary) : null,
+          tryAsking: Array.isArray(x.tryAsking) ? x.tryAsking.map(String) : [],
+        })),
+      } : null,
     });
   } catch {
     return json(fallback(PROJECT_ID));

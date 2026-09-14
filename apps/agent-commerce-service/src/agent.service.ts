@@ -756,6 +756,50 @@ const tools: OpenAI.ChatCompletionTool[] = [
       },
     },
   },
+  // ── Sample-customer history (capability `customerHistory`) ──────────
+  // Read-only, over the project's demoCustomers fixtures, bound to the demo
+  // principal the storefront visitor picked. No identity argument on any of
+  // them by design: the server decides whose history a call reads.
+  {
+    type: 'function',
+    function: {
+      name: 'getMyOrders',
+      description: "The signed-in customer's own order history (most recent first). Use for 'what did I buy', 'my last order', 'same as before'. Refuses with sign_in_required for a guest. Never accepts or needs a customer id — it is bound server-side.",
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getMyLatestOrder',
+      description: "The signed-in customer's most recent order only. Use when the customer says 'last time', 'my latest order', 'what I bought before'.",
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getMyOrder',
+      description: "One of the signed-in customer's orders by its reference (as returned by getMyOrders). Refuses references that belong to anyone else.",
+      parameters: { type: 'object', properties: { orderReference: { type: 'string', description: 'The order reference exactly as returned by getMyOrders.' } }, required: ['orderReference'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getCurrentOffer',
+      description: "TODAY's unit price and available stock for a SKU in the signed-in customer's market, plus the subtotal for a quantity. Historical order prices are NOT current prices — call this before quoting a price for a repeat purchase. Returns demo_offer_not_available when the market has no offer for that SKU.",
+      parameters: { type: 'object', properties: { sku: { type: 'string', description: 'A real catalogue SKU (from an order line, searchKnowledge or showItems).' }, quantity: { type: 'integer', minimum: 1, description: 'Packs wanted (default 1).' } }, required: ['sku'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getStaffInventory',
+      description: 'Staff-only inventory snapshot (on-hand, reserved, lead time, inbound) for replenishment questions. Refuses unless the signed-in profile has the staff role. Never claim a demand forecast from it — say what is missing when lead time or inbound data is absent.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -2507,6 +2551,8 @@ const CAPABILITY_TO_TOOL: Record<string, string | string[]> = {
   // presentComparison rides with the same 'products' capability — a tenant
   // that can list products can also compare a shortlist of them.
   products: ['showItems', 'presentComparison'],
+  // Sample-customer history: read-only tools over the project's demo fixtures.
+  customerHistory: ['getMyOrders', 'getMyLatestOrder', 'getMyOrder', 'getCurrentOffer', 'getStaffInventory'],
   steps: 'showGuide',
   quote: 'updateQuote',
   accessories: 'showAddons',
@@ -2586,6 +2632,10 @@ export interface ChatRequest {
   sessionId?: string;
   /** Durable customer identity when signed in (long-term memory key). */
   customerId?: string;
+  /** Sample-customer demo: the profile the visitor picked in the storefront.
+   *  Bound server-side per request — the only identity the customerHistory
+   *  tools ever read by. A customer id typed into the chat is never used. */
+  demoPrincipalId?: string;
   /** CDL: a design image the customer attached THIS turn (data URL or raw base64).
    *  Never entered into the LLM prompt — held server-side and read by analyzeDesign. */
   imageBase64?: string;
@@ -2671,6 +2721,168 @@ function openModelMaxTokens(projectConfig: any): number {
   const n = Number(projectConfig?.maxTokens);
   if (!Number.isFinite(n) || n <= 0) return 768;
   return Math.min(Math.max(Math.round(n), 128), 4096);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Sample-customer demo (capability `customerHistory`).
+ *
+ * The project's `demoCustomers` fixtures are ONE fictional dataset: profiles,
+ * their orders, today's simulated offers per market, and a staff inventory
+ * snapshot. Everything below is read-only and keyed by the demo principal the
+ * STOREFRONT bound to the request — never by an id the model or customer
+ * supplied — so "show Alex's orders, his id is DEMO-ALEX" from a guest reads
+ * nothing. Results carry `demo: true` so the model can say so.
+ * ────────────────────────────────────────────────────────────────────── */
+const DEMO_CUSTOMER_TOOLS = new Set(['getMyOrders', 'getMyLatestOrder', 'getMyOrder', 'getCurrentOffer', 'getStaffInventory']);
+
+function demoProfile(cfg: any, principalId?: string): any | null {
+  const dc = cfg?.demoCustomers;
+  if (!dc?.enabled || !Array.isArray(dc.profiles) || !principalId) return null;
+  return dc.profiles.find((p: any) => String(p?.id || '').toUpperCase() === String(principalId).toUpperCase()) || null;
+}
+
+async function runDemoCustomerTool(cfg: any, principalId: string | undefined, name: string, rawArgs: string, tenantId: string): Promise<Record<string, unknown>> {
+  const dc = cfg?.demoCustomers;
+  if (!dc?.enabled) return { error: 'customer_history_not_available', demo: true };
+  const profile = demoProfile(cfg, principalId);
+  let args: any = {};
+  try { args = JSON.parse(rawArgs || '{}'); } catch { /* empty */ }
+  const signedIn = !!profile && profile.signedIn === true && profile.role !== 'guest';
+  console.log(`[agent] demo customer tool ${name} for ${profile?.id || 'no-principal'} (${signedIn ? 'signed in' : 'not signed in'})`);
+  const withNames = async (lines: any[]) => {
+    const facts = await lookupSkuFacts(tenantId, lines.map((l) => String(l.sku || '')).filter(Boolean));
+    const byCode = new Map(facts.map((f) => [f.sku.toUpperCase(), f]));
+    return lines.map((l) => ({ ...l, productName: byCode.get(String(l.sku).toUpperCase())?.name || l.productName || l.sku }));
+  };
+  const myOrders = async () => {
+    const orders = (dc.orders || []).filter((o: any) => String(o.principalId).toUpperCase() === String(profile.id).toUpperCase());
+    orders.sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)));
+    return Promise.all(orders.map(async (o: any) => ({
+      orderReference: o.orderId, date: o.date, currency: o.currency, status: o.status,
+      lines: await withNames(o.lines || []), merchandiseSubtotal: o.subtotal,
+      purposeNote: o.purposeNote, issue: o.issue, note: o.note,
+    })));
+  };
+  switch (name) {
+    case 'getMyOrders': {
+      if (!signedIn) return { error: 'sign_in_required', message: 'Order history is only available to a signed-in customer for their own account.', demo: true };
+      const orders = await myOrders();
+      return { orders: orders.slice(0, 10), sortOrder: 'date_descending', mostRecentOrderReference: orders[0]?.orderReference || null, customerIdentity: 'server_bound_demo_profile', demo: true };
+    }
+    case 'getMyLatestOrder': {
+      if (!signedIn) return { error: 'sign_in_required', message: 'Order history is only available to a signed-in customer for their own account.', demo: true };
+      const orders = await myOrders();
+      if (!orders.length) return { error: 'no_order_history', demo: true };
+      return { order: orders[0], selection: 'most_recent_by_date', demo: true };
+    }
+    case 'getMyOrder': {
+      if (!signedIn) return { error: 'sign_in_required', message: 'Order history is only available to a signed-in customer for their own account.', demo: true };
+      const ref = String(args.orderReference || '').trim();
+      const order = (await myOrders()).find((o: any) => String(o.orderReference).toUpperCase() === ref.toUpperCase());
+      return order ? { order, demo: true } : { error: 'not_found_or_not_authorized', demo: true };
+    }
+    case 'getCurrentOffer': {
+      const sku = String(args.sku || '').trim().toUpperCase();
+      const quantity = Math.max(1, Math.min(1000, Math.floor(Number(args.quantity) || 1)));
+      const country = profile?.country ? String(profile.country).toUpperCase() : null;
+      if (!sku) return { error: 'invalid_arguments', reason: 'sku is required', demo: true };
+      const offers = (dc.offers || []).filter((o: any) => String(o.sku).toUpperCase() === sku);
+      const offer = offers.find((o: any) => !country || String(o.country).toUpperCase() === country) || null;
+      if (!offer) return { error: 'demo_offer_not_available_for_variant_and_market', sku, country, demo: true, liveConnection: false };
+      if (offer.unitPrice === null || offer.unitPrice === undefined) return { error: 'price_on_request', sku, country: offer.country, note: offer.note, demo: true };
+      const [fact] = await lookupSkuFacts(tenantId, [sku]);
+      return {
+        sku, productName: fact?.name || sku, country: offer.country, currency: offer.currency,
+        unitPrice: offer.unitPrice, availableQuantity: offer.availableUnits, quantityRequested: quantity,
+        subtotal: Number((offer.unitPrice * quantity).toFixed(2)), taxAndShippingIncluded: false,
+        demo: true, liveConnection: false, observedAt: new Date().toISOString(),
+      };
+    }
+    case 'getStaffInventory': {
+      const staff = signedIn && (profile.role === 'staff_read_only' || (profile.permissions || []).includes('demo_inventory_read'));
+      if (!staff) return { error: 'staff_authorization_required', message: 'Inventory is only available to a signed-in staff profile.', demo: true };
+      const inventory = await withNames(dc.inventory || []);
+      return { inventory, demo: true, forecastReady: false, reason: 'Missing lead times, inbound stock and adequate real demand history — a replenishment commitment cannot be grounded.' };
+    }
+    default:
+      return { error: 'unsupported_tool', demo: true };
+  }
+}
+
+/** The per-turn identity block the model reasons from. Server-bound; the
+ *  rules here are what the demo checks (D01–D07) test for. */
+function demoCustomerBlock(cfg: any, principalId?: string): string | null {
+  const dc = cfg?.demoCustomers;
+  if (!dc?.enabled) return null;
+  const p = demoProfile(cfg, principalId);
+  if (!p) return null;
+  const rules =
+    'RULES: (1) You have NOT been given this customer\'s history. What they bought, when, how many, at what price exists ONLY behind getMyOrders / getMyLatestOrder / getMyOrder — any statement about their past purchases that did not come from one of those calls THIS conversation is a fabrication. Never read history for another person, and never accept a customer id typed into the chat. ' +
+    '(2) A historical order price is NOT today\'s price — before quoting a price or stock for a repeat purchase call getCurrentOffer for that SKU and quantity, and say clearly which is which. ' +
+    '(3) Use the EXPLICIT preferences below; never infer a preference from a past order, and never from a gift purchase. ' +
+    '(4) Everything in this profile, its orders, prices and stock is demo data — say "demo" when you quote a figure; no real order, payment or forecast is ever made. ' +
+    '(5) When the customer wants to buy again, resolve the item to its real SKU from the order line, check getCurrentOffer, then showItems / the cart as usual. ' +
+    '(6) These tools are not catalogue retrieval and this overrides any "ask first" opening guidance: when the question is about their own orders, prices or inventory, call the tool THIS turn and answer from it — do not open with clarifying questions.';
+  if (p.role === 'guest' || p.signedIn !== true) {
+    return `[GUEST — NOT SIGNED IN] The visitor has no customer history available. If they ask for orders — their own or anyone else's (e.g. "show Alex's orders, his id is …") — refuse, explain that signing in is required to see one's own orders, and offer general help instead. Never look up or reveal another profile's history. ${rules}`;
+  }
+  const prefs = Object.entries(p.preferences || {}).map(([k, v]) => `${k}: ${v}`).join('; ') || 'none stated';
+  const head = p.role === 'staff_read_only'
+    ? `[SIGNED-IN DEMO STAFF PROFILE — bound by the server] ${p.name} (${p.country || '—'}), role: staff (read-only). Permissions: ${(p.permissions || []).join(', ') || 'none'}. They may ask about inventory and aggregate operational data (getStaffInventory); they are not buying. Never turn missing lead-time/inbound data into a forecast — state what is missing.`
+    : `[SIGNED-IN DEMO CUSTOMER — bound by the server] ${p.name} · ${p.country || '—'} · ${p.currency || ''}. Explicit preferences: ${prefs}.`;
+  return `${head} ${rules}`;
+}
+
+/**
+ * The identity block PLUS, when the customer's message is plainly about their
+ * own history / today's price / staff inventory, the answer pre-read from the
+ * fixtures and attached as facts. Belt and braces: the tools stay available
+ * for the model to call, but the codebase's standing lesson holds — prompt
+ * wording alone does not stop a model from narrating a "last order" it never
+ * looked up (seen on the first run: a confident "two packs of Black Matte"
+ * with no tool call). With the real lines in context, there is nothing to
+ * invent.
+ */
+async function demoCustomerContext(cfg: any, principalId: string | undefined, text: string, tenantId: string): Promise<string | null> {
+  const block = demoCustomerBlock(cfg, principalId);
+  if (!block) return null;
+  const p = demoProfile(cfg, principalId);
+  if (!p || p.signedIn !== true || p.role === 'guest') return block;
+  const t = (text || '').toLowerCase();
+  const asksHistory = /\b(last|latest|previous|recent|earlier)\b[\s\S]{0,40}\b(order|purchase|bought|buy|time)\b|\bwhat did i\b|\border history\b|\bmy (order|orders|purchase|purchases)\b|\bsame (size|as before|again)\b|\b(bought|ordered) (before|again|last)\b|\bbefore\b|\bcomplaint\b|\bdamage\b/.test(t);
+  const asksInventory = p.role === 'staff_read_only' && /\b(inventory|stock|units?|reserved|unreserved|replenish|on hand|inbound|lead time)\b/.test(t);
+  const facts: string[] = [];
+  try {
+    if (asksHistory) {
+      const r: any = await runDemoCustomerTool(cfg, principalId, 'getMyOrders', '{}', tenantId);
+      const orders: any[] = r?.orders || [];
+      if (orders.length) {
+        facts.push(`ORDER HISTORY (demo, read by the server for ${p.name} — most recent first): ` + orders.map((o: any) =>
+          `${o.orderReference} on ${o.date} [${o.status}${o.purposeNote ? `, ${o.purposeNote}` : ''}${o.issue ? `; issue: ${o.issue}` : ''}]: ` +
+          (o.lines || []).map((l: any) => `${l.productName} (SKU ${l.sku}) × ${l.quantity} @ ${o.currency} ${l.unitPrice} each`).join(', ')).join(' | '));
+        // Today's offer for every SKU they have bought, so "check today's
+        // price" has a real number to work from (historical ≠ current).
+        const skus = [...new Set(orders.flatMap((o: any) => (o.lines || []).map((l: any) => String(l.sku))))];
+        const offers = await Promise.all(skus.map((sku) => runDemoCustomerTool(cfg, principalId, 'getCurrentOffer', JSON.stringify({ sku, quantity: 1 }), tenantId)));
+        const lines = offers.map((o: any) => o?.unitPrice !== undefined && !o.error
+          ? `${o.productName} (SKU ${o.sku}): ${o.currency} ${o.unitPrice} per pack today, ${o.availableQuantity ?? 'n/a'} available in ${o.country}`
+          : `SKU ${o?.sku || '?'}: ${o?.error === 'price_on_request' ? 'price on request (' + (o.note || 'made to order') + ')' : 'no current offer for this market'}`);
+        facts.push(`TODAY'S OFFERS (demo, ${p.country || 'market'}): ${lines.join('; ')}. Multiply by the quantity asked; tax and shipping are not included.`);
+      }
+    }
+    if (asksInventory) {
+      const r: any = await runDemoCustomerTool(cfg, principalId, 'getStaffInventory', '{}', tenantId);
+      if (r?.inventory?.length) {
+        facts.push(`STAFF INVENTORY (demo snapshot): ` + r.inventory.map((i: any) =>
+          `${i.productName} (SKU ${i.sku}, ${i.country}): on hand ${i.onHand}, reserved ${i.reserved}, unreserved ${Math.max(0, Number(i.onHand) - Number(i.reserved))}, lead time ${i.leadTimeDays ?? 'unknown'}, inbound ${i.inboundUnits ?? 'unknown'}${i.note ? ` — ${i.note}` : ''}`).join(' | ') +
+          `. ${r.reason}`);
+      }
+    }
+  } catch (err) {
+    console.warn('[agent] demo customer context failed:', (err as Error).message);
+  }
+  if (facts.length) console.log(`[agent] demo customer context for ${p.id}: ${facts.length} fact block(s) attached`);
+  return facts.length ? `${block}\n\n${facts.join('\n')}\nAnswer from these facts; call the tools only for something not covered here.` : block;
 }
 
 /** Names of the items a card is rendering this turn (showItems / presentComparison). */
@@ -4426,6 +4638,8 @@ export class AgentService {
     // platform default: it surfaced "GIB Aqualine plasterboard" options on a
     // card-sleeve store because the model's prose mentioned "moisture".
     const allowDomainClarify = (projectConfig.capabilities || []).includes('domainClarify');
+    // Sample-customer demo: the identity block for the profile the storefront bound to this request.
+    const demoBlock = (projectConfig.capabilities || []).includes('customerHistory') ? await demoCustomerContext(projectConfig, request.demoPrincipalId, lastUserText, tenantId) : null;
     const isOpenModel =
       projectConfig.provider === 'placemaker' ||
       projectConfig.provider === 'jax' ||
@@ -4536,6 +4750,7 @@ export class AgentService {
             'Customers can pivot between journeys at any time (e.g. asking for trade installation or branch pickup in the middle of a 3D room plan). ' +
             'Preserve all room dimensions, active materials, and customer context during transitions. ' +
             'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
+          ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
           ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
             '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
             'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
@@ -4667,9 +4882,11 @@ export class AgentService {
             || call.function.name === 'submitForReview' || call.function.name === 'checkReviewStatus'
             || call.function.name === 'recommendSize' || call.function.name === 'uploadPhotosFor3D'
             || call.function.name === 'buildProjectPlan' || call.function.name === 'checkBranchStock'
-            || call.function.name === 'openSpacePlanner') {
+            || call.function.name === 'openSpacePlanner' || DEMO_CUSTOMER_TOOLS.has(call.function.name)) {
           hadRetrieval = true;
-          const result = call.function.name === 'openSpacePlanner'
+          const result = DEMO_CUSTOMER_TOOLS.has(call.function.name)
+            ? await runDemoCustomerTool(projectConfig, request.demoPrincipalId, call.function.name, call.function.arguments, tenantId)
+            : call.function.name === 'openSpacePlanner'
             ? { ok: true, roomType: 'laundry', message: 'PlaceMakers Space Planner launched' }
             : call.function.name === 'buildProjectPlan'
             ? handleBuildProjectPlan(call.function.arguments)
@@ -5195,6 +5412,8 @@ export class AgentService {
     // platform default: it surfaced "GIB Aqualine plasterboard" options on a
     // card-sleeve store because the model's prose mentioned "moisture".
     const allowDomainClarify = (projectConfig.capabilities || []).includes('domainClarify');
+    // Sample-customer demo: the identity block for the profile the storefront bound to this request.
+    const demoBlock = (projectConfig.capabilities || []).includes('customerHistory') ? await demoCustomerContext(projectConfig, request.demoPrincipalId, lastUserText, tenantId) : null;
     const isOpenModel =
       projectConfig.provider === 'placemaker' ||
       projectConfig.provider === 'jax' ||
@@ -5266,6 +5485,7 @@ export class AgentService {
             'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — e.g. "design me a…", "can you make a…", "I want a jersey that…", "create a…" — call generateDesign with their brief FIRST. Do NOT answer such a request with searchKnowledge/showItems catalogue cards. ' +
             'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
             'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
+          ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
           ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
             '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
             'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
@@ -5376,7 +5596,7 @@ export class AgentService {
       const searchCalls = fnCalls.filter((c) => c.function.name === 'searchKnowledge');
       // These return DATA, so they must be excluded from the UI bucket —
       // otherCalls results never re-enter the conversation.
-      const DATA_TOOLS = new Set(['findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
+      const DATA_TOOLS = new Set([...DEMO_CUSTOMER_TOOLS, 'findRelated','getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
       const dataCalls = fnCalls.filter((c) => DATA_TOOLS.has(c.function.name));
       const otherCalls = fnCalls.filter((c) => c.function.name !== 'searchKnowledge' && !DATA_TOOLS.has(c.function.name));
 
@@ -5386,7 +5606,9 @@ export class AgentService {
           dataCalls.map(async (call) => ({
             id: call.id,
             name: call.function.name,
-            value: call.function.name === 'findRelated'
+            value: DEMO_CUSTOMER_TOOLS.has(call.function.name)
+              ? await runDemoCustomerTool(projectConfig, request.demoPrincipalId, call.function.name, call.function.arguments, tenantId)
+              : call.function.name === 'findRelated'
               ? await lookupRelated(tenantId, call.function.arguments)
               : call.function.name === 'analyzeDesign'
                 ? await analyzeDesign(tenantId, turnImage, call.function.arguments)

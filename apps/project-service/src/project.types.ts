@@ -94,6 +94,51 @@ export interface ProjectTheme {
   visualizerEnabled: boolean;
 }
 
+/**
+ * Sample-customer demo fixtures — one coherent FICTIONAL dataset per project,
+ * read through the agent's `customerHistory` tools and bound to the profile
+ * the storefront visitor picks under "Explore a sample customer". Profile
+ * selection is a demo substitute for authenticated identity: the server
+ * binds it per request; a customer id typed into chat is never trusted.
+ * Nothing here is ever written by the agent.
+ */
+export interface DemoCustomerProfile {
+  id: string;                          // e.g. "DEMO-ALEX"
+  name: string;
+  role: 'customer' | 'staff_read_only' | 'guest';
+  country?: string | null;             // ISO-2, drives which current offer applies
+  currency?: string | null;
+  signedIn: boolean;                   // false ⇒ history tools refuse (sign_in_required)
+  preferences?: Record<string, string>;// EXPLICIT preferences only (never inferred from orders)
+  permissions?: string[];              // e.g. demo_inventory_read
+  scenario?: string;
+  summary?: string;                    // one line shown in the storefront picker
+  tryAsking?: string[];                // suggested openers for this profile
+}
+export interface DemoOrder {
+  orderId: string;
+  principalId: string;                 // owner — the ONLY key history is read by
+  date: string;                        // ISO date
+  currency: string;
+  status: string;
+  lines: { sku: string; quantity: number; unitPrice: number; lineTotal?: number }[];
+  subtotal: number;
+  purposeNote?: string;                // "gift" ⇒ not a preference signal
+  note?: string;
+  issue?: string;                      // e.g. a packaging complaint
+}
+export interface DemoOffer { sku: string; country: string; currency: string; unitPrice: number | null; availableUnits: number | null; note?: string }
+export interface DemoInventory { sku: string; country: string; onHand: number; reserved: number; leadTimeDays?: number | null; inboundUnits?: number | null; note?: string }
+export interface DemoCustomers {
+  enabled: boolean;
+  label?: string;                      // picker label, default "Explore a sample customer"
+  disclaimer?: string;
+  profiles: DemoCustomerProfile[];
+  orders: DemoOrder[];
+  offers: DemoOffer[];
+  inventory: DemoInventory[];
+}
+
 export interface ProjectAiConfig {
   provider: string;            // "openai" | "anthropic" | "gemini" | "ollama"
   model: string;               // "gpt-4o" | "claude-sonnet-5" | "gemini-2.5-pro" | "llama3.3:70b"
@@ -269,6 +314,8 @@ export interface ProjectConfig {
   // assembled at runtime from this, not hardcoded. Empty/undefined = all (back-compat).
   // e.g. ["products","accessories","installGuide","warranty","quote","choice","steps"].
   capabilities?: string[];
+  /** Sample-customer demo fixtures (see DemoCustomers). Optional; off when absent. */
+  demoCustomers?: DemoCustomers;
   // Customer-facing display labels the storefront applies (so "Products" can read
   // "Services"/"Programs" per business). Optional; sensible defaults if unset.
   labels?: {
@@ -437,6 +484,7 @@ export interface UpdateProjectDto {
   theme?: Partial<ProjectTheme>;
   channels?: Partial<ProjectChannels>;
   ai?: Partial<ProjectAiConfig>;
+  demoCustomers?: DemoCustomers | null;
   integrations?: Partial<ProjectIntegrations>;
   capabilities?: string[];
   labels?: { items?: string; itemsSingular?: string; headerTitle?: string };

@@ -79,6 +79,12 @@ export interface StorefrontConfig {
    *  `projectId === 'placemakers'` literal inside a shared panel. */
   quoteIntro?: string | null;
   complianceBadge?: string | null;
+  /** Sample-customer demo picker (public profile list only; history is read server-side). */
+  demoCustomers?: {
+    label: string;
+    disclaimer: string;
+    profiles: { id: string; name: string; role: string; country: string | null; scenario: string | null; summary: string | null; tryAsking: string[] }[];
+  } | null;
 }
 
 export interface FulfilmentConfig {
@@ -105,6 +111,7 @@ const DEFAULT: StorefrontConfig = {
   fulfilment: null,
   quoteIntro: null,
   complianceBadge: null,
+  demoCustomers: null,
 };
 
 const Ctx = createContext<StorefrontConfig>(DEFAULT);

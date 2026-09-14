@@ -520,6 +520,9 @@ export class ProjectService {
     // Storefront opening-screen copy (starters + input placeholder) — set per
     // tenant so the example is vertical-true, not a hardcoded generic one.
     if ((dto as any).intro) $set.intro = (dto as any).intro;
+    // Sample-customer demo fixtures: replaced wholesale (profiles/orders/offers/
+    // inventory are one coherent, fictional dataset — never merged piecemeal).
+    if ((dto as any).demoCustomers !== undefined) $set.demoCustomers = (dto as any).demoCustomers;
     // Card CMS (v3): tokens + per-card settings, and fulfilment, are coherent
     // units — replaced wholesale like `business`. cardTemplates arrives already
     // validated + stamped by the controller (see validateCardTemplates).

@@ -235,6 +235,17 @@ export default function ChatPanel() {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  // Sample-customer demo (config-driven: cfg.demoCustomers). The chosen profile
+  // is remembered per project and sent with every turn; changing it starts a
+  // fresh conversation so one thread never mixes two identities.
+  const demoKey = (projectId?: string) => `jx:demo-principal:${projectId || 'default'}`;
+  const [demoPrincipalId, setDemoPrincipalId] = useState<string>('');
+  const demoPrincipalRef = useRef<string>('');
+  demoPrincipalRef.current = demoPrincipalId;
+  useEffect(() => {
+    try { setDemoPrincipalId(localStorage.getItem(demoKey(cfg.projectId)) || ''); } catch { setDemoPrincipalId(''); }
+  }, [cfg.projectId]);
+  const demoProfile = cfg.demoCustomers?.profiles.find((p) => p.id === demoPrincipalId) || null;
   // A broken theme.logoUrl (real example: Caroma's /assets/caroma-logo.svg
   // 404s) used to just vanish — onError hid the <img> with no fallback,
   // leaving the header with NO brand identity at all. Fall back to the text
@@ -460,6 +471,10 @@ export default function ChatPanel() {
         message: newUserMessage,
         sessionId: existingSessionId,
         ...(attachedImage ? { imageBase64: attachedImage } : {}),
+        // Sample-customer demo: the profile picked in the header binds the
+        // server-side identity the history tools read by (a demo stand-in
+        // for real sign-in; the agent never trusts an id typed into chat).
+        ...(demoPrincipalRef.current ? { demoPrincipalId: demoPrincipalRef.current } : {}),
         // customerId will be attached here once storefront auth lands (long-term memory key).
       });
       if (attachedImage) { setPendingImage(null); pendingImageRef.current = null; }
@@ -976,6 +991,30 @@ export default function ChatPanel() {
           {/* Cart — every commerce mode, not just retail: the quote/BOM is just
               as much "what's in my cart" as a B2C bag. Opens a drawer over the
               thread rather than a separate stage — see CartDrawer.tsx. */}
+          {cfg.demoCustomers && cfg.demoCustomers.profiles.length > 0 && (
+            <label className="chat-header__demo" title={cfg.demoCustomers.disclaimer}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+              </svg>
+              <select
+                aria-label={cfg.demoCustomers.label}
+                value={demoPrincipalId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  try { if (id) localStorage.setItem(demoKey(cfg.projectId), id); else localStorage.removeItem(demoKey(cfg.projectId)); } catch { /* best effort */ }
+                  setDemoPrincipalId(id);
+                  demoPrincipalRef.current = id;
+                  startNewConversation();
+                }}
+              >
+                <option value="">{cfg.demoCustomers.label}</option>
+                {cfg.demoCustomers.profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}{p.country ? ` · ${p.country}` : ''}{p.role === 'staff_read_only' ? ' · Staff' : p.role === 'guest' && p.name.toLowerCase() !== 'guest' ? ' · Guest' : ''}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {/* Always present (an empty cart is still a place to look), the count
               badge only once there is something in it. */}
           <button
@@ -1084,9 +1123,12 @@ export default function ChatPanel() {
 
       {/* Input */}
       <div className="chat-input-area">
-        {state.phase === 'intro' && messages.length === 0 && introStarters.length > 0 && (
+        {state.phase === 'intro' && messages.length === 0 && (demoProfile?.tryAsking?.length || introStarters.length > 0) && (
           <div className="chat-suggestions">
-            {introStarters.map((s, i) => (
+            {(demoProfile?.tryAsking?.length
+              ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
+              : introStarters
+            ).map((s, i) => (
               <div
                 key={i}
                 className="chat-suggestion"
@@ -1149,6 +1191,12 @@ export default function ChatPanel() {
         <div className="chat-input-hint">
           {cfg.systemName || 'Your consultant'} can search products, check stock and build your {isCart ? 'bag' : 'quote'}.
         </div>
+        {demoProfile && cfg.demoCustomers && (
+          <div className="chat-demo-note">
+            Exploring as <b>{demoProfile.name}{demoProfile.country ? ` · ${demoProfile.country}` : ''}</b>
+            {demoProfile.scenario ? ` — ${demoProfile.scenario}` : ''}. {cfg.demoCustomers.disclaimer}
+          </div>
+        )}
       </div>
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
     </div>
