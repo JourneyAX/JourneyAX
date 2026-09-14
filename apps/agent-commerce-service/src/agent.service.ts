@@ -2657,6 +2657,63 @@ function effectiveSearchQuery(modelQuery: unknown, ctx?: RetrievalContext): stri
   return composed;
 }
 
+/** Names of the items a card is rendering this turn (showItems / presentComparison). */
+function shownItemNames(uiToolCalls: any[]): string[] {
+  const names: string[] = [];
+  for (const call of uiToolCalls || []) {
+    const fn = call?.function?.name;
+    if (fn !== 'showItems' && fn !== 'presentComparison') continue;
+    let args: any = {};
+    try { args = JSON.parse(call.function.arguments || '{}'); } catch { continue; }
+    const items: any[] = args.products || args.items || [];
+    for (const it of items) {
+      const n = String(it?.name || it?.title || '').trim();
+      if (n) names.push(n);
+    }
+  }
+  return [...new Set(names)];
+}
+
+/**
+ * The card already lists every item (name, image, price, reason). gpt-4o
+ * still narrates them one by one above it — numbered, then bulleted once
+ * numbering was banned — however the prompt is worded. So this is settled
+ * in code: drop the lines that merely enumerate the shown items and keep
+ * the consultant's framing (intro sentence, lead pick, closing question).
+ * Deterministic, no model call. Untouched unless at least two such lines
+ * would go — a single mention in flowing prose is fine.
+ */
+function compactItemListing(text: string, names: string[]): string {
+  if (!text || names.length < 2) return text;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const keys = names.map(norm).filter((k) => k.length >= 4);
+  if (!keys.length) return text;
+  // Segment by line; a single paragraph that inlines "…:1. Name: … 2. Name: …"
+  // is split at its NUMBERED markers too. Dashes are never inline markers —
+  // product names carry them ("Blue - Matte Sleeves"); a bullet only counts
+  // at the start of a line.
+  const marker = /(?=(?<=^|[\s:.!?;])\d+[.)]\s+(?=[A-Z*"“]))/;
+  const segs = text.split(/\n+/).flatMap((line) => line.split(marker));
+  const isListLine = (s: string) => /^\s*(?:\d+[.)]|[-•*])\s+/.test(s) || /^\s*\*\*[^*]+\*\*\s*[:—–-]/.test(s);
+  const mentions = (s: string) => { const ns = norm(s); return keys.some((k) => ns.includes(k)); };
+  const drop = segs.map((s) => isListLine(s) && mentions(s));
+  if (drop.filter(Boolean).length < 2) return text;
+  const kept = segs
+    .flatMap((s, i) => {
+      if (!drop[i]) return [s];
+      // A closing question glued to the last item ("…unique twist.Which one
+      // catches your eye?") is the consultant's, not the item's — keep it.
+      const tail = s.match(/(?<=[.!?])\s*([A-Z][^.!?]*\?)\s*$/);
+      return tail && !mentions(tail[1]) ? [tail[1]] : [];
+    })
+    .map((s) => s.trim())
+    .filter(Boolean)
+    // An intro that ended in a colon now introduces the card, not a list.
+    .map((s) => s.replace(/:\s*$/, '.'));
+  const out = kept.join('\n\n').trim();
+  return out || text;
+}
+
 /** "What's the difference between X and Y", "X vs Y", "compare A with B". */
 function isComparisonAsk(text: string): boolean {
   const t = (text || '').toLowerCase();
@@ -4937,6 +4994,11 @@ export class AgentService {
         : (call as any).__research ? (call as any).__research
         : JSON.parse(call.function.arguments),
     }));
+    // Same compaction as the streamed path: the card lists the items, the text does not.
+    if (!isOpenModel && finalMessage?.content) {
+      const names = shownItemNames(uiToolCalls);
+      if (names.length >= 2) finalMessage = { ...finalMessage, content: compactItemListing(String(finalMessage.content), names) };
+    }
     // SAFETY NET: the gender gate fired but the model didn't render a clarify → synthesize
     // it so the buttoned panel ALWAYS appears (deterministic, no model dependence).
     if (mustClarifyGender && !uiActions.some((a) => a.name === 'setPhase' && (a.arguments as any)?.phase === 'clarify')) {
@@ -5608,6 +5670,13 @@ export class AgentService {
     let pending = '';   // holds an in-progress sentence (plainRetail only)
     let openModelBuffer = '';
     let openModelSuppressingToolCall = false;
+    // A card is rendering the items this turn (showItems ran in a tool round
+    // above) → hold the spoken answer instead of streaming it token by token,
+    // compact away any line-by-line re-listing of those items, then emit it in
+    // one go. The working strip covers the pause; the customer gets the
+    // consultant's framing and the card, not the card twice.
+    const shownNames = isOpenModel ? [] : shownItemNames(uiToolCalls);
+    const holdForCard = shownNames.length >= 2;
 
     try {
       // No tools/tool_choice here → the model can only produce text (OpenAI rejects
@@ -5623,6 +5692,7 @@ export class AgentService {
         const delta = chunk.choices[0]?.delta?.content || '';
         if (!delta) continue;
         finalText += delta;
+        if (holdForCard) continue;   // emitted once, compacted, after the stream
 
         if (isOpenModel) {
           openModelBuffer += delta;
@@ -5726,6 +5796,16 @@ export class AgentService {
     if (plainRetail && pending) {
       const clean = this.stripCartTaboo(pending, true);
       if (clean) emit('token', { delta: clean });
+    }
+    if (holdForCard) {
+      const before = finalText;
+      finalText = compactItemListing(finalText, shownNames);
+      if (finalText !== before) {
+        console.log(`[agent] compacted item re-listing beside the card (${before.length} → ${finalText.length} chars)`);
+        pushTrace({ step: 'compact', detail: `dropped the text re-listing of ${shownNames.length} shown item(s)` });
+      }
+      const spoken = this.stripCartTaboo(this.stripChatMedia(finalText), plainRetail).trim();
+      if (spoken) emit('token', { delta: spoken });
     }
     finalText = this.stripCartTaboo(this.stripChatMedia(finalText), plainRetail);
     finalText = finalText.replace(/(?:oh no,?\s*)?(?:a\s*)?leaking\s+bathroom\s+is\s+never\s+fun!?[.\s]*/gi, '').trim();
