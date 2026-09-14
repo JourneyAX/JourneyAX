@@ -38,7 +38,7 @@ CONVERSATION and the customer's latest message, and return ONLY a JSON object:
   "mode": "business" for planning/selling/discovery, "technical" for install/repair/specs,
   "needsRetrieval": boolean,
   "retrievalType": one of ["product","design","collection","troubleshooting","installation","faq","none"],
-  "panelRenderBlocked": boolean — true ONLY when the customer EXPLICITLY says they do NOT want the right-hand panel to render/show items yet. Examples that set this true: "don't render yet", "don't choose one for me", "don't show it yet", "just tell me what to look for", "I'll pick the design from the panel — don't render". Examples that leave this false: browsing normally, asking to see items, confirming colours. Default: false.
+  "panelRenderBlocked": boolean — true ONLY when the customer EXPLICITLY says they do NOT want the conversation to render/show items yet. Examples that set this true: "don't render yet", "don't choose one for me", "don't show it yet", "just tell me what to look for", "I'll pick the design from the panel — don't render". Examples that leave this false: browsing normally, asking to see items, confirming colours. Default: false.
   "confidence": 0..1,
   "missingInfo": array of context still missing (e.g. ["budget","dimensions","fixtures"]),
   "organization": if the customer names a specific school, college, university, club, team or company they are buying/designing FOR, return { "name": "...", "location": "city, state if given" }; otherwise null

@@ -871,7 +871,12 @@ export default function ChatPanel() {
     .map((m, i) => ({
       id: `msg-${i}`,
       role: m.role as 'user' | 'ai' | 'note',
-      text: m.content || ''
+      // Display-side safety net: an open model's `TOOL_CALL: name({...})` is a
+      // machine instruction, never chat. The server strips balanced calls and
+      // now unterminated ones too (agent.service.ts); should one still slip
+      // through a replayed transcript, cut from the marker to the end — after
+      // it there is only ever the (possibly truncated) JSON.
+      text: (m.content || '').replace(/\s*TOOL_CALL:\s*[A-Za-z0-9_]+\s*\([\s\S]*$/i, '').trimEnd(),
     }))]
     .filter(m => m.text)
     // Multi-tenant greeting: the welcome bubble shows the project's configured
@@ -1123,10 +1128,13 @@ export default function ChatPanel() {
           />
           <button type="submit" className="chat-send-btn" aria-label="Send message">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M4 12h13M11 5l7 7-7 7" stroke="#F7F4EE" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </form>
+        <div className="chat-input-hint">
+          {cfg.systemName || 'Your consultant'} can search products, check stock and build your {isCart ? 'bag' : 'quote'}.
+        </div>
       </div>
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
     </div>

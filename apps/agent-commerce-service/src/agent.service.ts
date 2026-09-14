@@ -311,7 +311,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
         "Call this whenever the customer describes a look they want (colours, team name, number, style, vibe) rather than uploading one, e.g. 'design me a navy and orange baseball jersey for the Cougars, number 30, aggressive'. " +
         "It generates a concept image, then reads and matches it to our make-able template library, returning the same decision as analyzeDesign: " +
         "`decision:'use'` (we already make this style — `template.sku` is the code, and the configurator will open) or `decision:'create'` (a brand-new pattern our artist will finalise). " +
-        "After it returns on 'use', tell the customer you've designed their concept and it's shown on the right; invite them to tweak colours, name or number. " +
+        "After it returns on 'use', tell the customer you've designed their concept and it's shown below; invite them to tweak colours, name or number. " +
         "If they then say 'make the sleeves brighter' or similar, call generateDesign again with the refined brief to iterate.",
       parameters: {
         type: 'object',
@@ -458,14 +458,14 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'setPhase',
-      description: 'Update the UI phase. When transitioning to "clarify", you MUST provide dynamic questions tailored to the user\'s context. These questions will render on the right panel.',
+      description: 'Update the UI phase. When transitioning to "clarify", you MUST provide dynamic questions tailored to the user\'s context. These questions will render in the conversation.',
       parameters: {
         type: 'object',
         properties: {
           phase: { type: 'string', enum: ['intro', 'clarify', 'validating', 'products', 'quote', 'ordered'] },
           questions: {
             type: 'array',
-            description: 'Dynamic clarification questions to show on the right panel. Required when phase is "clarify".',
+            description: 'Dynamic clarification questions to show in the conversation. Required when phase is "clarify".',
             items: {
               type: 'object',
               properties: {
@@ -518,7 +518,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'showItems',
-      description: 'Show recommendation cards (items — products, services or options) on the right panel. Use AFTER searchKnowledge to present items for review BEFORE building the final quote. Use only real data returned by searchKnowledge — never invent.',
+      description: 'Show recommendation cards (items — products, services or options) in the conversation. Use AFTER searchKnowledge to present items for review BEFORE building the final quote. Use only real data returned by searchKnowledge — never invent.',
       parameters: {
         type: 'object',
         properties: {
@@ -583,7 +583,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'showGuide',
-      description: 'Show an interactive troubleshooting or installation guide on the right panel. Use this for step-by-step instructions (e.g. diagnosing a leak, installing a product).',
+      description: 'Show an interactive troubleshooting or installation guide in the conversation. Use this for step-by-step instructions (e.g. diagnosing a leak, installing a product).',
       parameters: {
         type: 'object',
         properties: {
@@ -609,7 +609,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'showAddons',
-      description: 'Show recommended accessories / add-on parts for the selected product(s) on the right panel, grouped by necessity. Use AFTER the customer has chosen their main products. Use only real items from searchKnowledge — do NOT invent SKUs, prices, or images.',
+      description: 'Show recommended accessories / add-on parts for the selected product(s) in the conversation, grouped by necessity. Use AFTER the customer has chosen their main products. Use only real items from searchKnowledge — do NOT invent SKUs, prices, or images.',
       parameters: {
         type: 'object',
         properties: {
@@ -638,7 +638,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'presentChoice',
-      description: 'Present a decision to the customer as selectable options on the right panel (e.g. "DIY vs professional installation", "which finish"). Generic — use whenever the journey needs the customer to pick a path before continuing.',
+      description: 'Present a decision to the customer as selectable options in the conversation (e.g. "DIY vs professional installation", "which finish"). Generic — use whenever the journey needs the customer to pick a path before continuing.',
       parameters: {
         type: 'object',
         properties: {
@@ -665,7 +665,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'showDocuments',
-      description: 'Show official installation / troubleshooting guide documents (PDFs) for a product on the right panel, with view + download links. Use the documents returned by searchKnowledge — NEVER invent URLs. If a product has multiple guides, include all relevant ones.',
+      description: 'Show official installation / troubleshooting guide documents (PDFs) for a product in the conversation, with view + download links. Use the documents returned by searchKnowledge — NEVER invent URLs. If a product has multiple guides, include all relevant ones.',
       parameters: {
         type: 'object',
         properties: {
@@ -692,7 +692,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'showInfo',
-      description: 'Show warranty & guarantee information for the selected product(s) on the right panel, BEFORE building the quote. Use ONLY warranty facts found in the knowledge base. If product-specific warranty is not in the data, say so honestly (do not invent terms). Optionally offer an extended warranty / service package if one is configured.',
+      description: 'Show warranty & guarantee information for the selected product(s) in the conversation, BEFORE building the quote. Use ONLY warranty facts found in the knowledge base. If product-specific warranty is not in the data, say so honestly (do not invent terms). Optionally offer an extended warranty / service package if one is configured.',
       parameters: {
         type: 'object',
         properties: {
@@ -805,7 +805,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
       description:
         "CALCULATE a complete authoritative bill-of-materials and project plan for DIY and trade building projects (Decking, Fencing, Wall Lining, Retaining, Cladding). " +
         "Call this whenever a customer asks to plan, size, estimate, or calculate materials for a project (e.g. 'help me plan a 4x3m deck', 'estimate materials for a 20m fence', 'how much GIB board for 40m2 wall'). " +
-        "It deterministically computes structural bearers, joists, palings/boards, fasteners, concrete, tools needed, and NZ Building Code compliance notes, and opens the interactive Project Plan on the right panel.",
+        "It deterministically computes structural bearers, joists, palings/boards, fasteners, concrete, tools needed, and NZ Building Code compliance notes, and opens the interactive Project Plan in the conversation.",
       parameters: {
         type: 'object',
         properties: {
@@ -847,7 +847,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'openSpacePlanner',
       description:
-        "LAUNCH the interactive 3D and 2D PlaceMakers Space & Modular Cabinet Planner on the right panel. " +
+        "LAUNCH the interactive 3D and 2D PlaceMakers Space & Modular Cabinet Planner in the conversation. " +
         "Call this whenever the customer wants to build or plan a laundry cabinet, kitchen modular units, bathroom vanity & tower, or modular cabinetry space (e.g. 'I want to build a laundry cabinet', 'plan kitchen cabinets', 'space planner for laundry'). " +
         "It provides a live 3D visual canvas where customers can configure and place modular cabinets, choose finishes, and generate a live bill of materials.",
       parameters: {
@@ -2615,7 +2615,7 @@ export interface ChatResponse {
   sessionId: string;
   /** Resolved intent for this turn (additive — frontend may ignore). */
   intent?: IntentResult;
-  /** Observable reasoning trace for the right-hand panel (additive). */
+  /** Observable reasoning trace for the conversation (additive). */
   trace?: TraceEntry[];
 }
 
@@ -2755,7 +2755,7 @@ export class AgentService {
    * gender, quantity — and an empty panel, every time, in four phrasings out of
    * four. The questions themselves are reasonable; asking them INSTEAD of
    * showing anything is what breaks the conversation, and one reply even said
-   * "answer the questions on the right" to a customer who had asked to look at
+   * "answer the questions below" to a customer who had asked to look at
    * jerseys. AUG-68 tried to fix this in the prompt and the model went on
    * gating anyway, which is the lesson already recorded for `enforceNamedSku`
    * and `enforceItemDesignability`: wording does not hold, so this is settled
@@ -2928,7 +2928,7 @@ export class AgentService {
       `Tone: Professional, direct, trade-certified consultant. Do NOT use cheesy conversational filler (NEVER say "Oh no, leaking bathroom is never fun!" or generic robotic empathy). Be authoritative, pragmatic, and helpful.\n` +
       `You have access to tools to control the UI and lookup data:\n` +
       `1. DIAGNOSTIC & CLARIFYING QUESTIONS (Interactive Right Panel):\n` +
-      `When a customer has a repair, leak, moisture issue, or an open-ended project scope (e.g. bathroom leaking, wet area lining, deck planning, laundry makeover), you MUST ask 2-3 targeted diagnostic questions so the customer can select options on the interactive right panel.\n` +
+      `When a customer has a repair, leak, moisture issue, or an open-ended project scope (e.g. bathroom leaking, wet area lining, deck planning, laundry makeover), you MUST ask 2-3 targeted diagnostic questions so the customer can select options from the options shown in the conversation.\n` +
       `Emit a TOOL_CALL line:\n` +
       `TOOL_CALL: setPhase({"phase": "clarify", "questions": [{"id": "<id>", "title": "<diagnostic question>", "options": ["<opt1>", "<opt2>", "<opt3>", "<opt4>"]}]})\n` +
       `Example for leak/plumbing repair:\n` +
@@ -2941,7 +2941,7 @@ export class AgentService {
       `TOOL_CALL: buildProjectPlan({"projectType": "decking"|"fencing"|"lining"|"retaining"|"cladding", "length": <number>, "width": <number>})\n\n` +
       `CRITICAL RULES:\n` +
       `- When diagnosing an issue or clarifying scope, ALWAYS emit TOOL_CALL: setPhase with dynamic questions tailored to what the customer asked.\n` +
-      `- In your chat prose, explain the trade diagnostic approach professionally and direct the customer to tap their answers on the right panel.\n` +
+      `- In your chat prose, explain the trade diagnostic approach professionally and direct the customer to tap their answers in the conversation.\n` +
       `- Never quote internal rules or echo customer inputs verbatim.`
     );
   }
@@ -3246,7 +3246,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'Got it — we can help you with your wet area linings and waterproofing! I’ve popped a few quick questions on the right so I can pinpoint your exact space requirements and pull up the right NZS 3604-compliant linings, waterproofing systems, and trade packs.\n\nCan you tap the options on the right that best match what you’re planning?',
+          'Got it — we can help you with your wet area linings and waterproofing! I’ve popped a few quick questions below so I can pinpoint your exact space requirements and pull up the right NZS 3604-compliant linings, waterproofing systems, and trade packs.\n\nCan you tap the options below that best match what you’re planning?',
       };
     }
 
@@ -3290,7 +3290,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'A leaking bathroom can cause serious subfloor and lining damage if not caught early! I’ve put a few quick diagnostic questions on the right so we can identify the source and get you the right repair parts or compliant waterproofing solutions.\n\nCould you select where the leak is coming from on the right?',
+          'A leaking bathroom can cause serious subfloor and lining damage if not caught early! I’ve put a few quick diagnostic questions below so we can identify the source and get you the right repair parts or compliant waterproofing solutions.\n\nCould you select where the leak is coming from below?',
       };
     }
 
@@ -3336,7 +3336,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'Exciting project! To help plan your bathroom renovation properly, I’ve popped a few quick questions on the right to understand your scope, layout, and finish preferences.\n\nCan you tap the options on the right that match what you have in mind?',
+          'Exciting project! To help plan your bathroom renovation properly, I’ve popped a few quick questions below to understand your scope, layout, and finish preferences.\n\nCan you tap the options below that match what you have in mind?',
       };
     }
 
@@ -3380,7 +3380,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'A well-organised laundry makes a huge difference! I’ve popped a few quick questions on the right so I can pinpoint the right cabinet dimensions, storage units, and moisture protection for your space.\n\nCan you tap the options on the right that best describe your setup?',
+          'A well-organised laundry makes a huge difference! I’ve popped a few quick questions below so I can pinpoint the right cabinet dimensions, storage units, and moisture protection for your space.\n\nCan you tap the options below that best describe your setup?',
       };
     }
 
@@ -3423,7 +3423,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'Building a deck is a great way to expand your outdoor living! I’ve put three quick picks on the right to pinpoint your timber species, dimensions, and height requirements under NZS 3604.\n\nCan you tap the options that best match your project?',
+          'Building a deck is a great way to expand your outdoor living! I’ve put three quick picks below to pinpoint your timber species, dimensions, and height requirements under NZS 3604.\n\nCan you tap the options that best match your project?',
       };
     }
 
@@ -3467,7 +3467,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'Got it — we can help you track this down and sort it. I’ve popped a few quick questions on the right so I can pinpoint the cause and suggest the right fix and parts.\n\nCan you tap the options that best match what you’re seeing?',
+          'Got it — we can help you track this down and sort it. I’ve popped a few quick questions below so I can pinpoint the cause and suggest the right fix and parts.\n\nCan you tap the options that best match what you’re seeing?',
       };
     }
 
@@ -3514,7 +3514,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'PlaceMakers is New Zealand’s leading timber merchant — we have all your framing sorted under NZS 3604! I’ve popped three quick questions on the right so I can pinpoint the exact SG8 grade, treatment, and sizes for your build.\n\nCan you tap the options that best match your framing job?',
+          'PlaceMakers is New Zealand’s leading timber merchant — we have all your framing sorted under NZS 3604! I’ve popped three quick questions below so I can pinpoint the exact SG8 grade, treatment, and sizes for your build.\n\nCan you tap the options that best match your framing job?',
       };
     }
 
@@ -3560,7 +3560,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'Planning a kitchen is an exciting project! To help put together the right modular layout, cabinetry, and benchtops for your space, I’ve put a few quick questions on the right.\n\nCan you tap the options that best match your vision?',
+          'Planning a kitchen is an exciting project! To help put together the right modular layout, cabinetry, and benchtops for your space, I’ve put a few quick questions below.\n\nCan you tap the options that best match your vision?',
       };
     }
 
@@ -3610,7 +3610,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'Kia ora! To make sure I get you the exact right materials and specifications for your project, I’ve put a few quick questions on the right panel.\n\nCan you tap the options that best describe what you need?',
+          'Kia ora! To make sure I get you the exact right materials and specifications for your project, I’ve put a few quick questions in the conversation.\n\nCan you tap the options that best describe what you need?',
       };
     }
 
@@ -3974,7 +3974,7 @@ export class AgentService {
           ...conversation,
           {
             role: 'system',
-            content: `Before you answer, you MUST call ${toolName} to render ${what} on the right panel, ${source}. Do not answer in text only.`,
+            content: `Before you answer, you MUST call ${toolName} to render ${what} in the conversation, ${source}. Do not answer in text only.`,
           },
         ],
         tools: activeTools,
@@ -4153,7 +4153,7 @@ export class AgentService {
 
     // ── Consultative Clarification Gate (Early Discovery Interception) ──
     // Consistent across ALL models: broad discovery queries immediately pop the
-    // interactive clarification cards on the right panel. Zero wasted GPU loops,
+    // interactive clarification cards in the conversation. Zero wasted GPU loops,
     // instant response, session saved cleanly.
     const lastUserText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
     const isOpenModel =
@@ -4203,7 +4203,7 @@ export class AgentService {
       (lastUserText || '').toLowerCase().includes('water damage');
 
     const leakGuidance = isLeakOrTroubleshooting
-      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions on the right panel (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
+      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions in the conversation (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
       : '';
 
     // Intent + retrieval guidance injected as a system message so the generation
@@ -4251,13 +4251,13 @@ export class AgentService {
           ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
             '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for STRUCTURAL building projects (decking, fencing, wall lining, retaining, cladding) — NOT rooms. ' +
             'When the customer asks to plan, size, estimate, or get materials for one of those (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType: "decking" | "fencing" | "lining" | "retaining" | "cladding" — never "laundry"/"bathroom"/"kitchen", those are rooms, see below). ' +
-            'CRITICAL RULE FOR ROOM MAKEOVERS: on the first turn of a room makeover or cabinet build, clarify requirements FIRST — do NOT jump straight into 3D openSpacePlanner or product cards before asking the customer! Call setPhase("clarify") to present the interactive question cards on the right panel. Once the customer answers the clarifying questions (e.g. "My answers: ..."), THEN advance to products or openSpacePlanner with their chosen setup.' }] : []),
+            'CRITICAL RULE FOR ROOM MAKEOVERS: on the first turn of a room makeover or cabinet build, clarify requirements FIRST — do NOT jump straight into 3D openSpacePlanner or product cards before asking the customer! Call setPhase("clarify") to present the interactive question cards in the conversation. Once the customer answers the clarifying questions (e.g. "My answers: ..."), THEN advance to products or openSpacePlanner with their chosen setup.' }] : []),
           ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
             '[CONSULTATIVE SALES REP PARTNERSHIP & ROOM DISCOVERY] You are an experienced PlaceMakers Project Consultant & Sales Rep partnering with the customer to design their space. ' +
             'When the customer asks to build or plan a laundry cabinet, room makeover, or kitchen space (e.g. "I want to build a laundry cabinet", "plan my laundry space", "laundry room makeover"): ' +
             '1. Engage warmly as a pair-planning sales rep: congratulate their project, explain that you will build it together step-by-step. ' +
             '2. Check what they already told you in THIS message before asking anything else, then ask ONLY about whichever of these 4 is still missing — never re-ask one they already answered: (a) Wall Width / Room Run (e.g., 1.8m compact, 2.4m standard, 3.0m spacious), (b) Style & Finish (Modern Gloss White, Natural Warm Oak Timber Veneer, or Architectural Charcoal), (c) Appliance & Tub Cavity (front-loader washer/dryer overhang + Robinhood SuperTub), and (d) Installation preference (DIY with tool checklist vs. PlaceMakers Certified Trade Installation). ' +
-            '3. On discovery, call setPhase("clarify") to render the question cards on the right panel with selectable options. Do NOT call openSpacePlanner or showItems yet. ' +
+            '3. On discovery, call setPhase("clarify") to render the question cards in the conversation with selectable options. Do NOT call openSpacePlanner or showItems yet. ' +
             '4. Once the customer answers the clarifying questions, then openSpacePlanner or product recommendations can be launched with their chosen configuration.' }] : []),
           ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
             '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
@@ -4486,7 +4486,7 @@ export class AgentService {
               // uiToolCalls directly, so no emit is needed.
               trace.push({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku}, server config)` });
               uiToolCalls.push({ id: `cdl_${cdlUseSku}`, type: 'function', function: { name: 'showConfigurator', arguments: JSON.stringify(cdlSuggested) } } as any);
-              conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already on the right in their colours on style ${cdlUseSku}. Do NOT call showConfigurator again this turn; tell them it's shown and invite tweaks or sending it to the artist.` });
+              conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already shown in the conversation in their colours on style ${cdlUseSku}. Do NOT call showConfigurator again this turn; tell them it's shown and invite tweaks or sending it to the artist.` });
             } else {
               trace.push({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku})` });
               await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, () => {}, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
@@ -4725,7 +4725,7 @@ export class AgentService {
               content: JSON.stringify({
                 success: false,
                 alreadyDone: true,
-                message: `You ALREADY presented this ${call.function.name} earlier in this conversation (it is on the right panel). Do NOT present it again. Acknowledge it briefly if relevant and move to the next unmet goal in the journey memory.`,
+                message: `You ALREADY presented this ${call.function.name} earlier in this conversation (it is in the conversation). Do NOT present it again. Acknowledge it briefly if relevant and move to the next unmet goal in the journey memory.`,
               }),
             });
             didSearch = true; // let the model react (move on), don't force text yet
@@ -4934,7 +4934,7 @@ export class AgentService {
       (lastUserText || '').toLowerCase().includes('water damage');
 
     const leakGuidance = isLeakOrTroubleshooting
-      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions on the right panel (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
+      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions in the conversation (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
       : '';
 
     const intentGuidance =
@@ -5059,7 +5059,7 @@ export class AgentService {
             && !((journeyState?.lastShown || []).length)) {
           forcedSearch = true;
           conversation.push({ role: 'system', content:
-            'The customer is waiting and the right-hand panel is EMPTY. Do NOT defer, do NOT reply with "give me a moment" or "let me look" — this turn you MUST call searchKnowledge for their brief and then showItems with the real results. Act now, in this same turn.' });
+            'The customer is waiting and the conversation is EMPTY. Do NOT defer, do NOT reply with "give me a moment" or "let me look" — this turn you MUST call searchKnowledge for their brief and then showItems with the real results. Act now, in this same turn.' });
           continue;   // re-loop; do not speak yet
         }
         readyToSpeak = true;
@@ -5200,7 +5200,7 @@ export class AgentService {
             // Tell the model it's already rendered (a plain system note — NOT a tool
             // result, which would be an orphaned tool_call and 400 the next turn) so
             // it speaks instead of re-emitting showConfigurator with worse colours.
-            conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already on the right in their colours (${(cdlSuggested.colours || []).join(', ') || 'their palette'}) on style ${cdlUseSku}. Do NOT call showConfigurator again this turn. Tell them their design is shown, invite tweaks to colours/name/number, or offer to send it to the artist for review.` });
+            conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already shown in the conversation in their colours (${(cdlSuggested.colours || []).join(', ') || 'their palette'}) on style ${cdlUseSku}. Do NOT call showConfigurator again this turn. Tell them their design is shown, invite tweaks to colours/name/number, or offer to send it to the artist for review.` });
           } else {
             pushTrace({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku})` });
             await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
@@ -5399,7 +5399,7 @@ export class AgentService {
         if (alreadyPresented(journeyState, call.function.name, parsedArgs)) {
           conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({
             success: false, alreadyDone: true,
-            message: `You ALREADY presented this ${call.function.name} earlier in this conversation (it is on the right panel). Do NOT present it again. Move to the next unmet goal in the journey memory.`,
+            message: `You ALREADY presented this ${call.function.name} earlier in this conversation (it is in the conversation). Do NOT present it again. Move to the next unmet goal in the journey memory.`,
           }) });
           didSearch = true;
           continue;
@@ -5485,34 +5485,43 @@ export class AgentService {
 
         if (isOpenModel) {
           openModelBuffer += delta;
-
-          // If not currently suppressing, check if buffer starts with or could start with TOOL_CALL:
           const tcPrefix = 'TOOL_CALL:';
+
           if (!openModelSuppressingToolCall) {
-            const trimmed = openModelBuffer.trimStart();
-            if (trimmed.length > 0 && trimmed.length < tcPrefix.length && tcPrefix.startsWith(trimmed)) {
-              // Potential start of tool call, hold in buffer
-              continue;
-            } else if (trimmed.startsWith(tcPrefix)) {
+            // A TOOL_CALL can arrive ANYWHERE in the answer, not only at its very
+            // start — the model happily writes a paragraph of prose and then
+            // emits one (seen live: a full clarify explanation followed by
+            // `TOOL_CALL: setPhase(...)`, which the old start-of-buffer check let
+            // stream straight into the chat as text). Hold everything from the
+            // first occurrence; flush only the prose before it.
+            const at = openModelBuffer.indexOf(tcPrefix);
+            if (at >= 0) {
+              const before = openModelBuffer.slice(0, at);
+              if (before) emit('token', { delta: before });
+              openModelBuffer = openModelBuffer.slice(at);
               openModelSuppressingToolCall = true;
             } else {
-              // Not a tool call start! Flush buffer to client
-              emit('token', { delta: openModelBuffer });
-              openModelBuffer = '';
+              // Flush all but a possible partial "TOOL_CALL:" prefix at the tail,
+              // so a marker split across two deltas is still caught.
+              let hold = 0;
+              for (let n = Math.min(tcPrefix.length - 1, openModelBuffer.length); n > 0; n--) {
+                if (tcPrefix.startsWith(openModelBuffer.slice(-n))) { hold = n; break; }
+              }
+              const flush = hold ? openModelBuffer.slice(0, -hold) : openModelBuffer;
+              if (flush) emit('token', { delta: flush });
+              openModelBuffer = hold ? openModelBuffer.slice(-hold) : '';
               continue;
             }
           }
 
           if (openModelSuppressingToolCall) {
-            // Check if the TOOL_CALL has concluded (balanced parenthesis)
+            // Check if the TOOL_CALL has concluded (balanced parenthesis). The
+            // remainder stays in the buffer — it may be prose, or another call —
+            // and is re-evaluated on the next delta / at end of stream.
             const tool = findBalancedToolCall(openModelBuffer);
             if (tool) {
               openModelBuffer = openModelBuffer.slice(tool.endIndex).replace(/^\s*\n?/, '');
               openModelSuppressingToolCall = false;
-              if (openModelBuffer.length > 0) {
-                emit('token', { delta: openModelBuffer });
-                openModelBuffer = '';
-              }
             }
           }
           continue;
@@ -5540,6 +5549,11 @@ export class AgentService {
           if (!tool) break;
           cleanRemainder = cleanRemainder.replace(tool.fullMatch, '');
         }
+        // An UNTERMINATED call — the model hit max_tokens mid-JSON — has no
+        // balanced close to find. Drop from the marker on, rather than flush
+        // half a JSON blob into the chat (seen live).
+        const dangling = cleanRemainder.indexOf('TOOL_CALL:');
+        if (dangling >= 0) cleanRemainder = cleanRemainder.slice(0, dangling);
         cleanRemainder = cleanRemainder.trim();
         if (cleanRemainder) {
           emit('token', { delta: cleanRemainder });
@@ -5582,6 +5596,10 @@ export class AgentService {
         if (!tool) break;
         cleaned = cleaned.replace(tool.fullMatch, '');
       }
+      // Same as the stream: a truncated, unbalanced TOOL_CALL must not land in
+      // the persisted transcript either.
+      const dangling = cleaned.indexOf('TOOL_CALL:');
+      if (dangling >= 0) cleaned = cleaned.slice(0, dangling);
       finalText = cleaned.trim();
     }
     if (!finalText.trim()) {
