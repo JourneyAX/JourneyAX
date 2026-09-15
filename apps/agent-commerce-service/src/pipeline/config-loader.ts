@@ -76,6 +76,16 @@ export interface ContextDimension {
   description?: string;
   scoping?: boolean;         // value outside `values` ⇒ out-of-scope
   filtersRetrieval?: boolean; // extracted value scopes retrieval
+  /** Ask this as tappable chips when still unknown (the business's own journey question). */
+  askWhenMissing?: boolean;
+  /** The question wording for those chips ("Which game are the cards for?"). */
+  question?: string;
+  /** Once known, an item naming a SIBLING value never reaches a card ("Standard" vs "Japanese"). */
+  hardFilter?: boolean;
+  /** Per-value aliases read straight from the customer's words ("commander", "edh" → Magic). */
+  aliases?: Record<string, string[]>;
+  /** Filled in code from another dimension — size from game — never asked. `*` = default. */
+  derive?: { from: string; map: Record<string, string> };
 }
 
 export class ConfigLoader {
@@ -168,6 +178,11 @@ export class ConfigLoader {
           description: d.description,
           scoping: d.scoping !== false,          // default: dimensions with values gate scope
           filtersRetrieval: d.filtersRetrieval !== false, // default: used as a retrieval hint
+          askWhenMissing: d.askWhenMissing === true,
+          question: typeof d.question === 'string' ? d.question : undefined,
+          hardFilter: d.hardFilter === true,
+          aliases: d.aliases && typeof d.aliases === 'object' ? d.aliases : undefined,
+          derive: d.derive && typeof d.derive.from === 'string' && d.derive.map && typeof d.derive.map === 'object' ? { from: d.derive.from, map: d.derive.map } : undefined,
         }));
     }
     const rooms = Array.isArray(p?.scope?.rooms) ? p.scope.rooms.filter(Boolean) : [];

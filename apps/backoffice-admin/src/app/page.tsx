@@ -437,7 +437,7 @@ export default function BackOfficeSPA() {
 
           {/* B. JOURNEY BUILDER VIEW */}
           {activeTab === 'builder' && (currentProject
-            ? <JourneyMap project={currentProject} onEdit={() => setActiveTab('orchestration')} />
+            ? <JourneyMap project={currentProject} onEdit={() => setActiveTab('orchestration')} onOpenBuilder={() => setActiveTab('journeyBuilder')} />
             : <div className="panel">Select a workspace.</div>)}
 
           {/* C. CATALOGUE & COMPLIANCE VIEW */}

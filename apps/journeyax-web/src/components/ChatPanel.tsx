@@ -190,6 +190,16 @@ async function streamChat(
   throw new Error('stream produced no output');
 }
 
+/** The configured greeting, addressed to the sample customer when one is
+ *  picked: a "{name}" placeholder is filled; otherwise "Hi Alex — " leads. */
+function personaliseGreeting(greeting: string, name?: string | null): string {
+  const g = String(greeting || '');
+  if (!name) return g.replace(/\{name\}[,!—–-]?\s*/g, '').replace(/^\s*hi\s*[—–-]\s*/i, '').trim() || g;
+  if (/\{name\}/.test(g)) return g.replace(/\{name\}/g, name);
+  const body = g.replace(/^(hey|hi|hello)[!,.]?\s*/i, '');
+  return `Hi ${name}! ${body.charAt(0).toUpperCase()}${body.slice(1)}`;
+}
+
 export default function ChatPanel() {
   const { state, dispatch, bom } = useJourney();
   const cfg = useStorefrontConfig();
@@ -948,7 +958,7 @@ export default function ChatPanel() {
     .filter(m => m.text)
     // Multi-tenant greeting: the welcome bubble shows the project's configured
     // greeting (persona.greetingMessage) when set.
-    .map(m => (m.id === 'welcome' && cfg.greeting ? { ...m, text: cfg.greeting } : m));
+    .map(m => (m.id === 'welcome' && cfg.greeting ? { ...m, text: personaliseGreeting(cfg.greeting, demoProfile?.name) } : m));
 
   // Single ChatGPT/Claude-style thread (docs/v3-card-cms-architecture.md,
   // "PlaceMakers Conversation" mockup): cards render INLINE, at the point in

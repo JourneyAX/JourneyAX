@@ -45,6 +45,11 @@ export interface ContextDimension {
   description?: string;
   scoping?: boolean;          // value outside `values` ⇒ out-of-scope for this business
   filtersRetrieval?: boolean; // extracted value scopes retrieval
+  askWhenMissing?: boolean;   // asked as chips when still unknown (the journey's own question)
+  question?: string;          // wording for those chips
+  hardFilter?: boolean;       // a known value excludes items naming a sibling value
+  aliases?: Record<string, string[]>; // per-value aliases read from the customer's words
+  derive?: { from: string; map: Record<string, string> }; // filled from another dimension, never asked
 }
 
 export interface Project {
@@ -74,6 +79,9 @@ export interface Project {
   };
   capabilities?: string[];
   contextDimensions?: ContextDimension[];
+  /** Acceptance scenarios for the one journey loop — examples and a test list, never agent instructions. */
+  scenarios?: { id: string; say: string; expect: string; stage?: string }[];
+  intro?: { heroHeadline?: string; heroSubtitle?: string; starters?: { label: string; prompt: string }[] };
   console?: { labels?: Record<string, string>; hidden?: string[]; order?: string[] };
   knowledgeSource?: {
     /** Declarative source list — the productised, config-driven path. */

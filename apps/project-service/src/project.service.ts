@@ -525,7 +525,7 @@ export class ProjectService {
     if ((dto as any).demoCustomers !== undefined) $set.demoCustomers = (dto as any).demoCustomers;
     // Product-matching config lists (hand-offs, purchase limits, storage guide):
     // replaced wholesale, like intro/demoCustomers.
-    for (const k of ['handoffs', 'purchaseLimits', 'storageGuide']) {
+    for (const k of ['handoffs', 'purchaseLimits', 'storageGuide', 'scenarios']) {
       if ((dto as any)[k] !== undefined) $set[k] = (dto as any)[k];
     }
     // Card CMS (v3): tokens + per-card settings, and fulfilment, are coherent

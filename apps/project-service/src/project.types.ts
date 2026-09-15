@@ -57,6 +57,16 @@ export interface ContextDimension {
   scoping?: boolean;
   /** If true, the extracted value is used as a retrieval metadata filter/hint. */
   filtersRetrieval?: boolean;
+  /** Ask this as tappable chips when still unknown — the business's own journey question. */
+  askWhenMissing?: boolean;
+  /** Wording for those chips, e.g. "Which game are the cards for?" */
+  question?: string;
+  /** Once known, an item naming a sibling value never reaches a card (sleeve size). */
+  hardFilter?: boolean;
+  /** Per-value aliases read from the customer's own words ("commander", "edh" → Magic) so an inferable value is never asked. */
+  aliases?: Record<string, string[]>;
+  /** Derived in code from another dimension (size from game); `*` is the default. Never asked. */
+  derive?: { from: string; map: Record<string, string> };
 }
 
 export interface ProjectPricing {
@@ -154,6 +164,13 @@ export interface ProductHandoff { match: ProductMatch; label: string; url: strin
 export interface PurchaseLimit { match: ProductMatch; maxQuantity: number; reason?: string }
 /** Storage capacity facts per product family, so "what fits N cards" is
  *  arithmetic the agent computes, never narrates. Capacities are cards. */
+export interface JourneyScenario {
+  id: string;          // S1…
+  say: string;         // what the customer says
+  expect: string;      // what must be true of the reply
+  stage?: string;      // which stage of the loop it exercises (show, clarify, bag, checkout, history, support)
+}
+
 export interface StorageGuideEntry {
   match: ProductMatch;
   family: string;               // "Deck Shell", "Nest +300", "Sanctuary 4-ring binder"
@@ -345,6 +362,10 @@ export interface ProjectConfig {
   handoffs?: ProductHandoff[];
   purchaseLimits?: PurchaseLimit[];
   storageGuide?: StorageGuideEntry[];
+  /** Acceptance scenarios — what the ONE journey loop must handle for this business
+   *  ("Sleeves for a Commander deck" → cards in Standard size, questions beside).
+   *  Examples and a test list, never instructions to the agent. */
+  scenarios?: JourneyScenario[];
   // Customer-facing display labels the storefront applies (so "Products" can read
   // "Services"/"Programs" per business). Optional; sensible defaults if unset.
   labels?: {
@@ -517,6 +538,7 @@ export interface UpdateProjectDto {
   handoffs?: ProductHandoff[] | null;
   purchaseLimits?: PurchaseLimit[] | null;
   storageGuide?: StorageGuideEntry[] | null;
+  scenarios?: JourneyScenario[] | null;
   integrations?: Partial<ProjectIntegrations>;
   capabilities?: string[];
   labels?: { items?: string; itemsSingular?: string; headerTitle?: string };

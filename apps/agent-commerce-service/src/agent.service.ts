@@ -1290,12 +1290,16 @@ function storageFactsBlock(f: StorageFacts): string {
  * reach the storefront as an empty card, and the model must hear WHY so its
  * text says "sold out" instead of praising an item nobody can buy.
  */
-function emptyShowItemsVerdict(call: any, facts: { soldOut: string[] } | void): Record<string, unknown> | null {
+function emptyShowItemsVerdict(call: any, facts: { soldOut: string[] } | void, hardDropped: string[] = []): Record<string, unknown> | null {
   if (call?.function?.name !== 'showItems') return null;
   let args: any = {};
   try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
   if (Array.isArray(args?.products) && args.products.length) return null;
   const soldOut = facts?.soldOut || [];
+  if (hardDropped.length) {
+    return { success: false, shown: 0, wrongVariant: hardDropped,
+      message: `Nothing was shown — every item was the wrong variant for this customer: ${hardDropped.join('; ')}. searchKnowledge again with the customer's variant in the query (it is appended automatically) and showItems only matching items. Say the size/variant reason once, plainly.` };
+  }
   return {
     success: false,
     shown: 0,
@@ -3113,7 +3117,9 @@ function shownItemNames(uiToolCalls: any[]): string[] {
 function compactItemListing(text: string, names: string[]): string {
   if (!text || names.length < 2) return text;
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const keys = names.map(norm).filter((k) => k.length >= 4);
+  // The model often shortens a card name in prose ("Play To Win - Brushed Art
+  // Sleeves" for "… - Standard Size"): the first four words are the key too.
+  const keys = [...new Set(names.flatMap((n) => { const k = norm(n); const short = k.split(' ').slice(0, 4).join(' '); return short.length >= 12 && short !== k ? [k, short] : [k]; }))].filter((k) => k.length >= 4);
   if (!keys.length) return text;
   // Segment by line; a single paragraph that inlines "…:1. Name: … 2. Name: …"
   // is split at its NUMBERED markers too. Dashes are never inline markers —
@@ -3153,6 +3159,100 @@ function productMatches(match: any, f: { sku: string; name?: string; category?: 
 }
 
 /** "The whole X set", "everything in the series", "a kit", "matching pieces". */
+/**
+ * Config-driven journey questions (ContextDimension.askWhenMissing) — the
+ * questions a business wants asked when they are still unknown, with the
+ * business's own answer chips, instead of whatever the model improvises.
+ * Derived dimensions (ContextDimension.derive: size from game) are filled
+ * in code so they are never asked and always filter.
+ */
+function deriveDimensions(dims: any[] | undefined, known: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = { ...known };
+  for (const d of dims || []) {
+    if (!d?.derive?.from || out[d.key]) continue;
+    const src = out[d.derive.from];
+    if (!src) continue;
+    const map: Record<string, string> = d.derive.map || {};
+    const hit = Object.keys(map).find((k) => k !== '*' && String(src).toLowerCase().includes(k.toLowerCase()));
+    const v = hit ? map[hit] : map['*'];
+    if (v) out[d.key] = v;
+  }
+  return out;
+}
+
+/**
+ * Config `aliases` — "commander", "edh", "mtg" → Magic: The Gathering — read
+ * straight from the customer's words, so an inferable dimension is never asked.
+ */
+function inferDimensionsFromText(dims: any[] | undefined, text: string, known: Record<string, string>): Record<string, string> {
+  const out = { ...known };
+  const t = ` ${(text || '').toLowerCase()} `;
+  for (const d of dims || []) {
+    if (out[d.key] || !d?.aliases || typeof d.aliases !== 'object') continue;
+    for (const [value, list] of Object.entries(d.aliases as Record<string, string[]>)) {
+      if ((list || []).some((a) => t.includes(` ${String(a).toLowerCase()} `) || new RegExp(`[^a-z0-9]${String(a).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^a-z0-9]`).test(t))) { out[d.key] = value; break; }
+    }
+  }
+  return out;
+}
+
+function missingAskableDimensions(dims: any[] | undefined, known: Record<string, string>): any[] {
+  return (dims || []).filter((d) => d?.askWhenMissing && Array.isArray(d.values) && d.values.length >= 2
+    && !known[d.key] && !(d.derive?.from && known[d.derive.from]));
+}
+
+function askBesideBlock(missing: any[]): string {
+  const lines = missing.slice(0, 4).map((d) => `- id "${d.key}": "${d.question || `Which ${(d.label || d.key).toLowerCase()}?`}" → options ${JSON.stringify(d.values.slice(0, 7))}`).join('\n');
+  return '[CHIPS AVAILABLE — this business\'s own questions, still unanswered] Most turns need NONE of these; you decide.\n' + lines +
+    '\nYou decide whether one is worth asking — only when the answer changes what you would show AND it cannot be inferred from what they said (a Commander deck is Magic; "the Raid set" needs no questions). If you ask, ask as tappable chips: setPhase(phase:"clarify", questions:[{id,title,options}]) with EXACTLY these ids and options — never a free-text question in your reply. At most two, beside the cards: a named product, game, colour or series still gets showItems in the same turn. ' +
+    'Ask FIRST (no cards yet) only for an open goal the customer cannot name a product for — a gift, "protect my collection". Never for a complaint, a policy or how-to question, a reorder, or a named product.';
+}
+
+/**
+ * Config-driven HARD filter (ContextDimension.hardFilter): once a value is
+ * known — "Japanese" sleeve size for a Yu-Gi-Oh! player — an item that names a
+ * SIBLING value ("… - Standard") never reaches a card, whatever the model put
+ * in showItems. Returns what was dropped, for the model.
+ */
+function applyDimensionHardFilter(call: any, dims: any[] | undefined, known: Record<string, string>): string[] {
+  if (call?.function?.name !== 'showItems') return [];
+  let args: any = {};
+  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return []; }
+  const products: any[] = Array.isArray(args?.products) ? args.products : [];
+  if (!products.length) return [];
+  const dropped: string[] = [];
+  const kept = products.filter((p) => {
+    const hay = `${p?.name || p?.title || ''} ${p?.category || ''}`.toLowerCase();
+    for (const d of dims || []) {
+      if (!d?.hardFilter || !Array.isArray(d.values) || !known[d.key]) continue;
+      const want = String(known[d.key]).toLowerCase();
+      if (hay.includes(want)) continue;
+      const sibling = d.values.find((v: string) => String(v).toLowerCase() !== want && hay.includes(String(v).toLowerCase()));
+      if (sibling) { dropped.push(`${p?.name || p?.sku} is ${sibling}, the customer needs ${known[d.key]}`); return false; }
+    }
+    return true;
+  });
+  if (dropped.length) {
+    args.products = kept;
+    if (Array.isArray(args.items)) args.items = kept;
+    call.function.arguments = JSON.stringify(args);
+    console.log(`[AgentService] showItems: hard filter dropped ${dropped.length}: ${dropped.join('; ')}`);
+  }
+  return dropped;
+}
+
+/** Known hard-filter values ("Japanese") appended to every catalogue search so retrieval starts in the right place. */
+function dimensionQuerySuffix(dims: any[] | undefined, known: Record<string, string>): string {
+  return (dims || []).filter((d) => d?.hardFilter && known[d.key]).map((d) => String(known[d.key])).join(' ');
+}
+
+/** "a gift for my nephew", "birthday present for a Magic player". */
+function isGiftAsk(text: string): boolean {
+  const t = (text || '').toLowerCase();
+  if (t.length > 400) return false;
+  return /\b(gift|present|birthday|christmas|anniversary)\b/.test(t) || /\bfor my (son|daughter|nephew|niece|partner|husband|wife|boyfriend|girlfriend|friend|brother|sister|kid|kids|dad|mum|mom|grandson|granddaughter)\b/.test(t);
+}
+
 function isSetAsk(text: string): boolean {
   const t = (text || '').toLowerCase();
   if (t.length > 400) return false;
@@ -3165,7 +3265,7 @@ function isSetAsk(text: string): boolean {
 function isStorageAsk(text: string): boolean {
   const t = (text || '').toLowerCase();
   if (t.length > 400) return false;
-  const storage = /\b(deck ?box|box|binder|portfolio|album|storage|store|drawer|case|fit|fits|hold|holds)\b/.test(t);
+  const storage = /\b(deck ?box|box|binder|portfolio|album|storage|store|storing|drawer|case|fit|fits|hold|holds)\b/.test(t);
   const count = /\b\d{2,4}\b|\b(commander|standard|deck|decks|collection)\b/.test(t);
   return storage && count;
 }
@@ -3474,7 +3574,7 @@ export class AgentService {
       if (emit) emit('uiAction', setPhaseAction);
 
       if (pushTrace) {
-        pushTrace({ step: 'retrieval', detail: `rendered ${itemsToRender.length} product card(s) on right panel` });
+        pushTrace({ step: 'retrieval', detail: `rendered ${itemsToRender.length} product card(s) in the thread` });
       }
     }
   }
@@ -4984,6 +5084,10 @@ export class AgentService {
     // Pass the project's configured context dimensions so classification (and
     // downstream retrieval scoping) is bounded by what THIS business serves.
     const intent = await this.intentResolver.resolve(messages, state, this.intentModel, projectConfig.contextDimensions);
+    // Everything known about this customer so far (memory + this turn), with
+    // derived dimensions filled in code (size from game) — never asked, always filters.
+    const knownDims = deriveDimensions(projectConfig.contextDimensions, inferDimensionsFromText(projectConfig.contextDimensions, messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content || '')).join(' \n '), { ...(journeyState.dimensions || {}), ...(intent.dimensions || {}) }));
+    intent.dimensions = { ...(intent.dimensions || {}), ...knownDims };
     const dimStr = Object.entries(intent.dimensions || {}).map(([k, v]) => `${k}=${v}`).join(',') || '—';
     trace.push({
       step: 'intent',
@@ -5117,6 +5221,10 @@ export class AgentService {
             'Preserve all room dimensions, active materials, and customer context during transitions. ' +
             'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
           ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
+          // The chips exist for shopping turns only — a complaint, a policy or how-to question, or an unknown ask never carries them.
+          ...((() => { if (!/product_recommendation|design_inspiration|quote_order|remodel/.test(String(intent?.intent || ''))) return []; const m = missingAskableDimensions(projectConfig.contextDimensions, knownDims); return m.length ? [{ role: 'system', content: askBesideBlock(m) }] : []; })()),
+          ...((isGiftAsk(lastUserText) || isGiftAsk(retrievalCtx?.brief || '')) && (projectConfig.capabilities || []).includes('products') ? [{ role: 'system', content:
+            '[GIFT ASK] The customer is buying for someone else and usually cannot name a product. This is the one journey where the questions come FIRST: in a single round, ask the still-unanswered configured questions (game, how into it, budget) with setPhase clarify — no cards yet. Once they have answered, present ONE gift-safe bundle for their budget with presentBundle (real SKUs from retrieval; never a custom / final-sale item; seasonal only when the occasion matches), explain the size choice so the giver can repeat it, and offer checkout. No upsell pressure on a gift.' }] : []),
           ...(isSetAsk(lastUserText) ? [{ role: 'system', content:
             '[SET ASK] The customer wants a coordinated SET (a series, a kit, "the whole …", pieces that match). Retrieve the real members, then present them with presentBundle (heading, why, the SKUs with quantities) — one card, one total, one "Add all" — not as a plain showItems list. Members come from retrieval / the catalogue\'s collections only; never pad a set with a guess.' }] : []),
           ...(storageFacts ? [{ role: 'system', content: storageFactsBlock(storageFacts) }]
@@ -5405,7 +5513,7 @@ export class AgentService {
               { tenantId },
               // Gender is injected SERVER-SIDE from the resolved intent (not the model) so
               // a "men's" journey never surfaces women's products — hard filter, not a hint.
-              { query: effectiveSearchQuery(args.query, retrievalCtx), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
+              { query: `${effectiveSearchQuery(args.query, retrievalCtx)} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
             );
             const markedResult = await markDesignable(tenantId, toolResult);
             conversation.push({
@@ -5618,9 +5726,10 @@ export class AgentService {
             continue;
           }
           const itemFacts = await groundItemFacts(tenantId, call);
-          // Everything dropped (sold out / not real) → no empty card; the model
-          // is told which items are sold out and searches for alternatives.
-          const emptied = emptyShowItemsVerdict(call, itemFacts);
+          const hardDropped = applyDimensionHardFilter(call, projectConfig.contextDimensions, knownDims);
+          // Everything dropped (sold out / not real / wrong variant) → no empty
+          // card; the model is told why and searches again.
+          const emptied = emptyShowItemsVerdict(call, itemFacts, hardDropped);
           if (emptied) {
             conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(emptied) });
             didSearch = true;
@@ -5663,6 +5772,15 @@ export class AgentService {
       }
     }
 
+    // After the customer answered the chips, cards must follow — gpt-4o said
+    // "let's take a look at this binder" and showed nothing. Same guarantee
+    // the open-model path has, answers-only (never show-first) on this path.
+    if (!cartCommandApplied && (projectConfig.capabilities || []).includes('products')) {
+      const shownStats = { searched: uiToolCalls.some((c: any) => ['showItems', 'presentBundle', 'presentComparison'].includes(c?.function?.name)) };
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, undefined, (t) => trace.push(t))) {
+        conversation.push({ role: 'system', content: '[CARDS SHOWN] Cards matching their answers are now on screen under your text. Do not list them; give your pick and one next step.' });
+      }
+    }
     await this.ensureStorageCards(tenantId, storageFacts, uiToolCalls, conversation);
     // Safety net: never return a tool-only message with no text to the user.
     // No tools/tool_choice → pure text (OpenAI rejects tool_choice without tools).
@@ -5791,6 +5909,8 @@ export class AgentService {
 
     // Intent (config-driven) — bounded by the project's configured context dimensions
     const intent = await this.intentResolver.resolve(messages, state, this.intentModel, projectConfig.contextDimensions);
+    const knownDims = deriveDimensions(projectConfig.contextDimensions, inferDimensionsFromText(projectConfig.contextDimensions, messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content || '')).join(' \n '), { ...(journeyState.dimensions || {}), ...(intent.dimensions || {}) }));
+    intent.dimensions = { ...(intent.dimensions || {}), ...knownDims };
     const dimStr = Object.entries(intent.dimensions || {}).map(([k, v]) => `${k}=${v}`).join(',') || '—';
     pushTrace({ step: 'intent', detail: `${intent.intent} · dims=${dimStr} · space=${intent.space} · stage=${intent.stage} · mode=${intent.mode}`, data: intent });
 
@@ -5878,6 +5998,10 @@ export class AgentService {
             'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
             'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
           ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
+          // The chips exist for shopping turns only — a complaint, a policy or how-to question, or an unknown ask never carries them.
+          ...((() => { if (!/product_recommendation|design_inspiration|quote_order|remodel/.test(String(intent?.intent || ''))) return []; const m = missingAskableDimensions(projectConfig.contextDimensions, knownDims); return m.length ? [{ role: 'system', content: askBesideBlock(m) }] : []; })()),
+          ...((isGiftAsk(lastUserText) || isGiftAsk(retrievalCtx?.brief || '')) && (projectConfig.capabilities || []).includes('products') ? [{ role: 'system', content:
+            '[GIFT ASK] The customer is buying for someone else and usually cannot name a product. This is the one journey where the questions come FIRST: in a single round, ask the still-unanswered configured questions (game, how into it, budget) with setPhase clarify — no cards yet. Once they have answered, present ONE gift-safe bundle for their budget with presentBundle (real SKUs from retrieval; never a custom / final-sale item; seasonal only when the occasion matches), explain the size choice so the giver can repeat it, and offer checkout. No upsell pressure on a gift.' }] : []),
           ...(isSetAsk(lastUserText) ? [{ role: 'system', content:
             '[SET ASK] The customer wants a coordinated SET (a series, a kit, "the whole …", pieces that match). Retrieve the real members, then present them with presentBundle (heading, why, the SKUs with quantities) — one card, one total, one "Add all" — not as a plain showItems list. Members come from retrieval / the catalogue\'s collections only; never pad a set with a guess.' }] : []),
           ...(storageFacts ? [{ role: 'system', content: storageFactsBlock(storageFacts) }]
@@ -6148,7 +6272,7 @@ export class AgentService {
           run.map(async (call) => {
             try {
               const args = JSON.parse(call.function.arguments);
-              const r = await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query: args.query, type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender });
+              const r = await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query: `${args.query || ''} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender });
               // Same annotation as the non-streaming path — this is the one the
               // storefront actually uses, so an omission here is invisible in
               // tests and total in production (the AUG-38 failure, repeated).
@@ -6349,9 +6473,10 @@ export class AgentService {
         }
         // Card facts come from the catalogue, never the model (AUG-82).
         const itemFacts = await groundItemFacts(tenantId, call);
-        // Everything dropped (sold out / not real) → no empty card; the model
-        // is told which items are sold out and searches for alternatives.
-        const emptied = emptyShowItemsVerdict(call, itemFacts);
+        const hardDropped = applyDimensionHardFilter(call, projectConfig.contextDimensions, knownDims);
+        // Everything dropped (sold out / not real / wrong variant) → no empty
+        // card; the model is told why and searches again.
+        const emptied = emptyShowItemsVerdict(call, itemFacts, hardDropped);
         if (emptied) {
           conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(emptied) });
           {
@@ -6407,6 +6532,12 @@ export class AgentService {
       if (!didSearch) readyToSpeak = true; // UI-only round → speak next
     }
 
+    if (!cartCommandApplied && (projectConfig.capabilities || []).includes('products')) {
+      const shownStats = { searched: uiToolCalls.some((c: any) => ['showItems', 'presentBundle', 'presentComparison'].includes(c?.function?.name)) };
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, emit, pushTrace)) {
+        conversation.push({ role: 'system', content: '[CARDS SHOWN] Cards matching their answers are now on screen under your text. Do not list them; give your pick and one next step.' });
+      }
+    }
     await this.ensureStorageCards(tenantId, storageFacts, uiToolCalls, conversation, emit);
     // ── Final answer — streamed token by token ──────────────────────
     // For a plain retail brand we can't stream raw tokens: a leaked "not
@@ -6599,7 +6730,7 @@ export class AgentService {
         const synthAction = { name: 'setPhase', arguments: { phase: 'clarify', questions: synthClarify.questions } };
         uiActions.push(synthAction);
         emit('uiAction', synthAction);
-        pushTrace({ step: 'synth-clarify', detail: `${synthClarify.questions.length} domain question(s) synthesized on right panel` });
+        pushTrace({ step: 'synth-clarify', detail: `${synthClarify.questions.length} domain question(s) synthesized in the thread` });
         if (synthClarify.chatLead) {
           finalText = synthClarify.chatLead;
         }
