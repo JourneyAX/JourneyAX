@@ -71,7 +71,7 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
             )}
             <div className="cart-drawer__row cart-drawer__row--total"><span>Total</span><span>{money(totals.total)}</span></div>
             <button type="button" className="cart-drawer__cta" onClick={handleApprove} disabled={ordering}>
-              {ordering ? 'Starting checkout…' : isCart ? 'View order summary' : 'Approve & pay securely'}
+              {ordering ? 'Starting checkout…' : isCart ? 'Checkout' : 'Approve & pay securely'}
             </button>
           </div>
         )}

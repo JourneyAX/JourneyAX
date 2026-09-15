@@ -523,6 +523,11 @@ export class ProjectService {
     // Sample-customer demo fixtures: replaced wholesale (profiles/orders/offers/
     // inventory are one coherent, fictional dataset — never merged piecemeal).
     if ((dto as any).demoCustomers !== undefined) $set.demoCustomers = (dto as any).demoCustomers;
+    // Product-matching config lists (hand-offs, purchase limits, storage guide):
+    // replaced wholesale, like intro/demoCustomers.
+    for (const k of ['handoffs', 'purchaseLimits', 'storageGuide']) {
+      if ((dto as any)[k] !== undefined) $set[k] = (dto as any)[k];
+    }
     // Card CMS (v3): tokens + per-card settings, and fulfilment, are coherent
     // units — replaced wholesale like `business`. cardTemplates arrives already
     // validated + stamped by the controller (see validateCardTemplates).

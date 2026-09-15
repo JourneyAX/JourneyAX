@@ -160,6 +160,52 @@ export class ProductService {
    * the `sizing` type filter) surface it exactly like any other knowledge. Keyed
    * by a stable sourceUrl so re-ingest replaces rather than duplicates.
    */
+  /** Upsert named collections (series, creator sets, colour groups) → member
+   *  SKUs. Membership is replaced wholesale per collection so a re-run never
+   *  leaves stale members behind. */
+  async ingestCollections(brand: string, cols: Array<{ name: string; handle?: string; skus: string[] }>): Promise<{ success: boolean; collections: number }> {
+    const db = await this.getDb();
+    const C = db.collection('collections');
+    let n = 0;
+    for (const c of cols) {
+      const name = String(c?.name || '').trim();
+      if (!name) continue;
+      const skus = [...new Set((c.skus || []).map((s) => String(s || '').trim().toUpperCase()).filter(Boolean))];
+      await C.updateOne(
+        { projectId: brand, kind: 'collection', name },
+        { $set: { projectId: brand, kind: 'collection', name, handle: c.handle || null, skus, updatedAt: new Date() } },
+        { upsert: true },
+      );
+      n++;
+    }
+    return { success: true, collections: n };
+  }
+
+  /** Availability per SKU from the source platform — written to the products
+   *  row AND every knowledge chunk's metadata so search results, cards and the
+   *  pricebook all see the same fact. */
+  async setAvailability(brand: string, items: Array<{ sku: string; available: boolean; tags?: string[] }>): Promise<{ success: boolean; productsUpdated: number; documentsUpdated: number }> {
+    const db = await this.getDb();
+    let productsUpdated = 0, documentsUpdated = 0;
+    for (const it of items) {
+      const sku = String(it?.sku || '').trim().toUpperCase();
+      if (!sku) continue;
+      const available = it.available !== false;
+      const set: any = { availability: available, availabilityUpdatedAt: new Date() };
+      if (Array.isArray(it.tags)) set.tags = it.tags;
+      const r1 = await db.collection('products').updateMany({ projectId: brand, $or: [{ parentSku: sku }, { sku }] }, { $set: set });
+      productsUpdated += r1.modifiedCount;
+      // Knowledge chunks are keyed by brand (metadata.brand / brand), the way
+      // the pricebook and search read them — not by projectId.
+      const r2 = await db.collection('documents').updateMany(
+        { $and: [{ $or: [{ 'metadata.brand': brand }, { brand }, { projectId: brand }] }, { $or: [{ 'metadata.sku': sku }, { 'metadata.specs.Item Code': sku }] }] },
+        { $set: { 'metadata.availability': available } },
+      );
+      documentsUpdated += r2.modifiedCount;
+    }
+    return { success: true, productsUpdated, documentsUpdated };
+  }
+
   async ingestKnowledgeDocuments(
     projectId: string,
     docs: Array<{ title: string; type: string; content: string; category?: string }>,
@@ -2632,6 +2678,7 @@ export class ProductService {
           title: 1, sourceUrl: 1,
           'metadata.sku': 1, 'metadata.name': 1, 'metadata.price': 1, 'metadata.currency': 1,
           'metadata.category': 1, 'metadata.images': 1, 'metadata.imageUrl': 1, 'metadata.url': 1,
+          'metadata.availability': 1,
           'metadata.specs.Item Code': 1,
         },
       })
@@ -2656,9 +2703,11 @@ export class ProductService {
           category: meta.category,
           imageUrl: images[0] || meta.imageUrl || '',
           url: meta.url || (d as any).sourceUrl,
-          // No live inventory system yet: catalogue presence ⇒ in stock. A future
-          // inventory-service reservation replaces this (never hard-coded copy).
-          inStock: true,
+          // No live inventory system yet: catalogue presence ⇒ in stock, unless
+          // the source platform reported the SKU unavailable (metadata.availability,
+          // written by setAvailability). A future inventory-service reservation
+          // replaces this (never hard-coded copy).
+          inStock: meta.availability !== false,
         });
       }
     }

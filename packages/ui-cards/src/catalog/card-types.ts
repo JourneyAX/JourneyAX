@@ -78,7 +78,13 @@ export const CARD_TYPES = {
   productDetail: {
     title: 'Product detail',
     description: 'One product with gallery, specs, availability and actions.',
-    state: z.object({ product: ProductFact, related: z.array(ProductFact).optional(), closing: z.string().optional() }),
+    state: z.object({
+      product: ProductFact,
+      related: z.array(ProductFact).optional(),
+      closing: z.string().optional(),
+      /** Configured hand-off to the tenant's own tool (custom print, configurator). */
+      handoff: z.object({ label: z.string(), url: z.string(), note: z.string().optional() }).optional(),
+    }),
   },
   comparison: {
     title: 'Comparison',
@@ -100,6 +106,7 @@ export const CARD_TYPES = {
       items: z.array(ProductFact),
       totals: QuoteTotals.optional(),
       why: z.string().optional(),
+      closing: z.string().optional(),
     }),
   },
   quote: {
@@ -113,6 +120,8 @@ export const CARD_TYPES = {
       fulfilment: z.record(z.string(), z.unknown()).optional(),
       notes: z.array(z.object({ title: z.string(), text: z.string() })).optional(),
       compliance: z.string().optional(),
+      /** Closing CTA label — "Checkout" (retail bag) or "Approve & pay securely" (trade quote). */
+      ctaLabel: z.string().optional(),
     }),
   },
   cart: {

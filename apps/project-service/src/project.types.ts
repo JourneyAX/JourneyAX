@@ -139,6 +139,32 @@ export interface DemoCustomers {
   inventory: DemoInventory[];
 }
 
+/** Product-matching rule shared by hand-offs, purchase limits and the storage
+ *  guide — every field optional, all that are present must match. */
+export interface ProductMatch {
+  category?: string;            // exact category name
+  titleContains?: string;       // case-insensitive substring of the product name
+  skuPrefix?: string;           // e.g. "AT-00"
+  collection?: string;          // collection / series name the SKU belongs to
+}
+/** A product whose sale closes in the tenant's own tool (custom print,
+ *  configurator): the detail card offers a button that opens it. */
+export interface ProductHandoff { match: ProductMatch; label: string; url: string; note?: string }
+/** A per-customer quantity cap enforced when the bag is updated (limited drops). */
+export interface PurchaseLimit { match: ProductMatch; maxQuantity: number; reason?: string }
+/** Storage capacity facts per product family, so "what fits N cards" is
+ *  arithmetic the agent computes, never narrates. Capacities are cards. */
+export interface StorageGuideEntry {
+  match: ProductMatch;
+  family: string;               // "Deck Shell", "Nest +300", "Sanctuary 4-ring binder"
+  singleSleeved?: number;
+  doubleSleeved?: number;
+  sealableDoubleSleeved?: number;
+  unsleeved?: number;
+  kind: 'deck-box' | 'binder' | 'portfolio' | 'drawer' | 'case';
+  note?: string;
+}
+
 export interface ProjectAiConfig {
   provider: string;            // "openai" | "anthropic" | "gemini" | "ollama"
   model: string;               // "gpt-4o" | "claude-sonnet-5" | "gemini-2.5-pro" | "llama3.3:70b"
@@ -316,6 +342,9 @@ export interface ProjectConfig {
   capabilities?: string[];
   /** Sample-customer demo fixtures (see DemoCustomers). Optional; off when absent. */
   demoCustomers?: DemoCustomers;
+  handoffs?: ProductHandoff[];
+  purchaseLimits?: PurchaseLimit[];
+  storageGuide?: StorageGuideEntry[];
   // Customer-facing display labels the storefront applies (so "Products" can read
   // "Services"/"Programs" per business). Optional; sensible defaults if unset.
   labels?: {
@@ -485,6 +514,9 @@ export interface UpdateProjectDto {
   channels?: Partial<ProjectChannels>;
   ai?: Partial<ProjectAiConfig>;
   demoCustomers?: DemoCustomers | null;
+  handoffs?: ProductHandoff[] | null;
+  purchaseLimits?: PurchaseLimit[] | null;
+  storageGuide?: StorageGuideEntry[] | null;
   integrations?: Partial<ProjectIntegrations>;
   capabilities?: string[];
   labels?: { items?: string; itemsSingular?: string; headerTitle?: string };

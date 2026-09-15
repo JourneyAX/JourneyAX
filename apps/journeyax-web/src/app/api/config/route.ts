@@ -65,6 +65,9 @@ export async function GET(req: Request) {
       // tenant-name literal in the panel. Absent = the card's generic default.
       quoteIntro: typeof p?.quoteIntro === 'string' ? p.quoteIntro : null,
       complianceBadge: typeof p?.complianceBadge === 'string' ? p.complianceBadge : null,
+      // Hand-offs to the tenant's own tools (custom print, configurator): the
+      // product-detail card shows the button when a product matches a rule.
+      handoffs: Array.isArray(p?.handoffs) ? p.handoffs.filter((h: any) => h && h.label && h.url && h.match).map((h: any) => ({ match: h.match, label: String(h.label), url: String(h.url), note: h.note ? String(h.note) : undefined })) : [],
       // Sample-customer demo: only the PUBLIC profile list reaches the browser
       // (name, country, role, scenario, suggested asks). Orders, offers and
       // inventory stay server-side and are read through the agent's tools,

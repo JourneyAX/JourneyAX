@@ -803,6 +803,38 @@ const tools: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'presentBundle',
+      description: 'Present a set of products that belong TOGETHER as one card with a total and one "Add all" — a coordinated set from a series, a double-sleeving kit (outer + inner + box), a gift bundle for a budget. Every SKU MUST already have been returned by searchKnowledge or shown this conversation; prices and names are joined by the server. Use after retrieval, not as a first response to a broad ask. Not needed for a single item or a plain list of alternatives (showItems is for those).',
+      parameters: {
+        type: 'object',
+        properties: {
+          heading: { type: 'string', description: 'What the set is, in the customer\'s terms — e.g. "The Raid set", "Double-sleeving kit for your Commander deck".' },
+          why: { type: 'string', description: 'One sentence on why these belong together.' },
+          items: { type: 'array', items: { type: 'object', properties: { sku: { type: 'string' }, quantity: { type: 'integer', minimum: 1 }, reason: { type: 'string', description: 'One clause on this item\'s role in the set.' } }, required: ['sku'] }, description: 'Two to six real SKUs with quantities.' },
+        },
+        required: ['heading', 'items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'recommendStorage',
+      description: 'Which storage products (deck boxes, binders, portfolios, drawers) fit a given number of cards, from the business\'s own capacity facts — arithmetic done for you, never guessed. Call it before recommending storage when the customer has given a card or deck count. Returns the families that fit with their exact capacities; then searchKnowledge/showItems those families to present real SKUs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cards: { type: 'integer', minimum: 1, description: 'Total cards to store (a Commander deck is 100, a Standard deck 60).' },
+          sleeving: { type: 'string', enum: ['unsleeved', 'single', 'double', 'sealable-double'], description: 'How the cards are sleeved — it changes capacity.' },
+          kind: { type: 'string', enum: ['deck-box', 'binder', 'portfolio', 'drawer', 'case', 'any'], description: 'What kind of storage they want, if stated.' },
+        },
+        required: ['cards'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'loadSkill',
       description: "Load the full technique for one named skill (from the skills list in your system prompt) when its description applies to this turn. The system prompt only ever carries each skill's name and one-line summary — call this to read the actual guidance before acting on it.",
       parameters: {
@@ -909,7 +941,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
 ];
 
 // ── UI Tool Names ─────────────────────────────────────────────────────
-const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner', 'presentComparison', 'presentSuggestions']);
+const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'presentBundle', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner', 'presentComparison', 'presentSuggestions']);
 
 // ── Capability registry: project-configurable toolset ─────────────────
 // `presentSuggestions` is universal — like commerce-agents' present_suggestions,
@@ -1114,6 +1146,144 @@ async function attachComparisonFacts(tenantId: string, call: any): Promise<void>
   call.function.arguments = JSON.stringify(args);
 }
 
+/**
+ * presentBundle: same contract as the other presentation tools — the model
+ * picks SKUs, quantities and reasons; every fact (name, image, price, stock)
+ * is joined from the catalogue's pricebook, the total is computed here, and a
+ * SKU the catalogue does not have is dropped. Refuses when fewer than two
+ * real items survive (a "set" of one is a product card, not a bundle).
+ */
+async function attachBundleFacts(tenantId: string, call: any): Promise<Record<string, unknown> | null> {
+  let args: any = {};
+  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
+  const wanted: any[] = Array.isArray(args?.items) ? args.items : [];
+  const skus = [...new Set(wanted.map((i) => String(i?.sku || '').trim().toUpperCase()).filter(Boolean))];
+  if (skus.length < 2) return { success: false, instruction: 'A bundle needs at least two real SKUs. Use showItems for a single item.' };
+  let book: any = { items: [], missing: skus };
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/pricebook`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ skus }), signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) book = await res.json();
+  } catch { /* best effort — falls through to a refusal below if nothing priced */ }
+  const byCode = new Map<string, any>((book.items || []).map((i: any) => [String(i.sku).toUpperCase(), i]));
+  const items = wanted.map((w) => {
+    const code = String(w?.sku || '').trim().toUpperCase();
+    const f = byCode.get(code);
+    if (!f || f.inStock === false) return null;
+    const quantity = Math.max(1, Math.floor(Number(w?.quantity) || 1));
+    return { sku: f.sku, title: f.name, price: f.price, currency: f.currency, imageUrl: f.imageUrl || null, url: f.url, category: f.category, quantity, reason: w?.reason || undefined, stockLabel: 'In stock' };
+  }).filter(Boolean) as any[];
+  if (items.length < 2) {
+    return { success: false, removedNotFound: skus.filter((s) => !byCode.has(s)), instruction: 'Fewer than two of those SKUs exist (or are in stock) in the real catalogue — do not present a bundle. searchKnowledge for real alternatives.' };
+  }
+  const priced = items.filter((i) => typeof i.price === 'number');
+  const subtotal = Number(priced.reduce((n, i) => n + i.price * i.quantity, 0).toFixed(2));
+  const currency = items.find((i) => i.currency)?.currency || 'USD';
+  args.items = items;
+  args.totals = { subtotal, total: subtotal, currency, itemCount: items.reduce((n, i) => n + i.quantity, 0), pricedAll: priced.length === items.length };
+  call.function.arguments = JSON.stringify(args);
+  return null;
+}
+
+/**
+ * recommendStorage: the tenant's storage-capacity facts (config `storageGuide`)
+ * turned into "what fits N cards" — arithmetic in code, not narration.
+ */
+function recommendStorage(cfg: any, rawArgs: string): Record<string, unknown> {
+  let args: any = {};
+  try { args = JSON.parse(rawArgs || '{}'); } catch { /* empty */ }
+  const guide: any[] = Array.isArray(cfg?.storageGuide) ? cfg.storageGuide : [];
+  if (!guide.length) return { found: false, message: 'This business has no storage capacity guide configured — recommend from retrieved product descriptions and say the capacity comes from the product page.' };
+  const cards = Math.max(1, Math.floor(Number(args.cards) || 0));
+  if (!cards) return { found: false, message: 'cards is required.' };
+  const sleeving = String(args.sleeving || 'single');
+  const kind = String(args.kind || 'any');
+  const capOf = (g: any) => sleeving === 'unsleeved' ? (g.unsleeved ?? g.singleSleeved) : sleeving === 'double' ? g.doubleSleeved : sleeving === 'sealable-double' ? (g.sealableDoubleSleeved ?? g.doubleSleeved) : g.singleSleeved;
+  const rows = guide
+    .filter((g) => kind === 'any' || g.kind === kind)
+    .map((g) => ({ family: g.family, kind: g.kind, capacity: capOf(g), fits: (capOf(g) || 0) >= cards, spare: (capOf(g) || 0) - cards, note: g.note, searchFor: g.match?.titleContains || g.family }))
+    .filter((r) => typeof r.capacity === 'number');
+  const fits = rows.filter((r) => r.fits).sort((a, b) => a.spare - b.spare);
+  const tooSmall = rows.filter((r) => !r.fits).sort((a, b) => b.capacity - a.capacity);
+  return {
+    found: fits.length > 0, cards, sleeving, kind,
+    fits: fits.slice(0, 4),
+    tooSmall: tooSmall.slice(0, 3),
+    note: 'Capacities are the business\'s own per-family facts for the sleeving stated. Present the fitting families with searchKnowledge + showItems (search by family name), and say the capacity number you used.',
+  };
+}
+
+/**
+ * The storage ask, read in code: "a box for 100 double-sleeved Commander
+ * cards" → { cards: 100, sleeving: 'double', kind: 'deck-box' }. The model was
+ * told to call recommendStorage first and did not (it narrated capacities
+ * from retrieved copy instead), so the arithmetic is run here, before the
+ * model speaks, and handed to it as facts — the same pre-read pattern
+ * demoCustomerContext uses for order history.
+ */
+function parseStorageAsk(text: string): { cards: number; sleeving: string; kind: string } | null {
+  const t = (text || '').toLowerCase();
+  const num = t.match(/\b(\d{2,4})\b/);
+  let cards = num ? Number(num[1]) : 0;
+  if (!cards) {
+    if (/\bcommander\b|\bedh\b/.test(t)) cards = 100;
+    else if (/\b(standard|modern|pioneer|legacy|pauper|deck)\b/.test(t)) cards = 60;
+  }
+  if (!cards) return null;
+  const sleeving = /\bunsleeved\b/.test(t) ? 'unsleeved'
+    : /\bsealable\b/.test(t) ? 'sealable-double'
+    : /\b(double|twice|two|2)[- ]?sleev/.test(t) ? 'double' : 'single';
+  const kind = /\bbinder\b/.test(t) ? 'binder'
+    : /\b(portfolio|album)\b/.test(t) ? 'portfolio'
+    : /\bdrawer\b/.test(t) ? 'drawer'
+    : /\b(deck ?box|box|case)\b/.test(t) ? 'deck-box' : 'any';
+  return { cards, sleeving, kind };
+}
+
+type StorageFacts = { cards: number; sleeving: string; kind: string; fits: any[]; tooSmall: any[] };
+
+function computeStorageFacts(cfg: any, lastUserText: string): StorageFacts | null {
+  const ask = parseStorageAsk(lastUserText);
+  if (!ask || !Array.isArray(cfg?.storageGuide) || !cfg.storageGuide.length) return null;
+  let r: any = recommendStorage(cfg, JSON.stringify(ask));
+  // A kind the guide does not know (no "binder" rows, say) → widen to any.
+  if (!(r.fits || []).length && !(r.tooSmall || []).length && ask.kind !== 'any') r = recommendStorage(cfg, JSON.stringify({ ...ask, kind: 'any' }));
+  return { cards: ask.cards, sleeving: ask.sleeving, kind: ask.kind, fits: r.fits || [], tooSmall: r.tooSmall || [] };
+}
+
+function storageFactsBlock(f: StorageFacts): string {
+  const fit = f.fits.map((x: any) => `${x.family}: holds ${x.capacity} ${f.sleeving}-sleeved (${x.spare} spare${x.note ? `; ${x.note}` : ''})`).join(' · ');
+  const small = f.tooSmall.map((x: any) => `${x.family}: only ${x.capacity}`).join(' · ');
+  return `[STORAGE FACTS] Computed from this business's own capacity guide for ${f.cards} ${f.sleeving}-sleeved cards${f.kind !== 'any' ? ` (${f.kind})` : ''}. `
+    + (fit ? `FITS — ${fit}. ` : 'Nothing in the guide fits that count in one piece — say so and suggest splitting across two. ')
+    + (small ? `TOO SMALL — ${small}. ` : '')
+    + 'Quote ONLY these capacity numbers. The storefront will show cards for the fitting families under your text; your text is your pick, the number you used, and one next-step question — do not list the products.';
+}
+
+/**
+ * A showItems whose every item was dropped (sold out, fabricated) must not
+ * reach the storefront as an empty card, and the model must hear WHY so its
+ * text says "sold out" instead of praising an item nobody can buy.
+ */
+function emptyShowItemsVerdict(call: any, facts: { soldOut: string[] } | void): Record<string, unknown> | null {
+  if (call?.function?.name !== 'showItems') return null;
+  let args: any = {};
+  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
+  if (Array.isArray(args?.products) && args.products.length) return null;
+  const soldOut = facts?.soldOut || [];
+  return {
+    success: false,
+    shown: 0,
+    soldOut,
+    message: soldOut.length
+      ? `Nothing was shown: ${soldOut.join(', ')} ${soldOut.length > 1 ? 'are' : 'is'} SOLD OUT. Tell the customer plainly it is sold out, then searchKnowledge for an in-stock alternative in the same family/art style and showItems those. Never describe a sold-out item as available.`
+      : 'Nothing was shown: none of those items exist in the catalogue. searchKnowledge again with the customer\'s own words and showItems only real results.',
+  };
+}
+
 async function enforceItemDesignability(
   tenantId: string, call: any, designFirst = false,
 ): Promise<Record<string, unknown> | null> {
@@ -1127,6 +1297,7 @@ async function enforceItemDesignability(
     if (!refusal) await attachComparisonFacts(tenantId, call);
     return refusal;
   }
+  if (call?.function?.name === 'presentBundle') return attachBundleFacts(tenantId, call);
   if (call?.function?.name === 'presentSuggestions') {
     try {
       const a = JSON.parse(call.function.arguments || '{}');
@@ -1628,15 +1799,16 @@ function normalizeTradeProduct(it: any): any {
   return out;
 }
 
-async function groundItemFacts(tenantId: string, call: any): Promise<void> {
-  if (call?.function?.name !== 'showItems') return;
+async function groundItemFacts(tenantId: string, call: any): Promise<{ soldOut: string[] }> {
+  const out = { soldOut: [] as string[] };
+  if (call?.function?.name !== 'showItems') return out;
   let args: any = {};
-  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return; }
+  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return out; }
   const products = args?.products;
-  if (!Array.isArray(products) || !products.length) return;
+  if (!Array.isArray(products) || !products.length) return out;
 
   const skus = [...new Set(products.map((p: any) => String(p?.sku || '').trim()).filter(Boolean))];
-  if (!skus.length) return;
+  if (!skus.length) return out;
 
   let payload: any = null;
   try {
@@ -1648,12 +1820,12 @@ async function groundItemFacts(tenantId: string, call: any): Promise<void> {
       body: JSON.stringify({ skus }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return;   // lookup failed → keep cards untouched (best-effort, never block)
+    if (!res.ok) return out;   // lookup failed → keep cards untouched (best-effort, never block)
     payload = await res.json();
   } catch {
-    return;
+    return out;
   }
-  if (!payload) return;
+  if (!payload) return out;
 
   const items: any[] = payload.items || [];
   const bySku = new Map(items.map((i: any) => [String(i.sku).trim().toUpperCase(), i]));
@@ -1695,6 +1867,10 @@ async function groundItemFacts(tenantId: string, call: any): Promise<void> {
     if (key) usedSkus.add(key);
     const row: any = key ? bySku.get(key) : null;
     if (!row) { kept.push(p); continue; }                      // real (not flagged missing) but thin row → keep
+    // SOLD OUT (the source platform reported the SKU unavailable): never a
+    // buyable card. Dropped here, structurally — the business rule in prose
+    // is a reminder, this is the guarantee.
+    if (row.inStock === false) { dropped++; out.soldOut.push(String(row.name || p.name || key)); console.log(`[AgentService] showItems: dropped sold-out ${key}`); continue; }
     const g = { ...p };
     if (row.imageUrl) g.imageUrl = row.imageUrl;
     if (typeof row.price === 'number') g.price = row.price;
@@ -1729,6 +1905,7 @@ async function groundItemFacts(tenantId: string, call: any): Promise<void> {
   if (grounded || dropped || substituted || deduped.length !== kept.length) {
     console.warn(`[AgentService] showItems: grounded ${grounded}, substituted ${substituted} fabricated→real, dropped ${dropped}, deduped ${kept.length - deduped.length}; ${deduped.length} real card(s)`);
   }
+  return out;
 }
 
 async function designableAlternatives(
@@ -2550,7 +2727,7 @@ async function lookupRelated(tenantId: string, rawArgs: string): Promise<unknown
 const CAPABILITY_TO_TOOL: Record<string, string | string[]> = {
   // presentComparison rides with the same 'products' capability — a tenant
   // that can list products can also compare a shortlist of them.
-  products: ['showItems', 'presentComparison'],
+  products: ['showItems', 'presentComparison', 'presentBundle', 'recommendStorage'],
   // Sample-customer history: read-only tools over the project's demo fixtures.
   customerHistory: ['getMyOrders', 'getMyLatestOrder', 'getMyOrder', 'getCurrentOffer', 'getStaffInventory'],
   steps: 'showGuide',
@@ -2940,6 +3117,35 @@ function compactItemListing(text: string, names: string[]): string {
     .map((s) => s.replace(/:\s*$/, '.'));
   const out = kept.join('\n\n').trim();
   return out || text;
+}
+
+/** Config `ProductMatch` against a catalogue fact (name/category/sku). All present fields must match. */
+function productMatches(match: any, f: { sku: string; name?: string; category?: string; collections?: string[] }): boolean {
+  if (!match || typeof match !== 'object') return false;
+  const name = String(f.name || '').toLowerCase();
+  if (match.category && String(match.category).toLowerCase() !== String(f.category || '').toLowerCase()) return false;
+  if (match.titleContains && !name.includes(String(match.titleContains).toLowerCase())) return false;
+  if (match.skuPrefix && !String(f.sku || '').toUpperCase().startsWith(String(match.skuPrefix).toUpperCase())) return false;
+  if (match.collection && !(f.collections || []).some((c) => c.toLowerCase() === String(match.collection).toLowerCase())) return false;
+  return !!(match.category || match.titleContains || match.skuPrefix || match.collection);
+}
+
+/** "The whole X set", "everything in the series", "a kit", "matching pieces". */
+function isSetAsk(text: string): boolean {
+  const t = (text || '').toLowerCase();
+  if (t.length > 400) return false;
+  return /\b(whole|entire|full|complete)\b.*\b(set|series|collection|kit|look)\b/.test(t)
+    || /\b(set|bundle|kit)\b.*\b(for|of)\b/.test(t)
+    || /\b(matching|that match(es)?|goes? with|to go with|complete the (set|look))\b/.test(t);
+}
+
+/** "A box for a 100-card deck", "binder for 600 cards", "what fits a double-sleeved Commander deck". */
+function isStorageAsk(text: string): boolean {
+  const t = (text || '').toLowerCase();
+  if (t.length > 400) return false;
+  const storage = /\b(deck ?box|box|binder|portfolio|album|storage|store|drawer|case|fit|fits|hold|holds)\b/.test(t);
+  const count = /\b\d{2,4}\b|\b(commander|standard|deck|decks|collection)\b/.test(t);
+  return storage && count;
 }
 
 /** "What's the difference between X and Y", "X vs Y", "compare A with B". */
@@ -3338,6 +3544,57 @@ export class AgentService {
   }
 
   /**
+   * Storage ask guarantee: the fitting families computed in code are shown as
+   * cards even when the model answered in prose only (gpt-4o did exactly that
+   * — quoted capacities from retrieved copy, called no tool). One search per
+   * top family, merged into one card, so the text's pick has cards under it.
+   */
+  private async ensureStorageCards(
+    tenantId: string, facts: StorageFacts | null, uiToolCalls: any[], conversation: any[],
+    emit?: (event: string, data: any) => void,
+  ): Promise<void> {
+    if (!facts?.fits?.length) return;
+    if (uiToolCalls.some((c) => c?.function?.name === 'presentComparison')) return;
+    // The model's own showItems counts only if it actually shows a fitting
+    // family — a semantic search for "commander storage" brought back a
+    // playmat and toploaders beside a text that (correctly) named the Strongbox.
+    const needles = facts.fits.map((f: any) => String(f.searchFor || f.family).toLowerCase());
+    const alreadyShown = uiToolCalls.some((c) => {
+      if (c?.function?.name !== 'showItems') return false;
+      try { return (JSON.parse(c.function.arguments || '{}').products || []).some((p: any) => needles.some((n) => String(p?.name || '').toLowerCase().includes(n))); } catch { return false; }
+    });
+    if (alreadyShown) return;
+    try {
+      const knowledge = await adapterRegistry.getKnowledge(tenantId);
+      const seen = new Set<string>();
+      const items: any[] = [];
+      for (const f of facts.fits.slice(0, 3)) {
+        const res: any = await knowledge.search({ tenantId }, { query: String(f.searchFor || f.family), type: 'product', limit: 3 });
+        for (const p of (res?.results || res?.products || res?.items || [])) {
+          const k = String(p?.sku || '').toUpperCase();
+          if (!k || seen.has(k)) continue;
+          seen.add(k);
+          items.push({ ...normalizeTradeProduct(p), description: `Holds ${f.capacity} ${facts.sleeving}-sleeved cards` });
+          if (items.length >= 6) break;
+        }
+        if (items.length >= 6) break;
+      }
+      if (!items.length) return;
+      const call = { id: `storage_cards_${Date.now()}`, type: 'function', function: { name: 'showItems', arguments: JSON.stringify({ items, products: items }) } } as any;
+      await groundItemFacts(tenantId, call);   // pricebook facts; sold-out dropped
+      let args: any = {};
+      try { args = JSON.parse(call.function.arguments); } catch { return; }
+      if (!Array.isArray(args.products) || !args.products.length) return;
+      console.log(`[agent] storage guarantee: showing ${args.products.length} card(s) for ${facts.fits.map((f: any) => f.family).join(', ')}`);
+      uiToolCalls.push(call);
+      if (emit) emit('uiAction', { name: 'showItems', arguments: args });
+      conversation.push({ role: 'system', content: '[CARDS SHOWN] Cards for the fitting storage families are now on screen under your text. Do not list them; give your pick, the capacity number you used, and one next-step question.' });
+    } catch (err) {
+      console.warn('[agent] storage guarantee failed:', err);
+    }
+  }
+
+  /**
    * "Do NOT keep the customer in discovery once they have answered — that is
    * the most common failure" (the intent resolver's own rule). The open model
    * on PlaceMakers kept doing exactly that: three rounds of clarify after
@@ -3398,20 +3655,42 @@ export class AgentService {
   ): Promise<boolean> {
     const t = (text || '').trim();
     const add = t.match(/^Add SKU (\S+) \(qty (\d+)\) to my (?:bag|quote|cart)\.?$/i);
+    // "Add all" from a products / bundle card: "Add SKUs A (qty 1), B (qty 2) to my bag."
+    const addMany = t.match(/^Add SKUs ((?:\S+ \(qty \d+\)(?:, )?)+) to my (?:bag|quote|cart)\.?$/i);
     const remove = t.match(/^Remove SKU (\S+) from my (?:bag|quote|cart)\.?$/i);
     const change = t.match(/^Change the quantity of SKU (\S+) to (\d+)\.?$/i);
-    if (!add && !remove && !change) return false;
+    if (!add && !addMany && !remove && !change) return false;
 
     const current = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
     const qty = new Map<string, number>();
     for (const l of current?.lines || []) if (l?.sku) qty.set(String(l.sku).toUpperCase(), Math.max(1, Number(l.quantity) || 1));
     const key = (add?.[1] || remove?.[1] || change?.[1] || '').toUpperCase();
-    if (add) qty.set(key, (qty.get(key) || 0) + Math.max(1, Number(add[2]) || 1));
+    const touched: string[] = [];
+    if (add) { qty.set(key, (qty.get(key) || 0) + Math.max(1, Number(add[2]) || 1)); touched.push(key); }
+    else if (addMany) {
+      for (const m of addMany[1].matchAll(/(\S+) \(qty (\d+)\)/g)) { const k = m[1].toUpperCase(); qty.set(k, (qty.get(k) || 0) + Math.max(1, Number(m[2]) || 1)); touched.push(k); }
+    }
     else if (remove) qty.delete(key);
-    else if (change) { const n = Number(change[2]) || 0; if (n <= 0) qty.delete(key); else qty.set(key, n); }
+    else if (change) { const n = Number(change[2]) || 0; if (n <= 0) qty.delete(key); else qty.set(key, n); touched.push(key); }
 
     const isCart = projectConfig?.commerceMode === 'cart';
     const bagWord = isCart ? 'bag' : 'quote';
+
+    // Purchase limits (config `purchaseLimits`, e.g. one limited-drop item per
+    // person) are enforced HERE, at the bag, not only in prose — matched on
+    // the catalogue's own facts for the touched SKUs.
+    const capped: string[] = [];
+    const limits: any[] = Array.isArray(projectConfig?.purchaseLimits) ? projectConfig.purchaseLimits : [];
+    if (limits.length && touched.length) {
+      const facts = await lookupSkuFacts(tenantId, touched);
+      for (const f of facts) {
+        for (const lim of limits) {
+          if (!productMatches(lim.match, f) || !(lim.maxQuantity > 0)) continue;
+          const k = f.sku.toUpperCase();
+          if ((qty.get(k) || 0) > lim.maxQuantity) { qty.set(k, lim.maxQuantity); capped.push(`${f.name} (limit ${lim.maxQuantity}${lim.reason ? ` — ${lim.reason}` : ''})`); }
+        }
+      }
+    }
     const items = [...qty.entries()].map(([sku, quantity]) => ({ sku, quantity }));
     if (!items.length) {
       // Nothing left to price. The storefront keeps its last quote card; the
@@ -3441,10 +3720,11 @@ export class AgentService {
     uiToolCalls.push(call);
     if (emit) emit('uiAction', { name: 'updateQuote', arguments: quote });
     const lines = quote.lines.map((l) => `${l.name} × ${l.quantity}${l.unitPrice !== null ? ` @ ${quote.symbol || ''}${l.unitPrice}` : ''}`).join('; ');
-    console.log(`[agent] storefront cart command applied (${add ? 'add' : remove ? 'remove' : 'qty'} ${key}) → ${quote.lines.length} line(s), total ${quote.total}`);
+    console.log(`[agent] storefront cart command applied (${add ? 'add' : addMany ? 'add-many' : remove ? 'remove' : 'qty'} ${addMany ? touched.join(',') : key}) → ${quote.lines.length} line(s), total ${quote.total}${capped.length ? ` | capped: ${capped.join('; ')}` : ''}`);
     conversation.push({ role: 'system', content:
       `[${bagWord.toUpperCase()} UPDATED — already applied by the customer's own tap, server-authoritative] ` +
       `${bagWord} now: ${lines}. Total ${quote.symbol || ''}${quote.total} ${quote.currency || ''}. The updated ${bagWord} card is already on screen. ` +
+      (capped.length ? `A purchase limit applied and the quantity was held at the maximum for: ${capped.join('; ')} — say so plainly. ` : '') +
       `Reply in ONE short sentence confirming what changed, then offer one natural next step. Do NOT call updateQuote, searchKnowledge or showItems this turn, and do not restate the line items.` });
     return true;
   }
@@ -4473,7 +4753,10 @@ export class AgentService {
           // showItems may not present stock styles as customisable (AUG-25).
           const itemVerdict = await enforceItemDesignability(tenantId, call, designFirst);
           // ...and the catalogue, not the model, states what each card shows.
-          await groundItemFacts(tenantId, call);
+          const itemFacts = await groundItemFacts(tenantId, call);
+          // Everything dropped (sold out / not real) → no empty card, the model hears why.
+          const emptied = emptyShowItemsVerdict(call, itemFacts);
+          if (emptied) { conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(emptied) }); continue; }
           // Complete-the-look guard (forced-emit path): never let a same-category
           // card through. If they were ALL same-category, show none rather than loop.
           if (call.function.name === 'showItems' && journeyState.crossSellFor && this.applyCrossSellFilter(call, journeyState)) {
@@ -4632,6 +4915,8 @@ export class AgentService {
     // interactive clarification cards in the conversation. Zero wasted GPU loops,
     // instant response, session saved cleanly.
     const lastUserText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+    // Storage sizing is arithmetic over the config guide, run here before the model speaks.
+    const storageFacts = isStorageAsk(lastUserText) ? computeStorageFacts(projectConfig, lastUserText) : null;
     const retrievalCtx = deriveRetrievalContext(messages);
     // The built-in trade diagnostic question bank (wet areas, leaks, linings —
     // NZ building-supply vocabulary) is a per-tenant capability, never a
@@ -4751,6 +5036,11 @@ export class AgentService {
             'Preserve all room dimensions, active materials, and customer context during transitions. ' +
             'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
           ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
+          ...(isSetAsk(lastUserText) ? [{ role: 'system', content:
+            '[SET ASK] The customer wants a coordinated SET (a series, a kit, "the whole …", pieces that match). Retrieve the real members, then present them with presentBundle (heading, why, the SKUs with quantities) — one card, one total, one "Add all" — not as a plain showItems list. Members come from retrieval / the catalogue\'s collections only; never pad a set with a guess.' }] : []),
+          ...(storageFacts ? [{ role: 'system', content: storageFactsBlock(storageFacts) }]
+            : isStorageAsk(lastUserText) ? [{ role: 'system', content:
+            '[STORAGE ASK] The customer is sizing storage for a number of cards or decks. Call recommendStorage(cards, sleeving) FIRST — it returns the families that fit with exact capacities from this business\'s own guide — then searchKnowledge/showItems those families and quote the capacity number you used. Do not narrate capacities from memory.' }] : []),
           ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
             '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
             'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
@@ -4882,10 +5172,12 @@ export class AgentService {
             || call.function.name === 'submitForReview' || call.function.name === 'checkReviewStatus'
             || call.function.name === 'recommendSize' || call.function.name === 'uploadPhotosFor3D'
             || call.function.name === 'buildProjectPlan' || call.function.name === 'checkBranchStock'
-            || call.function.name === 'openSpacePlanner' || DEMO_CUSTOMER_TOOLS.has(call.function.name)) {
+            || call.function.name === 'openSpacePlanner' || call.function.name === 'recommendStorage' || DEMO_CUSTOMER_TOOLS.has(call.function.name)) {
           hadRetrieval = true;
           const result = DEMO_CUSTOMER_TOOLS.has(call.function.name)
             ? await runDemoCustomerTool(projectConfig, request.demoPrincipalId, call.function.name, call.function.arguments, tenantId)
+            : call.function.name === 'recommendStorage'
+            ? recommendStorage(projectConfig, call.function.arguments)
             : call.function.name === 'openSpacePlanner'
             ? { ok: true, roomType: 'laundry', message: 'PlaceMakers Space Planner launched' }
             : call.function.name === 'buildProjectPlan'
@@ -5236,7 +5528,15 @@ export class AgentService {
           const verdict = await validateDesign(tenantId, call, projectConfig.configuratorType);
           const itemVerdict = await enforceItemDesignability(
             tenantId, call, !!brandHubProfile?.model?.customised);
-          await groundItemFacts(tenantId, call);
+          const itemFacts = await groundItemFacts(tenantId, call);
+          // Everything dropped (sold out / not real) → no empty card; the model
+          // is told which items are sold out and searches for alternatives.
+          const emptied = emptyShowItemsVerdict(call, itemFacts);
+          if (emptied) {
+            conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(emptied) });
+            didSearch = true;
+            continue;
+          }
           this.applySizePreselect(call, this.resolveShopperSize(intent, messages));
           // Complete-the-look: drop same-category cards. If nothing complementary
           // survives, reject once and make the model search a DIFFERENT category —
@@ -5256,7 +5556,7 @@ export class AgentService {
           conversation.push({
             role: 'tool',
             tool_call_id: call.id,
-            content: JSON.stringify(itemVerdict || verdict),
+            content: JSON.stringify(itemFacts.soldOut.length ? { ...(itemVerdict || verdict), soldOut: itemFacts.soldOut, note: 'These were dropped as SOLD OUT and are not on screen — say so if the customer asked for one by name.' } : (itemVerdict || verdict)),
           });
           {
             const _s = summarizeToolCall(call.function.name, parsedArgs, itemVerdict || verdict);
@@ -5274,6 +5574,7 @@ export class AgentService {
       }
     }
 
+    await this.ensureStorageCards(tenantId, storageFacts, uiToolCalls, conversation);
     // Safety net: never return a tool-only message with no text to the user.
     // No tools/tool_choice → pure text (OpenAI rejects tool_choice without tools).
     if (finalMessage && finalMessage.tool_calls && finalMessage.tool_calls.length > 0 && !finalMessage.content) {
@@ -5406,6 +5707,8 @@ export class AgentService {
 
     // ── Consultative Clarification Gate (Early Discovery Interception - Streaming) ──
     const lastUserText = String([...messages].reverse().find((m) => m.role === 'user')?.content || '');
+    // Storage sizing is arithmetic over the config guide, run here before the model speaks.
+    const storageFacts = isStorageAsk(lastUserText) ? computeStorageFacts(projectConfig, lastUserText) : null;
     const retrievalCtx = deriveRetrievalContext(messages);
     // The built-in trade diagnostic question bank (wet areas, leaks, linings —
     // NZ building-supply vocabulary) is a per-tenant capability, never a
@@ -5486,6 +5789,11 @@ export class AgentService {
             'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
             'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
           ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
+          ...(isSetAsk(lastUserText) ? [{ role: 'system', content:
+            '[SET ASK] The customer wants a coordinated SET (a series, a kit, "the whole …", pieces that match). Retrieve the real members, then present them with presentBundle (heading, why, the SKUs with quantities) — one card, one total, one "Add all" — not as a plain showItems list. Members come from retrieval / the catalogue\'s collections only; never pad a set with a guess.' }] : []),
+          ...(storageFacts ? [{ role: 'system', content: storageFactsBlock(storageFacts) }]
+            : isStorageAsk(lastUserText) ? [{ role: 'system', content:
+            '[STORAGE ASK] The customer is sizing storage for a number of cards or decks. Call recommendStorage(cards, sleeving) FIRST — it returns the families that fit with exact capacities from this business\'s own guide — then searchKnowledge/showItems those families and quote the capacity number you used. Do not narrate capacities from memory.' }] : []),
           ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
             '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
             'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
@@ -5596,7 +5904,7 @@ export class AgentService {
       const searchCalls = fnCalls.filter((c) => c.function.name === 'searchKnowledge');
       // These return DATA, so they must be excluded from the UI bucket —
       // otherCalls results never re-enter the conversation.
-      const DATA_TOOLS = new Set([...DEMO_CUSTOMER_TOOLS, 'findRelated','getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
+      const DATA_TOOLS = new Set([...DEMO_CUSTOMER_TOOLS, 'recommendStorage', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
       const dataCalls = fnCalls.filter((c) => DATA_TOOLS.has(c.function.name));
       const otherCalls = fnCalls.filter((c) => c.function.name !== 'searchKnowledge' && !DATA_TOOLS.has(c.function.name));
 
@@ -5608,6 +5916,8 @@ export class AgentService {
             name: call.function.name,
             value: DEMO_CUSTOMER_TOOLS.has(call.function.name)
               ? await runDemoCustomerTool(projectConfig, request.demoPrincipalId, call.function.name, call.function.arguments, tenantId)
+              : call.function.name === 'recommendStorage'
+              ? recommendStorage(projectConfig, call.function.arguments)
               : call.function.name === 'findRelated'
               ? await lookupRelated(tenantId, call.function.arguments)
               : call.function.name === 'analyzeDesign'
@@ -5937,7 +6247,19 @@ export class AgentService {
         const itemVerdict = await enforceItemDesignability(
           tenantId, call, !!brandHubProfile?.model?.customised);
         // Card facts come from the catalogue, never the model (AUG-82).
-        await groundItemFacts(tenantId, call);
+        const itemFacts = await groundItemFacts(tenantId, call);
+        // Everything dropped (sold out / not real) → no empty card; the model
+        // is told which items are sold out and searches for alternatives.
+        const emptied = emptyShowItemsVerdict(call, itemFacts);
+        if (emptied) {
+          conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(emptied) });
+          {
+            const _s = summarizeToolCall(call.function.name, parsedArgs, emptied);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
+          }
+          didSearch = true;
+          continue;
+        }
         this.applySizePreselect(call, this.resolveShopperSize(intent, messages));
         // Complete-the-look: drop same-category cards; if nothing complementary
         // survives, reject once and force a DIFFERENT-category search. Stops the
@@ -5975,7 +6297,7 @@ export class AgentService {
 
         uiToolCalls.push(call);
         emit('uiAction', { name: call.function.name, arguments: emitArgs });
-        conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(itemVerdict || verdict) });
+        conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(itemFacts.soldOut.length ? { ...(itemVerdict || verdict), soldOut: itemFacts.soldOut, note: 'These were dropped as SOLD OUT and are not on screen — say so if the customer asked for one by name.' } : (itemVerdict || verdict)) });
         {
           const _s = summarizeToolCall(call.function.name, parsedArgs, itemVerdict || verdict);
           void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
@@ -5984,6 +6306,7 @@ export class AgentService {
       if (!didSearch) readyToSpeak = true; // UI-only round → speak next
     }
 
+    await this.ensureStorageCards(tenantId, storageFacts, uiToolCalls, conversation, emit);
     // ── Final answer — streamed token by token ──────────────────────
     // For a plain retail brand we can't stream raw tokens: a leaked "not
     // customisable" sentence would already be on screen before a post-strip runs.

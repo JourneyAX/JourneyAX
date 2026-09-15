@@ -13,7 +13,7 @@
  */
 import type {
   RecommendedProduct, ServerQuote, GuideStep, AccessoryItem, DynamicQuestion,
-  WarrantyInfo, SizeRecommendation, ProjectPlan, JourneyState, ComparisonData,
+  WarrantyInfo, SizeRecommendation, ProjectPlan, JourneyState, ComparisonData, BundleData,
 } from '@/lib/types';
 import type { FulfilmentConfig } from '@/context/StorefrontConfigContext';
 
@@ -96,6 +96,21 @@ export function mapComparisonCard(cmp: ComparisonData, shown: RecommendedProduct
   };
 }
 
+/** Bundle card: the agent's coordinated set, every fact already server-joined. */
+export function mapBundleCard(b: BundleData, closing: 'bag' | 'quote' = 'quote') {
+  const currency = b.totals?.currency || b.items.find((i) => i.currency)?.currency;
+  return {
+    heading: b.heading,
+    why: usableReason(b.why),
+    closing,
+    items: b.items.map((i) => ({
+      sku: i.sku, title: i.title, price: i.price ?? null, currency: i.currency || currency, imageUrl: i.imageUrl || null,
+      url: i.url, category: i.category, quantity: i.quantity ?? 1, reason: usableReason(i.reason, i.title), stockLabel: i.stockLabel,
+    })),
+    totals: b.totals ? { subtotal: b.totals.subtotal, total: b.totals.total, currency: b.totals.currency } : undefined,
+  };
+}
+
 export function mapQuoteCard(quote: ServerQuote, opts: {
   fulfilment?: FulfilmentConfig | null;
   selectedBranch?: string;
@@ -123,6 +138,7 @@ export function mapQuoteCard(quote: ServerQuote, opts: {
       ? 'Review what’s in your bag — prices and stock are checked live.'
       : 'Review your order below — I’ll re-validate and re-price as you go.'),
     compliance: opts.closing === 'bag' ? (opts.complianceBadge || undefined) : (opts.complianceBadge || 'Compatibility validated'),
+    ctaLabel: opts.closing === 'bag' ? 'Checkout' : 'Approve & pay securely',
     lines: quote.lines.map((l) => ({
       sku: l.sku,
       title: l.name,

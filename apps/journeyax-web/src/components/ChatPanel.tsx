@@ -125,6 +125,8 @@ async function streamChat(
           dispatch({ type: 'SET_RECOMMENDED_PRODUCTS', products: items });
         } else if (payload.name === 'presentComparison' && Array.isArray(payload.arguments?.skus) && payload.arguments.skus.length >= 2) {
           dispatch({ type: 'SET_COMPARISON', comparison: payload.arguments });
+        } else if (payload.name === 'presentBundle' && Array.isArray(payload.arguments?.items) && payload.arguments.items.length >= 2) {
+          dispatch({ type: 'SET_BUNDLE', bundle: payload.arguments });
         }
         // Forward-compatible: once the agent's presentation layer attaches an
         // enriched `card` to the frame directly (docs §5), render it too.
@@ -589,6 +591,12 @@ export default function ChatPanel() {
             const skus = action.arguments?.skus;
             if (Array.isArray(skus) && skus.length >= 2) {
               dispatch({ type: 'SET_COMPARISON', comparison: action.arguments });
+              hasPhaseChange = true;
+            }
+          } else if (action.name === 'presentBundle') {
+            const items = action.arguments?.items;
+            if (Array.isArray(items) && items.length >= 2) {
+              dispatch({ type: 'SET_BUNDLE', bundle: action.arguments });
               hasPhaseChange = true;
             }
           } else if (action.name === 'showGuide') {

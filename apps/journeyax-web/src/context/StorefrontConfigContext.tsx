@@ -79,6 +79,8 @@ export interface StorefrontConfig {
    *  `projectId === 'placemakers'` literal inside a shared panel. */
   quoteIntro?: string | null;
   complianceBadge?: string | null;
+  /** Products whose sale closes in the tenant's own tool — the detail card offers the button. */
+  handoffs?: { match: { category?: string; titleContains?: string; skuPrefix?: string; collection?: string }; label: string; url: string; note?: string }[];
   /** Sample-customer demo picker (public profile list only; history is read server-side). */
   demoCustomers?: {
     label: string;
@@ -112,6 +114,7 @@ const DEFAULT: StorefrontConfig = {
   quoteIntro: null,
   complianceBadge: null,
   demoCustomers: null,
+  handoffs: [],
 };
 
 const Ctx = createContext<StorefrontConfig>(DEFAULT);

@@ -225,6 +225,14 @@ export interface ComparisonData {
   products?: { sku: string; name?: string; title?: string; price?: number | null; imageUrl?: string | null; url?: string; category?: string }[];
 }
 
+/** presentBundle payload — a coordinated set with server-joined facts and a total. */
+export interface BundleData {
+  heading: string;
+  why?: string;
+  items: { sku: string; title: string; price?: number | null; currency?: string; imageUrl?: string | null; url?: string; category?: string; quantity?: number; reason?: string; stockLabel?: string }[];
+  totals?: { subtotal: number; total: number; currency: string; itemCount?: number; pricedAll?: boolean };
+}
+
 export interface RecommendedProduct {
   name: string;
   sku?: string;
@@ -396,6 +404,7 @@ export interface JourneyState {
   dynamicAnswers: Record<string, string>;
   recommendedProducts: RecommendedProduct[];
   comparison?: ComparisonData | null;
+  bundle?: BundleData | null;
   guideSteps: GuideStep[];
   quoteTitle?: string;
   customBom?: BOMLine[];

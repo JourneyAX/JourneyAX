@@ -33,6 +33,23 @@ import type { CardInstance } from '@/lib/types';
  * correctly. `onAction` is now referentially stable (empty dep array) and
  * reads current state through a ref updated on every render instead.
  */
+/** First configured hand-off (config `handoffs`) whose match fits this product, or undefined. */
+function matchHandoff(
+  handoffs: { match: { category?: string; titleContains?: string; skuPrefix?: string }; label: string; url: string; note?: string }[] | undefined,
+  p: { sku: string; name?: string; category?: string },
+): { label: string; url: string; note?: string } | undefined {
+  const name = (p.name || '').toLowerCase();
+  for (const h of handoffs || []) {
+    const m = h.match || {};
+    if (m.category && m.category.toLowerCase() !== (p.category || '').toLowerCase()) continue;
+    if (m.titleContains && !name.includes(m.titleContains.toLowerCase())) continue;
+    if (m.skuPrefix && !p.sku.toUpperCase().startsWith(m.skuPrefix.toUpperCase())) continue;
+    if (!m.category && !m.titleContains && !m.skuPrefix) continue;
+    return { label: h.label, url: h.url, note: h.note };
+  }
+  return undefined;
+}
+
 export function useCardActions() {
   const { state, dispatch, handleApprove } = useJourney();
   const cfg = useStorefrontConfig();
@@ -44,6 +61,8 @@ export function useCardActions() {
   // config arrives after first render, so a plain closure kept "quote".
   const closingRef = useRef<'bag' | 'quote'>('quote');
   closingRef.current = cfg.commerceMode === 'cart' ? 'bag' : 'quote';
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
 
   return useCallback((name: string, params?: Record<string, unknown>) => {
     const state = stateRef.current;
@@ -79,7 +98,7 @@ export function useCardActions() {
             card: {
               id: `productDetail-${sku}-${Date.now()}`,
               cardType: 'productDetail',
-              state: { product: { sku, title: p.name, description: p.description, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, specs: p.specs }, closing },
+              state: { product: { sku, title: p.name, description: p.description, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, specs: p.specs }, closing, handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: p.name, category: p.category }) },
               createdAt: String(count ?? 0),
             },
           });
@@ -89,9 +108,18 @@ export function useCardActions() {
       case 'addToCart':
         w.__handleBuildQuote?.(params?.sku ? `Add SKU ${params.sku} (qty ${params?.qty ?? 1}) to my ${closing}.` : undefined);
         break;
-      case 'addAllToCart':
-        w.__handleBuildQuote?.();
+      case 'addAllToCart': {
+        // The card passes its own items (products / bundle) — one deterministic
+        // command the server applies through the QuoteService, same as a single
+        // Add. Falls back to the model-driven build when a card has no items.
+        const items = Array.isArray(params?.items) ? (params!.items as any[]) : [];
+        const parts = items
+          .map((i) => ({ sku: String(i?.sku || '').trim(), qty: Math.max(1, Math.floor(Number(i?.quantity ?? i?.qty) || 1)) }))
+          .filter((i) => i.sku && !/^unsku-/i.test(i.sku))
+          .map((i) => `${i.sku} (qty ${i.qty})`);
+        w.__handleBuildQuote?.(parts.length ? `Add SKUs ${parts.join(', ')} to my ${closing}.` : undefined);
         break;
+      }
       case 'setQuantity':
         // Server-authoritative quote — a quantity change is a new build-quote
         // request, not a client-side edit; the agent recomputes price/stock.

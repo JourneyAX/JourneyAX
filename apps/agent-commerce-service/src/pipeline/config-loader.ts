@@ -29,6 +29,10 @@ export interface LoadedProjectConfig {
   /** Sample-customer demo fixtures (profiles, orders, offers, inventory) — read
    *  through the customerHistory tools, bound to the request's demo principal. */
   demoCustomers?: any;
+  /** Product-matching config: quantity caps enforced at bag time, and storage
+   *  capacity facts for the recommendStorage tool. (hand-offs are storefront-side.) */
+  purchaseLimits?: any[];
+  storageGuide?: any[];
   apiKey?: string;                // ai.apiKey — per-project LLM key (un-redacted via internal-key fetch)
   baseUrl?: string;               // ai.baseUrl — optional endpoint override
   companyName?: string;           // the business's CURRENT trading name
@@ -102,6 +106,8 @@ export class ConfigLoader {
         temperature: p?.ai?.temperature,
         maxTokens: p?.ai?.maxTokens,
         demoCustomers: p?.demoCustomers && typeof p.demoCustomers === 'object' ? p.demoCustomers : undefined,
+        purchaseLimits: Array.isArray(p?.purchaseLimits) ? p.purchaseLimits : undefined,
+        storageGuide: Array.isArray(p?.storageGuide) ? p.storageGuide : undefined,
         apiKey: p?.ai?.apiKey,
         baseUrl: p?.ai?.baseUrl,
         companyName: p?.companyName || p?.name,

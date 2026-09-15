@@ -70,7 +70,7 @@ const quoteLine = (prefix: string): Record<string, El> => {
   };
 };
 
-const totalsBlock = (prefix: string, ctaLabel = 'Approve & pay securely'): Record<string, El> => {
+const totalsBlock = (prefix: string, _ctaLabel = 'Approve & pay securely'): Record<string, El> => {
   const k = (s: string) => `${prefix}-${s}`;
   return {
     [k('bar')]: el('Box', { direction: 'row', align: 'center', justify: 'between', gap: 'lg', wrap: true, pad: 'md', border: true, bg: 'surface', radius: 'md' }, { children: [k('figs'), k('actions')] }),
@@ -82,7 +82,10 @@ const totalsBlock = (prefix: string, ctaLabel = 'Approve & pay securely'): Recor
     [k('totl')]: el('Text', { text: 'Total', variant: 'label', tone: 'accent' }),
     [k('totv')]: el('Price', { amount: S('/totals/total'), currency: S('/totals/currency'), size: 'xl' }),
     [k('actions')]: el('Box', { direction: 'row', gap: 'sm', align: 'center' }, { children: [k('cta')] }),
-    [k('cta')]: el('Button', { label: ctaLabel, variant: 'primary', size: 'lg', iconRight: 'chevron-right', loading: S('/ordering') }, { on: { press: { action: 'checkout' } } }),
+    // The closing CTA reads from state (mapQuoteCard sets it per commerce mode:
+    // "Checkout" for a retail bag, "Approve & pay securely" for a trade quote);
+    // the literal is only the fallback when a tenant template omits it.
+    [k('cta')]: el('Button', { label: S('/ctaLabel'), variant: 'primary', size: 'lg', iconRight: 'chevron-right', loading: S('/ordering') }, { on: { press: { action: 'checkout' } } }),
   };
 };
 
@@ -121,7 +124,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     grid: el('Grid', { minItemWidth: '170px', gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
     ...productTile('p', { cta: 'addToCart' }),
     foot: el('Box', { direction: 'row', justify: 'end', gap: 'sm' }, { children: ['addall'] }),
-    addall: el('Button', { label: { $template: 'Add all to ${/closing}' }, variant: 'secondary', icon: 'cart' }, { on: { press: { action: 'addAllToCart' } } }),
+    addall: el('Button', { label: { $template: 'Add all to ${/closing}' }, variant: 'secondary', icon: 'cart' }, { on: { press: { action: 'addAllToCart', params: { items: S('/products') } } } }),
   }),
 
   productDetail: spec('root', {
@@ -136,8 +139,12 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     desc: el('Markdown', { text: S('/product/description') }, { visible: [S('/product/description')] }),
     specs: el('Box', { gap: 'xs' }, { children: ['spec'], repeat: { statePath: '/product/specList', key: 'label' } }),
     spec: el('KeyValue', { label: I('label'), value: I('value'), inline: true }),
-    actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'ask'] }),
+    actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'handoff', 'ask'] }),
     add: el('Button', { label: { $template: 'Add to ${/closing}' }, variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1 } } } }),
+    // A configured hand-off (e.g. "Design it in The Forge") — a product whose
+    // sale closes in the tenant's own tool, not in the bag. Present only when
+    // the storefront matched a `handoffs` rule to this product.
+    handoff: el('Button', { label: S('/handoff/label'), variant: 'primary', iconRight: 'chevron-right' }, { visible: [S('/handoff')], on: { press: { action: 'openUrl', params: { url: S('/handoff/url') } } } }),
     ask: el('Button', { label: 'Ask about this', variant: 'secondary' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Tell me more about ${/product/title}' } } } } }),
   }),
 
@@ -158,7 +165,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     ...productTile('b', { cta: 'addToCart' }),
     foot: el('Box', { direction: 'row', justify: 'between', align: 'center', gap: 'md', wrap: true }, { children: ['tot', 'addall'] }),
     tot: el('Price', { amount: S('/totals/total'), currency: S('/totals/currency'), size: 'lg', note: 'bundle total' }, { visible: [S('/totals/total')] }),
-    addall: el('Button', { label: 'Add all to quote', variant: 'primary', icon: 'cart', size: 'lg' }, { on: { press: { action: 'addAllToCart' } } }),
+    addall: el('Button', { label: { $template: 'Add all to ${/closing}' }, variant: 'primary', icon: 'cart', size: 'lg' }, { on: { press: { action: 'addAllToCart', params: { items: S('/items') } } } }),
   }),
 
   quote: spec('root', {

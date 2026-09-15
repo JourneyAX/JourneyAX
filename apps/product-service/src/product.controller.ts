@@ -246,6 +246,53 @@ export class ProductController {
     );
   }
 
+  /**
+   * Relationship data: which SKUs belong to which named collection / series
+   * (the "goes with" facts behind coordinated sets). Same guard as knowledge
+   * ingestion — this rewrites the tenant's relationship corpus. Upserts by
+   * collection name; membership is replaced wholesale per collection.
+   */
+  @Post('relationships/collections')
+  async ingestCollections(
+    @Param('projectId') projectId: string,
+    @Headers('x-internal-key') internalKeyHeader: string,
+    @Headers('x-user-permissions') permissions: string,
+    @Body() body: { collections: Array<{ name: string; handle?: string; skus: string[] }> },
+  ) {
+    const key = internalKey();
+    const isInternal = !!key && internalKeyHeader === key;
+    const perms = String(permissions || '').split(',').map((p) => p.trim());
+    if (!isInternal && !perms.includes('knowledge.ingest')) {
+      throw new HttpException("This action requires the 'knowledge.ingest' permission.", HttpStatus.FORBIDDEN);
+    }
+    const cols = Array.isArray(body?.collections) ? body.collections : [];
+    if (!cols.length) throw new HttpException('collections[] is required.', HttpStatus.BAD_REQUEST);
+    return this.productService.ingestCollections((projectId || '').toLowerCase(), cols);
+  }
+
+  /**
+   * Availability facts per SKU (sold out / in stock), as observed from the
+   * source platform. Written to both the products row and every knowledge
+   * chunk's metadata so search, cards and the pricebook all agree.
+   */
+  @Post('products/availability')
+  async setAvailability(
+    @Param('projectId') projectId: string,
+    @Headers('x-internal-key') internalKeyHeader: string,
+    @Headers('x-user-permissions') permissions: string,
+    @Body() body: { items: Array<{ sku: string; available: boolean; tags?: string[] }> },
+  ) {
+    const key = internalKey();
+    const isInternal = !!key && internalKeyHeader === key;
+    const perms = String(permissions || '').split(',').map((p) => p.trim());
+    if (!isInternal && !perms.includes('knowledge.ingest')) {
+      throw new HttpException("This action requires the 'knowledge.ingest' permission.", HttpStatus.FORBIDDEN);
+    }
+    const items = Array.isArray(body?.items) ? body.items : [];
+    if (!items.length) throw new HttpException('items[] is required.', HttpStatus.BAD_REQUEST);
+    return this.productService.setAvailability((projectId || '').toLowerCase(), items);
+  }
+
   /** Which of these tokens are real style codes here (AUG-22 identity guard). */
   @Post('skus/exists')
   async skusExist(@Param('projectId') projectId: string, @Body() body: { skus: string[] }) {
