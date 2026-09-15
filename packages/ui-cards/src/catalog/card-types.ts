@@ -124,6 +124,8 @@ export const CARD_TYPES = {
       compliance: z.string().optional(),
       /** Closing CTA label — "Checkout" (retail bag) or "Approve & pay securely" (trade quote). */
       ctaLabel: z.string().optional(),
+      /** Heading over the lines — "Items" (bag) or "Bill of materials" (trade quote). */
+      linesLabel: z.string().optional(),
     }),
   },
   cart: {

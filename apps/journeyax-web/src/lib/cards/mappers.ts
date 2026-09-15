@@ -139,6 +139,7 @@ export function mapQuoteCard(quote: ServerQuote, opts: {
       : 'Review your order below — I’ll re-validate and re-price as you go.'),
     compliance: opts.closing === 'bag' ? (opts.complianceBadge || undefined) : (opts.complianceBadge || 'Compatibility validated'),
     ctaLabel: opts.closing === 'bag' ? 'Checkout' : 'Approve & pay securely',
+    linesLabel: opts.closing === 'bag' ? 'Items' : 'Bill of materials',
     lines: quote.lines.map((l) => ({
       sku: l.sku,
       title: l.name,

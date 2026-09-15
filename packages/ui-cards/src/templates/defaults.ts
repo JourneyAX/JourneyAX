@@ -149,7 +149,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     specs: el('Box', { gap: 'xs' }, { children: ['spec'], repeat: { statePath: '/product/specList', key: 'label' } }),
     spec: el('KeyValue', { label: I('label'), value: I('value'), inline: true }),
     actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'handoff', 'ask'] }),
-    add: el('Button', { label: { $template: 'Add to ${/closing}' }, variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1 } } } }),
+    add: el('Button', { label: { $template: 'Add to ${/closing}' }, variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1, title: S('/product/title') } } } }),
     // A configured hand-off (e.g. "Design it in The Forge") — a product whose
     // sale closes in the tenant's own tool, not in the bag. Present only when
     // the storefront matched a `handoffs` rule to this product.
@@ -196,7 +196,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     n: el('Box', { gap: '0' }, { children: ['n1', 'n2'] }),
     n1: el('Text', { text: I('title'), variant: 'small', tone: 'success', weight: 'semibold' }),
     n2: el('Text', { text: I('text'), variant: 'small', tone: 'muted' }),
-    bomLabel: el('Text', { text: 'Bill of materials', variant: 'label' }),
+    bomLabel: el('Text', { text: S('/linesLabel'), variant: 'label' }, { visible: [S('/linesLabel')] }),
     lines: el('Box', { border: true, bg: 'surface', radius: 'md', overflow: 'hidden' }, { children: ['l-row'], repeat: { statePath: '/lines', key: 'sku' } }),
     ...quoteLine('l'),
     ...totalsBlock('t'),

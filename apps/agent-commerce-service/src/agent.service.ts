@@ -2788,8 +2788,12 @@ export const AVAILABLE_CAPABILITIES = Object.keys(CAPABILITY_TO_TOOL);
 
 /** Assemble this turn's toolset from the project's enabled capabilities.
  *  Empty/undefined → all tools (back-compat for projects not yet configured). */
-export function buildToolset(enabled?: string[], entityModel?: { label?: string; labelPlural?: string }): OpenAI.ChatCompletionTool[] {
+export function buildToolset(enabled?: string[], entityModel?: { label?: string; labelPlural?: string }, closing: 'bag' | 'quote' = 'quote'): OpenAI.ChatCompletionTool[] {
   const allow = new Set(UNIVERSAL_TOOL_NAMES);
+  // A bag tenant has a bag whether or not it sells quotes: without updateQuote
+  // a typed "add to bag" left the model with no tool and it invented a reason
+  // ("not available in your region"). Same authoritative QuoteService underneath.
+  if (closing === 'bag') allow.add('updateQuote');
   if (enabled?.length) for (const cap of enabled) {
     const t = CAPABILITY_TO_TOOL[cap];
     if (Array.isArray(t)) t.forEach((x) => allow.add(x));
@@ -2806,6 +2810,14 @@ export function buildToolset(enabled?: string[], entityModel?: { label?: string;
   const plural = entityModel?.labelPlural || `${label}s`;
   return picked.map((t) => {
     if (t.type !== 'function') return t;
+    if (closing === 'bag' && t.function.name === 'updateQuote') {
+      const params: any = JSON.parse(JSON.stringify(t.function.parameters || {}));
+      params.properties = { items: params.properties?.items, remove: { type: 'array', items: { type: 'string' }, description: 'SKUs to take OUT of the bag' } };
+      params.properties.items.description = 'Items to put in the bag (or whose quantity to set). Only what the customer asked for this turn — the bag keeps everything else.';
+      params.required = [];
+      return { ...t, function: { ...t.function, parameters: params, description:
+        'Change the customer\'s BAG: `items` puts items in (or sets their quantity), `remove` takes SKUs out; everything else in the bag stays. Pass ONLY real SKUs the customer has seen or asked for — resolve a name to the code from the cards on screen. The server prices it, checks stock and limits, and shows the bag card. Call it whenever the customer says add / put in my bag / I\'ll take that / remove / change quantity. Never for an assessment.' } };
+    }
     const raw = JSON.stringify(t.function);
     if (!raw.includes('{ENTITY')) return t;
     const filled = raw.split('{ENTITY_PLURAL}').join(plural).split('{ENTITY}').join(label);
@@ -3032,7 +3044,7 @@ function demoCustomerBlock(cfg: any, principalId?: string): string | null {
   const prefs = Object.entries(p.preferences || {}).map(([k, v]) => `${k}: ${v}`).join('; ') || 'none stated';
   const head = p.role === 'staff_read_only'
     ? `[SIGNED-IN DEMO STAFF PROFILE — bound by the server] ${p.name} (${p.country || '—'}), role: staff (read-only). Permissions: ${(p.permissions || []).join(', ') || 'none'}. They may ask about inventory and aggregate operational data (getStaffInventory); they are not buying. Never turn missing lead-time/inbound data into a forecast — state what is missing.`
-    : `[SIGNED-IN DEMO CUSTOMER — bound by the server] ${p.name} · ${p.country || '—'} · ${p.currency || ''}. Explicit preferences: ${prefs}.`;
+    : `[SIGNED-IN DEMO CUSTOMER — bound by the server] ${p.name} · ${p.country || '—'} · ${p.currency || ''}. Explicit preferences: ${prefs}. When a recommendation rests on one of these, say so in one clause ("since you collect Pokémon and want to see both sides, Standard-size clear sleeves…"), and when a past purchase was a gift say you are not treating it as a preference.`;
   return `${head} ${rules}`;
 }
 
@@ -3251,6 +3263,20 @@ function isGiftAsk(text: string): boolean {
   const t = (text || '').toLowerCase();
   if (t.length > 400) return false;
   return /\b(gift|present|birthday|christmas|anniversary)\b/.test(t) || /\bfor my (son|daughter|nephew|niece|partner|husband|wife|boyfriend|girlfriend|friend|brother|sister|kid|kids|dad|mum|mom|grandson|granddaughter)\b/.test(t);
+}
+
+/** "the non-glare ones", "two of those", "AT-11821" → the one product in `pool` it names; null when nothing or several match. */
+function pickNamedProduct(text: string, pool: { sku: string; name?: string }[]): { sku: string; name?: string } | null {
+  const seen = new Set<string>();
+  const items = pool.filter((p) => { const k = String(p?.sku || '').toUpperCase(); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  const norm = (v: string) => String(v || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ');
+  const words = norm(text).replace(/\b(ones?|sleeves?|pack|packs|please|of|them|it|my|the|a|an|to|bag|cart|basket|that|this|these|those)\b/g, ' ').split(/\s+/).filter((w) => w.length > 2);
+  if (!words.length) return items.length === 1 ? items[0] : null;
+  const scored = items.map((p) => ({ p, score: words.filter((w) => norm(p.name || '').includes(w) || String(p.sku).toLowerCase() === w).length }));
+  const best = Math.max(0, ...scored.map((x) => x.score));
+  if (!best) return null;
+  const top = scored.filter((x) => x.score === best);
+  return top.length === 1 ? top[0].p : null;
 }
 
 function isSetAsk(text: string): boolean {
@@ -3789,7 +3815,32 @@ export class AgentService {
       || (() => { const m = t.match(/^Add these to my (?:bag|quote|cart): (.+)$/i); return m ? [m[0], m[1].replace(/\(SKU (\S+?), qty (\d+)\)/g, '$1 (qty $2)')] : null; })();
     const remove = t.match(/^Remove SKU (\S+) from my (?:bag|quote|cart)\.?$/i);
     const change = t.match(/^Change the quantity of SKU (\S+) to (\d+)\.?$/i);
-    if (!add && !addMany && !remove && !change) return false;
+    if (!add && !addMany && !remove && !change) {
+      // Typed, not tapped: "add to bag", "add the non-glare ones", "remove the
+      // sleeves", "change the binder to 2". Resolved against the bag and every
+      // product shown this session; only an unambiguous match is applied here
+      // — anything else goes to the model, which has the bag tool.
+      const num: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5 };
+      const typedAdd = t.match(/^(?:please\s+)?(?:add|put)\s+(?:(\d+|one|two|three|four|five)\s+(?:of\s+)?)?(?:the\s+|these\s+|those\s+|it\s+|them\s+|that\s+|this\s+)?(.*?)\s*(?:(?:to|in|into)\s+(?:my\s+|the\s+)?(?:bag|cart|basket))?\s*[.!]?$/i);
+      const typedRemove = !typedAdd && t.match(/^(?:please\s+)?(?:remove|delete|take\s+out)\s+(?:the\s+)?(.*?)\s*(?:(?:from|out\s+of)\s+(?:my\s+|the\s+)?(?:bag|cart|basket))?\s*[.!]?$/i);
+      const typedQty = !typedAdd && !typedRemove && t.match(/^(?:please\s+)?(?:change|make|set|update)\s+(?:the\s+)?(?:quantity\s+of\s+)?(.*?)\s*(?:quantity\s+)?(?:to|=)\s+(\d+|one|two|three|four|five)\s*[.!]?$/i);
+      if (!typedAdd && !typedRemove && !typedQty) return false;
+      const bagWordT = projectConfig?.commerceMode === 'cart' ? 'bag' : 'quote';
+      const bag = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
+      const bagLines = (bag?.lines || []).map((l: any) => ({ sku: String(l.sku), name: l.name }));
+      const shownAll = [...(journeyState?.lastShown || []), ...((journeyState?.selections?.products || []).map((p: any) => ({ sku: String(p.sku || ''), name: p.name })))];
+      const pool = typedAdd ? [...bagLines, ...shownAll] : bagLines;   // remove / quantity only apply to what is in the bag
+      const ref = typedAdd ? typedAdd[2] : typedRemove ? typedRemove[1] : (typedQty as RegExpMatchArray)[1];
+      const pick = pickNamedProduct(ref || '', pool);
+      if (!pick) return false;
+      const sentence = typedAdd
+        ? `Add ${pick.name || pick.sku} (SKU ${pick.sku}, qty ${typedAdd[1] ? (num[typedAdd[1].toLowerCase()] || Number(typedAdd[1]) || 1) : 1}) to my ${bagWordT}.`
+        : typedRemove
+          ? `Remove SKU ${pick.sku} from my ${bagWordT}.`
+          : `Change the quantity of SKU ${pick.sku} to ${num[(typedQty as RegExpMatchArray)[2].toLowerCase()] || Number((typedQty as RegExpMatchArray)[2]) || 1}.`;
+      console.log(`[agent] typed cart command "${t}" → ${sentence}`);
+      return this.applyStorefrontCartCommand(tenantId, sessionId, sentence, journeyState, projectConfig, uiToolCalls, conversation, emit);
+    }
 
     const current = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
     const qty = new Map<string, number>();
@@ -5136,7 +5187,7 @@ export class AgentService {
 
     // ENFORCEMENT (not advice): when retrieval is disallowed this turn, remove
     // searchKnowledge from the tool set so the model physically cannot call it.
-    const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel);
+    const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
     const activeTools = policy.allowRetrieval
       ? projectTools
       : projectTools.filter((t) => t.type !== 'function' || t.function.name !== 'searchKnowledge');
@@ -5613,7 +5664,7 @@ export class AgentService {
             const _items = Array.isArray(parsedArgs.items) ? parsedArgs.items : [];
 
             // P0 GUARD: Refuse to build an empty quote or quote without valid items!
-            if (!_items.length || _items.every((it: any) => !String(it?.sku || '').trim())) {
+            if ((!_items.length || _items.every((it: any) => !String(it?.sku || '').trim())) && !(projectConfig.commerceMode === 'cart' && Array.isArray(parsedArgs.remove) && parsedArgs.remove.length)) {
               conversation.push({
                 role: 'tool',
                 tool_call_id: call.id,
@@ -5627,6 +5678,38 @@ export class AgentService {
               continue;
             }
 
+            if (projectConfig.commerceMode === 'cart') {
+              // BAG TENANT: the model proposes, the bag path disposes — one
+              // deterministic add / change / remove per line, so limits, sold-out
+              // and the grounded "[BAG UPDATED]" note apply exactly as for a tap.
+              // A quote-style full replace lost every line the model forgot.
+              const bag = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
+              const have = new Map<string, number>((bag?.lines || []).map((l: any) => [String(l.sku).toUpperCase(), Number(l.quantity) || 1]));
+              const adds: string[] = []; const cmds: string[] = [];
+              for (const it of _items) {
+                const k = String(it?.sku || '').trim().toUpperCase(); if (!k) continue;
+                const want = Math.max(1, Math.floor(Number(it.quantity) || 1)); const cur = have.get(k);
+                if (cur == null) adds.push(`${k} (qty ${want})`);
+                else if (it.quantity != null && cur !== want) cmds.push(`Change the quantity of SKU ${k} to ${want}.`);
+              }
+              for (const r of (Array.isArray(parsedArgs.remove) ? parsedArgs.remove : [])) { const k = String(r || '').trim().toUpperCase(); if (k && have.has(k)) cmds.push(`Remove SKU ${k} from my bag.`); }
+              if (adds.length) cmds.unshift(`Add SKUs ${adds.join(', ')} to my bag.`);
+              // The tool result must directly follow the assistant's tool call — the bag
+              // path's own system notes are collected and appended after it.
+              let applied = false;
+              const notes: any[] = [];
+              for (const c of cmds) if (await this.applyStorefrontCartCommand(tenantId, sessionId, c, journeyState, projectConfig, uiToolCalls, notes, undefined)) applied = true;
+              const bagNow = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
+              conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(applied
+                ? { success: true, applied: true, bagNow: (bagNow?.lines || []).map((l: any) => ({ sku: l.sku, name: l.name, quantity: l.quantity })), total: bagNow?.total, note: 'Applied by the server. bagNow is the complete bag after this change — confirm ONLY what changed this turn, by product name, in one sentence; never say something was removed if it is still in bagNow.' }
+                : { success: false, note: 'Nothing changed: those items are already in the bag at that quantity, or no real SKU was given. Say what is in the bag; do not claim to have added anything.' }) });
+              conversation.push(...notes);
+              {
+                const _s = summarizeToolCall('updateQuote', parsedArgs, { applied, commands: cmds });
+                void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'updateQuote', ..._s, ts: new Date().toISOString() });
+              }
+              continue;
+            }
             if (_size > 1 && _items.length && _items.every((it: any) => (Number(it.quantity) || 1) <= 1)) {
               conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({
                 success: false, quantityMissing: true,
@@ -5942,7 +6025,7 @@ export class AgentService {
     // Retrieval policy + enforcement
     const policy = buildRetrievalPolicy(intent);
     pushTrace({ step: 'retrieval-policy', detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)' });
-    const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel);
+    const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
     const activeTools = policy.allowRetrieval
       ? projectTools
       : projectTools.filter((t) => t.type !== 'function' || t.function.name !== 'searchKnowledge');
@@ -6370,7 +6453,7 @@ export class AgentService {
           const qItems = Array.isArray(parsedArgs.items) ? parsedArgs.items : [];
 
           // P0 GUARD: Refuse to build an empty quote or quote without valid items!
-          if (!qItems.length || qItems.every((it: any) => !String(it?.sku || '').trim())) {
+          if ((!qItems.length || qItems.every((it: any) => !String(it?.sku || '').trim())) && !(projectConfig.commerceMode === 'cart' && Array.isArray(parsedArgs.remove) && parsedArgs.remove.length)) {
             conversation.push({
               role: 'tool',
               tool_call_id: call.id,
@@ -6384,6 +6467,38 @@ export class AgentService {
             continue;
           }
 
+          if (projectConfig.commerceMode === 'cart') {
+            // BAG TENANT: the model proposes, the bag path disposes — one
+            // deterministic add / change / remove per line, so limits, sold-out
+            // and the grounded "[BAG UPDATED]" note apply exactly as for a tap.
+            // A quote-style full replace lost every line the model forgot.
+            const bag = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
+            const have = new Map<string, number>((bag?.lines || []).map((l: any) => [String(l.sku).toUpperCase(), Number(l.quantity) || 1]));
+            const adds: string[] = []; const cmds: string[] = [];
+            for (const it of qItems) {
+              const k = String(it?.sku || '').trim().toUpperCase(); if (!k) continue;
+              const want = Math.max(1, Math.floor(Number(it.quantity) || 1)); const cur = have.get(k);
+              if (cur == null) adds.push(`${k} (qty ${want})`);
+              else if (it.quantity != null && cur !== want) cmds.push(`Change the quantity of SKU ${k} to ${want}.`);
+            }
+            for (const r of (Array.isArray(parsedArgs.remove) ? parsedArgs.remove : [])) { const k = String(r || '').trim().toUpperCase(); if (k && have.has(k)) cmds.push(`Remove SKU ${k} from my bag.`); }
+            if (adds.length) cmds.unshift(`Add SKUs ${adds.join(', ')} to my bag.`);
+            // The tool result must directly follow the assistant's tool call — the bag
+            // path's own system notes are collected and appended after it.
+            let applied = false;
+            const notes: any[] = [];
+            for (const c of cmds) if (await this.applyStorefrontCartCommand(tenantId, sessionId, c, journeyState, projectConfig, uiToolCalls, notes, emit)) applied = true;
+            const bagNow = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
+            conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(applied
+              ? { success: true, applied: true, bagNow: (bagNow?.lines || []).map((l: any) => ({ sku: l.sku, name: l.name, quantity: l.quantity })), total: bagNow?.total, note: 'Applied by the server. bagNow is the complete bag after this change — confirm ONLY what changed this turn, by product name, in one sentence; never say something was removed if it is still in bagNow.' }
+              : { success: false, note: 'Nothing changed: those items are already in the bag at that quantity, or no real SKU was given. Say what is in the bag; do not claim to have added anything.' }) });
+            conversation.push(...notes);
+            {
+              const _s = summarizeToolCall('updateQuote', parsedArgs, { applied, commands: cmds });
+              void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: 'updateQuote', ..._s, ts: new Date().toISOString() });
+            }
+            continue;
+          }
           if (qSize > 1 && qItems.length && qItems.every((it: any) => (Number(it.quantity) || 1) <= 1)) {
             conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({
               success: false, quantityMissing: true,
