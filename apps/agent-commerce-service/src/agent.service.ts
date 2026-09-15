@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { adapterRegistry, createPublishedConfigResolver } from '@journeyax/integration';
 import { getChatClient } from './llm/provider';
 import { QuoteService } from './commerce/quote.service';
+import { OrderService } from './commerce/order.service';
 import { SchoolResearchService } from './commerce/school-research.service';
 import { ProjectCalculatorService } from './commerce/project-calculator.service';
 import { BranchStockService } from './commerce/branch-stock.service';
@@ -1153,6 +1154,20 @@ async function attachComparisonFacts(tenantId: string, call: any): Promise<void>
  * SKU the catalogue does not have is dropped. Refuses when fewer than two
  * real items survive (a "set" of one is a product card, not a bundle).
  */
+/** Pricebook rows (name, price, inStock, …) for a set of SKUs — [] on any failure. */
+async function fetchPricebookRows(tenantId: string, skus: string[]): Promise<any[]> {
+  if (!skus.length) return [];
+  try {
+    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/pricebook`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
+      body: JSON.stringify({ skus }), signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return [];
+    return ((await res.json())?.items || []) as any[];
+  } catch { return []; }
+}
+
 async function attachBundleFacts(tenantId: string, call: any): Promise<Record<string, unknown> | null> {
   let args: any = {};
   try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
@@ -1177,7 +1192,10 @@ async function attachBundleFacts(tenantId: string, call: any): Promise<Record<st
     return { sku: f.sku, title: f.name, price: f.price, currency: f.currency, imageUrl: f.imageUrl || null, url: f.url, category: f.category, quantity, reason: w?.reason || undefined, stockLabel: 'In stock' };
   }).filter(Boolean) as any[];
   if (items.length < 2) {
-    return { success: false, removedNotFound: skus.filter((s) => !byCode.has(s)), instruction: 'Fewer than two of those SKUs exist (or are in stock) in the real catalogue — do not present a bundle. searchKnowledge for real alternatives.' };
+    const soldOut = wanted.map((w) => byCode.get(String(w?.sku || '').trim().toUpperCase())).filter((f) => f && f.inStock === false).map((f) => f.name);
+    const kept = items.map((i) => i.title);
+    return { success: false, removedNotFound: skus.filter((s) => !byCode.has(s)), soldOut, inStock: kept,
+      instruction: `Fewer than two of those are in stock, so no set card was shown.${soldOut.length ? ` SOLD OUT: ${soldOut.join(', ')}.` : ''}${kept.length ? ` In stock: ${kept.join(', ')} — showItems that one.` : ''} Tell the customer plainly which pieces are sold out, show what is available, and offer an alternative set or the nearest match. Never call a sold-out item available.` };
   }
   const priced = items.filter((i) => typeof i.price === 'number');
   const subtotal = Number(priced.reduce((n, i) => n + i.price * i.quantity, 0).toFixed(2));
@@ -1186,6 +1204,10 @@ async function attachBundleFacts(tenantId: string, call: any): Promise<Record<st
   args.totals = { subtotal, total: subtotal, currency, itemCount: items.reduce((n, i) => n + i.quantity, 0), pricedAll: priced.length === items.length };
   call.function.arguments = JSON.stringify(args);
   return null;
+}
+
+function bundleRefused(call: any, verdict: any): boolean {
+  return call?.function?.name === 'presentBundle' && !!verdict && verdict.success === false;
 }
 
 /**
@@ -3214,6 +3236,7 @@ export class AgentService {
   private configLoader: ConfigLoader;
   private sessionStore: SessionStore;
   private quoteService: QuoteService;
+  private orderService: OrderService;
   private schoolResearch: SchoolResearchService;
   private readonly model = process.env.LLM_MODEL || 'gpt-4o-mini';
   // Intent classification is a trivial structured task — always use a fast model
@@ -3654,9 +3677,16 @@ export class AgentService {
     emit?: (event: string, data: any) => void,
   ): Promise<boolean> {
     const t = (text || '').trim();
-    const add = t.match(/^Add SKU (\S+) \(qty (\d+)\) to my (?:bag|quote|cart)\.?$/i);
-    // "Add all" from a products / bundle card: "Add SKUs A (qty 1), B (qty 2) to my bag."
-    const addMany = t.match(/^Add SKUs ((?:\S+ \(qty \d+\)(?:, )?)+) to my (?:bag|quote|cart)\.?$/i);
+    // Card taps send a sentence a customer could have typed — the product's
+    // NAME first, its code in brackets — so the thread reads "Add The Raid
+    // Playmat (SKU AT-20514, qty 1) to my bag." not a bare code. The older
+    // "Add SKU X (qty 1)" form is still accepted.
+    const add = t.match(/^Add SKU (\S+) \(qty (\d+)\) to my (?:bag|quote|cart)\.?$/i)
+      || (() => { const m = t.match(/^Add .+? \(SKU (\S+?), qty (\d+)\) to my (?:bag|quote|cart)\.?$/i); return m ? [m[0], m[1], m[2]] : null; })();
+    // "Add all" from a products / bundle card:
+    //   "Add these to my bag: A (SKU X, qty 1); B (SKU Y, qty 2)."  (or the older "Add SKUs A (qty 1), B (qty 2) to my bag.")
+    const addMany = t.match(/^Add SKUs ((?:\S+ \(qty \d+\)(?:, )?)+) to my (?:bag|quote|cart)\.?$/i)
+      || (() => { const m = t.match(/^Add these to my (?:bag|quote|cart): (.+)$/i); return m ? [m[0], m[1].replace(/\(SKU (\S+?), qty (\d+)\)/g, '$1 (qty $2)')] : null; })();
     const remove = t.match(/^Remove SKU (\S+) from my (?:bag|quote|cart)\.?$/i);
     const change = t.match(/^Change the quantity of SKU (\S+) to (\d+)\.?$/i);
     if (!add && !addMany && !remove && !change) return false;
@@ -3675,6 +3705,26 @@ export class AgentService {
 
     const isCart = projectConfig?.commerceMode === 'cart';
     const bagWord = isCart ? 'bag' : 'quote';
+
+    // SOLD OUT never enters the bag — the QuoteService only warns, and a
+    // customer paid for a sold-out playmat that way. Checked on the catalogue's
+    // own availability for the SKUs this tap touched.
+    const soldOut: string[] = [];
+    if (touched.length && (add || addMany || change)) {
+      const before = new Map<string, number>();
+      for (const l of current?.lines || []) if (l?.sku) before.set(String(l.sku).toUpperCase(), Math.max(1, Number(l.quantity) || 1));
+      for (const row of await fetchPricebookRows(tenantId, touched)) {
+        if (row.inStock !== false) continue;
+        const k = String(row.sku).toUpperCase();
+        soldOut.push(String(row.name || k));
+        if (before.has(k)) qty.set(k, before.get(k)!); else qty.delete(k);
+      }
+      const changed = touched.some((k) => (qty.get(k) ?? 0) !== (before.get(k) ?? 0));
+      if (soldOut.length && !changed) {
+        conversation.push({ role: 'system', content: `[${bagWord.toUpperCase()} NOT UPDATED] ${soldOut.join(', ')} ${soldOut.length > 1 ? 'are' : 'is'} SOLD OUT, so nothing was added. Say so plainly by product name, then offer to find an in-stock alternative (searchKnowledge + showItems if they say yes). Do NOT call updateQuote.` });
+        return true;
+      }
+    }
 
     // Purchase limits (config `purchaseLimits`, e.g. one limited-drop item per
     // person) are enforced HERE, at the bag, not only in prose — matched on
@@ -3725,7 +3775,36 @@ export class AgentService {
       `[${bagWord.toUpperCase()} UPDATED — already applied by the customer's own tap, server-authoritative] ` +
       `${bagWord} now: ${lines}. Total ${quote.symbol || ''}${quote.total} ${quote.currency || ''}. The updated ${bagWord} card is already on screen. ` +
       (capped.length ? `A purchase limit applied and the quantity was held at the maximum for: ${capped.join('; ')} — say so plainly. ` : '') +
-      `Reply in ONE short sentence confirming what changed, then offer one natural next step. Do NOT call updateQuote, searchKnowledge or showItems this turn, and do not restate the line items.` });
+      (soldOut.length ? `${soldOut.join(', ')} ${soldOut.length > 1 ? 'are' : 'is'} SOLD OUT and was NOT added — say so. ` : '') +
+      `Reply in ONE short sentence confirming what changed — call the product by its NAME (never by its code), e.g. "Added The Raid Playmat to your bag." — then offer one natural next step. Do NOT call updateQuote, searchKnowledge or showItems this turn, and do not restate the line items.` });
+    return true;
+  }
+
+  /**
+   * Back from checkout. The storefront sends one silent turn — "Payment
+   * received for order <id>." — once the order is confirmed paid, so the
+   * conversation continues on the agent's side: a thank-you with the order
+   * number, then ONE relevant add-on offer. The order is read from the
+   * OrderService (never trusted from the message), lines from its quote.
+   */
+  private async applyOrderPlacedContext(tenantId: string, text: string, conversation: any[], journeyState: any): Promise<boolean> {
+    const m = (text || '').trim().match(/^Payment received for order (\S+?)\.?$/i);
+    if (!m) return false;
+    const orderId = m[1];
+    const order = await this.orderService.get(orderId, tenantId).catch(() => null);
+    if (!order) {
+      conversation.push({ role: 'system', content: `[ORDER] No order ${orderId} exists for this business. Say you could not find that order and offer to help.` });
+      return true;
+    }
+    const quote = order.quoteId ? await this.quoteService.get(order.quoteId, tenantId).catch(() => null) : null;
+    const lines = (quote?.lines || []).map((l: any) => `${l.name} × ${l.quantity}`).join('; ');
+    const paid = order.status === 'paid';
+    if (paid) journeyState.quoteId = null;   // the bag is now an order; the next Add starts a fresh one
+    conversation.push({ role: 'system', content:
+      `[ORDER ${paid ? 'PLACED' : 'PENDING'}] Order ${order.orderId} — status ${order.status}, total ${quote?.symbol || ''}${order.total} ${order.currency || ''}${lines ? `, items: ${lines}` : ''}. The order card is already on screen. ` +
+      (paid
+        ? `Thank the customer warmly, quote the order number ${order.orderId} once, and say a confirmation email is on its way${order.customer?.email ? ` to ${order.customer.email}` : ''}. Then offer ONE natural add-on that goes with what they bought (a matching sleeve size, a box for that deck, a playmat) — searchKnowledge for it and showItems the real matches if you have a clear complement; otherwise just ask what they play next. Do NOT call updateQuote.`
+        : 'Payment has not been confirmed yet — say you are waiting on the payment provider and will confirm shortly. Do not thank them for a completed order.') });
     return true;
   }
 
@@ -4646,6 +4725,7 @@ export class AgentService {
     this.configLoader = new ConfigLoader();
     this.sessionStore = new SessionStore();
     this.quoteService = new QuoteService();
+    this.orderService = new OrderService();
     this.schoolResearch = new SchoolResearchService();
     // Config-driven platform switching (B3): the adapter registry resolves each
     // tenant's knowledge/commerce platform + credentials from the PUBLISHED project
@@ -4752,6 +4832,7 @@ export class AgentService {
           const verdict = await validateDesign(tenantId, call, configuratorType);
           // showItems may not present stock styles as customisable (AUG-25).
           const itemVerdict = await enforceItemDesignability(tenantId, call, designFirst);
+          if (bundleRefused(call, itemVerdict)) { conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(itemVerdict) }); continue; }
           // ...and the catalogue, not the model, states what each card shows.
           const itemFacts = await groundItemFacts(tenantId, call);
           // Everything dropped (sold out / not real) → no empty card, the model hears why.
@@ -5075,6 +5156,7 @@ export class AgentService {
     await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, () => {}, model, llm);
 
     const cartCommandApplied = await this.applyStorefrontCartCommand(tenantId, sessionId, lastUserText, journeyState, projectConfig, uiToolCalls, conversation);
+    await this.applyOrderPlacedContext(tenantId, lastUserText, conversation, journeyState);
 
     // ── Step 5: Generation — controlled tool-calling loop ───────────
     while (loops < maxLoops) {
@@ -5528,6 +5610,13 @@ export class AgentService {
           const verdict = await validateDesign(tenantId, call, projectConfig.configuratorType);
           const itemVerdict = await enforceItemDesignability(
             tenantId, call, !!brandHubProfile?.model?.customised);
+          // A bundle the catalogue cannot back (fewer than two real, in-stock,
+          // priced members) is withheld — the model hears why and searches.
+          if (bundleRefused(call, itemVerdict)) {
+            conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(itemVerdict) });
+            didSearch = true;
+            continue;
+          }
           const itemFacts = await groundItemFacts(tenantId, call);
           // Everything dropped (sold out / not real) → no empty card; the model
           // is told which items are sold out and searches for alternatives.
@@ -5831,6 +5920,7 @@ export class AgentService {
     // when it was one, skip the tool rounds — the model only confirms.
     cartCommandApplied = await this.applyStorefrontCartCommand(tenantId, sessionId, lastUserText, journeyState, projectConfig, uiToolCalls, conversation, emit);
     if (cartCommandApplied) readyToSpeak = true;
+    await this.applyOrderPlacedContext(tenantId, lastUserText, conversation, journeyState);
 
     // Open model retrieval accelerator (Gemma 2 / MLX Metal):
     if (isOpenModel) {
@@ -6246,6 +6336,17 @@ export class AgentService {
         // showItems may not present stock styles as customisable (AUG-25).
         const itemVerdict = await enforceItemDesignability(
           tenantId, call, !!brandHubProfile?.model?.customised);
+        // A bundle the catalogue cannot back (fewer than two real, in-stock,
+        // priced members) is withheld — the model hears why and searches.
+        if (bundleRefused(call, itemVerdict)) {
+          conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(itemVerdict) });
+          {
+            const _s = summarizeToolCall(call.function.name, parsedArgs, itemVerdict);
+            void this.sessionStore.appendStep(sessionId, tenantId, { turnIndex, tool: call.function.name, ..._s, ts: new Date().toISOString() });
+          }
+          didSearch = true;
+          continue;
+        }
         // Card facts come from the catalogue, never the model (AUG-82).
         const itemFacts = await groundItemFacts(tenantId, call);
         // Everything dropped (sold out / not real) → no empty card; the model

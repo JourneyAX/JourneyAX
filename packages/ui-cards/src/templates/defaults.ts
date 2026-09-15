@@ -42,10 +42,19 @@ const productTile = (prefix: string, opts: { showReason?: boolean; cta?: 'addToC
     [k('meta')]: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: [k('sku'), k('stock')] }),
     [k('sku')]: el('Text', { text: I('sku'), variant: 'mono', tone: 'muted' }),
     [k('stock')]: el('StatusDot', { label: I('stockLabel'), tone: 'success' }, { visible: [{ $item: 'stockLabel' }] }),
-    [k('foot')]: el('Box', { direction: 'row', align: 'center', justify: 'between', gap: 'sm' }, { children: [k('price'), k('cta')] }),
+    [k('foot')]: el('Box', { direction: 'row', align: 'center', justify: 'between', gap: 'sm' }, { children: [k('price'), k('cta'), k('done')] }),
     [k('price')]: el('Price', { amount: I('price'), currency: I('currency'), compareAt: I('compareAtPrice'), size: 'md' }),
+    // The tap carries the product's NAME too, so the thread reads "Add The
+    // Raid Playmat (SKU …) to my bag." rather than a bare code.
     [k('cta')]: el('Button', { label: cta === 'addToCart' ? 'Add' : 'Choose', variant: 'primary', size: 'sm', icon: cta === 'addToCart' ? 'cart' : 'check' }, {
-      on: { press: { action: cta, params: { sku: I('sku'), qty: 1 } } },
+      on: { press: { action: cta, params: { sku: I('sku'), qty: 1, title: I('title') } } },
+      visible: [{ $item: 'inBag', neq: true }],
+    }),
+    // Once the SKU is in the bag the storefront flags the item (`inBag`) and
+    // the button says so — pressing it again opens the bag.
+    [k('done')]: el('Button', { label: cta === 'addToCart' ? 'Added ✓' : 'Chosen ✓', variant: 'secondary', size: 'sm', icon: 'check' }, {
+      on: { press: { action: 'openPanel', params: { panel: 'quote' } } },
+      visible: [{ $item: 'inBag', eq: true }],
     }),
   };
 };

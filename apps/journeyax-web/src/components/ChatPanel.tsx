@@ -875,8 +875,8 @@ export default function ChatPanel() {
   }, [handleBuildQuote]);
 
   // Expose handleUserMessage globally so GuidePanel can send arbitrary messages back to AI
-  const handleUserMessage = useCallback(async (text: string) => {
-    const userMsg = { role: 'user', content: text };
+  const handleUserMessage = useCallback(async (text: string, opts: { silent?: boolean } = {}) => {
+    const userMsg = opts.silent ? { role: 'user', content: text, silent: true } : { role: 'user', content: text };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
 
@@ -892,6 +892,22 @@ export default function ChatPanel() {
     (window as any).__handleUserMessage = handleUserMessage;
     return () => { delete (window as any).__handleUserMessage; };
   }, [handleUserMessage]);
+
+  // Back from checkout: once the order is confirmed paid (JourneyContext's
+  // poll), the conversation continues on the agent's side — a thank-you with
+  // the order number and one add-on offer — via a silent turn, sent once per
+  // order (remembered so a reload does not thank twice).
+  const handleUserMessageRef = useRef(handleUserMessage);
+  handleUserMessageRef.current = handleUserMessage;
+  useEffect(() => {
+    const orderId = state.placedOrder?.orderId;
+    if (!orderId || state.placedOrder?.status !== 'paid') return;
+    const key = `jx:thanked:${orderId}`;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch { /* still send once this session */ }
+    const t = setTimeout(() => { void handleUserMessageRef.current(`Payment received for order ${orderId}.`, { silent: true }); }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.placedOrder?.orderId, state.placedOrder?.status]);
 
 
   const onSubmit = (e?: React.FormEvent) => {
@@ -915,7 +931,10 @@ export default function ChatPanel() {
   // Hide tool results and tool-call-only turns — they carry machine data
   // (e.g. {"success":true}) and must never render as chat bubbles.
   const allMessages = [...state.messages, ...messages
-    .filter(m => m.role !== 'tool' && !m.tool_calls)
+    // `silent` turns are storefront events sent on the customer's behalf
+    // ("Payment received for order …") — the agent answers them, the
+    // customer never sees them as their own bubble.
+    .filter(m => m.role !== 'tool' && !m.tool_calls && !m.silent)
     .map((m, i) => ({
       id: `msg-${i}`,
       role: m.role as 'user' | 'ai' | 'note',

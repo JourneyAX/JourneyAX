@@ -101,7 +101,9 @@ async function getGcpIdentityToken(targetAudience: string): Promise<string> {
   try {
     const token = execSync(
       `gcloud auth print-identity-token --audiences=${JSON.stringify(targetAudience)}`,
-      { encoding: 'utf8', timeout: 5000 },
+      // stderr dropped: an expired personal login otherwise prints gcloud's
+      // re-auth instructions into the service log on every call.
+      { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
     ).trim();
     if (token) {
       cachedGcpToken = { token, expiresAt: now + 45 * 60 * 1000, audience: targetAudience };

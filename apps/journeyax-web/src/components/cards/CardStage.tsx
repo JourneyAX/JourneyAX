@@ -50,6 +50,19 @@ function matchHandoff(
   return undefined;
 }
 
+/** The product a card is showing under this SKU (products / bundle / comparison / accessories), shaped like a RecommendedProduct. */
+function findCardProduct(cards: CardInstance[], sku: string): { sku: string; name: string; description?: string; imageUrl?: string | null; price?: number | null; category?: string; specs?: Record<string, string | number> } | undefined {
+  for (const c of [...cards].reverse()) {
+    const st: any = c.state || {};
+    const pools: any[] = [st.products, st.items, ...(Array.isArray(st.groups) ? st.groups.map((g: any) => g?.items) : [])];
+    for (const pool of pools) {
+      const hit = Array.isArray(pool) ? pool.find((p: any) => String(p?.sku || '') === sku) : null;
+      if (hit) return { sku, name: hit.title || hit.name || sku, description: hit.description || hit.reason, imageUrl: hit.imageUrl ?? null, price: hit.price ?? null, category: hit.category, specs: hit.specs };
+    }
+  }
+  return undefined;
+}
+
 export function useCardActions() {
   const { state, dispatch, handleApprove } = useJourney();
   const cfg = useStorefrontConfig();
@@ -90,7 +103,10 @@ export function useCardActions() {
       }
       case 'viewProduct': {
         const sku = String(params?.sku ?? '');
-        const p = state.recommendedProducts.find((r) => r.sku === sku);
+        // The tapped tile may belong to a bundle, comparison or accessories
+        // card whose items never entered recommendedProducts — fall back to
+        // whatever card is showing that SKU, so every tile opens its detail.
+        const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
         if (p) {
           const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
           dispatch({
@@ -105,19 +121,25 @@ export function useCardActions() {
         }
         break;
       }
-      case 'addToCart':
-        w.__handleBuildQuote?.(params?.sku ? `Add SKU ${params.sku} (qty ${params?.qty ?? 1}) to my ${closing}.` : undefined);
+      case 'addToCart': {
+        // A sentence a customer could have typed: the product's name first,
+        // its code in brackets (the server applies it deterministically).
+        const title = String(params?.title || '').trim();
+        w.__handleBuildQuote?.(params?.sku
+          ? (title ? `Add ${title} (SKU ${params.sku}, qty ${params?.qty ?? 1}) to my ${closing}.` : `Add SKU ${params.sku} (qty ${params?.qty ?? 1}) to my ${closing}.`)
+          : undefined);
         break;
+      }
       case 'addAllToCart': {
         // The card passes its own items (products / bundle) — one deterministic
         // command the server applies through the QuoteService, same as a single
         // Add. Falls back to the model-driven build when a card has no items.
         const items = Array.isArray(params?.items) ? (params!.items as any[]) : [];
         const parts = items
-          .map((i) => ({ sku: String(i?.sku || '').trim(), qty: Math.max(1, Math.floor(Number(i?.quantity ?? i?.qty) || 1)) }))
+          .map((i) => ({ sku: String(i?.sku || '').trim(), title: String(i?.title || i?.name || '').trim(), qty: Math.max(1, Math.floor(Number(i?.quantity ?? i?.qty) || 1)) }))
           .filter((i) => i.sku && !/^unsku-/i.test(i.sku))
-          .map((i) => `${i.sku} (qty ${i.qty})`);
-        w.__handleBuildQuote?.(parts.length ? `Add SKUs ${parts.join(', ')} to my ${closing}.` : undefined);
+          .map((i) => `${i.title || i.sku} (SKU ${i.sku}, qty ${i.qty})`);
+        w.__handleBuildQuote?.(parts.length ? `Add these to my ${closing}: ${parts.join('; ')}.` : undefined);
         break;
       }
       case 'setQuantity':

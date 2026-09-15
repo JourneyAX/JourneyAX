@@ -39,6 +39,8 @@ export const ProductFact = z.object({
   reason: z.string().optional(),
   recommended: z.boolean().optional(),
   qty: z.number().optional(),
+  /** Set by the storefront once this SKU is in the bag/quote — the tile's Add turns into "Added". */
+  inBag: z.boolean().optional(),
 });
 export type ProductFact = z.infer<typeof ProductFact>;
 

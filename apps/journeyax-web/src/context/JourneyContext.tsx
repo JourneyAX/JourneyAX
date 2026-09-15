@@ -519,6 +519,28 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.projectPlan]);
 
+  // Tiles say "Added ✓" for whatever is in the bag right now — every
+  // products / bundle card on the thread is re-flagged when the server's
+  // quote changes (and un-flagged when a line is removed).
+  useEffect(() => {
+    const inBag = new Set((state.serverQuote?.lines || []).map((l) => String(l.sku || '').toUpperCase()));
+    for (const card of state.cards) {
+      if (card.cardType !== 'products' && card.cardType !== 'bundle') continue;
+      const key = card.cardType === 'products' ? 'products' : 'items';
+      const list: any[] = (card.state as any)?.[key];
+      if (!Array.isArray(list)) continue;
+      let changed = false;
+      const next = list.map((p) => {
+        const flag = inBag.has(String(p?.sku || '').toUpperCase());
+        if (!!p?.inBag === flag) return p;
+        changed = true;
+        return { ...p, inBag: flag };
+      });
+      if (changed) dispatch({ type: 'PATCH_CARD', id: card.id, state: { [key]: next } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.serverQuote, state.cards.length]);
+
   useEffect(() => {
     if (!state.placedOrder) return;
     pushCard({ id: newId('orderStatus'), cardType: 'orderStatus', state: mapOrderStatusCard(state.placedOrder) });

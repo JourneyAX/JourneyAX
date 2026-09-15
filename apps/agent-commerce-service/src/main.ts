@@ -33,12 +33,16 @@ async function bootstrap() {
 }
 
 function startGpuKeepWarmHeartbeat() {
-  const targetUrl = process.env.JAX_PLACEMAKERS_MODEL_URL || 'https://jax-placemakers-server-515988776244.us-central1.run.app/v1';
+  // Opt-in only: a laptop with no GPU model configured has nothing to keep
+  // warm, and the gcloud call below prints a full re-auth lecture to stderr
+  // every 3.5 minutes once the personal login expires.
+  const targetUrl = process.env.JAX_PLACEMAKERS_MODEL_URL;
+  if (!targetUrl) return;
   const ping = async () => {
     const t0 = Date.now();
     try {
       const { execSync } = await import('child_process');
-      const token = execSync('gcloud auth print-identity-token', { encoding: 'utf8', timeout: 5000 }).trim();
+      const token = execSync('gcloud auth print-identity-token', { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       const res = await fetch(`${targetUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
