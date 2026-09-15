@@ -70,7 +70,7 @@ export default function QuotePanel() {
     setBranchCheckError(null);
     try {
       const items = bom.filter((l) => l.sku).map((l) => ({ sku: l.sku, productTitle: l.name }));
-      const res = await fetch('/api/branch-stock', {
+      const res = await fetch('/api/branch-stock' + window.location.search, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items, branch }),

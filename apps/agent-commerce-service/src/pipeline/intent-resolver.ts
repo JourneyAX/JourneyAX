@@ -83,6 +83,10 @@ export class IntentResolver {
     dimensions?: DimensionSpec[],
   ): Promise<IntentResult> {
     const model = modelOverride || this.model;
+    // Graceful degradation (platform rule 10): when the classifier itself is
+    // down — an exhausted OpenAI balance took every tenant to "discovery, ask
+    // first" and no cards — retrieval stays ON and the answer model decides.
+    // Config-driven aliases still fill the dimensions from the customer's words.
     const fallback: IntentResult = {
       intent: 'unknown',
       dimensions: {},
@@ -90,8 +94,8 @@ export class IntentResolver {
       space: 'general',
       stage: state?.phase || 'intro',
       mode: 'business',
-      needsRetrieval: false,
-      retrievalType: 'none',
+      needsRetrieval: true,
+      retrievalType: 'product',
       confidence: 0,
       missingInfo: [],
     };
