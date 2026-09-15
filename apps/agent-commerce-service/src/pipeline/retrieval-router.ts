@@ -32,8 +32,11 @@ export function buildRetrievalPolicy(intent: IntentResult): RetrievalPolicy {
     };
   }
 
-  // Early discovery: ask first, do not retrieve.
-  if (!intent.needsRetrieval || intent.stage === 'intro') {
+  // Early discovery: ask first, do not retrieve. NOT when the classifier
+  // itself failed (confidence 0, intent unknown): that is an outage, not a
+  // discovery signal — the catalogue stays available and the model decides.
+  const classifierDown = intent.confidence === 0 && intent.intent === 'unknown';
+  if (!classifierDown && (!intent.needsRetrieval || intent.stage === 'intro')) {
     return {
       allowRetrieval: false,
       allowedTypes: [],
