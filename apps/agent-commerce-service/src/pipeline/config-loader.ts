@@ -26,6 +26,7 @@ export interface LoadedProjectConfig {
   model?: string;                 // ai.model — per-project reasoning model
   temperature?: number;           // ai.temperature
   maxTokens?: number;             // ai.maxTokens — open-model reply budget (default 768 in the agent)
+  intentModel?: string;           // ai.intentModel — 'project' = classify on the project's own model/provider
   /** Sample-customer demo fixtures (profiles, orders, offers, inventory) — read
    *  through the customerHistory tools, bound to the request's demo principal. */
   demoCustomers?: any;
@@ -115,6 +116,7 @@ export class ConfigLoader {
         model: p?.ai?.model,
         temperature: p?.ai?.temperature,
         maxTokens: p?.ai?.maxTokens,
+        intentModel: typeof p?.ai?.intentModel === 'string' ? p.ai.intentModel : undefined,
         demoCustomers: p?.demoCustomers && typeof p.demoCustomers === 'object' ? p.demoCustomers : undefined,
         purchaseLimits: Array.isArray(p?.purchaseLimits) ? p.purchaseLimits : undefined,
         storageGuide: Array.isArray(p?.storageGuide) ? p.storageGuide : undefined,

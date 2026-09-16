@@ -5134,7 +5134,11 @@ export class AgentService {
     // ── Step 1: Intent detection (config-driven, no keyword routing) ──
     // Pass the project's configured context dimensions so classification (and
     // downstream retrieval scoping) is bounded by what THIS business serves.
-    const intent = await this.intentResolver.resolve(messages, state, this.intentModel, projectConfig.contextDimensions);
+    // ai.intentModel: 'project' → classify on this project's own model and
+    // provider (a self-hosted tenant spends nothing on OpenAI); a model name →
+    // that model on the platform key; unset → the platform classifier.
+    const onProject = projectConfig.intentModel === 'project';
+    const intent = await this.intentResolver.resolve(messages, state, onProject ? model : (projectConfig.intentModel || this.intentModel), projectConfig.contextDimensions, onProject ? llm : undefined);
     // Everything known about this customer so far (memory + this turn), with
     // derived dimensions filled in code (size from game) — never asked, always filters.
     const knownDims = deriveDimensions(projectConfig.contextDimensions, inferDimensionsFromText(projectConfig.contextDimensions, messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content || '')).join(' \n '), { ...(journeyState.dimensions || {}), ...(intent.dimensions || {}) }));
@@ -5991,7 +5995,11 @@ export class AgentService {
     pushTrace({ step: 'config', detail: `model=${model} · configV=${projectConfig.configVersion ?? 'draft'}${projectConfig.journeyGuidance ? ' · +journeyGuidance' : ''}` });
 
     // Intent (config-driven) — bounded by the project's configured context dimensions
-    const intent = await this.intentResolver.resolve(messages, state, this.intentModel, projectConfig.contextDimensions);
+    // ai.intentModel: 'project' → classify on this project's own model and
+    // provider (a self-hosted tenant spends nothing on OpenAI); a model name →
+    // that model on the platform key; unset → the platform classifier.
+    const onProject = projectConfig.intentModel === 'project';
+    const intent = await this.intentResolver.resolve(messages, state, onProject ? model : (projectConfig.intentModel || this.intentModel), projectConfig.contextDimensions, onProject ? llm : undefined);
     const knownDims = deriveDimensions(projectConfig.contextDimensions, inferDimensionsFromText(projectConfig.contextDimensions, messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content || '')).join(' \n '), { ...(journeyState.dimensions || {}), ...(intent.dimensions || {}) }));
     intent.dimensions = { ...(intent.dimensions || {}), ...knownDims };
     const dimStr = Object.entries(intent.dimensions || {}).map(([k, v]) => `${k}=${v}`).join(',') || '—';

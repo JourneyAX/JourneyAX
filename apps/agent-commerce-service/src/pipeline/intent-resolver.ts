@@ -81,8 +81,14 @@ export class IntentResolver {
     state?: { phase?: string },
     modelOverride?: string,
     dimensions?: DimensionSpec[],
+    /** A project's own client (self-hosted / other provider) — used instead of the platform OpenAI client. */
+    client?: OpenAI,
   ): Promise<IntentResult> {
     const model = modelOverride || this.model;
+    const llm = client || this.openai;
+    // A self-hosted server may not implement response_format; ask for JSON in
+    // words and pull the first object out of whatever comes back.
+    const strictJson = !client;
     // Graceful degradation (platform rule 10): when the classifier itself is
     // down — an exhausted OpenAI balance took every tenant to "discovery, ask
     // first" and no cards — retrieval stays ON and the answer model decides.
@@ -117,17 +123,19 @@ export class IntentResolver {
       // sending temperature:0 is a 400. Omit it for those; keep 0 for others so
       // classification stays deterministic.
       const isReasoning = /^(gpt-5|o[134])/.test(model);
-      const res = await this.openai.chat.completions.create({
+      const res = await llm.chat.completions.create({
         model,
         messages: [
-          { role: 'system', content: buildIntentSystem(dimensions) },
+          { role: 'system', content: buildIntentSystem(dimensions) + (strictJson ? '' : '\n\nReply with ONE JSON object and nothing else — no prose, no code fence.') },
           { role: 'user', content: `Current stage: ${state?.phase || 'intro'}\n\nRecent conversation:\n${recent}\n\nClassify the customer's LATEST message in the context of this conversation.` },
         ],
-        response_format: { type: 'json_object' },
+        ...(strictJson ? { response_format: { type: 'json_object' as const } } : { max_tokens: 400 }),
         ...(isReasoning ? {} : { temperature: 0 }),
       });
 
-      const parsed = JSON.parse(res.choices[0].message.content || '{}');
+      const rawOut = String(res.choices[0].message.content || '{}');
+      const firstObj = rawOut.indexOf('{'); const lastObj = rawOut.lastIndexOf('}');
+      const parsed = JSON.parse(firstObj >= 0 && lastObj > firstObj ? rawOut.slice(firstObj, lastObj + 1) : rawOut);
       // Normalise extracted dimensions to string→string.
       const dims: Record<string, string> = {};
       if (parsed.dimensions && typeof parsed.dimensions === 'object') {

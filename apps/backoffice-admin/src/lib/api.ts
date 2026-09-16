@@ -73,6 +73,7 @@ export interface Project {
     provider: string; model: string; temperature: number; embeddingModel?: string;
     ingestModel?: string; extractModel?: string;   // offline ingestion only
     baseUrl?: string;
+    intentModel?: string;  // unset = platform classifier; "project" = this project's own model
     // API key is write-only from the UI: reads return a masked hint + configured flag
     // (P0-01 secret redaction). Send `apiKey` only when the admin types a new one.
     apiKey?: string; apiKeyHint?: string; apiKeyConfigured?: boolean;

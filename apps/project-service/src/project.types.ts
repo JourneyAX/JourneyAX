@@ -190,6 +190,12 @@ export interface ProjectAiConfig {
    *  tenants). Default 768 in the agent; 256 was too small for prose + two
    *  tool calls (search + clarify) in one reply. */
   maxTokens?: number;
+  /** Which model classifies intent each turn. Unset = the platform's fast
+   *  classifier (INTENT_MODEL, gpt-4o-mini via the platform key). "project" =
+   *  this project's own answer model on its own provider/key — a self-hosted
+   *  tenant then spends nothing on OpenAI for classification. A model name =
+   *  that model on the platform key. */
+  intentModel?: string;
   embeddingModel?: string;     // "text-embedding-3-small" | "voyage-3-large"
   /** Model used for bulk INGESTION work (product narratives, catalogue
    *  extraction). Separate from the conversational `model` so heavy offline jobs
