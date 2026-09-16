@@ -1,6 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { connectToDatabase } from '@journeyax/database';
-import { getOrSet, cacheKey, MAX_TTL_SECONDS } from '@journeyax/cache';
+import { getOrSet, cacheKey, invalidateProject, MAX_TTL_SECONDS } from '@journeyax/cache';
+import { createHash } from 'crypto';
 import { MongoClient, Db, Collection } from 'mongodb';
 import OpenAI from 'openai';
 
@@ -134,13 +135,19 @@ export class ProductService {
   async embedText(text: string): Promise<number[]> {
     const tEmbedStart = Date.now();
     try {
-      const response = await this.getOpenAI().embeddings.create({
-        model: EMBEDDING_MODEL,
-        input: text,
-      });
+      // Cached per (model, exact text) for a week — a starter chip, a repeated
+      // question or the same query re-run after clarify never pays the
+      // embedding round-trip twice. A failed call throws, so it is never cached.
+      const key = cacheKey('platform', 'embed', { m: EMBEDDING_MODEL, h: createHash('sha1').update(text).digest('hex') });
+      let fromApi = false;
+      const embedding = await getOrSet(key, async () => {
+        fromApi = true;
+        const response = await this.getOpenAI().embeddings.create({ model: EMBEDDING_MODEL, input: text });
+        return response.data[0].embedding;
+      }, { ttlSeconds: MAX_TTL_SECONDS });
       const tEmbed = Date.now() - tEmbedStart;
-      console.log(`  [ProductService:Timing] ⏱️ OpenAI Embedding generated in ${tEmbed}ms (len: ${text.length})`);
-      return response.data[0].embedding;
+      console.log(`  [ProductService:Timing] ⏱️ ${fromApi ? 'OpenAI Embedding generated' : 'Embedding served from cache'} in ${tEmbed}ms (len: ${text.length})`);
+      return embedding;
     } catch (err) {
       const tEmbed = Date.now() - tEmbedStart;
       this.openai = undefined as any;
@@ -164,6 +171,8 @@ export class ProductService {
    *  SKUs. Membership is replaced wholesale per collection so a re-run never
    *  leaves stale members behind. */
   async ingestCollections(brand: string, cols: Array<{ name: string; handle?: string; skus: string[] }>): Promise<{ success: boolean; collections: number }> {
+    // Catalogue data changed — cached search results for this tenant are stale.
+    void invalidateProject(brand).catch(() => {});
     const db = await this.getDb();
     const C = db.collection('collections');
     let n = 0;
@@ -185,6 +194,8 @@ export class ProductService {
    *  row AND every knowledge chunk's metadata so search results, cards and the
    *  pricebook all see the same fact. */
   async setAvailability(brand: string, items: Array<{ sku: string; available: boolean; tags?: string[] }>): Promise<{ success: boolean; productsUpdated: number; documentsUpdated: number }> {
+    // Catalogue data changed — cached search results for this tenant are stale.
+    void invalidateProject(brand).catch(() => {});
     const db = await this.getDb();
     let productsUpdated = 0, documentsUpdated = 0;
     for (const it of items) {
@@ -388,7 +399,7 @@ export class ProductService {
           ] }];
         }
         const results = await col
-          .find(textFilter, { projection: { score: { $meta: 'textScore' } } })
+          .find(textFilter, { projection: { score: { $meta: 'textScore' }, embedding: 0 } })
           .sort({ score: { $meta: 'textScore' } })
           .limit(limit)
           .toArray();
@@ -438,8 +449,9 @@ export class ProductService {
 
     const filter: Record<string, unknown> = andClauses.length > 1 ? { $and: andClauses } : (andClauses[0] || {});
 
+    // The 12 KB embedding is never needed by a caller — leave it in the database.
     const results = await col
-      .find(filter)
+      .find(filter, { projection: { embedding: 0 } })
       .limit(limit)
       .toArray();
 
@@ -550,6 +562,40 @@ export class ProductService {
   }
 
   async search(
+    query: string,
+    brand: string,
+    type?: string,
+    category?: string,
+    limit: number = 8,
+    gender?: string,
+  ): Promise<{
+    found: boolean;
+    resultCount: number;
+    results: any[];
+    message?: string;
+  }> {
+    // Search results cached 10 minutes per tenant + normalised query + filters
+    // (project-scoped key, so an ingest/publish invalidation clears them). An
+    // empty result is never cached — it is far more often a hiccup than a fact.
+    const q = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const key = cacheKey(brand, 'search', { q, type: type || '', category: category || '', limit, gender: gender || '' });
+    const tStart = Date.now();
+    class EmptyResult { constructor(public r: any) {} }
+    try {
+      const r = await getOrSet(key, async () => {
+        const out = await this.searchUncached(query, brand, type, category, limit, gender);
+        if (!out?.results?.length) throw new EmptyResult(out);
+        return out;
+      }, { ttlSeconds: 600 });
+      if (Date.now() - tStart < 50) console.log(`  [ProductService:Timing] ⏱️ Search served from cache in ${Date.now() - tStart}ms | Query: "${query}"`);
+      return r;
+    } catch (e) {
+      if (e instanceof EmptyResult) return e.r;
+      throw e;
+    }
+  }
+
+  private async searchUncached(
     query: string,
     brand: string,
     type?: string,

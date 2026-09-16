@@ -2901,10 +2901,57 @@ function deriveRetrievalContext(messages: Array<{ role: string; content: unknown
     for (const line of t.split('\n')) {
       const m = line.match(/→\s*(.+)$/);
       const v = m?.[1]?.trim();
-      if (v && !/^not answered$/i.test(v)) answers.push(v);
+      // An answer about the customer's situation ("Just researching options &
+      // prices", "ASAP", "DIY") describes nothing in the catalogue — folding it
+      // into the search query only drags the vector away from the products.
+      const meta = /\b(research|browsing|options?|prices?|budget|quote|asap|urgent|soon|week|month|not sure|no idea|diy|professional|myself|other)\b/i;
+      if (v && !/^not answered$/i.test(v) && !meta.test(v)) answers.push(v);
     }
   }
   return { brief: brief.slice(0, 300), answers };
+}
+
+/**
+ * One catalogue search per turn, started early. Every retrieval in a turn —
+ * the prefetch fired at turn start (while the model is still thinking), the
+ * model's own searchKnowledge calls, the show-first / after-answers guarantee
+ * — goes through this memo: a query whose words overlap an in-flight one by
+ * 60%+ reuses that promise instead of hitting Atlas again. A PlaceMakers turn
+ * used to run three near-identical searches (8–33s each on the current
+ * cluster); now the first is already running when the model asks for it.
+ */
+class TurnSearchMemo {
+  private entries: { key: string; tokens: Set<string>; sig: string; limit: number; p: Promise<any> }[] = [];
+  constructor(private readonly tenantId: string) {}
+  private static tokens(q: string): Set<string> {
+    return new Set(String(q || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2));
+  }
+  search(opts: { query: string; type?: string; category?: string; limit?: number; gender?: string }): Promise<any> {
+    const tokens = TurnSearchMemo.tokens(opts.query);
+    const sig = `${opts.type || ''}|${opts.category || ''}|${opts.gender || ''}`;
+    const limit = opts.limit || 8;
+    if (tokens.size) {
+      for (const e of this.entries) {
+        if (e.sig !== sig || limit > e.limit) continue;
+        const inter = [...tokens].filter((t) => e.tokens.has(t)).length;
+        const union = new Set([...tokens, ...e.tokens]).size;
+        if (union && inter / union >= 0.6) {
+          console.log(`[agent] search memo: "${opts.query}" reuses the in-flight search "${e.key}"`);
+          return e.p;
+        }
+      }
+    }
+    const p = (async () => (await adapterRegistry.getKnowledge(this.tenantId)).search({ tenantId: this.tenantId }, opts))();
+    p.catch(() => { /* handled where awaited */ });
+    this.entries.push({ key: opts.query, tokens, sig, limit, p });
+    return p;
+  }
+  /** Fire the turn's likely search now; whoever needs it later awaits the same promise. */
+  prefetch(query: string): void {
+    if (TurnSearchMemo.tokens(query).size < 2) return;
+    console.log(`[agent] search prefetch: "${query}"`);
+    this.search({ query, type: 'product', limit: 8 });
+  }
 }
 
 /** The model's query, or the brief + answers folded in when the query alone
@@ -3660,10 +3707,12 @@ export class AgentService {
     query: string,
     uiToolCalls: any[],
     emit?: (event: string, data: any) => void,
+    memo?: TurnSearchMemo,
   ): Promise<boolean> {
     try {
-      const knowledge = await adapterRegistry.getKnowledge(tenantId);
-      const res: any = await knowledge.search({ tenantId }, { query, type: 'product', limit: 6 });
+      const res: any = memo
+        ? await memo.search({ query, type: 'product', limit: 6 })
+        : await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query, type: 'product', limit: 6 });
       const prods = res?.results || res?.products || res?.items || [];
       console.log(`[JourneyAX:ToolResult] 📦 searchKnowledge("${query}") returned ${prods.length} product(s)`);
       if (!prods.length) return false;
@@ -3764,6 +3813,7 @@ export class AgentService {
      *  rule, applied to the open-model path in code because the prompt alone
      *  does not hold: "show me laundry tubs" still got a questionnaire). */
     showFirst?: { journeyState: any; intent: any },
+    memo?: TurnSearchMemo,
   ): Promise<boolean> {
     if (stats.searched) return false;
     if (showFirst?.intent?.panelRenderBlocked) return false;
@@ -3775,7 +3825,7 @@ export class AgentService {
     if (!query) return false;
     console.log(`[agent] ${answered ? 'after-answers' : 'show-first'} retrieval guarantee: searchKnowledge("${query}")`);
     if (pushTrace) pushTrace({ step: 'tool-call', detail: `searchKnowledge(${JSON.stringify({ query, forced: true })})`, data: { query, forced: true } });
-    const shown = await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit);
+    const shown = await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit, memo);
     if (shown) stats.searched = true;
     return shown;
   }
@@ -3971,6 +4021,7 @@ export class AgentService {
     stats?: { searched: boolean },
     /** Tenant capability 'domainClarify' — the built-in trade question bank is opt-in. */
     allowDomainClarify = false,
+    memo?: TurnSearchMemo,
   ): Promise<boolean> {
     let executedAny = false;
     let searchStr = rawModelText || '';
@@ -3999,7 +4050,7 @@ export class AgentService {
 
       if (toolName === 'searchKnowledge') {
         const query = effectiveSearchQuery(args.query || args.q || '', retrieval);
-        if (query && await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit)) {
+        if (query && await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit, memo)) {
           executedAny = true;
           if (stats) stats.searched = true;
         }
@@ -5188,6 +5239,10 @@ export class AgentService {
       step: 'retrieval-policy',
       detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)',
     });
+    const searchMemo = new TurnSearchMemo(tenantId);
+    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
+      searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
+    }
 
     // ENFORCEMENT (not advice): when retrieval is disallowed this turn, remove
     // searchKnowledge from the tool set so the model physically cannot call it.
@@ -5336,8 +5391,8 @@ export class AgentService {
         console.log(`[JourneyAX:ModelResponse] 💬 Model output for tenant="${tenantId}" [model=${model}]:\n${rawContent}`);
 
         const searchStats = { searched: false };
-        let toolExecuted = await this.executeOpenModelToolCalls(tenantId, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t), retrievalCtx, searchStats, allowDomainClarify);
-        if (!cartCommandApplied && await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, undefined, (t) => trace.push(t), { journeyState, intent })) toolExecuted = true;
+        let toolExecuted = await this.executeOpenModelToolCalls(tenantId, rawContent, intent, uiToolCalls, undefined, (t) => trace.push(t), retrievalCtx, searchStats, allowDomainClarify, searchMemo);
+        if (!cartCommandApplied && await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, undefined, (t) => trace.push(t), { journeyState, intent }, searchMemo)) toolExecuted = true;
         if (!toolExecuted) {
           const modelClarifyAction = this.extractQuestionsFromModelResponse(rawContent, lastUserText, intent, allowDomainClarify);
           if (modelClarifyAction) {
@@ -5564,10 +5619,9 @@ export class AgentService {
             // Retrieval goes through the KnowledgePort — the agent no longer knows
             // the product-service URL. Swap the tenant's knowledge platform in the
             // integration registry and this agent is unchanged.
-            const toolResult = await (await adapterRegistry.getKnowledge(tenantId)).search(
-              { tenantId },
-              // Gender is injected SERVER-SIDE from the resolved intent (not the model) so
-              // a "men's" journey never surfaces women's products — hard filter, not a hint.
+            // Gender is injected SERVER-SIDE from the resolved intent (not the model) so
+            // a "men's" journey never surfaces women's products — hard filter, not a hint.
+            const toolResult = await searchMemo.search(
               { query: `${effectiveSearchQuery(args.query, retrievalCtx)} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
             );
             const markedResult = await markDesignable(tenantId, toolResult);
@@ -5864,7 +5918,7 @@ export class AgentService {
     // the open-model path has, answers-only (never show-first) on this path.
     if (!cartCommandApplied && (projectConfig.capabilities || []).includes('products')) {
       const shownStats = { searched: uiToolCalls.some((c: any) => ['showItems', 'presentBundle', 'presentComparison'].includes(c?.function?.name)) };
-      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, undefined, (t) => trace.push(t))) {
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, undefined, (t) => trace.push(t), undefined, searchMemo)) {
         conversation.push({ role: 'system', content: '[CARDS SHOWN] Cards matching their answers are now on screen under your text. Do not list them; give your pick and one next step.' });
       }
     }
@@ -6033,6 +6087,12 @@ export class AgentService {
     // Retrieval policy + enforcement
     const policy = buildRetrievalPolicy(intent);
     pushTrace({ step: 'retrieval-policy', detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)' });
+    // The turn's likely search starts NOW, while the model is still thinking —
+    // when it asks questions, the cards beside them cost no extra wait.
+    const searchMemo = new TurnSearchMemo(tenantId);
+    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
+      searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
+    }
     const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
     const activeTools = policy.allowRetrieval
       ? projectTools
@@ -6363,7 +6423,7 @@ export class AgentService {
           run.map(async (call) => {
             try {
               const args = JSON.parse(call.function.arguments);
-              const r = await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query: `${args.query || ''} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender });
+              const r = await searchMemo.search({ query: `${args.query || ''} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender });
               // Same annotation as the non-streaming path — this is the one the
               // storefront actually uses, so an omission here is invisible in
               // tests and total in production (the AUG-38 failure, repeated).
@@ -6657,7 +6717,7 @@ export class AgentService {
 
     if (!cartCommandApplied && (projectConfig.capabilities || []).includes('products')) {
       const shownStats = { searched: uiToolCalls.some((c: any) => ['showItems', 'presentBundle', 'presentComparison'].includes(c?.function?.name)) };
-      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, emit, pushTrace)) {
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, emit, pushTrace, undefined, searchMemo)) {
         conversation.push({ role: 'system', content: '[CARDS SHOWN] Cards matching their answers are now on screen under your text. Do not list them; give your pick and one next step.' });
       }
     }
@@ -6775,8 +6835,8 @@ export class AgentService {
 
       console.log(`[JourneyAX:ModelResponse] 💬 Streamed model output for tenant="${tenantId}" [model=${model}]:\n${finalText}`);
       const searchStats = { searched: false };
-      let toolExecuted = await this.executeOpenModelToolCalls(tenantId, finalText, intent, uiToolCalls, emit, pushTrace, retrievalCtx, searchStats, allowDomainClarify);
-      if (!cartCommandApplied && await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, emit, pushTrace, { journeyState, intent })) toolExecuted = true;
+      let toolExecuted = await this.executeOpenModelToolCalls(tenantId, finalText, intent, uiToolCalls, emit, pushTrace, retrievalCtx, searchStats, allowDomainClarify, searchMemo);
+      if (!cartCommandApplied && await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, searchStats, uiToolCalls, emit, pushTrace, { journeyState, intent }, searchMemo)) toolExecuted = true;
       if (!toolExecuted) {
         const modelClarifyAction = this.extractQuestionsFromModelResponse(finalText, lastUserText, intent, allowDomainClarify);
         if (modelClarifyAction) {
