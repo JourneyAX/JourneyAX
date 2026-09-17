@@ -16,7 +16,7 @@ import { CardRenderer } from '@journeyax/ui-cards/react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
-import { mapClarifyCard } from '@/lib/cards/mappers';
+import { mapClarifyCard, usableImage } from '@/lib/cards/mappers';
 import type { CardInstance } from '@/lib/types';
 
 /**
@@ -114,7 +114,7 @@ export function useCardActions() {
             card: {
               id: `productDetail-${sku}-${Date.now()}`,
               cardType: 'productDetail',
-              state: { product: { sku, title: p.name, description: p.description, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, specs: p.specs }, closing, handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: p.name, category: p.category }) },
+              state: { product: { sku, title: p.name, description: p.description, imageUrl: usableImage(p.imageUrl), price: p.price ?? null, category: p.category, specs: p.specs }, closing, handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: p.name, category: p.category }) },
               createdAt: String(count ?? 0),
             },
           });
@@ -193,7 +193,8 @@ export function CardTile({ card, onAction }: { card: CardInstance; onAction: (na
     <div className="jx-root chat-inline-card" data-card-type={card.cardType}>
       <CardRenderer
         template={resolveTemplate(cfg, card.cardType)}
-        state={card.state}
+        // The brand's own logo backs any tile whose catalogue has no picture ("Image coming soon").
+        state={{ ...card.state, brandLogo: cfg.theme?.logoUrl || null }}
         settings={cfg.uiTheme?.cards?.[card.cardType]?.options}
         onAction={onAction}
         stateKey={card.id}

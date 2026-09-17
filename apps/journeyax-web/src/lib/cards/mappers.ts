@@ -38,6 +38,16 @@ const usableReason = (s?: string | null, title?: string) => {
   return s;
 };
 
+/** A catalogue's "no media" stand-in is not a picture: SAP Hybris publishes
+ *  `…/medias/300Wx300H-null?…` for products without an image (a blank tile).
+ *  Treat it as missing so the brand-logo fallback shows instead. */
+export function usableImage(url: string | null | undefined): string | null {
+  const u = String(url || '').trim();
+  if (!u) return null;
+  if (/\/\d+Wx\d+H-null(\b|\?)/.test(u)) return null;
+  return u;
+}
+
 export function mapProductsCard(products: RecommendedProduct[], heading?: string, closing: 'bag' | 'quote' = 'quote') {
   // A catalogue with no real photography often points every product at the
   // same "no image" placeholder. One identical picture repeated across the
@@ -55,7 +65,7 @@ export function mapProductsCard(products: RecommendedProduct[], heading?: string
       sku: p.sku || `unsku-${i}`,
       title: p.name,
       description: usableReason(p.description, p.name),
-      imageUrl: sharedPlaceholder ? null : p.imageUrl || null,
+      imageUrl: sharedPlaceholder ? null : usableImage(p.imageUrl),
       price: p.price ?? null,
       category: p.category,
       url: p.url,
@@ -81,9 +91,9 @@ export function mapComparisonCard(cmp: ComparisonData, shown: RecommendedProduct
     const key = String(sku).toUpperCase();
     const s = joined.get(key);   // server-joined catalogue facts win
     const p = bySku.get(key);    // else what was shown this conversation
-    if (s && (s.title || s.name)) return { sku, title: String(s.title || s.name), imageUrl: s.imageUrl || null, price: s.price ?? null, category: s.category, url: s.url };
+    if (s && (s.title || s.name)) return { sku, title: String(s.title || s.name), imageUrl: usableImage(s.imageUrl), price: s.price ?? null, category: s.category, url: s.url };
     return p
-      ? { sku, title: p.name, imageUrl: p.imageUrl || null, price: p.price ?? null, category: p.category, url: p.url, specs: p.specs }
+      ? { sku, title: p.name, imageUrl: usableImage(p.imageUrl), price: p.price ?? null, category: p.category, url: p.url, specs: p.specs }
       : { sku, title: sku };
   });
   const rows = cmp.dimensions.map((d, i) => [d, ...(cmp.rows[i] || []).map((c) => (c === undefined ? null : c))]);
@@ -104,7 +114,7 @@ export function mapBundleCard(b: BundleData, closing: 'bag' | 'quote' = 'quote')
     why: usableReason(b.why),
     closing,
     items: b.items.map((i) => ({
-      sku: i.sku, title: i.title, price: i.price ?? null, currency: i.currency || currency, imageUrl: i.imageUrl || null,
+      sku: i.sku, title: i.title, price: i.price ?? null, currency: i.currency || currency, imageUrl: usableImage(i.imageUrl),
       url: i.url, category: i.category, quantity: i.quantity ?? 1, reason: usableReason(i.reason, i.title), stockLabel: i.stockLabel,
     })),
     totals: b.totals ? { subtotal: b.totals.subtotal, total: b.totals.total, currency: b.totals.currency } : undefined,
@@ -143,7 +153,7 @@ export function mapQuoteCard(quote: ServerQuote, opts: {
     lines: quote.lines.map((l) => ({
       sku: l.sku,
       title: l.name,
-      imageUrl: l.imageUrl || null,
+      imageUrl: usableImage(l.imageUrl),
       price: l.unitPrice,
       currency: quote.currency,
       qty: l.quantity,
@@ -212,7 +222,7 @@ export function mapAccessoriesCard(items: AccessoryItem[]) {
         items: byGroup[g].map((it, i) => ({
           sku: it.sku || `${g}-${i}`,
           title: it.name,
-          imageUrl: it.imageUrl || null,
+          imageUrl: usableImage(it.imageUrl),
           price: it.price ?? null,
           category: it.category,
           reason: it.reason,
@@ -282,7 +292,7 @@ export function mapOrderStatusCard(order: NonNullable<JourneyState['placedOrder'
     statusText: `Order ${order.orderId} is ${order.status}.`,
     placedAt: order.paidAt || undefined,
     lines: (order.lines || []).map((l) => ({
-      sku: l.sku, title: l.name || l.sku, imageUrl: l.imageUrl || null,
+      sku: l.sku, title: l.name || l.sku, imageUrl: usableImage(l.imageUrl),
       price: l.unitPrice ?? null, qty: l.quantity ?? 1, lineTotal: l.lineTotal,
     })),
     totals: order.total != null ? {

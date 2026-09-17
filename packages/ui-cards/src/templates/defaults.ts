@@ -33,7 +33,7 @@ const productTile = (prefix: string, opts: { showReason?: boolean; cta?: 'addToC
       children: [k('img'), k('body'), k('foot')],
       on: { press: { action: 'viewProduct', params: { sku: I('sku') } } },
     }),
-    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), ratio: '4:3', radius: 'sm', fallbackIcon: 'box' }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), ratio: '4:3', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
     [k('body')]: el('Box', { gap: 'xs', flex: 1 }, { children: [k('badges'), k('title'), k('reason'), k('meta')] }),
     [k('badges')]: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: [k('rec')], visible: [{ $item: 'recommended', eq: true }] }),
     [k('rec')]: el('Badge', { text: 'Recommended', tone: 'brand', icon: 'spark', uppercase: true }),
@@ -63,7 +63,7 @@ const quoteLine = (prefix: string): Record<string, El> => {
   const k = (s: string) => `${prefix}-${s}`;
   return {
     [k('row')]: el('Box', { direction: 'row', gap: 'md', align: 'center', pad: 'md', border: false, bg: 'surface' }, { children: [k('img'), k('body'), k('right')], visible: undefined }),
-    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '64px', height: '64px', ratio: '1:1', radius: 'sm', fallbackIcon: 'box' }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '64px', height: '64px', ratio: '1:1', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
     [k('body')]: el('Box', { gap: 'xs', flex: 1, minWidth: '0' }, { children: [k('head'), k('note'), k('meta')] }),
     [k('head')]: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: [k('title'), k('req')] }),
     [k('title')]: el('Text', { text: I('title'), variant: 'subheading' }),
@@ -139,7 +139,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   productDetail: spec('root', {
     root: el('Box', { pad: 'md', direction: 'row', gap: 'lg', wrap: true }, { children: ['gallery', 'info'] }),
     gallery: el('Box', { flex: '1 1 320px', gap: 'sm' }, { children: ['hero'] }),
-    hero: el('Image', { src: S('/product/imageUrl'), alt: S('/product/title'), ratio: '1:1', radius: 'md', fallbackIcon: 'box' }),
+    hero: el('Image', { src: S('/product/imageUrl'), alt: S('/product/title'), ratio: '1:1', radius: 'md', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
     info: el('Box', { flex: '1 1 360px', gap: 'md' }, { children: ['brand', 'title', 'price', 'stock', 'desc', 'specs', 'actions'] }),
     brand: el('Text', { text: S('/product/brand'), variant: 'eyebrow' }, { visible: [S('/product/brand')] }),
     title: el('Text', { text: S('/product/title'), variant: 'title' }),

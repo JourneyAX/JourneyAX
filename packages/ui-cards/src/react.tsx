@@ -139,13 +139,23 @@ const components = {
     const [broken, setBroken] = useState(false);
     const ratio = props.ratio && props.ratio !== 'auto' ? props.ratio.replace(':', ' / ') : undefined;
     const show = props.src && !broken;
+    // No picture (or a catalogue's 1-pixel "no media" stand-in): the brand's
+    // own logo with a "coming soon" line, when the card carries `fallbackSrc`;
+    // otherwise the neutral icon as before.
+    const fallback = props.fallbackSrc ? (
+      <div className="jx-image-fallback jx-image-fallback--brand">
+        <img src={props.fallbackSrc} alt="" loading="lazy" style={{ objectFit: 'contain' }} />
+        {props.fallbackLabel ? <span className="jx-image-fallback-label">{props.fallbackLabel}</span> : null}
+      </div>
+    ) : (
+      <div className="jx-image-fallback"><JxIcon name={props.fallbackIcon || 'image'} size="lg" tone="muted" /></div>
+    );
     return (
       <div className={cls('jx-image', props.radius && `jx-r-${props.radius}`, props.className)} style={{ aspectRatio: ratio, width: props.width, height: props.height, ...(props.style || {}) }}>
         {show ? (
-          <img src={props.src} alt={props.alt || ''} loading="lazy" style={{ objectFit: props.fit || 'cover' }} onError={() => setBroken(true)} />
-        ) : (
-          <div className="jx-image-fallback"><JxIcon name={props.fallbackIcon || 'image'} size="lg" tone="muted" /></div>
-        )}
+          <img src={props.src} alt={props.alt || ''} loading="lazy" style={{ objectFit: props.fit || 'cover' }} onError={() => setBroken(true)}
+            onLoad={(e) => { const im = e.currentTarget; if (im.naturalWidth <= 2 || im.naturalHeight <= 2) setBroken(true); }} />
+        ) : fallback}
       </div>
     );
   },
