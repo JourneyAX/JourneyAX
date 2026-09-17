@@ -3812,13 +3812,18 @@ export class AgentService {
      *  come first, the model's questions sit beside them (AUG-68/AUG-80's
      *  rule, applied to the open-model path in code because the prompt alone
      *  does not hold: "show me laundry tubs" still got a questionnaire). */
-    showFirst?: { journeyState: any; intent: any },
+    showFirst?: { journeyState: any; intent: any; answersOnly?: boolean },
     memo?: TurnSearchMemo,
   ): Promise<boolean> {
     if (stats.searched) return false;
     if (showFirst?.intent?.panelRenderBlocked) return false;
+    // Cards are a SHOPPING guarantee. A return, a refund, a policy or a
+    // how-to question that the agent clarified must not end in product cards
+    // — "return my drilling tools" + three answers produced six drills.
+    const it = showFirst?.intent;
+    if (it && (it.intent === 'general_question' || it.intent === 'unknown' || it.retrievalType === 'faq' || it.space === 'policy')) return false;
     const answered = retrieval.answers.length > 0;
-    const nothingShownYet = !!showFirst && !(showFirst.journeyState?.lastShown || []).length && !showFirst.journeyState?.activeSku;
+    const nothingShownYet = !!showFirst && !showFirst.answersOnly && !(showFirst.journeyState?.lastShown || []).length && !showFirst.journeyState?.activeSku;
     const substantive = retrieval.brief.split(/\s+/).filter(Boolean).length >= 3;
     if (!answered && !(nothingShownYet && substantive)) return false;
     const query = answered ? effectiveSearchQuery('', retrieval) : retrieval.brief;
@@ -5240,7 +5245,7 @@ export class AgentService {
       detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)',
     });
     const searchMemo = new TurnSearchMemo(tenantId);
-    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
+    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
       searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
     }
 
@@ -5918,7 +5923,7 @@ export class AgentService {
     // the open-model path has, answers-only (never show-first) on this path.
     if (!cartCommandApplied && (projectConfig.capabilities || []).includes('products')) {
       const shownStats = { searched: uiToolCalls.some((c: any) => ['showItems', 'presentBundle', 'presentComparison'].includes(c?.function?.name)) };
-      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, undefined, (t) => trace.push(t), undefined, searchMemo)) {
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, undefined, (t) => trace.push(t), { journeyState, intent, answersOnly: true }, searchMemo)) {
         conversation.push({ role: 'system', content: '[CARDS SHOWN] Cards matching their answers are now on screen under your text. Do not list them; give your pick and one next step.' });
       }
     }
@@ -6090,7 +6095,7 @@ export class AgentService {
     // The turn's likely search starts NOW, while the model is still thinking —
     // when it asks questions, the cards beside them cost no extra wait.
     const searchMemo = new TurnSearchMemo(tenantId);
-    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
+    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
       searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
     }
     const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
@@ -6717,7 +6722,7 @@ export class AgentService {
 
     if (!cartCommandApplied && (projectConfig.capabilities || []).includes('products')) {
       const shownStats = { searched: uiToolCalls.some((c: any) => ['showItems', 'presentBundle', 'presentComparison'].includes(c?.function?.name)) };
-      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, emit, pushTrace, undefined, searchMemo)) {
+      if (await this.ensureRetrievalAfterAnswers(tenantId, retrievalCtx, shownStats, uiToolCalls, emit, pushTrace, { journeyState, intent, answersOnly: true }, searchMemo)) {
         conversation.push({ role: 'system', content: '[CARDS SHOWN] Cards matching their answers are now on screen under your text. Do not list them; give your pick and one next step.' });
       }
     }

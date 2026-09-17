@@ -47,6 +47,11 @@ CONTEXT DIMENSIONS (config-driven — extract values for THESE only):
 ${dimBlock}
 NOTE: "bathroom_remodel" is the generic whole-context remodel/renovation/new-configuration intent —
 use it for any renovation/new-build regardless of vertical, and let "dimensions" carry the specifics.
+SERVICE QUESTIONS ARE NEVER DISCOVERY: a return, refund, exchange, credit, warranty or faulty-item claim,
+delivery / shipping / pickup status, an account, invoice or order query, or any policy question →
+intent="general_question", needsRetrieval=true, retrievalType="faq", stage="intro", inScope=true
+(policy questions are always in scope), even if the customer names a product ("return my drilling tools").
+The assistant answers these from the business's own policy pages, not by showing products or asking a form.
 Classify from the CONVERSATION FLOW, not keywords:
 - Early discovery — you have not yet asked clarifying questions, or key context is still missing →
   needsRetrieval=false, retrievalType="none" (ask questions first).
