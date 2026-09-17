@@ -2881,7 +2881,10 @@ export interface ChatResponse {
  * returned garden sheds. Retrieval is only as good as the query; a query that
  * merely echoes an answer or a placeholder gets the real brief folded in.
  */
-interface RetrievalContext { brief: string; answers: string[] }
+interface RetrievalContext { brief: string; answers: string[]
+  /** The customer's latest message is the clarify answers themselves. */
+  lastIsAnswers?: boolean;
+}
 
 function deriveRetrievalContext(messages: Array<{ role: string; content: unknown }>): RetrievalContext {
   const text = (c: unknown): string =>
@@ -2908,7 +2911,8 @@ function deriveRetrievalContext(messages: Array<{ role: string; content: unknown
       if (v && !/^not answered$/i.test(v) && !meta.test(v)) answers.push(v);
     }
   }
-  return { brief: brief.slice(0, 300), answers };
+  const lastUser = users[users.length - 1] || '';
+  return { brief: brief.slice(0, 300), answers, lastIsAnswers: isAnswers(lastUser) };
 }
 
 /**
@@ -3341,6 +3345,13 @@ function isStorageAsk(text: string): boolean {
   const storage = /\b(deck ?box|box|binder|portfolio|album|storage|store|storing|drawer|case|fit|fits|hold|holds)\b/.test(t);
   const count = /\b\d{2,4}\b|\b(commander|standard|deck|decks|collection)\b/.test(t);
   return storage && count;
+}
+
+/** "Tell me more about X", "more details on X", "specs for X" — one item, not a new list. */
+function isDetailAsk(text: string): boolean {
+  const t = (text || '').toLowerCase();
+  if (t.length > 300) return false;
+  return /^(tell me more about|more (details|info|information) (on|about)|what are the (specs|specifications|details) (of|for)|details (on|about|for)|explain) /.test(t);
 }
 
 /** "What's the difference between X and Y", "X vs Y", "compare A with B". */
@@ -3822,7 +3833,9 @@ export class AgentService {
     // — "return my drilling tools" + three answers produced six drills.
     const it = showFirst?.intent;
     if (it && (it.intent === 'general_question' || it.intent === 'unknown' || it.retrievalType === 'faq' || it.space === 'policy')) return false;
-    const answered = retrieval.answers.length > 0;
+    // Only the turn that IS the answers counts — a later "tell me more about X"
+    // in the same conversation must not be glued to old clarify answers.
+    const answered = retrieval.answers.length > 0 && retrieval.lastIsAnswers === true;
     const nothingShownYet = !!showFirst && !showFirst.answersOnly && !(showFirst.journeyState?.lastShown || []).length && !showFirst.journeyState?.activeSku;
     const substantive = retrieval.brief.split(/\s+/).filter(Boolean).length >= 3;
     if (!answered && !(nothingShownYet && substantive)) return false;
@@ -5245,7 +5258,7 @@ export class AgentService {
       detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)',
     });
     const searchMemo = new TurnSearchMemo(tenantId);
-    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
+    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !isDetailAsk(lastUserText) && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
       searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
     }
 
@@ -5345,6 +5358,8 @@ export class AgentService {
           ...(storageFacts ? [{ role: 'system', content: storageFactsBlock(storageFacts) }]
             : isStorageAsk(lastUserText) ? [{ role: 'system', content:
             '[STORAGE ASK] The customer is sizing storage for a number of cards or decks. Call recommendStorage(cards, sleeving) FIRST — it returns the families that fit with exact capacities from this business\'s own guide — then searchKnowledge/showItems those families and quote the capacity number you used. Do not narrate capacities from memory.' }] : []),
+          ...(isDetailAsk(lastUserText) ? [{ role: 'system', content:
+            '[DETAIL ASK] The customer is asking about ONE item they are already looking at (its detail card is on screen). Answer from that item\'s own catalogue facts — searchKnowledge for its exact name or code if you need them — in 2–4 sentences: what it is, what it is for, what to check before buying. Do NOT call showItems with a new list, and do not present alternatives unless they ask.' }] : []),
           ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
             '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
             'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
@@ -6095,7 +6110,7 @@ export class AgentService {
     // The turn's likely search starts NOW, while the model is still thinking —
     // when it asks questions, the cards beside them cost no extra wait.
     const searchMemo = new TurnSearchMemo(tenantId);
-    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
+    if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !isDetailAsk(lastUserText) && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
       searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
     }
     const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
@@ -6163,6 +6178,8 @@ export class AgentService {
           ...(storageFacts ? [{ role: 'system', content: storageFactsBlock(storageFacts) }]
             : isStorageAsk(lastUserText) ? [{ role: 'system', content:
             '[STORAGE ASK] The customer is sizing storage for a number of cards or decks. Call recommendStorage(cards, sleeving) FIRST — it returns the families that fit with exact capacities from this business\'s own guide — then searchKnowledge/showItems those families and quote the capacity number you used. Do not narrate capacities from memory.' }] : []),
+          ...(isDetailAsk(lastUserText) ? [{ role: 'system', content:
+            '[DETAIL ASK] The customer is asking about ONE item they are already looking at (its detail card is on screen). Answer from that item\'s own catalogue facts — searchKnowledge for its exact name or code if you need them — in 2–4 sentences: what it is, what it is for, what to check before buying. Do NOT call showItems with a new list, and do not present alternatives unless they ask.' }] : []),
           ...(isComparisonAsk(lastUserText) ? [{ role: 'system', content:
             '[COMPARISON ASK] The customer is asking how two (or more) named products, ranges or variants differ. Answer it as a comparison, not prose: ' +
             'searchKnowledge for EACH named item, showItems the real matches, then call presentComparison with those SKUs on the dimensions they care about — all in THIS turn. ' +
