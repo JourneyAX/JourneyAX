@@ -4244,7 +4244,11 @@ export class AgentService {
   ): { phase: 'clarify'; questions: any[]; chatLead: string } | null {
     const qLower = (userText || '').toLowerCase().trim();
     const mLower = (modelText || '').toLowerCase().trim();
-    const combined = `${qLower} ${mLower}`;
+    // Trigger on what the CUSTOMER said only. Matching the model's own reply
+    // let "small hole in my wall" open the wet-area lining questionnaire because
+    // the reply happened to say "as long as the lining isn't soft".
+    const combined = qLower;
+    void mLower;
 
     // 1. If customer already answered clarification questions, DO NOT re-clarify!
     if (qLower.startsWith('my answers:') || qLower.includes('my answers:')) {
