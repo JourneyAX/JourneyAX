@@ -186,6 +186,22 @@ export function useCardActions() {
   }, [dispatch, handleApprove]);
 }
 
+/** Every card list keyed by SKU (products, bundle items, quote lines, order
+ *  lines, accessories) keeps one row per SKU. Retrieval can return two variant
+ *  rows of the same product and not every mapper dedupes — React then warns
+ *  about duplicate keys and may drop or double a tile. */
+function dedupeSkuLists<T extends Record<string, unknown>>(state: T): T {
+  const out: Record<string, unknown> = { ...state };
+  for (const key of ['products', 'items', 'lines']) {
+    const list = out[key];
+    if (!Array.isArray(list)) continue;
+    const seen = new Set<string>();
+    out[key] = list.filter((p: any) => { const k = String(p?.sku || '').toUpperCase(); if (!k) return true; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  if (Array.isArray(out.groups)) out.groups = (out.groups as any[]).map((g) => (g && Array.isArray(g.items) ? dedupeSkuLists(g) : g));
+  return out as T;
+}
+
 /** One card, rendered inline at its place in the conversation thread. */
 export function CardTile({ card, onAction }: { card: CardInstance; onAction: (name: string, params?: Record<string, unknown>) => void }) {
   const cfg = useStorefrontConfig();
@@ -194,7 +210,7 @@ export function CardTile({ card, onAction }: { card: CardInstance; onAction: (na
       <CardRenderer
         template={resolveTemplate(cfg, card.cardType)}
         // The brand's own logo backs any tile whose catalogue has no picture ("Image coming soon").
-        state={{ ...card.state, brandLogo: cfg.theme?.logoUrl || null }}
+        state={{ ...dedupeSkuLists(card.state as Record<string, unknown>), brandLogo: cfg.theme?.logoUrl || null }}
         settings={cfg.uiTheme?.cards?.[card.cardType]?.options}
         onAction={onAction}
         stateKey={card.id}
