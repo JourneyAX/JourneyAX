@@ -647,11 +647,27 @@ export class ProductService {
       console.log(`  [ProductService:Timing] ⏱️ Domain Glossary loaded in ${tGloss}ms (${glossaryTerms.length} terms)`);
     }
 
-    // Step 1: Generate embedding (on the fully-expanded query)
-    const queryEmbedding = await this.embedText(glossary.expandedQuery);
+    // Step 0: an exact product code ("5080443", "AT-11002") is a lookup, not a
+    // semantic search — a bare number embeds to nothing useful and the agent
+    // answered "didn't return as a matching product" for a SKU that exists.
+    // The hit goes through the same enrichment/formatting as any other result.
+    let exactRows: SearchResult[] | null = null;
+    const codeLike = /^[A-Z0-9][A-Z0-9-]{3,14}$/i.test(query.trim()) && /\d{3,}/.test(query);
+    if (codeLike) {
+      const col = await this.getCollection();
+      const code = query.trim();
+      const exact = await col.find({ $or: [{ brand }, { 'metadata.brand': brand }], 'metadata.type': 'product', $and: [{ $or: [{ 'metadata.sku': code }, { 'metadata.sku': code.toUpperCase() }, { 'metadata.specs.Item Code': code }] }] }, { projection: { embedding: 0 } }).limit(3).maxTimeMS(8000).toArray().catch(() => []);
+      if (exact.length) {
+        console.log(`  [ProductService] exact code lookup "${code}" → ${exact.length} chunk(s)`);
+        exactRows = exact.map((doc) => ({ document: doc as KnowledgeDocument, score: 1 }));
+      }
+    }
+
+    // Step 1: Generate embedding (on the fully-expanded query) — skipped for an exact code hit
+    const queryEmbedding = exactRows ? [] : await this.embedText(glossary.expandedQuery);
 
     // Step 2: Execute search
-    let rawResults = await this.searchRaw(
+    let rawResults = exactRows || await this.searchRaw(
       queryEmbedding.length > 0 ? queryEmbedding : null,
       { query: glossary.expandedQuery, brand, type, category, limit: fetchLimit }
     );
