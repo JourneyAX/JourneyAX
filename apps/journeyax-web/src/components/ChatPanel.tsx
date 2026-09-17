@@ -831,9 +831,15 @@ export default function ChatPanel() {
     if (state.phase !== 'clarify' || qs.length === 0) return;
     if (clarifySentForRef.current === qs) return;
     if (!qs.every((q) => !!state.dynamicAnswers[q.id])) return;
+    // The questions arrive before the agent's reply has finished streaming
+    // (a reasoning model thinks for 10s+ after emitting them). A customer who
+    // answers all three in that window used to lose them: the submit handler
+    // refuses to send mid-turn, and this effect had already stamped the set as
+    // sent. Wait for the turn to end instead — this re-runs when it does.
+    if (isLoading || state.isThinking) return;
     clarifySentForRef.current = qs;
     void handleClarifySubmit();
-  }, [state.dynamicQuestions, state.dynamicAnswers, state.phase, handleClarifySubmit]);
+  }, [state.dynamicQuestions, state.dynamicAnswers, state.phase, handleClarifySubmit, isLoading, state.isThinking]);
 
   // Called when user clicks "Build Quote" on ProductsPanel
   const handleBuildQuote = useCallback(async (summary?: string) => {
