@@ -7,7 +7,8 @@
  * runtime by json-render against a fixed catalog of neutral primitives
  * (`@journeyax/ui-cards`). This screen is where that JSON gets edited: theme
  * tokens (layer 1), per-card settings (layer 2), and template overrides
- * (layer 3) — with a live preview on every tab so nothing is a guess.
+ * (layer 3) — the template editor is a live Puck canvas over the same json-render
+ * spec Mongo stores; Gallery / Tokens / Compare still preview via CardRenderer.
  *
  * Same draft/publish model as every other config screen in this app: writes
  * here land on the DRAFT project doc; the storefront only ever reads the
@@ -22,6 +23,8 @@ import {
 import { CardRenderer } from "@journeyax/ui-cards/react";
 import { cardsApi, projectApi, type Project, type CardListEntry } from "../lib/api";
 import { sampleStateFor } from "../lib/cardSampleState";
+import { CardPuckEditor } from "./CardPuckEditor";
+import { puckDataToSpec, specToPuckData, type PuckData } from "../lib/cardPuck/specAdapter";
 import {
   ADVANCED_TOKEN_GROUPS, BRAND_COLORS, BUILTIN_THEMES, CORNER_CHIPS, CORNER_PRESETS,
   CUSTOM_FONT_ID, FONT_PRESETS, SHADOW_CHIPS, SHADOW_PRESETS, SPACE_CHIPS, SPACE_PRESETS,
@@ -43,7 +46,7 @@ function cssVarStyle(tokens: ThemeTokens): React.CSSProperties {
  *  short one (e.g. "comparison"), so the Enabled/Edit-template row underneath
  *  lands at a different height in every column — the gallery's alignment
  *  complaint. Density views (gallery grid) pass a cap; the single-card views
- *  (tokens/editor/compare) leave it unset and render at natural height. */
+ *  (tokens/editor) leave it unset and render at natural height. */
 function PreviewFrame({ tokens, children, minHeight = 160, maxHeight, pad = 20, className }: { tokens: ThemeTokens; children: React.ReactNode; minHeight?: number; maxHeight?: number; pad?: number; className?: string }) {
   return (
     <div
@@ -65,7 +68,7 @@ function CardPreview({ cardType, spec, tokens, settings, maxHeight, pad, classNa
   try {
     return (
       <PreviewFrame tokens={tokens} maxHeight={maxHeight} pad={pad} className={className}>
-        <CardRenderer template={spec} state={sampleStateFor(cardType)} settings={settings} stateKey={cardType} />
+        <CardRenderer template={spec} state={sampleStateFor(cardType)} settings={settings} stateKey={cardType} onAction={() => {}} />
       </PreviewFrame>
     );
   } catch (e: any) {
@@ -82,7 +85,6 @@ const TABS = [
   { id: "tokens", label: "Theme tokens" },
   { id: "gallery", label: "Card gallery" },
   { id: "editor", label: "Template editor" },
-  { id: "compare", label: "Compare tenants" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -97,6 +99,10 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
   const [cardSettings, setCardSettings] = useState<Record<string, { enabled?: boolean; variant?: string; labels?: Record<string, string> }>>(project.uiTheme?.cards || {});
   const [savedThemes, setSavedThemes] = useState<SavedTheme[]>(project.uiTheme?.savedThemes || []);
   const [activeThemeId, setActiveThemeId] = useState<string | null>(project.uiTheme?.activeThemeId || null);
+  const [cardOverlay, setCardOverlay] = useState<Record<string, unknown> | null>(() => {
+    const id = project.uiTheme?.activeThemeId;
+    return project.uiTheme?.savedThemes?.find((t) => t.id === id)?.cardTemplates ?? null;
+  });
   const [naming, setNaming] = useState(false);
   const [newThemeName, setNewThemeName] = useState("");
   const [cards, setCards] = useState<CardListEntry[]>([]);
@@ -125,8 +131,11 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
   useEffect(() => {
     setDraftTokens(project.uiTheme?.tokens || {});
     setCardSettings(project.uiTheme?.cards || {});
-    setSavedThemes(project.uiTheme?.savedThemes || []);
-    setActiveThemeId(project.uiTheme?.activeThemeId || null);
+    const nextSaved = project.uiTheme?.savedThemes || [];
+    const nextActive = project.uiTheme?.activeThemeId || null;
+    setSavedThemes(nextSaved);
+    setActiveThemeId(nextActive);
+    setCardOverlay(nextSaved.find((t) => t.id === nextActive)?.cardTemplates ?? null);
     setNaming(false);
     setNewThemeName("");
   }, [project.projectId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -167,7 +176,24 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
     setDraftTokens(theme.tokens);
     setActiveThemeId(theme.id);
     setNaming(false);
+    const saved = savedThemes.find((t) => t.id === theme.id);
+    setCardOverlay(saved?.cardTemplates ?? null);
   }
+
+  function isCustomActive() {
+    return !!activeThemeId && !BUILTIN_THEMES.some((t) => t.id === activeThemeId);
+  }
+
+  function snapshotCards(extra?: { cardType: string; spec: unknown }): Record<string, unknown> | undefined {
+    const out: Record<string, unknown> = { ...(cardOverlay || {}) };
+    for (const entry of cards) {
+      if (entry.source === "tenant" && entry.spec != null && out[entry.cardType] == null) out[entry.cardType] = entry.spec;
+    }
+    if (extra) out[extra.cardType] = extra.spec;
+    return Object.keys(out).length ? out : undefined;
+  }
+
+  const cardsForView = useMemo(() => cardsWithTheme(cards, cardOverlay), [cards, cardOverlay]);
 
   async function saveTokens() {
     setBusy(true); setError(null); setNotice(null);
@@ -187,23 +213,45 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
     }
   }
 
-  async function saveAsNewTheme() {
-    const name = newThemeName.trim();
-    if (!name) return;
+  async function saveAsNewTheme(nameOverride?: string, extra?: { cardType: string; spec: unknown }) {
+    const name = (nameOverride ?? newThemeName).trim();
+    if (!name) return false;
     const id = `custom-${Date.now()}`;
-    const entry: SavedTheme = { id, name, tokens: draftTokens };
+    const entry: SavedTheme = { id, name, tokens: draftTokens, cardTemplates: snapshotCards(extra) };
     const nextSaved = [...savedThemes, entry];
     setBusy(true); setError(null); setNotice(null);
     try {
       setSavedThemes(nextSaved);
       setActiveThemeId(id);
+      setCardOverlay(entry.cardTemplates ?? null);
       setNaming(false);
       setNewThemeName("");
       await cardsApi.patchTheme(projectId, themePayload({ savedThemes: nextSaved, activeThemeId: id }));
-      setNotice(`Saved “${name}” as a custom theme.`);
+      if (nameOverride === undefined) setNotice(`Saved “${name}” as a custom theme.`);
       onSaved?.();
+      return true;
     } catch (e: any) {
       setError(`Could not save theme: ${e.message}`);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveDraftOntoTheme(cardType: string, spec: unknown): Promise<boolean> {
+    if (!isCustomActive()) return true;
+    const current = savedThemes.find((t) => t.id === activeThemeId);
+    const nextTemplates = { ...(current?.cardTemplates || {}), [cardType]: spec };
+    const nextSaved = savedThemes.map((t) => t.id === activeThemeId ? { ...t, cardTemplates: nextTemplates } : t);
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      setSavedThemes(nextSaved);
+      setCardOverlay(nextTemplates);
+      await cardsApi.patchTheme(projectId, themePayload({ savedThemes: nextSaved }));
+      return true;
+    } catch (e: any) {
+      setError(`Could not save theme: ${e.message}`);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -213,6 +261,7 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
     const classic = BUILTIN_THEMES[0];
     setDraftTokens(classic.tokens);
     setActiveThemeId(classic.id);
+    setCardOverlay(null);
   }
 
   async function saveCardSettings(cardType: string, patch: Partial<{ enabled: boolean; variant: string; labels: Record<string, string> }>) {
@@ -313,12 +362,21 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
         />
       )}
       {tab === "gallery" && (
-        <GalleryTab cards={cards} loading={loadingCards} tokens={mergedTokens} cardSettings={cardSettings} onSaveSettings={saveCardSettings} onOpenEditor={(ct) => { setEditorCard(ct); setTab("editor"); }} />
+        <GalleryTab cards={cardsForView} loading={loadingCards} tokens={mergedTokens} cardSettings={cardSettings} onSaveSettings={saveCardSettings} onOpenEditor={(ct) => { setEditorCard(ct); setTab("editor"); }} />
       )}
       {tab === "editor" && (
-        <EditorTab projectId={projectId} cards={cards} tokens={mergedTokens} cardSettings={cardSettings} initialCard={editorCard} onSaved={loadCards} />
+        <EditorTab
+          projectId={projectId}
+          cards={cardsForView}
+          tokens={mergedTokens}
+          cardSettings={cardSettings}
+          initialCard={editorCard}
+          suggestedThemeName={selectedTheme && !selectedTheme.builtin ? `${selectedTheme.name} copy` : "My theme"}
+          onSaveDraft={saveDraftOntoTheme}
+          onSaveNamedTheme={(name, cardType, spec) => saveAsNewTheme(name, { cardType, spec })}
+          onSaved={loadCards}
+        />
       )}
-      {tab === "compare" && <CompareTab currentProject={project} tokens={mergedTokens} />}
     </div>
   );
 }
@@ -777,32 +835,29 @@ function GalleryTab({
 
 // ── Tab 3: Template editor ────────────────────────────────────────────────
 
-const BINDINGS_CHEATSHEET = [
-  ['{ "$state": "/products" }', "Read a value from card state"],
-  ['{ "$item": "title" }', "Field of the current repeat() item"],
-  ['repeat: { statePath: "/products", key: "sku" }', "Render one child per array item"],
-  ['visible: [{ "$state": "/heading" }]', "Hide the element when the value is falsy"],
-  ['{ "$template": "Hello ${/name}" }', "Interpolate state into a string"],
-  ['on: { press: { action: "addToCart", params: { sku: { "$item": "sku" } } } }', "Fire a catalog action"],
-];
-
 function EditorTab({
-  projectId, cards, tokens, cardSettings, initialCard, onSaved,
+  projectId, cards, tokens, cardSettings, initialCard, suggestedThemeName, onSaveDraft, onSaveNamedTheme, onSaved,
 }: {
   projectId: string;
   cards: CardListEntry[];
   tokens: ThemeTokens;
   cardSettings: Record<string, { enabled?: boolean; variant?: string; labels?: Record<string, string> }>;
   initialCard: CardType;
+  suggestedThemeName: string;
+  onSaveDraft: (cardType: string, spec: unknown) => Promise<boolean>;
+  onSaveNamedTheme: (name: string, cardType: string, spec: unknown) => Promise<boolean>;
   onSaved: () => void;
 }) {
   const [selected, setSelected] = useState<CardType>(initialCard);
-  const [text, setText] = useState("");
   const [parsed, setParsed] = useState<any>(DEFAULT_TEMPLATES.products);
+  const [puckData, setPuckData] = useState<PuckData>(() => specToPuckData(DEFAULT_TEMPLATES.products));
+  const [editorEpoch, setEditorEpoch] = useState(0);
   const [problems, setProblems] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [showSpec, setShowSpec] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [themeName, setThemeName] = useState("");
   const [query, setQuery] = useState("");
   const matches = useMemo(() => CARD_TYPE_NAMES.filter((ct) => galleryCardMatches(ct, query)), [query]);
 
@@ -810,30 +865,61 @@ function EditorTab({
 
   useEffect(() => {
     const spec = entry?.spec || DEFAULT_TEMPLATES[selected];
-    setText(JSON.stringify(spec, null, 2));
     setParsed(spec);
-    setProblems([]);
+    setPuckData(specToPuckData(spec));
+    setProblems(validateSpecLocally(spec));
     setNote(null);
+    setEditorEpoch((n) => n + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, cards]);
 
-  function onEdit(value: string) {
-    setText(value);
-    try {
-      const obj = JSON.parse(value);
-      setParsed(obj);
-      setProblems(validateSpecLocally(obj));
-    } catch {
-      setProblems(["Not valid JSON."]);
-    }
+  function applySpec(spec: any) {
+    setParsed(spec);
+    setPuckData(specToPuckData(spec));
+    setProblems(validateSpecLocally(spec));
+    setEditorEpoch((n) => n + 1);
   }
 
-  async function save() {
+  function onPuckChange(data: PuckData) {
+    setPuckData(data);
+    const spec = puckDataToSpec(data);
+    setParsed(spec);
+    setProblems(validateSpecLocally(spec));
+  }
+
+  function startNaming() {
+    setNaming(true);
+    setThemeName(suggestedThemeName);
+    setNote(null);
+  }
+
+  async function saveDraft() {
     if (problems.length) return;
     setBusy(true); setNote(null);
     try {
-      await cardsApi.putCard(projectId, selected, parsed, { note: "Edited in Cards & Theme studio" });
-      setNote("Saved to draft.");
+      await cardsApi.putCard(projectId, selected, parsed, { note: "Saved template draft" });
+      const saved = await onSaveDraft(selected, parsed);
+      if (!saved) return;
+      setNote("Template saved to draft.");
+      onSaved();
+    } catch (e: any) {
+      setProblems([e.message]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveNamedTheme() {
+    const name = themeName.trim();
+    if (!name || problems.length) return;
+    setBusy(true); setNote(null);
+    try {
+      await cardsApi.putCard(projectId, selected, parsed, { note: `Saved with theme “${name}”` });
+      const saved = await onSaveNamedTheme(name, selected, parsed);
+      if (!saved) return;
+      setNaming(false);
+      setThemeName("");
+      setNote(`Saved “${name}” as a custom theme. Publish when you’re ready.`);
       onSaved();
     } catch (e: any) {
       setProblems([e.message]);
@@ -922,51 +1008,78 @@ function EditorTab({
         )}
       </div>
 
-      <div className="panel cards-theme-editor-pane" data-testid="editor-pane-json">
+      <div className="panel cards-theme-editor-pane" data-testid="editor-pane-puck">
         <div className="cards-theme-editor-pane-head">
           <div data-testid="editor-heading" className="cards-theme-editor-heading">{CARD_TYPES[selected].title} — {sourceLabel}</div>
-          <button type="button" className="cards-theme-editor-cheat-btn" onClick={() => setShowCheatsheet((v) => !v)}>
-            {showCheatsheet ? "Hide bindings" : "Show bindings"}
+          <button type="button" className="cards-theme-editor-cheat-btn" onClick={() => setShowSpec((v) => !v)}>
+            {showSpec ? "Hide spec" : "View spec"}
           </button>
         </div>
-        {showCheatsheet && (
-          <div className="cards-theme-editor-cheatsheet">
-            {BINDINGS_CHEATSHEET.map(([code, desc]) => (
-              <div key={code}><code>{code}</code> — {desc}</div>
-            ))}
-          </div>
+        {showSpec && (
+          <pre className="cards-theme-editor-spec" data-testid="editor-view-spec">{JSON.stringify(parsed, null, 2)}</pre>
         )}
-        <div className="cards-theme-editor-pane-body">
-          <textarea
-            className="field cards-theme-editor-json"
-            value={text}
-            onChange={(e) => onEdit(e.target.value)}
-            spellCheck={false}
+        <div className="cards-theme-editor-pane-body cards-theme-editor-puck-body">
+          <CardPuckEditor
+            key={`${selected}-${editorEpoch}`}
+            cardType={selected}
+            data={puckData}
+            onChange={onPuckChange}
+            tokens={tokens}
+            settings={cardSettings[selected] as any}
           />
+        </div>
+        <div className="cards-theme-editor-foot">
+          {naming ? (
+            <form className="theme-switcher-name" onSubmit={(e) => { e.preventDefault(); void saveNamedTheme(); }}>
+              <input
+                className="field"
+                value={themeName}
+                onChange={(e) => setThemeName(e.target.value)}
+                placeholder="Theme name"
+                aria-label="New theme name"
+                data-testid="editor-theme-name"
+                autoFocus
+                style={{ padding: "7px 10px", fontSize: 13, width: 180 }}
+              />
+              <button type="submit" className="btn y" disabled={busy || problems.length > 0 || !themeName.trim()}>Save</button>
+              <button type="button" className="btn" onClick={() => { setNaming(false); setThemeName(""); }} disabled={busy}>Cancel</button>
+            </form>
+          ) : (
+            <>
+              <button type="button" className="btn y" data-testid="editor-save-draft" onClick={() => void saveDraft()} disabled={busy || problems.length > 0}>Save draft</button>
+              <button type="button" className="btn" data-testid="editor-save-as-theme" onClick={startNaming} disabled={busy || problems.length > 0}>Save as new theme</button>
+            </>
+          )}
+          <button type="button" className="btn" onClick={() => applySpec(DEFAULT_TEMPLATES[selected])}>Copy default into editor</button>
+          <button type="button" className="btn" onClick={revert} disabled={busy || entry?.source !== "tenant"}>Revert to platform default</button>
           {problems.length > 0 && (
-            <div style={badStyle}>
+            <div style={{ ...badStyle, margin: 0, flex: "1 1 100%" }}>
               {problems.map((p, i) => <div key={i}>• {p}</div>)}
             </div>
           )}
-          {note && !problems.length && <div style={{ ...badStyle, background: "#E6F4EA", color: "#1F8A4C", borderColor: "#A6E3B8" }}>{note}</div>}
-        </div>
-        <div className="cards-theme-editor-foot">
-          <button type="button" className="btn y" onClick={save} disabled={busy || problems.length > 0}>Save</button>
-          <button type="button" className="btn" onClick={() => onEdit(JSON.stringify(DEFAULT_TEMPLATES[selected], null, 2))}>Copy default into editor</button>
-          <button type="button" className="btn" onClick={revert} disabled={busy || entry?.source !== "tenant"}>Revert to platform default</button>
-        </div>
-      </div>
-
-      <div className="panel cards-theme-editor-pane" data-testid="editor-pane-preview">
-        <div className="cards-theme-editor-pane-head">Live preview</div>
-        <div className="cards-theme-editor-pane-body cards-theme-editor-preview-body">
-          {problems.length === 0
-            ? <CardPreview cardType={selected} spec={parsed} tokens={tokens} settings={cardSettings[selected] as any} />
-            : <div style={badStyle}>Fix the JSON to see a preview.</div>}
+          {note && !problems.length && <div style={{ ...badStyle, background: "#E6F4EA", color: "#1F8A4C", borderColor: "#A6E3B8", margin: 0 }}>{note}</div>}
         </div>
       </div>
     </div>
   );
+}
+
+function cardsWithTheme(cards: CardListEntry[], overlay: Record<string, unknown> | null): CardListEntry[] {
+  if (!overlay) return cards;
+  const byType = new Map(cards.map((c) => [c.cardType, c]));
+  for (const [cardType, spec] of Object.entries(overlay)) {
+    const prev = byType.get(cardType);
+    byType.set(cardType, {
+      cardType,
+      source: "tenant",
+      spec,
+      settings: prev?.settings ?? null,
+      updatedAt: prev?.updatedAt,
+      updatedBy: prev?.updatedBy,
+      note: prev?.note,
+    });
+  }
+  return [...byType.values()];
 }
 
 /** Same structural checks project-service runs before storing a spec — done
@@ -989,89 +1102,4 @@ function validateSpecLocally(spec: any): string[] {
     }
   }
   return problems;
-}
-
-// ── Tab 4: Compare tenants ────────────────────────────────────────────────
-
-function CompareTab({ currentProject, tokens }: { currentProject: Project; tokens: ThemeTokens }) {
-  const [others, setOthers] = useState<Project[]>([]);
-  const [otherId, setOtherId] = useState<string>("");
-  const [otherProject, setOtherProject] = useState<Project | null>(null);
-  const [cardType, setCardType] = useState<CardType>("products");
-  const [leftEntry, setLeftEntry] = useState<CardListEntry | null>(null);
-  const [rightEntry, setRightEntry] = useState<CardListEntry | null>(null);
-
-  useEffect(() => {
-    projectApi.list().then((list) => setOthers(list.filter((p) => p.projectId !== currentProject.projectId && p.status !== "archived"))).catch(() => {});
-  }, [currentProject.projectId]);
-
-  useEffect(() => {
-    cardsApi.list(currentProject.projectId).then(({ cards }) => setLeftEntry(cards.find((c) => c.cardType === cardType) || null)).catch(() => {});
-  }, [currentProject.projectId, cardType]);
-
-  useEffect(() => {
-    if (!otherId) { setOtherProject(null); setRightEntry(null); return; }
-    projectApi.get(otherId).then(setOtherProject).catch(() => {});
-    cardsApi.list(otherId).then(({ cards }) => setRightEntry(cards.find((c) => c.cardType === cardType) || null)).catch(() => {});
-  }, [otherId, cardType]);
-
-  const leftTokens = mergeTokens(currentProject.uiTheme?.tokens);
-  const rightTokens = otherProject ? mergeTokens(otherProject.uiTheme?.tokens) : tokens;
-  const sourceLabel = (entry: CardListEntry | null) => (entry?.source === "tenant" ? "Custom template" : "Platform default");
-
-  return (
-    <div className="cards-theme-compare">
-      <div className="cards-theme-compare-bar">
-        <div>
-          <label className="flabel" htmlFor="compare-card-type">Card</label>
-          <select
-            id="compare-card-type"
-            className="field"
-            data-testid="compare-card-type"
-            value={cardType}
-            onChange={(e) => setCardType(e.target.value as CardType)}
-          >
-            {CARD_TYPE_NAMES.map((ct) => (
-              <option key={ct} value={ct}>{CARD_TYPES[ct].title}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="flabel" htmlFor="compare-workspace">Compare with</label>
-          <select
-            id="compare-workspace"
-            className="field"
-            data-testid="compare-workspace"
-            value={otherId}
-            onChange={(e) => setOtherId(e.target.value)}
-          >
-            <option value="">Select a workspace</option>
-            {others.map((p) => (
-              <option key={p.projectId} value={p.projectId}>{p.companyName}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div className="cards-theme-compare-grid">
-        <div className="panel cards-theme-compare-pane" data-testid="compare-pane-left">
-          <div className="cards-theme-compare-pane-head">{currentProject.companyName} — {sourceLabel(leftEntry)}</div>
-          <div className="cards-theme-compare-pane-body">
-            <CardPreview cardType={cardType} spec={leftEntry?.spec || DEFAULT_TEMPLATES[cardType]} tokens={leftTokens} />
-          </div>
-        </div>
-        <div className="panel cards-theme-compare-pane" data-testid="compare-pane-right">
-          <div className="cards-theme-compare-pane-head">
-            {otherProject ? `${otherProject.companyName} — ${sourceLabel(rightEntry)}` : "Choose a workspace"}
-          </div>
-          {otherProject ? (
-            <div className="cards-theme-compare-pane-body">
-              <CardPreview cardType={cardType} spec={rightEntry?.spec || DEFAULT_TEMPLATES[cardType]} tokens={rightTokens} />
-            </div>
-          ) : (
-            <div className="cards-theme-compare-empty">Select a workspace to compare</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 }

@@ -11,14 +11,15 @@
   "dependencies": {
     "@journeyax/cache": "*",
     "@journeyax/shared-types": "*",
+    "@journeyax/ui-cards": "*",
+    "@puckeditor/core": "^0.23.0",
     "@xyflow/react": "^12.11.3",
     "dotenv": "^17.4.2",
     "lucide-react": "^0.453.0",
     "mongodb": "^7.4.0",
     "next": "16.2.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "@journeyax/ui-cards": "*"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@types/node": "^20",

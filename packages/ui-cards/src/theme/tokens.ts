@@ -118,6 +118,8 @@ export interface SavedTheme {
   id: string;
   name: string;
   tokens: Partial<ThemeTokens>;
+  /** Card specs snapshotted with this theme, keyed by cardType. */
+  cardTemplates?: Record<string, unknown>;
 }
 
 export interface UiTheme {
