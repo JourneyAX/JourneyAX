@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "theme": {
+    "primaryColor": "#1E293B",
+    "accentColor": "#F59E0B",
+    "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "borderRadius": "8px",
+    "customCssVars": {
+      "--wwg-safety-yellow": "#FBBF24",
+      "--wwg-safety-navy": "#0F172A"
+    }
+  },
+  "cards": {
+    "allowedCardTypes": [
+      "product_card",
+      "bundle_summary_card",
+      "quote_card",
+      "comparison_table",
+      "action_button_group"
+    ],
+    "defaultCardRenderer": "@journeyax/ui-cards"
+  }
+}

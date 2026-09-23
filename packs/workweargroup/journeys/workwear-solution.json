@@ -1,0 +1,59 @@
+{
+  "journeyId": "workwear-solution",
+  "version": "1.0.0",
+  "displayName": "Workwear Solution Builder",
+  "description": "Guides trade customers from trade role identification to a fully budget-compliant pants and boots bundle.",
+  "goals": ["discover", "build_solution", "purchase"],
+  "initialStage": "understand_need",
+  "stages": {
+    "understand_need": {
+      "displayName": "Understand Trade Needs",
+      "description": "Capture the customer's trade, required gear items, and price ceiling.",
+      "requiredFacts": [
+        "occupation",
+        "required_item_types",
+        "budget"
+      ],
+      "allowedCapabilities": ["catalog.search"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "allFactsPresent": [
+            "occupation",
+            "required_item_types"
+          ],
+          "nextStage": "build_solution"
+        }
+      ]
+    },
+    "build_solution": {
+      "displayName": "Build Compliant Solution",
+      "description": "Search catalog, enforce Australian safety compliance and $250 combined budget, and recommend bundle.",
+      "requiredFacts": [],
+      "allowedCapabilities": [
+        "catalog.search",
+        "solution.optimize",
+        "pricing.validate"
+      ],
+      "blockedCapabilities": ["order.commit"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "allFactsPresent": ["solution_bundle_accepted"],
+          "nextStage": "purchase"
+        }
+      ]
+    },
+    "purchase": {
+      "displayName": "Purchase & Commit",
+      "description": "Verify final live inventory, generate formal quote or initiate Stripe order.",
+      "requiredFacts": ["solution_bundle_accepted"],
+      "allowedCapabilities": [
+        "pricing.validate",
+        "order.commit"
+      ],
+      "nextDecisionPolicy": "rule-first",
+      "exitConditions": []
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "defaultPolicy": "complex_reasoning",
+  "policies": [
+    {
+      "policyId": "complex_reasoning",
+      "description": "Multi-slot constraint decomposition and bundle optimization",
+      "candidates": [
+        { "provider": "openai", "model": "gpt-4o", "priority": 1 },
+        { "provider": "google", "model": "gemini-1.5-pro", "priority": 2 }
+      ],
+      "dataResidency": "au",
+      "maxInputTokens": 20000,
+      "maxOutputTokens": 2000,
+      "fallbackAllowed": true,
+      "timeoutMs": 15000
+    },
+    {
+      "policyId": "fast_intent",
+      "description": "Fast slot and intent extraction",
+      "candidates": [
+        { "provider": "openai", "model": "gpt-4o-mini", "priority": 1 }
+      ],
+      "dataResidency": "au",
+      "maxInputTokens": 8000,
+      "maxOutputTokens": 1000,
+      "fallbackAllowed": true,
+      "timeoutMs": 5000
+    }
+  ]
+}

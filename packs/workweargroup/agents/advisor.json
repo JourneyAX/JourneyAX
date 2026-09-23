@@ -1,0 +1,24 @@
+{
+  "agentId": "trades_advisor",
+  "name": "Workwear Trades Advisor",
+  "purpose": "Guide tradespeople and safety procurement managers to compliant PPE bundles.",
+  "inputSchema": {
+    "occupation": { "type": "string" },
+    "budget": { "type": "object" },
+    "required_item_types": { "type": "array" }
+  },
+  "outputSchema": {
+    "recommendedBundle": { "type": "object" }
+  },
+  "allowedTools": [
+    "catalog.search",
+    "solution.optimize",
+    "pricing.validate"
+  ],
+  "modelPolicyRef": "complex_reasoning",
+  "maxTurns": 3,
+  "handoffConditions": [
+    "custom_embroidery_bulk_quote",
+    "credit_terms_inquiry"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "companyName": "Workwear Group",
+  "industry": "Industrial Workwear, Uniforms & Safety Apparel",
+  "brandTone": "Authoritative, safety-focused, practical, Australian trades vernacular",
+  "mission": "Equipping Australian trades and healthcare professionals with compliant, durable workwear.",
+  "primaryCurrency": "AUD",
+  "supportedCurrencies": ["AUD", "NZD"],
+  "primaryLocale": "en-AU",
+  "supportedLocales": ["en-AU", "en-NZ"],
+  "complianceCertifications": [
+    "AS/NZS 2210.3 (Safety Footwear)",
+    "AS/NZS 4602.1 (Hi-Visibility Safety Garments)",
+    "AS/NZS 4399 (Sun Protective Clothing)"
+  ]
+}

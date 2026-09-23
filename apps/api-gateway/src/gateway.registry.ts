@@ -56,13 +56,13 @@ export function resolveService(path: string): { baseUrl: string; prefix: string 
 
 /**
  * Tenant Resolution Middleware.
- * Extracts tenant ID from headers, subdomain, or defaults to 'caroma'.
- * Injects X-Tenant-ID into the proxied request.
+ * Extracts tenant ID from headers or subdomain.
+ * Injects X-Tenant-ID into the proxied request if present.
  */
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   use(req: Request, _res: Response, next: NextFunction) {
-    // Priority: explicit header → subdomain → default
+    // Priority: explicit header → subdomain
     let tenantId = req.headers['x-tenant-id'] as string;
 
     if (!tenantId) {
@@ -73,7 +73,9 @@ export class TenantMiddleware implements NestMiddleware {
       }
     }
 
-    req.headers['x-tenant-id'] = tenantId || 'caroma';
+    if (tenantId) {
+      req.headers['x-tenant-id'] = tenantId;
+    }
     next();
   }
 }

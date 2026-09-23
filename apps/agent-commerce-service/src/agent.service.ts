@@ -14,6 +14,7 @@ import {
 import { verifyComparisonProvenance, lookupSkuFacts } from './presentation/provenance';
 import { sanitizeChips, fenceSearchResultText } from './presentation/fencing';
 import { skillIndexBlock, loadSkillBody } from './skills/loader';
+import { TurnRunner } from './turn/run-turn';
 
 /** Keep transcripts bounded (context editing) — recent turns are enough; the
  *  journey-memory block carries the durable facts. */
@@ -3422,6 +3423,7 @@ export class AgentService {
   private quoteService: QuoteService;
   private orderService: OrderService;
   private schoolResearch: SchoolResearchService;
+  private turnRunner = new TurnRunner();
   private readonly model = process.env.LLM_MODEL || 'gpt-4o-mini';
   // Intent classification is a trivial structured task — always use a fast model
   // (never the tenant's reasoning model). This is internal plumbing, so it is a
@@ -5171,7 +5173,10 @@ export class AgentService {
    * One visible agent, controlled internally (see docs/ARCHITECTURE.md §5).
    */
   async processChat(request: ChatRequest): Promise<ChatResponse> {
-    const { tenantId = 'caroma' } = request;
+    const tenantId = request.tenantId?.trim() || '';
+    if (!tenantId) {
+      throw new Error('[JourneyAX] tenantId is required to process chat turn');
+    }
     // CDL: design image held server-side for this turn (mirrors processChatStream).
     const turnImage = { imageBase64: request.imageBase64, imageUrl: request.imageUrl };
     const hasDesignImage = !!(turnImage.imageBase64 || turnImage.imageUrl);
@@ -5181,6 +5186,40 @@ export class AgentService {
     // The client sends only { sessionId, message }. The server loads the
     // conversation and typed journey state it persisted last turn.
     const sessionId = request.sessionId || randomUUID();
+
+    // Route Business Pack governed tenants through Journey OS TurnRunner
+    if (tenantId === 'workweargroup' || (request as any).useJourneyOS) {
+      console.log(`[JourneyAX:OS] Routing turn through Journey OS TurnRunner for tenant="${tenantId}"`);
+      const userMsg = request.message || (request.messages && request.messages.length > 0 ? request.messages[request.messages.length - 1]?.content : '');
+      const turnResult = await this.turnRunner.runTurn({
+        tenantId,
+        environmentId: 'production',
+        workspaceId: sessionId,
+        sessionId,
+        principalId: request.customerId || request.demoPrincipalId,
+        message: userMsg,
+      });
+
+      return {
+        sessionId,
+        message: {
+          role: 'assistant',
+          content: turnResult.assistantMessage || '',
+        },
+        conversation: [
+          ...(request.messages || []),
+          { role: 'assistant', content: turnResult.assistantMessage || '' },
+        ],
+        uiActions: turnResult.uiInstructions.map((inst) => ({
+          name: inst.component,
+          arguments: inst.props,
+        })),
+        trace: [
+          { step: 'journey_os', detail: `stage=${turnResult.trace.stage} · decision=${turnResult.decision.type}` },
+        ],
+      };
+    }
+
     const stored = await this.sessionStore.load(sessionId, tenantId);
     const { messages, journeyState } = this.hydrate(request, stored);
     const state = stored?.state ?? request.state; // legacy UI-state (analytics only)
@@ -6041,7 +6080,12 @@ export class AgentService {
     request: ChatRequest,
     emit: (event: string, data: any) => void,
   ): Promise<void> {
-    const { tenantId = 'caroma' } = request;
+    const tenantId = request.tenantId?.trim() || '';
+    if (!tenantId) {
+      emit('error', { message: 'tenantId is required to process chat turn' });
+      emit('done', {});
+      return;
+    }
     // CDL: a design image attached this turn is held server-side (never in the
     // prompt) and read by analyzeDesign. A note in the conversation tells the
     // model to call that tool.
@@ -6059,6 +6103,44 @@ export class AgentService {
     const turnIndex = (stored?.turnCount || 0) + 1; // used to key per-tool-call trace entries (steps[])
     pushTrace({ step: 'session', detail: stored ? `resumed ${sessionId.slice(0, 8)} (turn ${(stored.turnCount || 0) + 1}, ${messages.length} msg, ledger v${journeyState.version})` : `new ${sessionId.slice(0, 8)}` });
     emit('session', { sessionId });
+
+    // Route Business Pack governed tenants through Journey OS TurnRunner
+    if (tenantId === 'workweargroup' || (request as any).useJourneyOS) {
+      console.log(`[JourneyAX:OS:Stream] Routing turn through Journey OS TurnRunner for tenant="${tenantId}"`);
+      pushTrace({ step: 'journey_os', detail: `Activating Business Pack for ${tenantId}` });
+
+      const userMsg = request.message || (request.messages && request.messages.length > 0 ? request.messages[request.messages.length - 1]?.content : '');
+      const turnResult = await this.turnRunner.runTurn({
+        tenantId,
+        environmentId: 'production',
+        workspaceId: sessionId,
+        sessionId,
+        principalId: request.customerId || request.demoPrincipalId,
+        message: userMsg,
+      });
+
+      pushTrace({
+        step: 'journey_stage',
+        detail: `stage=${turnResult.trace.stage} · decision=${turnResult.decision.type} · reason=${turnResult.decision.reason}`,
+      });
+
+      for (const inst of turnResult.uiInstructions) {
+        emit('uiAction', {
+          type: inst.component,
+          payload: inst.props,
+        });
+      }
+
+      const text = turnResult.assistantMessage || '';
+      const words = text.split(' ');
+      for (let i = 0; i < words.length; i++) {
+        emit('token', words[i] + (i < words.length - 1 ? ' ' : ''));
+        await new Promise((r) => setTimeout(r, 10));
+      }
+
+      emit('done', {});
+      return;
+    }
 
     // Published project config (model + persona + journey guidance)
     const projectConfig = await this.configLoader.loadProjectConfig(tenantId);

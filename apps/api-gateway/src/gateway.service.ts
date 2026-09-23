@@ -370,10 +370,16 @@ export class GatewayService {
     const queryMatch = path.match(/[?&]projectId=([^&]+)/);
     const queryProjectId = queryMatch ? decodeURIComponent(queryMatch[1]) : null;
     const effectiveProjectId = projectId || queryProjectId;
-    const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || 'caroma');
+    const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || '');
 
     // ── Edge Validation ──────────────────────────────────────────────────
     if (domain !== 'auth' && domain !== 'projects' && domain !== 'organizations') {
+      if (!tenantId) {
+        return {
+          status: 400,
+          data: { error: 'Bad Request', message: 'Tenant identifier is required (URL projectId or x-tenant-id header).' },
+        };
+      }
       const isValid = await this.validateTenant(tenantId);
       if (!isValid) {
         return {
@@ -476,10 +482,14 @@ export class GatewayService {
     const queryMatch = path.match(/[?&]projectId=([^&]+)/);
     const queryProjectId = queryMatch ? decodeURIComponent(queryMatch[1]) : null;
     const effectiveProjectId = projectId || queryProjectId;
-    const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || 'caroma');
+    const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || '');
 
     // ── Edge Validation ──────────────────────────────────────────────────
     if (domain !== 'auth' && domain !== 'projects' && domain !== 'organizations') {
+      if (!tenantId) {
+        res.status(400).json({ error: 'Bad Request', message: 'Tenant identifier is required (URL projectId or x-tenant-id header).' });
+        return;
+      }
       const isValid = await this.validateTenant(tenantId);
       if (!isValid) {
         res.status(403).json({ error: 'Forbidden', message: 'Project does not exist or is disabled.' });
@@ -493,7 +503,7 @@ export class GatewayService {
       method,
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-ID': headers['x-tenant-id'] || 'caroma',
+        'X-Tenant-ID': tenantId,
         ...authorizationHeader(googleIdToken, headers['authorization']),
         ...identityHeaders(headers),
       },

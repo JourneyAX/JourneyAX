@@ -79,7 +79,14 @@ export class AuthGuard implements NestMiddleware {
 
     if (isAnonymousRoute && !hasToken) {
       // Guest — the URL projectId identifies which brand they're chatting with.
-      req.headers['x-tenant-id']  = projectId || (req.headers['x-tenant-id'] as string) || 'caroma';
+      const resolvedTenant = projectId || (req.headers['x-tenant-id'] as string);
+      if (!resolvedTenant) {
+        return res.status(400).json({
+          error: 'Tenant Required',
+          message: 'Anonymous requests require a valid tenant (in URL or x-tenant-id header).',
+        });
+      }
+      req.headers['x-tenant-id']  = resolvedTenant;
       req.headers['x-user-email'] = 'guest@anonymous';
       req.headers['x-user-role']  = 'guest';
       req.headers['x-auth-type']  = 'anonymous';
@@ -140,7 +147,11 @@ export class AuthGuard implements NestMiddleware {
           // Bad token
           if (isAnonymousRoute) {
             // On anonymous routes, fall through as guest even with a bad token
-            req.headers['x-tenant-id']  = projectId || (req.headers['x-tenant-id'] as string) || 'caroma';
+            const resolvedTenant = projectId || (req.headers['x-tenant-id'] as string);
+            if (!resolvedTenant) {
+              return res.status(400).json({ error: 'Tenant Required', message: 'Missing tenant identifier.' });
+            }
+            req.headers['x-tenant-id']  = resolvedTenant;
             req.headers['x-user-email'] = 'guest@anonymous';
             req.headers['x-user-role']  = 'guest';
             req.headers['x-auth-type']  = 'anonymous';
@@ -149,7 +160,11 @@ export class AuthGuard implements NestMiddleware {
 
           if (DEV_BYPASS) {
             console.warn('[AuthGuard] ⚠️  Bad token — AUTH_DEV_BYPASS passthrough');
-            req.headers['x-tenant-id'] = projectId || (req.headers['x-tenant-id'] as string) || 'caroma';
+            const resolvedTenant = projectId || (req.headers['x-tenant-id'] as string);
+            if (!resolvedTenant) {
+              return res.status(400).json({ error: 'Tenant Required', message: 'Missing tenant identifier.' });
+            }
+            req.headers['x-tenant-id'] = resolvedTenant;
             return next();
           }
 
@@ -160,7 +175,11 @@ export class AuthGuard implements NestMiddleware {
       } catch (err: any) {
         // Auth-service unreachable
         if (isAnonymousRoute) {
-          req.headers['x-tenant-id']  = projectId || (req.headers['x-tenant-id'] as string) || 'caroma';
+          const resolvedTenant = projectId || (req.headers['x-tenant-id'] as string);
+          if (!resolvedTenant) {
+            return res.status(400).json({ error: 'Tenant Required', message: 'Missing tenant identifier.' });
+          }
+          req.headers['x-tenant-id']  = resolvedTenant;
           req.headers['x-user-email'] = 'guest@anonymous';
           req.headers['x-user-role']  = 'guest';
           req.headers['x-auth-type']  = 'anonymous';
@@ -169,7 +188,11 @@ export class AuthGuard implements NestMiddleware {
 
         if (DEV_BYPASS) {
           console.warn(`[AuthGuard] ⚠️  Auth service unreachable — AUTH_DEV_BYPASS passthrough`);
-          req.headers['x-tenant-id'] = projectId || (req.headers['x-tenant-id'] as string) || 'caroma';
+          const resolvedTenant = projectId || (req.headers['x-tenant-id'] as string);
+          if (!resolvedTenant) {
+            return res.status(400).json({ error: 'Tenant Required', message: 'Missing tenant identifier.' });
+          }
+          req.headers['x-tenant-id'] = resolvedTenant;
           return next();
         }
 
@@ -180,7 +203,11 @@ export class AuthGuard implements NestMiddleware {
     // ── 4. Protected route, no token ─────────────────────────────
     if (DEV_BYPASS) {
       console.warn(`[AuthGuard] ⚠️  No token on protected route — AUTH_DEV_BYPASS passthrough: ${req.method} ${path}`);
-      req.headers['x-tenant-id'] = projectId || (req.headers['x-tenant-id'] as string) || 'caroma';
+      const resolvedTenant = projectId || (req.headers['x-tenant-id'] as string);
+      if (!resolvedTenant) {
+        return res.status(400).json({ error: 'Tenant Required', message: 'Missing tenant identifier.' });
+      }
+      req.headers['x-tenant-id'] = resolvedTenant;
       return next();
     }
 

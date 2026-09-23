@@ -1,0 +1,18 @@
+{
+  "name": "@journeyax/business-pack",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@journeyax/journey-core": "*",
+    "zod": "^3.23.8 || ^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

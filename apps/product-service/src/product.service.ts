@@ -1591,13 +1591,47 @@ export class ProductService {
   async existingSkus(brand: string, skus: string[]): Promise<string[]> {
     const clean = [...new Set((skus || [])
       .map((s) => String(s || '').trim().toUpperCase())
-      .filter((s) => s.length >= 3 && s.length <= 12))];
+      .filter((s) => s.length >= 2 && s.length <= 60))];
     if (!clean.length) return [];
     const db = await this.getDb();
-    const rows = await db.collection('products')
-      .find({ projectId: brand, parentSku: { $in: clean } }, { projection: { parentSku: 1, _id: 0 } })
+    
+    // Check products collection (parentSku and sku)
+    const pRows = await db.collection('products')
+      .find(
+        { projectId: brand, $or: [{ parentSku: { $in: clean } }, { sku: { $in: clean } }] },
+        { projection: { parentSku: 1, sku: 1, _id: 0 } },
+      )
       .toArray();
-    return rows.map((r: any) => String(r.parentSku).toUpperCase());
+
+    // Also check documents collection (for crawled/ingested knowledge products)
+    const dRows = await db.collection('documents')
+      .find(
+        {
+          $and: [
+            { $or: [{ 'metadata.brand': brand }, { brand }, { projectId: brand }] },
+            {
+              $or: [
+                { 'metadata.sku': { $in: clean } },
+                { 'metadata.sku': { $in: clean.map((s) => s.toLowerCase()) } },
+                { 'metadata.specs.Item Code': { $in: clean } },
+              ],
+            },
+          ],
+        } as any,
+        { projection: { 'metadata.sku': 1, 'metadata.specs.Item Code': 1, _id: 0 } },
+      )
+      .toArray();
+
+    const found = new Set<string>();
+    for (const r of pRows as any[]) {
+      if (r.parentSku) found.add(String(r.parentSku).toUpperCase());
+      if (r.sku) found.add(String(r.sku).toUpperCase());
+    }
+    for (const r of dRows as any[]) {
+      const s = r.metadata?.sku || r.metadata?.specs?.['Item Code'];
+      if (s) found.add(String(s).toUpperCase());
+    }
+    return [...found];
   }
 
   /**
@@ -1608,7 +1642,7 @@ export class ProductService {
    * "AT-11002" ranks neighbours, not the code itself.
    */
   async lookupSkus(brand: string, skus: string[]): Promise<Array<{ sku: string; name: string; price: number | null; imageUrl: string | null; url?: string; category?: string }>> {
-    const clean = [...new Set((skus || []).map((s) => String(s || '').trim().toUpperCase()).filter((s) => s.length >= 3 && s.length <= 40))];
+    const clean = [...new Set((skus || []).map((s) => String(s || '').trim().toUpperCase()).filter((s) => s.length >= 2 && s.length <= 60))];
     if (!clean.length) return [];
     const db = await this.getDb();
     const rows = await db.collection('products')
@@ -1625,6 +1659,52 @@ export class ProductService {
         if (key && clean.includes(key) && !bySku.has(key)) bySku.set(key, r);
       }
     }
+
+    // Check remaining unfound in documents collection
+    const missingKeys = clean.filter((k) => !bySku.has(k));
+    if (missingKeys.length) {
+      const docRows = await db.collection('documents')
+        .find(
+          {
+            $and: [
+              { $or: [{ 'metadata.brand': brand }, { brand }, { projectId: brand }] },
+              {
+                $or: [
+                  { 'metadata.sku': { $in: missingKeys } },
+                  { 'metadata.sku': { $in: missingKeys.map((s) => s.toLowerCase()) } },
+                  { 'metadata.specs.Item Code': { $in: missingKeys } },
+                ],
+              },
+            ],
+          } as any,
+          {
+            projection: {
+              _id: 0, title: 1, sourceUrl: 1,
+              'metadata.sku': 1, 'metadata.name': 1, 'metadata.price': 1,
+              'metadata.imageUrl': 1, 'metadata.images': 1, 'metadata.url': 1,
+              'metadata.category': 1, 'metadata.specs.Item Code': 1,
+            },
+          },
+        )
+        .toArray();
+
+      for (const d of docRows as any[]) {
+        const meta = d.metadata || {};
+        const code = String(meta.sku || meta.specs?.['Item Code'] || '').toUpperCase();
+        if (code && missingKeys.includes(code) && !bySku.has(code)) {
+          const images = Array.isArray(meta.images) ? meta.images : [];
+          bySku.set(code, {
+            sku: code,
+            name: meta.name || d.title,
+            price: meta.price,
+            imageUrl: meta.imageUrl || (images.length ? images[0] : null),
+            url: meta.url || d.sourceUrl,
+            category: meta.category,
+          });
+        }
+      }
+    }
+
     return clean.filter((k) => bySku.has(k)).map((k) => {
       const r = bySku.get(k);
       // Search results read price from metadata.price (see the search mapper); same source here.

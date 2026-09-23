@@ -1,0 +1,13 @@
+{
+  "ruleId": "total_bundle_budget",
+  "name": "Enforce Total Bundle Budget",
+  "description": "Deterministic validation ensuring the combined cost of pants and boots does not exceed the customer's specified budget ceiling.",
+  "severity": "blocking",
+  "targetDomain": "commerce",
+  "condition": {
+    "ruleExpression": "totalPriceCents <= budget.amountCents",
+    "requiredFacts": ["budget"]
+  },
+  "action": "adjust_parameters",
+  "remediationMessage": "Combined items exceed total budget. Optimizing bundle selection to remain within budget ceiling."
+}

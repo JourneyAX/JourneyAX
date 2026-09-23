@@ -1,0 +1,33 @@
+{
+  "version": "1.0.0",
+  "terms": [
+    {
+      "term": "dobby pants",
+      "canonical": "lightweight ripstop cargo pants",
+      "category": "apparel",
+      "synonyms": ["summer pants", "lightweight work pants", "breathable pants", "tradie pants"]
+    },
+    {
+      "term": "composite toe",
+      "canonical": "non-metallic safety toe",
+      "category": "footwear",
+      "synonyms": ["composite-toe", "non-metallic toe", "electrician boots", "eh rated boots"]
+    },
+    {
+      "term": "hi-vis",
+      "canonical": "high visibility safety garment",
+      "category": "safety",
+      "synonyms": ["hi-vis", "high-vis", "day/night safety shirt"]
+    }
+  ],
+  "acronyms": {
+    "PPE": "Personal Protective Equipment",
+    "EH": "Electrical Hazard Resistance",
+    "WWG": "Workwear Group"
+  },
+  "slotSynonyms": {
+    "pants": ["pants", "trousers", "cargos", "dobby pants", "shorts"],
+    "boots": ["boots", "footwear", "shoes", "work boots", "safety boots"]
+  },
+  "prohibitedTerms": ["cheap", "unrated", "fake", "knockoff"]
+}

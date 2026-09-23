@@ -47,7 +47,8 @@ export class ProductController {
     @Query('q') q?: string,
     @Query('limit') limit?: string,
   ) {
-    const brand = (projectId || 'caroma').toLowerCase();
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     const parsedLimit = Math.min(Number(limit) || 50, 200);
     return this.productService.getCatalogue(brand, q?.trim(), parsedLimit);
   }
@@ -58,7 +59,8 @@ export class ProductController {
     @Query('url') url?: string,
   ) {
     if (!url) throw new HttpException('url query parameter is required', HttpStatus.BAD_REQUEST);
-    const brand = (projectId || 'caroma').toLowerCase();
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     const item = await this.productService.getCatalogueItem(brand, url);
     if (!item) throw new HttpException('Item not found', HttpStatus.NOT_FOUND);
     return item;
@@ -149,7 +151,8 @@ export class ProductController {
     if (!key || internalKeyHeader !== key) {
       throw new HttpException('pricebook is internal-only', HttpStatus.FORBIDDEN);
     }
-    const brand = (projectId || 'caroma').toLowerCase();
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     return this.productService.getBySkus(brand, body?.skus || []);
   }
 
@@ -159,7 +162,8 @@ export class ProductController {
     @Param('projectId') projectId: string,
     @Body() body: { query: string; limit?: number; state?: string; city?: string },
   ) {
-    const brand = (projectId || 'caroma').toLowerCase();
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     return this.productService.findTeams(brand, body?.query || '', Math.min(body?.limit || 6, 20),
       { state: body?.state, city: body?.city });
   }
@@ -191,7 +195,8 @@ export class ProductController {
     @Param('projectId') projectId: string,
     @Body() body: any,
   ) {
-    const brand = (projectId || 'caroma').toLowerCase();
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     return this.productService.registerTeam(brand, body || {});
   }
 
@@ -331,7 +336,9 @@ export class ProductController {
   /** Brand orientation brief for this project (AUG-14). */
   @Get('brand-hub')
   async brandHub(@Param('projectId') projectId: string) {
-    return (await this.productService.getBrandHub((projectId || 'caroma').toLowerCase())) || { empty: true };
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
+    return (await this.productService.getBrandHub(brand)) || { empty: true };
   }
 
   /**
@@ -343,7 +350,8 @@ export class ProductController {
     @Param('projectId') projectId: string,
     @Body() body: { sku: string },
   ) {
-    const brand = (projectId || 'caroma').toLowerCase();
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     return this.productService.getOptions(brand, body?.sku || '');
   }
 
@@ -357,7 +365,8 @@ export class ProductController {
     @Param('projectId') projectId: string,
     @Body() body: { sku: string },
   ) {
-    const brand = (projectId || 'caroma').toLowerCase();
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     return this.productService.getRelated(brand, body?.sku || '');
   }
 
@@ -406,7 +415,8 @@ export class ProductController {
       gender?: string;
     }
   ) {
-    const brand = (projectId || body.brand || 'caroma').toLowerCase();
+    const brand = (projectId || body.brand || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter or body.brand is required', HttpStatus.BAD_REQUEST);
     const limit = body.limit || 8;
 
     console.log(`[ProductService] Search: "${body.query}" brand=${brand} type=${body.type || 'any'} category=${body.category || 'any'} gender=${body.gender || 'any'}`);

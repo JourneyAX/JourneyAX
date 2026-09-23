@@ -155,7 +155,8 @@ export class SessionStore {
     try {
       const { db } = await connectToDatabase(uri, DB_NAME);
       this.col = db.collection<SessionDoc>(SESSIONS);
-      await this.col.createIndex({ sessionId: 1 }, { unique: true }).catch(() => {});
+      // DATA-001: Compound index { tenantId, sessionId } enforces strict tenant isolation
+      await this.col.createIndex({ tenantId: 1, sessionId: 1 }, { unique: true }).catch(() => {});
       await this.col.createIndex({ tenantId: 1, updatedAt: -1 }).catch(() => {});
       return this.col;
     } catch (e) {
@@ -164,13 +165,13 @@ export class SessionStore {
     }
   }
 
-  async load(sessionId: string, tenantId?: string): Promise<SessionDoc | null> {
+  async load(sessionId: string, tenantId: string): Promise<SessionDoc | null> {
+    if (!sessionId || !tenantId) return null;
     const col = await this.getCol();
     if (!col) return null;
     try {
-      // Tenant-scoped lookup (P0-03): a leaked sessionId can't be replayed cross-tenant.
-      const filter: any = tenantId ? { sessionId, tenantId } : { sessionId };
-      return await col.findOne(filter, { projection: { _id: 0 } });
+      // Tenant-scoped lookup (DATA-001): strict compound key
+      return await col.findOne({ tenantId, sessionId }, { projection: { _id: 0 } });
     } catch {
       return null;
     }
@@ -186,6 +187,7 @@ export class SessionStore {
     state?: any;
     lastIntent?: { intent: string; stage: string; mode: string };
   }): Promise<void> {
+    if (!input.sessionId || !input.tenantId) return;
     const col = await this.getCol();
     if (!col) return;
     const now = new Date();
@@ -197,8 +199,8 @@ export class SessionStore {
       if (input.customerId !== undefined) $set.customerId = input.customerId;
       if (input.state !== undefined) $set.state = input.state;
       await col.updateOne(
-        { sessionId: input.sessionId },
-        { $set, $inc: { turnCount: 1 }, $setOnInsert: { sessionId: input.sessionId, createdAt: now } },
+        { tenantId: input.tenantId, sessionId: input.sessionId },
+        { $set, $inc: { turnCount: 1 }, $setOnInsert: { tenantId: input.tenantId, sessionId: input.sessionId, createdAt: now } },
         { upsert: true },
       );
     } catch (e) {
@@ -212,15 +214,16 @@ export class SessionStore {
    * only the most recent 500 steps per session so the doc can't grow unbounded.
    */
   async appendStep(sessionId: string, tenantId: string, step: SessionStep): Promise<void> {
+    if (!sessionId || !tenantId) return;
     const col = await this.getCol();
     if (!col) return;
     try {
       await col.updateOne(
-        { sessionId },
+        { tenantId, sessionId },
         {
           $push: { steps: { $each: [step], $slice: -500 } } as any,
-          $set: { tenantId, updatedAt: new Date() },
-          $setOnInsert: { sessionId, createdAt: new Date(), turnCount: 0 },
+          $set: { updatedAt: new Date() },
+          $setOnInsert: { tenantId, sessionId, createdAt: new Date(), turnCount: 0 },
         },
         { upsert: true },
       );

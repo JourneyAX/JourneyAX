@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Headers, Param, Req, Res, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Headers, Param, Req, Res, Inject, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AgentService } from './agent.service';
 import { ChatThrottleGuard } from './common/chat-throttle.guard';
@@ -240,10 +240,10 @@ export class JourneyAXController {
       imageUrl?: string;
     }
   ) {
-    // Tenant identity comes from the URL projectId (validated by the gateway
-    // against the JWT). The gateway's trusted x-tenant-id header equals it; body
-    // tenantId is only a last-resort dev fallback with no gateway in front.
-    const tenantId = (projectId || tenantHeader || body.tenantId || 'caroma').toLowerCase();
+    const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
+    if (!tenantId) {
+      throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
+    }
 
     console.log(`[JourneyAX] Chat request: tenant=${tenantId}, messages=${body.messages?.length || 0}`);
 
@@ -283,7 +283,11 @@ export class JourneyAXController {
     @Body() body: { message?: string; messages?: any[]; customerId?: string; state?: any; tenantId?: string; sessionId?: string; imageBase64?: string; imageUrl?: string; demoPrincipalId?: string },
     @Res() res: Response,
   ) {
-    const tenantId = (projectId || tenantHeader || body.tenantId || 'caroma').toLowerCase();
+    const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
+    if (!tenantId) {
+      res.status(400).json({ error: 'Bad Request', message: 'Tenant identifier is required' });
+      return;
+    }
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -332,7 +336,8 @@ export class JourneyAXController {
    */
   @Get('quote/:quoteId')
   async getQuote(@Param('projectId') projectId: string, @Param('quoteId') quoteId: string) {
-    const tenantId = (projectId || 'caroma').toLowerCase();
+    const tenantId = (projectId || '').toLowerCase().trim();
+    if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
     const quote = await this.quoteService.get(quoteId, tenantId);
     if (!quote) return { found: false };
     return { found: true, quote };
@@ -350,7 +355,8 @@ export class JourneyAXController {
     @Param('projectId') projectId: string,
     @Body() body: { quoteId: string; idempotencyKey?: string; customer?: { email?: string; name?: string }; successUrl?: string; cancelUrl?: string },
   ) {
-    const tenantId = (projectId || 'caroma').toLowerCase();
+    const tenantId = (projectId || '').toLowerCase().trim();
+    if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
     const quote = await this.quoteService.get(body.quoteId, tenantId);
     if (!quote) return { success: false, error: 'Quote not found or expired.' };
 
@@ -373,7 +379,8 @@ export class JourneyAXController {
   /** Order status — the storefront polls this after returning from Stripe. */
   @Get('order/:orderId')
   async getOrder(@Param('projectId') projectId: string, @Param('orderId') orderId: string) {
-    const tenantId = (projectId || 'caroma').toLowerCase();
+    const tenantId = (projectId || '').toLowerCase().trim();
+    if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
     const order = await this.orderService.get(orderId, tenantId);
     if (!order) return { found: false };
     /* A confirmation has to show WHAT was bought, not just a number.
@@ -417,7 +424,8 @@ export class JourneyAXController {
     @Req() req: Request,
     @Headers('stripe-signature') signature: string,
   ) {
-    const tenantId = (projectId || 'caroma').toLowerCase();
+    const tenantId = (projectId || '').toLowerCase().trim();
+    if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
     const cfg = await this.configLoader.loadProjectConfig(tenantId);
     const raw = (req as any).rawBody instanceof Buffer ? (req as any).rawBody.toString('utf8') : JSON.stringify(req.body || {});
     const out = await this.orderService.handleWebhook(raw, signature || '', cfg.stripe?.secretKey);
@@ -448,7 +456,8 @@ export class JourneyAXController {
 
   @Post('whatsapp/session')
   async whatsappSession(@Param('projectId') projectId: string, @Body() body: { phone: string }) {
-    const tenantId = (projectId || 'caroma').toLowerCase();
+    const tenantId = (projectId || '').toLowerCase().trim();
+    if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
     if (!body.phone) return { sessionId: null };
     const sessionId = await this.whatsappService.resolveSessionId(tenantId, body.phone);
     return { sessionId };

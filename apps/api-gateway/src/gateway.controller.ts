@@ -35,7 +35,7 @@ export class GatewayController {
   async proxy(@Req() req: Request, @Res() res: Response) {
     const path = req.originalUrl;
     const method = req.method;
-    const tenantId = (req.headers['x-tenant-id'] as string) || 'caroma';
+    const tenantId = (req.headers['x-tenant-id'] as string) || '';
 
     // Only proxy /api/v1/* routes; pass through health check
     if (path === '/health' || path === '/health/') {
