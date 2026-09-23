@@ -9,7 +9,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@journeyax/business-pack": "*",
     "@journeyax/cache": "*",
+    "@journeyax/journey-core": "*",
     "@journeyax/shared-types": "*",
     "@journeyax/ui-cards": "*",
     "@puckeditor/core": "^0.23.0",

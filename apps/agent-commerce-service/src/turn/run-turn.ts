@@ -12,7 +12,12 @@ import { FactReducer } from './fact-reducer';
 import { JourneyEngine } from '../journey/journey-engine';
 import { OutcomeValidator } from './validate-outcome';
 import { PresentationComposer } from './compose-response';
-import { WorkwearSolutionOptimizerHandler } from '../capabilities/handlers/workwear-solution.handler';
+import {
+  WorkwearSolutionOptimizerHandler,
+  CatalogSearchHandler,
+  PricingValidateHandler,
+  OrderCommitHandler,
+} from '../capabilities/handlers';
 import * as path from 'path';
 
 export class TurnRunner {
@@ -43,6 +48,18 @@ export class TurnRunner {
     this.capabilityDispatcher.registerNativeHandler(
       'solution.optimize',
       new WorkwearSolutionOptimizerHandler()
+    );
+    this.capabilityDispatcher.registerNativeHandler(
+      'catalog.search',
+      new CatalogSearchHandler()
+    );
+    this.capabilityDispatcher.registerNativeHandler(
+      'pricing.validate',
+      new PricingValidateHandler()
+    );
+    this.capabilityDispatcher.registerNativeHandler(
+      'order.commit',
+      new OrderCommitHandler()
     );
   }
 
@@ -90,12 +107,12 @@ export class TurnRunner {
     let capabilityOutcome: any = null;
     if (decision.type === 'invoke_capability' && decision.targetCapability) {
       const toolDef = release.capabilities.toolDefinitions.find(
-        (t) => t.toolId === decision.targetCapability
+        (t: any) => t.toolId === decision.targetCapability
       );
       const toolBinding = release.capabilities.toolBindings.find(
-        (b) => b.toolId === decision.targetCapability && b.tenantId === command.tenantId
+        (b: any) => b.toolId === decision.targetCapability && b.tenantId === command.tenantId
       ) || release.capabilities.toolBindings.find(
-        (b) => b.toolId === decision.targetCapability
+        (b: any) => b.toolId === decision.targetCapability
       );
 
       if (toolDef && toolBinding) {

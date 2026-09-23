@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "theme": {
+    "primaryColor": "#0052cc",
+    "accentColor": "#00a3bf",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "logoUrl": "https://www.royalcyber.com/logo.svg"
+  },
+  "cardDefinitions": [
+    {
+      "cardType": "scoping_summary_card",
+      "displayName": "Architecture Scoping Summary",
+      "template": {
+        "title": "Architecture Blueprint: {{facts.domain}}",
+        "sections": [
+          { "type": "text", "content": "Target Cloud: {{facts.cloudPlatform}}" },
+          { "type": "badge_list", "items": "{{facts.scopeItems}}" },
+          { "type": "metric", "label": "Estimated Investment", "value": "{{facts.budget.amountUsd}}" }
+        ]
+      }
+    },
+    {
+      "cardType": "sow_milestone_card",
+      "displayName": "SOW Sprint & Milestone Plan",
+      "template": {
+        "title": "Delivery Timeline & Sprints",
+        "sections": [
+          { "type": "text", "content": "Estimated Duration: {{decision.payload.sprints}} Sprints" },
+          { "type": "text", "content": "Team: 1 Principal Architect, 2 Sr Cloud Engineers, 1 QA Lead" }
+        ]
+      }
+    }
+  ]
+}

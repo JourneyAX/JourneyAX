@@ -1,0 +1,10 @@
+{
+  "companyName": "Royal Cyber Inc.",
+  "industry": "IT Consulting & Digital Transformation",
+  "brandTone": "Consultative, authoritative, engineering-focused, pragmatic",
+  "mission": "Empowering global enterprises with modern cloud architectures, headless commerce, and agentic AI systems.",
+  "primaryCurrency": "USD",
+  "supportedCurrencies": ["USD", "EUR", "GBP", "AUD", "CAD"],
+  "primaryLocale": "en-US",
+  "supportedLocales": ["en-US", "en-GB", "en-AU", "en-CA"]
+}

@@ -34,9 +34,10 @@ import {
   type Edge,
   type OnConnect,
 } from "@xyflow/react";
-import { Route } from "lucide-react";
+import { Route, Code, FileText } from "lucide-react";
 import { NodeCanvas, type PaletteGroup, type CanvasStatus } from "./canvas/NodeCanvas";
 import { projectApi, CAPABILITY_CATALOG, type Project } from "../lib/api";
+import { compileGraphToJourneyDefinition } from "@journeyax/business-pack";
 
 // ── Node data shape ──────────────────────────────────────────────────────
 // Every node carries a `kind` (which of our logical node types it is) plus a
@@ -371,7 +372,17 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
     [],
   );
 
+  const [previewTab, setPreviewTab] = useState<"guidance" | "definition">("guidance");
+
   const compiledGuidance = useMemo(() => compileGraphToGuidance(nodes, edges), [nodes, edges]);
+  const compiledDefinitionResult = useMemo(
+    () =>
+      compileGraphToJourneyDefinition(nodes as any, edges as any, {
+        journeyId: project?.projectId || projectId,
+        displayName: project?.companyName || projectId,
+      }),
+    [nodes, edges, project, projectId]
+  );
 
   const saveDraft = useCallback(async () => {
     setSavingDraft(true);
@@ -381,6 +392,7 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
         persona: {
           journeyGraph: { nodes, edges },
           journeyGuidance: compiledGuidance,
+          journeyDefinition: compiledDefinitionResult.journeyDefinition || null,
         },
       });
       setStatus((s) => (s === "published" ? "published" : "draft"));
@@ -389,7 +401,7 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
     } finally {
       setSavingDraft(false);
     }
-  }, [projectId, nodes, edges, compiledGuidance]);
+  }, [projectId, nodes, edges, compiledGuidance, compiledDefinitionResult]);
 
   const publish = useCallback(async () => {
     setPublishing(true);
@@ -401,6 +413,7 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
         persona: {
           journeyGraph: { nodes, edges },
           journeyGuidance: compiledGuidance,
+          journeyDefinition: compiledDefinitionResult.journeyDefinition || null,
         },
       });
       await projectApi.publish(projectId);
@@ -410,7 +423,7 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
     } finally {
       setPublishing(false);
     }
-  }, [projectId, nodes, edges, compiledGuidance]);
+  }, [projectId, nodes, edges, compiledGuidance, compiledDefinitionResult]);
 
   if (loading) return <div className="panel">Loading journey builder…</div>;
 
@@ -421,14 +434,6 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
           {error}
         </div>
       )}
-      {/* A concrete height, not flex:1 — this page is normal page-flow (no
-          viewport-height app shell above it), so "height: 100%"/flex:1 have no
-          real ancestor to resolve against and the container silently grows to
-          whatever its content naturally sizes to. Confirmed live: with real
-          node data loaded for the first time, the panel measured 2830px tall
-          instead of the intended ~620px, and React Flow's fitView (correctly)
-          fit to THAT — so a populated graph looked empty because reaching it
-          needed page-scrolling, not canvas-panning. */}
       <div style={{ height: 620 }}>
         <NodeCanvas<JourneyNodeData>
           nodes={nodes}
@@ -445,18 +450,56 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
           savingDraft={savingDraft}
           publishing={publishing}
           title="Journey Logic"
-          subtitle={`Build the flow for ${project?.companyName || projectId} — compiles into Journey guidance on save.`}
+          subtitle={`Build the flow for ${project?.companyName || projectId} — compiles into executable Journey state machine and guidance on save.`}
         />
       </div>
       <div className="panel">
-        <h4><Route size={15} style={{ verticalAlign: "-3px", marginRight: 6 }} />Compiled preview</h4>
-        <p className="micro" style={{ color: "var(--jx-gray-500)", margin: "4px 0 8px" }}>
-          This is the exact text that will be saved into Journey guidance (AI Orchestration tab) on Save Draft / Publish.
-          You can still hand-edit it there afterward.
-        </p>
-        <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "var(--jx-gray-100)", padding: 12, borderRadius: 8, margin: 0 }}>
-          {compiledGuidance || "— add a Trigger node and connect actions to it to see compiled guidance —"}
-        </pre>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h4 style={{ margin: 0 }}>
+            <Route size={15} style={{ verticalAlign: "-3px", marginRight: 6 }} />
+            Compiled Output
+          </h4>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${previewTab === "guidance" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setPreviewTab("guidance")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", fontSize: 12 }}
+            >
+              <FileText size={13} /> Guidance Text
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${previewTab === "definition" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setPreviewTab("definition")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", fontSize: 12 }}
+            >
+              <Code size={13} /> State Machine JSON
+            </button>
+          </div>
+        </div>
+
+        {previewTab === "guidance" ? (
+          <>
+            <p className="micro" style={{ color: "var(--jx-gray-500)", margin: "4px 0 8px" }}>
+              Human-readable markdown guidance compiled from graph.
+            </p>
+            <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "var(--jx-gray-100)", padding: 12, borderRadius: 8, margin: 0 }}>
+              {compiledGuidance || "— add a Trigger node and connect actions to it to see compiled guidance —"}
+            </pre>
+          </>
+        ) : (
+          <>
+            <p className="micro" style={{ color: "var(--jx-gray-500)", margin: "4px 0 8px" }}>
+              Executable JourneyDefinition state machine executed by JourneyAX Core.
+            </p>
+            <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "var(--jx-gray-100)", padding: 12, borderRadius: 8, margin: 0, maxHeight: 300, overflow: "auto" }}>
+              {compiledDefinitionResult.journeyDefinition
+                ? JSON.stringify(compiledDefinitionResult.journeyDefinition, null, 2)
+                : compiledDefinitionResult.errors?.join("\n") || "— add nodes to compile state machine —"}
+            </pre>
+          </>
+        )}
       </div>
     </div>
   );

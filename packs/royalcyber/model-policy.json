@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "defaultPolicy": "complex_reasoning",
+  "policies": [
+    {
+      "policyId": "complex_reasoning",
+      "description": "Multi-phase architecture scoping and SOW milestone drafting",
+      "candidates": [
+        { "provider": "openai", "model": "gpt-4o", "priority": 1 },
+        { "provider": "google", "model": "gemini-1.5-pro", "priority": 2 }
+      ],
+      "dataResidency": "us",
+      "maxInputTokens": 30000,
+      "maxOutputTokens": 4000,
+      "fallbackAllowed": true,
+      "timeoutMs": 20000
+    },
+    {
+      "policyId": "fast_intent",
+      "description": "Fast slot and domain extraction for consulting discovery",
+      "candidates": [
+        { "provider": "openai", "model": "gpt-4o-mini", "priority": 1 }
+      ],
+      "dataResidency": "us",
+      "maxInputTokens": 10000,
+      "maxOutputTokens": 1000,
+      "fallbackAllowed": true,
+      "timeoutMs": 5000
+    }
+  ]
+}

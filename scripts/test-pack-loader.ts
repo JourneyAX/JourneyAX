@@ -1,4 +1,5 @@
-import { BusinessPackLoader, validateBusinessPack } from '../packages/business-pack/src';
+import { validateBusinessPack } from '../packages/business-pack/src';
+import { BusinessPackLoader } from '../packages/business-pack/src/loader';
 import * as path from 'path';
 
 async function main() {

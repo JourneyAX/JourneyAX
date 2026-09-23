@@ -10,23 +10,86 @@ export interface InterpretationResult {
 export class TurnInterpreter {
   /**
    * Interprets incoming customer message or channel event against the Business Pack
-   * vocabulary, slot definitions, and entities.
+   * vocabulary, slot definitions, entities, and rules.
    */
   async interpret(
     command: TurnCommand,
     release: BusinessPackRelease,
     workspace: WorkspaceState
   ): Promise<InterpretationResult> {
-    const message = command.message || '';
-    const lowerMsg = message.toLowerCase();
+    const rawMessage = command.message || (command as any).userInput || '';
+    const lowerMsg = rawMessage.toLowerCase();
     const candidateFacts: FactsMap = {};
 
-    // 1. Extract Occupation / Trade Fact
+    // 1. Dynamic vocabulary & term matching from Business Pack
+    const terms = release.vocabulary?.terms || [];
+    for (const item of terms) {
+      const termName = item.term.toLowerCase();
+      const termCanonical = (item.canonical || item.term).toLowerCase();
+      const synonyms = (item.synonyms || []).map((s: string) => s.toLowerCase());
+
+      const matched =
+        lowerMsg.includes(termName) ||
+        lowerMsg.includes(termCanonical) ||
+        synonyms.some((s: string) => lowerMsg.includes(s));
+
+      if (matched) {
+        if (item.category === 'cloud' || termName.includes('gcp') || termName.includes('aws') || termName.includes('azure')) {
+          candidateFacts['cloudPlatform'] = {
+            value: item.term.toUpperCase().includes('GCP') ? 'GCP' : item.term,
+            source: 'customer',
+            confidence: 0.98,
+            extractedAt: new Date().toISOString(),
+          };
+        }
+        if (item.category === 'cloud' || item.category === 'consulting' || lowerMsg.includes('moderniz') || lowerMsg.includes('migrat')) {
+          candidateFacts['domain'] = {
+            value: item.canonical || item.term,
+            source: 'customer',
+            confidence: 0.95,
+            extractedAt: new Date().toISOString(),
+          };
+        }
+      }
+    }
+
+    // 2. Dynamic slotSynonyms matching from Business Pack
+    const slotSynonyms = release.vocabulary?.slotSynonyms || {};
+    for (const [slotKey, synonyms] of Object.entries(slotSynonyms)) {
+      const matchedSyns = (synonyms as string[]).filter((syn) => lowerMsg.includes(syn.toLowerCase()));
+      if (matchedSyns.length > 0) {
+        candidateFacts[slotKey] = {
+          value: matchedSyns,
+          source: 'customer',
+          confidence: 0.95,
+          extractedAt: new Date().toISOString(),
+        };
+
+        if (slotKey === 'scope' || slotKey === 'scopeItems') {
+          candidateFacts['scopeItems'] = {
+            value: matchedSyns,
+            source: 'customer',
+            confidence: 0.95,
+            extractedAt: new Date().toISOString(),
+          };
+        }
+
+        if (slotKey === 'cloud' || slotKey === 'cloudPlatform') {
+          candidateFacts['cloudPlatform'] = {
+            value: matchedSyns[0].toUpperCase(),
+            source: 'customer',
+            confidence: 0.98,
+            extractedAt: new Date().toISOString(),
+          };
+        }
+      }
+    }
+
+    // 3. Trade / Occupation Extraction (Workwear / Services)
     const occupationMatch = lowerMsg.match(/(?:i['’]m an?|work as an?|role is)\s+([a-zA-Z\s]+?)(?:\.|\,|$|\s+i need|\s+looking for)/i);
     if (occupationMatch) {
-      const occ = occupationMatch[1].trim();
       candidateFacts['occupation'] = {
-        value: occ,
+        value: occupationMatch[1].trim(),
         source: 'customer',
         confidence: 0.95,
         extractedAt: new Date().toISOString(),
@@ -40,14 +103,24 @@ export class TurnInterpreter {
       };
     }
 
-    // 2. Extract Budget Constraint (e.g. "under $250", "$250 budget", "less than 250 AUD")
-    const budgetMatch = lowerMsg.match(/(?:under|below|less than|max|budget(?: of)?)\s*\$?(\d+(?:\.\d{2})?)\s*(?:aud|dollars)?/i);
+    // 4. Budget Constraint Extraction (Supports "$250", "$80,000", "80k", "$80,000 USD", "$250 AUD")
+    const budgetMatch = lowerMsg.match(/(?:under|below|less than|max|budget)[^\$0-9]*\$?([0-9,]+(?:\.[0-9]{2})?)\s*(k|thousand)?\s*(aud|usd|nzd|cad|eur|gbp|dollars)?/i);
     if (budgetMatch) {
-      const dollars = parseFloat(budgetMatch[1]);
+      let numStr = budgetMatch[1].replace(/,/g, '');
+      let multiplier = 1;
+      if (budgetMatch[2]?.toLowerCase() === 'k' || budgetMatch[2]?.toLowerCase() === 'thousand') {
+        multiplier = 1000;
+      }
+      const rawDollars = parseFloat(numStr) * multiplier;
+      const currency = (budgetMatch[3] || release.profile.primaryCurrency || 'USD').toUpperCase();
+      const amountCents = Math.round(rawDollars * 100);
+
       candidateFacts['budget'] = {
         value: {
-          amountCents: Math.round(dollars * 100),
-          currency: release.profile.primaryCurrency || 'AUD',
+          amountCents,
+          amountUsd: currency === 'USD' ? rawDollars : Math.round(rawDollars * 0.65),
+          amount: rawDollars,
+          currency,
           scope: 'total',
         },
         source: 'customer',
@@ -56,35 +129,24 @@ export class TurnInterpreter {
       };
     }
 
-    // 3. Decompose Required Item Slots (e.g. pants, boots) using Business Pack vocabulary
-    const detectedSlots: string[] = [];
-    const slotSynonyms = release.vocabulary.slotSynonyms || {};
-
-    for (const [canonicalSlot, synonyms] of Object.entries(slotSynonyms)) {
-      const match = synonyms.some((syn) => lowerMsg.includes(syn.toLowerCase()));
-      if (match) {
-        detectedSlots.push(canonicalSlot);
-      }
+    // 5. Workwear item slots fallback
+    const detectedItemTypes: string[] = [];
+    if (lowerMsg.includes('pants') || lowerMsg.includes('cargos') || lowerMsg.includes('trousers')) {
+      detectedItemTypes.push('pants');
     }
-
-    // Fallback checks if not configured in vocabulary
-    if (!detectedSlots.includes('pants') && (lowerMsg.includes('pants') || lowerMsg.includes('cargos') || lowerMsg.includes('trousers'))) {
-      detectedSlots.push('pants');
+    if (lowerMsg.includes('boots') || lowerMsg.includes('footwear') || lowerMsg.includes('shoes')) {
+      detectedItemTypes.push('boots');
     }
-    if (!detectedSlots.includes('boots') && (lowerMsg.includes('boots') || lowerMsg.includes('footwear') || lowerMsg.includes('shoes'))) {
-      detectedSlots.push('boots');
-    }
-
-    if (detectedSlots.length > 0) {
+    if (detectedItemTypes.length > 0) {
       candidateFacts['required_item_types'] = {
-        value: detectedSlots,
+        value: detectedItemTypes,
         source: 'customer',
         confidence: 0.95,
         extractedAt: new Date().toISOString(),
       };
     }
 
-    // 4. Feature and Safety Constraint Extraction
+    // 6. Safety Spec Extraction
     if (lowerMsg.includes('composite') || lowerMsg.includes('composite-toe')) {
       candidateFacts['safety_spec'] = {
         value: 'composite_toe',
@@ -93,16 +155,8 @@ export class TurnInterpreter {
         extractedAt: new Date().toISOString(),
       };
     }
-    if (lowerMsg.includes('lightweight') || lowerMsg.includes('summer')) {
-      candidateFacts['fabric_spec'] = {
-        value: 'lightweight_summer',
-        source: 'customer',
-        confidence: 0.9,
-        extractedAt: new Date().toISOString(),
-      };
-    }
 
-    // Merge any programmatic inputFacts directly
+    // 7. Merge explicit inputFacts
     if (command.inputFacts) {
       for (const [k, v] of Object.entries(command.inputFacts)) {
         candidateFacts[k] = {
@@ -115,7 +169,7 @@ export class TurnInterpreter {
     }
 
     return {
-      intent: detectedSlots.length > 0 ? 'build_solution' : 'general_inquiry',
+      intent: detectedItemTypes.length > 0 ? 'build_solution' : 'general_inquiry',
       candidateFacts,
       confidence: 0.92,
     };

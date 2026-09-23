@@ -1,0 +1,11 @@
+{
+  "packId": "bp_royalcyber_v1",
+  "tenantId": "royalcyber",
+  "environmentId": "production",
+  "version": "1.0.0",
+  "name": "Royal Cyber Digital Transformation & Consulting Pack",
+  "description": "Enterprise consulting intake, architecture scoping, and SOW solution blueprint for Royal Cyber.",
+  "status": "active",
+  "publishedAt": "2026-09-23T22:30:00.000Z",
+  "publishedBy": "guild@royalcyber.com"
+}

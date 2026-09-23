@@ -20,9 +20,11 @@ export class PresentationComposer {
     if (decision.type === 'ask_fact') {
       const missing: string[] = decision.payload.missingFacts || [];
       if (missing.includes('budget')) {
-        assistantMessage = `G'day! To tailor the ideal workwear setup for your role as an ${workspace.facts['occupation']?.value || 'tradesperson'}, what is your target budget?`;
+        assistantMessage = release.profile.companyName === 'Workwear Group'
+          ? `G'day! To tailor the ideal workwear setup for your role as an ${workspace.facts['occupation']?.value || 'tradesperson'}, what is your target budget?`
+          : `Welcome to ${release.profile.companyName}. To help scope your solution effectively, what is your estimated budget or investment ceiling?`;
       } else {
-        assistantMessage = `Could you share a bit more detail about your ${missing.join(', ')} so I can build your compliant setup?`;
+        assistantMessage = `Could you share a bit more detail regarding ${missing.join(', ')} so we can complete your blueprint?`;
       }
 
       return {
@@ -39,7 +41,7 @@ export class PresentationComposer {
       };
     }
 
-    // If capability returned a bundle solution
+    // If capability returned a bundle solution (Commerce/Workwear)
     if (validated.outcome && validated.outcome.bundle) {
       const bundle = validated.outcome.bundle;
       const currency = bundle.currency || release.profile.primaryCurrency || 'AUD';
@@ -50,7 +52,6 @@ export class PresentationComposer {
         `• **Boots:** ${bundle.boots.name} (${bundle.boots.sku}) — $${(bundle.boots.priceCents / 100).toFixed(2)} *(AS/NZS 2210.3 compliant composite non-metallic toe)*\n\n` +
         `**Total:** **${formattedTotal}** *(Budget compliant ✅)*`;
 
-      // Build structured UI card for JourneyAX Go Storefront
       uiInstructions.push({
         component: 'bundle_summary_card',
         placement: 'inline',
@@ -58,20 +59,17 @@ export class PresentationComposer {
           title: 'Apprentice Electrician Starter Bundle',
           currency,
           totalPriceCents: bundle.totalPriceCents,
-          budgetCeilingCents: workspace.facts['budget']?.value?.amountCents,
-          isCompliant: true,
           items: [
             {
               sku: bundle.pants.sku,
-              title: bundle.pants.name,
-              category: 'Pants',
+              name: bundle.pants.name,
+              category: 'Work Pants',
               priceCents: bundle.pants.priceCents,
               imageUrl: bundle.pants.imageUrl,
-              features: ['Lightweight Summer Dobby Fabric', 'Ripstop Cargo Pockets'],
             },
             {
               sku: bundle.boots.sku,
-              title: bundle.boots.name,
+              name: bundle.boots.name,
               category: 'Footwear',
               priceCents: bundle.boots.priceCents,
               imageUrl: bundle.boots.imageUrl,
@@ -92,9 +90,27 @@ export class PresentationComposer {
         },
       });
     } else if (decision.type === 'transition_stage') {
-      assistantMessage = `Moving forward to build your compliant setup.`;
+      const targetStage = decision.targetStage || workspace.currentStage;
+      const domain = workspace.facts['domain']?.value || 'Modernization';
+      const cloud = workspace.facts['cloudPlatform']?.value || 'Cloud';
+      const budget = workspace.facts['budget']?.value?.amount
+        ? `$${workspace.facts['budget']?.value?.amount.toLocaleString()} ${workspace.facts['budget']?.value?.currency || 'USD'}`
+        : 'specified target';
+
+      assistantMessage = `Thank you for sharing your architecture goals. We have captured your target domain as **${domain}** on **${cloud}** with a budget of **${budget}**.\n\nYour workspace has advanced to the **${targetStage}** stage. We are now preparing your technical scoping blueprint and sprint estimates.`;
+
+      uiInstructions.push({
+        component: 'scoping_summary_card',
+        placement: 'inline',
+        props: {
+          title: `Architecture Blueprint: ${domain}`,
+          targetCloud: cloud,
+          budget,
+          currentStage: targetStage,
+        },
+      });
     } else {
-      assistantMessage = `Your request has been processed. How would you like to proceed?`;
+      assistantMessage = `Your request has been processed. Current stage: ${workspace.currentStage}. How would you like to proceed?`;
     }
 
     return {

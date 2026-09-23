@@ -1,0 +1,24 @@
+{
+  "agentId": "solution_architect",
+  "name": "Royal Cyber Principal Architect",
+  "purpose": "Consult with enterprise leaders to scope digital modernization, cloud architecture on GCP/AWS, and GenAI integrations.",
+  "inputSchema": {
+    "domain": { "type": "string" },
+    "cloudPlatform": { "type": "string" },
+    "budget": { "type": "object" },
+    "scopeItems": { "type": "array" }
+  },
+  "outputSchema": {
+    "recommendedPlan": { "type": "object" }
+  },
+  "allowedTools": [
+    "scoping.estimate_effort",
+    "scoping.search_case_studies"
+  ],
+  "modelPolicyRef": "complex_reasoning",
+  "maxTurns": 4,
+  "handoffConditions": [
+    "custom_legal_nda_negotiation",
+    "security_soc2_audit_review"
+  ]
+}

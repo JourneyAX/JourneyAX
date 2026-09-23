@@ -1,0 +1,45 @@
+{
+  "journeyId": "consulting-intake",
+  "version": "1.0.0",
+  "displayName": "Enterprise Consulting Intake & Architecture Blueprint",
+  "description": "Guides enterprise clients through discovery, technical scoping, and preliminary SOW drafting.",
+  "goals": ["discovery", "architecture_scoping", "sow_draft"],
+  "initialStage": "intake",
+  "stages": {
+    "intake": {
+      "displayName": "Discovery & Goals",
+      "description": "Understand the client's business domain, modernization target, and target budget.",
+      "requiredFacts": ["domain", "budget"],
+      "allowedCapabilities": ["scoping.search_case_studies"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "allFactsPresent": ["domain", "budget"],
+          "nextStage": "architecture_scoping"
+        }
+      ]
+    },
+    "architecture_scoping": {
+      "displayName": "Architecture Scoping",
+      "description": "Determine target cloud platform, microservices architecture, and GenAI capabilities.",
+      "requiredFacts": [],
+      "allowedCapabilities": ["scoping.estimate_effort", "scoping.search_case_studies"],
+      "blockedCapabilities": ["hubspot.create_deal", "jira.create_scoping_epic"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "allFactsPresent": ["cloudPlatform", "scopeItems"],
+          "nextStage": "sow_draft"
+        }
+      ]
+    },
+    "sow_draft": {
+      "displayName": "SOW Blueprint & Partner Review",
+      "description": "Generate deliverable milestones, sprint allocation, and synchronize with Activepieces CRM and Jira.",
+      "requiredFacts": ["clientEmail"],
+      "allowedCapabilities": ["scoping.estimate_effort", "hubspot.create_deal", "jira.create_scoping_epic"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": []
+    }
+  }
+}

@@ -1,7 +1,19 @@
 import { BusinessPackRelease, BusinessPackReleaseSchema } from './schemas/business-pack.schema';
 import { validateBusinessPack } from './validator';
-import * as fs from 'fs';
-import * as path from 'path';
+function getNodeModules(): { fs: any; path: any } {
+  if (typeof window !== 'undefined') {
+    return { fs: null, path: null };
+  }
+  try {
+    const globalObj = globalThis as any;
+    const req = typeof globalObj.__non_webpack_require__ !== 'undefined'
+      ? globalObj.__non_webpack_require__
+      : eval('require');
+    return { fs: req('fs'), path: req('path') };
+  } catch {
+    return { fs: null, path: null };
+  }
+}
 
 export interface PackLoaderOptions {
   mongoDbUri?: string;
@@ -61,6 +73,9 @@ export class BusinessPackLoader {
     environmentId: string,
     version?: string
   ): Promise<BusinessPackRelease | null> {
+    const { fs, path } = getNodeModules();
+    if (!fs || !path) return null;
+
     const searchDirs = [
       this.options.localPacksRoot,
       path.resolve(process.cwd(), 'packs', tenantId),
@@ -85,8 +100,8 @@ export class BusinessPackLoader {
             if (!fs.existsSync(dir)) return [];
             return fs
               .readdirSync(dir)
-              .filter((f) => f.endsWith('.json'))
-              .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
+              .filter((f: string) => f.endsWith('.json'))
+              .map((f: string) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
           };
 
           const packCandidate = {

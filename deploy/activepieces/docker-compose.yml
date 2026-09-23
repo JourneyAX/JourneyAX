@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  activepieces:
+    image: activepieces/activepieces:latest
+    container_name: journeyax-activepieces
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - AP_ENVIRONMENT=production
+      - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY:-journeyax-super-secret-encryption-key-32b}
+      - AP_JWT_SECRET=${AP_JWT_SECRET:-journeyax-super-secret-jwt-key-32b}
+      - AP_FRONTEND_URL=http://localhost:8080
+      - AP_API_KEY=${AP_API_KEY:-ap_internal_api_key_secure}
+      - AP_POSTGRES_DATABASE=activepieces
+      - AP_POSTGRES_HOST=postgres
+      - AP_POSTGRES_PORT=5432
+      - AP_POSTGRES_USERNAME=activepieces
+      - AP_POSTGRES_PASSWORD=activepieces_secret
+      - AP_REDIS_HOST=redis
+      - AP_REDIS_PORT=6379
+      - AP_EXECUTION_MODE=UNSANDBOXED
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - journeyax-automation
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: journeyax-ap-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=activepieces
+      - POSTGRES_USER=activepieces
+      - POSTGRES_PASSWORD=activepieces_secret
+    volumes:
+      - ap_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U activepieces -d activepieces"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - journeyax-automation
+
+  redis:
+    image: redis:7-alpine
+    container_name: journeyax-ap-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - journeyax-automation
+
+volumes:
+  ap_postgres_data:
+
+networks:
+  journeyax-automation:
+    driver: bridge

@@ -692,6 +692,25 @@ export class ProjectService {
     const doc = await this.projectsCol.findOne({ projectId: pid });
     if (!doc) return { success: false, message: `Project '${pid}' not found.` };
 
+    // Evaluation Gate (EVAL-001): ensure journey graph has valid entrypoint
+    const journeyGraph = doc.persona?.journeyGraph;
+    if (journeyGraph && Array.isArray(journeyGraph.nodes) && journeyGraph.nodes.length > 0) {
+      const hasTrigger = journeyGraph.nodes.some((n: any) => n.data?.kind?.startsWith('trigger.'));
+      if (!hasTrigger) {
+        return {
+          success: false,
+          message: 'Publish blocked by evaluation gate: Journey graph must contain at least one Trigger node.',
+        };
+      }
+    }
+
+    if ((doc as any).evaluationGate?.required && (doc as any).evaluationGate?.passed === false) {
+      return {
+        success: false,
+        message: 'Publish blocked by evaluation gate: Required regression evaluation suite has not passed.',
+      };
+    }
+
     const last = await this.versionsCol
       .find({ projectId: pid }).sort({ version: -1 }).limit(1).toArray();
     const version = (last[0]?.version ?? 0) + 1;
