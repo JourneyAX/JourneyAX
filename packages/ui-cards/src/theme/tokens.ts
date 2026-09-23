@@ -114,9 +114,21 @@ export interface CardSettings {
   options?: Record<string, unknown>;
 }
 
+export interface SavedTheme {
+  id: string;
+  name: string;
+  tokens: Partial<ThemeTokens>;
+  /** Card specs snapshotted with this theme, keyed by cardType. */
+  cardTemplates?: Record<string, unknown>;
+}
+
 export interface UiTheme {
   tokens?: Partial<ThemeTokens>;
   cards?: Record<string, CardSettings>;
+  /** Named custom themes created in the Cards & Theme studio. Builtins live in code. */
+  savedThemes?: SavedTheme[];
+  /** Builtin id (`classic`, `midnight`, …) or a `savedThemes[].id`. */
+  activeThemeId?: string;
   /** Layout knobs for the storefront shell. */
   layout?: {
     chatWidth?: string;          // e.g. '40%'

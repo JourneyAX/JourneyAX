@@ -12,7 +12,16 @@ import { catalog } from './catalog';
 import type { CardInstance } from './catalog/card-types';
 
 type P = Record<string, any>;
-type RP = { props: P; children?: React.ReactNode; slots?: Record<string, React.ReactNode>; emit: (e: string) => void; loading?: boolean };
+export type PrimitiveRenderProps = {
+  props: P;
+  children?: React.ReactNode;
+  slots?: Record<string, React.ReactNode>;
+  emit: (e: string) => void;
+  loading?: boolean;
+  /** Editor-only: Puck attaches its drag handle to layout primitive roots. */
+  rootRef?: React.Ref<HTMLElement>;
+};
+type RP = PrimitiveRenderProps;
 
 const sp = (k?: string) => (k && k !== '0' ? `var(--jx-space-${k})` : k === '0' ? '0' : undefined);
 const cls = (...xs: (string | false | undefined | null)[]) => xs.filter(Boolean).join(' ');
@@ -78,8 +87,9 @@ export function JxIcon({ name, size = 'md', tone, className }: { name: string; s
 
 /* ---------- primitive implementations ---------- */
 const components = {
-  Box: ({ props, children }: RP) => (
+  Box: ({ props, children, rootRef }: RP) => (
     <div
+      ref={rootRef as React.Ref<HTMLDivElement>}
       className={cls('jx-box', props.border && 'jx-border', props.bg && `jx-bg-${props.bg}`, props.radius && `jx-r-${props.radius}`, props.shadow && `jx-sh-${props.shadow}`, props.className)}
       data-testid={props.testId}
       style={{
@@ -98,8 +108,9 @@ const components = {
       {children}
     </div>
   ),
-  Card: ({ props, children, slots, emit }: RP) => (
+  Card: ({ props, children, slots, emit, rootRef }: RP) => (
     <div
+      ref={rootRef as React.Ref<HTMLDivElement>}
       className={cls('jx-card', `jx-card-${props.variant || 'default'}`, props.selected && 'jx-selected', props.interactive && 'jx-interactive', props.className)}
       style={{ padding: sp(props.pad ?? 'md'), gap: sp(props.gap ?? 'sm'), ...(props.style || {}) }}
       onClick={props.interactive ? () => emit('press') : undefined}
@@ -110,8 +121,9 @@ const components = {
       {slots?.footer ? <div className="jx-card-footer">{slots.footer}</div> : null}
     </div>
   ),
-  Grid: ({ props, children }: RP) => (
+  Grid: ({ props, children, rootRef }: RP) => (
     <div
+      ref={rootRef as React.Ref<HTMLDivElement>}
       className={cls('jx-grid', props.className)}
       style={{
         display: 'grid',
@@ -354,13 +366,33 @@ const components = {
 function adaptForCreateRenderer(map: Record<string, (rp: RP) => React.ReactElement | null>) {
   const out: Record<string, React.ComponentType<any>> = {};
   for (const [name, fn] of Object.entries(map)) {
-    out[name] = ({ element, children, slots, emit, loading }: any) => fn({ props: element?.props || {}, children, slots, emit, loading });
+    out[name] = ({ element, children, slots, emit, loading }: any) => {
+      const node = fn({ props: element?.props || {}, children, slots, emit, loading });
+      const editorId = element?.props?.__jxId;
+      if (!editorId || node == null) return node;
+      return <span data-jx-id={editorId} style={{ display: "contents" }}>{node}</span>;
+    };
   }
   return out;
 }
 
 /** The renderer bound to the platform catalog. */
 export const CatalogRenderer = createRenderer(catalog as any, adaptForCreateRenderer(components) as any);
+
+const noopEmit = () => undefined;
+
+/** Layout primitives whose root is a flex/grid container — Puck must mark these `inline` and attach `dragRef` here. */
+export const LAYOUT_PRIMITIVE_NAMES = ['Box', 'Card', 'Grid'] as const;
+export type LayoutPrimitiveName = (typeof LAYOUT_PRIMITIVE_NAMES)[number];
+
+/** Render one catalog primitive. Used by the storefront renderer and the backoffice Puck editor. */
+export function PrimitiveView({
+  type, props, children, slots, emit, loading, rootRef,
+}: { type: string } & Omit<PrimitiveRenderProps, 'emit' | 'props'> & { props: P; emit?: (e: string) => void }) {
+  const Fn = (components as Record<string, (rp: RP) => React.ReactElement | null>)[type];
+  if (!Fn) return null;
+  return <Fn props={props} children={children} slots={slots} emit={emit || noopEmit} loading={loading} rootRef={rootRef} />;
+}
 
 export interface CardRendererProps {
   /** Template spec from Mongo (or platform default). */
