@@ -1,5 +1,5 @@
 import { Db } from 'mongodb';
-import { randomUUID, createHmac, createHash, timingSafeEqual } from 'crypto';
+import { randomUUID, createHmac, createHash, createVerify, timingSafeEqual } from 'crypto';
 import {
   COLLECTION_NOTIFICATION_DELIVERIES,
   COLLECTION_NOTIFICATION_SUPPRESSIONS,
@@ -16,6 +16,158 @@ import {
   ToolBinding,
   ExecutionContext,
 } from '@journeyax/capability-sdk';
+
+export class WebhookSignatureValidator {
+  /**
+   * Verifies incoming webhook signatures based on provider contract.
+   * - SendGrid: Strict ECDSA with SHA256 over timestamp + rawBody using SendGrid public key (generic HMAC rejected)
+   * - Resend: Svix / Resend HMAC-SHA256 over svixId + svixTimestamp + rawBody using secret
+   * - Generic: HMAC-SHA256 over rawBody (or timestamp + rawBody) using secret
+   */
+  static verifySignature(
+    provider: 'sendgrid' | 'resend' | 'generic',
+    headers: Record<string, string>,
+    rawBody: string,
+    keyOrSecret: string
+  ): void {
+    const normalizedHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headers)) {
+      normalizedHeaders[k.toLowerCase()] = v;
+    }
+
+    if (provider === 'sendgrid') {
+      const signature =
+        normalizedHeaders['x-twilio-email-event-webhook-signature'] ||
+        normalizedHeaders['x-sendgrid-webhook-signature'];
+      const timestamp =
+        normalizedHeaders['x-twilio-email-event-webhook-timestamp'] ||
+        normalizedHeaders['x-sendgrid-webhook-timestamp'];
+
+      // Enforce: Generic custom HMAC is NOT sufficient if SendGrid is the selected provider
+      if (normalizedHeaders['x-journeyax-signature'] && !signature) {
+        throw new Error(
+          'Generic custom HMAC is not sufficient for SendGrid provider; SendGrid ECDSA signature contract is required'
+        );
+      }
+
+      if (!signature || !timestamp) {
+        throw new Error('Missing SendGrid webhook signature or timestamp headers');
+      }
+
+      // Replay prevention: timestamp must be within 10 minutes (600 seconds)
+      const nowSec = Math.floor(Date.now() / 1000);
+      const eventSec = parseInt(timestamp, 10);
+      if (isNaN(eventSec) || Math.abs(nowSec - eventSec) > 600) {
+        throw new Error('SendGrid webhook signature timestamp expired or invalid (replay detected)');
+      }
+
+      const payloadToVerify = `${timestamp}${rawBody}`;
+      let publicKeyPem = keyOrSecret.trim();
+      if (!publicKeyPem.startsWith('-----BEGIN PUBLIC KEY-----')) {
+        publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKeyPem}\n-----END PUBLIC KEY-----`;
+      }
+
+      try {
+        const verify = createVerify('SHA256');
+        verify.update(payloadToVerify);
+        const isValid = verify.verify(publicKeyPem, signature, 'base64');
+        if (!isValid) {
+          throw new Error('Invalid SendGrid webhook ECDSA signature');
+        }
+      } catch (err: any) {
+        if (err.message?.includes('Invalid SendGrid') || err.message?.includes('replay detected')) {
+          throw err;
+        }
+        throw new Error(`SendGrid webhook signature verification failed: ${err.message}`);
+      }
+    } else if (provider === 'resend') {
+      const svixId = normalizedHeaders['svix-id'];
+      const svixTimestamp = normalizedHeaders['svix-timestamp'];
+      const svixSignature =
+        normalizedHeaders['svix-signature'] ||
+        normalizedHeaders['x-resend-signature'] ||
+        normalizedHeaders['resend-signature'] ||
+        normalizedHeaders['x-journeyax-signature'] ||
+        normalizedHeaders['x-webhook-signature'];
+
+      if (!svixSignature) {
+        throw new Error('Missing webhook signature');
+      }
+
+      // Replay prevention if timestamp present
+      if (svixTimestamp) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const eventSec = parseInt(svixTimestamp, 10);
+        if (!isNaN(eventSec) && Math.abs(nowSec - eventSec) > 600) {
+          throw new Error('Resend webhook signature timestamp expired or invalid (replay detected)');
+        }
+      }
+
+      const contentToSign = svixId && svixTimestamp ? `${svixId}.${svixTimestamp}.${rawBody}` : rawBody;
+      const secret = keyOrSecret.startsWith('whsec_') ? keyOrSecret.slice(6) : keyOrSecret;
+      const expectedHex = createHmac('sha256', secret).update(contentToSign).digest('hex');
+      const expectedBase64 = createHmac('sha256', secret).update(contentToSign).digest('base64');
+
+      const rawSignatures = svixSignature.split(' ').flatMap((s) => {
+        let clean = s;
+        if (clean.startsWith('v1,')) clean = clean.slice(3);
+        if (clean.startsWith('sha256=')) clean = clean.slice(7);
+        return clean;
+      });
+
+      const matches = rawSignatures.some((sig) => {
+        try {
+          if (sig.length === expectedHex.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expectedHex))) {
+            return true;
+          }
+          if (sig.length === expectedBase64.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expectedBase64))) {
+            return true;
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      });
+
+      if (!matches) {
+        throw new Error('Invalid webhook callback signature');
+      }
+    } else {
+      // Generic provider HMAC
+      const signature =
+        normalizedHeaders['x-journeyax-signature'] ||
+        normalizedHeaders['x-webhook-signature'] ||
+        normalizedHeaders['x-signature-sha256'];
+
+      if (!signature) {
+        throw new Error('Missing webhook signature');
+      }
+
+      const timestamp = normalizedHeaders['x-journeyax-timestamp'] || normalizedHeaders['x-webhook-timestamp'];
+      if (timestamp) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const eventSec = parseInt(timestamp, 10);
+        if (!isNaN(eventSec) && Math.abs(nowSec - eventSec) > 600) {
+          throw new Error('Webhook signature timestamp expired or invalid (replay detected)');
+        }
+      }
+
+      const payloadToSign = timestamp ? `${timestamp}.${rawBody}` : rawBody;
+      const hmac = createHmac('sha256', keyOrSecret);
+      hmac.update(payloadToSign);
+      const expectedHex = hmac.digest('hex');
+      const expectedWithPrefix = `sha256=${expectedHex}`;
+
+      const sigToCompare = signature.startsWith('sha256=') ? signature : `sha256=${signature}`;
+      if (
+        sigToCompare.length !== expectedWithPrefix.length ||
+        !timingSafeEqual(Buffer.from(sigToCompare), Buffer.from(expectedWithPrefix))
+      ) {
+        throw new Error('Invalid webhook callback signature');
+      }
+    }
+  }
+}
 
 export class NotificationRateLimitError extends Error {
   constructor(public tenantId: string, public currentCount: number, public limitPerHour: number) {
@@ -729,54 +881,63 @@ export class NotificationDispatcher {
       | {
           secret?: string;
           secretRef?: string;
+          publicKey?: string;
+          publicKeyRef?: string;
           tenantId?: string;
           environmentId?: EnvironmentId;
         },
     tenantIdParam?: string,
     envIdParam?: EnvironmentId
   ): Promise<{ processed: number; errors: string[] }> {
-    let secret: string | undefined;
+    if (!provider || !['sendgrid', 'resend', 'generic'].includes(provider)) {
+      throw new Error("Invalid or missing provider: must be 'sendgrid', 'resend', or 'generic'; fail closed");
+    }
+
+    let secretOrKey: string | undefined;
     let tenantId: string | undefined;
-    let environmentId: EnvironmentId = 'production';
+    let environmentId: EnvironmentId | undefined;
 
     if (typeof secretOrOptions === 'string') {
-      secret = secretOrOptions;
+      secretOrKey = secretOrOptions;
       tenantId = tenantIdParam;
-      environmentId = envIdParam || 'production';
+      environmentId = envIdParam;
     } else if (secretOrOptions && typeof secretOrOptions === 'object') {
-      secret = secretOrOptions.secret;
+      secretOrKey = secretOrOptions.secret || secretOrOptions.publicKey;
       tenantId = secretOrOptions.tenantId || tenantIdParam;
-      environmentId = secretOrOptions.environmentId || envIdParam || 'production';
-      if (!secret && secretOrOptions.secretRef && tenantId) {
-        secret = (await this.resolveSecret(tenantId, secretOrOptions.secretRef)) || undefined;
+      environmentId = secretOrOptions.environmentId || envIdParam;
+      if (!secretOrKey && (secretOrOptions.secretRef || secretOrOptions.publicKeyRef) && tenantId) {
+        secretOrKey =
+          (await this.resolveSecret(tenantId, secretOrOptions.secretRef || secretOrOptions.publicKeyRef)) ||
+          undefined;
       }
     }
 
-    // Require verified webhook signature
-    if (!secret) {
-      throw new Error('Missing webhook signature verification secret: unconfigured secret or secret reference');
+    if (!secretOrKey || !secretOrKey.trim()) {
+      throw new Error(
+        'Missing webhook signature verification secret or public key: unconfigured secret/key reference'
+      );
     }
 
-    const signature = headers['x-journeyax-signature'] || headers['x-webhook-signature'];
-    if (!signature) {
-      throw new Error('Missing webhook signature');
-    }
-
+    // Verify provider-specific signature contract first (unauthenticated/unsigned payloads rejected immediately)
     const rawPayload = typeof body === 'string' ? body : JSON.stringify(body);
-    const hmac = createHmac('sha256', secret);
-    hmac.update(rawPayload);
-    const expected = `sha256=${hmac.digest('hex')}`;
+    WebhookSignatureValidator.verifySignature(provider, headers, rawPayload, secretOrKey.trim());
 
+    // MANDATORY TRUSTED INPUT CHECKS: NEVER SILENTLY DEFAULT TO PRODUCTION
+    if (!tenantId || typeof tenantId !== 'string' || !tenantId.trim()) {
+      throw new Error('Trusted tenantId is mandatory for webhook callback processing; fail closed');
+    }
     if (
-      signature.length !== expected.length ||
-      !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+      !environmentId ||
+      typeof environmentId !== 'string' ||
+      !['dev', 'test', 'staging', 'production'].includes(environmentId)
     ) {
-      throw new Error('Invalid webhook callback signature');
+      throw new Error(
+        "Trusted environmentId is mandatory for webhook callback processing (dev, test, staging, production); fail closed"
+      );
     }
 
-    if (!tenantId || tenantId.trim() === '') {
-      throw new Error('Trusted tenantId is required for webhook callback processing; fail closed');
-    }
+    const boundTenantId = tenantId.trim();
+    const boundEnvId = environmentId.trim() as EnvironmentId;
 
     const events = Array.isArray(body) ? body : [body];
     let processed = 0;
@@ -790,8 +951,6 @@ export class NotificationDispatcher {
       const deliveryId = evt.deliveryId || evt.custom_args?.deliveryId;
       const providerDeliveryId = evt.providerDeliveryId || evt.sg_message_id || evt.id;
       const eventStatus = (evt.event || evt.type || 'delivered').toLowerCase();
-      const boundTenantId = tenantId;
-      const boundEnvId = environmentId;
 
       if (!deliveryId && !providerDeliveryId) {
         errors.push('No deliveryId or providerDeliveryId present in webhook event');
@@ -810,34 +969,6 @@ export class NotificationDispatcher {
         $or: orMatch,
       };
 
-      // ── Validate matching scoped delivery BEFORE recording webhook deduplication ──
-      const matchingDelivery = await deliveriesCol.findOne(query);
-      if (!matchingDelivery) {
-        errors.push(
-          `No matching delivery record found for tenant '${boundTenantId}' and deliveryId '${deliveryId || providerDeliveryId}'`
-        );
-        continue;
-      }
-
-      // ── Deduplicate Callback ───────────────────────────────────────────
-      const callbackDedupKey = `${provider}:${boundTenantId}:${deliveryId || providerDeliveryId}:${eventStatus}`;
-      const existingCallback = await callbacksCol.findOne({ callbackId: callbackDedupKey });
-      if (existingCallback) {
-        errors.push(`Duplicate callback detected for key '${callbackDedupKey}' — skipped`);
-        continue;
-      }
-
-      await callbacksCol.insertOne({
-        callbackId: callbackDedupKey,
-        tenantId: boundTenantId,
-        environmentId: boundEnvId,
-        provider,
-        deliveryId: deliveryId || providerDeliveryId,
-        status: eventStatus,
-        processedAt: new Date(),
-        rawPayload: evt,
-      });
-
       // ── Map Status ─────────────────────────────────────────────────────
       let mappedStatus: NotificationDeliveryRecord['status'] = 'delivered';
       if (['bounce', 'bounced'].includes(eventStatus)) mappedStatus = 'bounced';
@@ -846,30 +977,115 @@ export class NotificationDispatcher {
       else if (['dropped', 'spamreport', 'complaint'].includes(eventStatus)) mappedStatus = 'dropped';
       else if (['delivered', 'success'].includes(eventStatus)) mappedStatus = 'delivered';
 
-      const updateResult = await deliveriesCol.updateOne(query, {
-        $set: {
-          status: mappedStatus,
-          providerDeliveryId: providerDeliveryId || deliveryId,
-          metadata: {
-            callbackEvent: eventStatus,
-            callbackTimestamp: new Date(),
-            rawPayload: evt,
-          },
-        },
-      });
-
-      if (updateResult.matchedCount > 0) {
-        processed++;
-      } else {
+      // ── Validate matching scoped delivery BEFORE processing ────────────
+      const matchingDelivery = await deliveriesCol.findOne(query);
+      if (!matchingDelivery) {
         errors.push(
           `No matching delivery record found for tenant '${boundTenantId}' and deliveryId '${deliveryId || providerDeliveryId}'`
         );
+        continue;
       }
+
+      // ── Deduplicate Callback with Transactional Recoverability ─────────
+      const callbackDedupKey = `${provider}:${boundTenantId}:${deliveryId || providerDeliveryId}:${eventStatus}`;
+      const existingCallback = await callbacksCol.findOne({ callbackId: callbackDedupKey });
+      if (existingCallback) {
+        // If delivery was already updated to this mappedStatus, skip as genuine duplicate
+        if (
+          matchingDelivery.status === mappedStatus ||
+          matchingDelivery.metadata?.callbackEvent === eventStatus
+        ) {
+          errors.push(`Duplicate callback detected for key '${callbackDedupKey}' — skipped`);
+          continue;
+        }
+        // If delivery was NOT updated (e.g. prior attempt failed after callback insert),
+        // delete stale callback record so this retry is not ignored forever!
+        await callbacksCol.deleteOne({ callbackId: callbackDedupKey });
+      }
+
+      // ── Update Delivery Record First with Atomic Mutation Guard ────────
+      const atomicQuery: any = {
+        tenantId: boundTenantId,
+        environmentId: boundEnvId,
+        provider,
+        $or: orMatch,
+        $nor: [{ status: mappedStatus, 'metadata.callbackEvent': eventStatus }],
+      };
+
+      let updateResult: any;
+      try {
+        updateResult = await deliveriesCol.updateOne(atomicQuery, {
+          $set: {
+            status: mappedStatus,
+            providerDeliveryId: providerDeliveryId || deliveryId,
+            metadata: {
+              callbackEvent: eventStatus,
+              callbackTimestamp: new Date(),
+              rawPayload: evt,
+              lastDedupKey: callbackDedupKey,
+            },
+          },
+        });
+      } catch (err: any) {
+        errors.push(`Delivery update failed: ${err.message}`);
+        continue;
+      }
+
+      if (!updateResult || updateResult.matchedCount === 0) {
+        // Document either does not exist, or was ALREADY updated to mappedStatus concurrently
+        const existing = await deliveriesCol.findOne(query);
+        if (
+          existing &&
+          (existing.status === mappedStatus || existing.metadata?.callbackEvent === eventStatus)
+        ) {
+          // Concurrently updated by another worker/thread; record callback idempotently and do not double count
+          await callbacksCol.updateOne(
+            { callbackId: callbackDedupKey },
+            {
+              $set: {
+                callbackId: callbackDedupKey,
+                tenantId: boundTenantId,
+                environmentId: boundEnvId,
+                provider,
+                deliveryId: deliveryId || providerDeliveryId,
+                status: eventStatus,
+                processedAt: new Date(),
+                rawPayload: evt,
+              },
+            },
+            { upsert: true }
+          );
+          continue;
+        }
+        errors.push(
+          `No matching delivery record found for tenant '${boundTenantId}' and deliveryId '${deliveryId || providerDeliveryId}'`
+        );
+        continue;
+      }
+
+      // ── Record Dedup Callback Entry Only After Delivery Update ─────────
+      await callbacksCol.updateOne(
+        { callbackId: callbackDedupKey },
+        {
+          $set: {
+            callbackId: callbackDedupKey,
+            tenantId: boundTenantId,
+            environmentId: boundEnvId,
+            provider,
+            deliveryId: deliveryId || providerDeliveryId,
+            status: eventStatus,
+            processedAt: new Date(),
+            rawPayload: evt,
+          },
+        },
+        { upsert: true }
+      );
+
+      processed++;
 
       // ── Maintain Bounce/Suppression State ──────────────────────────────
       if (mappedStatus === 'bounced' || mappedStatus === 'dropped') {
-        const delivDoc = await deliveriesCol.findOne(query);
-        const recipient = (evt.email || evt.recipient || delivDoc?.recipient || '').toLowerCase().trim();
+        const recipient = (evt.email || evt.recipient || matchingDelivery.recipient || '').toLowerCase().trim();
         if (recipient && boundTenantId) {
           await suppressionsCol.updateOne(
             { tenantId: boundTenantId, environmentId: boundEnvId, recipient },
@@ -1007,14 +1223,14 @@ export class NotificationDispatcher {
         errorMsg = err.message;
       }
     } else if (existing.channel === 'email') {
-      const envId = existing.environmentId || 'production';
+      const envId = normEnv;
       const isSuppressed = await this.isSuppressed(existing.tenantId, envId, existing.recipient);
 
       if (isSuppressed) {
         newStatus = 'failed';
         errorMsg = `Recipient '${existing.recipient}' is actively suppressed for tenant '${existing.tenantId}'`;
       } else {
-        const emailProvider = existing.provider || channelsConfig?.email?.provider || 'sendgrid';
+        const emailProvider = normProvider;
         const apiKeyRef = channelsConfig?.email?.apiKeyRef || existing.metadata?.apiKeyRef;
 
         try {
