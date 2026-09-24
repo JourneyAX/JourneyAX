@@ -13,7 +13,7 @@ export interface DispatcherOptions {
   activepiecesApiUrl?: string;
   activepiecesApiKey?: string;
   activepiecesWebhookSecret?: string;
-  getTenantSecret?: (tenantId: string, secretRef: string) => Promise<string | null>;
+  validateConnectionOwnership?: (tenantId: string, environmentId: string, connectionRef: string) => Promise<boolean> | boolean;
 }
 
 export class CapabilityDispatcher {
@@ -139,42 +139,91 @@ export class CapabilityDispatcher {
     ctx: ExecutionContext,
     connectionRef?: string
   ): Promise<any> {
-    const baseUrl = this.options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
-    const bodyStr = JSON.stringify({ input, context: ctx });
+    // 1. Validate tenant, environment, and flow identifiers
+    const normTenant = (ctx.tenantId || '').trim();
+    const normEnv = (ctx.environmentId || '').trim();
+    const normFlow = (flowId || '').trim();
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-Tenant-ID': ctx.tenantId,
-      'X-Environment-ID': ctx.environmentId,
-      'X-Workspace-ID': ctx.workspaceId,
-      'X-Correlation-ID': ctx.correlationId,
-    };
-
-    const apiKey = this.options.activepiecesApiKey || process.env.ACTIVEPIECES_API_KEY;
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
+    if (!normTenant) {
+      throw new Error('Activepieces dispatch failed: tenantId is required');
+    }
+    if (!normEnv) {
+      throw new Error('Activepieces dispatch failed: environmentId is required');
+    }
+    if (!normFlow || !/^[a-zA-Z0-9_\-]+$/.test(normFlow)) {
+      throw new Error(`Activepieces dispatch failed: invalid or missing flowId '${flowId}'`);
     }
 
-    if (connectionRef && this.options.getTenantSecret) {
-      const secret = await this.options.getTenantSecret(ctx.tenantId, connectionRef);
-      if (secret) {
-        headers['X-Connection-Secret'] = secret;
+    // 2. Validate connectionRef if provided (fail closed if ownership fails)
+    if (connectionRef) {
+      const normConn = connectionRef.trim();
+      if (!normConn || !/^[a-zA-Z0-9_.\-]+$/.test(normConn)) {
+        throw new Error(`Activepieces dispatch failed: invalid connectionRef '${connectionRef}'`);
+      }
+      if (this.options.validateConnectionOwnership) {
+        const isOwner = await this.options.validateConnectionOwnership(normTenant, normEnv, normConn);
+        if (!isOwner) {
+          throw new Error(
+            `Activepieces dispatch failed: connectionRef '${normConn}' not owned by tenant '${normTenant}' (${normEnv})`
+          );
+        }
       }
     }
 
-    const webhookSecret = this.options.activepiecesWebhookSecret || process.env.ACTIVEPIECES_WEBHOOK_SECRET;
-    if (webhookSecret) {
-      const timestamp = Date.now().toString();
-      const nonce = randomUUID();
-      const signature = createHmac('sha256', webhookSecret)
-        .update(`${timestamp}.${nonce}.${bodyStr}`)
-        .digest('hex');
-      headers['X-Activepieces-Signature'] = signature;
-      headers['X-Activepieces-Timestamp'] = timestamp;
-      headers['X-Activepieces-Nonce'] = nonce;
+    // 3. Require authenticated and HMAC-signed invocation (Fail Closed)
+    const apiKey = this.options.activepiecesApiKey || process.env.ACTIVEPIECES_API_KEY;
+    if (!apiKey || !apiKey.trim()) {
+      throw new Error(
+        'Activepieces configuration error: activepiecesApiKey is required for authenticated invocation; failing closed'
+      );
     }
 
-    const res = await fetch(`${baseUrl}/api/v1/webhooks/${flowId}`, {
+    const webhookSecret = this.options.activepiecesWebhookSecret || process.env.ACTIVEPIECES_WEBHOOK_SECRET;
+    if (!webhookSecret || !webhookSecret.trim()) {
+      throw new Error(
+        'Activepieces configuration error: activepiecesWebhookSecret is required for HMAC signing; failing closed'
+      );
+    }
+
+    const baseUrl = this.options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
+
+    // 4. Payload carries connectionRef only - NEVER raw credentials or secrets
+    const payload = {
+      input,
+      context: {
+        ...ctx,
+        connectionRef: connectionRef ? connectionRef.trim() : undefined,
+      },
+    };
+    const bodyStr = JSON.stringify(payload);
+
+    // 5. Replay protection: timestamp, nonce, and idempotency key
+    const timestamp = Date.now().toString();
+    const nonce = randomUUID();
+    const idempotencyKey = (ctx.idempotencyKey || randomUUID()).trim();
+
+    const signature = createHmac('sha256', webhookSecret.trim())
+      .update(`${timestamp}.${nonce}.${bodyStr}`)
+      .digest('hex');
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey.trim()}`,
+      'X-Activepieces-Signature': signature,
+      'X-Activepieces-Timestamp': timestamp,
+      'X-Activepieces-Nonce': nonce,
+      'X-Idempotency-Key': idempotencyKey,
+      'X-Tenant-ID': normTenant,
+      'X-Environment-ID': normEnv,
+      'X-Workspace-ID': (ctx.workspaceId || '').trim(),
+      'X-Correlation-ID': (ctx.correlationId || '').trim(),
+    };
+
+    if (connectionRef) {
+      headers['X-Connection-Ref'] = connectionRef.trim();
+    }
+
+    const res = await fetch(`${baseUrl}/api/v1/webhooks/${normFlow}`, {
       method: 'POST',
       headers,
       body: bodyStr,

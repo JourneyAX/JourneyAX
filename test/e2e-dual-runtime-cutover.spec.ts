@@ -343,14 +343,18 @@ async function runDualRuntimeVerificationTests() {
     }
   });
 
-  // Test 6: Capability execution resolves secret reference without leaking credentials
-  await test('SCENARIO 6: Activepieces capability dispatcher resolves secretRef and executes securely', async () => {
+  // Test 6: Capability execution carries connectionRef only, HMAC-signed, with negative and isolation enforcement
+  await test('SCENARIO 6: Activepieces capability dispatcher enforces security, HMAC signing, and never leaks credentials', async () => {
+    const validApiKey = 'mock_activepieces_master_key_123';
+    const validWebhookSecret = 'whsec_ap_signing_key_456';
+
     const dispatcher = new CapabilityDispatcher({
       activepiecesApiUrl: 'http://activepieces-flow.internal',
-      activepiecesApiKey: 'mock_activepieces_master_key',
-      getTenantSecret: async (tenantId: string, secretRef: string) => {
-        const doc = secrets.find((s) => s.tenantId === tenantId && s.secretRef === secretRef);
-        return doc ? doc.value : null;
+      activepiecesApiKey: validApiKey,
+      activepiecesWebhookSecret: validWebhookSecret,
+      validateConnectionOwnership: async (tenantId, environmentId, connectionRef) => {
+        // Enforce that activepieces_crm_key belongs to workwear_intl/production only
+        return tenantId === 'workwear_intl' && environmentId === 'production' && connectionRef === 'activepieces_crm_key';
       },
     });
 
@@ -379,10 +383,25 @@ async function runDualRuntimeVerificationTests() {
     // Intercept fetch for Activepieces flow execution
     const origFetch = globalThis.fetch;
     let authHeaderValue = '';
-    let connSecretValue = '';
+    let connRefHeaderValue = '';
+    let connSecretValue: string | undefined = undefined;
+    let sigHeaderValue = '';
+    let tsHeaderValue = '';
+    let nonceHeaderValue = '';
+    let idempHeaderValue = '';
+    let capturedBody: any = null;
+
     globalThis.fetch = async (url: any, init: any) => {
-      authHeaderValue = init.headers?.['Authorization'] || init.headers?.['x-api-key'] || '';
-      connSecretValue = init.headers?.['X-Connection-Secret'] || '';
+      authHeaderValue = init.headers?.['Authorization'] || '';
+      connRefHeaderValue = init.headers?.['X-Connection-Ref'] || '';
+      connSecretValue = init.headers?.['X-Connection-Secret'];
+      sigHeaderValue = init.headers?.['X-Activepieces-Signature'] || '';
+      tsHeaderValue = init.headers?.['X-Activepieces-Timestamp'] || '';
+      nonceHeaderValue = init.headers?.['X-Activepieces-Nonce'] || '';
+      idempHeaderValue = init.headers?.['X-Idempotency-Key'] || '';
+      if (init.body) {
+        capturedBody = JSON.parse(init.body);
+      }
       return {
         ok: true,
         status: 200,
@@ -391,6 +410,7 @@ async function runDualRuntimeVerificationTests() {
     };
 
     try {
+      // 1. Success path: authenticated, signed, connectionRef only, no credential leak
       const result = await dispatcher.dispatch(
         toolDef,
         binding,
@@ -409,8 +429,78 @@ async function runDualRuntimeVerificationTests() {
       );
 
       assert.equal(result.status, 'success');
-      assert.ok(authHeaderValue.includes('mock_activepieces_master_key'));
-      assert.ok(connSecretValue.includes('sec_ap_crm_token_999'));
+      assert.equal(authHeaderValue, `Bearer ${validApiKey}`);
+      assert.equal(connRefHeaderValue, 'activepieces_crm_key');
+      assert.equal(connSecretValue, undefined, 'Must NEVER send X-Connection-Secret header');
+      assert.ok(sigHeaderValue, 'Must include HMAC signature');
+      assert.ok(tsHeaderValue, 'Must include timestamp');
+      assert.ok(nonceHeaderValue, 'Must include nonce');
+      assert.equal(idempHeaderValue, 'idemp_key_777');
+      assert.equal(capturedBody?.context?.connectionRef, 'activepieces_crm_key');
+      assert.equal(capturedBody?.context?.secret, undefined, 'Payload context must never contain raw secret');
+
+      // 2. Negative test: Fail closed when apiKey is missing
+      const unauthDispatcher = new CapabilityDispatcher({
+        activepiecesApiUrl: 'http://activepieces-flow.internal',
+        activepiecesWebhookSecret: validWebhookSecret,
+      });
+      const unauthResult = await unauthDispatcher.dispatch(
+        toolDef,
+        binding,
+        { executionId: 'exec_unauth', toolId: 'catalog.search', input: {} },
+        { tenantId: 'workwear_intl', environmentId: 'production', workspaceId: 'ws_alpha', correlationId: 'corr_1' }
+      );
+      assert.equal(unauthResult.status, 'failure');
+      assert.ok(unauthResult.error?.includes('activepiecesApiKey is required'));
+
+      // 3. Negative test: Fail closed when webhook secret is missing
+      const unsignedDispatcher = new CapabilityDispatcher({
+        activepiecesApiUrl: 'http://activepieces-flow.internal',
+        activepiecesApiKey: validApiKey,
+      });
+      const unsignedResult = await unsignedDispatcher.dispatch(
+        toolDef,
+        binding,
+        { executionId: 'exec_unsigned', toolId: 'catalog.search', input: {} },
+        { tenantId: 'workwear_intl', environmentId: 'production', workspaceId: 'ws_alpha', correlationId: 'corr_2' }
+      );
+      assert.equal(unsignedResult.status, 'failure');
+      assert.ok(unsignedResult.error?.includes('activepiecesWebhookSecret is required'));
+
+      // 4. Isolation test: Fail closed when connectionRef ownership fails
+      const foreignBinding: ToolBinding = {
+        ...binding,
+        executor: {
+          type: 'activepieces_flow',
+          flowId: 'flow_search_catalog',
+          connectionRef: 'other_tenant_secret_ref',
+        },
+      };
+      const foreignResult = await dispatcher.dispatch(
+        toolDef,
+        foreignBinding,
+        { executionId: 'exec_foreign', toolId: 'catalog.search', input: {} },
+        { tenantId: 'workwear_intl', environmentId: 'production', workspaceId: 'ws_alpha', correlationId: 'corr_3' }
+      );
+      assert.equal(foreignResult.status, 'failure');
+      assert.ok(foreignResult.error?.includes('not owned by tenant'));
+
+      // 5. Negative test: Fail closed on invalid flowId
+      const invalidFlowBinding: ToolBinding = {
+        ...binding,
+        executor: {
+          type: 'activepieces_flow',
+          flowId: 'bad flow id with spaces!@#',
+        },
+      };
+      const badFlowResult = await dispatcher.dispatch(
+        toolDef,
+        invalidFlowBinding,
+        { executionId: 'exec_bad_flow', toolId: 'catalog.search', input: {} },
+        { tenantId: 'workwear_intl', environmentId: 'production', workspaceId: 'ws_alpha', correlationId: 'corr_4' }
+      );
+      assert.equal(badFlowResult.status, 'failure');
+      assert.ok(badFlowResult.error?.includes('invalid or missing flowId'));
     } finally {
       globalThis.fetch = origFetch;
     }
