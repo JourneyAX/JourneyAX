@@ -1,20 +1,26 @@
 /**
  * Truthful Tenant Connector Migration Inventory & Dry-Run Audit
  *
- * Requirements (Workstream D):
- * 1. Discovers actual projects from filesystem migration sources (packs/),
- *    seed configs (caroma, caroma-nz), and non-production DB if available.
- *    Explicitly distinguishes discovered records from synthetic fixtures.
- * 2. Executes genuine tenant-isolation and parity evaluations with recorded evidence
- *    (never hardcodes groundedRetrievalIsolated=true or 0 URLs/secrets).
- * 3. Read-only by default; writes docs/tenant-connector-migration-inventory.md
- *    only when --write flag is passed.
- * 4. Never connects to production databases.
- * 5. Does not write "verified/signed" unless an actual approval record exists.
+ * Requirements (Workstream C):
+ * 1. Discovers actual projects from filesystem migration sources (packs/)
+ *    and non-production DB if available.
+ * 2. Does not synthesize readiness, parity, cutover, rollback, or immutable-release evidence.
+ * 3. Does not clear a supplied safe TEST_MONGODB_URI; refuses production-like URIs
+ *    and operates offline when none is supplied.
+ * 4. Queries real non-production releases, active pointers, cutover records,
+ *    typed connector mappings, secret mappings, normalization reports, and parity/canary evidence when available.
+ * 5. Undiscovered required tenants must be NOT_DISCOVERED/BLOCKED, not synthetic ready.
+ * 6. Synthetic fixtures must be in a separate test-only section and excluded from readiness counts.
+ * 7. Parity is UNEVALUATED unless actual project scenarios ran.
+ * 8. Release readiness must be false whenever blockers or connector-boundary failures exist.
+ *    The generated summary and per-project rows must be internally consistent.
+ * 9. Read-only by default; writes docs/tenant-connector-migration-inventory.md only with --write.
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { MongoClient } from 'mongodb';
+
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 import {
@@ -27,20 +33,7 @@ import {
 import { CapabilityRegistryService } from '../apps/project-service/src/capability-registry.service';
 import { CatalogSearchHandler } from '../apps/journey-runtime-service/src/capabilities/handlers/catalog-search.handler';
 
-// Production safety guard: Clear production DB variables so inventory never connects to production
-function sanitizeDatabaseEnvironment(): void {
-  const uri = process.env.MONGODB_URI || '';
-  if (
-    uri.includes('prod') ||
-    uri.includes('production') ||
-    (uri.includes('mongodb.net') && !uri.includes('test') && !uri.includes('dev'))
-  ) {
-    console.warn('🔒 Production MongoDB URI detected in environment — cleared to enforce offline/non-production safety.');
-    delete process.env.MONGODB_URI;
-  }
-}
-
-export type ProjectSource = 'filesystem_pack' | 'seed_config' | 'non_prod_db' | 'synthetic_fixture';
+export type ProjectSource = 'filesystem_pack' | 'non_prod_db' | 'not_discovered' | 'synthetic_fixture';
 
 export interface DiscoveredProject {
   tenantId: string;
@@ -91,6 +84,30 @@ export interface ComputedAuditResult {
   migrationStatus: 'CANDIDATE_PACK_VALIDATED' | 'FIXTURE_EVALUATION_ONLY' | 'BLOCKED';
 }
 
+export interface SafeDatabaseEnvironment {
+  uri?: string;
+  mode: 'connected' | 'offline_safe' | 'rejected_production';
+  warning?: string;
+}
+
+export interface DatabaseEvidence {
+  connected: boolean;
+  releases: Map<string, any>;
+  pointers: Map<string, any>;
+  cutovers: Map<string, any>;
+  connections: Map<string, any[]>;
+  secrets: Map<string, number>;
+  normalizationReports: Map<string, any>;
+  parityEvidence: Map<string, any>;
+}
+
+export const REQUIRED_CUSTOMER_TENANTS = [
+  'caroma',
+  'caroma-nz',
+  'royalcyber',
+  'workweargroup',
+];
+
 const FORBIDDEN_PROVIDER_DOMAINS = [
   'api.australia-southeast1.gcp.commercetools.com',
   'auth.australia-southeast1.gcp.commercetools.com',
@@ -109,6 +126,121 @@ const SECRET_KEYS = [
   'password',
   'apikey',
 ];
+
+/**
+ * Resolves safe database environment without clearing TEST_MONGODB_URI.
+ * Refuses production-like URIs and operates offline when none is supplied.
+ */
+export function resolveSafeDatabaseEnvironment(
+  env: Record<string, string | undefined> = process.env
+): SafeDatabaseEnvironment {
+  const rawUri = env.TEST_MONGODB_URI || env.MONGODB_URI;
+  if (!rawUri || !rawUri.trim()) {
+    return {
+      mode: 'offline_safe',
+      warning: 'No MongoDB URI supplied. Operating in safe offline mode.',
+    };
+  }
+
+  const trimmed = rawUri.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Guard against production-like URIs
+  const isProdLike =
+    lower.includes('prod') ||
+    lower.includes('production') ||
+    (lower.includes('mongodb.net') &&
+      !lower.includes('test') &&
+      !lower.includes('dev') &&
+      !lower.includes('staging'));
+
+  if (isProdLike) {
+    return {
+      mode: 'rejected_production',
+      warning: 'Production-like MongoDB URI detected — connection refused to enforce non-production safety. Operating offline.',
+    };
+  }
+
+  return {
+    uri: trimmed,
+    mode: 'connected',
+  };
+}
+
+/**
+ * Queries real non-production MongoDB collections when a safe URI is available.
+ */
+export async function queryNonProductionDatabase(uri: string): Promise<DatabaseEvidence> {
+  const evidence: DatabaseEvidence = {
+    connected: false,
+    releases: new Map(),
+    pointers: new Map(),
+    cutovers: new Map(),
+    connections: new Map(),
+    secrets: new Map(),
+    normalizationReports: new Map(),
+    parityEvidence: new Map(),
+  };
+
+  let client: MongoClient | null = null;
+  try {
+    client = new MongoClient(uri, { serverSelectionTimeoutMS: 1500, connectTimeoutMS: 1500 });
+    await client.connect();
+    evidence.connected = true;
+    const db = client.db(process.env.MONGODB_DB_NAME || 'journeyx');
+
+    const releases = await db.collection('business_pack_releases').find({}).toArray();
+    for (const r of releases) {
+      if (r.tenantId) evidence.releases.set(r.tenantId, r);
+    }
+
+    const pointers = await db.collection('business_pack_pointers').find({}).toArray();
+    for (const p of pointers) {
+      if (p.tenantId) evidence.pointers.set(p.tenantId, p);
+    }
+
+    const cutovers = await db.collection('tenant_cutovers').find({}).toArray();
+    for (const c of cutovers) {
+      if (c.tenantId) evidence.cutovers.set(c.tenantId, c);
+    }
+
+    const connections = await db.collection('tenant_connections').find({}).toArray();
+    for (const c of connections) {
+      if (c.tenantId) {
+        const list = evidence.connections.get(c.tenantId) || [];
+        list.push(c);
+        evidence.connections.set(c.tenantId, list);
+      }
+    }
+
+    const secrets = await db.collection('tenant_secrets').find({}).toArray();
+    for (const s of secrets) {
+      if (s.tenantId) {
+        evidence.secrets.set(s.tenantId, (evidence.secrets.get(s.tenantId) || 0) + 1);
+      }
+    }
+
+    const normReports = await db.collection('normalization_reports').find({}).toArray();
+    for (const n of normReports) {
+      if (n.tenantId) evidence.normalizationReports.set(n.tenantId, n);
+    }
+
+    const parities = await db.collection('parity_evidence').find({}).toArray();
+    for (const p of parities) {
+      if (p.tenantId) evidence.parityEvidence.set(p.tenantId, p);
+    }
+  } catch (err: any) {
+    console.warn(`[Inventory] Non-production DB query unavailable (${err.message}). Operating in safe offline mode.`);
+  } finally {
+    if (client) {
+      try {
+        await client.close();
+      } catch {}
+    }
+  }
+
+  return evidence;
+}
 
 function scanForRawSecrets(obj: any, currentPath = ''): string[] {
   const found: string[] = [];
@@ -159,7 +291,10 @@ function scanForDirectUrls(obj: any, currentPath = ''): string[] {
   return found;
 }
 
-async function discoverProjects(): Promise<DiscoveredProject[]> {
+/**
+ * Discovers projects from filesystem and database.
+ */
+async function discoverProjects(dbEvidence: DatabaseEvidence): Promise<DiscoveredProject[]> {
   const discovered: DiscoveredProject[] = [];
   const loader = new BusinessPackLoader();
 
@@ -199,67 +334,56 @@ async function discoverProjects(): Promise<DiscoveredProject[]> {
     }
   }
 
-  // 2. Discovered seed configs in repository (Caroma and Caroma NZ)
-  const seedProjects: Omit<DiscoveredProject, 'source'>[] = [
-    {
-      tenantId: 'caroma',
-      name: 'Caroma Australia',
-      industry: 'Commercial & Residential Bathrooms',
-      commerceMode: 'quote',
-      externalConnectors: ['commercetools (Activepieces)', 'OpenAI'],
-      activepiecesFlows: [
-        {
-          toolId: 'commercetools.catalog_sync',
-          flowId: 'ap_flow_ct_sync_caroma',
-          connectionRef: 'conn_ct_caroma_secret',
-          sideEffect: 'write',
-          risk: 'medium',
-        },
-        {
-          toolId: 'quote.create_crm',
-          flowId: 'ap_flow_ct_quote_caroma',
-          connectionRef: 'conn_ct_caroma_secret',
-          sideEffect: 'transactional',
-          risk: 'high',
-        },
-      ],
-      model: { provider: 'openai', model: 'gpt-4o' },
-      dataResidency: 'au',
-    },
-    {
-      tenantId: 'caroma-nz',
-      name: 'Caroma New Zealand',
-      industry: 'Bathrooms & Plumbing',
-      commerceMode: 'quote',
-      externalConnectors: ['commercetools NZ (Activepieces)', 'OpenAI'],
-      activepiecesFlows: [
-        {
-          toolId: 'commercetools.catalog_sync',
-          flowId: 'ap_flow_ct_sync_caroma_nz',
-          connectionRef: 'conn_ct_caromanz_secret',
-          sideEffect: 'write',
-          risk: 'medium',
-        },
-        {
-          toolId: 'quote.create_crm',
-          flowId: 'ap_flow_ct_quote_caroma_nz',
-          connectionRef: 'conn_ct_caromanz_secret',
-          sideEffect: 'transactional',
-          risk: 'high',
-        },
-      ],
-      model: { provider: 'openai', model: 'gpt-4o' },
-      dataResidency: 'au',
-    },
-  ];
-
-  for (const s of seedProjects) {
-    if (!discovered.some((d) => d.tenantId === s.tenantId)) {
-      discovered.push({ ...s, source: 'seed_config' });
+  // 2. Real non-production database releases
+  for (const [tenantId, releaseDoc] of dbEvidence.releases.entries()) {
+    if (!discovered.some((d) => d.tenantId === tenantId)) {
+      discovered.push({
+        tenantId,
+        name: releaseDoc.manifest?.name || tenantId,
+        source: 'non_prod_db',
+        industry: releaseDoc.profile?.industry || 'Enterprise',
+        commerceMode: 'quote',
+        externalConnectors: ['Activepieces Flows'],
+        activepiecesFlows: (releaseDoc.capabilities?.toolBindings || [])
+          .filter((b: any) => b.executor?.type === 'activepieces_flow')
+          .map((b: any) => ({
+            toolId: b.toolId,
+            flowId: b.executor.flowId,
+            connectionRef: b.executor.connectionRef,
+            sideEffect: 'write',
+            risk: 'medium',
+          })),
+        model: { provider: 'openai', model: 'gpt-4o' },
+        dataResidency: releaseDoc.manifest?.dataResidency || 'au',
+        packCandidate: releaseDoc,
+      });
     }
   }
 
-  // 3. Synthetic test fixtures (evaluated for connector matrix topologies)
+  // 3. Check required customer tenants: any missing are marked not_discovered
+  for (const requiredId of REQUIRED_CUSTOMER_TENANTS) {
+    if (!discovered.some((d) => d.tenantId === requiredId)) {
+      const displayName =
+        requiredId === 'caroma'
+          ? 'Caroma Australia'
+          : requiredId === 'caroma-nz'
+          ? 'Caroma New Zealand'
+          : requiredId;
+      discovered.push({
+        tenantId: requiredId,
+        name: displayName,
+        source: 'not_discovered',
+        industry: 'Commercial & Residential Fixtures',
+        commerceMode: 'quote',
+        externalConnectors: [],
+        activepiecesFlows: [],
+        model: { provider: 'none', model: 'none' },
+        dataResidency: 'au',
+      });
+    }
+  }
+
+  // 4. Synthetic test fixtures (evaluated for topology matrix testing only, separate from readiness)
   const syntheticFixtures: Omit<DiscoveredProject, 'source'>[] = [
     {
       tenantId: 'placemakers',
@@ -362,7 +486,11 @@ async function discoverProjects(): Promise<DiscoveredProject[]> {
   return discovered;
 }
 
-function buildCandidatePack(spec: DiscoveredProject): BusinessPackRelease {
+function buildCandidatePack(spec: DiscoveredProject): BusinessPackRelease | null {
+  if (spec.source === 'not_discovered') {
+    return null;
+  }
+
   if (spec.packCandidate) {
     return spec.packCandidate;
   }
@@ -374,7 +502,7 @@ function buildCandidatePack(spec: DiscoveredProject): BusinessPackRelease {
       environmentId: 'production',
       version: '1.0.0',
       name: `${spec.name} Business Pack`,
-      description: `Migrated Business Pack for ${spec.name}`,
+      description: `Candidate Business Pack for ${spec.name}`,
       author: 'JourneyAX Migration Authority',
       dataResidency: spec.dataResidency,
       checksum: '',
@@ -621,20 +749,80 @@ function buildCandidatePack(spec: DiscoveredProject): BusinessPackRelease {
   return pack;
 }
 
-export async function runTenantConnectorInventory(options: { writeReport?: boolean } = {}) {
-  sanitizeDatabaseEnvironment();
+export async function runTenantConnectorInventory(
+  options: { writeReport?: boolean } = {}
+): Promise<ComputedAuditResult[]> {
+  const dbEnv = resolveSafeDatabaseEnvironment();
+  if (dbEnv.warning) {
+    console.warn(`🔒 ${dbEnv.warning}`);
+  }
 
   console.log('\n📊 Running Truthful Tenant Connector Migration Inventory & Audit...\n');
 
+  let dbEvidence: DatabaseEvidence = {
+    connected: false,
+    releases: new Map(),
+    pointers: new Map(),
+    cutovers: new Map(),
+    connections: new Map(),
+    secrets: new Map(),
+    normalizationReports: new Map(),
+    parityEvidence: new Map(),
+  };
+
+  if (dbEnv.mode === 'connected' && dbEnv.uri) {
+    dbEvidence = await queryNonProductionDatabase(dbEnv.uri);
+  }
+
   const capabilityRegistry = new CapabilityRegistryService();
-  const discoveredProjects = await discoverProjects();
+  const discoveredProjects = await discoverProjects(dbEvidence);
   const results: ComputedAuditResult[] = [];
 
   for (const project of discoveredProjects) {
-    const pack = buildCandidatePack(project);
     const blockers: string[] = [];
 
-    // Normalize agent schema fields if loaded from legacy disk pack
+    // Case 1: Required customer tenant NOT discovered on disk or database
+    if (project.source === 'not_discovered') {
+      blockers.push('Required customer tenant not discovered on filesystem or database');
+      blockers.push('Cutover approval record missing in tenant_cutovers');
+      blockers.push('Rollback baseline snapshot missing in business_pack_pointers');
+
+      results.push({
+        tenantId: project.tenantId,
+        name: project.name,
+        source: 'not_discovered',
+        industry: project.industry,
+        commerceMode: project.commerceMode,
+        schemaValid: false,
+        schemaErrors: ['No release manifest discovered to validate'],
+        semanticValid: false,
+        semanticErrors: ['No business pack candidate available'],
+        referenceIntegrityValid: false,
+        referenceIntegrityErrors: ['No capability registry references found'],
+        groundedRetrievalIsolated: false,
+        groundedRetrievalEvidence: 'Tenant not discovered; isolated retrieval not evaluated',
+        connectorBoundaryCompliant: false,
+        rawSecretsCount: 0,
+        rawSecretsList: [],
+        directUrlsCount: 0,
+        directUrlsList: [],
+        checksum: 'NOT_AVAILABLE',
+        activepiecesFlowsCount: 0,
+        connectionRefMappings: [],
+        parityResult: 'UNEVALUATED',
+        immutableReleaseReadiness: 'NOT_READY',
+        cutoverRecordState: 'NO_RECORD_FOUND',
+        rollbackEvidence: 'NO_ROLLBACK_BASELINE',
+        blockers,
+        migrationStatus: 'BLOCKED',
+      });
+      continue;
+    }
+
+    // Case 2: Discovered project (filesystem pack, non-prod DB, or synthetic fixture)
+    const pack = buildCandidatePack(project)!;
+
+    // Normalize legacy disk pack schema fields if loaded from disk
     for (const agent of pack.agents || []) {
       if (!agent.allowedTools) {
         agent.allowedTools = (pack.capabilities?.toolDefinitions || []).map((t) => t.toolId);
@@ -663,7 +851,7 @@ export async function runTenantConnectorInventory(options: { writeReport?: boole
       };
     }
 
-    // 1. Schema Conformance Evaluation
+    // 1. Schema Conformance
     const schemaParsed = BusinessPackReleaseSchema.safeParse(pack);
     const schemaValid = schemaParsed.success;
     const schemaErrors = schemaParsed.success
@@ -691,7 +879,7 @@ export async function runTenantConnectorInventory(options: { writeReport?: boole
       blockers.push(`Reference integrity failure: ${referenceIntegrityErrors.join('; ')}`);
     }
 
-    // 4. Grounded Retrieval Tenant Isolation Execution
+    // 4. Grounded Retrieval Tenant Isolation
     const multiTenantCatalog = [
       {
         projectId: project.tenantId,
@@ -735,14 +923,14 @@ export async function runTenantConnectorInventory(options: { writeReport?: boole
       blockers.push('Grounded retrieval tenant isolation check failed');
     }
 
-    // 5. Scan for Raw Secrets
+    // 5. Raw Secrets
     const rawSecretsList = scanForRawSecrets(pack);
     const rawSecretsCount = rawSecretsList.length;
     if (rawSecretsCount > 0) {
       blockers.push(`Raw secrets present: ${rawSecretsList.join(', ')}`);
     }
 
-    // 6. Scan for Direct Provider URLs
+    // 6. Direct Provider URLs
     const directUrlsList = scanForDirectUrls(pack);
     const directUrlsCount = directUrlsList.length;
     if (directUrlsCount > 0) {
@@ -763,15 +951,27 @@ export async function runTenantConnectorInventory(options: { writeReport?: boole
       blockers.push('Connector boundary compliance violated');
     }
 
-    // 8. Connection Reference Mappings
+    // 8. Connection Ref Mappings
     const connectionRefMappings = (pack.capabilities?.toolBindings || [])
       .filter((b) => b.executor.type === 'activepieces_flow' && (b.executor as any).connectionRef)
       .map((b) => `${b.toolId} -> ${(b.executor as any).connectionRef}`);
 
-    // 9. Cutover & Rollback Evidence
-    const cutoverRecordState: 'VERIFIED_ACTIVE' | 'PENDING_APPROVAL' | 'NO_RECORD_FOUND' = 'NO_RECORD_FOUND';
-    const rollbackEvidence: 'BASELINE_CONFIRMED' | 'NO_ROLLBACK_BASELINE' =
-      project.source === 'filesystem_pack' ? 'BASELINE_CONFIRMED' : 'NO_ROLLBACK_BASELINE';
+    // 9. Cutover & Rollback Evidence from Real DB
+    let cutoverRecordState: 'VERIFIED_ACTIVE' | 'PENDING_APPROVAL' | 'NO_RECORD_FOUND' = 'NO_RECORD_FOUND';
+    const cutoverDoc = dbEvidence.cutovers.get(project.tenantId);
+    if (cutoverDoc) {
+      if (cutoverDoc.status === 'active' || cutoverDoc.approvalRecord) {
+        cutoverRecordState = 'VERIFIED_ACTIVE';
+      } else if (cutoverDoc.status === 'pending') {
+        cutoverRecordState = 'PENDING_APPROVAL';
+      }
+    }
+
+    let rollbackEvidence: 'BASELINE_CONFIRMED' | 'NO_ROLLBACK_BASELINE' = 'NO_ROLLBACK_BASELINE';
+    const pointerDoc = dbEvidence.pointers.get(project.tenantId);
+    if (pointerDoc && pointerDoc.baselineVersion) {
+      rollbackEvidence = 'BASELINE_CONFIRMED';
+    }
 
     if (cutoverRecordState === 'NO_RECORD_FOUND') {
       blockers.push('Cutover approval record missing in tenant_cutovers');
@@ -783,14 +983,25 @@ export async function runTenantConnectorInventory(options: { writeReport?: boole
       blockers.push('Synthetic test fixture: not a discovered customer project');
     }
 
-    // 10. Readiness and Migration Status
-    const immutableReleaseReadiness =
+    // 10. Parity Evidence: UNEVALUATED unless actual project scenarios ran
+    let parityResult: 'VERIFIED' | 'PARTIAL' | 'UNEVALUATED' = 'UNEVALUATED';
+    const parityDoc = dbEvidence.parityEvidence.get(project.tenantId);
+    if (parityDoc && typeof parityDoc.scenariosRun === 'number' && parityDoc.scenariosRun > 0) {
+      if (parityDoc.scenariosPassed === parityDoc.scenariosRun) {
+        parityResult = 'VERIFIED';
+      } else if (parityDoc.scenariosPassed > 0) {
+        parityResult = 'PARTIAL';
+      }
+    }
+
+    // 11. Immutable Release Readiness: Must be NOT_READY whenever blockers exist or connector-boundary fails
+    const immutableReleaseReadiness: 'READY' | 'NOT_READY' =
+      blockers.length === 0 &&
+      connectorBoundaryCompliant &&
       schemaValid &&
       semanticValid &&
       referenceIntegrityValid &&
-      isolationPassed &&
-      rawSecretsCount === 0 &&
-      directUrlsCount === 0
+      isolationPassed
         ? 'READY'
         : 'NOT_READY';
 
@@ -827,7 +1038,7 @@ export async function runTenantConnectorInventory(options: { writeReport?: boole
         (b) => b.executor.type === 'activepieces_flow'
       ).length,
       connectionRefMappings,
-      parityResult: 'VERIFIED',
+      parityResult,
       immutableReleaseReadiness,
       cutoverRecordState,
       rollbackEvidence,
@@ -857,56 +1068,71 @@ export async function runTenantConnectorInventory(options: { writeReport?: boole
     const reportPath = path.resolve(__dirname, '../docs/tenant-connector-migration-inventory.md');
     const timestamp = new Date().toISOString();
 
+    const customerResults = results.filter((r) => r.source !== 'synthetic_fixture');
+    const fixtureResults = results.filter((r) => r.source === 'synthetic_fixture');
+
+    const discoveredCustomersCount = customerResults.filter((r) => r.source !== 'not_discovered').length;
+    const blockedUndiscoveredCount = customerResults.filter((r) => r.source === 'not_discovered').length;
+    const readyCustomersCount = customerResults.filter((r) => r.immutableReleaseReadiness === 'READY').length;
+    const compliantBoundaryCount = customerResults.filter((r) => r.connectorBoundaryCompliant).length;
+    const verifiedParityCount = customerResults.filter((r) => r.parityResult === 'VERIFIED').length;
+    const unevaluatedParityCount = customerResults.filter((r) => r.parityResult === 'UNEVALUATED').length;
+
     let md = `# JourneyAX Tenant Connector Migration Inventory & Truthful Audit\n\n`;
     md += `**Audit Timestamp**: \`${timestamp}\`\n`;
     md += `**Branch**: \`JourneyAX-dev-v4\`\n`;
     md += `**Audit Mode**: Read-Only Architecture Enforcement & Evidence-Backed Verification\n\n`;
-    md += `> **MIGRATION STATUS NOTICE**: This inventory reflects actual computed evaluations. Discovered repository migration sources are explicitly distinguished from synthetic test fixtures. No hardcoded compliance claims or artificial pass flags are permitted. Direct provider URLs in runtime paths are prohibited; legacy direct adapters remain frozen as migration sources until canary cutover approvals are signed.\n\n`;
+    md += `> **MIGRATION STATUS NOTICE**: This inventory reflects actual computed evaluations. Discovered repository migration sources are strictly separated from synthetic test fixtures. Synthetic fixtures are excluded from customer readiness metrics. No hardcoded compliance claims or artificial pass flags are permitted. Undiscovered required tenants fail closed as \`NOT_DISCOVERED\` / \`BLOCKED\`.\n\n`;
     md += `---\n\n`;
 
     md += `## 1. Executive Summary\n\n`;
-    const discoveredCount = results.filter((r) => r.source !== 'synthetic_fixture').length;
-    const fixtureCount = results.filter((r) => r.source === 'synthetic_fixture').length;
-    const readyCount = results.filter((r) => r.immutableReleaseReadiness === 'READY').length;
-    const compliantBoundaryCount = results.filter((r) => r.connectorBoundaryCompliant).length;
-    const isolatedCount = results.filter((r) => r.groundedRetrievalIsolated).length;
-
     md += `| Metric | Computed Value | Assessment |\n`;
     md += `| :--- | :--- | :--- |\n`;
-    md += `| **Discovered Migration Sources** | ${discoveredCount} | Filesystem packs (${results.filter((r) => r.source === 'filesystem_pack').length}) + Seed configs (${results.filter((r) => r.source === 'seed_config').length}) |\n`;
-    md += `| **Synthetic Test Fixtures** | ${fixtureCount} | Evaluated for connector topology testing only |\n`;
-    md += `| **Immutable Release Ready** | ${readyCount} / ${results.length} | Computed via real schema and reference validation |\n`;
-    md += `| **Activepieces Connector Boundary Compliant** | ${compliantBoundaryCount} / ${results.length} | Scanned for direct provider URLs and raw secrets |\n`;
-    md += `| **Grounded Retrieval Isolation** | ${isolatedCount} / ${results.length} | Evaluated via CatalogSearchHandler execution |\n\n`;
+    md += `| **Required Customer Tenants** | ${customerResults.length} | Mandatory customer tenants tracked for migration |\n`;
+    md += `| **Discovered Customer Tenants** | ${discoveredCustomersCount} / ${customerResults.length} | Filesystem packs (${customerResults.filter((r) => r.source === 'filesystem_pack').length}) + Non-prod DB (${customerResults.filter((r) => r.source === 'non_prod_db').length}) |\n`;
+    md += `| **Undiscovered Customer Tenants** | ${blockedUndiscoveredCount} / ${customerResults.length} | Missing from filesystem and database; marked \`BLOCKED\` |\n`;
+    md += `| **Immutable Release Ready (Customers)** | ${readyCustomersCount} / ${customerResults.length} | Computed via real schema, isolation, and absence of blockers |\n`;
+    md += `| **Connector Boundary Compliant (Customers)** | ${compliantBoundaryCount} / ${customerResults.length} | Scanned for direct provider URLs and raw secrets |\n`;
+    md += `| **Parity Evaluation Status (Customers)** | ${verifiedParityCount} Verified / ${unevaluatedParityCount} Unevaluated | Parity is \`UNEVALUATED\` unless real scenario evidence exists |\n`;
+    md += `| **Synthetic Test Fixtures** | ${fixtureResults.length} | Topology testing only; excluded from customer readiness |\n\n`;
 
-    md += `## 2. Tenant Inventory & Discovered Source Matrix\n\n`;
+    md += `## 2. Customer Tenant Migration Matrix\n\n`;
     md += `| Tenant ID | Brand Name | Source Category | Industry | Commerce Mode | Activepieces Flows | Status |\n`;
     md += `| :--- | :--- | :---: | :--- | :---: | :---: | :---: |\n`;
-    for (const r of results) {
+    for (const r of customerResults) {
       md += `| \`${r.tenantId}\` | ${r.name} | \`${r.source}\` | ${r.industry} | \`${r.commerceMode}\` | ${r.activepiecesFlowsCount} flows | \`${r.migrationStatus}\` |\n`;
     }
     md += `\n`;
 
-    md += `## 3. Computed Conformance & Evidence Audit\n\n`;
-    md += `| Tenant ID | Schema | Semantics | Ref Integrity | Isolated? | Raw Secrets | Direct URLs | Checksum |\n`;
-    md += `| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |\n`;
-    for (const r of results) {
-      md += `| \`${r.tenantId}\` | ${r.schemaValid ? 'PASS' : 'FAIL'} | ${r.semanticValid ? 'PASS' : 'FAIL'} | ${r.referenceIntegrityValid ? 'PASS' : 'FAIL'} | ${r.groundedRetrievalIsolated ? 'YES' : 'NO'} | ${r.rawSecretsCount} | ${r.directUrlsCount} | \`${r.checksum.slice(0, 16)}...\` |\n`;
+    md += `## 3. Customer Tenant Conformance & Evidence Audit\n\n`;
+    md += `| Tenant ID | Schema | Semantics | Ref Integrity | Isolated? | Raw Secrets | Direct URLs | Parity | Checksum |\n`;
+    md += `| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |\n`;
+    for (const r of customerResults) {
+      const checksumSnippet = r.checksum === 'NOT_AVAILABLE' ? 'NOT_AVAILABLE' : `\`${r.checksum.slice(0, 16)}...\``;
+      md += `| \`${r.tenantId}\` | ${r.schemaValid ? 'PASS' : 'FAIL'} | ${r.semanticValid ? 'PASS' : 'FAIL'} | ${r.referenceIntegrityValid ? 'PASS' : 'FAIL'} | ${r.groundedRetrievalIsolated ? 'YES' : 'NO'} | ${r.rawSecretsCount} | ${r.directUrlsCount} | \`${r.parityResult}\` | ${checksumSnippet} |\n`;
     }
     md += `\n`;
 
-    md += `## 4. Migration Operational State, Cutover Records & Blockers\n\n`;
+    md += `## 4. Customer Tenant Operational State & Cutover Blockers\n\n`;
     md += `| Tenant ID | Cutover Record (\`tenant_cutovers\`) | Rollback Baseline | Blockers Count | Specific Blockers |\n`;
     md += `| :--- | :---: | :---: | :---: | :--- |\n`;
-    for (const r of results) {
+    for (const r of customerResults) {
       const blockersText = r.blockers.length === 0 ? 'None' : r.blockers.join('; ');
       md += `| \`${r.tenantId}\` | \`${r.cutoverRecordState}\` | \`${r.rollbackEvidence}\` | ${r.blockers.length} | ${blockersText} |\n`;
     }
     md += `\n`;
 
-    md += `## 5. Architecture Signoff Status\n\n`;
+    md += `## 5. Synthetic Test Fixtures (Topology Matrix Only - Excluded from Customer Readiness)\n\n`;
+    md += `| Tenant ID | Brand Name | Topology Category | Commerce Mode | Activepieces Flows | Status |\n`;
+    md += `| :--- | :--- | :--- | :---: | :---: | :---: |\n`;
+    for (const r of fixtureResults) {
+      md += `| \`${r.tenantId}\` | ${r.name} | ${r.industry} | \`${r.commerceMode}\` | ${r.activepiecesFlowsCount} flows | \`${r.migrationStatus}\` |\n`;
+    }
+    md += `\n`;
+
+    md += `## 6. Architecture Governance Signoff Status\n\n`;
     md += `**STATUS**: PENDING ARCHITECTURE GOVERNANCE & SECURITY APPROVAL\n\n`;
-    md += `*Notice: In compliance with Workstream D truthful reporting requirements, no approval or signature is certified because cutover records in \`tenant_cutovers\` remain pending.*\n`;
+    md += `*Notice: In compliance with Workstream C truthful reporting requirements, no approval or signature is certified because cutover records in \`tenant_cutovers\` remain pending and undiscovered required tenants remain blocked.*\n`;
 
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, md, 'utf8');
