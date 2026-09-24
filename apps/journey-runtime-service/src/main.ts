@@ -40,6 +40,8 @@ async function bootstrap() {
     credentials: true,
   });
 
+  app.enableShutdownHooks();
+
   const port = process.env.JOURNEY_RUNTIME_PORT || process.env.PORT || 3009;
   await app.listen(port);
   console.log(`🚀 Journey Runtime Service running on port ${port}`);
