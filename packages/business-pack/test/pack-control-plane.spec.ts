@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { compileGraphToJourneyDefinition } from '../src/journey/compiler';
 import { publishBusinessPack, computePackChecksum, rollbackBusinessPack } from '../src/publisher';
 import { BusinessPackLoader } from '../src/loader';
+import { BusinessPackReleaseSchema } from '../src/schemas/business-pack.schema';
 
 async function runPackControlPlaneTests() {
   console.log('📦 Running Immutable Business Pack Control Plane Suite...\n');
@@ -423,6 +424,139 @@ async function runPackControlPlaneTests() {
     assert.ok(sessionCalls.includes('business_pack_pointers.findOne'), 'Pointer findOne must receive session');
     assert.ok(sessionCalls.includes('business_pack_pointers.insertOne'), 'Pointer insertOne must receive session');
     assert.ok(sessionCalls.includes('outbox_events.insertOne'), 'Outbox insertOne must receive session');
+  });
+
+  // ── TEST 6: Mandatory Nonblank Checksum & Mismatch Rejection in BusinessPackLoader ──
+  await test('BusinessPackLoader.loadFromMongo makes checksum mandatory/nonblank and rejects mismatches', async () => {
+    const validPackData: any = {
+      manifest: {
+        packId: 'chk-test-pack',
+        tenantId: 'chk-tenant',
+        name: 'Checksum Test Pack',
+        version: '1.0.0',
+        schemaVersion: '1.0.0',
+        environmentId: 'production',
+      },
+      profile: {
+        companyName: 'Chk Corp',
+        industry: 'retail',
+        primaryGoals: ['commerce'],
+        locales: ['en-US'],
+      },
+      vocabulary: { version: '1.0.0', dimensions: [], terms: [], acronyms: {}, slotSynonyms: {}, slotMappings: {}, prohibitedTerms: [] },
+      entities: { version: '1.0.0', entities: [] },
+      conversationPolicy: { fencingRules: [], prohibitedTopics: [], escalationThresholds: { sentimentFloor: -0.6, maxTurnsWithoutProgress: 4 } },
+      modelPolicy: {
+        version: '1.0.0',
+        defaultPolicy: 'p1',
+        policies: [{ policyId: 'p1', candidates: [{ provider: 'openai', model: 'gpt-4o', priority: 1 }], dataResidency: 'us', maxInputTokens: 1000, maxOutputTokens: 100, fallbackAllowed: false, timeoutMs: 1000 }],
+      },
+      agents: [{ agentId: 'a1', name: 'A', purpose: 'test', description: 'test', modelPolicyRef: 'p1', allowedTools: [], maxTurns: 1, handoffConditions: [] }],
+      journeys: [{
+        journeyId: 'j1', version: '1.0.0', displayName: 'J1', goals: ['test'], initialStage: 's1',
+        stages: { s1: { stageId: 's1', displayName: 'S1', requiredFacts: [], allowedCapabilities: [], nextDecisionPolicy: 'dependency-first', exitConditions: [] } },
+      }],
+      rules: [],
+      capabilities: { version: '1.0.0', toolDefinitions: [], toolBindings: [], stageBindings: [] },
+      experience: { version: '1.0.0', theme: { primaryColor: '#000', accentColor: '#fff', fontFamily: 'sans', borderRadius: '4px', customCssVars: {} }, cards: { allowedCardTypes: ['bundle'], defaultCardRenderer: '@journeyax/ui-cards' } },
+      evaluations: [],
+    };
+
+    const parsedPack = BusinessPackReleaseSchema.parse(validPackData);
+    const legitimateChecksum = computePackChecksum(parsedPack);
+    assert.ok(legitimateChecksum && legitimateChecksum.length === 64, 'Checksum must be 64-char sha256');
+
+    // Helper to build a mock DB with pointer and configurable release doc
+    function createMockDb(releaseDocOverrides: any) {
+      const releaseDoc = {
+        tenantId: 'chk-tenant',
+        environmentId: 'production',
+        version: '1.0.0',
+        ...validPackData,
+        ...releaseDocOverrides,
+      };
+
+      return {
+        collection: (name: string) => {
+          if (name === 'business_pack_pointers') {
+            return {
+              findOne: async () => ({
+                tenantId: 'chk-tenant',
+                environmentId: 'production',
+                activeVersion: '1.0.0',
+              }),
+            };
+          }
+          if (name === 'business_pack_releases') {
+            return {
+              findOne: async () => releaseDoc,
+            };
+          }
+          return { findOne: async () => null };
+        },
+      };
+    }
+
+    // 1. Missing checksum (undefined) rejected -> returns null
+    {
+      const loader = new BusinessPackLoader({ db: createMockDb({ checksum: undefined }) });
+      const res = await loader.loadFromMongo('chk-tenant', 'production', '1.0.0');
+      assert.equal(res, null, 'Release without checksum field must be rejected');
+    }
+
+    // 2. Null checksum rejected -> returns null
+    {
+      const loader = new BusinessPackLoader({ db: createMockDb({ checksum: null }) });
+      const res = await loader.loadFromMongo('chk-tenant', 'production', '1.0.0');
+      assert.equal(res, null, 'Release with null checksum must be rejected');
+    }
+
+    // 3. Empty string checksum rejected -> returns null
+    {
+      const loader = new BusinessPackLoader({ db: createMockDb({ checksum: '' }) });
+      const res = await loader.loadFromMongo('chk-tenant', 'production', '1.0.0');
+      assert.equal(res, null, 'Release with empty checksum string must be rejected');
+    }
+
+    // 4. Blank/whitespace-only checksum rejected -> returns null
+    {
+      const loader = new BusinessPackLoader({ db: createMockDb({ checksum: '   ' }) });
+      const res = await loader.loadFromMongo('chk-tenant', 'production', '1.0.0');
+      assert.equal(res, null, 'Release with whitespace checksum must be rejected');
+    }
+
+    // 5. Checksum mismatch rejected -> returns null
+    {
+      const loader = new BusinessPackLoader({ db: createMockDb({ checksum: 'deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678' }) });
+      const res = await loader.loadFromMongo('chk-tenant', 'production', '1.0.0');
+      assert.equal(res, null, 'Release with mismatched checksum must be rejected');
+    }
+
+    // 6. Valid matching checksum accepted -> returns parsed release
+    {
+      const loader = new BusinessPackLoader({ db: createMockDb({ checksum: legitimateChecksum }) });
+      const res = await loader.loadFromMongo('chk-tenant', 'production', '1.0.0');
+      assert.ok(res, 'Release with valid matching checksum must be accepted');
+      assert.equal(res?.manifest.packId, 'chk-test-pack');
+      assert.equal(res?.manifest.version, '1.0.0');
+    }
+
+    // 7. loadPublished in production fails closed when checksum is missing/mismatched
+    {
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const loader = new BusinessPackLoader({ db: createMockDb({ checksum: 'invalid_checksum' }) });
+        await assert.rejects(
+          async () => {
+            await loader.loadPublished('chk-tenant', 'production', '1.0.0');
+          },
+          /No published Business Pack found/
+        );
+      } finally {
+        process.env.NODE_ENV = origEnv;
+      }
+    }
   });
 
   console.log(`\n==================================================`);

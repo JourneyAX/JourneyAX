@@ -29,6 +29,7 @@ function getNodeModules(): { fs: any; path: any; database: any } {
 export interface PackLoaderOptions {
   mongoDbUri?: string;
   localPacksRoot?: string;
+  db?: any;
 }
 
 export class BusinessPackLoader {
@@ -76,19 +77,32 @@ export class BusinessPackLoader {
   /**
    * Loads the pack directly from MongoDB collections.
    */
-  private async loadFromMongo(
+  async loadFromMongo(
     tenantId: string,
     environmentId: 'dev' | 'test' | 'staging' | 'production',
     version?: string
   ): Promise<BusinessPackRelease | null> {
-    const { database } = getNodeModules();
-    if (!database) return null;
+    let db: any;
 
-    const uri = this.options.mongoDbUri || process.env.MONGODB_URI;
-    if (!uri) return null;
+    if (this.options.db) {
+      db = this.options.db;
+    } else {
+      const { database } = getNodeModules();
+      if (!database) return null;
+
+      const uri = this.options.mongoDbUri || process.env.MONGODB_URI;
+      if (!uri) return null;
+
+      try {
+        const { db: connectedDb } = await database.connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+        db = connectedDb;
+      } catch (err: any) {
+        console.warn(`[BusinessPackLoader] Mongo connection error for '${tenantId}':`, err.message);
+        return null;
+      }
+    }
 
     try {
-      const { db } = await database.connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
       let targetVersion = version;
 
       if (!targetVersion) {
@@ -116,15 +130,21 @@ export class BusinessPackLoader {
         return null;
       }
 
-      // Checksum integrity check: verify release document content matches its checksum
-      if (releaseDoc.checksum) {
-        const computed = computePackChecksum(parsed.data);
-        if (computed !== releaseDoc.checksum) {
-          console.error(
-            `[BusinessPackLoader] Checksum mismatch for '${tenantId}' (${environmentId}) v${targetVersion}: record='${releaseDoc.checksum}' computed='${computed}'`
-          );
-          return null;
-        }
+      // Checksum integrity check: verify release document has mandatory non-blank checksum and matches content
+      const rawChecksum = typeof releaseDoc.checksum === 'string' ? releaseDoc.checksum.trim() : '';
+      if (!rawChecksum) {
+        console.error(
+          `[BusinessPackLoader] Mandatory release checksum missing or blank for Mongo release '${tenantId}' (${environmentId}) v${targetVersion}`
+        );
+        return null;
+      }
+
+      const computed = computePackChecksum(parsed.data);
+      if (computed !== rawChecksum) {
+        console.error(
+          `[BusinessPackLoader] Checksum mismatch for '${tenantId}' (${environmentId}) v${targetVersion}: record='${rawChecksum}' computed='${computed}'`
+        );
+        return null;
       }
 
       const validation = validateBusinessPack(parsed.data);
@@ -165,18 +185,30 @@ export class BusinessPackLoader {
     const cacheKey = `${tenantId}:${environmentId}:latest`;
     if (this.cache.has(cacheKey)) return true;
 
-    const { database } = getNodeModules();
-    const uri = this.options.mongoDbUri || process.env.MONGODB_URI;
-    if (database && uri) {
+    if (this.options.db) {
       try {
-        const { db } = await database.connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
-        const pointerCol = db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
+        const pointerCol = this.options.db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
         const pointer = await pointerCol.findOne({ tenantId, environmentId });
         if (pointer?.activeVersion) {
           return true;
         }
       } catch (err: any) {
         console.warn(`[BusinessPackLoader] MongoDB pointer check warning for '${tenantId}':`, err.message);
+      }
+    } else {
+      const { database } = getNodeModules();
+      const uri = this.options.mongoDbUri || process.env.MONGODB_URI;
+      if (database && uri) {
+        try {
+          const { db } = await database.connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+          const pointerCol = db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
+          const pointer = await pointerCol.findOne({ tenantId, environmentId });
+          if (pointer?.activeVersion) {
+            return true;
+          }
+        } catch (err: any) {
+          console.warn(`[BusinessPackLoader] MongoDB pointer check warning for '${tenantId}':`, err.message);
+        }
       }
     }
 
