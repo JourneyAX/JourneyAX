@@ -43,7 +43,7 @@ export async function GET() {
   var frame = document.createElement('iframe');
   frame.title = 'Agent';
   frame.style.cssText = 'width:100%;height:100%;border:0;display:block;';
-  frame.setAttribute('allow', 'clipboard-write');
+  frame.setAttribute('allow', 'clipboard-write; microphone');
   panel.appendChild(frame);
 
   // Launcher button

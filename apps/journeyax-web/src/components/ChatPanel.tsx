@@ -15,6 +15,8 @@ import ProjectPanel from './ProjectPanel';
 import { uiActionToCards } from '@/lib/cards/uiActionToCards';
 import { CardTile, useCardActions } from './cards/CardStage';
 import type { CardInstance } from '@/lib/types';
+import { useSpeechInput, type SpeechInputError } from '@/lib/voice/useSpeechInput';
+import { useMicWaveform } from '@/lib/voice/useMicWaveform';
 
 /** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
  *  Deliberately generic — a tenant's own vocabulary lives in the card's own
@@ -200,6 +202,13 @@ function personaliseGreeting(greeting: string, name?: string | null): string {
   return `Hi ${name}! ${body.charAt(0).toUpperCase()}${body.slice(1)}`;
 }
 
+function micErrorText(error: SpeechInputError) {
+  if (error === 'not-allowed') return 'Microphone blocked. Allow it in the browser, or type instead.';
+  if (error === 'no-speech') return 'Didn’t catch that. Keep talking, or type instead.';
+  if (error === 'audio-capture') return 'No microphone found. Type instead.';
+  return 'Voice isn’t available right now. Type instead.';
+}
+
 export default function ChatPanel() {
   const { state, dispatch, bom } = useJourney();
   const cfg = useStorefrontConfig();
@@ -240,6 +249,17 @@ export default function ChatPanel() {
 
   const [messages, setMessages] = useState<any[]>([]);
   const [prompt, setPrompt] = useState('');
+  const [dictatePhase, setDictatePhase] = useState<'off' | 'listening' | 'transcribing'>('off');
+  const speech = useSpeechInput({});
+  const wave = useMicWaveform(dictatePhase === 'listening');
+  useEffect(() => {
+    if (speech.error && speech.error !== 'no-speech') setDictatePhase('off');
+  }, [speech.error]);
+  const joinSpoken = (prev: string, piece: string) => {
+    const next = piece.trim();
+    if (!next) return prev;
+    return prev && !/\s$/.test(prev) ? `${prev} ${next}` : `${prev}${next}`;
+  };
   const [isLoading, setIsLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>('');
   const { user: authUser, logout } = useAuth();
@@ -926,11 +946,31 @@ export default function ChatPanel() {
   }, [state.placedOrder?.orderId, state.placedOrder?.status]);
 
 
+  const finishDictation = async (send: boolean) => {
+    if (dictatePhase === 'transcribing') return;
+    setDictatePhase('transcribing');
+    const spoken = await speech.stop();
+    const next = joinSpoken(prompt, spoken);
+    setDictatePhase('off');
+    if (!send) {
+      if (next !== prompt) setPrompt(next);
+      return;
+    }
+    const hasImage = !!pendingImageRef.current;
+    if (!next.trim() && !hasImage) return;
+    const content = next.trim() || "Here's my design — can you make this?";
+    append({ role: 'user', content });
+    setPrompt('');
+  };
+
   const onSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (dictatePhase !== 'off') {
+      void finishDictation(true);
+      return;
+    }
     const hasImage = !!pendingImageRef.current;
     if (!prompt.trim() && !hasImage) return;
-    // Image-only send: give the agent a clear opening so it runs analyzeDesign.
     const content = prompt.trim() || "Here's my design — can you make this?";
     append({ role: 'user', content });
     setPrompt('');
@@ -1193,7 +1233,7 @@ export default function ChatPanel() {
           </div>
         )}
         <form
-          className="chat-input-row"
+          className={dictatePhase === 'off' ? 'chat-input-row' : 'chat-input-row chat-input-row--dictate'}
           onSubmit={onSubmit}
           onDrop={e => { e.preventDefault(); readImageFile(e.dataTransfer?.files?.[0]); }}
           onDragOver={e => e.preventDefault()}
@@ -1205,6 +1245,7 @@ export default function ChatPanel() {
             style={{ display: 'none' }}
             onChange={e => { readImageFile(e.target.files?.[0]); e.target.value = ''; }}
           />
+          {dictatePhase === 'off' && (
           <button
             type="button"
             className="chat-attach-btn"
@@ -1217,6 +1258,7 @@ export default function ChatPanel() {
               <path d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3 3 0 014.24 4.24l-9.19 9.19a1 1 0 01-1.41-1.41l8.48-8.49" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+          )}
           <input
             className="chat-input"
             value={prompt}
@@ -1224,13 +1266,77 @@ export default function ChatPanel() {
             onKeyDown={onKeyDown}
             onPaste={e => { const f = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'))?.getAsFile(); if (f) { e.preventDefault(); readImageFile(f); } }}
             placeholder={pendingImage ? 'Add a note, or just send your design…' : introPlaceholder}
+            readOnly={dictatePhase !== 'off'}
           />
+          {dictatePhase !== 'off' && (
+            <div className="chat-dictate-bar">
+              <button
+                type="button"
+                className="chat-dictate-cancel"
+                aria-label="Cancel dictation"
+                onClick={() => { speech.cancel(); setDictatePhase('off'); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+              {dictatePhase === 'transcribing' ? (
+                <div className="chat-dictate-status" role="status">Transcribing</div>
+              ) : (
+                <div className="chat-dictate-wave" aria-hidden="true">
+                  {Array.from({ length: 72 }, (_, i) => {
+                    const level = wave[i - (72 - wave.length)];
+                    if (level == null || level < 0.04) return <i key={i} className="is-dot" />;
+                    return <i key={i} style={{ height: `${Math.max(4, Math.round(level * 22))}px` }} />;
+                  })}
+                </div>
+              )}
+              <button
+                type="button"
+                className={dictatePhase === 'transcribing' ? 'chat-dictate-stop is-busy' : 'chat-dictate-stop'}
+                aria-label="Stop dictation"
+                disabled={dictatePhase === 'transcribing'}
+                onClick={() => { void finishDictation(false); }}
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+                  <rect width="12" height="12" rx="1.5" fill="currentColor" />
+                </svg>
+              </button>
+              <button type="submit" className="chat-send-btn" aria-label={dictatePhase === 'transcribing' ? 'Transcribing' : 'Send message'} disabled={dictatePhase === 'transcribing'}>
+                {dictatePhase === 'transcribing' ? (
+                  <span className="chat-dictate-spinner" aria-hidden="true" />
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          )}
+          {speech.supported && dictatePhase === 'off' && (
+            <button
+              type="button"
+              className="chat-mic-btn"
+              aria-label="Dictate"
+              title="Dictate"
+              disabled={isLoading || state.isThinking}
+              onClick={() => { speech.start(); setDictatePhase('listening'); }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+          {dictatePhase === 'off' && (
           <button type="submit" className="chat-send-btn" aria-label="Send message">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+          )}
         </form>
+        {speech.error && <div className="chat-mic-error" role="status">{micErrorText(speech.error)}</div>}
         <div className="chat-input-hint">
           {cfg.systemName || 'Your consultant'} can search products, check stock and build your {isCart ? 'bag' : 'quote'}.
         </div>
