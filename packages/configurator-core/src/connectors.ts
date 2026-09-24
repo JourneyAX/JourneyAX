@@ -10,7 +10,11 @@ import {
 } from '@journeyax/shared-types';
 
 /**
- * Universal interface for JourneyAX connectors
+ * Universal interface for JourneyAX connectors.
+ *
+ * @deprecated LEGACY MIGRATION SOURCE ONLY.
+ * Activepieces is the authenticated external connector plane.
+ * Frozen for backward compatibility; modern runtime must use CapabilityDispatcher.
  */
 export interface IJourneyConnector {
   readonly type: ConnectorType;
@@ -31,6 +35,7 @@ export interface ICheckoutConnector extends IJourneyConnector {
 
 /**
  * Shopify Integration Connector (B2C Catalog / Checkout)
+ * @deprecated LEGACY MIGRATION SOURCE ONLY.
  */
 export class ShopifyConnector implements ICatalogConnector, ICheckoutConnector {
   readonly type = 'shopify';

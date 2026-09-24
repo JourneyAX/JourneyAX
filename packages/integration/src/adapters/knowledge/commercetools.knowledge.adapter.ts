@@ -75,6 +75,12 @@ function attrsToSpecs(attrs: any[] | undefined, locale: string): Record<string, 
   return specs;
 }
 
+/**
+ * @deprecated LEGACY MIGRATION SOURCE ONLY.
+ * Activepieces is the authenticated external connector plane.
+ * Direct connector adapters must not be called by modern Journey Runtime.
+ * Kept frozen for backward-compatibility with unmigrated tenants until complete migration cutover.
+ */
 export class CommercetoolsKnowledgeAdapter implements KnowledgePort {
   readonly meta: AdapterMeta = { domain: 'knowledge', platform: 'commercetools' };
 

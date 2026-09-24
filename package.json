@@ -12,7 +12,8 @@
     "dev": "turbo run dev --concurrency=20",
     "build": "turbo run build",
     "start": "turbo run start --concurrency=20",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "inventory:connectors": "tsx scripts/inventory-tenant-connectors.ts"
   },
   "packageManager": "npm@10.9.2",
   "devDependencies": {

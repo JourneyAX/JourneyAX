@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { JourneyConfigurationService } from '../src/journey-configuration.service';
 import { CapabilityRegistryService } from '../src/capability-registry.service';
+import { ProjectService } from '../src/project.service';
 
 async function runJourneyConfigTests() {
   console.log('🧪 Running Studio Control-Plane Integrity & Capability Tests (Workstream C)...\n');
@@ -367,6 +368,122 @@ async function runJourneyConfigTests() {
     assert.equal(result.valid, false);
     assert.ok(result.errors.some((e) => e.includes("Raw secret detected at 'journeys[0].stages[0].customData.nested.clientSecret'")));
     assert.ok(result.errors.some((e) => e.includes("Raw secret detected at 'modelPolicy.policies[0].config.apiKey'")));
+  });
+
+  // Test 11: ProjectService update paths reject and never persist raw credentials (Workstream C)
+  await test('11. ProjectService updateProject strictly rejects raw secrets (notification, AI, connector) and accepts tenant-scoped refs only', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'tenant_secret_guard',
+        {
+          projectId: 'tenant_secret_guard',
+          name: 'Secret Guard Test',
+          integrations: {},
+          notifications: {},
+        },
+      ],
+    ]);
+
+    const mockDb: any = {
+      collection: (_name: string) => ({
+        findOne: async (q: any) => memoryProjects.get(q.projectId) || null,
+        updateOne: async (q: any, u: any) => {
+          const cur = memoryProjects.get(q.projectId) || {};
+          const updated: any = { ...cur };
+          for (const [key, val] of Object.entries(u.$set || {})) {
+            if (key.includes('.')) {
+              const parts = key.split('.');
+              let target: any = updated;
+              for (let i = 0; i < parts.length - 1; i++) {
+                target[parts[i]] = target[parts[i]] || {};
+                target = target[parts[i]];
+              }
+              target[parts[parts.length - 1]] = val;
+            } else {
+              updated[key] = val;
+            }
+          }
+          memoryProjects.set(q.projectId, updated);
+          return { matchedCount: 1, modifiedCount: 1 };
+        },
+        find: () => ({ toArray: async () => [] }),
+      }),
+    };
+
+    const projectService = new ProjectService();
+    projectService.setDbForTesting(mockDb);
+
+    // 11a: Reject raw notification email apiKey
+    const resRawEmail = await projectService.updateProject('tenant_secret_guard', {
+      notifications: {
+        channels: {
+          email: { apiKey: 'SG.raw_secret_key_12345' },
+        },
+      } as any,
+    });
+    assert.equal(resRawEmail.success, false);
+    assert.match(resRawEmail.message || '', /Raw notification apiKey is forbidden/i);
+
+    // 11b: Reject raw notification webhook secret
+    const resRawWebhook = await projectService.updateProject('tenant_secret_guard', {
+      notifications: {
+        channels: {
+          webhook: { secret: 'raw_webhook_secret_value' },
+        },
+      } as any,
+    });
+    assert.equal(resRawWebhook.success, false);
+    assert.match(resRawWebhook.message || '', /Raw notification webhook secret is forbidden/i);
+
+    // 11c: Reject raw AI apiKey
+    const resRawAi = await projectService.updateProject('tenant_secret_guard', {
+      ai: { apiKey: 'sk-proj-raw_secret_key_abcdef' } as any,
+    });
+    assert.equal(resRawAi.success, false);
+    assert.match(resRawAi.message || '', /Raw AI apiKey is forbidden/i);
+
+    // 11d: Reject raw connector clientSecret
+    const resRawConnector = await projectService.updateProject('tenant_secret_guard', {
+      integrations: {
+        commercetools: { clientSecret: 'super_secret_commercetools_secret' },
+      } as any,
+    });
+    assert.equal(resRawConnector.success, false);
+    assert.match(resRawConnector.message || '', /Raw connector credential 'clientSecret'/i);
+
+    // 11e: Accept valid tenant-scoped references only
+    const resValidRefs = await projectService.updateProject('tenant_secret_guard', {
+      notifications: {
+        channels: {
+          email: { apiKeyRef: 'vault://tenants/tenant_secret_guard/sendgrid-api-key' },
+          webhook: { secretRef: 'vault://tenants/tenant_secret_guard/webhook-secret' },
+        },
+      } as any,
+      integrations: {
+        commercetools: { connectionRef: 'conn_ct_tenant_secret_guard' },
+      } as any,
+    });
+    assert.equal(resValidRefs.success, true);
+
+    const savedDoc = memoryProjects.get('tenant_secret_guard');
+    assert.ok(savedDoc);
+    // Ensure raw fields are not present
+    assert.equal(savedDoc.notifications?.channels?.email?.apiKey, undefined);
+    assert.equal(savedDoc.notifications?.channels?.webhook?.secret, undefined);
+    assert.equal(savedDoc.integrations?.commercetools?.clientSecret, undefined);
+    // Ensure refs are persisted
+    assert.equal(
+      savedDoc.notifications?.channels?.email?.apiKeyRef,
+      'vault://tenants/tenant_secret_guard/sendgrid-api-key'
+    );
+    assert.equal(
+      savedDoc.notifications?.channels?.webhook?.secretRef,
+      'vault://tenants/tenant_secret_guard/webhook-secret'
+    );
+    assert.equal(
+      savedDoc.integrations?.commercetools?.connectionRef,
+      'conn_ct_tenant_secret_guard'
+    );
   });
 
   console.log(`\nStudio Control-Plane Tests Complete: ${passed} passed, ${failed} failed.\n`);

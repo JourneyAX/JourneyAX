@@ -324,6 +324,75 @@ async function runWorkerLifecycleHealthTests() {
     service.stopWorker();
   });
 
+  // Section 6: Real Registered Events vs Unknown Event Acknowledgment
+  await test('7. Real registered production events are delivered and acknowledged, whereas unknown events are never acknowledged', async () => {
+    const repo = new OutboxRepository();
+    const service = new OutboxWorkerService(); // Contains default production handlers
+
+    // 1. Enqueue real production events
+    const packPubId = await repo.enqueueEvent(
+      'tenant-prod-test',
+      'production',
+      'business_pack.published',
+      { packId: 'pack_123', version: '1.0.0' }
+    );
+
+    const notifDispatchId = await repo.enqueueEvent(
+      'tenant-prod-test',
+      'production',
+      'notification.dispatch',
+      { deliveryId: 'del_456', provider: 'resend' }
+    );
+
+    const activepiecesDispatchId = await repo.enqueueEvent(
+      'tenant-prod-test',
+      'production',
+      'activepieces.dispatch',
+      { flowId: 'flow_ct_sync_01' }
+    );
+
+    // 2. Enqueue an unknown, unregistered event type
+    const mysteryEventId = await repo.enqueueEvent(
+      'tenant-prod-test',
+      'production',
+      'rogue.unknown.event.type',
+      { payload: 'unexpected' }
+    );
+
+    // Start worker using real default handlers
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker-real-handlers-test',
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+      batchSize: 10,
+      maxAttempts: 3,
+      backoffBaseMs: 10,
+    });
+
+    const batchResult = await worker.processNextBatch();
+    assert.equal(batchResult.processed, 4);
+    assert.equal(batchResult.succeeded, 3, 'All 3 registered production events must succeed');
+    assert.equal(batchResult.failed, 1, 'The 1 unregistered event must fail');
+
+    const events = repo.getEvents();
+    const packEvent = events.find((e) => e.eventId === packPubId)!;
+    const notifEvent = events.find((e) => e.eventId === notifDispatchId)!;
+    const apEvent = events.find((e) => e.eventId === activepiecesDispatchId)!;
+    const mysteryEvent = events.find((e) => e.eventId === mysteryEventId)!;
+
+    // Real production events delivered & acknowledged
+    assert.equal(packEvent.status, 'published');
+    assert.equal(notifEvent.status, 'published');
+    assert.equal(apEvent.status, 'published');
+
+    // Unknown event MUST NOT be acknowledged/published
+    assert.notEqual(mysteryEvent.status, 'published', 'Unknown event must NOT be acknowledged');
+    assert.equal(mysteryEvent.status, 'pending', 'Unknown event remains retryable/pending');
+    assert.match(mysteryEvent.error || '', /No handler registered for event type 'rogue.unknown.event.type'/);
+
+    service.stopWorker();
+  });
+
   console.log(`\n==================================================`);
   console.log(`Worker Lifecycle & Health Test Summary: ${passed} passed, ${failed} failed`);
   console.log(`==================================================\n`);

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { ProjectService } from '../src/project.service';
+import { BusinessPackPublicationService } from '../src/business-pack-publication.service';
+import { BusinessPackReleaseSchema } from '@journeyax/business-pack';
 
 async function runProjectPublishingSuite() {
   console.log('🧪 Running Project Service Publishing & Business Pack Compilation Tests...\n');
@@ -394,6 +396,229 @@ async function runProjectPublishingSuite() {
     assert.ok(releaseDoc.journeys[0].stages.recommend);
     assert.equal(releaseDoc.modelPolicy.policies[0].candidates[0].provider, 'anthropic');
     assert.equal(releaseDoc.modelPolicy.policies[0].candidates[0].model, 'claude-3-5-sonnet');
+  });
+
+  // ── TEST 5: Real BusinessPackPublicationService through real Schema & Publisher ──
+  await test('BusinessPackPublicationService compiles Studio pack through REAL BusinessPackReleaseSchema and real publisher', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'studio-pub-tenant',
+        {
+          projectId: 'studio-pub-tenant',
+          name: 'Studio Published Brand',
+          companyName: 'Studio Brand Corp',
+          ai: {
+            provider: 'openai',
+            model: 'gpt-4o',
+          },
+          persona: {
+            systemName: 'Studio Brand Bot',
+            systemPromptOverrides: 'Guide customers faithfully.',
+            journeyDefinition: {
+              journeyId: 'brand_journey',
+              version: '1.0.0',
+              displayName: 'Brand Journey',
+              goals: ['discovery', 'specification'],
+              initialStage: 'start_stage',
+              stages: {
+                start_stage: {
+                  stageId: 'start_stage',
+                  displayName: 'Start',
+                  requiredFacts: [],
+                  allowedCapabilities: ['catalog.search'],
+                  nextDecisionPolicy: 'dependency-first',
+                  exitConditions: [{ nextStage: 'finish_stage' }],
+                },
+                finish_stage: {
+                  stageId: 'finish_stage',
+                  displayName: 'Finish',
+                  requiredFacts: ['need'],
+                  allowedCapabilities: ['pricing.validate'],
+                  nextDecisionPolicy: 'dependency-first',
+                  exitConditions: [],
+                },
+              },
+            },
+          },
+          capabilities: ['catalog.search', 'pricing.validate'],
+          theme: {
+            primaryColor: '#10B981',
+            accentColor: '#059669',
+            fontFamily: 'Outfit, sans-serif',
+          },
+        },
+      ],
+    ]);
+
+    const memoryVersions: any[] = [];
+    const memoryReleases = new Map<string, any>();
+    const memoryPointers = new Map<string, any>();
+    const memoryOutbox: any[] = [];
+
+    const mockDb: any = {
+      collection: (name: string) => {
+        if (name === 'tenant_configs') {
+          return {
+            findOne: async (q: any) => memoryProjects.get(q.projectId) || null,
+            updateOne: async (q: any, u: any) => {
+              const cur = memoryProjects.get(q.projectId);
+              if (cur) memoryProjects.set(q.projectId, { ...cur, ...(u.$set || {}) });
+              return { matchedCount: 1, modifiedCount: 1 };
+            },
+          };
+        }
+        if (name === 'config_versions') {
+          return {
+            find: (q: any) => ({
+              sort: () => ({
+                limit: () => ({
+                  toArray: async () => memoryVersions.filter((v) => v.projectId === q.projectId),
+                }),
+              }),
+            }),
+            insertOne: async (doc: any) => {
+              memoryVersions.push(doc);
+              return { acknowledged: true };
+            },
+          };
+        }
+        if (name === 'business_pack_releases') {
+          return {
+            insertOne: async (doc: any) => {
+              const key = `${doc.tenantId}:${doc.environmentId}:${doc.version}`;
+              memoryReleases.set(key, doc);
+              return { acknowledged: true };
+            },
+            findOne: async (q: any) => {
+              const key = `${q.tenantId}:${q.environmentId}:${q.version}`;
+              return memoryReleases.get(key) || null;
+            },
+          };
+        }
+        if (name === 'business_pack_pointers') {
+          return {
+            findOne: async (q: any) => memoryPointers.get(`${q.tenantId}:${q.environmentId}`) || null,
+            insertOne: async (doc: any) => {
+              memoryPointers.set(`${doc.tenantId}:${doc.environmentId}`, doc);
+              return { acknowledged: true };
+            },
+            updateOne: async (q: any, u: any) => {
+              const key = `${q.tenantId}:${q.environmentId}`;
+              const prev = memoryPointers.get(key) || {};
+              memoryPointers.set(key, { ...prev, ...u.$set });
+              return { matchedCount: 1 };
+            },
+          };
+        }
+        if (name === 'outbox_events') {
+          return {
+            insertOne: async (doc: any) => {
+              memoryOutbox.push(doc);
+              return { acknowledged: true };
+            },
+          };
+        }
+        if (name === 'tenant_secrets') {
+          return {
+            find: () => ({ toArray: async () => [] }),
+          };
+        }
+        throw new Error(`Unhandled collection in test: ${name}`);
+      },
+    };
+
+    const pubService = new BusinessPackPublicationService(
+      () => mockDb,
+      () => mockDb.collection('tenant_configs'),
+      () => mockDb.collection('config_versions'),
+      () => true,
+      () => {},
+      async (pid) => memoryProjects.get(pid) || null
+    );
+
+    const pubResult = await pubService.publishConfig('studio-pub-tenant', {
+      publishedBy: 'real-test-user',
+      note: 'Canonical publication validation',
+    });
+
+    assert.equal(pubResult.success, true, `Publication must succeed: ${pubResult.message}`);
+    assert.equal(pubResult.version, 1);
+
+    // Verify the saved release strictly satisfies real BusinessPackReleaseSchema
+    const releaseKey = 'studio-pub-tenant:production:1.0.1';
+    const releaseDoc = memoryReleases.get(releaseKey);
+    assert.ok(releaseDoc, 'Release must be persisted in business_pack_releases');
+
+    const schemaVerification = BusinessPackReleaseSchema.safeParse(releaseDoc);
+    assert.equal(
+      schemaVerification.success,
+      true,
+      `Saved release MUST strictly conform to BusinessPackReleaseSchema: ${JSON.stringify(schemaVerification.error?.format())}`
+    );
+
+    // Assert canonical structure
+    assert.equal(releaseDoc.manifest.tenantId, 'studio-pub-tenant');
+    assert.equal(releaseDoc.manifest.environmentId, 'production');
+    assert.ok(Array.isArray(releaseDoc.agents) && releaseDoc.agents.length >= 1, 'Required agents present');
+    assert.equal(releaseDoc.capabilities.version, '1.0.0');
+    assert.ok(Array.isArray(releaseDoc.capabilities.toolDefinitions), 'toolDefinitions array present');
+    assert.ok(Array.isArray(releaseDoc.capabilities.toolBindings), 'toolBindings array present');
+    assert.ok(Array.isArray(releaseDoc.capabilities.stageBindings), 'stageBindings array present');
+    assert.equal(releaseDoc.experience.theme.primaryColor, '#10B981');
+    assert.ok(Array.isArray(releaseDoc.experience.cards.allowedCardTypes));
+    assert.ok(releaseDoc.checksum.length >= 32, 'Authoritative checksum present');
+  });
+
+  // ── TEST 6: Real Schema Rejection on Invalid Studio Config ──────────────
+  await test('Real BusinessPackReleaseSchema rejection blocks publication and fails closed on invalid Studio config', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'corrupt-studio-tenant',
+        {
+          projectId: 'corrupt-studio-tenant',
+          name: 'Corrupt Tenant',
+          companyName: 'Corrupt Corp',
+          ai: {
+            provider: 'openai',
+            model: 'gpt-4o',
+          },
+          persona: {
+            systemName: 'Corrupt Bot',
+            journeyDefinition: {
+              journeyId: 'j_corrupt',
+              version: '1.0.0',
+              goals: [], // Invalid: goals requires .min(1)
+              initialStage: 'non_existent_stage',
+              stages: {},
+            },
+          },
+        },
+      ],
+    ]);
+
+    const mockDb: any = {
+      collection: (name: string) => {
+        if (name === 'tenant_configs') {
+          return { findOne: async (q: any) => memoryProjects.get(q.projectId) || null };
+        }
+        if (name === 'config_versions') {
+          return { find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) };
+        }
+        return { find: () => ({ toArray: async () => [] }) };
+      },
+    };
+
+    const pubService = new BusinessPackPublicationService(
+      () => mockDb,
+      () => mockDb.collection('tenant_configs'),
+      () => mockDb.collection('config_versions'),
+      () => true,
+      () => {},
+      async (pid) => memoryProjects.get(pid) || null
+    );
+
+    const result = await pubService.publishConfig('corrupt-studio-tenant');
+    assert.equal(result.success, false, 'Publish must fail closed when schema/integrity is invalid');
   });
 
   console.log(`\nProject Service Tests Complete: ${passed} passed, ${failed} failed.`);

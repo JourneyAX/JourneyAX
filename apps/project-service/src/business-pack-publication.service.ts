@@ -6,7 +6,7 @@ import {
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
 } from '@journeyax/business-pack';
-import { CapabilityRegistryService } from './capability-registry.service';
+import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
 
 @Injectable()
 export class BusinessPackPublicationService {
@@ -141,49 +141,244 @@ export class BusinessPackPublicationService {
       };
     }
 
+    // Ensure journeys conform to JourneyDefinitionSchema
+    const validatedJourneys = journeyList.map((j: any) => ({
+      journeyId: j.journeyId || `${pid}_journey`,
+      version: j.version || '1.0.0',
+      displayName: j.displayName || doc.companyName || pid,
+      description: j.description || `${doc.companyName || pid} journey flow`,
+      goals: Array.isArray(j.goals) && j.goals.length > 0 ? j.goals : ['discovery', 'specification'],
+      initialStage: j.initialStage || Object.keys(j.stages || {})[0] || 'discovery',
+      stages: j.stages || {},
+      metadata: j.metadata || {},
+    }));
+
+    // Compile Agents (min 1 required by BusinessPackReleaseSchema)
+    const compiledAgents = (doc.agents && Array.isArray(doc.agents) && doc.agents.length > 0)
+      ? doc.agents.map((a: any) => ({
+          agentId: a.agentId || `${pid}_specialist`,
+          name: a.name || `${pid} Specialist`,
+          purpose: a.purpose || 'Architectural compliance and product specification',
+          systemPromptTemplate: a.systemPromptTemplate || doc.persona?.systemPromptOverrides || `Assist customers with recommendations for ${pid}.`,
+          inputSchema: a.inputSchema || {},
+          outputSchema: a.outputSchema || {},
+          allowedTools: Array.isArray(a.allowedTools) ? a.allowedTools : [],
+          modelPolicyRef: a.modelPolicyRef || compiledModelPolicy.defaultPolicy || 'default',
+          maxTurns: a.maxTurns || 4,
+          handoffConditions: Array.isArray(a.handoffConditions) ? a.handoffConditions : [],
+        }))
+      : [
+          {
+            agentId: `${pid}_primary_stylist`,
+            name: doc.persona?.systemName || `${pid} Stylist`,
+            purpose: 'Primary conversational journey advisor',
+            systemPromptTemplate: doc.persona?.systemPromptOverrides || `Assist customers with recommendations for ${pid}.`,
+            inputSchema: {},
+            outputSchema: {},
+            allowedTools: Array.isArray(doc.capabilities) ? doc.capabilities.map((c: any) => typeof c === 'string' ? c : c.toolId) : [],
+            modelPolicyRef: compiledModelPolicy.defaultPolicy || 'default',
+            maxTurns: 5,
+            handoffConditions: [],
+          },
+        ];
+
+    // Compile Capabilities: toolDefinitions, toolBindings, stageBindings
+    const toolNames = new Set<string>();
+    if (Array.isArray(doc.capabilities)) {
+      doc.capabilities.forEach((c: any) => {
+        if (typeof c === 'string') toolNames.add(c);
+        else if (c && c.toolId) toolNames.add(c.toolId);
+      });
+    }
+    for (const j of validatedJourneys) {
+      if (j.stages && typeof j.stages === 'object') {
+        for (const stage of Object.values<any>(j.stages)) {
+          if (Array.isArray(stage.allowedCapabilities)) {
+            stage.allowedCapabilities.forEach((t: string) => toolNames.add(t));
+          }
+        }
+      }
+    }
+
+    const stageBindings: Array<{ journeyId: string; stageId: string; tools: Array<{ toolId: string }> }> = [];
+    for (const j of validatedJourneys) {
+      if (j.stages && typeof j.stages === 'object') {
+        for (const [sId, stage] of Object.entries<any>(j.stages)) {
+          stageBindings.push({
+            journeyId: j.journeyId,
+            stageId: sId,
+            tools: (stage.allowedCapabilities || []).map((tId: string) => ({ toolId: tId })),
+          });
+        }
+      }
+    }
+
+    const compiledCapabilities = {
+      version: '1.0.0',
+      toolDefinitions: Array.from(toolNames).map((toolId) => {
+        const std = (STANDARD_TOOL_SCHEMAS as any)[toolId] || {};
+        return {
+          toolId,
+          version: '1.0.0',
+          displayName: std.displayName || toolId,
+          description: std.description || `Capability ${toolId}`,
+          inputSchema: std.inputSchema || {},
+          outputSchema: std.outputSchema || {},
+          sideEffect: std.sideEffect || (toolId.includes('commit') || toolId.includes('create') ? 'transactional' : 'read'),
+          risk: std.risk || (toolId.includes('commit') ? 'high' : 'low'),
+          timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
+          idempotencyPolicy: { required: std.idempotencyRequired || toolId.includes('commit'), ttlSeconds: 86400 },
+          approvalPolicy: { requiresApproval: std.requiresApproval || toolId.includes('commit'), ttlMinutes: 60 },
+          dataClassification: 'internal' as const,
+        };
+      }),
+      toolBindings: Array.from(toolNames).map((toolId) => ({
+        tenantId: pid,
+        environmentId: 'production' as const,
+        toolId,
+        bindingVersion: '1.0.0',
+        executor: {
+          type: 'native_capability' as const,
+          nativeHandler: toolId,
+        },
+        enabled: true,
+        policy: {
+          requiredRole: 'customer',
+          requiresConfirmation: toolId.includes('commit'),
+          idempotencyRequired: toolId.includes('commit'),
+          timeoutMs: 10000,
+          retryAttempts: 0,
+        },
+      })),
+      stageBindings,
+    };
+
+    // Compile Experience (Cards & Themes)
+    const themeFromDoc = (doc.uiTheme as any)?.theme || doc.theme;
+    const tokens = doc.uiTheme?.tokens;
+    const allowedCardTypes = doc.experience?.cards?.allowedCardTypes
+      || (doc.cardTemplates ? Object.keys(doc.cardTemplates) : undefined)
+      || [
+        'bundle',
+        'products',
+        'productDetail',
+        'quote',
+        'comparison',
+        'plan',
+        'cart',
+        'orderStatus',
+        'guide',
+      ];
+
+    const compiledExperience = {
+      version: '1.0.0',
+      theme: {
+        primaryColor: tokens?.colors?.brand || themeFromDoc?.primaryColor || '#0F172A',
+        accentColor: tokens?.colors?.accent || themeFromDoc?.accentColor || '#3B82F6',
+        fontFamily: tokens?.font?.body || tokens?.font?.display || themeFromDoc?.fontFamily || 'Inter, sans-serif',
+        borderRadius: tokens?.radius?.md || themeFromDoc?.borderRadius || '8px',
+        customCssVars: (doc.uiTheme as any)?.theme?.customCssVars || {},
+      },
+      cards: {
+        allowedCardTypes,
+        defaultCardRenderer: doc.experience?.cards?.defaultCardRenderer || '@journeyax/ui-cards',
+        ...(doc.cardTemplates ? { templates: doc.cardTemplates } : {}),
+      },
+    };
+
+    const compiledEvaluations = Array.isArray(doc.evaluations) && doc.evaluations.length > 0
+      ? doc.evaluations
+      : Array.isArray((doc as any).scenarios) && (doc as any).scenarios.length > 0
+      ? [
+          {
+            suiteId: `${pid}_acceptance_suite`,
+            name: `${doc.companyName || pid} Acceptance Suite`,
+            tenantId: pid,
+            version: '1.0.0',
+            blockingOnPublish: false,
+            scenarios: (doc as any).scenarios.map((s: any, idx: number) => ({
+              scenarioId: s.id || `scenario_${idx + 1}`,
+              name: s.id || `Scenario ${idx + 1}`,
+              description: s.say,
+              prompt: s.say,
+              expectedTargetStage: s.stage,
+              assertions: [],
+              timeoutMs: 15000,
+            })),
+          },
+        ]
+      : [];
+
+    const defaultEntities = doc.business?.entityModel
+      ? [
+          {
+            entityId: doc.business.entityModel.key,
+            displayName: doc.business.entityModel.label,
+            description: doc.business.entityModel.labelPlural || doc.business.entityModel.label,
+            attributes: (doc.business.entityModel.captureFields || []).map((f: any) => ({
+              name: f.key,
+              type: 'string' as const,
+              required: Boolean(f.required),
+            })),
+          },
+        ]
+      : [
+          {
+            entityId: 'customer_context',
+            displayName: 'Customer Context',
+            description: 'Customer context and preferences',
+            attributes: [
+              { name: 'budget', type: 'number' as const, required: false },
+              { name: 'timeline', type: 'string' as const, required: false },
+            ],
+          },
+        ];
+
     const businessPack = {
       manifest: {
-        packId: pid,
+        packId: `pack_${pid}`,
+        tenantId: pid,
+        name: doc.companyName || doc.name || pid,
         version: `1.0.${version}`,
+        description: `${industry} Business Pack`,
         schemaVersion: '1.0.0',
-        name: doc.name || doc.companyName || pid,
-        description: doc.companyName || pid,
+        environmentId: 'production' as const,
         author: opts.publishedBy || 'studio',
-        industry,
-        status: 'active' as const,
-        checksum: '',
       },
       profile: {
-        tenantId: pid,
-        tenantName: doc.companyName || pid,
+        companyName: doc.companyName || doc.name || pid,
         industry,
-        supportedLanguages: ['en'],
-        defaultLanguage: 'en',
-        timezone: (doc as any).regionalSettings?.timezone || 'Australia/Sydney',
-        currency: (doc as any).regionalSettings?.currency || 'AUD',
+        primaryGoals: doc.scope?.categories || ['customer_service'],
+        locales: ['en-AU', 'en-US'],
       },
       vocabulary: {
-        tenantId: pid,
-        industry,
-        dimensions,
-        termMappings: (doc as any).terminology || {},
+        version: '1.0.0',
+        dimensions: dimensions.length > 0 ? dimensions : (doc.vocabulary?.dimensions || []),
+        terms: doc.vocabulary?.terms || [],
+        acronyms: doc.vocabulary?.acronyms || {},
+        slotSynonyms: doc.vocabulary?.slotSynonyms || {},
+        slotMappings: doc.vocabulary?.slotMappings || {},
+        prohibitedTerms: doc.vocabulary?.prohibitedTerms || [],
       },
-      conversationPolicy: {
-        tenantId: pid,
-        maxTurns: 30,
-        groundingRequired: true,
-        clarificationThreshold: 0.7,
+      entities: doc.entities || {
+        version: '1.0.0',
+        entities: defaultEntities,
+      },
+      conversationPolicy: doc.conversationPolicy || {
+        fencingRules: [],
+        prohibitedTopics: [],
+        escalationThresholds: {
+          sentimentFloor: -0.6,
+          maxTurnsWithoutProgress: 4,
+        },
       },
       modelPolicy: compiledModelPolicy,
-      journeys: journeyList,
-      capabilities: {
-        bindings: Array.isArray(doc.capabilities) ? doc.capabilities : [],
-      },
-      experience: {
-        defaultTheme: (doc.uiTheme as any)?.brandPreset || 'journeyax',
-        tokens: doc.uiTheme?.tokens || {},
-        cards: doc.cardTemplates || {},
-      },
+      agents: compiledAgents,
+      journeys: validatedJourneys,
+      rules: Array.isArray(doc.rules) ? doc.rules : [],
+      capabilities: compiledCapabilities,
+      experience: compiledExperience,
+      evaluations: compiledEvaluations,
     };
 
     // Validate Business Pack reference integrity fail-closed

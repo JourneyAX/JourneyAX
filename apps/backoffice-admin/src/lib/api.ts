@@ -103,10 +103,10 @@ export interface Project {
   cardTemplates?: Record<string, { cardType: string; spec: unknown; variant?: string; note?: string; updatedAt?: string }>;
   fulfilment?: { mode?: 'delivery' | 'collect' | 'both'; label?: string; badge?: string; branches?: { id: string; name: string; address?: string }[] };
   integrations?: {
-    whatsapp?: { enabled: boolean; phoneNumberId?: string; accessToken?: string; verifyToken?: string; wabaId?: string };
-    shopify?: { enabled: boolean; shopDomain?: string; accessToken?: string };
-    commercetools?: { enabled: boolean; projectKey?: string; clientId?: string; clientSecret?: string; apiUrl?: string; authUrl?: string; searchLocale?: string };
-    woocommerce?: { enabled: boolean; storeUrl?: string; consumerKey?: string; consumerSecret?: string };
+    whatsapp?: { enabled: boolean; phoneNumberId?: string; connectionRef?: string; accessTokenRef?: string; verifyTokenRef?: string; wabaId?: string; accessToken?: string; verifyToken?: string };
+    shopify?: { enabled: boolean; shopDomain?: string; connectionRef?: string; flowId?: string; accessTokenRef?: string; accessToken?: string };
+    commercetools?: { enabled: boolean; projectKey?: string; connectionRef?: string; flowId?: string; pieceId?: string; secretRef?: string; searchLocale?: string; clientId?: string; clientSecret?: string; apiUrl?: string; authUrl?: string };
+    woocommerce?: { enabled: boolean; storeUrl?: string; connectionRef?: string; flowId?: string; consumerKeyRef?: string; consumerSecretRef?: string; consumerKey?: string; consumerSecret?: string };
     // Which platform backs each agent domain (the runtime switch — B3). Unset = standalone.
     platforms?: { knowledge?: string; commerce?: string };
   };

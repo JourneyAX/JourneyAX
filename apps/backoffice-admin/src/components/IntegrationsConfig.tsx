@@ -38,12 +38,15 @@ export function IntegrationsConfig({ project, onSaved, onNavigate }: { project: 
   const [platforms, setPlatforms] = useState<{ knowledge?: string; commerce?: string }>(plat0);
   const [ct, setCt] = useState({
     projectKey: ct0.projectKey || "",
-    clientId: ct0.clientId || "",
-    clientSecret: ct0.clientSecret || "",
-    apiUrl: ct0.apiUrl || "https://api.australia-southeast1.gcp.commercetools.com",
-    authUrl: ct0.authUrl || "https://auth.australia-southeast1.gcp.commercetools.com",
+    connectionRef: ct0.connectionRef || "",
+    flowId: ct0.flowId || "",
+    pieceId: ct0.pieceId || "@activepieces/piece-commercetools",
     searchLocale: ct0.searchLocale || "en-AU",
   });
+  const [installedConnections, setInstalledConnections] = useState<
+    { connectionRef: string; name: string }[]
+  >([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -55,13 +58,26 @@ export function IntegrationsConfig({ project, onSaved, onNavigate }: { project: 
     setPlatforms(project.integrations?.platforms || {});
     setCt({
       projectKey: c.projectKey || "",
-      clientId: c.clientId || "",
-      clientSecret: c.clientSecret || "",
-      apiUrl: c.apiUrl || "https://api.australia-southeast1.gcp.commercetools.com",
-      authUrl: c.authUrl || "https://auth.australia-southeast1.gcp.commercetools.com",
+      connectionRef: c.connectionRef || "",
+      flowId: c.flowId || "",
+      pieceId: c.pieceId || "@activepieces/piece-commercetools",
       searchLocale: c.searchLocale || "en-AU",
     });
     setTestResult(null);
+
+    // Fetch server-verified installed connections owned by this tenant
+    setLoadingConnections(true);
+    fetch(`/api/integrations/connections?projectId=${project.projectId}`)
+      .then((res) => (res.ok ? res.json() : { connections: [] }))
+      .then((data) => {
+        setInstalledConnections(data.connections || []);
+      })
+      .catch(() => {
+        setInstalledConnections([]);
+      })
+      .finally(() => {
+        setLoadingConnections(false);
+      });
   }, [project.projectId]);
 
   const ctUsed = platforms.knowledge === 'commercetools' || platforms.commerce === 'commercetools';
@@ -86,7 +102,12 @@ export function IntegrationsConfig({ project, onSaved, onNavigate }: { project: 
     try {
       const res = await fetch('/api/integrations/test-commercetools', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ct),
+        body: JSON.stringify({
+          projectKey: ct.projectKey,
+          connectionRef: ct.connectionRef,
+          flowId: ct.flowId,
+          pieceId: ct.pieceId,
+        }),
       });
       const data = await res.json();
       setTestResult({ ok: res.ok && data.ok, message: data.message || (res.ok ? 'Connected.' : `HTTP ${res.status}`) });
@@ -148,32 +169,47 @@ export function IntegrationsConfig({ project, onSaved, onNavigate }: { project: 
       {/* commercetools connection */}
       <div className="panel" style={{ opacity: ctUsed ? 1 : 0.65 }}>
         <div className="between">
-          <h4>commercetools connection</h4>
+          <h4>commercetools connection (Activepieces plane)</h4>
           <span className={`pill ${ctUsed ? 'p-active' : 'p-offline'}`}>{ctUsed ? 'In use' : 'Not selected above'}</span>
         </div>
         <p className="micro" style={{ color: "var(--jx-gray-600)", margin: "4px 0 12px" }}>
-          Create an API client in the Merchant Center (scope <code>view_products</code>) and paste its credentials.
-          Stored per-project in the database — never in code or env.
+          Select an installed Activepieces connection reference. Provider credentials and tokens remain strictly within Activepieces and are never exposed to the browser.
         </p>
         <div className="form-grid">
           <div><span className="flabel">Project key</span>
             <input className="field" value={ct.projectKey} onChange={(e) => setCt({ ...ct, projectKey: e.target.value })} placeholder="my-store-dev" /></div>
           <div><span className="flabel">Search locale</span>
             <input className="field" value={ct.searchLocale} onChange={(e) => setCt({ ...ct, searchLocale: e.target.value })} placeholder="en-AU" /></div>
-          <div><span className="flabel">Client ID</span>
-            <input className="field" value={ct.clientId} onChange={(e) => setCt({ ...ct, clientId: e.target.value })} /></div>
-          <div><span className="flabel">Client secret</span>
-            <input className="field" type="password" value={ct.clientSecret} onChange={(e) => setCt({ ...ct, clientSecret: e.target.value })} /></div>
-          <div><span className="flabel">API URL</span>
-            <input className="field" value={ct.apiUrl} onChange={(e) => setCt({ ...ct, apiUrl: e.target.value })} /></div>
-          <div><span className="flabel">Auth URL</span>
-            <input className="field" value={ct.authUrl} onChange={(e) => setCt({ ...ct, authUrl: e.target.value })} /></div>
+          <div>
+            <span className="flabel">Activepieces Connection Reference</span>
+            <select
+              className="field"
+              value={ct.connectionRef}
+              onChange={(e) => setCt({ ...ct, connectionRef: e.target.value })}
+              disabled={loadingConnections}
+            >
+              <option value="">
+                {loadingConnections
+                  ? "Loading connections…"
+                  : installedConnections.length === 0
+                  ? "-- No installed connections found for tenant --"
+                  : "-- Select installed connection --"}
+              </option>
+              {installedConnections.map((c) => (
+                <option key={c.connectionRef} value={c.connectionRef}>
+                  {c.name || c.connectionRef} ({c.connectionRef})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div><span className="flabel">Activepieces Flow ID (optional)</span>
+            <input className="field" value={ct.flowId} onChange={(e) => setCt({ ...ct, flowId: e.target.value })} placeholder="flow_ct_sync" /></div>
         </div>
         <div className="between" style={{ marginTop: 12 }}>
           <span className="micro" style={{ color: testResult ? (testResult.ok ? '#1F8A4C' : '#B7392D') : 'var(--jx-gray-500)' }}>
             {testing ? 'Testing…' : testResult ? testResult.message : ''}
           </span>
-          <button className="btn" onClick={testConnection} disabled={testing || !ct.projectKey || !ct.clientId || !ct.clientSecret}>
+          <button className="btn" onClick={testConnection} disabled={testing || !ct.connectionRef}>
             <FlaskConical size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />
             Test connection
           </button>

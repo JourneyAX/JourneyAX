@@ -13,18 +13,47 @@ import {
   OrderCommitHandler,
 } from '../capabilities/handlers';
 
+import {
+  IConnectionOwnershipRepository,
+  DurableConnectionOwnershipRepository,
+} from './connection-ownership.repository';
+
+export interface CapabilityGatewayOptions {
+  ownershipRepository?: IConnectionOwnershipRepository;
+  db?: any;
+  activepiecesApiUrl?: string;
+  activepiecesApiKey?: string;
+  activepiecesWebhookSecret?: string;
+}
+
 export class CapabilityGateway {
   private dispatcher: CapabilityDispatcher;
   private resolver: CapabilityResolver;
+  private ownershipRepository: IConnectionOwnershipRepository;
 
-  constructor() {
-    this.dispatcher = new CapabilityDispatcher();
+  constructor(options: CapabilityGatewayOptions = {}) {
+    this.ownershipRepository =
+      options.ownershipRepository ||
+      new DurableConnectionOwnershipRepository(options.db ? () => options.db : undefined);
+
+    this.dispatcher = new CapabilityDispatcher({
+      activepiecesApiUrl: options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL,
+      activepiecesApiKey: options.activepiecesApiKey || process.env.ACTIVEPIECES_API_KEY,
+      activepiecesWebhookSecret:
+        options.activepiecesWebhookSecret || process.env.ACTIVEPIECES_WEBHOOK_SECRET,
+      validateConnectionOwnership: (tenantId, environmentId, connectionRef) =>
+        this.ownershipRepository.validateOwnership(tenantId, environmentId, connectionRef),
+    });
     this.resolver = new CapabilityResolver();
 
     // Register generic domain-neutral platform handlers
     this.dispatcher.registerNativeHandler('catalog.search', new CatalogSearchHandler());
     this.dispatcher.registerNativeHandler('pricing.validate', new PricingValidateHandler());
     this.dispatcher.registerNativeHandler('order.commit', new OrderCommitHandler());
+  }
+
+  getOwnershipRepository(): IConnectionOwnershipRepository {
+    return this.ownershipRepository;
   }
 
   /**

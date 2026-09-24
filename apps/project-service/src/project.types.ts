@@ -217,34 +217,61 @@ export interface ProjectAiConfig {
 export interface WhatsAppConfig {
   enabled: boolean;
   phoneNumberId?: string;      // routes inbound → this project
-  accessToken?: string;        // used to send replies for this project
-  verifyToken?: string;        // webhook handshake for this project
+  connectionRef?: string;
+  accessTokenRef?: string;
+  verifyTokenRef?: string;
   wabaId?: string;
+  /** @deprecated Legacy raw token. Kept for unmigrated record compatibility; not accepted in new configurations. */
+  accessToken?: string;
+  /** @deprecated Legacy raw token. Kept for unmigrated record compatibility; not accepted in new configurations. */
+  verifyToken?: string;
 }
 export interface ShopifyConfig {
   enabled: boolean;
   shopDomain?: string;         // "my-store.myshopify.com"
+  connectionRef?: string;     // Activepieces connection reference
+  flowId?: string;            // Activepieces flow ID
+  accessTokenRef?: string;    // Tenant-scoped secret reference
+  /** @deprecated Legacy raw token. Kept for unmigrated record compatibility; not accepted in new configurations. */
   accessToken?: string;
 }
 export interface CommerceToolsConfig {
   enabled: boolean;
   projectKey?: string;
+  connectionRef?: string;     // Activepieces connection reference (e.g. ap_conn_commercetools_caroma)
+  flowId?: string;            // Activepieces flow ID for catalog sync / capability execution
+  pieceId?: string;           // Activepieces piece ID (default: '@activepieces/piece-commercetools')
+  secretRef?: string;         // Tenant-scoped secret reference in tenant_secrets
+  searchLocale?: string;      // e.g. "en-AU" — locale for product text search + names
+  /** @deprecated Legacy raw credentials. Kept for unmigrated tenant records only; prohibited in modern packs and UI. */
   clientId?: string;
+  /** @deprecated Legacy raw credentials. Kept for unmigrated tenant records only; prohibited in modern packs and UI. */
   clientSecret?: string;
+  /** @deprecated Legacy direct endpoint. Kept for unmigrated tenant records only. */
   apiUrl?: string;
+  /** @deprecated Legacy direct endpoint. Kept for unmigrated tenant records only. */
   authUrl?: string;
-  searchLocale?: string;   // e.g. "en-AU" — locale for product text search + names
 }
 export interface WooCommerceConfig {
   enabled: boolean;
   storeUrl?: string;
+  connectionRef?: string;
+  flowId?: string;
+  consumerKeyRef?: string;
+  consumerSecretRef?: string;
+  /** @deprecated Legacy raw credentials. Kept for unmigrated record compatibility. */
   consumerKey?: string;
+  /** @deprecated Legacy raw credentials. Kept for unmigrated record compatibility. */
   consumerSecret?: string;
 }
 export interface StripeConfig {
   enabled: boolean;
-  secretKey?: string;          // sk_… — SECRET (redacted on read); falls back to platform STRIPE_SECRET_KEY
+  connectionRef?: string;
+  flowId?: string;
+  secretKeyRef?: string;
   publishableKey?: string;     // pk_… — safe to expose
+  /** @deprecated Legacy raw secret. Kept for unmigrated record compatibility. */
+  secretKey?: string;
 }
 export interface ProjectIntegrations {
   whatsapp?: WhatsAppConfig;

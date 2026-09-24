@@ -488,17 +488,29 @@ async function runNotificationTests() {
 
     try {
       // Retry attempt 1 -> total attempts 2 (retrying)
-      const afterRetry1 = await dispatcher.retryDelivery(failedDelivId, {
-        email: { enabled: true, apiKeyRef: 'resend_secret_ref' },
-      });
+      const afterRetry1 = await dispatcher.retryDelivery(
+        'tenant_abc',
+        'production',
+        'resend',
+        failedDelivId,
+        {
+          email: { enabled: true, apiKeyRef: 'resend_secret_ref' },
+        }
+      );
       assert.equal(afterRetry1?.attempts, 2);
       assert.equal(afterRetry1?.status, 'retrying');
       assert.match(afterRetry1?.error || '', /503/);
 
       // Retry attempt 2 -> total attempts 3 >= maxAttempts 3 (failed - exhausted!)
-      const afterRetry2 = await dispatcher.retryDelivery(failedDelivId, {
-        email: { enabled: true, apiKeyRef: 'resend_secret_ref' },
-      });
+      const afterRetry2 = await dispatcher.retryDelivery(
+        'tenant_abc',
+        'production',
+        'resend',
+        failedDelivId,
+        {
+          email: { enabled: true, apiKeyRef: 'resend_secret_ref' },
+        }
+      );
       assert.equal(afterRetry2?.attempts, 3);
       assert.equal(afterRetry2?.status, 'failed', 'Status must transition to failed upon retry exhaustion');
       assert.equal(afterRetry2?.deliveredAt, undefined, 'Must NEVER mark delivered without successful send');
@@ -580,6 +592,7 @@ async function runNotificationTests() {
     const mismatchedTenant = await dispatcher.retryDelivery(
       'tenant_xyz',
       'production',
+      'resend',
       targetDeliv.deliveryId,
       { email: { enabled: true, apiKeyRef: 'resend_secret_ref' } }
     );
@@ -589,10 +602,35 @@ async function runNotificationTests() {
     const mismatchedEnv = await dispatcher.retryDelivery(
       'tenant_abc',
       'staging' as any,
+      'resend',
       targetDeliv.deliveryId,
       { email: { enabled: true, apiKeyRef: 'resend_secret_ref' } }
     );
     assert.equal(mismatchedEnv, null, 'Retry query must not match delivery in different environment');
+
+    // Negative: Unscoped retry attempt throws fail-closed error
+    await assert.rejects(
+      async () => {
+        await (dispatcher as any).retryDelivery('', 'production', 'resend', targetDeliv.deliveryId);
+      },
+      /unscoped retry is forbidden/i,
+      'Unscoped retry without tenantId must throw'
+    );
+
+    // Negative: Webhook callback with unmatched deliveryId must NOT record deduplication entry
+    const initialCallbacksCount = insertedCallbacks.length;
+    const unmatchedPayload = JSON.stringify({ deliveryId: 'non_existent_deliv_999', event: 'delivered' });
+    const unmatchedHmac = createHmac('sha256', 'mock_secret_val').update(unmatchedPayload).digest('hex');
+    const callbackResult = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${unmatchedHmac}` },
+      JSON.parse(unmatchedPayload),
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+    assert.equal(callbackResult.processed, 0, 'Unmatched delivery must not be processed');
+    assert.equal(insertedCallbacks.length, initialCallbacksCount, 'Unmatched delivery must NOT record deduplication callback');
   });
 
   console.log(`\nNotification Tests Complete: ${passed} passed, ${failed} failed.\n`);

@@ -5,24 +5,24 @@ import { computePackChecksum } from './publisher';
 const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
 
-function getNodeModules(): { fs: any; path: any; database: any } {
+function getNodeModules(): { fs: any; path: any; mongodb: any } {
   if (typeof window !== 'undefined') {
-    return { fs: null, path: null, database: null };
+    return { fs: null, path: null, mongodb: null };
   }
   try {
     const globalObj = globalThis as any;
     const req = typeof globalObj.__non_webpack_require__ !== 'undefined'
       ? globalObj.__non_webpack_require__
       : eval('require');
-    let database = null;
+    let mongodb = null;
     try {
-      database = req('@journeyax/database');
+      mongodb = req('mongodb');
     } catch {
-      // database package not available in client environment
+      // mongodb package not available in client environment
     }
-    return { fs: req('fs'), path: req('path'), database };
+    return { fs: req('fs'), path: req('path'), mongodb };
   } catch {
-    return { fs: null, path: null, database: null };
+    return { fs: null, path: null, mongodb: null };
   }
 }
 
@@ -87,15 +87,16 @@ export class BusinessPackLoader {
     if (this.options.db) {
       db = this.options.db;
     } else {
-      const { database } = getNodeModules();
-      if (!database) return null;
+      const { mongodb } = getNodeModules();
+      if (!mongodb) return null;
 
       const uri = this.options.mongoDbUri || process.env.MONGODB_URI;
       if (!uri) return null;
 
       try {
-        const { db: connectedDb } = await database.connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
-        db = connectedDb;
+        const client = new mongodb.MongoClient(uri);
+        await client.connect();
+        db = client.db(process.env.MONGODB_DB_NAME || 'journeyx');
       } catch (err: any) {
         console.warn(`[BusinessPackLoader] Mongo connection error for '${tenantId}':`, err.message);
         return null;
@@ -196,11 +197,13 @@ export class BusinessPackLoader {
         console.warn(`[BusinessPackLoader] MongoDB pointer check warning for '${tenantId}':`, err.message);
       }
     } else {
-      const { database } = getNodeModules();
+      const { mongodb } = getNodeModules();
       const uri = this.options.mongoDbUri || process.env.MONGODB_URI;
-      if (database && uri) {
+      if (mongodb && uri) {
         try {
-          const { db } = await database.connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+          const client = new mongodb.MongoClient(uri);
+          await client.connect();
+          const db = client.db(process.env.MONGODB_DB_NAME || 'journeyx');
           const pointerCol = db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
           const pointer = await pointerCol.findOne({ tenantId, environmentId });
           if (pointer?.activeVersion) {

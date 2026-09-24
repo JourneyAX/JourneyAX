@@ -1,18 +1,15 @@
 /**
  * @journeyax/integration — the Integration/Adapter layer.
  *
- * Public surface: import ports + the registry from here. Domain code and the
- * agent-runtime should depend ONLY on the ports and `adapterRegistry`, never on
- * a concrete adapter class.
- *
- *   import { adapterRegistry, CommercePort } from '@journeyax/integration';
- *   const commerce = adapterRegistry.getCommerce(tenantId);
- *   const products = await commerce.searchProducts({ tenantId }, { query });
+ * @deprecated LEGACY MIGRATION SOURCE ONLY.
+ * Activepieces is the authenticated external connector plane.
+ * Direct connector adapters must NOT be imported or used by modern Journey Runtime.
+ * Kept frozen for unmigrated tenant compatibility until all tenants have validated Business Packs.
  */
 export * from './ports';
 export * from './registry';
 
-// Concrete adapters are exported for wiring/registration only (not for direct use):
+// Concrete adapters are legacy migration sources only:
 export { StandaloneCommerceAdapter } from './adapters/commerce/standalone.commerce.adapter';
 export { ShopifyCommerceAdapter } from './adapters/commerce/shopify.commerce.adapter';
 export { SalesforceCrmAdapter } from './adapters/crm/salesforce.crm.adapter';

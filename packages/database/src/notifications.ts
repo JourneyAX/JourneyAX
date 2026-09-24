@@ -798,6 +798,27 @@ export class NotificationDispatcher {
         continue;
       }
 
+      // ── Bind update strictly to trusted tenantId, environmentId, provider, and deliveryId / providerDeliveryId ──
+      const orMatch: any[] = [];
+      if (deliveryId) orMatch.push({ deliveryId });
+      if (providerDeliveryId) orMatch.push({ providerDeliveryId });
+
+      const query: any = {
+        tenantId: boundTenantId,
+        environmentId: boundEnvId,
+        provider,
+        $or: orMatch,
+      };
+
+      // ── Validate matching scoped delivery BEFORE recording webhook deduplication ──
+      const matchingDelivery = await deliveriesCol.findOne(query);
+      if (!matchingDelivery) {
+        errors.push(
+          `No matching delivery record found for tenant '${boundTenantId}' and deliveryId '${deliveryId || providerDeliveryId}'`
+        );
+        continue;
+      }
+
       // ── Deduplicate Callback ───────────────────────────────────────────
       const callbackDedupKey = `${provider}:${boundTenantId}:${deliveryId || providerDeliveryId}:${eventStatus}`;
       const existingCallback = await callbacksCol.findOne({ callbackId: callbackDedupKey });
@@ -824,18 +845,6 @@ export class NotificationDispatcher {
       else if (['click', 'clicked'].includes(eventStatus)) mappedStatus = 'clicked';
       else if (['dropped', 'spamreport', 'complaint'].includes(eventStatus)) mappedStatus = 'dropped';
       else if (['delivered', 'success'].includes(eventStatus)) mappedStatus = 'delivered';
-
-      // ── Bind update strictly to trusted tenantId, environmentId, provider, and deliveryId / providerDeliveryId ──
-      const orMatch: any[] = [];
-      if (deliveryId) orMatch.push({ deliveryId });
-      if (providerDeliveryId) orMatch.push({ providerDeliveryId });
-
-      const query: any = {
-        tenantId: boundTenantId,
-        environmentId: boundEnvId,
-        provider,
-        $or: orMatch,
-      };
 
       const updateResult = await deliveriesCol.updateOne(query, {
         $set: {
@@ -907,40 +916,43 @@ export class NotificationDispatcher {
    * Scopes query strictly by trusted tenantId, environmentId, provider, and deliveryId.
    * Never marks delivered without performing a real send and verifying success.
    */
+  /**
+   * Retries an individual failed delivery with genuine provider execution.
+   * Strictly requires tenantId, environmentId, provider, and deliveryId.
+   * Unscoped retry is prohibited and fails closed.
+   * Never marks delivered without performing a real send and verifying success.
+   */
   async retryDelivery(
-    deliveryIdOrTenantId: string,
-    channelsConfigOrEnvId?: NotificationChannelSettings | EnvironmentId,
-    deliveryIdParam?: string,
-    channelsConfigParam?: NotificationChannelSettings,
-    providerParam?: string
+    tenantId: string,
+    environmentId: EnvironmentId,
+    provider: string,
+    deliveryId: string,
+    channelsConfig?: NotificationChannelSettings
   ): Promise<NotificationDeliveryRecord | null> {
-    const col = this.db.collection<NotificationDeliveryRecord>(COLLECTION_NOTIFICATION_DELIVERIES);
+    if (!tenantId || !environmentId || !provider || !deliveryId) {
+      throw new Error(
+        'retryDelivery requires tenantId, environmentId, provider, and deliveryId; unscoped retry is forbidden'
+      );
+    }
+    const normTenant = tenantId.trim();
+    const normEnv = environmentId.trim() as EnvironmentId;
+    const normProvider = provider.trim();
+    const normDelivery = deliveryId.trim();
 
-    let tenantId: string | undefined;
-    let environmentId: EnvironmentId | undefined;
-    let deliveryId: string;
-    let channelsConfig: NotificationChannelSettings | undefined;
-    let provider: string | undefined;
-
-    if (typeof deliveryIdParam === 'string') {
-      tenantId = deliveryIdOrTenantId;
-      environmentId = channelsConfigOrEnvId as EnvironmentId;
-      deliveryId = deliveryIdParam;
-      channelsConfig = channelsConfigParam;
-      provider = providerParam;
-    } else {
-      deliveryId = deliveryIdOrTenantId;
-      channelsConfig = channelsConfigOrEnvId as NotificationChannelSettings | undefined;
-      const extraScope = (channelsConfig as any)?._scope;
-      tenantId = extraScope?.tenantId;
-      environmentId = extraScope?.environmentId;
-      provider = extraScope?.provider;
+    if (!normTenant || !normEnv || !normProvider || !normDelivery) {
+      throw new Error(
+        'retryDelivery requires non-empty tenantId, environmentId, provider, and deliveryId'
+      );
     }
 
-    const query: any = { deliveryId };
-    if (tenantId) query.tenantId = tenantId;
-    if (environmentId) query.environmentId = environmentId;
-    if (provider) query.provider = provider;
+    const col = this.db.collection<NotificationDeliveryRecord>(COLLECTION_NOTIFICATION_DELIVERIES);
+
+    const query = {
+      tenantId: normTenant,
+      environmentId: normEnv,
+      provider: normProvider,
+      deliveryId: normDelivery,
+    };
 
     const existing = await col.findOne(query);
     if (!existing || existing.status === 'delivered') return existing;

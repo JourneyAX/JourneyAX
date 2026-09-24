@@ -307,8 +307,9 @@ export class CapabilityRegistryService {
       if (binding.executor.connectionRef && availableSecrets !== undefined && !availableSecrets.includes(binding.executor.connectionRef)) {
         errors.push(`Referenced secret connection '${binding.executor.connectionRef}' is not configured for tenant '${binding.tenantId}'`);
       }
-      if (binding.executor.secretRef && availableSecrets !== undefined && !availableSecrets.includes(binding.executor.secretRef)) {
-        errors.push(`Referenced secret '${binding.executor.secretRef}' is not configured for tenant '${binding.tenantId}'`);
+      const executorSecretRef = (binding.executor as any).secretRef;
+      if (executorSecretRef && availableSecrets !== undefined && !availableSecrets.includes(executorSecretRef)) {
+        errors.push(`Referenced secret '${executorSecretRef}' is not configured for tenant '${binding.tenantId}'`);
       }
     }
 
@@ -485,13 +486,14 @@ export class CapabilityRegistryService {
         }
       }
 
-      if (binding.executor?.secretRef) {
+      const bindingSecretRef = (binding.executor as any)?.secretRef;
+      if (bindingSecretRef) {
         if (
           options.availableSecrets !== undefined &&
-          !options.availableSecrets.includes(binding.executor.secretRef)
+          !options.availableSecrets.includes(bindingSecretRef)
         ) {
           errors.push(
-            `Tool binding '${binding.toolId}' references unconfigured secretRef '${binding.executor.secretRef}'`
+            `Tool binding '${binding.toolId}' references unconfigured secretRef '${bindingSecretRef}'`
           );
         }
       }

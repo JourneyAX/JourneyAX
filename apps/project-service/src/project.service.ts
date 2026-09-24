@@ -230,6 +230,16 @@ export class ProjectService {
     }
   }
 
+  setDbForTesting(db: any): void {
+    this.db          = db;
+    this.projectsCol = db.collection(PROJECTS);
+    this.membersCol  = db.collection(MEMBERS);
+    this.teamsCol    = db.collection(TEAMS);
+    this.rulesCol    = db.collection(RULES);
+    this.versionsCol = db.collection(VERSIONS);
+    this.isConnected = true;
+  }
+
   async ensureIndexes() {
     if (!this.isConnected) return;
     // ── Projects collection ─────────────────────────────────────
@@ -581,6 +591,13 @@ export class ProjectService {
       ? await this.projectsCol!.findOne({ projectId: pid })
       : null;
 
+    // Reject raw secrets in DTO (enforce tenant-scoped refs only)
+    try {
+      assertNoRawSecrets(dto);
+    } catch (err: any) {
+      return { success: false, message: err.message };
+    }
+
     // Top-level fields
     if (dto.name)        $set.name        = dto.name;
     if (dto.companyName) $set.companyName = dto.companyName;
@@ -603,14 +620,9 @@ export class ProjectService {
         if (channels.email && typeof channels.email === 'object') {
           const email: any = { ...channels.email };
           const existingEmail: any = existingNotif?.channels?.email || {};
-          const blank = !email.apiKey || typeof email.apiKey !== 'string' || !email.apiKey.trim() || email.apiKey.startsWith('••••');
-          if (blank) {
-            if (existingEmail.apiKey) email.apiKey = existingEmail.apiKey;
-            else delete email.apiKey;
-          }
-          if (email.apiKey) {
-            email.apiKeyRef = email.apiKeyRef || existingEmail.apiKeyRef || `vault://tenants/${pid}/sendgrid-api-key`;
-          }
+          // Strip raw apiKey, persist tenant-scoped ref only
+          delete email.apiKey;
+          email.apiKeyRef = email.apiKeyRef || existingEmail.apiKeyRef || `vault://tenants/${pid}/sendgrid-api-key`;
           delete email.apiKeyHint;
           delete email.apiKeyConfigured;
           channels.email = email;
@@ -618,14 +630,9 @@ export class ProjectService {
         if (channels.webhook && typeof channels.webhook === 'object') {
           const webhook: any = { ...channels.webhook };
           const existingWebhook: any = existingNotif?.channels?.webhook || {};
-          const blank = !webhook.secret || typeof webhook.secret !== 'string' || !webhook.secret.trim() || webhook.secret.startsWith('••••');
-          if (blank) {
-            if (existingWebhook.secret) webhook.secret = existingWebhook.secret;
-            else delete webhook.secret;
-          }
-          if (webhook.secret) {
-            webhook.secretRef = webhook.secretRef || existingWebhook.secretRef || `vault://tenants/${pid}/webhook-secret`;
-          }
+          // Strip raw secret, persist tenant-scoped ref only
+          delete webhook.secret;
+          webhook.secretRef = webhook.secretRef || existingWebhook.secretRef || `vault://tenants/${pid}/webhook-secret`;
           delete webhook.secretHint;
           delete webhook.secretConfigured;
           channels.webhook = webhook;
@@ -676,44 +683,20 @@ export class ProjectService {
     for (const [k, v] of Object.entries(dto.theme    || {})) $set[`theme.${k}`]    = v;
     for (const [k, v] of Object.entries(dto.channels || {})) $set[`channels.${k}`] = v;
     for (const [k, v] of Object.entries((dto as any).ai || {})) {
-      // Secret guard: never persist an empty or masked apiKey (the UI echoes the
-      // masked hint when unchanged). Only overwrite when a real new key is typed.
-      if (k === 'apiKey') {
-        const s = typeof v === 'string' ? v.trim() : '';
-        if (!s || s.startsWith('••••')) continue;
-      }
-      // These are read-only derived fields returned by redaction — never store them.
-      if (k === 'apiKeyHint' || k === 'apiKeyConfigured') continue;
+      // Secret guard: never persist raw apiKey. Only store non-secret AI configurations.
+      if (k === 'apiKey' || k === 'apiKeyHint' || k === 'apiKeyConfigured') continue;
       $set[`ai.${k}`] = v;
     }
-    /* integrations merge one level deep: each connector's full config object is
-     * replaced. That makes a connector's SECRETS vulnerable to an ordinary edit.
-     *
-     * Reads are redacted (P0-01), so a UI that loads a project, edits one field
-     * and saves sends the connector back with its secret missing or blanked —
-     * `clientSecret: ct0.clientSecret || ""` in the integrations editor. The
-     * replace then writes the empty value over a working credential. Nothing
-     * errors; the tenant silently falls back to the platform key, which for
-     * Stripe means payments settling to the wrong account.
-     *
-     * So an absent or masked secret means "unchanged", never "delete" — the same
-     * rule already applied to ai.apiKey above, extended to every connector. */
+
+    // Integrations: strip all raw secret fields so only tenant-scoped connectionRef or secretRef are persisted
     for (const [k, v] of Object.entries((dto as any).integrations || {})) {
       if (v && typeof v === 'object' && !Array.isArray(v)) {
         const incoming: any = { ...(v as any) };
-        const existing: any = (current as any)?.integrations?.[k] || {};
         for (const f of SECRET_FIELDS) {
-          if (!(f in incoming)) continue;
-          const val = incoming[f];
-          const blank = typeof val !== 'string' || !val.trim() || val.startsWith('••••');
-          // Keep what is stored rather than overwrite it with a blank or a mask.
-          if (blank) {
-            if (existing[f]) incoming[f] = existing[f];
-            else delete incoming[f];
-          }
+          delete incoming[f];
+          delete incoming[`${f}Hint`];
+          delete incoming[`${f}Configured`];
         }
-        // Derived read-only fields from redaction must never be persisted.
-        for (const f of SECRET_FIELDS) { delete incoming[`${f}Hint`]; delete incoming[`${f}Configured`]; }
         $set[`integrations.${k}`] = incoming;
       } else {
         $set[`integrations.${k}`] = v;
@@ -1964,4 +1947,52 @@ export function redactSecrets<T extends { integrations?: any; ai?: any }>(config
   }
 
   return out;
+}
+
+/**
+ * Asserts that a project creation/update payload contains no raw credentials.
+ * Strictly enforces tenant-scoped secret/connection references.
+ */
+export function assertNoRawSecrets(dto: any): void {
+  if (!dto || typeof dto !== 'object') return;
+
+  // 1. Notification credentials
+  if (dto.notifications?.channels?.email?.apiKey) {
+    const val = String(dto.notifications.channels.email.apiKey).trim();
+    if (val && !val.startsWith('••••')) {
+      throw new Error('Raw notification apiKey is forbidden; accept tenant-scoped refs only');
+    }
+  }
+  if (dto.notifications?.channels?.webhook?.secret) {
+    const val = String(dto.notifications.channels.webhook.secret).trim();
+    if (val && !val.startsWith('••••')) {
+      throw new Error('Raw notification webhook secret is forbidden; accept tenant-scoped refs only');
+    }
+  }
+
+  // 2. AI provider credentials
+  if (dto.ai?.apiKey) {
+    const val = String(dto.ai.apiKey).trim();
+    if (val && !val.startsWith('••••')) {
+      throw new Error('Raw AI apiKey is forbidden; accept tenant-scoped refs only');
+    }
+  }
+
+  // 3. Connector credentials
+  if (dto.integrations && typeof dto.integrations === 'object') {
+    for (const [platform, cfg] of Object.entries(dto.integrations as Record<string, any>)) {
+      if (cfg && typeof cfg === 'object') {
+        for (const f of SECRET_FIELDS) {
+          if (f in cfg && cfg[f]) {
+            const val = String(cfg[f]).trim();
+            if (val && !val.startsWith('••••')) {
+              throw new Error(
+                `Raw connector credential '${f}' in '${platform}' is forbidden; accept tenant-scoped refs only`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
 }
