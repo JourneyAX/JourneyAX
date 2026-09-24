@@ -6,7 +6,7 @@
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "tsx test/security.spec.ts && tsx test/kernel.spec.ts && tsx test/durable-execution.spec.ts && tsx test/catalog-order-ports.spec.ts && tsx test/activepieces-integration.spec.ts && tsx test/model-gateway.spec.ts && tsx test/ui-standardization-cutover.spec.ts && tsx test/worker-lifecycle-health.spec.ts && tsx test/connector-boundary-enforcement.spec.ts && tsx test/outbox-real-consumers.spec.ts",
+    "test": "tsx test/security.spec.ts && tsx test/kernel.spec.ts && tsx test/durable-execution.spec.ts && tsx test/catalog-order-ports.spec.ts && tsx test/activepieces-integration.spec.ts && tsx test/model-gateway.spec.ts && tsx test/ui-standardization-cutover.spec.ts && tsx test/worker-lifecycle-health.spec.ts && tsx test/connector-boundary-enforcement.spec.ts && tsx test/outbox-real-consumers.spec.ts && tsx test/typed-connector-ownership.spec.ts",
     "test:integration": "tsx scripts/guard-mongo-integration.ts && tsx test/phase1-routing-identity-cutover.spec.ts",
     "test:integration:phase1": "tsx scripts/guard-mongo-integration.ts && tsx test/phase1-routing-identity-cutover.spec.ts",
     "test:integration:cutover": "tsx scripts/guard-mongo-integration.ts && tsx test/mongo-cutover-integration.spec.ts"

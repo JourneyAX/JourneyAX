@@ -11,6 +11,7 @@
   "dependencies": {
     "@journeyax/business-pack": "*",
     "@journeyax/cache": "*",
+    "@journeyax/capability-sdk": "*",
     "@journeyax/journey-core": "*",
     "@journeyax/shared-types": "*",
     "@journeyax/ui-cards": "*",
