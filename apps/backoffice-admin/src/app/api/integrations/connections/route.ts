@@ -22,77 +22,59 @@ export async function GET(req: Request) {
     }
 
     if (!MONGODB_URI) {
-      // Safe development/test fallback when MONGODB_URI is not set
-      return NextResponse.json({
-        ok: true,
-        tenantId,
-        environmentId,
-        connections: [
-          {
-            connectionRef: `conn_ct_${tenantId}_dev`,
-            name: `${tenantId} commercetools (dev)`,
-            pieceName: '@activepieces/piece-commercetools',
-            environmentId,
-            createdAt: new Date().toISOString(),
-          },
-        ],
-      });
+      return NextResponse.json(
+        {
+          ok: false,
+          configured: false,
+          tenantId,
+          environmentId,
+          message: 'Durable storage unconfigured: MONGODB_URI is required to list installed connections',
+          connections: [],
+        },
+        { status: 503 }
+      );
     }
 
     const { db } = await connectToDatabase(MONGODB_URI, DB_NAME);
 
-    // Query tenant_connections collection strictly scoped by authenticated tenant
+    // Query authoritative tenant_connections collection strictly scoped by authenticated tenant
+    // Arbitrary tenant_secrets are strictly excluded from connection enumeration
     const connectionsDocs = await db
       .collection('tenant_connections')
       .find({
         tenantId,
         environmentId: { $in: [environmentId, 'all'] },
+        status: { $nin: ['revoked', 'inactive'] },
+        enabled: { $ne: false },
       })
-      .project({ _id: 0, connectionRef: 1, name: 1, pieceName: 1, environmentId: 1, createdAt: 1 })
+      .project({
+        _id: 0,
+        connectionRef: 1,
+        name: 1,
+        pieceName: 1,
+        pieceId: 1,
+        provider: 1,
+        environmentId: 1,
+        status: 1,
+        createdAt: 1,
+      })
       .toArray();
 
-    // Query tenant_secrets for connectionRef / secretRef entries owned by this tenant
-    const secretsDocs = await db
-      .collection('tenant_secrets')
-      .find({
-        tenantId,
-        environmentId: { $in: [environmentId, 'all'] },
-      })
-      .project({ _id: 0, secretRef: 1, connectionRef: 1, pieceName: 1, environmentId: 1, createdAt: 1 })
-      .toArray();
-
-    const connectionsMap = new Map<string, any>();
-
-    for (const doc of connectionsDocs) {
-      if (doc.connectionRef) {
-        connectionsMap.set(doc.connectionRef, {
-          connectionRef: doc.connectionRef,
-          name: doc.name || doc.connectionRef,
-          pieceName: doc.pieceName || '@activepieces/piece-commercetools',
-          environmentId: doc.environmentId || environmentId,
-          createdAt: doc.createdAt || new Date().toISOString(),
-        });
-      }
-    }
-
-    for (const doc of secretsDocs) {
-      const ref = doc.connectionRef || doc.secretRef;
-      if (ref && !connectionsMap.has(ref)) {
-        connectionsMap.set(ref, {
-          connectionRef: ref,
-          name: ref,
-          pieceName: doc.pieceName || '@activepieces/piece-commercetools',
-          environmentId: doc.environmentId || environmentId,
-          createdAt: doc.createdAt || new Date().toISOString(),
-        });
-      }
-    }
+    const connections = connectionsDocs.map((doc: any) => ({
+      connectionRef: doc.connectionRef,
+      name: doc.name || doc.connectionRef,
+      pieceName: doc.pieceName || doc.pieceId || doc.provider || '@activepieces/piece-commercetools',
+      environmentId: doc.environmentId || environmentId,
+      status: doc.status || 'active',
+      createdAt: doc.createdAt || new Date().toISOString(),
+    }));
 
     return NextResponse.json({
       ok: true,
+      configured: true,
       tenantId,
       environmentId,
-      connections: Array.from(connectionsMap.values()),
+      connections,
     });
   } catch (err: any) {
     return NextResponse.json({ ok: false, message: err.message }, { status: 500 });
