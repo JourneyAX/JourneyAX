@@ -172,4 +172,22 @@ export class OutboxRepository {
       }
     );
   }
+
+  async getMetrics(tenantId?: string): Promise<{
+    pending: number;
+    leased: number;
+    published: number;
+    deadLetter: number;
+  }> {
+    const col = this.db.collection<OutboxEventRecord>(COLLECTION_OUTBOX_EVENTS);
+    const filter = tenantId ? { tenantId } : {};
+    const [pending, leased, published, deadLetter] = await Promise.all([
+      col.countDocuments({ ...filter, status: 'pending' }),
+      col.countDocuments({ ...filter, status: 'leased' }),
+      col.countDocuments({ ...filter, status: 'published' }),
+      col.countDocuments({ ...filter, status: 'dead_letter' }),
+    ]);
+    return { pending, leased, published, deadLetter };
+  }
 }
+
