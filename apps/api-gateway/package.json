@@ -6,7 +6,7 @@
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "tsx test/gateway.registry.spec.ts"
+    "test": "tsx test/gateway.registry.spec.ts && tsx test/gateway.assertion.spec.ts"
   },
   "dependencies": {
     "@journeyax/database": "*",
