@@ -45,7 +45,11 @@ export function computeCanaryBucket(key: string): number {
  * Never uses timestamps or randomness so decisions are 100% stable for a workspace.
  */
 export function calculateCanaryBucket(tenantId: string, environmentId: string, workspaceId: string): number {
-  const key = `${tenantId.trim().toLowerCase()}:${environmentId.trim().toLowerCase()}:${workspaceId.trim()}`;
+  const normWorkspace = (workspaceId || '').trim();
+  if (!normWorkspace) {
+    throw new Error('Non-empty workspace/session identifier is required for canary bucketing');
+  }
+  const key = `${(tenantId || '').trim().toLowerCase()}:${(environmentId || 'production').trim().toLowerCase()}:${normWorkspace}`;
   return computeCanaryBucket(key);
 }
 
@@ -150,8 +154,16 @@ export async function resolveTenantRouting(
         }
         if (record.status === 'canary') {
           const pct = Math.max(0, Math.min(100, record.canaryPercentage ?? 0));
-          const wsId = options.workspaceId || 'default_workspace';
-          const bucketingKey = options.bucketingKey || `${normTenant}:${environmentId.toLowerCase()}:${wsId}`;
+          const wsId = (options.workspaceId || '').trim();
+          const customKey = options.bucketingKey?.trim();
+          if (!wsId && !customKey) {
+            return {
+              useRuntime: false,
+              cutoverState: 'unmigrated',
+              reason: 'Non-empty workspace/session identifier is required for canary bucketing; failing closed to legacy commerce',
+            };
+          }
+          const bucketingKey = customKey || `${normTenant}:${environmentId.toLowerCase()}:${wsId}`;
           const bucket = computeCanaryBucket(bucketingKey);
           const isSelected = bucket < pct;
           return {

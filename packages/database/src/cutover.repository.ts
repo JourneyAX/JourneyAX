@@ -182,7 +182,13 @@ export class CutoverRepository {
           );
         }
         const pointerChecksum = pointerDoc.activeReleaseChecksum || pointerDoc.checksum;
-        if (pointerChecksum && pointerChecksum !== params.approvedReleaseChecksum) {
+        if (!pointerChecksum) {
+          throw new CutoverValidationError(
+            `Active Business Pack pointer for tenant '${normTenant}' (${normEnv}) is missing checksum`,
+            'POINTER_CHECKSUM_MISSING'
+          );
+        }
+        if (pointerChecksum !== params.approvedReleaseChecksum) {
           throw new CutoverValidationError(
             `Pointer checksum mismatch: pointer checksum '${pointerChecksum}' does not match approved release checksum '${params.approvedReleaseChecksum}'`,
             'POINTER_CHECKSUM_MISMATCH'

@@ -324,6 +324,7 @@ async function runPhase1Tests() {
       tenantId,
       environmentId: 'production',
       activeVersion: version,
+      activeReleaseChecksum: checksum,
       revision: 1,
       promotedAt: new Date(),
       promotedBy: 'system',
@@ -510,8 +511,6 @@ async function runPhase1Tests() {
 
   // ── 15. Migrated Runtime Failure Never Invokes Legacy Service ──
   await test('15. Migrated runtime failure never falls back to legacy agent-commerce-service', () => {
-    // In our architecture, when a tenant status is 'migrated' or canary selected,
-    // failure in journey-runtime-service returns HTTP 500/503 directly, never proxying to agent-commerce-service.
     const cutoverStatus = 'migrated';
     const isRuntimeFailure = true;
 
@@ -528,6 +527,115 @@ async function runPhase1Tests() {
     const outcome = handleRequest(cutoverStatus, isRuntimeFailure);
     assert.equal(outcome.handledBy, 'journey-runtime-service');
     assert.notEqual(outcome.handledBy, 'agent-commerce-service');
+  });
+
+  // ── 16. Missing or Mismatched Pointer Checksum Rejection ──
+  await test('16. Reject cutover promotion if Business Pack pointer is missing checksum or checksum mismatches', async () => {
+    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+    const testDb = 'journeyx_phase1_ptr_chk';
+    const { db, client } = await connectToDatabase(uri, testDb);
+    const tenantId = `tenant_ptr_${Date.now()}`;
+    const version = '1.0.0';
+    const releaseChecksum = 'rel_checksum_xyz';
+
+    await db.collection(COLLECTION_BUSINESS_PACK_RELEASES).insertOne({
+      tenantId,
+      environmentId: 'production',
+      version,
+      checksum: releaseChecksum,
+      status: 'active',
+      publishedAt: new Date(),
+      publishedBy: 'system',
+    });
+
+    // Pointer without checksum
+    await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).insertOne({
+      tenantId,
+      environmentId: 'production',
+      activeVersion: version,
+      revision: 1,
+      promotedAt: new Date(),
+      promotedBy: 'system',
+    });
+
+    const repo = new CutoverRepository(async () => ({ db, client }));
+
+    // Must reject because pointer has no checksum
+    await assert.rejects(
+      async () =>
+        await repo.promoteCutoverTransactionally(tenantId, 'production', {
+          status: 'migrated',
+          approvedReleaseVersion: version,
+          approvedReleaseChecksum: releaseChecksum,
+          expectedRevision: 0,
+          approvedBy: 'security_auditor',
+        }),
+      (err: any) => err instanceof CutoverValidationError && err.code === 'POINTER_CHECKSUM_MISSING'
+    );
+
+    // Update pointer with wrong checksum
+    await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).updateOne(
+      { tenantId, environmentId: 'production' },
+      { $set: { activeReleaseChecksum: 'wrong_pointer_checksum' } }
+    );
+
+    // Must reject because pointer checksum does not match approved release checksum
+    await assert.rejects(
+      async () =>
+        await repo.promoteCutoverTransactionally(tenantId, 'production', {
+          status: 'migrated',
+          approvedReleaseVersion: version,
+          approvedReleaseChecksum: releaseChecksum,
+          expectedRevision: 0,
+          approvedBy: 'security_auditor',
+        }),
+      (err: any) => err instanceof CutoverValidationError && err.code === 'POINTER_CHECKSUM_MISMATCH'
+    );
+
+    await db.collection(COLLECTION_BUSINESS_PACK_RELEASES).deleteMany({ tenantId });
+    await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).deleteMany({ tenantId });
+  });
+
+  // ── 17. Empty Workspace Fails Closed in Canary Routing ──
+  await test('17. Empty or missing workspace/session in canary routing fails closed or throws', async () => {
+    const { calculateCanaryBucket, resolveTenantRouting } = await import(
+      '../../journeyax-web/src/lib/routing/cutover'
+    );
+
+    // calculateCanaryBucket must throw on empty workspaceId
+    assert.throws(
+      () => calculateCanaryBucket('workweargroup', 'production', ''),
+      /Non-empty workspace\/session identifier is required/
+    );
+    assert.throws(
+      () => calculateCanaryBucket('workweargroup', 'production', '   '),
+      /Non-empty workspace\/session identifier is required/
+    );
+
+    // resolveTenantRouting with canary status and missing workspace must fail closed
+    const origFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () =>
+        ({
+          ok: true,
+          json: async () => ({
+            status: 'canary',
+            canaryPercentage: 50,
+            approvedReleaseVersion: '1.0.0',
+            revision: 1,
+          }),
+        } as any);
+
+      const decision = await resolveTenantRouting('workweargroup', 'production', {
+        workspaceId: '',
+      });
+
+      assert.equal(decision.useRuntime, false);
+      assert.equal(decision.cutoverState, 'unmigrated');
+      assert.ok(decision.reason.includes('Non-empty workspace/session identifier is required'));
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 
   console.log(`\n==================================================`);
