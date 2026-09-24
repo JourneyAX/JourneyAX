@@ -147,12 +147,14 @@ export interface NotificationDeliveryRecord {
   environmentId?: EnvironmentId;
   eventId: string;
   channel: 'email' | 'webhook';
+  provider?: 'sendgrid' | 'resend' | 'activepieces' | 'webhook' | 'smtp';
   recipient: string;
-  status: 'delivered' | 'failed' | 'retrying';
+  status: 'delivered' | 'failed' | 'retrying' | 'bounced' | 'opened' | 'clicked' | 'dropped';
   attempts: number;
   maxAttempts: number;
   templateId?: string;
   payload?: any;
+  metadata?: Record<string, any>;
   error?: string;
   deliveredAt?: Date;
   nextAttemptAt?: Date;
