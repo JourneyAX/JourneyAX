@@ -1,5 +1,6 @@
 import { BusinessPackRelease, BusinessPackReleaseSchema } from './schemas/business-pack.schema';
 import { validateBusinessPack } from './validator';
+import { computePackChecksum } from './publisher';
 
 const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
@@ -113,6 +114,17 @@ export class BusinessPackLoader {
       if (!parsed.success) {
         console.error(`[BusinessPackLoader] Schema mismatch in Mongo release for '${tenantId}':`, parsed.error.format());
         return null;
+      }
+
+      // Checksum integrity check: verify release document content matches its checksum
+      if (releaseDoc.checksum) {
+        const computed = computePackChecksum(parsed.data);
+        if (computed !== releaseDoc.checksum) {
+          console.error(
+            `[BusinessPackLoader] Checksum mismatch for '${tenantId}' (${environmentId}) v${targetVersion}: record='${releaseDoc.checksum}' computed='${computed}'`
+          );
+          return null;
+        }
       }
 
       const validation = validateBusinessPack(parsed.data);
