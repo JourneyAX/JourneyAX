@@ -25,6 +25,7 @@ apps/journeyax-web/src/scripts/tmp*
 .build/
 .codex-*/
 output/
+.worktrees/
 
 # GCP service account keys (long-lived credentials) — never committed
 *-sa-key.json
