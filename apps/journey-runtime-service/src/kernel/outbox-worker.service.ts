@@ -1,7 +1,28 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { connectToDatabase, OutboxRepository as DbOutboxRepository } from '@journeyax/database';
+import {
+  connectToDatabase,
+  OutboxRepository as DbOutboxRepository,
+  NotificationDispatcher,
+} from '@journeyax/database';
+import {
+  CapabilityDispatcher,
+  ToolDefinition,
+  ToolBinding,
+  ExecutionContext,
+} from '@journeyax/capability-sdk';
 import { OutboxRepository } from './outbox.repository';
 import { OutboxWorker, OutboxWorkerOptions } from './outbox.worker';
+import {
+  IConnectionOwnershipRepository,
+  DurableConnectionOwnershipRepository,
+} from './connection-ownership.repository';
+
+export interface ProductionHandlersOptions {
+  db?: any;
+  capabilityDispatcher?: CapabilityDispatcher;
+  notificationDispatcher?: NotificationDispatcher;
+  ownershipRepository?: IConnectionOwnershipRepository;
+}
 
 export interface WorkerHealthResponse {
   status: 'ok' | 'degraded' | 'unhealthy' | 'stopped' | 'error';
@@ -33,17 +54,21 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
   private repo: OutboxRepository | DbOutboxRepository | null = null;
   private handlers = new Map<string, (event: any) => Promise<void>>();
 
-  constructor() {
-    this.registerProductionHandlers();
+  constructor(options?: ProductionHandlersOptions) {
+    this.registerProductionHandlers(options);
   }
 
   /**
-   * Registers real production OutboxWorker handlers for every emitted event type,
-   * including business_pack.published and notification/Activepieces events.
-   * Unknown types remain unregistered so they throw and remain retryable or dead-letter.
+   * Registers real production OutboxWorker handlers.
+   * Handlers must complete and persist their required side effect or throw
+   * so retry and dead-letter applies. Never logs and acks.
+   * Unimplemented event types are NOT registered so they fail closed.
    */
-  registerProductionHandlers(db?: any): void {
-    // 1. Business Pack lifecycle events
+  registerProductionHandlers(options: ProductionHandlersOptions = {}): void {
+    const { db, capabilityDispatcher, notificationDispatcher, ownershipRepository } = options;
+    this.handlers.clear();
+
+    // 1. Business Pack lifecycle events — persists audit trail or throws
     this.registerHandler('business_pack.published', async (event) => {
       this.logger.log(
         `[OutboxWorker] Handling business_pack.published for tenant '${event.tenantId}' version '${event.payload?.version}'`
@@ -55,7 +80,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
           environmentId: event.environmentId,
           payload: event.payload,
           processedAt: new Date().toISOString(),
-        }).catch(() => {});
+        });
       }
     });
 
@@ -70,103 +95,153 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
           environmentId: event.environmentId,
           payload: event.payload,
           processedAt: new Date().toISOString(),
-        }).catch(() => {});
+        });
       }
     });
 
-    // 2. Notification and Activepieces events
+    // 2. Notification dispatch — calls real NotificationDispatcher and enforces delivery persistence
     this.registerHandler('notification.dispatch', async (event) => {
       this.logger.log(
         `[OutboxWorker] Handling notification.dispatch for tenant '${event.tenantId}'`
       );
-      if (db && event.payload?.deliveryId) {
-        await db.collection('notification_deliveries').updateOne(
-          { deliveryId: event.payload.deliveryId, tenantId: event.tenantId },
-          { $set: { dispatchedAt: new Date(), status: 'dispatched' } }
-        ).catch(() => {});
+      const dispatcher = notificationDispatcher || (db ? new NotificationDispatcher(db) : null);
+      if (!dispatcher) {
+        throw new Error(
+          `[OutboxWorker] NotificationDispatcher or database connection is required to process notification.dispatch for tenant '${event.tenantId}'`
+        );
+      }
+
+      const payload = event.payload || {};
+      const result = await dispatcher.dispatch(
+        event.tenantId,
+        event.eventId,
+        payload.payload || payload,
+        payload.channelsConfig,
+        {
+          environmentId: event.environmentId,
+          recipients: payload.recipients,
+        }
+      );
+
+      if (result.status === 'failure') {
+        const failureDetails = (result.deliveries || [])
+          .filter((d: any) => d.status === 'failed')
+          .map((d: any) => d.error || 'Delivery failed');
+        throw new Error(
+          `[OutboxWorker] Notification dispatch failed: ${failureDetails.join('; ') || 'Dispatcher reported failure'}`
+        );
       }
     });
 
+    // 3. Activepieces dispatch — invokes actual CapabilityDispatcher with connection ownership and idempotency
     this.registerHandler('activepieces.dispatch', async (event) => {
       this.logger.log(
         `[OutboxWorker] Handling activepieces.dispatch for tenant '${event.tenantId}' flowId '${event.payload?.flowId}'`
       );
-      if (event.payload?.simulateFailure) {
-        throw new Error('Activepieces service unavailable: upstream connect timeout');
+      const payload = event.payload || {};
+      if (!payload.flowId) {
+        throw new Error("[OutboxWorker] Missing mandatory 'flowId' in activepieces.dispatch payload");
+      }
+      if (!payload.connectionRef) {
+        throw new Error("[OutboxWorker] Missing mandatory 'connectionRef' in activepieces.dispatch payload");
+      }
+
+      const capDispatcher =
+        capabilityDispatcher ||
+        new CapabilityDispatcher({
+          activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL,
+          activepiecesApiKey: process.env.ACTIVEPIECES_API_KEY,
+          activepiecesWebhookSecret: process.env.ACTIVEPIECES_WEBHOOK_SECRET,
+          validateConnectionOwnership: async (t, e, c) => {
+            if (ownershipRepository) {
+              return ownershipRepository.validateOwnership(t, e, c);
+            }
+            if (db) {
+              const repo = new DurableConnectionOwnershipRepository(() => db);
+              return repo.validateOwnership(t, e, c);
+            }
+            return false;
+          },
+        });
+
+      const toolDef: ToolDefinition = {
+        toolId: payload.toolId || `activepieces.${payload.flowId}`,
+        version: '1.0.0',
+        displayName: payload.flowId,
+        description: 'Outbox Activepieces flow execution',
+        inputSchema: {},
+        outputSchema: {},
+        sideEffect: payload.sideEffect || 'transactional',
+        risk: payload.risk || 'medium',
+        timeoutPolicy: { timeoutMs: 15000, retryAttempts: 1 },
+        idempotencyPolicy: { required: true, ttlSeconds: 300 },
+        approvalPolicy: { requiresApproval: false, ttlMinutes: 10 },
+        dataClassification: 'internal',
+      };
+
+      const toolBinding: ToolBinding = {
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        toolId: toolDef.toolId,
+        bindingVersion: '1.0.0',
+        executor: {
+          type: 'activepieces_flow',
+          flowId: payload.flowId,
+          connectionRef: payload.connectionRef,
+        },
+        enabled: true,
+      };
+
+      const ctx: ExecutionContext = {
+        workspaceId: payload.workspaceId || `ws_${event.tenantId}`,
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        correlationId: event.eventId,
+        actor: { role: 'customer' },
+      };
+
+      const dispatchResult = await capDispatcher.dispatch(
+        toolDef,
+        toolBinding,
+        { toolId: toolDef.toolId, input: payload.input || {} },
+        ctx
+      );
+
+      if (dispatchResult.status === 'failure') {
+        throw new Error(
+          `[OutboxWorker] Activepieces execution failed: ${dispatchResult.error || 'Execution returned failure'}`
+        );
+      }
+
+      if (db) {
+        await db.collection('activepieces_executions').insertOne({
+          eventId: event.eventId,
+          tenantId: event.tenantId,
+          environmentId: event.environmentId,
+          flowId: payload.flowId,
+          connectionRef: payload.connectionRef,
+          output: dispatchResult.output,
+          status: 'success',
+          executedAt: new Date().toISOString(),
+        });
       }
     });
 
-    this.registerHandler('webhook.dispatch', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling webhook.dispatch for tenant '${event.tenantId}'`
-      );
-    });
-
-    // 3. Commerce and Journey lifecycle events
+    // 4. Order committed — persists side effect or throws
     this.registerHandler('order.committed', async (event) => {
       this.logger.log(
         `[OutboxWorker] Handling order.committed for tenant '${event.tenantId}' orderId '${event.payload?.orderId}'`
       );
-    });
-
-    this.registerHandler('quote.created', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling quote.created for tenant '${event.tenantId}' quoteId '${event.payload?.quoteId}'`
-      );
-    });
-
-    this.registerHandler('journey.started', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling journey.started for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('journey.stage.changed', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling journey.stage.changed for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('journey.turn_completed', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling journey.turn_completed for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('journey.handoff.requested', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling journey.handoff.requested for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('approval.requested', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling approval.requested for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('approval.completed', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling approval.completed for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('capability.executed', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling capability.executed for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('evaluation.failed', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling evaluation.failed for tenant '${event.tenantId}'`
-      );
-    });
-
-    this.registerHandler('ingestion.completed', async (event) => {
-      this.logger.log(
-        `[OutboxWorker] Handling ingestion.completed for tenant '${event.tenantId}'`
-      );
+      if (db) {
+        await db.collection('order_events').insertOne({
+          eventType: 'order.committed',
+          tenantId: event.tenantId,
+          environmentId: event.environmentId,
+          orderId: event.payload?.orderId,
+          payload: event.payload,
+          committedAt: new Date().toISOString(),
+        });
+      }
     });
   }
 
@@ -206,8 +281,27 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       const dbRepo = new DbOutboxRepository(db);
       this.repo = dbRepo;
 
+      const ownershipRepo = new DurableConnectionOwnershipRepository(() => db);
+      const capabilityDispatcher = new CapabilityDispatcher({
+        activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL,
+        activepiecesApiKey: process.env.ACTIVEPIECES_API_KEY,
+        activepiecesWebhookSecret: process.env.ACTIVEPIECES_WEBHOOK_SECRET,
+        validateConnectionOwnership: (tenantId, environmentId, connectionRef) =>
+          ownershipRepo.validateOwnership(tenantId, environmentId, connectionRef),
+      });
+      const notificationDispatcher = new NotificationDispatcher(db, {
+        capabilityDispatcher,
+        validateConnectionOwnership: (tenantId, environmentId, connectionRef) =>
+          ownershipRepo.validateOwnership(tenantId, environmentId, connectionRef),
+      });
+
       // Register durable production handlers wired to the database before worker start
-      this.registerProductionHandlers(db);
+      this.registerProductionHandlers({
+        db,
+        capabilityDispatcher,
+        notificationDispatcher,
+        ownershipRepository: ownershipRepo,
+      });
 
       this.worker = new OutboxWorker(
         dbRepo as any,

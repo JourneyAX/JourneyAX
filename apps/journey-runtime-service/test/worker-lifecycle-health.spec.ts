@@ -327,7 +327,27 @@ async function runWorkerLifecycleHealthTests() {
   // Section 6: Real Registered Events vs Unknown Event Acknowledgment
   await test('7. Real registered production events are delivered and acknowledged, whereas unknown events are never acknowledged', async () => {
     const repo = new OutboxRepository();
-    const service = new OutboxWorkerService(); // Contains default production handlers
+    const mockDb = {
+      collection: (_name: string) => ({
+        insertOne: async () => ({ insertedId: 'mock_1' }),
+        updateOne: async () => ({ modifiedCount: 1 }),
+      }),
+    };
+    const mockNotifDispatcher = {
+      dispatch: async () => ({
+        status: 'success',
+        deliveries: [{ status: 'delivered', providerDeliveryId: 'p_1' }],
+      }),
+    } as any;
+    const mockCapDispatcher = {
+      dispatch: async () => ({ status: 'success', output: { ok: true } }),
+    } as any;
+
+    const service = new OutboxWorkerService({
+      db: mockDb,
+      notificationDispatcher: mockNotifDispatcher,
+      capabilityDispatcher: mockCapDispatcher,
+    });
 
     // 1. Enqueue real production events
     const packPubId = await repo.enqueueEvent(
@@ -348,7 +368,7 @@ async function runWorkerLifecycleHealthTests() {
       'tenant-prod-test',
       'production',
       'activepieces.dispatch',
-      { flowId: 'flow_ct_sync_01' }
+      { flowId: 'flow_ct_sync_01', connectionRef: 'conn_ct_test' }
     );
 
     // 2. Enqueue an unknown, unregistered event type
