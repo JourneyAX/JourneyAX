@@ -508,6 +508,93 @@ async function runNotificationTests() {
     }
   });
 
+  // Test 11: No recipients configured is failure (fail closed)
+  await test('11. Negative: No-recipient / no-delivery returns failure and creates failed delivery audit', async () => {
+    const res = await dispatcher.dispatch(
+      'tenant_abc',
+      'empty.recipients.event',
+      { foo: 'bar' },
+      {
+        email: {
+          enabled: true,
+          provider: 'sendgrid',
+          apiKeyRef: 'sendgrid_secret_ref',
+          defaultRecipients: [], // Empty!
+        },
+      },
+      { recipients: [] }
+    );
+
+    assert.equal(res.success, false, 'Dispatch must return success: false when no recipients are configured');
+    assert.equal(res.deliveries.length, 1);
+    assert.equal(res.deliveries[0].status, 'failed');
+    assert.match(res.deliveries[0].error || '', /No recipients configured/i);
+
+    // Empty channels config should also fail
+    const emptyRes = await dispatcher.dispatch('tenant_abc', 'empty.event', {}, {});
+    assert.equal(emptyRes.success, false, 'Dispatch with no enabled channels must return success: false');
+  });
+
+  // Test 12: Unsigned outbound webhook is rejected
+  await test('12. Negative: Outbound webhook requires secretRef and valid tenant secret for HMAC signing', async () => {
+    // Missing secretRef
+    const resNoSecret = await dispatcher.dispatch(
+      'tenant_abc',
+      'webhook.unsigned',
+      { data: 123 },
+      {
+        webhook: {
+          enabled: true,
+          url: 'https://example.com/webhook',
+        },
+      }
+    );
+    assert.equal(resNoSecret.success, false);
+    assert.equal(resNoSecret.deliveries[0].status, 'failed');
+    assert.match(resNoSecret.deliveries[0].error || '', /requires secretRef for HMAC signing/i);
+
+    // Unresolved secretRef
+    const resUnresolved = await dispatcher.dispatch(
+      'tenant_abc',
+      'webhook.unresolved',
+      { data: 123 },
+      {
+        webhook: {
+          enabled: true,
+          url: 'https://example.com/webhook',
+          secretRef: 'nonexistent_webhook_secret',
+        },
+      }
+    );
+    assert.equal(resUnresolved.success, false);
+    assert.equal(resUnresolved.deliveries[0].status, 'failed');
+    assert.match(resUnresolved.deliveries[0].error || '', /could not be resolved/i);
+  });
+
+  // Test 13: retryDelivery strictly scoped by tenantId, environmentId, provider, and deliveryId
+  await test('13. Scoped retry: Cross-tenant or mismatched environment delivery cannot be retried', async () => {
+    const targetDeliv = insertedDeliveries.find((d) => d.tenantId === 'tenant_abc');
+    assert.ok(targetDeliv);
+
+    // Attempting retry with wrong tenantId must return null (not found)
+    const mismatchedTenant = await dispatcher.retryDelivery(
+      'tenant_xyz',
+      'production',
+      targetDeliv.deliveryId,
+      { email: { enabled: true, apiKeyRef: 'resend_secret_ref' } }
+    );
+    assert.equal(mismatchedTenant, null, 'Retry query must not match delivery belonging to different tenant');
+
+    // Attempting retry with wrong environmentId must return null
+    const mismatchedEnv = await dispatcher.retryDelivery(
+      'tenant_abc',
+      'staging' as any,
+      targetDeliv.deliveryId,
+      { email: { enabled: true, apiKeyRef: 'resend_secret_ref' } }
+    );
+    assert.equal(mismatchedEnv, null, 'Retry query must not match delivery in different environment');
+  });
+
   console.log(`\nNotification Tests Complete: ${passed} passed, ${failed} failed.\n`);
   if (failed > 0) process.exit(1);
 }

@@ -250,6 +250,80 @@ async function runWorkerLifecycleHealthTests() {
     service.stopWorker();
   });
 
+  // Section 5: Fail-closed Dispatcher Negative Tests
+  await test('6. Negative: Unknown or failing event is never marked published and remains retryable or dead-letter', async () => {
+    const repo = new OutboxRepository();
+    const service = new OutboxWorkerService();
+
+    // 1. Enqueue an unknown event type with no registered handler
+    const unknownEventId = await repo.enqueueEvent(
+      'tenant-negative-test',
+      'test',
+      'completely.unknown.event.type',
+      { data: 'test' }
+    );
+
+    // 2. Enqueue an event whose registered handler throws
+    const failingEventId = await repo.enqueueEvent(
+      'tenant-negative-test',
+      'test',
+      'registered.failing.event',
+      { data: 'will-fail' }
+    );
+    service.registerHandler('registered.failing.event', async (_evt) => {
+      throw new Error('Downstream destination unavailable');
+    });
+
+    // 3. Register a successful handler for comparison
+    const successEventId = await repo.enqueueEvent(
+      'tenant-negative-test',
+      'test',
+      'registered.success.event',
+      { data: 'will-succeed' }
+    );
+    service.registerHandler('registered.success.event', async (_evt) => {
+      // success
+    });
+
+    // Start worker without overriding dispatcher (uses service.dispatchEvent)
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker-fail-closed-test',
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+      batchSize: 10,
+      maxAttempts: 3,
+      backoffBaseMs: 10,
+    });
+
+    // Run batch
+    const batchResult = await worker.processNextBatch();
+    assert.equal(batchResult.processed, 3);
+    assert.equal(batchResult.succeeded, 1);
+    assert.equal(batchResult.failed, 2);
+
+    const events = repo.getEvents();
+    const unknownEvent = events.find((e) => e.eventId === unknownEventId)!;
+    const failingEvent = events.find((e) => e.eventId === failingEventId)!;
+    const successEvent = events.find((e) => e.eventId === successEventId)!;
+
+    // Unknown event must NOT be published
+    assert.notEqual(unknownEvent.status, 'published', 'Unknown event must NEVER be marked published (log-and-ack prohibited)');
+    assert.equal(unknownEvent.status, 'pending', 'Unknown event should be pending/retryable');
+    assert.equal(unknownEvent.attempts, 1);
+    assert.match(unknownEvent.error || '', /No handler registered for event type/);
+
+    // Failing event must NOT be published
+    assert.notEqual(failingEvent.status, 'published', 'Failing event must NEVER be marked published');
+    assert.equal(failingEvent.status, 'pending');
+    assert.equal(failingEvent.attempts, 1);
+    assert.match(failingEvent.error || '', /Downstream destination unavailable/);
+
+    // Success event should be published
+    assert.equal(successEvent.status, 'published');
+
+    service.stopWorker();
+  });
+
   console.log(`\n==================================================`);
   console.log(`Worker Lifecycle & Health Test Summary: ${passed} passed, ${failed} failed`);
   console.log(`==================================================\n`);

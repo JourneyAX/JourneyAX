@@ -5,17 +5,20 @@ import { ProjectConfig } from './project.types';
 export interface NotificationChannelConfig {
   email?: {
     enabled: boolean;
-    provider?: 'sendgrid';
-    apiKey?: string;
+    provider?: 'sendgrid' | 'resend' | 'activepieces' | 'webhook';
+    apiKeyRef?: string;
+    connectionRef?: string;
+    flowId?: string;
     fromEmail?: string;
     fromName?: string;
     defaultRecipients?: string[];
     templateIds?: Record<string, string>;
+    rateLimitPerHour?: number;
   };
   webhook?: {
     enabled: boolean;
     url: string;
-    secret?: string;
+    secretRef?: string;
     events?: string[];
   };
 }
@@ -35,7 +38,17 @@ export class NotificationConfigurationService {
       { projection: { 'settings.notifications': 1, notificationChannels: 1 } }
     );
     if (!doc) return null;
-    return (doc as any).notificationChannels || (doc as any)?.settings?.notifications || null;
+    const raw = (doc as any).notificationChannels || (doc as any)?.settings?.notifications || null;
+    if (!raw) return null;
+    // Sanitize any legacy records to never expose raw secrets
+    const sanitized = structuredClone(raw);
+    if (sanitized.email) {
+      delete (sanitized.email as any).apiKey;
+    }
+    if (sanitized.webhook) {
+      delete (sanitized.webhook as any).secret;
+    }
+    return sanitized;
   }
 
   async updateNotificationConfig(
@@ -43,13 +56,30 @@ export class NotificationConfigurationService {
     channels: NotificationChannelConfig
   ): Promise<{ success: boolean; message?: string }> {
     if (!this.isConnected()) return { success: false, message: 'Database not available.' };
+
+    // Strictly reject raw apiKey and secret persistence
+    if ((channels?.email as any)?.apiKey || (channels?.webhook as any)?.secret) {
+      return {
+        success: false,
+        message: 'Raw apiKey and secret cannot be persisted in project notification configuration. Use apiKeyRef or secretRef.',
+      };
+    }
+
     const pid = projectId.toLowerCase();
+    const sanitizedChannels = structuredClone(channels);
+    if (sanitizedChannels.email) {
+      delete (sanitizedChannels.email as any).apiKey;
+    }
+    if (sanitizedChannels.webhook) {
+      delete (sanitizedChannels.webhook as any).secret;
+    }
+
     const result = await this.getCollection().updateOne(
       { projectId: pid },
       {
         $set: {
-          notificationChannels: channels,
-          'settings.notifications': channels,
+          notificationChannels: sanitizedChannels,
+          'settings.notifications': sanitizedChannels,
           updatedAt: new Date().toISOString(),
         },
         $inc: { version: 1 },

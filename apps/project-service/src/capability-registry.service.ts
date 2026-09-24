@@ -3,6 +3,8 @@ import {
   ToolDefinition,
   ToolBinding,
   BusinessPackRelease,
+  BusinessPackReleaseSchema,
+  computePackChecksum,
 } from '@journeyax/business-pack';
 import { connectToDatabase, COLLECTION_BUSINESS_PACK_RELEASES, COLLECTION_BUSINESS_PACK_POINTERS } from '@journeyax/database';
 import { CARD_TYPE_NAMES, CardType } from '@journeyax/ui-cards';
@@ -10,6 +12,56 @@ import { createHash, randomUUID } from 'crypto';
 
 export function isCardType(x: unknown): x is CardType {
   return typeof x === 'string' && (CARD_TYPE_NAMES as string[]).includes(x);
+}
+
+/**
+ * Recursively inspects any object or array to detect raw secrets/credentials.
+ * Rejects fields like apiKey, clientSecret, password, private_key, raw auth tokens,
+ * while strictly allowing safe references (secretRef, connectionRef, apiKeyRef).
+ */
+export function findRawSecrets(obj: unknown, path = ''): string[] {
+  const violations: string[] = [];
+  if (!obj || typeof obj !== 'object') return violations;
+
+  if (Array.isArray(obj)) {
+    obj.forEach((item, idx) => {
+      violations.push(...findRawSecrets(item, path ? `${path}[${idx}]` : `[${idx}]`));
+    });
+    return violations;
+  }
+
+  for (const [key, value] of Object.entries(obj)) {
+    const currentPath = path ? `${path}.${key}` : key;
+    const lowerKey = key.toLowerCase();
+
+    // Do not flag reference identifiers or token limit configurations
+    const isReferenceKey = lowerKey.endsWith('ref') || lowerKey.endsWith('id') || lowerKey.endsWith('name');
+    const isSecretKeyName =
+      (/^(api_?key|client_?secret|secret|password|passwd|private_?key|auth_?token|access_?token|bearer_?token|api_?token|webhook_?secret)$/i.test(key) ||
+       (lowerKey.includes('secret') && !lowerKey.includes('ref')) ||
+       (lowerKey.includes('password') && !lowerKey.includes('ref')) ||
+       (lowerKey.includes('apikey') && !lowerKey.includes('ref'))) &&
+      !isReferenceKey;
+
+    if (isSecretKeyName) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        violations.push(`Raw secret detected at '${currentPath}'. Use secretRef or connectionRef references only.`);
+      }
+    }
+
+    if (typeof value === 'string') {
+      if (
+        /(?:apiKey|clientSecret|secret|password|private_key)\s*[:=]\s*['"]?[a-zA-Z0-9_\-]{8,}/i.test(value) &&
+        !/(?:secretRef|connectionRef)/i.test(value)
+      ) {
+        violations.push(`Embedded raw secret detected at '${currentPath}'. Use secretRef references only.`);
+      }
+    } else if (typeof value === 'object' && value !== null) {
+      violations.push(...findRawSecrets(value, currentPath));
+    }
+  }
+
+  return violations;
 }
 
 /**
@@ -120,63 +172,92 @@ export class CapabilityRegistryService {
     environmentId: string,
     packVersion?: string
   ): Promise<ToolDefinition[]> {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const uri = process.env.MONGODB_URI;
+
+    if (isProduction && !uri) {
+      throw new Error('MONGODB_URI is required for capability discovery in production; failing closed');
+    }
+
     const discovered: ToolDefinition[] = [];
 
     // 1. Load from authoritative Business Pack release in MongoDB if available
-    const uri = process.env.MONGODB_URI;
     if (uri) {
-      try {
-        const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+      const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
 
-        let versionToLoad = packVersion;
-        if (!versionToLoad) {
-          const pointer = await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).findOne({
-            tenantId,
-            environmentId,
-          });
-          versionToLoad = pointer?.activeVersion;
-        }
-
-        if (versionToLoad) {
-          const release = await db.collection(COLLECTION_BUSINESS_PACK_RELEASES).findOne({
-            tenantId,
-            environmentId,
-            version: versionToLoad,
-          });
-
-          if (release?.capabilities?.toolDefinitions) {
-            discovered.push(...release.capabilities.toolDefinitions);
-          }
-        }
-
-        // 2. Discover installed Activepieces integration subscriptions for this tenant
-        const activepiecesSubs = await db.collection('webhook_subscriptions').find({
+      let versionToLoad = packVersion;
+      if (!versionToLoad) {
+        const pointer = await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).findOne({
           tenantId,
           environmentId,
-          status: 'active',
-        }).toArray();
+        });
+        versionToLoad = pointer?.activeVersion;
+      }
 
-        for (const sub of activepiecesSubs) {
-          const flowToolId = `activepieces.${sub.event || 'flow'}`;
-          if (!discovered.some((d) => d.toolId === flowToolId)) {
-            discovered.push({
-              toolId: flowToolId,
-              version: '1.0.0',
-              displayName: `Activepieces ${sub.event || 'Flow'}`,
-              description: `Dynamically discovered Activepieces integration flow (${sub.subscriptionId})`,
-              inputSchema: { type: 'object' },
-              outputSchema: { type: 'object' },
-              sideEffect: 'write',
-              risk: 'medium',
-              timeoutPolicy: { timeoutMs: 15000, retryAttempts: 1 },
-              idempotencyPolicy: { required: true, ttlSeconds: 86400 },
-              approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
-              dataClassification: 'internal',
-            });
-          }
+      if (versionToLoad) {
+        const release = await db.collection(COLLECTION_BUSINESS_PACK_RELEASES).findOne({
+          tenantId,
+          environmentId,
+          version: versionToLoad,
+        });
+
+        if (!release) {
+          throw new Error(
+            `Business Pack release '${versionToLoad}' not found for tenant '${tenantId}' (${environmentId})`
+          );
         }
-      } catch (err: any) {
-        console.warn(`[CapabilityRegistryService] Dynamic capability discovery warning for tenant '${tenantId}':`, err.message);
+
+        const parsed = BusinessPackReleaseSchema.safeParse(release);
+        if (!parsed.success) {
+          throw new Error(
+            `Business Pack release '${versionToLoad}' schema invalid for tenant '${tenantId}': ${JSON.stringify(parsed.error.format())}`
+          );
+        }
+
+        const rawChecksum = typeof release.checksum === 'string' ? release.checksum.trim() : '';
+        if (!rawChecksum) {
+          throw new Error(
+            `Business Pack release '${versionToLoad}' missing mandatory checksum for tenant '${tenantId}'`
+          );
+        }
+
+        const computed = computePackChecksum(parsed.data);
+        if (computed !== rawChecksum) {
+          throw new Error(
+            `Business Pack release '${versionToLoad}' checksum mismatch: expected '${rawChecksum}', computed '${computed}'`
+          );
+        }
+
+        if (parsed.data.capabilities?.toolDefinitions) {
+          discovered.push(...parsed.data.capabilities.toolDefinitions);
+        }
+      }
+
+      // 2. Discover installed Activepieces integration subscriptions for this tenant
+      const activepiecesSubs = await db.collection('webhook_subscriptions').find({
+        tenantId,
+        environmentId,
+        status: 'active',
+      }).toArray();
+
+      for (const sub of activepiecesSubs) {
+        const flowToolId = `activepieces.${sub.event || 'flow'}`;
+        if (!discovered.some((d) => d.toolId === flowToolId)) {
+          discovered.push({
+            toolId: flowToolId,
+            version: '1.0.0',
+            displayName: `Activepieces ${sub.event || 'Flow'}`,
+            description: `Dynamically discovered Activepieces integration flow (${sub.subscriptionId})`,
+            inputSchema: { type: 'object' },
+            outputSchema: { type: 'object' },
+            sideEffect: 'write',
+            risk: 'medium',
+            timeoutPolicy: { timeoutMs: 15000, retryAttempts: 1 },
+            idempotencyPolicy: { required: true, ttlSeconds: 86400 },
+            approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
+            dataClassification: 'internal',
+          });
+        }
       }
     }
 
@@ -209,7 +290,7 @@ export class CapabilityRegistryService {
    */
   validateToolBinding(
     binding: ToolBinding,
-    availableSecrets: string[] = []
+    availableSecrets?: string[]
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
@@ -223,9 +304,18 @@ export class CapabilityRegistryService {
       if (binding.executor.type === 'activepieces_flow' && !binding.executor.flowId) {
         errors.push('activepieces_flow executor requires flowId');
       }
-      if (binding.executor.connectionRef && availableSecrets.length > 0 && !availableSecrets.includes(binding.executor.connectionRef)) {
+      if (binding.executor.connectionRef && availableSecrets !== undefined && !availableSecrets.includes(binding.executor.connectionRef)) {
         errors.push(`Referenced secret connection '${binding.executor.connectionRef}' is not configured for tenant '${binding.tenantId}'`);
       }
+      if (binding.executor.secretRef && availableSecrets !== undefined && !availableSecrets.includes(binding.executor.secretRef)) {
+        errors.push(`Referenced secret '${binding.executor.secretRef}' is not configured for tenant '${binding.tenantId}'`);
+      }
+    }
+
+    // Ensure no raw secrets are stored anywhere in binding
+    const rawSecretViolations = findRawSecrets(binding);
+    if (rawSecretViolations.length > 0) {
+      errors.push(...rawSecretViolations);
     }
 
     // Ensure no raw secrets are stored in policyOverrides
@@ -386,12 +476,22 @@ export class CapabilityRegistryService {
       // ── 5. Validate Secret References & Disallow raw secrets ──────────────
       if (binding.executor?.connectionRef) {
         if (
-          options.availableSecrets &&
-          options.availableSecrets.length > 0 &&
+          options.availableSecrets !== undefined &&
           !options.availableSecrets.includes(binding.executor.connectionRef)
         ) {
           errors.push(
             `Tool binding '${binding.toolId}' references unconfigured connectionRef '${binding.executor.connectionRef}'`
+          );
+        }
+      }
+
+      if (binding.executor?.secretRef) {
+        if (
+          options.availableSecrets !== undefined &&
+          !options.availableSecrets.includes(binding.executor.secretRef)
+        ) {
+          errors.push(
+            `Tool binding '${binding.toolId}' references unconfigured secretRef '${binding.executor.secretRef}'`
           );
         }
       }
@@ -446,6 +546,12 @@ export class CapabilityRegistryService {
           }
         }
       }
+    }
+
+    // ── 8. Recursively Disallow Raw Secrets ────────────────────────────────
+    const rawSecrets = findRawSecrets(pack);
+    if (rawSecrets.length > 0) {
+      errors.push(...rawSecrets);
     }
 
     return { valid: errors.length === 0, errors };
@@ -543,19 +649,34 @@ export class CapabilityRegistryService {
         );
       };
 
-      if (client && typeof client.startSession === 'function') {
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (isProduction) {
+        if (!client || typeof client.startSession !== 'function') {
+          throw new Error('MongoDB client session and transaction required in production; failing closed');
+        }
         const session = client.startSession();
         try {
-          if (typeof session.withTransaction === 'function') {
-            await session.withTransaction(() => executeWrite(session));
-          } else {
-            await executeWrite(session);
-          }
+          await session.withTransaction(() => executeWrite(session));
         } finally {
           await session.endSession();
         }
       } else {
-        await executeWrite();
+        if (client && typeof client.startSession === 'function') {
+          const session = client.startSession();
+          try {
+            if (typeof session.withTransaction === 'function') {
+              await session.withTransaction(() => executeWrite(session));
+            } else {
+              await executeWrite(session);
+            }
+          } catch {
+            await executeWrite();
+          } finally {
+            await session.endSession();
+          }
+        } else {
+          await executeWrite();
+        }
       }
 
       return { version, checksum, cardCount: cards.length };
@@ -566,7 +687,7 @@ export class CapabilityRegistryService {
 
   /**
    * Card/Theme rollback to a previous checksum-verified release.
-   * Fail-closed: Requires active MongoDB, verifies release exists, updates active pointer and records audit.
+   * Fail-closed: Requires active MongoDB, verifies release exists and checksum matches, updates active pointer and records audit.
    */
   async rollbackCardTheme(
     tenantId: string,
@@ -590,6 +711,17 @@ export class CapabilityRegistryService {
 
       if (!release) {
         throw new Error(`Target card theme release '${targetVersion}' not found for rollback`);
+      }
+
+      // Verify release checksum on rollback
+      const computedChecksum = createHash('sha256').update(
+        JSON.stringify({ tenantId, environmentId, theme: release.theme, cards: release.cards })
+      ).digest('hex');
+      const storedChecksum = typeof release.checksum === 'string' ? release.checksum.trim() : '';
+      if (!storedChecksum || storedChecksum !== computedChecksum) {
+        throw new Error(
+          `Target card theme release '${targetVersion}' checksum mismatch on rollback: stored='${storedChecksum}', computed='${computedChecksum}'; rollback aborted`
+        );
       }
 
       const executeRollback = async (session?: any) => {
@@ -623,19 +755,34 @@ export class CapabilityRegistryService {
         );
       };
 
-      if (client && typeof client.startSession === 'function') {
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (isProduction) {
+        if (!client || typeof client.startSession !== 'function') {
+          throw new Error('MongoDB client session and transaction required in production; failing closed');
+        }
         const session = client.startSession();
         try {
-          if (typeof session.withTransaction === 'function') {
-            await session.withTransaction(() => executeRollback(session));
-          } else {
-            await executeRollback(session);
-          }
+          await session.withTransaction(() => executeRollback(session));
         } finally {
           await session.endSession();
         }
       } else {
-        await executeRollback();
+        if (client && typeof client.startSession === 'function') {
+          const session = client.startSession();
+          try {
+            if (typeof session.withTransaction === 'function') {
+              await session.withTransaction(() => executeRollback(session));
+            } else {
+              await executeRollback(session);
+            }
+          } catch {
+            await executeRollback();
+          } finally {
+            await session.endSession();
+          }
+        } else {
+          await executeRollback();
+        }
       }
 
       return { version: targetVersion, restored: true, checksum: release.checksum };

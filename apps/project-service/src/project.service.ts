@@ -23,7 +23,7 @@ const TEAMS     = 'project_teams';
 const RULES     = 'business_rules';    // back-office configurable agent rules
 const VERSIONS  = 'config_versions';   // immutable published config snapshots (FR-CONFIG-002)
 
-import { STANDARD_TOOL_SCHEMAS, PLATFORM_TOOL_CONTRACTS } from './capability-registry.service';
+import { STANDARD_TOOL_SCHEMAS, PLATFORM_TOOL_CONTRACTS, CapabilityRegistryService } from './capability-registry.service';
 export { STANDARD_TOOL_SCHEMAS, PLATFORM_TOOL_CONTRACTS };
 
 /**
@@ -50,6 +50,7 @@ export class ProjectService {
   private rulesCol!: Collection<BusinessRule>;
   private versionsCol!: Collection<ConfigVersion>;
   private isConnected = false;
+  private readonly capabilityService = new CapabilityRegistryService();
 
   private cache = new Map<string, { config: ProjectConfig; expiresAt: number }>();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1235,6 +1236,25 @@ export class ProjectService {
       experience: compiledExperience,
       evaluations: compiledEvaluations,
     };
+
+    // Validate Business Pack reference integrity fail-closed
+    let availableSecrets: string[] = [];
+    try {
+      const secretDocs = await this.db.collection('tenant_secrets').find({ tenantId: pid }).toArray();
+      availableSecrets = secretDocs.map((s: any) => s.secretRef || s.secretKey || s.key || s.name || s.id).filter(Boolean);
+    } catch {
+      availableSecrets = [];
+    }
+
+    const integrity = this.capabilityService.validateBusinessPackReferenceIntegrity(packData as any, {
+      availableSecrets,
+    });
+    if (!integrity.valid) {
+      return {
+        success: false,
+        message: `Publish blocked by reference integrity: ${integrity.errors.join('; ')}`,
+      };
+    }
 
     const snapshot = this.clean(doc);
     // The snapshot itself records which published version it is.

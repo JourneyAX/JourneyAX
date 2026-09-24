@@ -6,6 +6,7 @@ import {
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
 } from '@journeyax/business-pack';
+import { CapabilityRegistryService } from './capability-registry.service';
 
 @Injectable()
 export class BusinessPackPublicationService {
@@ -184,6 +185,26 @@ export class BusinessPackPublicationService {
         cards: doc.cardTemplates || {},
       },
     };
+
+    // Validate Business Pack reference integrity fail-closed
+    let availableSecrets: string[] = [];
+    try {
+      const secretDocs = await this.getDb().collection('tenant_secrets').find({ tenantId: pid }).toArray();
+      availableSecrets = secretDocs.map((s: any) => s.secretRef || s.secretKey || s.key || s.name || s.id).filter(Boolean);
+    } catch {
+      availableSecrets = [];
+    }
+
+    const capabilityService = new CapabilityRegistryService();
+    const integrity = capabilityService.validateBusinessPackReferenceIntegrity(businessPack as any, {
+      availableSecrets,
+    });
+    if (!integrity.valid) {
+      return {
+        success: false,
+        message: `Publish blocked by reference integrity: ${integrity.errors.join('; ')}`,
+      };
+    }
 
     const client = (this.getDb() as any).client;
     const isProduction = process.env.NODE_ENV === 'production';

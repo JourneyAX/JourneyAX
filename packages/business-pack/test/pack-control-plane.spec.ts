@@ -559,6 +559,105 @@ async function runPackControlPlaneTests() {
     }
   });
 
+  // ── TEST 7: rollbackBusinessPack verifies release checksum on rollback ──
+  await test('rollbackBusinessPack verifies target release checksum and fails closed on mismatch', async () => {
+    const memoryPointers: any[] = [];
+    const memoryReleases: any[] = [];
+    const memoryOutbox: any[] = [];
+
+    const mockDb: any = {
+      collection: (colName: string) => ({
+        findOne: async (query: any) => {
+          if (colName === 'business_pack_pointers') {
+            const found = memoryPointers.find((p) => p.tenantId === query.tenantId && p.environmentId === query.environmentId);
+            return found ? structuredClone(found) : null;
+          }
+          if (colName === 'business_pack_releases') {
+            const found = memoryReleases.find((r) => r.tenantId === query.tenantId && r.environmentId === query.environmentId && r.version === query.version);
+            return found ? structuredClone(found) : null;
+          }
+          return null;
+        },
+        insertOne: async (doc: any) => {
+          if (colName === 'business_pack_releases') memoryReleases.push(structuredClone(doc));
+          if (colName === 'business_pack_pointers') memoryPointers.push(structuredClone(doc));
+          if (colName === 'outbox_events') memoryOutbox.push(structuredClone(doc));
+          return { acknowledged: true, insertedId: 'mock-id' };
+        },
+        updateOne: async (query: any, update: any) => {
+          if (colName === 'business_pack_pointers') {
+            const idx = memoryPointers.findIndex((p) => p.tenantId === query.tenantId && p.environmentId === query.environmentId);
+            if (idx >= 0) {
+              if (query.revision !== undefined && memoryPointers[idx].revision !== query.revision) {
+                return { matchedCount: 0, acknowledged: true };
+              }
+              if (update.$set) Object.assign(memoryPointers[idx], update.$set);
+              return { matchedCount: 1, acknowledged: true };
+            }
+            if (update.$set) memoryPointers.push({ ...query, ...update.$set });
+            return { matchedCount: 1, acknowledged: true };
+          }
+          return { matchedCount: 1, acknowledged: true };
+        },
+      }),
+    };
+
+    const makePack = (version: string) => ({
+      manifest: {
+        packId: 'rb-test-pack',
+        tenantId: 'rb-tenant',
+        name: 'Rollback Test Pack',
+        version,
+        schemaVersion: '1.0.0',
+        environmentId: 'production',
+      },
+      profile: { companyName: 'Rollback Corp', industry: 'retail', primaryGoals: ['sales'], locales: ['en-US'] },
+      vocabulary: { version: '1.0.0', dimensions: [], terms: [], acronyms: {}, slotSynonyms: {}, slotMappings: {}, prohibitedTerms: [] },
+      entities: { version: '1.0.0', entities: [] },
+      conversationPolicy: { fencingRules: [], prohibitedTopics: [], escalationThresholds: { sentimentFloor: -0.6, maxTurnsWithoutProgress: 4 } },
+      modelPolicy: {
+        version: '1.0.0',
+        defaultPolicy: 'p1',
+        policies: [{ policyId: 'p1', candidates: [{ provider: 'openai', model: 'gpt-4o', priority: 1 }], dataResidency: 'us', maxInputTokens: 1000, maxOutputTokens: 100, fallbackAllowed: false, timeoutMs: 1000 }],
+      },
+      agents: [{ agentId: 'a1', name: 'A', purpose: 'test', description: 'test', modelPolicyRef: 'p1', allowedTools: [], maxTurns: 1, handoffConditions: [] }],
+      journeys: [{
+        journeyId: 'j1', version, displayName: 'J1', goals: ['test'], initialStage: 's1',
+        stages: { s1: { stageId: 's1', displayName: 'S1', requiredFacts: [], allowedCapabilities: [], nextDecisionPolicy: 'dependency-first', exitConditions: [] } },
+      }],
+      rules: [],
+      capabilities: { version: '1.0.0', toolDefinitions: [], toolBindings: [], stageBindings: [] },
+      experience: { version: '1.0.0', theme: { primaryColor: '#000', accentColor: '#fff', fontFamily: 'sans', borderRadius: '4px', customCssVars: {} }, cards: { allowedCardTypes: ['bundle'], defaultCardRenderer: '@journeyax/ui-cards' } },
+      evaluations: [],
+    });
+
+    // Publish v1.0.0 then v1.0.1
+    await publishBusinessPack(mockDb, makePack('1.0.0'));
+    await publishBusinessPack(mockDb, makePack('1.0.1'));
+
+    // Corrupt the checksum of v1.0.0
+    const v1Release = memoryReleases.find((r) => r.version === '1.0.0');
+    assert.ok(v1Release);
+    const legitimateChecksum = v1Release.checksum;
+    v1Release.checksum = 'corrupted_checksum_deadbeef';
+
+    // Attempt rollback to v1.0.0 -> must be rejected with checksum mismatch error
+    await assert.rejects(
+      async () => {
+        await rollbackBusinessPack(mockDb, 'rb-tenant', 'production', { targetVersion: '1.0.0' });
+      },
+      /checksum mismatch/
+    );
+
+    // Restore legitimate checksum
+    v1Release.checksum = legitimateChecksum;
+
+    // Rollback to v1.0.0 -> must succeed
+    const rbResult = await rollbackBusinessPack(mockDb, 'rb-tenant', 'production', { targetVersion: '1.0.0' });
+    assert.equal(rbResult.activeVersion, '1.0.0');
+    assert.equal(rbResult.previousVersion, '1.0.1');
+  });
+
   console.log(`\n==================================================`);
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   console.log(`==================================================\n`);

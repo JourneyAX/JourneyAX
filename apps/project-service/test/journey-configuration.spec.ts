@@ -282,6 +282,93 @@ async function runJourneyConfigTests() {
     );
   });
 
+  // Test 9: Validate connectionRef is rejected when available-secret list is empty
+  await test('9. validateToolBinding and validateBusinessPackReferenceIntegrity reject connectionRef when availableSecrets is empty', () => {
+    const bindingWithSecret: any = {
+      toolId: 'workflow.invoke',
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      executor: {
+        type: 'activepieces_flow',
+        flowId: 'flow_999',
+        connectionRef: 'any_secret_conn',
+      },
+    };
+
+    // availableSecrets is explicitly empty array []
+    const toolBindingResult = capabilityService.validateToolBinding(bindingWithSecret, []);
+    assert.equal(toolBindingResult.valid, false);
+    assert.ok(toolBindingResult.errors.some((e) => e.includes('not configured for tenant')));
+
+    const packWithConnectionRef: any = {
+      journeys: [
+        {
+          journeyId: 'j_empty',
+          entryStage: 's1',
+          stages: [{ stageId: 's1', exitConditions: [] }],
+        },
+      ],
+      modelPolicy: {
+        version: '1.0.0',
+        defaultPolicy: 'p1',
+        policies: [{ policyId: 'p1' }],
+      },
+      capabilities: {
+        toolDefinitions: [{ toolId: 'workflow.invoke' }],
+        toolBindings: [bindingWithSecret],
+      },
+    };
+
+    const integrityResult = capabilityService.validateBusinessPackReferenceIntegrity(packWithConnectionRef, {
+      availableSecrets: [],
+    });
+    assert.equal(integrityResult.valid, false);
+    assert.ok(integrityResult.errors.some((e) => e.includes('unconfigured connectionRef')));
+  });
+
+  // Test 10: validateBusinessPackReferenceIntegrity recursively rejects raw secrets
+  await test('10. validateBusinessPackReferenceIntegrity recursively rejects raw secrets across nested definitions', () => {
+    const packWithDeepSecrets: any = {
+      journeys: [
+        {
+          journeyId: 'j_secret',
+          entryStage: 's1',
+          stages: [
+            {
+              stageId: 's1',
+              exitConditions: [],
+              customData: {
+                nested: {
+                  clientSecret: 'shhh_raw_secret_here',
+                },
+              },
+            },
+          ],
+        },
+      ],
+      modelPolicy: {
+        version: '1.0.0',
+        defaultPolicy: 'p1',
+        policies: [
+          {
+            policyId: 'p1',
+            config: {
+              apiKey: 'sk-1234567890abcdef',
+            },
+          },
+        ],
+      },
+      capabilities: {
+        toolDefinitions: [{ toolId: 'workflow.invoke' }],
+      },
+    };
+
+    const result = capabilityService.validateBusinessPackReferenceIntegrity(packWithDeepSecrets);
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((e) => e.includes("Raw secret detected at 'journeys[0].stages[0].customData.nested.clientSecret'")));
+    assert.ok(result.errors.some((e) => e.includes("Raw secret detected at 'modelPolicy.policies[0].config.apiKey'")));
+  });
+
   console.log(`\nStudio Control-Plane Tests Complete: ${passed} passed, ${failed} failed.\n`);
   if (failed > 0) process.exit(1);
 }

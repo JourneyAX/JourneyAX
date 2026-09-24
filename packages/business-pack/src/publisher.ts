@@ -315,12 +315,33 @@ export async function rollbackBusinessPack(
       );
     }
 
-    // Ensure target release exists
+    // Ensure target release exists and has valid checksum matching content
     const releasesCol = db.collection(COLLECTION_BUSINESS_PACK_RELEASES);
     const targetRelease = await releasesCol.findOne({ tenantId, environmentId, version: targetVersion }, sessionOpts);
     if (!targetRelease) {
       throw new Error(
         `[BusinessPackPublisher] Rollback failed: target release version '${targetVersion}' does not exist for tenant '${tenantId}'`
+      );
+    }
+
+    const rawChecksum = typeof targetRelease.checksum === 'string' ? targetRelease.checksum.trim() : '';
+    if (!rawChecksum) {
+      throw new Error(
+        `[BusinessPackPublisher] Rollback failed: target release version '${targetVersion}' has missing or blank checksum for tenant '${tenantId}'`
+      );
+    }
+
+    const parsed = BusinessPackReleaseSchema.safeParse(targetRelease);
+    if (!parsed.success) {
+      throw new Error(
+        `[BusinessPackPublisher] Rollback failed: schema validation failed for target release '${targetVersion}': ${JSON.stringify(parsed.error.format())}`
+      );
+    }
+
+    const computedChecksum = computePackChecksum(parsed.data);
+    if (computedChecksum !== rawChecksum) {
+      throw new Error(
+        `[BusinessPackPublisher] Rollback failed: target release version '${targetVersion}' checksum mismatch for tenant '${tenantId}' (stored='${rawChecksum}', computed='${computedChecksum}')`
       );
     }
 

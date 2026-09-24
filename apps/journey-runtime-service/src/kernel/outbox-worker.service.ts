@@ -31,6 +31,29 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
   private worker: OutboxWorker | null = null;
   private configurationFailure: string | null = null;
   private repo: OutboxRepository | DbOutboxRepository | null = null;
+  private handlers = new Map<string, (event: any) => Promise<void>>();
+
+  /**
+   * Register a delivery handler for a specific event type.
+   */
+  registerHandler(eventType: string, handler: (event: any) => Promise<void>): void {
+    this.handlers.set(eventType, handler);
+  }
+
+  /**
+   * Dispatches an outbox event to its registered handler.
+   * Fails closed: if no handler is registered or delivery fails, throws an error so the outbox
+   * record remains in retryable or dead-letter state. Never logs and acks.
+   */
+  async dispatchEvent(event: any): Promise<void> {
+    const handler = this.handlers.get(event.eventType);
+    if (!handler) {
+      throw new Error(
+        `[OutboxWorker] No handler registered for event type '${event.eventType}'. Delivery failed and remains retryable or dead-letter.`
+      );
+    }
+    await handler(event);
+  }
 
   async onModuleInit(): Promise<void> {
     const uri = process.env.MONGODB_URI;
@@ -50,7 +73,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         dbRepo as any,
         {
           dispatcher: async (event) => {
-            this.logger.log(`Dispatched durable outbox event: ${event.eventId} (${event.eventType})`);
+            await this.dispatchEvent(event);
           },
           workerId: `worker-${process.pid}-${Math.random().toString(36).substring(2, 7)}`,
           pollIntervalMs: Number(process.env.OUTBOX_POLL_INTERVAL_MS) || 2000,
@@ -89,11 +112,14 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       this.worker.stop();
     }
     this.repo = repo;
+    const effectiveDispatcher = dispatcher || (async (evt) => {
+      await this.dispatchEvent(evt);
+    });
     this.worker = new OutboxWorker(
       repo as any,
       {
         ...options,
-        dispatcher: dispatcher || (async () => {}),
+        dispatcher: effectiveDispatcher,
       }
     );
     this.worker.start();
