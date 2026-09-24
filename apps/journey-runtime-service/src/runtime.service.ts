@@ -535,6 +535,27 @@ export class RuntimeService {
 
     return results;
   }
+
+  /**
+   * Replays a failed dead-letter outbox event.
+   */
+  async replayDeadLetterEvent(eventId: string): Promise<boolean> {
+    return this.appService.outboxRepo.replayDeadLetter(eventId);
+  }
+
+  /**
+   * Resolves a dead-letter outbox event with an operational audit note.
+   */
+  async resolveDeadLetterEvent(eventId: string, resolutionNote: string): Promise<boolean> {
+    return this.appService.outboxRepo.resolveDeadLetter(eventId, resolutionNote);
+  }
+
+  /**
+   * Retrieves operational metrics for the transactional outbox.
+   */
+  async getOutboxMetrics(tenantId?: string): Promise<{ pending: number; leased: number; published: number; deadLetter: number }> {
+    return this.appService.outboxRepo.getMetrics(tenantId);
+  }
 }
 
 export interface WebhookSubscriptionRecord {

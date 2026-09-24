@@ -375,6 +375,191 @@ async function runDurableExecutionTests() {
     );
   });
 
+  await test('7. OutboxWorker lease renewal and crash recovery reclaim', async () => {
+    const outboxRepo = new OutboxRepository();
+    const eventId = await outboxRepo.enqueueEvent(
+      'tenant-durable-1',
+      'test',
+      'order.processing',
+      { orderId: 'ord_long_running' }
+    );
+
+    let dispatchRunning = true;
+    const worker1 = new OutboxWorker(outboxRepo, {
+      workerId: 'worker_crasher',
+      leaseDurationMs: 50, // 50ms lease
+      dispatcher: async () => {
+        // Simulates crash while processing
+        throw new Error('Worker crash / unhandled failure');
+      },
+    });
+
+    // Worker 1 attempts processing and fails (attempt 1)
+    await worker1.processNextBatch();
+
+    // Now test lease renewal explicitly on an active lease
+    const eventId2 = await outboxRepo.enqueueEvent(
+      'tenant-durable-1',
+      'test',
+      'order.renew_lease',
+      { orderId: 'ord_renewal' }
+    );
+    const worker2 = new OutboxWorker(outboxRepo, {
+      workerId: 'worker_renew',
+      leaseDurationMs: 1000,
+      dispatcher: async () => {},
+    });
+
+    await outboxRepo.claimLeases('worker_renew', 1000, 10);
+    const renewed = await worker2.renewCurrentLease(eventId2, 5000);
+    assert.equal(renewed, true);
+
+    const eventRecord = outboxRepo.getEvents().find(e => e.eventId === eventId2);
+    assert.ok(eventRecord && eventRecord.leaseExpiresAt && eventRecord.leaseExpiresAt.getTime() > Date.now() + 3000);
+  });
+
+  await test('8. OutboxWorker dead-letter operational alert callback fires on max retries', async () => {
+    const outboxRepo = new OutboxRepository();
+    const eventId = await outboxRepo.enqueueEvent(
+      'tenant-durable-1',
+      'test',
+      'notification.send',
+      { email: 'user@example.com' }
+    );
+
+    let alertFired = false;
+    let alertedEventId = '';
+    let alertedError = '';
+
+    const worker = new OutboxWorker(outboxRepo, {
+      workerId: 'worker_alert_test',
+      maxAttempts: 1, // Fail immediately into dead letter
+      backoffBaseMs: 10,
+      dispatcher: async () => {
+        throw new Error('SMTP connection refused');
+      },
+      onDeadLetterAlert: (evt, err) => {
+        alertFired = true;
+        alertedEventId = evt.eventId;
+        alertedError = err;
+      },
+    });
+
+    await worker.processNextBatch();
+
+    assert.equal(alertFired, true);
+    assert.equal(alertedEventId, eventId);
+    assert.equal(alertedError, 'SMTP connection refused');
+
+    const metrics = await outboxRepo.getMetrics('tenant-durable-1');
+    assert.equal(metrics.deadLetter, 1);
+  });
+
+  await test('9. Operational controls: dead-letter replay and resolution', async () => {
+    const outboxRepo = new OutboxRepository();
+    const eventId = await outboxRepo.enqueueEvent(
+      'tenant-durable-1',
+      'test',
+      'sync.crm',
+      { customerId: 'cust_999' }
+    );
+
+    // Transition to dead_letter
+    await outboxRepo.recordFailure(eventId, 'CRM timeout', 1, 10);
+    let event = outboxRepo.getEvents().find(e => e.eventId === eventId);
+    assert.equal(event?.status, 'dead_letter');
+
+    // 1. Replay dead letter: resets to pending
+    const replayed = await outboxRepo.replayDeadLetter(eventId);
+    assert.equal(replayed, true);
+    event = outboxRepo.getEvents().find(e => e.eventId === eventId);
+    assert.equal(event?.status, 'pending');
+    assert.equal(event?.attempts, 0);
+
+    // Fail again
+    await outboxRepo.recordFailure(eventId, 'CRM timeout again', 1, 10);
+    event = outboxRepo.getEvents().find(e => e.eventId === eventId);
+    assert.equal(event?.status, 'dead_letter');
+
+    // 2. Resolve dead letter: marks resolved with audit note
+    const resolved = await outboxRepo.resolveDeadLetter(eventId, 'Manually backfilled in CRM by operator ops_1');
+    assert.equal(resolved, true);
+    event = outboxRepo.getEvents().find(e => e.eventId === eventId);
+    assert.equal(event?.status, 'resolved');
+    assert.equal(event?.resolutionNote, 'Manually backfilled in CRM by operator ops_1');
+    assert.ok(event?.resolvedAt instanceof Date);
+  });
+
+  await test('10. Authenticated Activepieces flow execution passes tenant, environment, and auth headers', async () => {
+    const { CapabilityDispatcher } = await import('../../../packages/capability-sdk/src');
+
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody: any = null;
+
+    // Mock global fetch for the test
+    const originalFetch = globalThis.fetch;
+    (globalThis as any).fetch = async (url: string, init: any) => {
+      capturedHeaders = init.headers;
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'success', executionId: 'exec_ap_123' }),
+      };
+    };
+
+    try {
+      const dispatcher = new CapabilityDispatcher({
+        activepiecesApiUrl: 'http://localhost:3010',
+        activepiecesApiKey: 'sec_ap_token_xyz',
+        activepiecesWebhookSecret: 'ap_hmac_secret_456',
+      });
+
+      const response = await dispatcher.dispatch(
+        {
+          toolId: 'flow.sample_process',
+          name: 'Sample Process',
+          description: 'Process sample flow',
+          inputSchema: { type: 'object' },
+        },
+        {
+          toolId: 'flow.sample_process',
+          tenantId: 'tenant-durable-1',
+          environmentId: 'test',
+          executor: {
+            type: 'activepieces_flow',
+            flowId: 'flow_98765',
+          },
+        },
+        {
+          toolId: 'flow.sample_process',
+          input: { sampleKey: 'sampleVal' },
+        },
+        {
+          tenantId: 'tenant-durable-1',
+          environmentId: 'test',
+          workspaceId: 'ws_durable_ap',
+          correlationId: 'corr_ap_001',
+          userRole: 'admin',
+        }
+      );
+
+      assert.equal(response.status, 'success');
+      assert.equal(capturedHeaders['X-Tenant-ID'], 'tenant-durable-1');
+      assert.equal(capturedHeaders['X-Environment-ID'], 'test');
+      assert.equal(capturedHeaders['X-Workspace-ID'], 'ws_durable_ap');
+      assert.equal(capturedHeaders['X-Correlation-ID'], 'corr_ap_001');
+      assert.equal(capturedHeaders['Authorization'], 'Bearer sec_ap_token_xyz');
+      assert.ok(capturedHeaders['X-Activepieces-Signature']);
+      assert.ok(capturedHeaders['X-Activepieces-Timestamp']);
+      assert.ok(capturedHeaders['X-Activepieces-Nonce']);
+      assert.equal(capturedBody.context.tenantId, 'tenant-durable-1');
+      assert.equal(capturedBody.context.environmentId, 'test');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   console.log(`\n==================================================`);
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   console.log(`==================================================\n`);

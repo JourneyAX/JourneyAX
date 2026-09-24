@@ -143,6 +143,68 @@ export class OutboxRepository {
     return 'retry_scheduled';
   }
 
+  async renewLease(eventId: string, workerId: string, additionalMs = 30000): Promise<boolean> {
+    const dbRepo = await this.getDbRepo();
+    if (dbRepo) {
+      return dbRepo.renewLease(eventId, workerId, additionalMs);
+    }
+    const item = this.inMemoryQueue.find(e => e.eventId === eventId && e.leasedBy === workerId && e.status === 'leased');
+    if (item) {
+      item.leaseExpiresAt = new Date(Date.now() + additionalMs);
+      return true;
+    }
+    return false;
+  }
+
+  async replayDeadLetter(eventId: string, session?: ClientSession): Promise<boolean> {
+    const dbRepo = await this.getDbRepo();
+    if (dbRepo) {
+      return dbRepo.replayDeadLetter(eventId, session);
+    }
+    const item = this.inMemoryQueue.find(e => e.eventId === eventId && e.status === 'dead_letter');
+    if (item) {
+      item.status = 'pending';
+      item.attempts = 0;
+      delete item.error;
+      delete item.leasedBy;
+      delete item.leaseExpiresAt;
+      item.nextAttemptAt = new Date();
+      return true;
+    }
+    return false;
+  }
+
+  async resolveDeadLetter(eventId: string, resolutionNote: string, session?: ClientSession): Promise<boolean> {
+    const dbRepo = await this.getDbRepo();
+    if (dbRepo) {
+      return dbRepo.resolveDeadLetter(eventId, resolutionNote, session);
+    }
+    const item = this.inMemoryQueue.find(e => e.eventId === eventId && e.status === 'dead_letter');
+    if (item) {
+      item.status = 'resolved';
+      item.resolutionNote = resolutionNote;
+      item.resolvedAt = new Date();
+      delete item.leasedBy;
+      delete item.leaseExpiresAt;
+      return true;
+    }
+    return false;
+  }
+
+  async getMetrics(tenantId?: string): Promise<{ pending: number; leased: number; published: number; deadLetter: number }> {
+    const dbRepo = await this.getDbRepo();
+    if (dbRepo) {
+      return dbRepo.getMetrics(tenantId);
+    }
+    const filtered = tenantId ? this.inMemoryQueue.filter(e => e.tenantId === tenantId) : this.inMemoryQueue;
+    return {
+      pending: filtered.filter(e => e.status === 'pending').length,
+      leased: filtered.filter(e => e.status === 'leased').length,
+      published: filtered.filter(e => e.status === 'published').length,
+      deadLetter: filtered.filter(e => e.status === 'dead_letter').length,
+    };
+  }
+
   getEvents(): OutboxEventRecord[] {
     return [...this.inMemoryQueue];
   }
