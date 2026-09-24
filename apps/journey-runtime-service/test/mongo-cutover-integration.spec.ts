@@ -31,15 +31,21 @@ async function runRealMongoIntegrationTests() {
     process.exit(0);
   }
 
-  const mongoUri = process.env.MONGODB_URI;
+  const mongoUri = process.env.TEST_MONGODB_URI?.trim();
   if (!mongoUri) {
-    console.error('❌ MONGODB_URI not found in environment. Aborting integration tests.');
+    console.error('❌ TEST_MONGODB_URI not found in environment. Aborting integration tests.');
+    console.error('   Fallback to MONGODB_URI or localhost is prohibited.');
+    process.exit(1);
+  }
+
+  const dbName = process.env.TEST_MONGODB_DB_NAME?.trim() || 'journeyx_test';
+  if (!dbName.toLowerCase().includes('test')) {
+    console.error(`❌ DB name "${dbName}" rejected: DB name must contain "test".`);
     process.exit(1);
   }
 
   const client = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 3000 });
   await client.connect();
-  const dbName = process.env.TEST_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'journeyx_test';
   const db = client.db(dbName);
   console.log(`✅ Connected to real MongoDB database: "${dbName}"\n`);
 

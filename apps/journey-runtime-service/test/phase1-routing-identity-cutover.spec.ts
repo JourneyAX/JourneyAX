@@ -4,6 +4,8 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+// Strictly ensure MONGODB_URI is never used or fallen back to
+delete process.env.MONGODB_URI;
 import {
   signGatewayAssertion,
   verifyGatewayAssertion,
@@ -24,7 +26,37 @@ import {
 import { calculateCanaryBucket } from '../../../apps/journeyax-web/src/lib/routing/cutover';
 
 async function runPhase1Tests() {
-  console.log('🛡️  Running Phase 1 Comprehensive Verification Suite (15 Scenarios)...\n');
+  console.log('🛡️  Running Phase 1 Comprehensive Verification Suite (17 Scenarios)...\n');
+
+  // Guard: require TEST_MONGODB_URI and reject missing URI or DB name without test
+  const testUri = process.env.TEST_MONGODB_URI?.trim();
+  if (!testUri) {
+    console.error('❌ REJECTED: TEST_MONGODB_URI is required to run integration tests.');
+    console.error('   Fallback to MONGODB_URI or localhost is prohibited.');
+    process.exit(1);
+  }
+
+  const baseDb = process.env.TEST_MONGODB_DB_NAME?.trim() || 'journeyx_phase1_test';
+  if (!baseDb || !baseDb.toLowerCase().includes('test')) {
+    console.error(`❌ REJECTED: Database name "${baseDb}" rejected. DB name without "test" is prohibited.`);
+    process.exit(1);
+  }
+
+  function getRequiredTestMongoConfig(scenarioSuffix: string): { uri: string; dbName: string } {
+    const uri = process.env.TEST_MONGODB_URI?.trim();
+    if (!uri) {
+      throw new Error('TEST_MONGODB_URI is required. MONGODB_URI and localhost fallback are prohibited.');
+    }
+    const customDb = process.env.TEST_MONGODB_DB_NAME?.trim();
+    const dbName = customDb ? `${customDb}_${scenarioSuffix}` : `journeyx_phase1_${scenarioSuffix}_test`;
+    if (!dbName || !dbName.trim()) {
+      throw new Error('Database name is required for integration tests.');
+    }
+    if (!dbName.toLowerCase().includes('test')) {
+      throw new Error(`Database name "${dbName}" rejected: DB name without "test" is prohibited.`);
+    }
+    return { uri, dbName };
+  }
 
   let passed = 0;
   let failed = 0;
@@ -275,8 +307,8 @@ async function runPhase1Tests() {
   // ── 8. Missing Cutover Record Fails Closed ──
   await test('8. Missing cutover record returns null (fails closed)', async () => {
     const repo = new CutoverRepository(async () => {
-      const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-      const { db, client } = await connectToDatabase(uri, 'journeyx_phase1_test');
+      const { uri, dbName } = getRequiredTestMongoConfig('missing');
+      const { db, client } = await connectToDatabase(uri, dbName);
       return { db, client };
     });
 
@@ -303,9 +335,8 @@ async function runPhase1Tests() {
 
   // ── 10. Cutover CAS & Concurrent Update ──
   await test('10. Concurrent cutover update rejected by revision-constrained CAS', async () => {
-    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-    const testDb = 'journeyx_phase1_cas';
-    const { db, client } = await connectToDatabase(uri, testDb);
+    const { uri, dbName } = getRequiredTestMongoConfig('cas');
+    const { db, client } = await connectToDatabase(uri, dbName);
     const tenantId = `tenant_cas_${Date.now()}`;
     const version = '1.0.0';
     const checksum = 'chk_valid_123';
@@ -365,9 +396,8 @@ async function runPhase1Tests() {
 
   // ── 11. Invalid Release Checksum ──
   await test('11. Invalid release checksum rejects cutover promotion', async () => {
-    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-    const testDb = 'journeyx_phase1_chk';
-    const { db, client } = await connectToDatabase(uri, testDb);
+    const { uri, dbName } = getRequiredTestMongoConfig('chk');
+    const { db, client } = await connectToDatabase(uri, dbName);
     const tenantId = `tenant_chk_${Date.now()}`;
     const version = '1.0.0';
     const actualChecksum = 'real_chk_abc';
@@ -437,8 +467,8 @@ async function runPhase1Tests() {
 
   // ── 13. Replay Protection with MongoDB TTL and Unique Nonce ──
   await test('13. MongoReplayStore enforces unique nonce claim and catches duplicate', async () => {
-    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-    const { db } = await connectToDatabase(uri, 'journeyx_phase1_replay');
+    const { uri, dbName } = getRequiredTestMongoConfig('replay');
+    const { db } = await connectToDatabase(uri, dbName);
     const store = new MongoReplayStore(async () => ({ db }));
 
     // Ensure unique index exists on jti
@@ -459,9 +489,8 @@ async function runPhase1Tests() {
 
   // ── 14. Audit Log Written in Same Transaction ──
   await test('14. Cutover audit log written in same transaction with previous and new revision', async () => {
-    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-    const testDb = 'journeyx_phase1_audit';
-    const { db, client } = await connectToDatabase(uri, testDb);
+    const { uri, dbName } = getRequiredTestMongoConfig('audit');
+    const { db, client } = await connectToDatabase(uri, dbName);
     const tenantId = `tenant_audit_${Date.now()}`;
     const version = '2.0.0';
     const checksum = 'chk_audit_456';
@@ -531,9 +560,8 @@ async function runPhase1Tests() {
 
   // ── 16. Missing or Mismatched Pointer Checksum Rejection ──
   await test('16. Reject cutover promotion if Business Pack pointer is missing checksum or checksum mismatches', async () => {
-    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-    const testDb = 'journeyx_phase1_ptr_chk';
-    const { db, client } = await connectToDatabase(uri, testDb);
+    const { uri, dbName } = getRequiredTestMongoConfig('ptr_chk');
+    const { db, client } = await connectToDatabase(uri, dbName);
     const tenantId = `tenant_ptr_${Date.now()}`;
     const version = '1.0.0';
     const releaseChecksum = 'rel_checksum_xyz';
