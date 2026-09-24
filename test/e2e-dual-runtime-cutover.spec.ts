@@ -443,6 +443,7 @@ async function runDualRuntimeVerificationTests() {
       const unauthDispatcher = new CapabilityDispatcher({
         activepiecesApiUrl: 'http://activepieces-flow.internal',
         activepiecesWebhookSecret: validWebhookSecret,
+        validateConnectionOwnership: async () => true,
       });
       const unauthResult = await unauthDispatcher.dispatch(
         toolDef,
@@ -457,6 +458,7 @@ async function runDualRuntimeVerificationTests() {
       const unsignedDispatcher = new CapabilityDispatcher({
         activepiecesApiUrl: 'http://activepieces-flow.internal',
         activepiecesApiKey: validApiKey,
+        validateConnectionOwnership: async () => true,
       });
       const unsignedResult = await unsignedDispatcher.dispatch(
         toolDef,
@@ -467,7 +469,43 @@ async function runDualRuntimeVerificationTests() {
       assert.equal(unsignedResult.status, 'failure');
       assert.ok(unsignedResult.error?.includes('activepiecesWebhookSecret is required'));
 
-      // 4. Isolation test: Fail closed when connectionRef ownership fails
+      // 4. Negative test: Fail closed when connectionRef ownership validator is missing
+      const noValidatorDispatcher = new CapabilityDispatcher({
+        activepiecesApiUrl: 'http://activepieces-flow.internal',
+        activepiecesApiKey: validApiKey,
+        activepiecesWebhookSecret: validWebhookSecret,
+      });
+      const noValidatorResult = await noValidatorDispatcher.dispatch(
+        toolDef,
+        binding,
+        { executionId: 'exec_no_val', toolId: 'catalog.search', input: {} },
+        { tenantId: 'workwear_intl', environmentId: 'production', workspaceId: 'ws_alpha', correlationId: 'corr_nv' }
+      );
+      assert.equal(noValidatorResult.status, 'failure');
+      assert.ok(noValidatorResult.error?.includes('validateConnectionOwnership validator is mandatory'));
+
+      // 5. Negative test: Fail closed when explicit Activepieces base URL is missing in production
+      const noUrlDispatcher = new CapabilityDispatcher({
+        activepiecesApiKey: validApiKey,
+        activepiecesWebhookSecret: validWebhookSecret,
+        validateConnectionOwnership: async () => true,
+      });
+      const origApUrl = process.env.ACTIVEPIECES_API_URL;
+      delete process.env.ACTIVEPIECES_API_URL;
+      try {
+        const noUrlResult = await noUrlDispatcher.dispatch(
+          toolDef,
+          binding,
+          { executionId: 'exec_no_url', toolId: 'catalog.search', input: {} },
+          { tenantId: 'workwear_intl', environmentId: 'production', workspaceId: 'ws_alpha', correlationId: 'corr_nu' }
+        );
+        assert.equal(noUrlResult.status, 'failure');
+        assert.ok(noUrlResult.error?.includes('explicit Activepieces base URL'));
+      } finally {
+        if (origApUrl !== undefined) process.env.ACTIVEPIECES_API_URL = origApUrl;
+      }
+
+      // 6. Isolation test: Fail closed when connectionRef ownership fails
       const foreignBinding: ToolBinding = {
         ...binding,
         executor: {

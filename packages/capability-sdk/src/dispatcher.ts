@@ -154,19 +154,29 @@ export class CapabilityDispatcher {
       throw new Error(`Activepieces dispatch failed: invalid or missing flowId '${flowId}'`);
     }
 
-    // 2. Validate connectionRef if provided (fail closed if ownership fails)
-    if (connectionRef) {
+    // 2. Validate connectionRef ownership (mandatory and fail-closed)
+    if (connectionRef !== undefined && connectionRef !== null) {
       const normConn = connectionRef.trim();
       if (!normConn || !/^[a-zA-Z0-9_.\-]+$/.test(normConn)) {
         throw new Error(`Activepieces dispatch failed: invalid connectionRef '${connectionRef}'`);
       }
-      if (this.options.validateConnectionOwnership) {
-        const isOwner = await this.options.validateConnectionOwnership(normTenant, normEnv, normConn);
-        if (!isOwner) {
-          throw new Error(
-            `Activepieces dispatch failed: connectionRef '${normConn}' not owned by tenant '${normTenant}' (${normEnv})`
-          );
-        }
+      if (!this.options.validateConnectionOwnership) {
+        throw new Error(
+          'Activepieces dispatch failed: validateConnectionOwnership validator is mandatory when connectionRef is provided; failing closed'
+        );
+      }
+      let isOwner: boolean;
+      try {
+        isOwner = await this.options.validateConnectionOwnership(normTenant, normEnv, normConn);
+      } catch (err: any) {
+        throw new Error(
+          `Activepieces dispatch failed: connectionRef ownership validation error: ${err.message || err}`
+        );
+      }
+      if (!isOwner) {
+        throw new Error(
+          `Activepieces dispatch failed: connectionRef '${normConn}' not owned by tenant '${normTenant}' (${normEnv})`
+        );
       }
     }
 
@@ -185,7 +195,20 @@ export class CapabilityDispatcher {
       );
     }
 
-    const baseUrl = this.options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
+    // 4. Require explicit Activepieces base URL in production (Fail Closed)
+    const rawBaseUrl = (this.options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL || '').trim();
+    const isProduction =
+      normEnv.toLowerCase() === 'production' ||
+      (process.env.NODE_ENV || '').toLowerCase() === 'production';
+
+    if (isProduction) {
+      if (!rawBaseUrl) {
+        throw new Error(
+          'Activepieces configuration error: explicit Activepieces base URL (activepiecesApiUrl or ACTIVEPIECES_API_URL) is required in production; failing closed'
+        );
+      }
+    }
+    const baseUrl = rawBaseUrl || 'http://localhost:3010';
 
     // 4. Payload carries connectionRef only - NEVER raw credentials or secrets
     const payload = {
