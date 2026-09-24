@@ -648,6 +648,99 @@ body {
 
 .chat-send-btn:hover { opacity: 0.85; }
 
+.chat-mic-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+.chat-mic-btn:hover { opacity: 1; }
+.chat-mic-btn[aria-pressed="true"] {
+  background: var(--chat-user-bg);
+  color: var(--chat-user-text);
+  opacity: 1;
+}
+.chat-mic-btn:disabled { opacity: 0.35; cursor: default; }
+.chat-mic-error { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+.chat-input-row--dictate {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 8px 8px 8px 16px;
+}
+.chat-dictate-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+}
+.chat-dictate-cancel,
+.chat-dictate-stop {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.chat-dictate-stop:disabled,
+.chat-dictate-stop.is-busy {
+  background: transparent;
+  color: #c5c5c5;
+  opacity: 1;
+  cursor: default;
+}
+.chat-dictate-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+.chat-dictate-wave {
+  flex: 1;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  min-width: 0;
+}
+.chat-dictate-wave i {
+  width: 2px;
+  border-radius: 1px;
+  background: #5c5c5c;
+  display: block;
+  flex-shrink: 0;
+}
+.chat-dictate-wave i.is-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #d0d0d0;
+}
+.chat-dictate-status {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
 /* Inline in the thread now (docs/v3-card-cms-architecture.md) — a normal
    flow child of .chat-messages, not its own full-height 60% column, so no
    flex-grow/height/background of its own by default. A LEGACY_CARD_PHASES
