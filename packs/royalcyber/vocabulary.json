@@ -26,8 +26,9 @@
     "GKE": "Google Kubernetes Engine"
   },
   "slotSynonyms": {
-    "cloud": ["gcp", "aws", "azure", "google cloud"],
-    "scope": ["migration", "microservices", "genai", "ai", "search"]
+    "cloudPlatform": ["gcp", "aws", "azure", "google cloud"],
+    "domain": ["modernization", "migration", "microservices", "genai", "ai", "search"],
+    "scopeItems": ["migration", "microservices", "genai", "ai", "search"]
   },
   "prohibitedTerms": ["cheap", "unlimited free revisions", "guaranteed zero bugs"]
 }

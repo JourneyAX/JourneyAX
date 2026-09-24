@@ -1,5 +1,31 @@
 import { z } from 'zod';
 
+export const TimeoutPolicySchema = z.object({
+  timeoutMs: z.number().int().default(10000),
+  retryAttempts: z.number().int().default(0),
+}).default({
+  timeoutMs: 10000,
+  retryAttempts: 0,
+});
+
+export const IdempotencyPolicySchema = z.object({
+  required: z.boolean().default(false),
+  keyExtractionPath: z.string().optional(),
+  ttlSeconds: z.number().int().default(86400),
+}).default({
+  required: false,
+  ttlSeconds: 86400,
+});
+
+export const ApprovalPolicySchema = z.object({
+  requiresApproval: z.boolean().default(false),
+  approvalRole: z.string().optional(),
+  ttlMinutes: z.number().int().default(60),
+}).default({
+  requiresApproval: false,
+  ttlMinutes: 60,
+});
+
 export const ToolDefinitionSchema = z.object({
   toolId: z.string(),
   version: z.string().default('1.0.0'),
@@ -9,6 +35,10 @@ export const ToolDefinitionSchema = z.object({
   outputSchema: z.record(z.string(), z.any()).default({}),
   sideEffect: z.enum(['read', 'write', 'transactional']).default('read'),
   risk: z.enum(['low', 'medium', 'high', 'critical']).default('low'),
+  timeoutPolicy: TimeoutPolicySchema,
+  idempotencyPolicy: IdempotencyPolicySchema,
+  approvalPolicy: ApprovalPolicySchema,
+  dataClassification: z.enum(['public', 'internal', 'confidential', 'restricted']).default('internal'),
 });
 
 export const ExecutorSchema = z.object({
@@ -35,6 +65,8 @@ export const ToolBindingSchema = z.object({
   toolId: z.string(),
   bindingVersion: z.string().default('1.0.0'),
   executor: ExecutorSchema,
+  enabled: z.boolean().default(true),
+  policyOverrides: z.record(z.string(), z.any()).optional(),
   policy: ToolPolicySchema.default({
     requiredRole: 'customer',
     requiresConfirmation: false,

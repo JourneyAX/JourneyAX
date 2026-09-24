@@ -10,7 +10,7 @@ export class PolicyGate {
     request: ExecutionRequest,
     ctx: ExecutionContext
   ): PolicyCheckResult {
-    const policy = binding.policy;
+    const policy = binding.policy || (tool as any)?.policy || {};
 
     // 1. Role / Permission Check
     if (policy.requiredRole && policy.requiredRole !== 'customer') {
@@ -24,7 +24,8 @@ export class PolicyGate {
     }
 
     // 2. Idempotency Requirement Check
-    if (policy.idempotencyRequired && !request.idempotencyKey) {
+    const effectiveIdempotencyKey = request.idempotencyKey || ctx.idempotencyKey;
+    if (policy.idempotencyRequired && !effectiveIdempotencyKey) {
       return {
         allowed: false,
         reason: `Tool '${tool.toolId}' requires an idempotencyKey for safe execution.`,
@@ -32,8 +33,10 @@ export class PolicyGate {
     }
 
     // 3. Human Confirmation / Approval Check
+    const riskRequiresApproval = tool.risk === 'medium' || tool.risk === 'high' || tool.risk === 'critical';
+    const hasSideEffect = tool.sideEffect === 'write' || tool.sideEffect === 'transactional';
     if (
-      (policy.requiresConfirmation || tool.sideEffect === 'write' || tool.risk === 'high' || tool.risk === 'critical') &&
+      (policy.requiresConfirmation || hasSideEffect || riskRequiresApproval) &&
       !request.userConfirmationConfirmed
     ) {
       return {

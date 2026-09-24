@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { SERVICE_REGISTRY, resolveService, parseRoute } from './gateway.registry';
 import { GoogleAuth } from 'google-auth-library';
+import * as crypto from 'crypto';
+import {
+  signGatewayAssertion,
+  VALID_GATEWAY_ROLES,
+  GatewayRole,
+} from '@journeyax/database';
 
 // ---------------------------------------------------------------------------
 // Google Cloud Run service-to-service ID-token client.
@@ -344,7 +350,10 @@ export class GatewayService {
       cacheSet(key, { active: true }, 60);
       return true;
     } catch (e) {
-      console.warn(`[Gateway] Error validating tenant ${tenantId}, failing open:`, (e as Error).message);
+      console.warn(`[Gateway] Error validating tenant ${tenantId}:`, (e as Error).message);
+      if (process.env.NODE_ENV === 'production') {
+        return false; // Fail closed in production
+      }
       return true;
     }
   }
@@ -408,22 +417,64 @@ export class GatewayService {
     }
 
     // ── Downstream proxy ─────────────────────────────────────────────────
-    const downstreamUrl = `${resolved.baseUrl}${path}`;
+    let downstreamPath = path;
+    const parsed = parseRoute(path);
+    if (parsed.domain === 'runtime' && parsed.projectId && parsed.environmentId) {
+      const segs = path.split('?')[0].split('/').filter(Boolean);
+      const queryStr = path.includes('?') ? `?${path.split('?')[1]}` : '';
+      if (segs.length >= 4 && segs[3] === 'runtime') {
+        const rest = segs.slice(4).join('/');
+        downstreamPath = `/api/v1/${parsed.projectId}/${parsed.environmentId}/runtime${rest ? `/${rest}` : ''}${queryStr}`;
+      }
+    }
+
+    const downstreamUrl = `${resolved.baseUrl}${downstreamPath}`;
     console.log(`[Gateway] Routing → ${downstreamUrl}`);
 
     // Mint a Google ID token for the downstream Cloud Run service.
     // audience = base URL of the service (e.g. https://project-service-xxx.run.app)
     const googleIdToken = await getIdToken(resolved.baseUrl);
 
+    const gatewayHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Tenant-ID': tenantId,
+      'X-Gateway-Request-ID': `gw-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      ...authorizationHeader(googleIdToken, headers['authorization']),
+      ...identityHeaders(headers),
+    };
+
+    const assertionSecret =
+      process.env.GATEWAY_ASSERTION_SECRET ||
+      process.env.INTERNAL_API_KEY ||
+      process.env.INTERNAL_SERVICE_KEY;
+
+    if (assertionSecret) {
+      const rawRole = String(
+        headers['x-user-role'] || headers['x-principal-role'] || 'customer'
+      ).toLowerCase();
+      const role: GatewayRole = (VALID_GATEWAY_ROLES as readonly string[]).includes(rawRole)
+        ? (rawRole as GatewayRole)
+        : 'customer';
+
+      gatewayHeaders['X-Gateway-Assertion'] = signGatewayAssertion(
+        {
+          tenantId,
+          environmentId: parsed.environmentId || 'production',
+          sub: String(
+            headers['x-user-id'] ||
+              headers['x-principal-id'] ||
+              headers['x-user-email'] ||
+              'anonymous'
+          ),
+          role,
+        },
+        assertionSecret
+      );
+    }
+
     const fetchOptions: RequestInit = {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Tenant-ID': tenantId,
-        'X-Gateway-Request-ID': `gw-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        ...authorizationHeader(googleIdToken, headers['authorization']),
-        ...identityHeaders(headers),
-      },
+      headers: gatewayHeaders,
     };
 
     if (method !== 'GET' && method !== 'HEAD' && body && Object.keys(body).length > 0) {

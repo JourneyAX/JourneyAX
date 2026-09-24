@@ -6,11 +6,11 @@ export interface InterpretationResult {
   candidateFacts: FactsMap;
   confidence: number;
 }
-
 export class TurnInterpreter {
   /**
-   * Interprets incoming customer message or channel event against the Business Pack
-   * vocabulary, slot definitions, entities, and rules.
+   * Domain-neutral turn interpreter. Extracts facts and intents dynamically
+   * from the Business Pack vocabulary, slot synonyms, and entity schemas.
+   * Contains zero hardcoded industry/tenant terms.
    */
   async interpret(
     command: TurnCommand,
@@ -21,29 +21,53 @@ export class TurnInterpreter {
     const lowerMsg = rawMessage.toLowerCase();
     const candidateFacts: FactsMap = {};
 
-    // 1. Dynamic vocabulary & term matching from Business Pack
+    // 1. Dynamic slotSynonyms extraction from Business Pack
+    const slotSynonyms = release.vocabulary?.slotSynonyms || {};
+    for (const [slotKey, synonyms] of Object.entries(slotSynonyms)) {
+      if (!Array.isArray(synonyms)) continue;
+      // Sort synonyms by length descending so longer phrases match first
+      const sortedSyns = [...synonyms].sort((a, b) => b.length - a.length);
+      const matched: string[] = [];
+
+      for (const syn of sortedSyns) {
+        const lowerSyn = syn.toLowerCase();
+        if (lowerMsg.includes(lowerSyn)) {
+          // Avoid duplicate sub-matches
+          if (!matched.some((m) => m.toLowerCase().includes(lowerSyn))) {
+            matched.push(syn);
+          }
+        }
+      }
+
+      if (matched.length > 0) {
+        // If slot is typically single-valued (e.g. occupation, cloudPlatform, safety_spec)
+        const isListSlot = slotKey.includes('items') || slotKey.includes('types') || slotKey.includes('list');
+        candidateFacts[slotKey] = {
+          value: isListSlot ? matched : matched[0],
+          source: 'customer',
+          confidence: 0.95,
+          extractedAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    // 2. Dynamic vocabulary terms and canonical concepts
     const terms = release.vocabulary?.terms || [];
     for (const item of terms) {
       const termName = item.term.toLowerCase();
       const termCanonical = (item.canonical || item.term).toLowerCase();
       const synonyms = (item.synonyms || []).map((s: string) => s.toLowerCase());
 
-      const matched =
+      const isMatch =
         lowerMsg.includes(termName) ||
         lowerMsg.includes(termCanonical) ||
         synonyms.some((s: string) => lowerMsg.includes(s));
 
-      if (matched) {
-        if (item.category === 'cloud' || termName.includes('gcp') || termName.includes('aws') || termName.includes('azure')) {
-          candidateFacts['cloudPlatform'] = {
-            value: item.term.toUpperCase().includes('GCP') ? 'GCP' : item.term,
-            source: 'customer',
-            confidence: 0.98,
-            extractedAt: new Date().toISOString(),
-          };
-        }
-        if (item.category === 'cloud' || item.category === 'consulting' || lowerMsg.includes('moderniz') || lowerMsg.includes('migrat')) {
-          candidateFacts['domain'] = {
+      if (isMatch && item.category) {
+        // Map category dynamically if slot exists or not yet filled
+        const categoryKey = item.category;
+        if (!candidateFacts[categoryKey]) {
+          candidateFacts[categoryKey] = {
             value: item.canonical || item.term,
             source: 'customer',
             confidence: 0.95,
@@ -53,73 +77,26 @@ export class TurnInterpreter {
       }
     }
 
-    // 2. Dynamic slotSynonyms matching from Business Pack
-    const slotSynonyms = release.vocabulary?.slotSynonyms || {};
-    for (const [slotKey, synonyms] of Object.entries(slotSynonyms)) {
-      const matchedSyns = (synonyms as string[]).filter((syn) => lowerMsg.includes(syn.toLowerCase()));
-      if (matchedSyns.length > 0) {
-        candidateFacts[slotKey] = {
-          value: matchedSyns,
-          source: 'customer',
-          confidence: 0.95,
-          extractedAt: new Date().toISOString(),
-        };
-
-        if (slotKey === 'scope' || slotKey === 'scopeItems') {
-          candidateFacts['scopeItems'] = {
-            value: matchedSyns,
-            source: 'customer',
-            confidence: 0.95,
-            extractedAt: new Date().toISOString(),
-          };
-        }
-
-        if (slotKey === 'cloud' || slotKey === 'cloudPlatform') {
-          candidateFacts['cloudPlatform'] = {
-            value: matchedSyns[0].toUpperCase(),
-            source: 'customer',
-            confidence: 0.98,
-            extractedAt: new Date().toISOString(),
-          };
-        }
-      }
-    }
-
-    // 3. Trade / Occupation Extraction (Workwear / Services)
-    const occupationMatch = lowerMsg.match(/(?:i['’]m an?|work as an?|role is)\s+([a-zA-Z\s]+?)(?:\.|\,|$|\s+i need|\s+looking for)/i);
-    if (occupationMatch) {
-      candidateFacts['occupation'] = {
-        value: occupationMatch[1].trim(),
-        source: 'customer',
-        confidence: 0.95,
-        extractedAt: new Date().toISOString(),
-      };
-    } else if (lowerMsg.includes('electrician')) {
-      candidateFacts['occupation'] = {
-        value: lowerMsg.includes('apprentice') ? 'apprentice electrician' : 'electrician',
-        source: 'customer',
-        confidence: 0.9,
-        extractedAt: new Date().toISOString(),
-      };
-    }
-
-    // 4. Budget Constraint Extraction (Supports "$250", "$80,000", "80k", "$80,000 USD", "$250 AUD")
-    const budgetMatch = lowerMsg.match(/(?:under|below|less than|max|budget)[^\$0-9]*\$?([0-9,]+(?:\.[0-9]{2})?)\s*(k|thousand)?\s*(aud|usd|nzd|cad|eur|gbp|dollars)?/i);
+    // 3. Domain-neutral budget and numerical constraint extraction
+    // Matches expressions like: "under $250", "budget 80k", "less than $80,000 USD", "max 250 AUD"
+    const budgetMatch = lowerMsg.match(
+      /(?:under|below|less than|max|budget)[^\$0-9]*\$?([0-9,]+(?:\.[0-9]{2})?)\s*(k|thousand)?\s*([a-zA-Z]{3}|dollars)?/i
+    );
     if (budgetMatch) {
-      let numStr = budgetMatch[1].replace(/,/g, '');
+      const numStr = budgetMatch[1].replace(/,/g, '');
       let multiplier = 1;
       if (budgetMatch[2]?.toLowerCase() === 'k' || budgetMatch[2]?.toLowerCase() === 'thousand') {
         multiplier = 1000;
       }
-      const rawDollars = parseFloat(numStr) * multiplier;
+      const rawAmount = parseFloat(numStr) * multiplier;
       const currency = (budgetMatch[3] || release.profile.primaryCurrency || 'USD').toUpperCase();
-      const amountCents = Math.round(rawDollars * 100);
+      const amountCents = Math.round(rawAmount * 100);
 
       candidateFacts['budget'] = {
         value: {
           amountCents,
-          amountUsd: currency === 'USD' ? rawDollars : Math.round(rawDollars * 0.65),
-          amount: rawDollars,
+          amountUsd: currency === 'USD' ? rawAmount : Math.round(rawAmount * 0.65),
+          amount: rawAmount,
           currency,
           scope: 'total',
         },
@@ -129,34 +106,7 @@ export class TurnInterpreter {
       };
     }
 
-    // 5. Workwear item slots fallback
-    const detectedItemTypes: string[] = [];
-    if (lowerMsg.includes('pants') || lowerMsg.includes('cargos') || lowerMsg.includes('trousers')) {
-      detectedItemTypes.push('pants');
-    }
-    if (lowerMsg.includes('boots') || lowerMsg.includes('footwear') || lowerMsg.includes('shoes')) {
-      detectedItemTypes.push('boots');
-    }
-    if (detectedItemTypes.length > 0) {
-      candidateFacts['required_item_types'] = {
-        value: detectedItemTypes,
-        source: 'customer',
-        confidence: 0.95,
-        extractedAt: new Date().toISOString(),
-      };
-    }
-
-    // 6. Safety Spec Extraction
-    if (lowerMsg.includes('composite') || lowerMsg.includes('composite-toe')) {
-      candidateFacts['safety_spec'] = {
-        value: 'composite_toe',
-        source: 'customer',
-        confidence: 0.95,
-        extractedAt: new Date().toISOString(),
-      };
-    }
-
-    // 7. Merge explicit inputFacts
+    // 4. Merge explicit command inputFacts (authoritative caller input)
     if (command.inputFacts) {
       for (const [k, v] of Object.entries(command.inputFacts)) {
         candidateFacts[k] = {
@@ -168,10 +118,12 @@ export class TurnInterpreter {
       }
     }
 
+    const hasExtractedFacts = Object.keys(candidateFacts).length > 0;
+
     return {
-      intent: detectedItemTypes.length > 0 ? 'build_solution' : 'general_inquiry',
+      intent: hasExtractedFacts ? 'progress_journey' : 'general_inquiry',
       candidateFacts,
-      confidence: 0.92,
+      confidence: 0.95,
     };
   }
 }

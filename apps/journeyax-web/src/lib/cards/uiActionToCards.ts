@@ -13,7 +13,7 @@
  *     card: { cardType, state, streamId } }`. This function is the one place
  *     that reads it, so wiring it up later needs no ChatPanel changes either.
  */
-import type { CardInstance } from '@/lib/types';
+import type { CardInstance } from '../types';
 
 export interface UiActionFrame {
   name: string;
@@ -22,14 +22,29 @@ export interface UiActionFrame {
 }
 
 export function uiActionToCards(frame: UiActionFrame): CardInstance[] {
-  if (!frame.card) return [];
-  const { cardType, state, streamId, variant } = frame.card;
+  let cardObj: any = null;
+
+  if (frame.name === 'presentCard') {
+    const args = frame.arguments as any;
+    if (args?.card) {
+      cardObj = args.card;
+    } else if (args?.cardType) {
+      cardObj = args;
+    }
+  }
+
+  if (!cardObj && frame.card) {
+    cardObj = frame.card;
+  }
+
+  if (!cardObj) return [];
+
   return [{
-    id: streamId || `${cardType}-${Date.now()}`,
-    cardType,
-    state,
-    variant,
-    streamId,
-    createdAt: new Date().toISOString(),
+    id: cardObj.id || cardObj.streamId || `${cardObj.cardType}-${Date.now()}`,
+    cardType: cardObj.cardType,
+    state: cardObj.state || {},
+    variant: cardObj.variant,
+    streamId: cardObj.streamId,
+    createdAt: cardObj.createdAt || new Date().toISOString(),
   }];
 }

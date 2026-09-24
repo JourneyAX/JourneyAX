@@ -107,6 +107,7 @@ deploy_service() {
     # so 2 vCPU / 2Gi, a long request timeout (a 4096 bake runs ~2-3 min), and
     # concurrency=1 (one bake saturates the CPU; don't stack). Scale-to-zero.
     retexture-service)           MIN=0; MAX=3;  MEM=2Gi;   CPU=2; PORT=8091; RUN_TIMEOUT=900s; CONC=1 ;;
+    journey-runtime-service)     MIN=0; MAX=5;  MEM=1Gi;   CPU=2; PORT=3009; RUN_TIMEOUT=300s ;;
     *)                           MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8080; RUN_TIMEOUT=300s ;;
   esac
 
@@ -114,6 +115,8 @@ deploy_service() {
   case "${SVC}" in
     auth-service)
       SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" ;;
+    journey-runtime-service)
+      SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,ACTIVEPIECES_WEBHOOK_SECRET=ACTIVEPIECES_WEBHOOK_SECRET:latest" ;;
     agent-commerce-service)
       SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,REDIS_URL=REDIS_URL:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest" ;;
     product-service)

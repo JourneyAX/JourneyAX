@@ -5,7 +5,7 @@ import {
   Inject, UseGuards,
 } from '@nestjs/common';
 import { PermissionGuard, RequirePermission } from './permission.guard';
-import { ProjectService, redactSecrets, isCardType, validateCardSpec } from './project.service';
+import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
 import {
   CreateProjectDto, UpdateProjectDto, MemberRole,
   CreateBusinessRuleDto, UpdateBusinessRuleDto,
@@ -287,13 +287,119 @@ export class ProjectController {
     return result;
   }
 
+  @Post(':projectId/members/invite')
+  @RequirePermission('user.manage')
+  async inviteMember(
+    @Param('projectId') projectId: string,
+    @Body() body: {
+      email: string;
+      fullName: string;
+      role: MemberRole;
+      orgId?: string;
+      teams?: string[];
+      responsibilities?: string[];
+      workflowOwnership?: string[];
+    },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    if (!body.email || !body.fullName || !body.role) {
+      throw new BadRequestException('email, fullName, and role are required.');
+    }
+    const project = await this.projectService.getProject(projectId);
+    if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
+
+    const result = await this.projectService.inviteMember(
+      projectId,
+      body.orgId || project.orgId,
+      body.email,
+      body.fullName,
+      body.role,
+      userId || 'operator',
+      {
+        teams: body.teams,
+        responsibilities: body.responsibilities,
+        workflowOwnership: body.workflowOwnership,
+      }
+    );
+    if (!result.success) throw new BadRequestException(result.message);
+    return result;
+  }
+
+  @Post(':projectId/members/accept')
+  async acceptInvitation(
+    @Param('projectId') projectId: string,
+    @Body() body: { email: string; token: string }
+  ) {
+    if (!body.email || !body.token) {
+      throw new BadRequestException('email and token are required.');
+    }
+    const result = await this.projectService.acceptInvitation(projectId, body.email, body.token);
+    if (!result.success) throw new BadRequestException(result.message);
+    return result;
+  }
+
+  @Get(':projectId/teams')
+  @RequirePermission('project.read')
+  async listTeams(@Param('projectId') projectId: string) {
+    const project = await this.projectService.getProject(projectId);
+    if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
+    return this.projectService.listTeams(projectId);
+  }
+
+  @Post(':projectId/teams')
+  @RequirePermission('user.manage')
+  async addTeam(
+    @Param('projectId') projectId: string,
+    @Body() body: {
+      name: string;
+      teamId?: string;
+      description?: string;
+      workflowOwnership?: string[];
+      escalationContact?: string;
+      orgId?: string;
+    }
+  ) {
+    if (!body.name) throw new BadRequestException('Team name is required.');
+    const project = await this.projectService.getProject(projectId);
+    if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
+    return this.projectService.addTeam(projectId, body.orgId || project.orgId, body);
+  }
+
   @Post(':projectId/verify-membership')
+  @RequirePermission('project.read')
   async verifyMembership(
     @Param('projectId') projectId: string,
     @Body() body: { email: string },
   ) {
     if (!body.email) throw new BadRequestException('email is required.');
     return this.projectService.verifyMembership(body.email, projectId);
+  }
+
+  @Get(':projectId/capabilities')
+  @RequirePermission('project.read')
+  async listCapabilities(@Param('projectId') projectId: string) {
+    const project = await this.projectService.getProject(projectId);
+    if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
+
+    const toolIds: string[] = Array.isArray(project.capabilities)
+      ? project.capabilities
+      : Array.isArray((project as any).tools)
+      ? (project as any).tools
+      : [];
+
+    if (toolIds.length > 0) {
+      return toolIds.map((id) => ({
+        id,
+        label: id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        description: `Authoritative tool for ${id}`,
+      }));
+    }
+
+    return Object.keys(STANDARD_TOOL_SCHEMAS).map((id) => ({
+      id,
+      label: id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      description: `Authoritative tool for ${id}`,
+    }));
   }
 
   // ── Business Rules (back-office configurable, agent-consumed) ──

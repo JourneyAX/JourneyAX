@@ -12,6 +12,7 @@ export interface ExecutionContext {
   stageId: string;
   packVersionId: string;
   correlationId: string;
+  idempotencyKey?: string;
 }
 
 export interface ExecutionRequest<TInput = any> {

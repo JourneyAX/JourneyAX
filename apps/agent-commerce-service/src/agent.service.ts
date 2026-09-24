@@ -1,3 +1,22 @@
+/**
+ * ============================================================================
+ * LEGACY ARCHITECTURE FREEZE NOTICE — AGENT COMMERCE SERVICE
+ * ============================================================================
+ * STATUS: FROZEN / LEGACY COMPATIBILITY ONLY.
+ *
+ * This service and file are strictly frozen as legacy compatibility code during
+ * the cutover to canonical JourneyAX Runtime (apps/journey-runtime-service) and
+ * Business Pack specifications (@journeyax/business-pack).
+ *
+ * GOVERNANCE RULES:
+ * 1. DO NOT ADD NEW CAPABILITIES, TOOLS, OR FEATURES TO THIS FILE.
+ * 2. All new capabilities must be implemented as Business Pack tool handlers in
+ *    packages/capability-sdk and apps/journey-runtime-service.
+ * 3. Modifications are restricted to critical P0 security or regression fixes
+ *    for unmigrated tenants until complete cutover is achieved.
+ * ============================================================================
+ */
+
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { adapterRegistry, createPublishedConfigResolver } from '@journeyax/integration';
@@ -14,7 +33,6 @@ import {
 import { verifyComparisonProvenance, lookupSkuFacts } from './presentation/provenance';
 import { sanitizeChips, fenceSearchResultText } from './presentation/fencing';
 import { skillIndexBlock, loadSkillBody } from './skills/loader';
-import { TurnRunner } from './turn/run-turn';
 
 /** Keep transcripts bounded (context editing) — recent turns are enough; the
  *  journey-memory block carries the durable facts. */
@@ -3423,12 +3441,110 @@ export class AgentService {
   private quoteService: QuoteService;
   private orderService: OrderService;
   private schoolResearch: SchoolResearchService;
-  private turnRunner = new TurnRunner();
   private readonly model = process.env.LLM_MODEL || 'gpt-4o-mini';
   // Intent classification is a trivial structured task — always use a fast model
   // (never the tenant's reasoning model). This is internal plumbing, so it is a
   // platform ENV concern, not per-tenant config.
   private readonly intentModel = process.env.INTENT_MODEL || 'gpt-4o-mini';
+
+  /**
+   * Authority check: queries the canonical journey-runtime-service cutover registry
+   * to determine if this tenant is authoritatively cut over.
+   */
+  private async isTenantCutoverToRuntime(tenantId: string): Promise<boolean> {
+    const runtimeUrl =
+      process.env.JOURNEY_RUNTIME_SERVICE_URL ||
+      process.env.RUNTIME_SERVICE_URL ||
+      'http://localhost:3009';
+    try {
+      const res = await fetch(
+        `${runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/production/runtime/cutover`,
+        {
+          method: 'GET',
+          headers: {
+            'X-Tenant-ID': tenantId,
+            ...(process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {}),
+          },
+          signal: AbortSignal.timeout(2000),
+        }
+      );
+      if (res.ok) {
+        const record: any = await res.json();
+        return record && record.status === 'migrated';
+      }
+    } catch {
+      // Fail closed to legacy commerce service
+    }
+    return false;
+  }
+
+  /**
+   * Legacy compatibility hop: proxies turn request directly to canonical journey-runtime-service.
+   */
+  private async proxyTurnToRuntimeService(tenantId: string, request: any, sessionId: string): Promise<any> {
+    const runtimeUrl =
+      process.env.JOURNEY_RUNTIME_SERVICE_URL ||
+      process.env.RUNTIME_SERVICE_URL ||
+      'http://localhost:3009';
+    const userMsg =
+      request.message ||
+      (request.messages && request.messages.length > 0
+        ? request.messages[request.messages.length - 1]?.content
+        : '');
+    const res = await fetch(
+      `${runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/production/runtime/turn`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-ID': tenantId,
+          ...(process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {}),
+        },
+        body: JSON.stringify({
+          workspaceId: sessionId,
+          sessionId,
+          principalId: request.customerId || request.demoPrincipalId || 'anonymous',
+          correlationId: (request as any).correlationId || randomUUID(),
+          message: userMsg,
+        }),
+      }
+    );
+    if (!res.ok) {
+      throw new Error(`Runtime service proxy error: ${res.status} ${res.statusText}`);
+    }
+    const turnResult = await res.json();
+    return {
+      sessionId,
+      message: {
+        role: 'assistant',
+        content: turnResult.assistantMessage || '',
+      },
+      conversation: [
+        ...(request.messages || []),
+        { role: 'assistant', content: turnResult.assistantMessage || '' },
+      ],
+      uiActions: (turnResult.uiInstructions || []).map((inst: any) => ({
+        name: 'presentCard',
+        arguments: {
+          card: {
+            id: inst.actionId || `${inst.component}-${Date.now()}`,
+            cardType: inst.component,
+            state: inst.props,
+          },
+        },
+        card: {
+          cardType: inst.component,
+          state: inst.props,
+        },
+      })),
+      trace: [
+        {
+          step: 'runtime_service_proxy',
+          detail: `stage=${turnResult.trace?.stage} · decision=${turnResult.decision?.type}`,
+        },
+      ],
+    };
+  }
 
 
   /**
@@ -5187,37 +5303,10 @@ export class AgentService {
     // conversation and typed journey state it persisted last turn.
     const sessionId = request.sessionId || randomUUID();
 
-    // Route Business Pack governed tenants through Journey OS TurnRunner
-    if (tenantId === 'workweargroup' || (request as any).useJourneyOS) {
-      console.log(`[JourneyAX:OS] Routing turn through Journey OS TurnRunner for tenant="${tenantId}"`);
-      const userMsg = request.message || (request.messages && request.messages.length > 0 ? request.messages[request.messages.length - 1]?.content : '');
-      const turnResult = await this.turnRunner.runTurn({
-        tenantId,
-        environmentId: 'production',
-        workspaceId: sessionId,
-        sessionId,
-        principalId: request.customerId || request.demoPrincipalId,
-        message: userMsg,
-      });
-
-      return {
-        sessionId,
-        message: {
-          role: 'assistant',
-          content: turnResult.assistantMessage || '',
-        },
-        conversation: [
-          ...(request.messages || []),
-          { role: 'assistant', content: turnResult.assistantMessage || '' },
-        ],
-        uiActions: turnResult.uiInstructions.map((inst) => ({
-          name: inst.component,
-          arguments: inst.props,
-        })),
-        trace: [
-          { step: 'journey_os', detail: `stage=${turnResult.trace.stage} · decision=${turnResult.decision.type}` },
-        ],
-      };
+    // Compatibility hop: if tenant is authoritatively cut over, proxy directly to canonical journey-runtime-service
+    if (await this.isTenantCutoverToRuntime(tenantId)) {
+      console.log(`[JourneyAX:Proxy] Authoritative cutover active: proxying turn to journey-runtime-service for tenant="${tenantId}"`);
+      return this.proxyTurnToRuntimeService(tenantId, request, sessionId);
     }
 
     const stored = await this.sessionStore.load(sessionId, tenantId);
@@ -6104,40 +6193,20 @@ export class AgentService {
     pushTrace({ step: 'session', detail: stored ? `resumed ${sessionId.slice(0, 8)} (turn ${(stored.turnCount || 0) + 1}, ${messages.length} msg, ledger v${journeyState.version})` : `new ${sessionId.slice(0, 8)}` });
     emit('session', { sessionId });
 
-    // Route Business Pack governed tenants through Journey OS TurnRunner
-    if (tenantId === 'workweargroup' || (request as any).useJourneyOS) {
-      console.log(`[JourneyAX:OS:Stream] Routing turn through Journey OS TurnRunner for tenant="${tenantId}"`);
-      pushTrace({ step: 'journey_os', detail: `Activating Business Pack for ${tenantId}` });
-
-      const userMsg = request.message || (request.messages && request.messages.length > 0 ? request.messages[request.messages.length - 1]?.content : '');
-      const turnResult = await this.turnRunner.runTurn({
-        tenantId,
-        environmentId: 'production',
-        workspaceId: sessionId,
-        sessionId,
-        principalId: request.customerId || request.demoPrincipalId,
-        message: userMsg,
-      });
-
-      pushTrace({
-        step: 'journey_stage',
-        detail: `stage=${turnResult.trace.stage} · decision=${turnResult.decision.type} · reason=${turnResult.decision.reason}`,
-      });
-
-      for (const inst of turnResult.uiInstructions) {
-        emit('uiAction', {
-          type: inst.component,
-          payload: inst.props,
-        });
+    // Compatibility hop: if tenant is authoritatively cut over, proxy directly to canonical journey-runtime-service
+    if (await this.isTenantCutoverToRuntime(tenantId)) {
+      console.log(`[JourneyAX:Proxy:Stream] Authoritative cutover active: proxying stream to journey-runtime-service for tenant="${tenantId}"`);
+      const turnResult = await this.proxyTurnToRuntimeService(tenantId, request, sessionId);
+      emit('session', { sessionId });
+      for (const action of turnResult.uiActions) {
+        emit('uiAction', action);
       }
-
-      const text = turnResult.assistantMessage || '';
+      const text = turnResult.message?.content || '';
       const words = text.split(' ');
       for (let i = 0; i < words.length; i++) {
         emit('token', words[i] + (i < words.length - 1 ? ' ' : ''));
         await new Promise((r) => setTimeout(r, 10));
       }
-
       emit('done', {});
       return;
     }

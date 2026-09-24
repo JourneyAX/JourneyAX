@@ -6,13 +6,17 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "tsx test/pack-control-plane.spec.ts"
   },
   "dependencies": {
     "@journeyax/journey-core": "*",
     "zod": "^3.23.8 || ^4.0.0"
   },
   "devDependencies": {
+    "@journeyax/database": "*",
+    "@types/node": "^20.17.9",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

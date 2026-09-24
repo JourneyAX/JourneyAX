@@ -9,6 +9,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
+    "@activepieces/pieces-framework": "^0.32.0",
     "@journeyax/events": "*",
     "@journeyax/journey-core": "*"
   },

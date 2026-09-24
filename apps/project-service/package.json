@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test": "tsx test/project-publishing.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -16,6 +17,8 @@
     "@journeyax/shared-types": "*",
     "@journeyax/database": "*",
     "@journeyax/ui-cards": "*",
+    "@journeyax/business-pack": "*",
+    "@journeyax/journey-core": "*",
     "mongodb": "^7.4.0",
     "dotenv": "^17.4.2"
   },

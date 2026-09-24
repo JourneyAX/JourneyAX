@@ -38,6 +38,7 @@ ALL_SVCS=(
   "product-service"
   "organization-service"
   "agent-commerce-service"
+  "journey-runtime-service"
 )
 
 echo "🔍 Fetching all Cloud Run service URLs..."
@@ -68,6 +69,7 @@ PRODUCT_URL=$(get_url "PRODUCT_SERVICE_URL")
 ORG_URL=$(get_url "ORGANIZATION_SERVICE_URL")
 AGENT_URL=$(get_url "AGENT_COMMERCE_SERVICE_URL")
 RETEXTURE_URL=$(get_url "RETEXTURE_SERVICE_URL")
+RUNTIME_URL=$(get_url "JOURNEY_RUNTIME_SERVICE_URL")
 
 COMMON_SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
 
@@ -83,6 +85,11 @@ for VAR in "${!URL_MAP[@]}"; do
   [ "${VAR}" = "API_GATEWAY_URL" ] && continue
   GATEWAY_ENV="${GATEWAY_ENV}~${VAR}=${URL_MAP[${VAR}]}"
 done
+
+# Ensure canonical JOURNEY_RUNTIME_SERVICE_URL and compatibility aliases are wired
+if [ -n "${RUNTIME_URL}" ]; then
+  GATEWAY_ENV="${GATEWAY_ENV}~JOURNEY_RUNTIME_SERVICE_URL=${RUNTIME_URL}~JOURNEY_RUNTIME_URL=${RUNTIME_URL}~RUNTIME_SERVICE_URL=${RUNTIME_URL}"
+fi
 
 gcloud run services update api-gateway \
   --region="${REGION}" --project="${PROJECT_ID}" \
@@ -156,6 +163,18 @@ gcloud run services update organization-service \
   --update-secrets="${COMMON_SECRETS}" 2>/dev/null || \
   echo "  ⚠️  organization-service not yet deployed – will get URLs on next deploy"
 
+# ── (g) journey-runtime-service → product, project ───────────────────────────
+RUNTIME_ENV="NODE_ENV=production,SERVICE_NAME=journey-runtime-service,ENVIRONMENT=${ENVIRONMENT}"
+[ -n "${PRODUCT_URL}" ] && RUNTIME_ENV="${RUNTIME_ENV},PRODUCT_SERVICE_URL=${PRODUCT_URL}"
+[ -n "${PROJECT_URL}" ] && RUNTIME_ENV="${RUNTIME_ENV},PROJECT_SERVICE_URL=${PROJECT_URL}"
+
+echo "🔧 Updating journey-runtime-service..."
+gcloud run services update journey-runtime-service \
+  --region="${REGION}" --project="${PROJECT_ID}" \
+  --update-env-vars="${RUNTIME_ENV}" \
+  --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,ACTIVEPIECES_WEBHOOK_SECRET=ACTIVEPIECES_WEBHOOK_SECRET:latest" 2>/dev/null || \
+  echo "  ⚠️  journey-runtime-service not yet deployed – will get URLs on next deploy"
+
 echo ""
 echo "✅ All internal service URL injections complete!"
 echo ""
@@ -171,3 +190,4 @@ echo "📋 Set these in Vercel (server-side env vars):"
 [ -n "${AUTH_URL}" ]    && echo "  AUTH_SERVICE_URL=${AUTH_URL}"
 [ -n "${PROJECT_URL}" ] && echo "  PROJECT_SERVICE_URL=${PROJECT_URL}"
 [ -n "${ORG_URL}" ]     && echo "  ORG_SERVICE_URL=${ORG_URL}"
+[ -n "${RUNTIME_URL}" ] && echo "  JOURNEY_RUNTIME_SERVICE_URL=${RUNTIME_URL}"

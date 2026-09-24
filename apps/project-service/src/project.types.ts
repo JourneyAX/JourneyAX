@@ -87,13 +87,14 @@ export interface ProjectPersona {
   // back office; injected into agent context each turn. Empty = base behaviour.
   journeyGuidance?: string;
   /**
-   * Raw editable Journey Builder canvas graph (node positions, types, data) —
-   * persisted SEPARATELY from the compiled `journeyGuidance` prose so re-opening
-   * the canvas doesn't require parsing text back into nodes. The compiler in
-   * JourneyBuilder.tsx walks this graph to (re)generate `journeyGuidance` on
-   * save; the agent runtime only ever reads `journeyGuidance`, never this field.
+   * Raw editable Journey Builder canvas graph (node positions, types, data).
    */
   journeyGraph?: { nodes: any[]; edges: any[] };
+  /**
+   * Compiled executable JourneyDefinition for the Business Pack control plane.
+   * Compiled server-side or studio and deployed with the Business Pack release.
+   */
+  journeyDefinition?: any;
 }
 
 export interface ProjectTheme {
@@ -274,13 +275,43 @@ export interface ProjectChannels {
   csr: boolean;
 }
 
+export type MembershipStatus = 'pending' | 'active' | 'revoked' | 'expired';
+
+export interface MembershipAuditLog {
+  action: 'invited' | 'accepted' | 'role_changed' | 'team_changed' | 'revoked' | 'reinstated';
+  performedBy: string;
+  timestamp: string;
+  note?: string;
+  details?: Record<string, any>;
+}
+
+export interface ProjectTeam {
+  teamId: string;
+  name: string;
+  description?: string;
+  workflowOwnership?: string[];
+  escalationContact?: string;
+  createdAt: string;
+}
+
 export interface ProjectMember {
+  memberId?: string;
   email: string;
   fullName: string;
   role: MemberRole;
+  status?: MembershipStatus;
   isActive: boolean;
+  teams?: string[];
+  responsibilities?: string[];
+  workflowOwnership?: string[];
+  invitationToken?: string;
+  invitationExpiresAt?: string;
   invitedAt: string;
+  acceptedAt?: string;
+  revokedAt?: string;
+  revokedBy?: string;
   lastLoginAt?: string;
+  auditTrail?: MembershipAuditLog[];
 }
 
 /**
@@ -421,6 +452,21 @@ export interface ProjectConfig {
   /** How this tenant fulfils an order (delivery / collect) + its branch list —
    *  read by the quote/cart cards via `selectBranch`. Config, never code. */
   fulfilment?: FulfilmentConfig;
+
+  // ── Business Pack & Studio Engine Configuration ─────────────
+  journeys?: any[];
+  modelPolicy?: any;
+  agents?: any[];
+  rules?: any[];
+  evaluations?: any[];
+  experience?: any;
+  vocabulary?: any;
+  entities?: any;
+  conversationPolicy?: any;
+  stageBindings?: any[];
+  toolDefinitions?: any[];
+  toolBindings?: any[];
+  dataResidency?: string;
 
   // ── Metadata ──────────────────────────────────────────────────
   createdAt: string;
@@ -567,6 +613,19 @@ export interface UpdateProjectDto {
   /** Layer 3: wholesale replacement of every override. Each entry is validated
    *  like PUT /cards/:cardType; prefer that endpoint for single-card edits. */
   cardTemplates?: Record<string, CardTemplateDoc>;
+  journeys?: any[];
+  modelPolicy?: any;
+  agents?: any[];
+  rules?: any[];
+  evaluations?: any[];
+  experience?: any;
+  vocabulary?: any;
+  entities?: any;
+  conversationPolicy?: any;
+  stageBindings?: any[];
+  toolDefinitions?: any[];
+  toolBindings?: any[];
+  dataResidency?: string;
 }
 
 // ── Card CMS (v3) ─────────────────────────────────────────────────────

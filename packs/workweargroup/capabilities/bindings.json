@@ -151,8 +151,8 @@
       "journeyId": "workwear-solution",
       "stageId": "build_solution",
       "tools": [
-        { "toolId": "catalog.search" },
         { "toolId": "solution.optimize" },
+        { "toolId": "catalog.search" },
         { "toolId": "pricing.validate" }
       ]
     },

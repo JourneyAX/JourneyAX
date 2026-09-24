@@ -30,3 +30,9 @@ output/
 *-sa-key.json
 *service-account*.json
 secrets/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

@@ -1,23 +1,16 @@
 /**
- * Streaming Chat proxy — forwards the browser's request to the gateway's SSE
- * endpoint and pipes the event stream straight back (no buffering).
+ * Streaming Chat proxy — forwards the browser's request to the gateway's SSE endpoint
+ * with server-owned cutover routing from the active tenant/environment release/cutover state.
  *
- * Mirrors /api/chat but for Server-Sent Events. The client (ChatPanel) falls
- * back to the buffered /api/chat if this stream errors, so the storefront keeps
- * working even if streaming is unavailable.
+ * Rules:
+ * - 'migrated': Routed exclusively to canonical journey-runtime-service stream.
+ *   Any runtime failure fails closed with a typed observable error (never falls back to legacy).
+ * - 'unmigrated' / 'rollback': Routed to legacy commerce stream.
  */
 import { resolveTenant } from '../../../../lib/tenant';
 import { upstreamAuthHeaders, unauthorized } from '../../../../lib/bff-auth';
+import { resolveTenantRouting } from '../../../../lib/routing/cutover';
 
-// Vercel streaming contract. Without these, Vercel runs this handler as a
-// default Node serverless function with a ~15s wall-clock cap and may buffer the
-// piped SSE body — so a long agent turn (retrieval + LLM) is KILLED mid-stream
-// and the `uiAction` events that drive the 60% panel never reach the browser
-// (the panel freezes / the guided step silently vanishes). Locally there is no
-// such cap, which is why it worked before the cloud build and broke after.
-//   - force-dynamic : never statically optimise / cache this route
-//   - runtime nodejs: keep Node (fetch stream piping), not edge
-//   - maxDuration 60: allow the full turn (60s is the Hobby ceiling; raise on Pro)
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -26,10 +19,7 @@ const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: Request) {
   const body = await req.json();
-  // Multi-storefront routing: ?project → X-Tenant-ID header → Host domain → env.
   const tenantId = await resolveTenant(req);
-  // The signed-in customer's token rides the HttpOnly cookie → forwarded as a
-  // Bearer so the gateway sees a real user. No session → 401 (no anonymous).
   const auth = upstreamAuthHeaders(req);
   if (!auth) return unauthorized();
 
@@ -39,6 +29,61 @@ export async function POST(req: Request) {
     ...auth,
   };
 
+  const sessionId = body.sessionId || body.workspaceId || 'default';
+  const routing = await resolveTenantRouting(tenantId);
+
+  // 1. Migrated Tenant Path: Exclusively executes on JourneyAX Runtime Service Stream (Fails Closed)
+  if (routing.cutoverState === 'migrated') {
+    let upstream: Response | null = null;
+    try {
+      const runtimePayload = {
+        sessionId,
+        workspaceId: body.workspaceId || sessionId,
+        correlationId: body.correlationId || `corr_${Date.now()}`,
+        message: body.message || (Array.isArray(body.messages) ? body.messages[body.messages.length - 1]?.content : undefined),
+        inputFacts: body.inputFacts,
+      };
+
+      upstream = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/runtime/chat/stream`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(runtimePayload),
+      });
+
+      if (upstream.ok && upstream.body) {
+        return new Response(upstream.body, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            'X-Cutover-State': 'migrated',
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error(`[Chat Stream Proxy] Migrated tenant '${tenantId}' runtime connection error:`, err.message);
+    }
+
+    // Fail closed for migrated tenant: NEVER silently fall back to legacy commerce stream
+    const status = upstream && upstream.status >= 400 ? upstream.status : 502;
+    return new Response(
+      JSON.stringify({
+        error: 'MIGRATED_TENANT_RUNTIME_STREAM_FAILURE',
+        status,
+        message: `🚨 Runtime Engine Stream Error: The verified JourneyAX runtime engine failed to establish a stream (HTTP ${status}). Execution blocked to prevent state divergence with unverified legacy commerce.`,
+        tenantId,
+        cutoverState: 'migrated',
+        routingReason: routing.reason,
+      }),
+      {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
+  // 2. Unmigrated / Deliberate Rollback Path: Legacy commerce stream execution
   try {
     const upstream = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/chat/stream`, {
       method: 'POST',
@@ -47,34 +92,44 @@ export async function POST(req: Request) {
     });
 
     if (!upstream.ok || !upstream.body) {
-      // P0-05: surface rate-limit/oversize rejections with their real status +
-      // body so the client falls back to the buffered path and renders the
-      // graceful "slow down" message (rather than masking it as a 502).
       if (upstream.status === 429 || upstream.status === 413) {
         return new Response(await upstream.text(), {
           status: upstream.status,
           headers: { 'Content-Type': 'application/json', 'Retry-After': upstream.headers.get('retry-after') || '5' },
         });
       }
-      return new Response(JSON.stringify({ error: `Gateway returned ${upstream.status}` }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({
+          error: `Gateway returned ${upstream.status}`,
+          cutoverState: routing.cutoverState,
+        }),
+        {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
-    // Pipe the SSE stream straight through to the browser.
     return new Response(upstream.body, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
+        'X-Cutover-State': routing.cutoverState,
       },
     });
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    console.error('[Chat Stream Proxy] Gateway legacy connection error:', error.message);
+    return new Response(
+      JSON.stringify({
+        error: error.message,
+        cutoverState: routing.cutoverState,
+      }),
+      {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   }
 }

@@ -238,6 +238,8 @@ export const projectApi = {
     req<ConfigVersionMeta[]>(`${SERVICES.project}/api/v1/projects/${projectId}/versions`),
   rollback: (projectId: string, version: number) =>
     req<any>(`${SERVICES.project}/api/v1/projects/${projectId}/rollback/${version}`, { method: 'POST' }),
+  listCapabilities: (projectId: string) =>
+    req<{ id: string; label: string; description: string }[]>(`${SERVICES.project}/api/v1/projects/${projectId}/capabilities`).catch(() => CAPABILITY_CATALOG),
 };
 
 // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ────────────────────────

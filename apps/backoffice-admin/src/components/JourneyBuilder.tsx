@@ -56,7 +56,7 @@ type JEdge = Edge;
 
 // ── Palette ───────────────────────────────────────────────────────────────
 
-const PALETTE_GROUPS: PaletteGroup[] = [
+const BASE_PALETTE_GROUPS: PaletteGroup[] = [
   {
     label: "Triggers",
     nodes: [
@@ -108,16 +108,22 @@ const PALETTE_GROUPS: PaletteGroup[] = [
       },
     ],
   },
-  {
-    label: "Tools",
-    nodes: CAPABILITY_CATALOG.map((c) => ({
-      type: `tool.${c.id}`,
-      label: c.label,
-      description: c.description,
-      defaultData: { kind: `tool.${c.id}`, label: c.label, description: c.description, capabilityId: c.id },
-    })),
-  },
 ];
+
+function buildPaletteGroups(capabilities: { id: string; label: string; description: string }[]): PaletteGroup[] {
+  return [
+    ...BASE_PALETTE_GROUPS,
+    {
+      label: "Tools",
+      nodes: capabilities.map((c) => ({
+        type: `tool.${c.id}`,
+        label: c.label,
+        description: c.description,
+        defaultData: { kind: `tool.${c.id}`, label: c.label, description: c.description, capabilityId: c.id },
+      })),
+    },
+  ];
+}
 
 // ── Compiler: graph → prose ──────────────────────────────────────────────
 // Walks the graph starting from each Trigger node, following edges forward.
@@ -324,6 +330,21 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<JNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<JEdge>([]);
+  const [capabilitiesList, setCapabilitiesList] = useState<{ id: string; label: string; description: string }[]>(CAPABILITY_CATALOG);
+
+  useEffect(() => {
+    let active = true;
+    projectApi.listCapabilities(projectId)
+      .then((caps) => {
+        if (active && Array.isArray(caps) && caps.length > 0) {
+          setCapabilitiesList(caps);
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [projectId]);
+
+  const paletteGroups = useMemo(() => buildPaletteGroups(capabilitiesList), [capabilitiesList]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -441,7 +462,7 @@ export function JourneyBuilder({ projectId }: { projectId: string }) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          paletteGroups={PALETTE_GROUPS}
+          paletteGroups={paletteGroups}
           onAddNode={onAddNode}
           renderInspector={renderInspector}
           onSaveDraft={saveDraft}

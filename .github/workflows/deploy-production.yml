@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ALL_SERVICES='["api-gateway","auth-service","project-service","product-service","organization-service","agent-commerce-service"]'
+          ALL_SERVICES='["api-gateway","auth-service","project-service","product-service","organization-service","agent-commerce-service","journey-runtime-service"]'
 
           # ── Manual: single service ─────────────────────────────
           if [ -n "${{ github.event.inputs.service_name }}" ]; then
@@ -194,6 +194,8 @@ jobs:
               MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8082 ;;
             organization-service)
               MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8085 ;;
+            journey-runtime-service)
+              MIN=0; MAX=5;  MEM=1Gi;   CPU=2; PORT=3009 ;;
             *)
               MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8080 ;;
           esac
@@ -271,6 +273,9 @@ jobs:
 
           if [ "${{ matrix.service }}" = "api-gateway" ]; then
             SERVICE_ENV_VARS="${SERVICE_ENV_VARS},AUTH_DEV_BYPASS=false"
+            AUTH_FLAG="--allow-unauthenticated"
+          else
+            AUTH_FLAG="--no-allow-unauthenticated"
           fi
 
           gcloud run deploy "${{ matrix.service }}" \
@@ -278,7 +283,7 @@ jobs:
             --region="${{ env.REGION }}" \
             --project="${{ env.PROJECT_ID }}" \
             --platform=managed \
-            --allow-unauthenticated \
+            ${AUTH_FLAG} \
             --min-instances="${{ steps.cfg.outputs.min }}" \
             --max-instances="${{ steps.cfg.outputs.max }}" \
             --memory="${{ steps.cfg.outputs.mem }}" \
@@ -353,6 +358,7 @@ jobs:
             "product-service"
             "organization-service"
             "agent-commerce-service"
+            "journey-runtime-service"
           )
 
           echo "🔍 Fetching all Cloud Run service URLs..."
@@ -382,12 +388,25 @@ jobs:
           [ -n "${PRODUCT_SERVICE_URL:-}" ]           && GATEWAY_ENV="${GATEWAY_ENV},PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL}"
           [ -n "${ORGANIZATION_SERVICE_URL:-}" ]      && GATEWAY_ENV="${GATEWAY_ENV},ORGANIZATION_SERVICE_URL=${ORGANIZATION_SERVICE_URL}"
           [ -n "${AGENT_COMMERCE_SERVICE_URL:-}" ]    && GATEWAY_ENV="${GATEWAY_ENV},AGENT_COMMERCE_SERVICE_URL=${AGENT_COMMERCE_SERVICE_URL}"
+          [ -n "${JOURNEY_RUNTIME_SERVICE_URL:-}" ]   && GATEWAY_ENV="${GATEWAY_ENV},JOURNEY_RUNTIME_SERVICE_URL=${JOURNEY_RUNTIME_SERVICE_URL},JOURNEY_RUNTIME_URL=${JOURNEY_RUNTIME_SERVICE_URL},RUNTIME_SERVICE_URL=${JOURNEY_RUNTIME_SERVICE_URL}"
 
           gcloud run services update api-gateway \
             --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
             --update-env-vars="${GATEWAY_ENV}" \
             --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" || \
             echo "  ⚠️  api-gateway not yet deployed"
+
+      - name: Update journey-runtime-service
+        run: |
+          RUNTIME_ENV="NODE_ENV=production,SERVICE_NAME=journey-runtime-service,ENVIRONMENT=production"
+          [ -n "${PRODUCT_SERVICE_URL:-}" ] && RUNTIME_ENV="${RUNTIME_ENV},PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL}"
+          [ -n "${PROJECT_SERVICE_URL:-}" ] && RUNTIME_ENV="${RUNTIME_ENV},PROJECT_SERVICE_URL=${PROJECT_SERVICE_URL}"
+
+          gcloud run services update journey-runtime-service \
+            --region="${{ env.REGION }}" --project="${{ env.PROJECT_ID }}" \
+            --update-env-vars="${RUNTIME_ENV}" \
+            --update-secrets="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,ACTIVEPIECES_WEBHOOK_SECRET=ACTIVEPIECES_WEBHOOK_SECRET:latest" || \
+            echo "  ⚠️  journey-runtime-service not yet deployed"
 
       - name: Update auth-service
         run: |

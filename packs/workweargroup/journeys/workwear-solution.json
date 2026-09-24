@@ -31,8 +31,8 @@
       "description": "Search catalog, enforce Australian safety compliance and $250 combined budget, and recommend bundle.",
       "requiredFacts": [],
       "allowedCapabilities": [
-        "catalog.search",
         "solution.optimize",
+        "catalog.search",
         "pricing.validate"
       ],
       "blockedCapabilities": ["order.commit"],

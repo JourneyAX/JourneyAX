@@ -127,10 +127,23 @@ async function streamChat(
           dispatch({ type: 'SET_COMPARISON', comparison: payload.arguments });
         } else if (payload.name === 'presentBundle' && Array.isArray(payload.arguments?.items) && payload.arguments.items.length >= 2) {
           dispatch({ type: 'SET_BUNDLE', bundle: payload.arguments });
+        } else if (payload.name === 'presentCard' && payload.arguments?.card) {
+          const c = payload.arguments.card;
+          dispatch({
+            type: 'PUSH_CARD',
+            card: {
+              id: c.id || `${c.cardType}-${Date.now()}`,
+              cardType: c.cardType,
+              state: c.state || {},
+              variant: c.variant,
+              streamId: c.streamId,
+              createdAt: c.createdAt || new Date().toISOString(),
+            },
+          });
         }
         // Forward-compatible: once the agent's presentation layer attaches an
         // enriched `card` to the frame directly (docs §5), render it too.
-        if (payload.card) {
+        if (payload.card && payload.name !== 'presentCard') {
           for (const card of uiActionToCards(payload)) dispatch({ type: 'PUSH_CARD', card });
         }
       }

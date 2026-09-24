@@ -1,4 +1,4 @@
-import { TurnRunner } from '../apps/agent-commerce-service/src/turn/run-turn';
+import { RuntimeService } from '../apps/journey-runtime-service/src/runtime.service';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -9,7 +9,7 @@ async function main() {
   console.log('🧪 RUNNING ROYAL CYBER ACCEPTANCE SCENARIO (JOURNEYAX OS MULTI-DOMAIN)');
   console.log('========================================================================\n');
 
-  const runner = new TurnRunner();
+  const runner = new RuntimeService();
 
   const command = {
     tenantId: 'royalcyber',
@@ -34,23 +34,31 @@ async function main() {
   console.log(` - Reply Message:\n${result.assistantMessage}\n`);
   console.log(` - UI Cards & Actions:`, JSON.stringify(result.uiInstructions, null, 2));
 
-  // Assertions
+  // Strict Assertions for all 4 enterprise facts
   const facts = result.workspace.facts;
   const hasDomain = !!facts['domain'];
   const hasCloud = !!facts['cloudPlatform'];
   const hasBudget = !!facts['budget'];
+  const hasScope = !!facts['scopeItems'];
 
-  if (!hasDomain && !hasCloud && !hasBudget) {
-    console.error('❌ Failed: Expected domain, cloudPlatform, or budget facts to be extracted.');
+  if (!hasDomain || !hasCloud || !hasBudget || !hasScope) {
+    console.error('❌ Failed: Expected all 4 facts (domain, cloudPlatform, budget, scopeItems) to be extracted.');
+    console.error('Facts present:', Object.keys(facts));
     process.exit(1);
   }
 
-  console.log('✅ FACT REDUCER ASSERTION: Successfully extracted and stored enterprise consulting facts:');
+  if (result.workspace.currentStage !== 'architecture_scoping') {
+    console.error(`❌ Failed: Expected currentStage to be 'architecture_scoping', got '${result.workspace.currentStage}'`);
+    process.exit(1);
+  }
+
+  console.log('✅ FACT REDUCER ASSERTION: Successfully extracted and stored all 4 enterprise consulting facts:');
   console.log(`   - domain: ${facts['domain']?.value}`);
   console.log(`   - cloudPlatform: ${facts['cloudPlatform']?.value}`);
   console.log(`   - budget: $${facts['budget']?.value?.amount} ${facts['budget']?.value?.currency}`);
-  console.log(`✅ JOURNEY ENGINE ASSERTION: Workspace advanced to stage "${result.workspace.currentStage}".`);
-  console.log('✅ DOMAIN NEUTRALITY ASSERTION: JourneyAX Core executed a non-commerce consulting workflow with ZERO code changes.');
+  console.log(`   - scopeItems: ${JSON.stringify(facts['scopeItems']?.value)}`);
+  console.log(`✅ JOURNEY ENGINE ASSERTION: Workspace strictly advanced to stage "${result.workspace.currentStage}".`);
+  console.log('✅ DOMAIN NEUTRALITY ASSERTION: JourneyAX Core executed a non-commerce consulting workflow with ZERO hardcoded logic.');
   console.log('\n🎉 ALL ROYAL CYBER ACCEPTANCE TESTS PASSED!');
   process.exit(0);
 }

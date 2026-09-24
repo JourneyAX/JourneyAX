@@ -36,9 +36,13 @@ export class CapabilityDispatcher {
     ctx: ExecutionContext
   ): Promise<ExecutionResponse> {
     const startTime = Date.now();
+    const effectiveCtx: ExecutionContext = {
+      ...ctx,
+      idempotencyKey: request.idempotencyKey || ctx.idempotencyKey,
+    };
 
     // 1. Enforce policy gate (roles, approval, idempotency)
-    const policyResult = this.policyGate.checkPolicy(tool, binding, request, ctx);
+    const policyResult = this.policyGate.checkPolicy(tool, binding, request, effectiveCtx);
     if (!policyResult.allowed) {
       if (policyResult.requiresApproval) {
         return {
@@ -46,11 +50,11 @@ export class CapabilityDispatcher {
           status: 'requires_approval',
           error: policyResult.reason,
           durationMs: Date.now() - startTime,
-          approvalRequestId: `apr_${ctx.workspaceId}_${Date.now()}`,
+          approvalRequestId: `apr_${effectiveCtx.workspaceId}_${Date.now()}`,
           provenance: {
-            executorType: binding.executor.type,
+            executorType: binding.executor?.type || 'native_capability',
             executedAt: new Date().toISOString(),
-            correlationId: ctx.correlationId,
+            correlationId: effectiveCtx.correlationId,
           },
         };
       }
@@ -60,15 +64,18 @@ export class CapabilityDispatcher {
         error: policyResult.reason,
         durationMs: Date.now() - startTime,
         provenance: {
-          executorType: binding.executor.type,
+          executorType: binding.executor?.type || 'native_capability',
           executedAt: new Date().toISOString(),
-          correlationId: ctx.correlationId,
+          correlationId: effectiveCtx.correlationId,
         },
       };
     }
 
     try {
-      const executor = binding.executor;
+      const executor = binding.executor || {
+        type: 'native_capability' as const,
+        nativeHandler: (binding as any).adapterRef || tool.toolId,
+      };
       let output: any;
 
       switch (executor.type) {
@@ -78,13 +85,13 @@ export class CapabilityDispatcher {
           if (!handler) {
             throw new Error(`No native capability handler registered for '${handlerKey}'`);
           }
-          output = await handler.execute(request.input, ctx);
+          output = await handler.execute(request.input, effectiveCtx);
           break;
         }
 
         case 'activepieces_flow': {
           // Dispatches to external Activepieces flow
-          output = await this.invokeActivepiecesFlow(executor.flowId!, request.input, ctx);
+          output = await this.invokeActivepiecesFlow(executor.flowId!, request.input, effectiveCtx);
           break;
         }
 

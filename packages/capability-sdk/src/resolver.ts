@@ -15,6 +15,7 @@ export class CapabilityResolver {
    * Never exposes the entire tool catalog to the model.
    */
   resolveForStage(
+    journeyId: string,
     stageId: string,
     toolDefinitions: ToolDefinition[],
     toolBindings: ToolBinding[],
@@ -35,7 +36,9 @@ export class CapabilityResolver {
     }
 
     // Find bindings explicitly tied to this stage
-    const currentStageBinding = stageBindings.find((s) => s.stageId === stageId);
+    const currentStageBinding = stageBindings.find(
+      (s) => s.journeyId === journeyId && s.stageId === stageId
+    );
     const resolvedTools: { definition: ToolDefinition; binding?: ToolBinding }[] = [];
 
     if (currentStageBinding) {

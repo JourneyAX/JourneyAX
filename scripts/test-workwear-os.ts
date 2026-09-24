@@ -1,20 +1,21 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
-import { TurnRunner } from '../apps/agent-commerce-service/src/turn/run-turn';
+import { RuntimeService } from '../apps/journey-runtime-service/src/runtime.service';
 
 async function runWorkwearAcceptanceTest() {
   console.log('================================================================');
   console.log('🧪 RUNNING JOURNEYAX OS WORKWEAR ACCEPTANCE SCENARIO (EVAL-001)');
   console.log('================================================================');
 
-  const runner = new TurnRunner();
+  const runner = new RuntimeService();
 
   const command = {
     tenantId: 'workweargroup',
     environmentId: 'production' as const,
     workspaceId: `ws_eval_${Date.now()}`,
     sessionId: `session_eval_${Date.now()}`,
+    correlationId: `corr_eval_${Date.now()}`,
     message: 'I’m an apprentice electrician. I need lightweight summer pants and composite-toe boots under $250.',
   };
 
@@ -94,11 +95,27 @@ async function runWorkwearAcceptanceTest() {
   }
 
   // Criterion 5: UI Card generated
-  const hasBundleCard = result.uiInstructions.some((i) => i.component === 'bundle_summary_card');
+  const hasBundleCard = result.uiInstructions.some((i) => i.component === 'bundle');
   if (hasBundleCard) {
-    console.log('✅ PASS: Structured bundle_summary_card UI instruction emitted for storefront');
+    console.log('✅ PASS: Structured bundle UI card instruction emitted for storefront (@journeyax/ui-cards catalog)');
   } else {
-    console.error('❌ FAIL: bundle_summary_card was not generated');
+    console.error('❌ FAIL: bundle card was not generated');
+    passed = false;
+  }
+
+  // Criterion 6: Strict Composite Toe Protection (never steel toe)
+  if (bundle && bundle.boots?.attributes?.toeProtection === 'composite') {
+    console.log(`✅ PASS: Boot (${bundle.boots.name}) strictly verified as Composite Safety Toe!`);
+  } else {
+    console.error(`❌ FAIL: Boot is not composite toe: ${bundle?.boots?.attributes?.toeProtection}`);
+    passed = false;
+  }
+
+  // Criterion 7: Lightweight Pants
+  if (bundle && bundle.pants?.attributes?.weightClass === 'lightweight') {
+    console.log(`✅ PASS: Pants (${bundle.pants.name}) strictly verified as Lightweight work pants!`);
+  } else {
+    console.error(`❌ FAIL: Pants are not lightweight: ${bundle?.pants?.attributes?.weightClass}`);
     passed = false;
   }
 

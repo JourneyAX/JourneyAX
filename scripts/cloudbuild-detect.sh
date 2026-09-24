@@ -51,6 +51,7 @@ ALL_SVCS=(
   "organization-service"
   "agent-commerce-service"
   "retexture-service"
+  "journey-runtime-service"
 )
 
 # ── Compute changed files ────────────────────────────────────────────────────

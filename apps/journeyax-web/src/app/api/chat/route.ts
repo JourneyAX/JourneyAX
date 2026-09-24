@@ -1,26 +1,16 @@
 /**
- * Chat API Route — Thin Proxy to API Gateway
+ * Chat API Route — Thin Proxy to API Gateway with Server-Owned Cutover Routing
  *
  * ALL traffic from the UI goes through the API Gateway.
- * The gateway handles: auth validation, tenant resolution, and routing to the correct service.
- *
- * Flow:
- * ChatPanel.tsx
- *   → POST /api/chat (this file)
- *     → API Gateway :3010 /api/v1/commerce/chat
- *       → JourneyAXController (agent-commerce-service :3004)
- *         → AgentService (ReAct loop)
- *           → ProductService (product-service :8083)
- *             → MongoDB Atlas
+ * Server-owned routing decision from active tenant/environment release/cutover state:
+ * - 'migrated': Routed exclusively to canonical JourneyAX Runtime Service. Any runtime failure fails closed.
+ * - 'unmigrated' / 'rollback': Routed to legacy commerce.
  */
 
 import { resolveTenant } from '../../../lib/tenant';
 import { upstreamAuthHeaders, unauthorized } from '../../../lib/bff-auth';
+import { resolveTenantRouting } from '../../../lib/routing/cutover';
 
-// Vercel duration contract. This buffered endpoint is the fallback the client
-// uses when the SSE stream errors — it runs the FULL agent turn in one request,
-// so the same default ~15s serverless cap would kill it on a long turn (leaving
-// the customer with neither stream nor fallback). Match the stream route's 60s.
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -28,15 +18,8 @@ export const maxDuration = 60;
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: Request) {
-  // Client-minimal contract: the browser sends only { message, sessionId }
-  // (server owns transcript + state). Legacy { messages, state } still forwarded.
   const body = await req.json();
-
-  // Forward auth + tenant headers from the browser if present
-  // Multi-storefront routing: ?project → X-Tenant-ID header → Host domain → env.
   const tenantId = await resolveTenant(req);
-  // Signed-in customer's token from the HttpOnly cookie → Bearer upstream.
-  // No session → 401 (anonymous access is off).
   const auth = upstreamAuthHeaders(req);
   if (!auth) return unauthorized();
 
@@ -46,6 +29,82 @@ export async function POST(req: Request) {
     ...auth,
   };
 
+  const sessionId = body.sessionId || body.workspaceId || 'default';
+  const routing = await resolveTenantRouting(tenantId);
+
+  // 1. Migrated Tenant Path: Exclusively executes on JourneyAX Runtime Service (Fails Closed)
+  if (routing.cutoverState === 'migrated') {
+    let runtimeResp: Response | null = null;
+    try {
+      const runtimePayload = {
+        sessionId,
+        workspaceId: body.workspaceId || sessionId,
+        correlationId: body.correlationId || `corr_${Date.now()}`,
+        message: body.message || (Array.isArray(body.messages) ? body.messages[body.messages.length - 1]?.content : undefined),
+        inputFacts: body.inputFacts,
+      };
+
+      runtimeResp = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/runtime/turn`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(runtimePayload),
+      });
+
+      if (runtimeResp.ok) {
+        const turnResult = await runtimeResp.json();
+        return new Response(
+          JSON.stringify({
+            message: {
+              role: 'assistant',
+              content: turnResult.assistantMessage || '',
+            },
+            uiActions: (turnResult.uiInstructions || []).map((inst: any) =>
+              inst.envelope || {
+                name: 'presentCard',
+                arguments: {
+                  card: {
+                    id: inst.actionId || `${inst.component}-${Date.now()}`,
+                    cardType: inst.component,
+                    state: inst.props,
+                  },
+                },
+              }
+            ),
+            workspace: turnResult.workspace,
+            decision: turnResult.decision,
+            conversation: [
+              ...(body.messages || []),
+              { role: 'assistant', content: turnResult.assistantMessage || '' },
+            ],
+            runtimeEngine: 'journey-runtime-service',
+            cutoverState: 'migrated',
+          }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    } catch (err: any) {
+      console.error(`[Chat Proxy] Migrated tenant '${tenantId}' runtime connection error:`, err.message);
+    }
+
+    // Fail closed for migrated tenant: NEVER silently fall back to legacy commerce
+    const status = runtimeResp && runtimeResp.status >= 400 ? runtimeResp.status : 502;
+    return new Response(
+      JSON.stringify({
+        error: 'MIGRATED_TENANT_RUNTIME_FAILURE',
+        status,
+        message: {
+          role: 'assistant',
+          content: `🚨 **Runtime Engine Error:** The verified JourneyAX runtime engine failed to complete this turn (HTTP ${status}). Execution blocked to prevent state divergence with unverified legacy commerce.`,
+        },
+        tenantId,
+        cutoverState: 'migrated',
+        routingReason: routing.reason,
+      }),
+      { status, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // 2. Unmigrated / Deliberate Rollback Path: Legacy commerce execution
   try {
     const response = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/chat`, {
       method: 'POST',
@@ -55,9 +114,7 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Chat Proxy] Gateway error:', response.status, errorText);
-      // P0-05: pass the rate-limit body straight through so the UI shows the
-      // graceful "slow down" assistant message rather than a generic error.
+      console.error('[Chat Proxy] Gateway legacy error:', response.status, errorText);
       if (response.status === 429 || response.status === 413) {
         return new Response(errorText, {
           status: 200,
@@ -70,24 +127,25 @@ export async function POST(req: Request) {
           message: { role: 'assistant', content: '🚨 **Error:** The AI service is temporarily unavailable. Please try again.' },
           conversation: [],
           uiActions: [],
+          cutoverState: routing.cutoverState,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
     const data = await response.json();
-    return new Response(JSON.stringify(data), {
+    return new Response(JSON.stringify({ ...data, cutoverState: routing.cutoverState }), {
       headers: { 'Content-Type': 'application/json' },
     });
-
   } catch (error: any) {
-    console.error('[Chat Proxy] Gateway connection error:', error.message);
+    console.error('[Chat Proxy] Gateway legacy connection error:', error.message);
     return new Response(
       JSON.stringify({
         error: error.message,
         message: { role: 'assistant', content: '🚨 **Error:** Could not connect to the API Gateway. Ensure all services are running.' },
         conversation: [],
         uiActions: [],
+        cutoverState: routing.cutoverState,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );

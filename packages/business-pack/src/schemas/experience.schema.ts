@@ -12,11 +12,15 @@ export const ExperienceThemeSchema = z.object({
 
 export const ExperienceCardsSchema = z.object({
   allowedCardTypes: z.array(z.string()).default([
-    'product_card',
-    'bundle_summary_card',
-    'quote_card',
-    'comparison_table',
-    'action_button_group',
+    'bundle',
+    'products',
+    'productDetail',
+    'quote',
+    'comparison',
+    'plan',
+    'cart',
+    'orderStatus',
+    'guide',
   ]),
   defaultCardRenderer: z.string().default('@journeyax/ui-cards'),
 });
@@ -31,11 +35,15 @@ export const ExperienceSchema = z.object({
   }),
   cards: ExperienceCardsSchema.default({
     allowedCardTypes: [
-      'product_card',
-      'bundle_summary_card',
-      'quote_card',
-      'comparison_table',
-      'action_button_group',
+      'bundle',
+      'products',
+      'productDetail',
+      'quote',
+      'comparison',
+      'plan',
+      'cart',
+      'orderStatus',
+      'guide',
     ],
     defaultCardRenderer: '@journeyax/ui-cards',
   }),

@@ -72,29 +72,22 @@ export class JourneyEngine {
 
     // 3. Evaluate capability execution in the current stage
     if (currentStage.allowedCapabilities && currentStage.allowedCapabilities.length > 0) {
-      // Prioritize optimization or search if we are in build_solution
-      if (currentStage.allowedCapabilities.includes('solution.optimize') && workspace.facts['required_item_types']) {
-        return {
-          decisionId: `dec_${Date.now()}`,
-          type: 'invoke_capability',
-          targetCapability: 'solution.optimize',
-          payload: {
-            required_item_types: workspace.facts['required_item_types']?.value,
-            occupation: workspace.facts['occupation']?.value,
-            budget: workspace.facts['budget']?.value,
-          },
-          reason: 'All trade requirement facts gathered; optimizing solution bundle.',
-          createdAt: new Date().toISOString(),
-        };
+      const targetCapability = currentStage.allowedCapabilities[0];
+
+      // Assemble generic input payload from verified workspace facts
+      const factsPayload: Record<string, any> = {};
+      for (const [key, fact] of Object.entries(workspace.facts)) {
+        if (fact && fact.value !== undefined) {
+          factsPayload[key] = fact.value;
+        }
       }
 
-      const primaryCap = currentStage.allowedCapabilities[0];
       return {
         decisionId: `dec_${Date.now()}`,
         type: 'invoke_capability',
-        targetCapability: primaryCap,
-        payload: {},
-        reason: `Invoking allowed stage capability '${primaryCap}'`,
+        targetCapability,
+        payload: factsPayload,
+        reason: `Executing stage-allowed capability '${targetCapability}' with verified workspace facts.`,
         createdAt: new Date().toISOString(),
       };
     }

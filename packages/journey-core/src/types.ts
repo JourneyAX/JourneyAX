@@ -5,7 +5,7 @@
  * decisions, and UI instructions.
  */
 
-export type FactSource = 'customer' | 'system' | 'inference' | 'tool';
+export type FactSource = 'customer' | 'system' | 'inference' | 'tool' | 'external';
 
 export interface FactEntry<T = any> {
   value: T;
@@ -61,13 +61,21 @@ export interface JourneyDefinition {
   metadata?: Record<string, any>;
 }
 
+export type EnvironmentId = 'dev' | 'test' | 'staging' | 'production';
+
+export interface ChannelEvent {
+  type: string;
+  payload: any;
+}
+
 export type DecisionType =
   | 'ask_fact'
   | 'invoke_capability'
+  | 'requires_approval'
   | 'transition_stage'
   | 'complete_goal'
-  | 'recommend'
-  | 'handoff';
+  | 'handoff'
+  | 'fail';
 
 export interface Decision {
   decisionId: string;
@@ -94,20 +102,36 @@ export interface Transition {
   evaluatedAt: string;
 }
 
+export interface CardEnvelope {
+  name: 'presentCard';
+  arguments: {
+    card: {
+      id: string;
+      cardType: string;
+      state: Record<string, any>;
+      variant?: string;
+      streamId?: string;
+    };
+  };
+}
+
 export interface UIInstruction {
   component: string;
   props: Record<string, any>;
   actionId?: string;
   placement?: 'inline' | 'panel' | 'modal' | 'banner';
+  envelope?: CardEnvelope;
 }
 
 export type WorkspaceStatus = 'active' | 'completed' | 'paused' | 'failed';
 
 export interface WorkspaceState {
   tenantId: string;
+  environmentId: EnvironmentId;
   workspaceId: string;
   packVersionId: string;
   journeyId: string;
+  journeyVersion?: string;
   currentStage: string;
   goal: string;
   facts: FactsMap;
@@ -115,6 +139,8 @@ export interface WorkspaceState {
   selectedObjects: any[];
   openQuestions: string[];
   status: WorkspaceStatus;
+  stateVersion: number;
+  lastProcessedTurnId?: string;
   createdAt: string | Date;
   updatedAt: string | Date;
   correlationId?: string;
@@ -122,16 +148,20 @@ export interface WorkspaceState {
 
 export interface TurnCommand {
   tenantId: string;
-  environmentId: string;
+  environmentId: EnvironmentId;
   workspaceId: string;
   sessionId: string;
+
   principalId?: string;
+  principalRole?: string;
+  correlationId: string;
+
   message?: string;
-  event?: {
-    type: string;
-    payload: any;
-  };
-  inputFacts?: Record<string, any>;
+  event?: ChannelEvent;
+  inputFacts?: Record<string, unknown>;
+
+  approvalRequestId?: string;
+  idempotencyKey?: string;
 }
 
 export interface TurnResult {
@@ -141,12 +171,20 @@ export interface TurnResult {
   uiInstructions: UIInstruction[];
   executedCapabilities: {
     toolId: string;
-    status: 'success' | 'failure';
-    output: any;
+    status: 'success' | 'failure' | 'requires_approval' | 'denied';
+    output?: any;
+    error?: string;
+    approvalRequestId?: string;
   }[];
   trace: {
     stage: string;
     transitions: Transition[];
     decisionsMade: Decision[];
+    modelRoute?: {
+      policyId: string;
+      provider: string;
+      model: string;
+      dataResidency: string;
+    };
   };
 }

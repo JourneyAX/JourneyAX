@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { connectToDatabase } from '@journeyax/database';
 import { Db, Collection } from 'mongodb';
 import {
@@ -6,14 +7,106 @@ import {
   ProjectIsolationContext, ProjectStatus, ProjectMember, MemberRole,
   BusinessRule, CreateBusinessRuleDto, UpdateBusinessRuleDto, RuleStatus,
   ConfigVersion, CardTemplateDoc, CardSpec,
+  ProjectTeam, MembershipStatus, MembershipAuditLog,
 } from './project.types';
 import { primitives, CARD_TYPE_NAMES, DEFAULT_TEMPLATES, type CardType } from '@journeyax/ui-cards';
+import {
+  publishBusinessPack,
+  rollbackBusinessPack,
+  compileGraphToJourneyDefinition,
+} from '@journeyax/business-pack';
 
 const DB_NAME   = 'journeyax';
 const PROJECTS  = 'tenant_configs';    // existing collection — backwards compat
 const MEMBERS   = 'project_members';
+const TEAMS     = 'project_teams';
 const RULES     = 'business_rules';    // back-office configurable agent rules
 const VERSIONS  = 'config_versions';   // immutable published config snapshots (FR-CONFIG-002)
+
+export const STANDARD_TOOL_SCHEMAS: Record<string, {
+  inputSchema: Record<string, any>;
+  outputSchema: Record<string, any>;
+  sideEffect: 'read' | 'write' | 'transactional';
+  risk: 'low' | 'medium' | 'high' | 'critical';
+  requiresApproval: boolean;
+  idempotencyRequired: boolean;
+}> = {
+  products: {
+    inputSchema: { type: 'object', properties: { query: { type: 'string' }, category: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { items: { type: 'array' }, total: { type: 'number' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  product_catalog_search: {
+    inputSchema: { type: 'object', properties: { query: { type: 'string' }, category: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { items: { type: 'array' }, total: { type: 'number' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  catalog_search: {
+    inputSchema: { type: 'object', properties: { query: { type: 'string' }, category: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { items: { type: 'array' }, total: { type: 'number' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  inventory_check: {
+    inputSchema: { type: 'object', properties: { skus: { type: 'array', items: { type: 'string' } } }, required: ['skus'] },
+    outputSchema: { type: 'object', properties: { inventory: { type: 'array' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  accessories: {
+    inputSchema: { type: 'object', properties: { sku: { type: 'string' } }, required: ['sku'] },
+    outputSchema: { type: 'object', properties: { accessories: { type: 'array' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  quote: {
+    inputSchema: { type: 'object', properties: { items: { type: 'array' }, budget: { type: 'number' } } },
+    outputSchema: { type: 'object', properties: { quoteId: { type: 'string' }, totalCents: { type: 'number' } } },
+    sideEffect: 'write', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  quote_create: {
+    inputSchema: { type: 'object', properties: { items: { type: 'array' }, budget: { type: 'number' } } },
+    outputSchema: { type: 'object', properties: { quoteId: { type: 'string' }, totalCents: { type: 'number' } } },
+    sideEffect: 'write', risk: 'medium', requiresApproval: false, idempotencyRequired: false,
+  },
+  createQuote: {
+    inputSchema: { type: 'object', properties: { items: { type: 'array' }, budget: { type: 'number' } } },
+    outputSchema: { type: 'object', properties: { quoteId: { type: 'string' }, totalCents: { type: 'number' } } },
+    sideEffect: 'write', risk: 'medium', requiresApproval: false, idempotencyRequired: false,
+  },
+  order_commit: {
+    inputSchema: { type: 'object', properties: { quoteId: { type: 'string' }, idempotencyKey: { type: 'string' } }, required: ['idempotencyKey'] },
+    outputSchema: { type: 'object', properties: { orderId: { type: 'string' }, status: { type: 'string' } } },
+    sideEffect: 'transactional', risk: 'high', requiresApproval: true, idempotencyRequired: true,
+  },
+  orderCommit: {
+    inputSchema: { type: 'object', properties: { quoteId: { type: 'string' }, idempotencyKey: { type: 'string' } }, required: ['idempotencyKey'] },
+    outputSchema: { type: 'object', properties: { orderId: { type: 'string' }, status: { type: 'string' } } },
+    sideEffect: 'transactional', risk: 'high', requiresApproval: true, idempotencyRequired: true,
+  },
+  roster: {
+    inputSchema: { type: 'object', properties: { rawText: { type: 'string' } }, required: ['rawText'] },
+    outputSchema: { type: 'object', properties: { players: { type: 'array' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  teamColours: {
+    inputSchema: { type: 'object', properties: { schoolOrTeam: { type: 'string' } }, required: ['schoolOrTeam'] },
+    outputSchema: { type: 'object', properties: { colors: { type: 'array' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  customDesign: {
+    inputSchema: { type: 'object', properties: { templateId: { type: 'string' }, designData: { type: 'object' } } },
+    outputSchema: { type: 'object', properties: { previewUrl: { type: 'string' } } },
+    sideEffect: 'write', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  installGuide: {
+    inputSchema: { type: 'object', properties: { sku: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { pdfUrl: { type: 'string' }, title: { type: 'string' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+  warranty: {
+    inputSchema: { type: 'object', properties: { sku: { type: 'string' } } },
+    outputSchema: { type: 'object', properties: { terms: { type: 'string' }, durationMonths: { type: 'number' } } },
+    sideEffect: 'read', risk: 'low', requiresApproval: false, idempotencyRequired: false,
+  },
+};
 
 /**
  * ProjectService — Config Registry & Data Isolation Authority
@@ -35,6 +128,7 @@ export class ProjectService {
   private db!: Db;
   private projectsCol!: Collection<ProjectConfig>;
   private membersCol!: Collection<ProjectMember & { projectId: string; orgId: string }>;
+  private teamsCol!: Collection<ProjectTeam & { projectId: string; orgId: string }>;
   private rulesCol!: Collection<BusinessRule>;
   private versionsCol!: Collection<ConfigVersion>;
   private isConnected = false;
@@ -68,6 +162,39 @@ export class ProjectService {
           'Never hallucinate SKUs, prices, or product names.',
         greetingMessage: "Welcome to Caroma! I'll help you design your perfect bathroom.",
         escalationEmail: 'support@caroma.com.au',
+        journeyDefinition: {
+          journeyId: 'caroma_bathroom_design',
+          version: '1.0.0',
+          displayName: 'Caroma Bathroom Design',
+          description: 'Guided bathroom design and product selection',
+          goals: ['understand_space', 'select_fixtures'],
+          initialStage: 'discovery',
+          stages: {
+            discovery: {
+              stageId: 'discovery',
+              displayName: 'Space Discovery',
+              description: 'Discover bathroom layout and style preferences',
+              requiredFacts: [],
+              allowedCapabilities: ['catalog_search'],
+              nextDecisionPolicy: 'dependency-first',
+              exitConditions: [{ nextStage: 'specification' }],
+            },
+            specification: {
+              stageId: 'specification',
+              displayName: 'Product Specification',
+              description: 'Recommend fixtures and finalize specifications',
+              requiredFacts: [],
+              allowedCapabilities: ['catalog_search', 'quote_create', 'order_commit'],
+              nextDecisionPolicy: 'dependency-first',
+              exitConditions: [],
+            },
+          },
+        },
+      },
+      ai: {
+        provider: 'openai',
+        model: 'gpt-4o',
+        temperature: 0.4,
       },
       theme: {
         primaryColor: '#FFD600',
@@ -103,6 +230,39 @@ export class ProjectService {
           'You are the Caroma NZ Stylist. Only recommend products available in New Zealand. ' +
           'Apply NZD pricing and 15% GST.',
         greetingMessage: "Kia ora! Let's design your perfect bathroom.",
+        journeyDefinition: {
+          journeyId: 'caroma_nz_bathroom_design',
+          version: '1.0.0',
+          displayName: 'Caroma NZ Bathroom Design',
+          description: 'Guided bathroom design for New Zealand',
+          goals: ['understand_space', 'select_fixtures'],
+          initialStage: 'discovery',
+          stages: {
+            discovery: {
+              stageId: 'discovery',
+              displayName: 'Discovery',
+              description: 'Discover bathroom space and NZ requirements',
+              requiredFacts: [],
+              allowedCapabilities: ['catalog_search'],
+              nextDecisionPolicy: 'dependency-first',
+              exitConditions: [{ nextStage: 'specification' }],
+            },
+            specification: {
+              stageId: 'specification',
+              displayName: 'Specification',
+              description: 'Recommend fixtures with NZ GST pricing',
+              requiredFacts: [],
+              allowedCapabilities: ['catalog_search', 'quote_create', 'order_commit'],
+              nextDecisionPolicy: 'dependency-first',
+              exitConditions: [],
+            },
+          },
+        },
+      },
+      ai: {
+        provider: 'openai',
+        model: 'gpt-4o',
+        temperature: 0.4,
       },
       theme: {
         primaryColor: '#FFD600',
@@ -130,6 +290,7 @@ export class ProjectService {
       this.db          = db;
       this.projectsCol = db.collection<ProjectConfig>(PROJECTS);
       this.membersCol  = db.collection(MEMBERS);
+      this.teamsCol    = db.collection(TEAMS);
       this.rulesCol    = db.collection<BusinessRule>(RULES);
       this.versionsCol = db.collection<ConfigVersion>(VERSIONS);
       this.isConnected = true;
@@ -162,6 +323,11 @@ export class ProjectService {
     await this.membersCol.createIndex({ projectId: 1, email: 1 }, { unique: true });
     await this.membersCol.createIndex({ projectId: 1 });
     await this.membersCol.createIndex({ email: 1 });
+    await this.membersCol.createIndex({ invitationToken: 1 }, { sparse: true });
+
+    // ── Teams collection ────────────────────────────────────────
+    await this.teamsCol.createIndex({ projectId: 1, teamId: 1 }, { unique: true });
+    await this.teamsCol.createIndex({ projectId: 1 });
 
     // ── Business rules collection ───────────────────────────────
     await this.rulesCol.createIndex({ ruleId: 1 }, { unique: true });
@@ -491,8 +657,8 @@ export class ProjectService {
     const $set: any = { updatedAt: new Date().toISOString() };
 
     /* The stored project, needed to preserve secrets an edit did not resend.
-     *  Read once and only when integrations are being written. */
-    const current: any = (dto as any).integrations
+     *  Read once when integrations or notifications are being written. */
+    const current: any = ((dto as any).integrations || (dto as any).notifications)
       ? await this.projectsCol!.findOne({ projectId: pid })
       : null;
 
@@ -510,7 +676,45 @@ export class ProjectService {
     // customers buy for. Replaced wholesale, not merged — the entity model is a
     // coherent unit and a half-merged one would describe a business that isn't real.
     if ((dto as any).business) $set.business = (dto as any).business;
-    if ((dto as any).notifications) $set.notifications = (dto as any).notifications;
+    if ((dto as any).notifications) {
+      const incomingNotif: any = { ...(dto as any).notifications };
+      const existingNotif: any = current?.notifications;
+      if (incomingNotif.channels && typeof incomingNotif.channels === 'object') {
+        const channels: any = { ...incomingNotif.channels };
+        if (channels.email && typeof channels.email === 'object') {
+          const email: any = { ...channels.email };
+          const existingEmail: any = existingNotif?.channels?.email || {};
+          const blank = !email.apiKey || typeof email.apiKey !== 'string' || !email.apiKey.trim() || email.apiKey.startsWith('••••');
+          if (blank) {
+            if (existingEmail.apiKey) email.apiKey = existingEmail.apiKey;
+            else delete email.apiKey;
+          }
+          if (email.apiKey) {
+            email.apiKeyRef = email.apiKeyRef || existingEmail.apiKeyRef || `vault://tenants/${pid}/sendgrid-api-key`;
+          }
+          delete email.apiKeyHint;
+          delete email.apiKeyConfigured;
+          channels.email = email;
+        }
+        if (channels.webhook && typeof channels.webhook === 'object') {
+          const webhook: any = { ...channels.webhook };
+          const existingWebhook: any = existingNotif?.channels?.webhook || {};
+          const blank = !webhook.secret || typeof webhook.secret !== 'string' || !webhook.secret.trim() || webhook.secret.startsWith('••••');
+          if (blank) {
+            if (existingWebhook.secret) webhook.secret = existingWebhook.secret;
+            else delete webhook.secret;
+          }
+          if (webhook.secret) {
+            webhook.secretRef = webhook.secretRef || existingWebhook.secretRef || `vault://tenants/${pid}/webhook-secret`;
+          }
+          delete webhook.secretHint;
+          delete webhook.secretConfigured;
+          channels.webhook = webhook;
+        }
+        incomingNotif.channels = channels;
+      }
+      $set.notifications = incomingNotif;
+    }
     if ((dto as any).embed) $set.embed = (dto as any).embed;
     if ((dto as any).configurator) $set.configurator = (dto as any).configurator;
     // Commerce surface: 'quote' (B2B project quote — BOM, finishes) vs 'cart'
@@ -537,6 +741,14 @@ export class ProjectService {
     for (const [k, v] of Object.entries((dto as any).labels || {})) $set[`labels.${k}`] = v;
     if (typeof dto.quoteIntro === 'string') $set.quoteIntro = dto.quoteIntro;
     if (typeof dto.complianceBadge === 'string') $set.complianceBadge = dto.complianceBadge;
+
+    for (const k of [
+      'journeys', 'modelPolicy', 'agents', 'rules', 'evaluations',
+      'experience', 'vocabulary', 'entities', 'conversationPolicy',
+      'stageBindings', 'toolDefinitions', 'toolBindings', 'dataResidency',
+    ]) {
+      if ((dto as any)[k] !== undefined) $set[k] = (dto as any)[k];
+    }
 
     // Deep-merge sub-documents (only update provided keys)
     for (const [k, v] of Object.entries(dto.scope    || {})) $set[`scope.${k}`]    = v;
@@ -692,7 +904,8 @@ export class ProjectService {
     const doc = await this.projectsCol.findOne({ projectId: pid });
     if (!doc) return { success: false, message: `Project '${pid}' not found.` };
 
-    // Evaluation Gate (EVAL-001): ensure journey graph has valid entrypoint
+    // Evaluation Gate (EVAL-001): ensure journey graph has valid entrypoint & compile
+    let compiledJourney: any = null;
     const journeyGraph = doc.persona?.journeyGraph;
     if (journeyGraph && Array.isArray(journeyGraph.nodes) && journeyGraph.nodes.length > 0) {
       const hasTrigger = journeyGraph.nodes.some((n: any) => n.data?.kind?.startsWith('trigger.'));
@@ -702,6 +915,23 @@ export class ProjectService {
           message: 'Publish blocked by evaluation gate: Journey graph must contain at least one Trigger node.',
         };
       }
+
+      const compileRes = compileGraphToJourneyDefinition(
+        journeyGraph.nodes,
+        journeyGraph.edges || [],
+        {
+          journeyId: pid,
+          displayName: doc.companyName || pid,
+        }
+      );
+
+      if (!compileRes.success) {
+        return {
+          success: false,
+          message: `Publish blocked by evaluation gate: Journey graph compilation failed: ${(compileRes.errors || []).join('; ')}`,
+        };
+      }
+      compiledJourney = compileRes.journeyDefinition;
     }
 
     if ((doc as any).evaluationGate?.required && (doc as any).evaluationGate?.passed === false) {
@@ -715,44 +945,496 @@ export class ProjectService {
       .find({ projectId: pid }).sort({ version: -1 }).limit(1).toArray();
     const version = (last[0]?.version ?? 0) + 1;
 
+    // ── Assemble and publish Immutable Business Pack release into business_pack_releases ──
+    const journeyList = compiledJourney
+      ? [compiledJourney]
+      : Array.isArray(doc.journeys) && doc.journeys.length > 0
+      ? doc.journeys
+      : doc.persona?.journeyDefinition
+      ? (Array.isArray(doc.persona.journeyDefinition) ? doc.persona.journeyDefinition : [doc.persona.journeyDefinition])
+      : [];
+
+    if (journeyList.length === 0) {
+      return {
+        success: false,
+        message: 'Publish blocked: Project must define at least one valid journey or compile a journey graph.',
+      };
+    }
+
+    const industry = doc.business?.type || 'general';
+    const dimensions = (doc.contextDimensions || []).map((d: any) => ({
+      name: d.key || d.name,
+      required: Boolean(d.scoping),
+      promptOnMissing: d.question || `What ${d.label || d.key} are you looking for?`,
+      allowedValues: d.values || [],
+    }));
+
+    // Compile Model Policy strictly from doc.modelPolicy or doc.ai (fail-closed, no hardcoded OpenAI/Anthropic fallback)
+    let compiledModelPolicy: any = null;
+    if (doc.modelPolicy?.policies && Array.isArray(doc.modelPolicy.policies) && doc.modelPolicy.policies.length > 0) {
+      compiledModelPolicy = {
+        version: doc.modelPolicy.version || '1.0.0',
+        defaultPolicy: doc.modelPolicy.defaultPolicy || doc.modelPolicy.policies[0].policyId,
+        policies: doc.modelPolicy.policies,
+      };
+    } else if (doc.ai?.model) {
+      const rawProvider = (doc.ai.provider || 'openai').toLowerCase();
+      const provider = rawProvider === 'gemini'
+        ? 'google'
+        : rawProvider === 'ollama'
+        ? 'open-model'
+        : ['openai', 'anthropic', 'google', 'open-model', 'custom'].includes(rawProvider)
+        ? rawProvider
+        : 'custom';
+
+      const candidates = [
+        {
+          provider: provider as any,
+          model: doc.ai.model,
+          priority: 1,
+          temperature: typeof doc.ai.temperature === 'number' ? doc.ai.temperature : undefined,
+        },
+      ];
+
+      compiledModelPolicy = {
+        version: '1.0.0',
+        defaultPolicy: 'standard_turn',
+        policies: [
+          {
+            policyId: 'standard_turn',
+            candidates,
+            dataResidency: (doc as any).dataResidency || 'au',
+            maxInputTokens: 20000,
+            maxOutputTokens: doc.ai.maxTokens || 2000,
+            fallbackAllowed: false,
+            timeoutMs: 10000,
+          },
+        ],
+      };
+    }
+
+    if (!compiledModelPolicy) {
+      return {
+        success: false,
+        message: 'Publish blocked: Project must define AI model policy or AI model configuration.',
+      };
+    }
+
+    // Compile Specialist Agents directly from project document fields
+    const compiledAgents = Array.isArray(doc.agents) && doc.agents.length > 0
+      ? doc.agents
+      : [
+          {
+            agentId: `${pid}_primary_assistant`,
+            name: doc.persona?.systemName || doc.name || 'Assistant',
+            purpose: doc.persona?.journeyGuidance || 'Primary conversational agent',
+            description: doc.persona?.systemName || 'Primary conversational agent',
+            modelPolicyRef: compiledModelPolicy.defaultPolicy,
+            systemPromptTemplate: doc.persona?.systemPromptOverrides || 'Assist customer with product discovery.',
+            allowedTools: Array.isArray(doc.capabilities) ? doc.capabilities : [],
+            maxTurns: 5,
+            handoffConditions: [],
+          },
+        ];
+
+    if (Array.isArray((doc as any).specialistAgents)) {
+      for (const sa of (doc as any).specialistAgents) {
+        if (!sa.agentId || !sa.name) {
+          return {
+            success: false,
+            message: 'Publish blocked: Specialist agent missing required agentId or name.',
+          };
+        }
+        if (!compiledAgents.some((a: any) => a.agentId === sa.agentId)) {
+          compiledAgents.push(sa);
+        }
+      }
+    }
+
+    const declaredAgentIds = new Set(compiledAgents.map((a: any) => a.agentId));
+    for (const j of journeyList) {
+      if (j.stages && typeof j.stages === 'object') {
+        for (const [sId, stage] of Object.entries<any>(j.stages)) {
+          if (stage.specialistAgentId && !declaredAgentIds.has(stage.specialistAgentId)) {
+            return {
+              success: false,
+              message: `Publish blocked: Stage '${sId}' references undeclared specialist agent '${stage.specialistAgentId}'.`,
+            };
+          }
+        }
+      }
+    }
+
+    // Compile Stage-Scoped Tools and Capabilities directly from project document fields
+    let compiledCapabilities: any = {
+      version: '1.0.0',
+      toolDefinitions: [],
+      toolBindings: [],
+      stageBindings: [],
+    };
+
+    if (doc.capabilities && typeof doc.capabilities === 'object' && !Array.isArray(doc.capabilities)) {
+      const caps = doc.capabilities as any;
+      compiledCapabilities = {
+        version: caps.version || '1.0.0',
+        toolDefinitions: caps.toolDefinitions || [],
+        toolBindings: caps.toolBindings || [],
+        stageBindings: caps.stageBindings || [],
+      };
+    } else {
+      const stageTools = new Set<string>();
+      for (const j of journeyList) {
+        if (j.stages && typeof j.stages === 'object') {
+          for (const stage of Object.values<any>(j.stages)) {
+            if (Array.isArray(stage.allowedCapabilities)) {
+              for (const t of stage.allowedCapabilities) stageTools.add(t);
+            }
+          }
+        }
+      }
+
+      const toolNames: string[] = Array.from(new Set([
+        ...(Array.isArray(doc.capabilities) ? doc.capabilities : []),
+        ...(Array.isArray((doc as any).tools) ? (doc as any).tools : []),
+        ...Array.from(stageTools),
+      ]));
+
+      const stageBindings: any[] = [];
+      for (const j of journeyList) {
+        if (j.stages && typeof j.stages === 'object') {
+          for (const [sId, stage] of Object.entries<any>(j.stages)) {
+            const allowed = Array.isArray(stage.allowedCapabilities) && stage.allowedCapabilities.length > 0
+              ? stage.allowedCapabilities
+              : toolNames;
+            if (allowed && allowed.length > 0) {
+              stageBindings.push({
+                journeyId: j.journeyId,
+                stageId: sId,
+                tools: allowed.map((t: string) => ({ toolId: t })),
+              });
+            }
+          }
+        }
+      }
+
+      compiledCapabilities = {
+        version: '1.0.0',
+        toolDefinitions: ((doc as any).toolDefinitions || toolNames.map((toolId: string) => {
+          const std = STANDARD_TOOL_SCHEMAS[toolId] || {
+            inputSchema: { type: 'object', properties: {} },
+            outputSchema: { type: 'object', properties: {} },
+            sideEffect: (['order_commit', 'quote_create', 'orderCommit', 'createQuote'].includes(toolId) ? 'transactional' : 'read') as any,
+            risk: (['order_commit', 'quote_create'].includes(toolId) ? 'high' : 'low') as any,
+            requiresApproval: ['order_commit', 'orderCommit'].includes(toolId),
+            idempotencyRequired: ['order_commit', 'orderCommit'].includes(toolId),
+          };
+          return {
+            toolId,
+            version: '1.0.0',
+            displayName: toolId,
+            description: `Capability ${toolId}`,
+            inputSchema: std.inputSchema,
+            outputSchema: std.outputSchema,
+            sideEffect: std.sideEffect,
+            risk: std.risk,
+            timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
+            idempotencyPolicy: { required: std.idempotencyRequired, ttlSeconds: 86400 },
+            approvalPolicy: { requiresApproval: std.requiresApproval, ttlMinutes: 60 },
+            dataClassification: 'internal' as const,
+          };
+        })),
+        toolBindings: ((doc as any).toolBindings || toolNames.map((toolId: string) => {
+          const std = STANDARD_TOOL_SCHEMAS[toolId];
+          return {
+            tenantId: pid,
+            environmentId: 'production' as const,
+            toolId,
+            bindingVersion: '1.0.0',
+            executor: {
+              type: 'native_capability' as const,
+              nativeHandler: toolId,
+            },
+            enabled: true,
+            policy: {
+              requiredRole: 'customer',
+              requiresConfirmation: std ? std.requiresApproval : ['order_commit', 'orderCommit'].includes(toolId),
+              idempotencyRequired: std ? std.idempotencyRequired : ['order_commit', 'orderCommit'].includes(toolId),
+              timeoutMs: 10000,
+              retryAttempts: 0,
+            },
+          };
+        })),
+        stageBindings: (doc as any).stageBindings || stageBindings,
+      };
+    }
+
+    const declaredToolIds = new Set(compiledCapabilities.toolDefinitions.map((t: any) => t.toolId));
+    for (const j of journeyList) {
+      if (j.stages && typeof j.stages === 'object') {
+        for (const [sId, stage] of Object.entries<any>(j.stages)) {
+          if (Array.isArray(stage.allowedCapabilities)) {
+            for (const toolId of stage.allowedCapabilities) {
+              if (!declaredToolIds.has(toolId)) {
+                return {
+                  success: false,
+                  message: `Publish blocked: Stage '${sId}' references undeclared tool '${toolId}'. Tool must be declared in project capabilities or toolDefinitions.`,
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Compile Rules directly from project document fields
+    const compiledRules = Array.isArray(doc.rules) ? doc.rules : [];
+
+    // Compile Experience (Cards & Themes) directly from project document fields
+    const themeFromDoc = (doc.uiTheme as any)?.theme || doc.theme;
+    const tokens = doc.uiTheme?.tokens;
+    const allowedCardTypes = doc.experience?.cards?.allowedCardTypes
+      || (doc.cardTemplates ? Object.keys(doc.cardTemplates) : undefined)
+      || [
+        'bundle',
+        'products',
+        'productDetail',
+        'quote',
+        'comparison',
+        'plan',
+        'cart',
+        'orderStatus',
+        'guide',
+      ];
+
+    const compiledExperience = {
+      version: '1.0.0',
+      theme: {
+        primaryColor: tokens?.colors?.brand || themeFromDoc?.primaryColor || '#0F172A',
+        accentColor: tokens?.colors?.accent || themeFromDoc?.accentColor || '#3B82F6',
+        fontFamily: tokens?.font?.body || tokens?.font?.display || themeFromDoc?.fontFamily || 'Inter, sans-serif',
+        borderRadius: tokens?.radius?.md || themeFromDoc?.borderRadius || '8px',
+        customCssVars: (doc.uiTheme as any)?.theme?.customCssVars || {},
+      },
+      cards: {
+        allowedCardTypes,
+        defaultCardRenderer: doc.experience?.cards?.defaultCardRenderer || '@journeyax/ui-cards',
+        ...(doc.cardTemplates ? { templates: doc.cardTemplates } : {}),
+      },
+    };
+
+    // Compile Evaluations directly from project document fields
+    const compiledEvaluations = Array.isArray(doc.evaluations) && doc.evaluations.length > 0
+      ? doc.evaluations
+      : Array.isArray((doc as any).scenarios) && (doc as any).scenarios.length > 0
+      ? [
+          {
+            suiteId: `${pid}_acceptance_suite`,
+            name: `${doc.companyName || pid} Acceptance Suite`,
+            tenantId: pid,
+            version: '1.0.0',
+            blockingOnPublish: false,
+            scenarios: (doc as any).scenarios.map((s: any, idx: number) => ({
+              scenarioId: s.id || `scenario_${idx + 1}`,
+              name: s.id || `Scenario ${idx + 1}`,
+              description: s.say,
+              prompt: s.say,
+              expectedTargetStage: s.stage,
+              assertions: [],
+              timeoutMs: 15000,
+            })),
+          },
+        ]
+      : [];
+
+    const defaultEntities = doc.business?.entityModel
+      ? [
+          {
+            entityId: doc.business.entityModel.key,
+            displayName: doc.business.entityModel.label,
+            description: doc.business.entityModel.labelPlural || doc.business.entityModel.label,
+            attributes: (doc.business.entityModel.captureFields || []).map((f: any) => ({
+              name: f.key,
+              type: 'string' as const,
+              required: Boolean(f.required),
+            })),
+          },
+        ]
+      : [
+          {
+            entityId: 'customer_context',
+            displayName: 'Customer Context',
+            description: 'Customer context and preferences',
+            attributes: [
+              { name: 'budget', type: 'number' as const, required: false },
+              { name: 'timeline', type: 'string' as const, required: false },
+            ],
+          },
+        ];
+
+    const packData = {
+      manifest: {
+        packId: `pack_${pid}`,
+        tenantId: pid,
+        name: doc.companyName || doc.name || pid,
+        version: `1.0.${version}`,
+        description: `${industry} Business Pack`,
+        schemaVersion: '1.0.0',
+        environmentId: 'production',
+        author: opts.publishedBy || 'studio',
+      },
+      profile: {
+        companyName: doc.companyName || doc.name || pid,
+        industry,
+        primaryGoals: doc.scope?.categories || ['customer_service'],
+        locales: ['en-AU', 'en-US'],
+      },
+      vocabulary: {
+        version: '1.0.0',
+        dimensions: dimensions.length > 0 ? dimensions : (doc.vocabulary?.dimensions || []),
+        terms: doc.vocabulary?.terms || [],
+        acronyms: doc.vocabulary?.acronyms || {},
+        slotSynonyms: doc.vocabulary?.slotSynonyms || {},
+        slotMappings: doc.vocabulary?.slotMappings || {},
+        prohibitedTerms: doc.vocabulary?.prohibitedTerms || [],
+      },
+      entities: doc.entities || {
+        version: '1.0.0',
+        entities: defaultEntities,
+      },
+      conversationPolicy: doc.conversationPolicy || {
+        fencingRules: [],
+        prohibitedTopics: [],
+        escalationThresholds: {
+          sentimentFloor: -0.6,
+          maxTurnsWithoutProgress: 4,
+        },
+      },
+      modelPolicy: compiledModelPolicy,
+      agents: compiledAgents,
+      journeys: journeyList,
+      rules: compiledRules,
+      capabilities: compiledCapabilities,
+      experience: compiledExperience,
+      evaluations: compiledEvaluations,
+    };
+
     const snapshot = this.clean(doc);
     // The snapshot itself records which published version it is.
     (snapshot as any).activeVersion = version;
-    // ONE timestamp for both writes — otherwise the draft's updatedAt lands a few ms
-    // after publishedAt and the console shows "unpublished changes" right after publishing.
+    if (compiledJourney) {
+      (snapshot as any).persona = {
+        ...snapshot.persona,
+        journeyDefinition: compiledJourney,
+      };
+    }
+    // ONE timestamp for all writes
     const now = new Date().toISOString();
-    await this.versionsCol.insertOne({
-      projectId: pid,
-      version,
-      config: snapshot,
-      publishedAt: now,
-      publishedBy: opts.publishedBy,
-      note: opts.note,
-    });
 
-    await this.projectsCol.updateOne(
-      { projectId: pid },
-      { $set: { activeVersion: version, status: 'active' as ProjectStatus, updatedAt: now } },
-    );
+    const updateFields: any = {
+      activeVersion: version,
+      status: 'active' as ProjectStatus,
+      updatedAt: now,
+    };
+    if (compiledJourney) {
+      updateFields['persona.journeyDefinition'] = compiledJourney;
+    }
+
+    const client = (this.db as any).client;
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    const executeTransactionalPublish = async (session?: any) => {
+      const sessionOpts = session ? { session } : undefined;
+
+      // 1. Publish Business Pack release & update pointer inside the transaction
+      await publishBusinessPack(this.db, packData, {
+        publishedBy: opts.publishedBy,
+        notes: opts.note,
+        session,
+      });
+
+      // 2. Insert immutable snapshot into config_versions inside the transaction
+      await this.versionsCol.insertOne({
+        projectId: pid,
+        version,
+        config: snapshot,
+        publishedAt: now,
+        publishedBy: opts.publishedBy,
+        note: opts.note,
+      }, sessionOpts);
+
+      // 3. Update project activeVersion and status inside the transaction
+      await this.projectsCol.updateOne(
+        { projectId: pid },
+        { $set: updateFields },
+        sessionOpts
+      );
+    };
+
+    try {
+      if (isProduction) {
+        if (!client || typeof client.startSession !== 'function') {
+          throw new Error('MongoDB client session required for transactional studio publication in production');
+        }
+        const session = client.startSession();
+        try {
+          await session.withTransaction(async () => {
+            await executeTransactionalPublish(session);
+          });
+        } finally {
+          await session.endSession();
+        }
+      } else {
+        if (client && typeof client.startSession === 'function') {
+          const session = client.startSession();
+          try {
+            await session.withTransaction(async () => {
+              await executeTransactionalPublish(session);
+            });
+          } catch {
+            await executeTransactionalPublish();
+          } finally {
+            await session.endSession();
+          }
+        } else {
+          await executeTransactionalPublish();
+        }
+      }
+    } catch (publishErr: any) {
+      return {
+        success: false,
+        message: `Publish blocked: ${publishErr.message}`,
+      };
+    }
+
     this.bust(pid);
     return { success: true, version };
   }
 
   /**
    * The config the RUNTIME consumes: the active published snapshot.
-   * Falls back to the live draft when the project has never been published
-   * (back-compat: existing projects keep working before their first publish).
+   * In production, fails closed: never falls back to uncommitted/draft records.
    */
   async getPublishedConfig(projectId: string): Promise<(ProjectConfig & { published?: boolean }) | null> {
     const pid = projectId.toLowerCase();
     const draft = await this.getProject(pid);
     if (!draft) return null;
     const active = (draft as any).activeVersion;
-    if (!active || !this.isConnected) return { ...draft, published: false };
+
+    if (!active || !this.isConnected) {
+      if (process.env.NODE_ENV === 'production') {
+        return null;
+      }
+      return { ...draft, published: false };
+    }
+
     try {
       const snap = await this.versionsCol.findOne({ projectId: pid, version: active });
       if (snap) return { ...snap.config, published: true };
     } catch {}
+
+    if (process.env.NODE_ENV === 'production') {
+      return null;
+    }
     return { ...draft, published: false };
   }
 
@@ -768,16 +1450,78 @@ export class ProjectService {
     return versions.map((v: any) => ({ ...v, active: v.version === active }));
   }
 
-  /** Point the runtime at an older published snapshot. Append-only — nothing is deleted. */
-  async rollbackConfig(projectId: string, version: number): Promise<{ success: boolean; message?: string }> {
+  /** Point the runtime at an older published snapshot. Append-only — nothing is deleted.
+   *  Coordinates Business Pack pointer and Studio project activeVersion in a single transaction. */
+  async rollbackConfig(
+    projectId: string,
+    version: number,
+    rolledBackBy?: string
+  ): Promise<{ success: boolean; message?: string }> {
     if (!this.isConnected) return { success: false, message: 'Database not available.' };
     const pid = projectId.toLowerCase();
     const snap = await this.versionsCol.findOne({ projectId: pid, version });
     if (!snap) return { success: false, message: `Version ${version} not found for '${pid}'.` };
-    await this.projectsCol.updateOne(
-      { projectId: pid },
-      { $set: { activeVersion: version, updatedAt: new Date().toISOString() } },
-    );
+
+    const targetPackVersion = `1.0.${version}`;
+    const client = (this.db as any).client;
+    const isProduction = process.env.NODE_ENV === 'production';
+    const now = new Date().toISOString();
+
+    const executeTransactionalRollback = async (session?: any) => {
+      const sessionOpts = session ? { session } : undefined;
+
+      // 1. Rollback Business Pack pointer atomically
+      await rollbackBusinessPack(this.db, pid, 'production', {
+        targetVersion: targetPackVersion,
+        rolledBackBy: rolledBackBy || 'studio',
+        reason: `Studio rollback to version ${version}`,
+        session,
+      });
+
+      // 2. Rollback Studio project activeVersion atomically
+      await this.projectsCol.updateOne(
+        { projectId: pid },
+        { $set: { activeVersion: version, updatedAt: now } },
+        sessionOpts
+      );
+    };
+
+    try {
+      if (isProduction) {
+        if (!client || typeof client.startSession !== 'function') {
+          throw new Error('MongoDB client session required for transactional studio rollback in production');
+        }
+        const session = client.startSession();
+        try {
+          await session.withTransaction(async () => {
+            await executeTransactionalRollback(session);
+          });
+        } finally {
+          await session.endSession();
+        }
+      } else {
+        if (client && typeof client.startSession === 'function') {
+          const session = client.startSession();
+          try {
+            await session.withTransaction(async () => {
+              await executeTransactionalRollback(session);
+            });
+          } catch {
+            await executeTransactionalRollback();
+          } finally {
+            await session.endSession();
+          }
+        } else {
+          await executeTransactionalRollback();
+        }
+      }
+    } catch (rbErr: any) {
+      return {
+        success: false,
+        message: `Rollback failed: ${rbErr.message}`,
+      };
+    }
+
     this.bust(pid);
     return { success: true };
   }
@@ -791,32 +1535,168 @@ export class ProjectService {
     return this.updateProject(projectId, { status: 'archived' });
   }
 
-  // ── Member Management (project-scoped) ────────────────────────
+  // ── Member & Team Management (project-scoped lifecycle) ───────
+
+  async inviteMember(
+    projectId: string,
+    orgId: string,
+    email: string,
+    fullName: string,
+    role: MemberRole,
+    invitedBy = 'system',
+    options?: {
+      teams?: string[];
+      responsibilities?: string[];
+      workflowOwnership?: string[];
+      autoActivate?: boolean;
+    }
+  ): Promise<{ success: boolean; message?: string; invitationToken?: string; expiresAt?: string }> {
+    if (!this.isConnected) return { success: false, message: 'Database not available.' };
+    const pid = projectId.toLowerCase();
+    const cleanEmail = email.toLowerCase().trim();
+
+    const exists = await this.membersCol.findOne({ projectId: pid, email: cleanEmail });
+    const now = new Date().toISOString();
+    const token = crypto.randomBytes(24).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const isAutoActive = Boolean(options?.autoActivate);
+
+    if (exists) {
+      if (exists.status === 'revoked') {
+        await this.membersCol.updateOne(
+          { projectId: pid, email: cleanEmail },
+          {
+            $set: {
+              role,
+              fullName,
+              status: isAutoActive ? 'active' : 'pending',
+              isActive: isAutoActive,
+              invitationToken: isAutoActive ? undefined : token,
+              invitationExpiresAt: isAutoActive ? undefined : expiresAt,
+              invitedAt: now,
+              teams: options?.teams || exists.teams || [],
+              responsibilities: options?.responsibilities || exists.responsibilities || [],
+              workflowOwnership: options?.workflowOwnership || exists.workflowOwnership || [],
+            },
+            $push: {
+              auditTrail: {
+                action: 'invited',
+                performedBy: invitedBy,
+                timestamp: now,
+                note: 'Re-invited revoked member',
+                details: { role, teams: options?.teams },
+              },
+            } as any,
+          }
+        );
+        return { success: true, invitationToken: isAutoActive ? undefined : token, expiresAt };
+      }
+      return { success: false, message: `'${cleanEmail}' is already a member of project '${pid}'.` };
+    }
+
+    const newMember: ProjectMember & { projectId: string; orgId: string } = {
+      projectId: pid,
+      orgId,
+      email: cleanEmail,
+      fullName,
+      role,
+      status: isAutoActive ? 'active' : 'pending',
+      isActive: isAutoActive,
+      invitationToken: isAutoActive ? undefined : token,
+      invitationExpiresAt: isAutoActive ? undefined : expiresAt,
+      invitedAt: now,
+      teams: options?.teams || [],
+      responsibilities: options?.responsibilities || [],
+      workflowOwnership: options?.workflowOwnership || [],
+      auditTrail: [
+        {
+          action: 'invited',
+          performedBy: invitedBy,
+          timestamp: now,
+          details: { role, teams: options?.teams },
+        },
+      ],
+    };
+
+    await this.membersCol.insertOne(newMember as any);
+    return { success: true, invitationToken: isAutoActive ? undefined : token, expiresAt };
+  }
 
   async addMember(
     projectId: string,
     orgId: string,
     email: string,
     fullName: string,
-    role: MemberRole
+    role: MemberRole,
+    options?: {
+      teams?: string[];
+      responsibilities?: string[];
+      workflowOwnership?: string[];
+      autoActivate?: boolean;
+    }
+  ): Promise<{ success: boolean; message?: string; invitationToken?: string }> {
+    return this.inviteMember(projectId, orgId, email, fullName, role, 'system', {
+      ...options,
+      autoActivate: options?.autoActivate ?? true,
+    });
+  }
+
+  async acceptInvitation(
+    projectId: string,
+    email: string,
+    token: string
   ): Promise<{ success: boolean; message?: string }> {
     if (!this.isConnected) return { success: false, message: 'Database not available.' };
-
     const pid = projectId.toLowerCase();
-    const exists = await this.membersCol.findOne({ projectId: pid, email });
-    if (exists) {
-      return { success: false, message: `'${email}' is already a member of project '${pid}'.` };
+    const cleanEmail = email.toLowerCase().trim();
+
+    const member = await this.membersCol.findOne({
+      projectId: pid,
+      email: cleanEmail,
+    });
+
+    if (!member) {
+      return { success: false, message: `No pending invitation found for '${cleanEmail}'.` };
     }
 
-    await this.membersCol.insertOne({
-      projectId: pid,
-      orgId,
-      email,
-      fullName,
-      role,
-      isActive: true,
-      invitedAt: new Date().toISOString(),
-    } as any);
+    if (member.status === 'active') {
+      return { success: true, message: 'Member is already active.' };
+    }
+
+    if (!member.invitationToken || member.invitationToken !== token) {
+      return { success: false, message: 'Invalid invitation token.' };
+    }
+
+    if (member.invitationExpiresAt && new Date(member.invitationExpiresAt) < new Date()) {
+      await this.membersCol.updateOne(
+        { projectId: pid, email: cleanEmail },
+        { $set: { status: 'expired' } }
+      );
+      return { success: false, message: 'Invitation has expired.' };
+    }
+
+    const now = new Date().toISOString();
+    await this.membersCol.updateOne(
+      { projectId: pid, email: cleanEmail },
+      {
+        $set: {
+          status: 'active',
+          isActive: true,
+          acceptedAt: now,
+        },
+        $unset: {
+          invitationToken: '',
+          invitationExpiresAt: '',
+        },
+        $push: {
+          auditTrail: {
+            action: 'accepted',
+            performedBy: cleanEmail,
+            timestamp: now,
+          },
+        } as any,
+      }
+    );
 
     return { success: true };
   }
@@ -834,44 +1714,128 @@ export class ProjectService {
     projectId: string,
     email: string,
     role: MemberRole,
-    isActive?: boolean
+    isActive?: boolean,
+    performedBy = 'system',
+    extras?: { teams?: string[]; responsibilities?: string[]; workflowOwnership?: string[] }
   ): Promise<{ success: boolean; message?: string }> {
     if (!this.isConnected) return { success: false, message: 'Database not available.' };
+    const pid = projectId.toLowerCase();
+    const cleanEmail = email.toLowerCase().trim();
+    const now = new Date().toISOString();
 
     const update: any = { role };
-    if (isActive !== undefined) update.isActive = isActive;
+    if (isActive !== undefined) {
+      update.isActive = isActive;
+      update.status = isActive ? 'active' : 'revoked';
+    }
+    if (extras?.teams) update.teams = extras.teams;
+    if (extras?.responsibilities) update.responsibilities = extras.responsibilities;
+    if (extras?.workflowOwnership) update.workflowOwnership = extras.workflowOwnership;
 
     const result = await this.membersCol.updateOne(
-      { projectId: projectId.toLowerCase(), email },
-      { $set: update }
+      { projectId: pid, email: cleanEmail },
+      {
+        $set: update,
+        $push: {
+          auditTrail: {
+            action: 'role_changed',
+            performedBy,
+            timestamp: now,
+            details: { newRole: role, isActive, ...extras },
+          },
+        } as any,
+      }
     );
 
     if (result.matchedCount === 0) {
-      return { success: false, message: `Member '${email}' not found in project '${projectId}'.` };
+      return { success: false, message: `Member '${cleanEmail}' not found in project '${projectId}'.` };
     }
     return { success: true };
   }
 
-  async removeMember(projectId: string, email: string): Promise<{ success: boolean }> {
+  async removeMember(
+    projectId: string,
+    email: string,
+    revokedBy = 'system',
+    note?: string
+  ): Promise<{ success: boolean }> {
     if (!this.isConnected) return { success: false };
-    const result = await this.membersCol.deleteOne({
-      projectId: projectId.toLowerCase(), email,
-    });
-    return { success: result.deletedCount > 0 };
+    const pid = projectId.toLowerCase();
+    const cleanEmail = email.toLowerCase().trim();
+    const now = new Date().toISOString();
+
+    // Soft revocation: preserve member record and audit trail
+    const result = await this.membersCol.updateOne(
+      { projectId: pid, email: cleanEmail },
+      {
+        $set: {
+          status: 'revoked',
+          isActive: false,
+          revokedAt: now,
+          revokedBy,
+        },
+        $push: {
+          auditTrail: {
+            action: 'revoked',
+            performedBy: revokedBy,
+            timestamp: now,
+            note: note || 'Membership revoked',
+          },
+        } as any,
+      }
+    );
+
+    return { success: result.matchedCount > 0 };
   }
 
   async verifyMembership(
     email: string,
     projectId: string
-  ): Promise<{ isMember: boolean; role?: MemberRole; orgId?: string }> {
+  ): Promise<{ isMember: boolean; role?: MemberRole; orgId?: string; status?: MembershipStatus }> {
     if (!this.isConnected) return { isMember: false };
+    const cleanEmail = email.toLowerCase().trim();
     const member = await this.membersCol.findOne({
-      email,
+      email: cleanEmail,
       projectId: projectId.toLowerCase(),
       isActive: true,
     });
-    if (!member) return { isMember: false };
-    return { isMember: true, role: member.role, orgId: member.orgId };
+    if (!member || member.status === 'revoked' || member.status === 'expired') {
+      return { isMember: false };
+    }
+    return { isMember: true, role: member.role, orgId: member.orgId, status: member.status || 'active' };
+  }
+
+  async addTeam(
+    projectId: string,
+    orgId: string,
+    team: { teamId?: string; name: string; description?: string; workflowOwnership?: string[]; escalationContact?: string }
+  ): Promise<{ success: boolean; team: ProjectTeam }> {
+    if (!this.isConnected) throw new Error('Database not available.');
+    const pid = projectId.toLowerCase();
+    const teamId = (team.teamId || `team_${team.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`).slice(0, 40);
+    const doc: ProjectTeam & { projectId: string; orgId: string } = {
+      projectId: pid,
+      orgId,
+      teamId,
+      name: team.name,
+      description: team.description,
+      workflowOwnership: team.workflowOwnership || [],
+      escalationContact: team.escalationContact,
+      createdAt: new Date().toISOString(),
+    };
+    await this.teamsCol.updateOne(
+      { projectId: pid, teamId },
+      { $set: doc },
+      { upsert: true }
+    );
+    return { success: true, team: doc };
+  }
+
+  async listTeams(projectId: string): Promise<ProjectTeam[]> {
+    if (!this.isConnected) return [];
+    const pid = projectId.toLowerCase();
+    const teams = await this.teamsCol.find({ projectId: pid }).toArray();
+    return teams.map(({ _id, ...t }: any) => t);
   }
 
   // ── Utilities ─────────────────────────────────────────────────
@@ -1033,6 +1997,32 @@ export function redactSecrets<T extends { integrations?: any; ai?: any }>(config
     out.ai.apiKeyHint = maskHint(config.ai.apiKey);
     out.ai.apiKeyConfigured = true;
     delete out.ai.apiKey;
+  }
+
+  // 3. Notification credentials (SendGrid apiKey, webhook secret)
+  const notif = (config as any).notifications;
+  if (notif && typeof notif === 'object' && notif.channels) {
+    out = { ...out, notifications: { ...notif, channels: { ...notif.channels } } };
+    if (notif.channels.email && typeof notif.channels.email === 'object') {
+      const email = { ...notif.channels.email };
+      if (email.apiKey) {
+        email.apiKeyHint = maskHint(email.apiKey);
+        email.apiKeyConfigured = true;
+        email.apiKeyRef = email.apiKeyRef || `vault://tenants/${(config as any).projectId}/sendgrid-api-key`;
+        delete email.apiKey;
+      }
+      out.notifications.channels.email = email;
+    }
+    if (notif.channels.webhook && typeof notif.channels.webhook === 'object') {
+      const webhook = { ...notif.channels.webhook };
+      if (webhook.secret) {
+        webhook.secretHint = maskHint(webhook.secret);
+        webhook.secretConfigured = true;
+        webhook.secretRef = webhook.secretRef || `vault://tenants/${(config as any).projectId}/webhook-secret`;
+        delete webhook.secret;
+      }
+      out.notifications.channels.webhook = webhook;
+    }
   }
 
   return out;

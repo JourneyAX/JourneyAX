@@ -2,25 +2,31 @@ version: '3.8'
 
 services:
   activepieces:
-    image: activepieces/activepieces:latest
+    build:
+      context: ../../
+      dockerfile: deploy/activepieces/Dockerfile
+    image: journeyax/activepieces:0.39.1
     container_name: journeyax-activepieces
     restart: unless-stopped
     ports:
       - "8080:80"
     environment:
       - AP_ENVIRONMENT=production
-      - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY:-journeyax-super-secret-encryption-key-32b}
-      - AP_JWT_SECRET=${AP_JWT_SECRET:-journeyax-super-secret-jwt-key-32b}
-      - AP_FRONTEND_URL=http://localhost:8080
-      - AP_API_KEY=${AP_API_KEY:-ap_internal_api_key_secure}
-      - AP_POSTGRES_DATABASE=activepieces
+      # Mandatory secrets: must be supplied via .env or orchestration environment (no insecure defaults)
+      - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY:?AP_ENCRYPTION_KEY is required for credential encryption}
+      - AP_JWT_SECRET=${AP_JWT_SECRET:?AP_JWT_SECRET is required for auth token signing}
+      - AP_FRONTEND_URL=${AP_FRONTEND_URL:-http://localhost:8080}
+      - AP_API_KEY=${AP_API_KEY:?AP_API_KEY is required for internal API calls}
+      - AP_POSTGRES_DATABASE=${AP_POSTGRES_DATABASE:-activepieces}
       - AP_POSTGRES_HOST=postgres
       - AP_POSTGRES_PORT=5432
-      - AP_POSTGRES_USERNAME=activepieces
-      - AP_POSTGRES_PASSWORD=activepieces_secret
+      - AP_POSTGRES_USERNAME=${AP_POSTGRES_USERNAME:-activepieces}
+      - AP_POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD:?AP_POSTGRES_PASSWORD is required}
       - AP_REDIS_HOST=redis
       - AP_REDIS_PORT=6379
-      - AP_EXECUTION_MODE=UNSANDBOXED
+      # Sandboxed execution mode: runs flows and piece actions in isolated V8 threads/sandboxes,
+      # preventing cross-flow memory leakage or host process compromise.
+      - AP_EXECUTION_MODE=SANDBOXED
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,13 +40,13 @@ services:
     container_name: journeyax-ap-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=activepieces
-      - POSTGRES_USER=activepieces
-      - POSTGRES_PASSWORD=activepieces_secret
+      - POSTGRES_DB=${AP_POSTGRES_DATABASE:-activepieces}
+      - POSTGRES_USER=${AP_POSTGRES_USERNAME:-activepieces}
+      - POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD:?AP_POSTGRES_PASSWORD is required}
     volumes:
       - ap_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U activepieces -d activepieces"]
+      test: ["CMD-SHELL", "pg_isready -U ${AP_POSTGRES_USERNAME:-activepieces} -d ${AP_POSTGRES_DATABASE:-activepieces}"]
       interval: 5s
       timeout: 5s
       retries: 5

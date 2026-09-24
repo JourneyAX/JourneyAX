@@ -68,7 +68,7 @@ export function compileGraphToJourneyDefinition(
         displayName: node.data?.label || 'Entry Stage',
         description: `Entry stage triggered by ${kind}`,
         requiredFacts: node.data?.requiredFacts || [],
-        allowedCapabilities: node.data?.allowedCapabilities || ['catalog.search'],
+        allowedCapabilities: node.data?.allowedCapabilities || [],
         nextDecisionPolicy: 'dependency-first',
         exitConditions,
       };
@@ -114,7 +114,7 @@ export function compileGraphToJourneyDefinition(
       stageId: initialStageId,
       displayName: 'Start',
       requiredFacts: [],
-      allowedCapabilities: ['catalog.search'],
+      allowedCapabilities: [],
       nextDecisionPolicy: 'dependency-first',
       exitConditions: [],
     };

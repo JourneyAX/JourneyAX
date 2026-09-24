@@ -12,11 +12,11 @@
   },
   "cards": {
     "allowedCardTypes": [
-      "product_card",
-      "bundle_summary_card",
-      "quote_card",
-      "comparison_table",
-      "action_button_group"
+      "bundle",
+      "products",
+      "productDetail",
+      "quote",
+      "comparison"
     ],
     "defaultCardRenderer": "@journeyax/ui-cards"
   }

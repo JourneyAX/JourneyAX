@@ -1,32 +1,61 @@
 import { MongoClient, Db } from 'mongodb';
 
+export * from './types';
+export * from './indices';
+export * from './outbox';
+export * from './notifications';
+export * from './assertion';
+export * from './replay.store';
+export * from './cutover.repository';
+
 let client: MongoClient | null = null;
-let db: Db | null = null;
+const dbs = new Map<string, Db>();
 
 /**
- * Connects to the MongoDB database and caches the client connection pool
+ * Connects to MongoDB, manages the connection pool, and returns the requested database.
  */
 export async function connectToDatabase(
   uri: string,
-  dbName: string = 'journeyax'
+  dbName: string = process.env.MONGODB_DB_NAME || 'journeyx'
 ): Promise<{ client: MongoClient; db: Db }> {
-  if (client && db) {
-    return { client, db };
+  if (!client) {
+    client = new MongoClient(uri);
+    await client.connect();
   }
 
-  client = new MongoClient(uri);
-  await client.connect();
-  db = client.db(dbName);
-  
-  return { client, db };
+  let dbInstance = dbs.get(dbName);
+  if (!dbInstance) {
+    dbInstance = client.db(dbName);
+    dbs.set(dbName, dbInstance);
+  }
+
+  return { client, db: dbInstance };
 }
 
 /**
- * Returns the active MongoDB database instance
+ * Returns the active MongoDB database instance for the specified database name.
  */
-export function getDb(): Db {
-  if (!db) {
-    throw new Error('Database not initialized. Call connectToDatabase first.');
+export function getDb(dbName: string = process.env.MONGODB_DB_NAME || 'journeyx'): Db {
+  if (!client) {
+    throw new Error('Database client not initialized. Call connectToDatabase first.');
   }
-  return db;
+
+  let dbInstance = dbs.get(dbName);
+  if (!dbInstance) {
+    dbInstance = client.db(dbName);
+    dbs.set(dbName, dbInstance);
+  }
+
+  return dbInstance;
+}
+
+/**
+ * Closes the active MongoDB connection and clears the database cache.
+ */
+export async function closeDatabase(): Promise<void> {
+  if (client) {
+    await client.close();
+    client = null;
+  }
+  dbs.clear();
 }

@@ -47,10 +47,10 @@ ARG SERVICE_NAME
 COPY apps/${SERVICE_NAME} ./apps/${SERVICE_NAME}
 
 # Build shared packages first, then the service
-# JourneyAX packages: shared-types, database, cache, configurator-core, ingestion, integration
-RUN for pkg in shared-types database cache configurator-core ingestion integration; do \
+# JourneyAX packages: shared-types, database, cache, configurator-core, ingestion, integration, journey-core, business-pack, capability-sdk, events, ui-cards, activepieces-piece-journeyax
+RUN for pkg in shared-types database cache configurator-core ingestion integration journey-core business-pack capability-sdk events ui-cards activepieces-piece-journeyax; do \
       if [ -d "/app/packages/$pkg" ]; then \
-        cd /app/packages/$pkg && npx tsc --build --force 2>/dev/null || true; \
+        echo "Building package: $pkg" && cd /app/packages/$pkg && npx tsc --build --force; \
       fi; \
     done
 
