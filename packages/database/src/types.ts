@@ -14,6 +14,8 @@ export const COLLECTION_TENANT_CUTOVERS = 'tenant_cutovers';
 export const COLLECTION_CUTOVER_AUDIT_LOGS = 'cutover_audit_logs';
 export const COLLECTION_GATEWAY_ASSERTION_NONCES = 'gateway_assertion_nonces';
 export const COLLECTION_NOTIFICATION_DELIVERIES = 'notification_deliveries';
+export const COLLECTION_NOTIFICATION_SUPPRESSIONS = 'notification_suppressions';
+export const COLLECTION_NOTIFICATION_CALLBACKS = 'notification_callbacks';
 
 export interface BusinessPackReleaseRecord {
   _id?: any;
@@ -149,12 +151,26 @@ export interface NotificationDeliveryRecord {
   environmentId?: EnvironmentId;
   eventId: string;
   channel: 'email' | 'webhook';
-  provider?: 'sendgrid' | 'resend' | 'activepieces' | 'webhook' | 'smtp';
+  provider?: 'sendgrid' | 'resend' | 'activepieces' | 'webhook' | 'smtp' | string;
   recipient: string;
+  routingDecision?: {
+    channel: 'email' | 'webhook';
+    provider?: string;
+    recipient: string;
+    reason?: string;
+  };
+  templateId?: string;
+  templateVersion?: string;
   status: 'delivered' | 'failed' | 'retrying' | 'bounced' | 'opened' | 'clicked' | 'dropped';
   attempts: number;
   maxAttempts: number;
-  templateId?: string;
+  providerDeliveryId?: string;
+  deduplicationKey?: string;
+  retrySchedule?: {
+    nextAttemptAt?: Date;
+    backoffMs: number;
+    maxRetries: number;
+  };
   payload?: any;
   metadata?: Record<string, any>;
   error?: string;
@@ -162,6 +178,33 @@ export interface NotificationDeliveryRecord {
   nextAttemptAt?: Date;
   createdAt: Date;
 }
+
+export interface NotificationSuppressionRecord {
+  _id?: any;
+  tenantId: string;
+  environmentId: EnvironmentId;
+  recipient: string;
+  channel: 'email' | 'webhook';
+  reason: 'bounce' | 'complaint' | 'unsubscribe' | 'suppression';
+  provider: string;
+  providerDeliveryId?: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  metadata?: Record<string, any>;
+}
+
+export interface NotificationCallbackRecord {
+  _id?: any;
+  tenantId: string;
+  environmentId: EnvironmentId;
+  provider: string;
+  callbackId: string;
+  deliveryId: string;
+  status: string;
+  processedAt: Date;
+  rawPayload?: any;
+}
+
 
 export interface OrderRecord {
   _id?: any;

@@ -1,11 +1,21 @@
 import { Db } from 'mongodb';
-import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
+import { randomUUID, createHmac, createHash, timingSafeEqual } from 'crypto';
 import {
   COLLECTION_NOTIFICATION_DELIVERIES,
+  COLLECTION_NOTIFICATION_SUPPRESSIONS,
+  COLLECTION_NOTIFICATION_CALLBACKS,
   COLLECTION_OUTBOX_EVENTS,
   NotificationDeliveryRecord,
+  NotificationSuppressionRecord,
+  NotificationCallbackRecord,
   EnvironmentId,
 } from './types';
+import {
+  CapabilityDispatcher,
+  ToolDefinition,
+  ToolBinding,
+  ExecutionContext,
+} from '@journeyax/capability-sdk';
 
 export class NotificationRateLimitError extends Error {
   constructor(public tenantId: string, public currentCount: number, public limitPerHour: number) {
@@ -17,20 +27,20 @@ export class NotificationRateLimitError extends Error {
 export interface EmailChannelConfig {
   enabled: boolean;
   provider?: 'sendgrid' | 'resend' | 'activepieces' | 'webhook';
-  apiKey?: string;
   apiKeyRef?: string;
   connectionRef?: string;
+  flowId?: string;
   fromEmail?: string;
   fromName?: string;
   defaultRecipients?: string[];
   templateIds?: Record<string, string>;
+  templateVersions?: Record<string, string>;
   rateLimitPerHour?: number;
 }
 
 export interface WebhookChannelConfig {
   enabled: boolean;
   url: string;
-  secret?: string;
   secretRef?: string;
   events?: string[];
 }
@@ -59,17 +69,43 @@ export interface NotificationDispatchResult {
     recipient: string;
     status: 'delivered' | 'failed' | 'retrying' | 'bounced' | 'opened' | 'clicked' | 'dropped';
     error?: string;
+    providerDeliveryId?: string;
+    deduplicationKey?: string;
   }[];
 }
 
+export interface NotificationDispatcherOptions {
+  capabilityDispatcher?: CapabilityDispatcher;
+  validateConnectionOwnership?: (
+    tenantId: string,
+    environmentId: string,
+    connectionRef: string
+  ) => Promise<boolean> | boolean;
+}
+
 export class NotificationDispatcher {
-  constructor(private db: Db) {}
+  private capabilityDispatcher?: CapabilityDispatcher;
+  private customConnectionValidator?: (
+    tenantId: string,
+    environmentId: string,
+    connectionRef: string
+  ) => Promise<boolean> | boolean;
+
+  constructor(private db: Db, options?: NotificationDispatcherOptions) {
+    if (options?.capabilityDispatcher) {
+      this.capabilityDispatcher = options.capabilityDispatcher;
+    }
+    if (options?.validateConnectionOwnership) {
+      this.customConnectionValidator = options.validateConnectionOwnership;
+    }
+  }
 
   /**
-   * Resolves a secret reference for a tenant from the tenant_secrets collection.
+   * Resolves a secret reference for a tenant strictly from the tenant_secrets collection.
+   * Cross-tenant and global environment fallbacks are strictly prohibited.
    */
-  private async resolveSecret(tenantId: string, secretRef?: string): Promise<string | null> {
-    if (!secretRef) return null;
+  async resolveSecret(tenantId: string, secretRef?: string): Promise<string | null> {
+    if (!secretRef || !tenantId) return null;
     try {
       const doc = await this.db.collection('tenant_secrets').findOne({
         tenantId,
@@ -82,15 +118,62 @@ export class NotificationDispatcher {
   }
 
   /**
+   * Validates whether a connectionRef is owned by the specified tenant and environment.
+   */
+  async validateConnectionOwnership(
+    tenantId: string,
+    environmentId: string,
+    connectionRef: string
+  ): Promise<boolean> {
+    if (this.customConnectionValidator) {
+      return this.customConnectionValidator(tenantId, environmentId, connectionRef);
+    }
+    try {
+      const doc = await this.db.collection('tenant_connections').findOne({
+        tenantId,
+        environmentId,
+        connectionRef,
+      });
+      return !!doc;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Checks whether a recipient is actively suppressed for the given tenant and environment.
+   */
+  async isSuppressed(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    recipient: string
+  ): Promise<boolean> {
+    try {
+      const found = await this.db
+        .collection<NotificationSuppressionRecord>(COLLECTION_NOTIFICATION_SUPPRESSIONS)
+        .findOne({
+          tenantId,
+          environmentId,
+          recipient: recipient.toLowerCase().trim(),
+        });
+      return !!found;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Enforces sliding-window rate limit on outbound notifications per tenant.
    */
   async checkRateLimit(tenantId: string, limitPerHour = 100): Promise<void> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const count = await this.db.collection<NotificationDeliveryRecord>(COLLECTION_NOTIFICATION_DELIVERIES).countDocuments({
-      tenantId,
-      createdAt: { $gte: oneHourAgo },
-      status: { $in: ['delivered', 'retrying'] },
-    });
+    const count = await this.db
+      .collection<NotificationDeliveryRecord>(COLLECTION_NOTIFICATION_DELIVERIES)
+      .countDocuments({
+        tenantId,
+        createdAt: { $gte: oneHourAgo },
+        status: { $in: ['delivered', 'retrying'] },
+      });
 
     if (count >= limitPerHour) {
       throw new NotificationRateLimitError(tenantId, count, limitPerHour);
@@ -131,50 +214,159 @@ export class NotificationDispatcher {
     options: { environmentId?: EnvironmentId; recipients?: string[] } = {}
   ): Promise<NotificationDispatchResult> {
     const deliveries: NotificationDispatchResult['deliveries'] = [];
-    const envId = options.environmentId || 'production';
+    const envId: EnvironmentId = options.environmentId || 'production';
 
     // ── 1. Dispatch Email ────────────────────────────────────────────────
     const emailConfig = channelsConfig?.email;
     if (emailConfig && emailConfig.enabled) {
-      // Rate limiting
       const limit = emailConfig.rateLimitPerHour || 100;
       await this.checkRateLimit(tenantId, limit);
 
-      const recipients = options.recipients && options.recipients.length > 0
-        ? options.recipients
-        : emailConfig.defaultRecipients && emailConfig.defaultRecipients.length > 0
-        ? emailConfig.defaultRecipients
-        : [];
-
-      // Resolve API key from secret reference or explicit config
-      let effectiveApiKey = emailConfig.apiKey && !emailConfig.apiKey.startsWith('••••')
-        ? emailConfig.apiKey
-        : null;
-
-      if (!effectiveApiKey && emailConfig.apiKeyRef) {
-        effectiveApiKey = await this.resolveSecret(tenantId, emailConfig.apiKeyRef);
-      }
+      const recipients =
+        options.recipients && options.recipients.length > 0
+          ? options.recipients
+          : emailConfig.defaultRecipients && emailConfig.defaultRecipients.length > 0
+          ? emailConfig.defaultRecipients
+          : [];
 
       const provider = emailConfig.provider || 'sendgrid';
-      if (!effectiveApiKey) {
-        if (provider === 'sendgrid') effectiveApiKey = process.env.SENDGRID_API_KEY || null;
-        if (provider === 'resend') effectiveApiKey = process.env.RESEND_API_KEY || null;
+
+      // Tenant-scoped secret resolution ONLY. No raw apiKey and no global env fallbacks.
+      let effectiveApiKey: string | null = null;
+      if (emailConfig.apiKeyRef) {
+        effectiveApiKey = await this.resolveSecret(tenantId, emailConfig.apiKeyRef);
       }
 
       for (const recipient of recipients) {
         const deliveryId = `deliv_${randomUUID()}`;
         const templateId = emailConfig.templateIds?.[eventId];
+        const templateVersion = emailConfig.templateVersions?.[eventId] || '1.0.0';
 
-        let status: 'delivered' | 'failed' | 'retrying' = 'failed';
+        const deduplicationKey = createHash('sha256')
+          .update(`${tenantId}:${envId}:${eventId}:${recipient.toLowerCase().trim()}:${JSON.stringify(payload)}`)
+          .digest('hex');
+
+        const routingDecision = {
+          channel: 'email' as const,
+          provider,
+          recipient,
+          reason: `Configured email channel via ${provider}`,
+        };
+
+        const retrySchedule = {
+          nextAttemptAt: new Date(Date.now() + 60000),
+          backoffMs: 60000,
+          maxRetries: 3,
+        };
+
+        let status: NotificationDeliveryRecord['status'] = 'failed';
         let errorMsg: string | undefined;
+        let providerDeliveryId: string | undefined;
 
-        if (!effectiveApiKey && provider !== 'activepieces') {
+        // Check suppression list first
+        const suppressed = await this.isSuppressed(tenantId, envId, recipient);
+        if (suppressed) {
           status = 'failed';
-          errorMsg = `${provider} API key not configured: no valid key found in channel config, secret reference, or environment`;
+          errorMsg = `Recipient '${recipient}' is actively suppressed for tenant '${tenantId}'`;
+        } else if (provider === 'activepieces') {
+          // Never treat connectionRef as a URL! Dispatch through CapabilityDispatcher
+          try {
+            const flowId = emailConfig.flowId || templateId || eventId;
+            const connectionRef = emailConfig.connectionRef;
+
+            const tool: ToolDefinition = {
+              toolId: 'notification.send',
+              version: '1.0.0',
+              displayName: 'Notification Dispatch',
+              description: 'Dispatch notification via Activepieces flow',
+              inputSchema: {},
+              outputSchema: {},
+              sideEffect: 'write',
+              risk: 'low',
+              timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
+              idempotencyPolicy: { required: false, ttlSeconds: 86400 },
+              approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
+              dataClassification: 'internal',
+            };
+
+            const binding: ToolBinding = {
+              toolId: 'notification.send',
+              tenantId,
+              environmentId: envId,
+              bindingVersion: '1.0.0',
+              executor: {
+                type: 'activepieces_flow',
+                flowId,
+                connectionRef,
+              },
+              enabled: true,
+              policy: {
+                requiredRole: 'customer',
+                requiresConfirmation: false,
+                idempotencyRequired: false,
+                timeoutMs: 10000,
+                retryAttempts: 0,
+              },
+            };
+
+            const execCtx: ExecutionContext = {
+              tenantId,
+              environmentId: envId,
+              workspaceId: `ws_notif_${tenantId}`,
+              sessionId: 'system_notification',
+              stageId: 'notification',
+              packVersionId: 'system',
+              correlationId: deliveryId,
+              idempotencyKey: deduplicationKey,
+            };
+
+            const dispatcher =
+              this.capabilityDispatcher ||
+              new CapabilityDispatcher({
+                activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL || 'https://activepieces.internal',
+                activepiecesApiKey: (await this.resolveSecret(tenantId, 'activepieces_api_key')) || undefined,
+                activepiecesWebhookSecret:
+                  (await this.resolveSecret(tenantId, 'activepieces_webhook_secret')) || 'notif-hmac-secret',
+                validateConnectionOwnership: async (tId, eId, cRef) => {
+                  return this.validateConnectionOwnership(tId, eId, cRef);
+                },
+              });
+
+            const res = await dispatcher.dispatch(
+              tool,
+              binding,
+              {
+                toolId: 'notification.send',
+                input: {
+                  tenantId,
+                  environmentId: envId,
+                  eventId,
+                  recipient,
+                  payload,
+                  deliveryId,
+                },
+                idempotencyKey: deduplicationKey,
+              },
+              execCtx
+            );
+
+            if (res.status === 'success') {
+              status = 'delivered';
+              providerDeliveryId = res.output?.deliveryId || res.output?.id || deliveryId;
+            } else {
+              throw new Error(`Activepieces notification dispatch failed: ${res.error || 'Unknown error'}`);
+            }
+          } catch (err: any) {
+            status = 'failed';
+            errorMsg = err.message || 'Activepieces notification dispatch failure';
+          }
+        } else if (!effectiveApiKey) {
+          // Strictly fail-closed when tenant secret reference is missing or unresolved
+          status = 'failed';
+          errorMsg = `${provider} API key not configured: no valid tenant secret found for '${emailConfig.apiKeyRef || 'unspecified'}' in tenant_secrets for tenant '${tenantId}'`;
         } else {
           try {
             if (provider === 'resend') {
-              // Real Resend API
               const res = await fetch('https://api.resend.com/emails', {
                 method: 'POST',
                 headers: {
@@ -191,37 +383,14 @@ export class NotificationDispatcher {
 
               if (res.ok || res.status === 200 || res.status === 201) {
                 status = 'delivered';
+                const resData: any = await res.json().catch(() => ({}));
+                providerDeliveryId = resData.id || `resend_${randomUUID()}`;
               } else {
                 const resText = await res.text();
                 throw new Error(`Resend API returned status ${res.status}: ${resText}`);
               }
-            } else if (provider === 'activepieces') {
-              // Activepieces notification flow dispatch
-              const flowUrl = emailConfig.connectionRef || process.env.ACTIVEPIECES_NOTIFICATION_FLOW_URL;
-              if (!flowUrl) {
-                throw new Error('Activepieces notification flow URL not configured');
-              }
-              const res = await fetch(flowUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Tenant-ID': tenantId,
-                  'X-Environment-ID': envId,
-                },
-                body: JSON.stringify({
-                  tenantId,
-                  eventId,
-                  recipient,
-                  payload,
-                }),
-              });
-              if (res.ok) {
-                status = 'delivered';
-              } else {
-                throw new Error(`Activepieces notification flow returned HTTP ${res.status}`);
-              }
             } else {
-              // SendGrid API execution
+              // SendGrid
               const mailBody: any = {
                 personalizations: [
                   {
@@ -262,6 +431,7 @@ export class NotificationDispatcher {
 
               if (response.ok || response.status === 202) {
                 status = 'delivered';
+                providerDeliveryId = `sg_${randomUUID()}`;
               } else {
                 const resText = await response.text();
                 throw new Error(`SendGrid API returned status ${response.status}: ${resText}`);
@@ -281,11 +451,21 @@ export class NotificationDispatcher {
           channel: 'email',
           provider,
           recipient,
+          routingDecision,
+          templateId,
+          templateVersion,
           status,
           attempts: 1,
           maxAttempts: 3,
-          templateId,
+          providerDeliveryId,
+          deduplicationKey,
+          retrySchedule,
           payload,
+          metadata: {
+            apiKeyRef: emailConfig.apiKeyRef,
+            connectionRef: emailConfig.connectionRef,
+            flowId: emailConfig.flowId,
+          },
           error: errorMsg,
           deliveredAt: status === 'delivered' ? new Date() : undefined,
           createdAt: new Date(),
@@ -302,6 +482,8 @@ export class NotificationDispatcher {
           recipient,
           status,
           error: errorMsg,
+          providerDeliveryId,
+          deduplicationKey,
         });
       }
     }
@@ -312,6 +494,23 @@ export class NotificationDispatcher {
       const deliveryId = `deliv_${randomUUID()}`;
       let status: 'delivered' | 'failed' | 'retrying' = 'failed';
       let errorMsg: string | undefined;
+
+      const deduplicationKey = createHash('sha256')
+        .update(`${tenantId}:${envId}:${eventId}:${webhookConfig.url}:${JSON.stringify(payload)}`)
+        .digest('hex');
+
+      const routingDecision = {
+        channel: 'webhook' as const,
+        provider: 'webhook',
+        recipient: webhookConfig.url,
+        reason: 'Configured webhook notification channel',
+      };
+
+      const retrySchedule = {
+        nextAttemptAt: new Date(Date.now() + 60000),
+        backoffMs: 60000,
+        maxRetries: 3,
+      };
 
       try {
         const bodyStr = JSON.stringify({
@@ -327,9 +526,9 @@ export class NotificationDispatcher {
           'User-Agent': 'JourneyAX-Notifier/1.0',
         };
 
-        let secret = webhookConfig.secret;
-        if (!secret && webhookConfig.secretRef) {
-          secret = (await this.resolveSecret(tenantId, webhookConfig.secretRef)) || undefined;
+        let secret: string | null = null;
+        if (webhookConfig.secretRef) {
+          secret = await this.resolveSecret(tenantId, webhookConfig.secretRef);
         }
 
         if (secret) {
@@ -367,11 +566,18 @@ export class NotificationDispatcher {
         environmentId: envId,
         eventId,
         channel: 'webhook',
+        provider: 'webhook',
         recipient: webhookConfig.url,
+        routingDecision,
         status,
         attempts: 1,
         maxAttempts: 3,
+        deduplicationKey,
+        retrySchedule,
         payload,
+        metadata: {
+          secretRef: webhookConfig.secretRef,
+        },
         error: errorMsg,
         deliveredAt: status === 'delivered' ? new Date() : undefined,
         createdAt: new Date(),
@@ -387,6 +593,7 @@ export class NotificationDispatcher {
         recipient: webhookConfig.url,
         status,
         error: errorMsg,
+        deduplicationKey,
       });
     }
 
@@ -459,63 +666,170 @@ export class NotificationDispatcher {
   }
 
   /**
-   * Handles inbound webhook callbacks from email providers (SendGrid, Resend) to update delivery statuses.
+   * Handles inbound webhook callbacks from email providers to update delivery statuses.
+   * Requires verified provider webhook signatures, binds updates strictly to tenant/env/provider/deliveryId,
+   * deduplicates callbacks, and maintains bounce/suppression records.
    */
   async handleEmailWebhookCallback(
     provider: 'sendgrid' | 'resend' | 'generic',
     headers: Record<string, string>,
     body: any,
-    secret?: string
+    secretOrOptions?:
+      | string
+      | {
+          secret?: string;
+          secretRef?: string;
+          tenantId?: string;
+          environmentId?: EnvironmentId;
+        },
+    tenantIdParam?: string,
+    envIdParam?: EnvironmentId
   ): Promise<{ processed: number; errors: string[] }> {
-    // If secret provided, verify signature
-    if (secret) {
-      const signature = headers['x-journeyax-signature'] || headers['x-webhook-signature'];
-      if (!signature) {
-        throw new Error('Missing webhook signature');
+    let secret: string | undefined;
+    let tenantId: string | undefined;
+    let environmentId: EnvironmentId = 'production';
+
+    if (typeof secretOrOptions === 'string') {
+      secret = secretOrOptions;
+      tenantId = tenantIdParam;
+      environmentId = envIdParam || 'production';
+    } else if (secretOrOptions && typeof secretOrOptions === 'object') {
+      secret = secretOrOptions.secret;
+      tenantId = secretOrOptions.tenantId || tenantIdParam;
+      environmentId = secretOrOptions.environmentId || envIdParam || 'production';
+      if (!secret && secretOrOptions.secretRef && tenantId) {
+        secret = (await this.resolveSecret(tenantId, secretOrOptions.secretRef)) || undefined;
       }
-      const hmac = createHmac('sha256', secret);
-      hmac.update(typeof body === 'string' ? body : JSON.stringify(body));
-      const expected = `sha256=${hmac.digest('hex')}`;
-      if (
-        signature.length !== expected.length ||
-        !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
-      ) {
-        throw new Error('Invalid webhook callback signature');
-      }
+    }
+
+    // Require verified webhook signature
+    if (!secret) {
+      throw new Error('Missing webhook signature verification secret: unconfigured secret or secret reference');
+    }
+
+    const signature = headers['x-journeyax-signature'] || headers['x-webhook-signature'];
+    if (!signature) {
+      throw new Error('Missing webhook signature');
+    }
+
+    const rawPayload = typeof body === 'string' ? body : JSON.stringify(body);
+    const hmac = createHmac('sha256', secret);
+    hmac.update(rawPayload);
+    const expected = `sha256=${hmac.digest('hex')}`;
+
+    if (
+      signature.length !== expected.length ||
+      !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+    ) {
+      throw new Error('Invalid webhook callback signature');
     }
 
     const events = Array.isArray(body) ? body : [body];
     let processed = 0;
     const errors: string[] = [];
 
-    const col = this.db.collection<NotificationDeliveryRecord>(COLLECTION_NOTIFICATION_DELIVERIES);
+    const deliveriesCol = this.db.collection<NotificationDeliveryRecord>(COLLECTION_NOTIFICATION_DELIVERIES);
+    const callbacksCol = this.db.collection<NotificationCallbackRecord>(COLLECTION_NOTIFICATION_CALLBACKS);
+    const suppressionsCol = this.db.collection<NotificationSuppressionRecord>(COLLECTION_NOTIFICATION_SUPPRESSIONS);
 
     for (const evt of events) {
       const deliveryId = evt.deliveryId || evt.custom_args?.deliveryId;
-      const eventStatus = evt.event || evt.type || 'delivered';
+      const providerDeliveryId = evt.providerDeliveryId || evt.sg_message_id || evt.id;
+      const eventStatus = (evt.event || evt.type || 'delivered').toLowerCase();
+      const boundTenantId = tenantId || evt.tenantId || evt.custom_args?.tenantId;
+      const boundEnvId = environmentId || evt.environmentId || evt.custom_args?.environmentId || 'production';
 
+      if (!deliveryId && !providerDeliveryId) {
+        errors.push('No deliveryId or providerDeliveryId present in webhook event');
+        continue;
+      }
+
+      // ── Deduplicate Callback ───────────────────────────────────────────
+      const callbackDedupKey = `${provider}:${boundTenantId || 'global'}:${deliveryId || providerDeliveryId}:${eventStatus}`;
+      const existingCallback = await callbacksCol.findOne({ callbackId: callbackDedupKey });
+      if (existingCallback) {
+        errors.push(`Duplicate callback detected for key '${callbackDedupKey}' — skipped`);
+        continue;
+      }
+
+      await callbacksCol.insertOne({
+        callbackId: callbackDedupKey,
+        tenantId: boundTenantId || 'unknown',
+        environmentId: boundEnvId,
+        provider,
+        deliveryId: deliveryId || providerDeliveryId,
+        status: eventStatus,
+        processedAt: new Date(),
+        rawPayload: evt,
+      });
+
+      // ── Map Status ─────────────────────────────────────────────────────
       let mappedStatus: NotificationDeliveryRecord['status'] = 'delivered';
       if (['bounce', 'bounced'].includes(eventStatus)) mappedStatus = 'bounced';
       else if (['open', 'opened'].includes(eventStatus)) mappedStatus = 'opened';
       else if (['click', 'clicked'].includes(eventStatus)) mappedStatus = 'clicked';
-      else if (['dropped', 'spamreport'].includes(eventStatus)) mappedStatus = 'dropped';
+      else if (['dropped', 'spamreport', 'complaint'].includes(eventStatus)) mappedStatus = 'dropped';
       else if (['delivered', 'success'].includes(eventStatus)) mappedStatus = 'delivered';
 
-      if (deliveryId) {
-        await col.updateOne(
-          { deliveryId },
-          {
-            $set: {
-              status: mappedStatus,
-              metadata: {
-                callbackEvent: eventStatus,
-                callbackTimestamp: new Date(),
-                rawPayload: evt,
-              },
-            },
-          }
-        );
+      // ── Bind update strictly to tenant, environment, and deliveryId / providerDeliveryId ──
+      const query: any = {};
+      if (boundTenantId) query.tenantId = boundTenantId;
+      if (boundEnvId) query.environmentId = boundEnvId;
+
+      const orMatch: any[] = [];
+      if (deliveryId) orMatch.push({ deliveryId });
+      if (providerDeliveryId) orMatch.push({ providerDeliveryId });
+      if (orMatch.length > 0) {
+        query.$or = orMatch;
+      }
+
+      const updateResult = await deliveriesCol.updateOne(query, {
+        $set: {
+          status: mappedStatus,
+          providerDeliveryId: providerDeliveryId || deliveryId,
+          metadata: {
+            callbackEvent: eventStatus,
+            callbackTimestamp: new Date(),
+            rawPayload: evt,
+          },
+        },
+      });
+
+      if (updateResult.matchedCount > 0) {
         processed++;
+      } else {
+        errors.push(
+          `No matching delivery record found for tenant '${boundTenantId}' and deliveryId '${deliveryId || providerDeliveryId}'`
+        );
+      }
+
+      // ── Maintain Bounce/Suppression State ──────────────────────────────
+      if (mappedStatus === 'bounced' || mappedStatus === 'dropped') {
+        const delivDoc = await deliveriesCol.findOne(query);
+        const recipient = (evt.email || evt.recipient || delivDoc?.recipient || '').toLowerCase().trim();
+        if (recipient && boundTenantId) {
+          await suppressionsCol.updateOne(
+            { tenantId: boundTenantId, environmentId: boundEnvId, recipient },
+            {
+              $set: {
+                tenantId: boundTenantId,
+                environmentId: boundEnvId,
+                recipient,
+                channel: 'email',
+                reason: mappedStatus === 'bounced' ? 'bounce' : 'complaint',
+                provider,
+                providerDeliveryId: providerDeliveryId || deliveryId,
+                updatedAt: new Date(),
+                metadata: {
+                  callbackEvent: eventStatus,
+                  rawPayload: evt,
+                },
+              },
+              $setOnInsert: { createdAt: new Date() },
+            },
+            { upsert: true }
+          );
+        }
       }
     }
 
@@ -535,7 +849,8 @@ export class NotificationDispatcher {
   }
 
   /**
-   * Retries an individual failed delivery with exponential backoff.
+   * Retries an individual failed delivery with genuine provider execution.
+   * Never marks delivered without performing a real send and verifying success.
    */
   async retryDelivery(
     deliveryId: string,
@@ -546,8 +861,9 @@ export class NotificationDispatcher {
     if (!existing || existing.status === 'delivered') return existing;
 
     const nextAttempts = (existing.attempts || 1) + 1;
-    let newStatus: NotificationDeliveryRecord['status'] = 'delivered';
+    let newStatus: NotificationDeliveryRecord['status'] = 'failed';
     let errorMsg: string | undefined;
+    let providerDeliveryId = existing.providerDeliveryId;
 
     if (existing.channel === 'webhook') {
       try {
@@ -564,10 +880,14 @@ export class NotificationDispatcher {
           'User-Agent': 'JourneyAX-Notifier/1.0',
         };
 
-        if (channelsConfig?.webhook?.secret) {
-          const hmac = createHmac('sha256', channelsConfig.webhook.secret);
-          hmac.update(bodyStr);
-          headers['x-journeyax-signature'] = `sha256=${hmac.digest('hex')}`;
+        const secretRef = channelsConfig?.webhook?.secretRef || existing.metadata?.secretRef;
+        if (secretRef) {
+          const secret = await this.resolveSecret(existing.tenantId, secretRef);
+          if (secret) {
+            const hmac = createHmac('sha256', secret);
+            hmac.update(bodyStr);
+            headers['x-journeyax-signature'] = `sha256=${hmac.digest('hex')}`;
+          }
         }
 
         const res = await fetch(existing.recipient, {
@@ -577,18 +897,187 @@ export class NotificationDispatcher {
         });
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        newStatus = 'delivered';
       } catch (err: any) {
         newStatus = nextAttempts >= existing.maxAttempts ? 'failed' : 'retrying';
         errorMsg = err.message;
       }
+    } else if (existing.channel === 'email') {
+      const envId = existing.environmentId || 'production';
+      const isSuppressed = await this.isSuppressed(existing.tenantId, envId, existing.recipient);
+
+      if (isSuppressed) {
+        newStatus = 'failed';
+        errorMsg = `Recipient '${existing.recipient}' is actively suppressed for tenant '${existing.tenantId}'`;
+      } else {
+        const provider = existing.provider || channelsConfig?.email?.provider || 'sendgrid';
+        const apiKeyRef = channelsConfig?.email?.apiKeyRef || existing.metadata?.apiKeyRef;
+
+        try {
+          if (provider === 'activepieces') {
+            const flowId =
+              existing.metadata?.flowId || channelsConfig?.email?.flowId || existing.templateId || existing.eventId;
+            const connectionRef = channelsConfig?.email?.connectionRef || existing.metadata?.connectionRef;
+
+            const tool: ToolDefinition = {
+              toolId: 'notification.send',
+              version: '1.0.0',
+              displayName: 'Notification Dispatch',
+              description: 'Dispatch notification via Activepieces flow',
+              inputSchema: {},
+              outputSchema: {},
+              sideEffect: 'write',
+              risk: 'low',
+              timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
+              idempotencyPolicy: { required: false, ttlSeconds: 86400 },
+              approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
+              dataClassification: 'internal',
+            };
+
+            const binding: ToolBinding = {
+              toolId: 'notification.send',
+              tenantId: existing.tenantId,
+              environmentId: envId,
+              bindingVersion: '1.0.0',
+              executor: {
+                type: 'activepieces_flow',
+                flowId,
+                connectionRef,
+              },
+              enabled: true,
+              policy: {
+                requiredRole: 'customer',
+                requiresConfirmation: false,
+                idempotencyRequired: false,
+                timeoutMs: 10000,
+                retryAttempts: 0,
+              },
+            };
+
+            const dispatcher =
+              this.capabilityDispatcher ||
+              new CapabilityDispatcher({
+                activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL || 'https://activepieces.internal',
+                activepiecesApiKey: (await this.resolveSecret(existing.tenantId, 'activepieces_api_key')) || undefined,
+                activepiecesWebhookSecret:
+                  (await this.resolveSecret(existing.tenantId, 'activepieces_webhook_secret')) || 'notif-hmac-secret',
+                validateConnectionOwnership: async (tId, eId, cRef) => {
+                  return this.validateConnectionOwnership(tId, eId, cRef);
+                },
+              });
+
+            const res = await dispatcher.dispatch(
+              tool,
+              binding,
+              {
+                toolId: 'notification.send',
+                input: {
+                  tenantId: existing.tenantId,
+                  environmentId: envId,
+                  eventId: existing.eventId,
+                  recipient: existing.recipient,
+                  payload: existing.payload,
+                  deliveryId,
+                  isRetry: true,
+                  retryAttempt: nextAttempts,
+                },
+                idempotencyKey: existing.deduplicationKey,
+              },
+              {
+                tenantId: existing.tenantId,
+                environmentId: envId,
+                workspaceId: `ws_notif_${existing.tenantId}`,
+                sessionId: 'system_notification',
+                stageId: 'notification',
+                packVersionId: 'system',
+                correlationId: deliveryId,
+                idempotencyKey: existing.deduplicationKey,
+              }
+            );
+
+            if (res.status === 'success') {
+              newStatus = 'delivered';
+              providerDeliveryId = res.output?.deliveryId || res.output?.id || deliveryId;
+            } else {
+              throw new Error(`Activepieces notification dispatch failed: ${res.error || 'Unknown error'}`);
+            }
+          } else {
+            if (!apiKeyRef) {
+              throw new Error(`Email provider '${provider}' retry failed: no tenant apiKeyRef configured`);
+            }
+            const effectiveApiKey = await this.resolveSecret(existing.tenantId, apiKeyRef);
+            if (!effectiveApiKey) {
+              throw new Error(
+                `Email provider '${provider}' retry failed: tenant secret reference '${apiKeyRef}' could not be resolved from tenant_secrets for tenant '${existing.tenantId}'`
+              );
+            }
+
+            if (provider === 'resend') {
+              const res = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${effectiveApiKey}`,
+                },
+                body: JSON.stringify({
+                  from: `JourneyAX Alerts <alerts@journeyax.com>`,
+                  to: [existing.recipient],
+                  subject: `[JourneyAX] Alert: ${existing.eventId} (Retry #${nextAttempts})`,
+                  html: `<p><strong>Alert for ${existing.eventId} (Retry #${nextAttempts})</strong></p><pre>${JSON.stringify(existing.payload, null, 2)}</pre>`,
+                }),
+              });
+
+              if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(`Resend API returned status ${res.status}: ${txt}`);
+              }
+              const resData: any = await res.json().catch(() => ({}));
+              providerDeliveryId = resData.id || `resend_${randomUUID()}`;
+              newStatus = 'delivered';
+            } else {
+              // SendGrid
+              const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${effectiveApiKey}`,
+                },
+                body: JSON.stringify({
+                  personalizations: [{ to: [{ email: existing.recipient }] }],
+                  from: { email: 'alerts@journeyax.com', name: 'JourneyAX Alerts' },
+                  subject: `[JourneyAX] Alert: ${existing.eventId} (Retry #${nextAttempts})`,
+                  content: [{ type: 'text/plain', value: JSON.stringify(existing.payload, null, 2) }],
+                }),
+              });
+
+              if (!res.ok && res.status !== 202) {
+                const txt = await res.text();
+                throw new Error(`SendGrid API returned status ${res.status}: ${txt}`);
+              }
+              providerDeliveryId = `sg_${randomUUID()}`;
+              newStatus = 'delivered';
+            }
+          }
+        } catch (err: any) {
+          newStatus = nextAttempts >= existing.maxAttempts ? 'failed' : 'retrying';
+          errorMsg = err.message;
+        }
+      }
     }
+
+    const backoffMs = existing.retrySchedule?.backoffMs || 60000;
+    const delay = backoffMs * Math.pow(2, nextAttempts - 1);
+    const nextAttemptAt = newStatus === 'retrying' ? new Date(Date.now() + delay) : undefined;
 
     const update: any = {
       $set: {
         attempts: nextAttempts,
         status: newStatus,
         error: errorMsg,
+        providerDeliveryId,
         deliveredAt: newStatus === 'delivered' ? new Date() : undefined,
+        nextAttemptAt,
+        'retrySchedule.nextAttemptAt': nextAttemptAt,
       },
     };
 

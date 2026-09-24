@@ -6,14 +6,17 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "tsx test/notifications.spec.ts"
   },
   "dependencies": {
+    "@journeyax/capability-sdk": "*",
     "@journeyax/journey-core": "*",
     "mongodb": "^7.4.0"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }
