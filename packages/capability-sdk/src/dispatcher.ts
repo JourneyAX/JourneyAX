@@ -13,6 +13,7 @@ export interface DispatcherOptions {
   activepiecesApiUrl?: string;
   activepiecesApiKey?: string;
   activepiecesWebhookSecret?: string;
+  getTenantSecret?: (tenantId: string, secretRef: string) => Promise<string | null>;
 }
 
 export class CapabilityDispatcher {
@@ -93,7 +94,12 @@ export class CapabilityDispatcher {
 
         case 'activepieces_flow': {
           // Dispatches to external Activepieces flow
-          output = await this.invokeActivepiecesFlow(executor.flowId!, request.input, effectiveCtx);
+          output = await this.invokeActivepiecesFlow(
+            executor.flowId!,
+            request.input,
+            effectiveCtx,
+            (executor as any).connectionRef
+          );
           break;
         }
 
@@ -127,7 +133,12 @@ export class CapabilityDispatcher {
     }
   }
 
-  private async invokeActivepiecesFlow(flowId: string, input: any, ctx: ExecutionContext): Promise<any> {
+  private async invokeActivepiecesFlow(
+    flowId: string,
+    input: any,
+    ctx: ExecutionContext,
+    connectionRef?: string
+  ): Promise<any> {
     const baseUrl = this.options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
     const bodyStr = JSON.stringify({ input, context: ctx });
 
@@ -142,6 +153,13 @@ export class CapabilityDispatcher {
     const apiKey = this.options.activepiecesApiKey || process.env.ACTIVEPIECES_API_KEY;
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    if (connectionRef && this.options.getTenantSecret) {
+      const secret = await this.options.getTenantSecret(ctx.tenantId, connectionRef);
+      if (secret) {
+        headers['X-Connection-Secret'] = secret;
+      }
     }
 
     const webhookSecret = this.options.activepiecesWebhookSecret || process.env.ACTIVEPIECES_WEBHOOK_SECRET;

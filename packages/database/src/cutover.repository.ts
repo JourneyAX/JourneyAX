@@ -95,6 +95,14 @@ export class CutoverRepository {
    * 7. Write audit record in the same transaction.
    * 8. Fail if the revision changed (CAS mismatch).
    */
+  async promoteCutover(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    params: PromoteCutoverParams
+  ): Promise<DurableCutoverRecord> {
+    return this.promoteCutoverTransactionally(tenantId, environmentId, params);
+  }
+
   async promoteCutoverTransactionally(
     tenantId: string,
     environmentId: EnvironmentId,
@@ -166,9 +174,10 @@ export class CutoverRepository {
             'POINTER_NOT_FOUND'
           );
         }
-        if (pointerDoc.activeVersion !== params.approvedReleaseVersion) {
+        const pointerVersion = pointerDoc.activeReleaseVersion || pointerDoc.activeVersion;
+        if (pointerVersion !== params.approvedReleaseVersion) {
           throw new CutoverValidationError(
-            `Pointer activeVersion mismatch: pointer points to version '${pointerDoc.activeVersion}', but approved release version is '${params.approvedReleaseVersion}'`,
+            `Pointer activeVersion mismatch: pointer points to version '${pointerVersion}', but approved release version is '${params.approvedReleaseVersion}'`,
             'POINTER_VERSION_MISMATCH'
           );
         }
