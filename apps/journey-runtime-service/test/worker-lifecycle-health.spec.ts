@@ -335,15 +335,16 @@ async function runWorkerLifecycleHealthTests() {
     };
     const mockNotifDispatcher = {
       dispatch: async () => ({
-        status: 'success',
-        deliveries: [{ status: 'delivered', providerDeliveryId: 'p_1' }],
+        success: true,
+        deliveries: [{ channel: 'email' as const, recipient: 'test@example.com', status: 'delivered' as const, providerDeliveryId: 'p_1' }],
       }),
     } as any;
     const mockCapDispatcher = {
-      dispatch: async () => ({ status: 'success', output: { ok: true } }),
+      dispatch: async () => ({ status: 'success' as const, output: { ok: true } }),
     } as any;
 
-    const service = new OutboxWorkerService({
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
       db: mockDb,
       notificationDispatcher: mockNotifDispatcher,
       capabilityDispatcher: mockCapDispatcher,

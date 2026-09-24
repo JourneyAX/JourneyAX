@@ -9,6 +9,7 @@ import {
   ToolDefinition,
   ToolBinding,
   ExecutionContext,
+  ExecutionRequest,
 } from '@journeyax/capability-sdk';
 import { OutboxRepository } from './outbox.repository';
 import { OutboxWorker, OutboxWorkerOptions } from './outbox.worker';
@@ -54,7 +55,14 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
   private repo: OutboxRepository | DbOutboxRepository | null = null;
   private handlers = new Map<string, (event: any) => Promise<void>>();
 
-  constructor(options?: ProductionHandlersOptions) {
+  constructor() {
+    // Empty dependency-free constructor for Nest DI compatibility (avoids Object token injection with emitDecoratorMetadata)
+  }
+
+  /**
+   * Configuration hook for test harness and programmatic initialization.
+   */
+  configureHandlers(options: ProductionHandlersOptions): void {
     this.registerProductionHandlers(options);
   }
 
@@ -70,33 +78,53 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
 
     // 1. Business Pack lifecycle events — persists audit trail or throws
     this.registerHandler('business_pack.published', async (event) => {
+      if (!db) {
+        throw new Error(
+          `[OutboxWorker] Database connection is required to persist audit logs for '${event.eventType}'`
+        );
+      }
       this.logger.log(
         `[OutboxWorker] Handling business_pack.published for tenant '${event.tenantId}' version '${event.payload?.version}'`
       );
-      if (db) {
-        await db.collection('audit_logs').insertOne({
-          eventType: 'business_pack.published',
-          tenantId: event.tenantId,
-          environmentId: event.environmentId,
-          payload: event.payload,
-          processedAt: new Date().toISOString(),
-        });
-      }
+      await db.collection('audit_logs').updateOne(
+        { eventId: event.eventId },
+        {
+          $setOnInsert: {
+            eventId: event.eventId,
+            eventType: 'business_pack.published',
+            tenantId: event.tenantId,
+            environmentId: event.environmentId,
+            payload: event.payload,
+            processedAt: new Date().toISOString(),
+          },
+        },
+        { upsert: true }
+      );
     });
 
     this.registerHandler('business_pack.rolled_back', async (event) => {
+      if (!db) {
+        throw new Error(
+          `[OutboxWorker] Database connection is required to persist audit logs for '${event.eventType}'`
+        );
+      }
       this.logger.log(
         `[OutboxWorker] Handling business_pack.rolled_back for tenant '${event.tenantId}'`
       );
-      if (db) {
-        await db.collection('audit_logs').insertOne({
-          eventType: 'business_pack.rolled_back',
-          tenantId: event.tenantId,
-          environmentId: event.environmentId,
-          payload: event.payload,
-          processedAt: new Date().toISOString(),
-        });
-      }
+      await db.collection('audit_logs').updateOne(
+        { eventId: event.eventId },
+        {
+          $setOnInsert: {
+            eventId: event.eventId,
+            eventType: 'business_pack.rolled_back',
+            tenantId: event.tenantId,
+            environmentId: event.environmentId,
+            payload: event.payload,
+            processedAt: new Date().toISOString(),
+          },
+        },
+        { upsert: true }
+      );
     });
 
     // 2. Notification dispatch — calls real NotificationDispatcher and enforces delivery persistence
@@ -123,7 +151,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         }
       );
 
-      if (result.status === 'failure') {
+      if (!result.success) {
         const failureDetails = (result.deliveries || [])
           .filter((d: any) => d.status === 'failed')
           .map((d: any) => d.error || 'Delivery failed');
@@ -190,58 +218,94 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
           connectionRef: payload.connectionRef,
         },
         enabled: true,
+        policy: {
+          requiredRole: 'customer',
+          requiresConfirmation: payload.risk === 'high',
+          idempotencyRequired: true,
+          timeoutMs: 15000,
+          retryAttempts: 1,
+        },
       };
 
       const ctx: ExecutionContext = {
-        workspaceId: payload.workspaceId || `ws_${event.tenantId}`,
+        workspaceId: payload.workspaceId || event.workspaceId || `ws_${event.tenantId}`,
         tenantId: event.tenantId,
         environmentId: event.environmentId,
+        sessionId: payload.sessionId || event.sessionId || `session_${event.eventId}`,
+        stageId: payload.stageId || 'stage_outbox',
+        packVersionId: payload.packVersionId || '1.0.0',
         correlationId: event.eventId,
-        actor: { role: 'customer' },
+        idempotencyKey: event.eventId,
+        principalRole: payload.principalRole || 'customer',
+      };
+
+      const request: ExecutionRequest = {
+        toolId: toolDef.toolId,
+        input: payload.input || {},
+        idempotencyKey: event.eventId,
+        userConfirmationConfirmed: payload.userConfirmationConfirmed ?? true,
       };
 
       const dispatchResult = await capDispatcher.dispatch(
         toolDef,
         toolBinding,
-        { toolId: toolDef.toolId, input: payload.input || {} },
+        request,
         ctx
       );
 
-      if (dispatchResult.status === 'failure') {
+      if (dispatchResult.status !== 'success') {
         throw new Error(
-          `[OutboxWorker] Activepieces execution failed: ${dispatchResult.error || 'Execution returned failure'}`
+          `[OutboxWorker] Activepieces execution failed with status '${dispatchResult.status}': ${dispatchResult.error || 'Execution did not succeed'}`
         );
       }
 
       if (db) {
-        await db.collection('activepieces_executions').insertOne({
-          eventId: event.eventId,
-          tenantId: event.tenantId,
-          environmentId: event.environmentId,
-          flowId: payload.flowId,
-          connectionRef: payload.connectionRef,
-          output: dispatchResult.output,
-          status: 'success',
-          executedAt: new Date().toISOString(),
-        });
+        await db.collection('activepieces_executions').updateOne(
+          { eventId: event.eventId },
+          {
+            $set: {
+              tenantId: event.tenantId,
+              environmentId: event.environmentId,
+              flowId: payload.flowId,
+              connectionRef: payload.connectionRef,
+              output: dispatchResult.output,
+              status: 'success',
+              executedAt: new Date().toISOString(),
+            },
+            $setOnInsert: {
+              eventId: event.eventId,
+            },
+          },
+          { upsert: true }
+        );
       }
     });
 
     // 4. Order committed — persists side effect or throws
     this.registerHandler('order.committed', async (event) => {
+      if (!db) {
+        throw new Error(
+          `[OutboxWorker] Database connection is required to persist order events for '${event.eventType}'`
+        );
+      }
       this.logger.log(
         `[OutboxWorker] Handling order.committed for tenant '${event.tenantId}' orderId '${event.payload?.orderId}'`
       );
-      if (db) {
-        await db.collection('order_events').insertOne({
-          eventType: 'order.committed',
-          tenantId: event.tenantId,
-          environmentId: event.environmentId,
-          orderId: event.payload?.orderId,
-          payload: event.payload,
-          committedAt: new Date().toISOString(),
-        });
-      }
+      await db.collection('order_events').updateOne(
+        { eventId: event.eventId },
+        {
+          $setOnInsert: {
+            eventId: event.eventId,
+            eventType: 'order.committed',
+            tenantId: event.tenantId,
+            environmentId: event.environmentId,
+            orderId: event.payload?.orderId,
+            payload: event.payload,
+            committedAt: new Date().toISOString(),
+          },
+        },
+        { upsert: true }
+      );
     });
   }
 

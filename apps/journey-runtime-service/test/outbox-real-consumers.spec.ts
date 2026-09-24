@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { NestFactory } from '@nestjs/core';
+import { CapabilityDispatcher } from '@journeyax/capability-sdk';
+import { RuntimeModule } from '../src/runtime.module';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { OutboxWorker } from '../src/kernel/outbox.worker';
 import { OutboxWorkerService } from '../src/kernel/outbox-worker.service';
@@ -37,21 +40,23 @@ async function runOutboxRealConsumersSuite() {
           status: 'delivered',
         });
         return {
-          status: 'success' as const,
+          success: true,
           deliveries: [
             {
-              channel: 'email',
+              deliveryId: 'del_001',
+              channel: 'email' as const,
               provider: 'sendgrid',
               providerDeliveryId: 'prov_sg_123',
               recipient: 'buyer@example.com',
-              status: 'delivered',
+              status: 'delivered' as const,
             },
           ],
         };
       },
     } as any;
 
-    const service = new OutboxWorkerService({
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
       notificationDispatcher: mockNotifDispatcher,
     });
 
@@ -93,20 +98,22 @@ async function runOutboxRealConsumersSuite() {
 
     const failingNotifDispatcher = {
       dispatch: async () => ({
-        status: 'failure' as const,
+        success: false,
         deliveries: [
           {
-            channel: 'email',
+            deliveryId: 'del_002',
+            channel: 'email' as const,
             provider: 'sendgrid',
             recipient: 'bad@example.com',
-            status: 'failed',
+            status: 'failed' as const,
             error: 'Upstream SMTP connection dropped by provider',
           },
         ],
       }),
     } as any;
 
-    const service = new OutboxWorkerService({
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
       notificationDispatcher: failingNotifDispatcher,
     });
 
@@ -142,15 +149,19 @@ async function runOutboxRealConsumersSuite() {
     service.stopWorker();
   });
 
-  // ── Test 3: activepieces.dispatch success invokes capability dispatcher & persists execution ──
-  await test('3. activepieces.dispatch invokes CapabilityDispatcher, verifies ownership, and publishes', async () => {
+  // ── Test 3: activepieces.dispatch success invokes capability dispatcher & persists execution idempotently ──
+  await test('3. activepieces.dispatch invokes CapabilityDispatcher and upserts execution idempotently', async () => {
     const repo = new OutboxRepository();
     const executionsRecorded: any[] = [];
     const mockDb = {
       collection: (name: string) => ({
-        insertOne: async (doc: any) => {
-          if (name === 'activepieces_executions') executionsRecorded.push(doc);
-          return { insertedId: 'exec_001' };
+        updateOne: async (filter: any, update: any, options: any) => {
+          if (name === 'activepieces_executions') {
+            assert.ok(filter.eventId, 'Upsert must filter by eventId');
+            assert.equal(options?.upsert, true, 'Upsert option must be true');
+            executionsRecorded.push({ filter, update });
+          }
+          return { matchedCount: 1, upsertedCount: 1 };
         },
       }),
     };
@@ -164,11 +175,13 @@ async function runOutboxRealConsumersSuite() {
         assert.equal(toolBinding.executor.connectionRef, 'conn_ct_caroma_secret');
         assert.equal(ctx.tenantId, 'tenant_caroma');
         assert.equal(ctx.environmentId, 'production');
+        assert.equal(req.idempotencyKey, ctx.correlationId);
         return { status: 'success' as const, output: { syncCount: 42 } };
       },
     } as any;
 
-    const service = new OutboxWorkerService({
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
       db: mockDb,
       capabilityDispatcher: mockCapDispatcher,
     });
@@ -199,8 +212,8 @@ async function runOutboxRealConsumersSuite() {
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.equal(event.status, 'published');
     assert.equal(executionsRecorded.length, 1);
-    assert.equal(executionsRecorded[0].flowId, 'flow_ct_sync_01');
-    assert.deepEqual(executionsRecorded[0].output, { syncCount: 42 });
+    assert.equal(executionsRecorded[0].filter.eventId, eventId);
+    assert.deepEqual(executionsRecorded[0].update.$set.output, { syncCount: 42 });
 
     service.stopWorker();
   });
@@ -216,7 +229,8 @@ async function runOutboxRealConsumersSuite() {
       }),
     } as any;
 
-    const service = new OutboxWorkerService({
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
       capabilityDispatcher: failingCapDispatcher,
     });
 
@@ -256,6 +270,7 @@ async function runOutboxRealConsumersSuite() {
   await test('5. activepieces.dispatch fails closed on missing flowId or connectionRef', async () => {
     const repo = new OutboxRepository();
     const service = new OutboxWorkerService();
+    service.configureHandlers({});
 
     const missingConnId = await repo.enqueueEvent(
       'tenant_caroma',
@@ -281,22 +296,27 @@ async function runOutboxRealConsumersSuite() {
     service.stopWorker();
   });
 
-  // ── Test 6: business_pack.published persists audit log and throws on DB failure ─
-  await test('6. business_pack.published persists audit log; DB failure leaves event pending', async () => {
+  // ── Test 6: business_pack.published persists audit log idempotently and throws on DB failure ─
+  await test('6. business_pack.published persists audit log via idempotent upsert; DB failure leaves event pending', async () => {
     const repo = new OutboxRepository();
     const auditLogs: any[] = [];
 
-    // 6a. Success case
+    // 6a. Success case: idempotent upsert
     const healthyDb = {
       collection: (name: string) => ({
-        insertOne: async (doc: any) => {
-          if (name === 'audit_logs') auditLogs.push(doc);
-          return { insertedId: 'audit_1' };
+        updateOne: async (filter: any, update: any, options: any) => {
+          if (name === 'audit_logs') {
+            assert.ok(filter.eventId);
+            assert.equal(options?.upsert, true);
+            auditLogs.push({ filter, update });
+          }
+          return { matchedCount: 1, upsertedCount: 1 };
         },
       }),
     };
 
-    const healthyService = new OutboxWorkerService({ db: healthyDb });
+    const healthyService = new OutboxWorkerService();
+    healthyService.configureHandlers({ db: healthyDb });
     const successEventId = await repo.enqueueEvent(
       'tenant_caroma',
       'production',
@@ -315,19 +335,21 @@ async function runOutboxRealConsumersSuite() {
     const successEvent = repo.getEvents().find((e) => e.eventId === successEventId)!;
     assert.equal(successEvent.status, 'published');
     assert.equal(auditLogs.length, 1);
-    assert.equal(auditLogs[0].payload.version, '2.0.0');
+    assert.equal(auditLogs[0].update.$setOnInsert.payload.version, '2.0.0');
+    assert.equal(auditLogs[0].filter.eventId, successEventId);
     healthyService.stopWorker();
 
     // 6b. Failure case: DB throws error
     const failingDb = {
       collection: () => ({
-        insertOne: async () => {
+        updateOne: async () => {
           throw new Error('MongoNetworkError: connection timed out');
         },
       }),
     };
 
-    const failingService = new OutboxWorkerService({ db: failingDb });
+    const failingService = new OutboxWorkerService();
+    failingService.configureHandlers({ db: failingDb });
     const failEventId = await repo.enqueueEvent(
       'tenant_caroma',
       'production',
@@ -396,7 +418,8 @@ async function runOutboxRealConsumersSuite() {
   // ── Test 8: Dead-letter queue transition after max retry attempts ──────────────
   await test('8. Exhausted retry attempts transition outbox event to dead_letter', async () => {
     const repo = new OutboxRepository();
-    const failingService = new OutboxWorkerService({
+    const failingService = new OutboxWorkerService();
+    failingService.configureHandlers({
       notificationDispatcher: {
         dispatch: async () => {
           throw new Error('Fatal persistent failure');
@@ -441,6 +464,112 @@ async function runOutboxRealConsumersSuite() {
     assert.equal(event.status, 'dead_letter', 'Must transition to dead_letter upon exhausting maxAttempts');
 
     failingService.stopWorker();
+  });
+
+  // ── Test 9: Nest module boot test verifies dependency injection without Object tokens ──
+  await test('9. Nest module boot succeeds without DI errors or Object token failures', async () => {
+    const app = await NestFactory.createApplicationContext(RuntimeModule, { logger: false });
+    const outboxService = app.get(OutboxWorkerService);
+    assert.ok(outboxService instanceof OutboxWorkerService, 'OutboxWorkerService must be resolvable from Nest DI');
+    await app.close();
+  });
+
+  // ── Test 10: Real CapabilityDispatcher policy gate integration ────────────────
+  await test('10. Real CapabilityDispatcher policy gate enforces confirmation and throws when denied/requires_approval', async () => {
+    const repo = new OutboxRepository();
+    const executionsRecorded: any[] = [];
+    const mockDb = {
+      collection: (name: string) => ({
+        updateOne: async (filter: any, update: any, options: any) => {
+          if (name === 'activepieces_executions') {
+            executionsRecorded.push({ filter, update, options });
+          }
+          return { matchedCount: 1, upsertedCount: 1 };
+        },
+      }),
+    };
+
+    // Real CapabilityDispatcher with verified connection ownership and explicit credentials
+    const realCapDispatcher = new CapabilityDispatcher({
+      activepiecesApiUrl: 'http://localhost:3010',
+      activepiecesApiKey: 'test_ap_key_123',
+      activepiecesWebhookSecret: 'test_ap_secret_456',
+      validateConnectionOwnership: async (t, e, c) => {
+        return t === 'tenant_caroma' && e === 'production' && c === 'conn_ct_caroma_secret';
+      },
+    });
+
+    // 10a: When userConfirmationConfirmed is false, PolicyGate returns requires_approval.
+    // Real CapabilityDispatcher returns status: 'requires_approval'.
+    // The handler must throw and the outbox event must NOT be published.
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
+      db: mockDb,
+      capabilityDispatcher: realCapDispatcher,
+    });
+
+    const unconfirmedEventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {
+        flowId: 'flow_ct_sync_01',
+        connectionRef: 'conn_ct_caroma_secret',
+        risk: 'high',
+        userConfirmationConfirmed: false, // Explicitly unconfirmed
+      }
+    );
+
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker_policy_gate_test',
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+
+    const unconfirmedBatchRes = await worker.processNextBatch();
+    assert.equal(unconfirmedBatchRes.failed, 1, 'Policy gate requires_approval must cause batch failure');
+    const unconfirmedEvent = repo.getEvents().find((e) => e.eventId === unconfirmedEventId)!;
+    assert.notEqual(unconfirmedEvent.status, 'published', 'Unapproved event must NOT be marked published');
+    assert.equal(unconfirmedEvent.status, 'pending');
+    assert.match(unconfirmedEvent.error || '', /requires_approval/);
+
+    // 10b: When confirmed and ownership is valid, real CapabilityDispatcher calls the provider.
+    // Intercept globalThis.fetch to simulate Activepieces responding 200 OK.
+    const originalFetch = globalThis.fetch;
+    try {
+      (globalThis as any).fetch = async (url: string, init: any) => {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ status: 'success', syncedProducts: 100 }),
+        };
+      };
+
+      const confirmedEventId = await repo.enqueueEvent(
+        'tenant_caroma',
+        'production',
+        'activepieces.dispatch',
+        {
+          flowId: 'flow_ct_sync_01',
+          connectionRef: 'conn_ct_caroma_secret',
+          risk: 'medium',
+          userConfirmationConfirmed: true,
+          input: { force: true },
+        }
+      );
+
+      const confirmedBatchRes = await worker.processNextBatch();
+      assert.equal(confirmedBatchRes.succeeded, 1, 'Approved policy execution must succeed');
+      const confirmedEvent = repo.getEvents().find((e) => e.eventId === confirmedEventId)!;
+      assert.equal(confirmedEvent.status, 'published', 'Approved event must be published');
+      assert.equal(executionsRecorded.length, 1);
+      assert.equal(executionsRecorded[0].filter.eventId, confirmedEventId);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    service.stopWorker();
   });
 
   console.log(`\nOutbox Real Consumers Test Suite Complete: ${passed} passed, ${failed} failed.\n`);
