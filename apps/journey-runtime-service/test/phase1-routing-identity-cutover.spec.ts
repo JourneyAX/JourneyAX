@@ -478,6 +478,7 @@ async function runPhase1Tests() {
       tenantId,
       environmentId: 'production',
       activeVersion: version,
+      checksum,
       revision: 1,
       promotedAt: new Date(),
       promotedBy: 'system',

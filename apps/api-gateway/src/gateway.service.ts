@@ -443,10 +443,7 @@ export class GatewayService {
       ...identityHeaders(headers),
     };
 
-    const assertionSecret =
-      process.env.GATEWAY_ASSERTION_SECRET ||
-      process.env.INTERNAL_API_KEY ||
-      process.env.INTERNAL_SERVICE_KEY;
+    const assertionSecret = process.env.GATEWAY_ASSERTION_SECRET;
 
     if (assertionSecret) {
       const rawRole = String(
@@ -470,6 +467,8 @@ export class GatewayService {
         },
         assertionSecret
       );
+    } else if (process.env.NODE_ENV === 'production' && parsed.domain === 'runtime') {
+      throw new Error('GATEWAY_ASSERTION_SECRET must be configured in production for runtime calls.');
     }
 
     const fetchOptions: RequestInit = {

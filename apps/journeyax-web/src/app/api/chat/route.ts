@@ -30,7 +30,10 @@ export async function POST(req: Request) {
   };
 
   const sessionId = body.sessionId || body.workspaceId || 'default';
-  const routing = await resolveTenantRouting(tenantId);
+  const workspaceId = body.workspaceId || body.sessionId || sessionId;
+  const routing = await resolveTenantRouting(tenantId, 'production', {
+    workspaceId,
+  });
 
   // 1. Migrated Tenant Path: Exclusively executes on JourneyAX Runtime Service (Fails Closed)
   if (routing.cutoverState === 'migrated') {

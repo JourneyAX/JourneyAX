@@ -26,6 +26,11 @@ async function runRealMongoIntegrationTests() {
   console.log('🧪 RUNNING REAL MONGO INTEGRATION TEST SUITE (ZERO MOCKS)');
   console.log('========================================================================\n');
 
+  if (process.env.RUN_INTEGRATION_TESTS !== 'true') {
+    console.log('Skipping real MongoDB integration tests (set RUN_INTEGRATION_TESTS=true to run against live database).');
+    process.exit(0);
+  }
+
   const mongoUri = process.env.MONGODB_URI;
   if (!mongoUri) {
     console.error('❌ MONGODB_URI not found in environment. Aborting integration tests.');
@@ -34,7 +39,7 @@ async function runRealMongoIntegrationTests() {
 
   const client = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 3000 });
   await client.connect();
-  const dbName = process.env.MONGODB_DB_NAME || 'journeyx';
+  const dbName = process.env.TEST_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'journeyx_test';
   const db = client.db(dbName);
   console.log(`✅ Connected to real MongoDB database: "${dbName}"\n`);
 

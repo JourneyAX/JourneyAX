@@ -46,6 +46,11 @@ export class RuntimeAuthGuard implements CanActivate {
           return { db };
         });
       } else {
+        if (process.env.NODE_ENV === 'production') {
+          throw new UnauthorizedException(
+            'Production security error: MONGODB_URI is required for durable distributed replay protection. In-memory replay protection is forbidden in production.'
+          );
+        }
         this.replayStore = new InMemoryReplayStore();
       }
     }
@@ -130,9 +135,9 @@ export class RuntimeAuthGuard implements CanActivate {
     const gatewayAssertion = headers['x-gateway-assertion'] as string | undefined;
 
     if (gatewayAssertion) {
-      const assertionSecret = process.env.GATEWAY_ASSERTION_SECRET || process.env.INTERNAL_API_KEY;
+      const assertionSecret = process.env.GATEWAY_ASSERTION_SECRET;
       if (!assertionSecret) {
-        throw new UnauthorizedException('Server security error: Gateway assertion secret is not configured');
+        throw new UnauthorizedException('Server security error: GATEWAY_ASSERTION_SECRET is not configured');
       }
 
       let payload: ReturnType<typeof verifyGatewayAssertion>;

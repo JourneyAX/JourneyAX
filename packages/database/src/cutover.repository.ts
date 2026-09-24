@@ -155,7 +155,7 @@ export class CutoverRepository {
           );
         }
 
-        // 4. Verify active pointer exists in business_pack_pointers
+        // 4. Verify active pointer exists in business_pack_pointers and matches approved release exactly
         const pointerDoc = await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).findOne(
           { tenantId: normTenant, environmentId: normEnv },
           { session }
@@ -164,6 +164,19 @@ export class CutoverRepository {
           throw new CutoverValidationError(
             `No active Business Pack pointer found for tenant '${normTenant}' (${normEnv})`,
             'POINTER_NOT_FOUND'
+          );
+        }
+        if (pointerDoc.activeVersion !== params.approvedReleaseVersion) {
+          throw new CutoverValidationError(
+            `Pointer activeVersion mismatch: pointer points to version '${pointerDoc.activeVersion}', but approved release version is '${params.approvedReleaseVersion}'`,
+            'POINTER_VERSION_MISMATCH'
+          );
+        }
+        const pointerChecksum = pointerDoc.activeReleaseChecksum || pointerDoc.checksum;
+        if (pointerChecksum && pointerChecksum !== params.approvedReleaseChecksum) {
+          throw new CutoverValidationError(
+            `Pointer checksum mismatch: pointer checksum '${pointerChecksum}' does not match approved release checksum '${params.approvedReleaseChecksum}'`,
+            'POINTER_CHECKSUM_MISMATCH'
           );
         }
 
