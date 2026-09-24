@@ -173,6 +173,50 @@ export class OutboxRepository {
     );
   }
 
+  async renewLease(eventId: string, workerId: string, additionalMs = 30000): Promise<boolean> {
+    const col = this.db.collection<OutboxEventRecord>(COLLECTION_OUTBOX_EVENTS);
+    const newExpiresAt = new Date(Date.now() + additionalMs);
+    const res = await col.updateOne(
+      { eventId, leasedBy: workerId, status: 'leased' },
+      { $set: { leaseExpiresAt: newExpiresAt } }
+    );
+    return res.matchedCount > 0;
+  }
+
+  async replayDeadLetter(eventId: string, session?: ClientSession): Promise<boolean> {
+    const col = this.db.collection<OutboxEventRecord>(COLLECTION_OUTBOX_EVENTS);
+    const res = await col.updateOne(
+      { eventId, status: 'dead_letter' },
+      {
+        $set: {
+          status: 'pending',
+          attempts: 0,
+          nextAttemptAt: new Date(),
+        },
+        $unset: { error: '', leasedBy: '', leaseExpiresAt: '' },
+      },
+      { session }
+    );
+    return res.matchedCount > 0;
+  }
+
+  async resolveDeadLetter(eventId: string, resolutionNote: string, session?: ClientSession): Promise<boolean> {
+    const col = this.db.collection<OutboxEventRecord>(COLLECTION_OUTBOX_EVENTS);
+    const res = await col.updateOne(
+      { eventId, status: 'dead_letter' },
+      {
+        $set: {
+          status: 'resolved',
+          resolutionNote,
+          resolvedAt: new Date(),
+        },
+        $unset: { leasedBy: '', leaseExpiresAt: '' },
+      },
+      { session }
+    );
+    return res.matchedCount > 0;
+  }
+
   async getMetrics(tenantId?: string): Promise<{
     pending: number;
     leased: number;

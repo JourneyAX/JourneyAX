@@ -1,3 +1,4 @@
+import { createHmac, randomUUID } from 'crypto';
 import {
   ToolDefinition,
   ToolBinding,
@@ -11,6 +12,7 @@ import { PolicyGate } from './policy-gate';
 export interface DispatcherOptions {
   activepiecesApiUrl?: string;
   activepiecesApiKey?: string;
+  activepiecesWebhookSecret?: string;
 }
 
 export class CapabilityDispatcher {
@@ -127,15 +129,37 @@ export class CapabilityDispatcher {
 
   private async invokeActivepiecesFlow(flowId: string, input: any, ctx: ExecutionContext): Promise<any> {
     const baseUrl = this.options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
+    const bodyStr = JSON.stringify({ input, context: ctx });
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Tenant-ID': ctx.tenantId,
+      'X-Environment-ID': ctx.environmentId,
+      'X-Workspace-ID': ctx.workspaceId,
+      'X-Correlation-ID': ctx.correlationId,
+    };
+
+    const apiKey = this.options.activepiecesApiKey || process.env.ACTIVEPIECES_API_KEY;
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const webhookSecret = this.options.activepiecesWebhookSecret || process.env.ACTIVEPIECES_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const timestamp = Date.now().toString();
+      const nonce = randomUUID();
+      const signature = createHmac('sha256', webhookSecret)
+        .update(`${timestamp}.${nonce}.${bodyStr}`)
+        .digest('hex');
+      headers['X-Activepieces-Signature'] = signature;
+      headers['X-Activepieces-Timestamp'] = timestamp;
+      headers['X-Activepieces-Nonce'] = nonce;
+    }
+
     const res = await fetch(`${baseUrl}/api/v1/webhooks/${flowId}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Tenant-ID': ctx.tenantId,
-        'X-Workspace-ID': ctx.workspaceId,
-        'X-Correlation-ID': ctx.correlationId,
-      },
-      body: JSON.stringify({ input, context: ctx }),
+      headers,
+      body: bodyStr,
       signal: AbortSignal.timeout(15000),
     });
 

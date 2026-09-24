@@ -378,4 +378,41 @@ export class RuntimeController {
       }
     );
   }
+
+  @Get('outbox/metrics')
+  @InternalOnly()
+  async getOutboxMetrics(
+    @Param('tenantId') pathTenantId: string,
+    @Req() req: any
+  ) {
+    const tenantId = pathTenantId || req.authContext?.tenantId;
+    return this.runtimeService.getOutboxMetrics(tenantId);
+  }
+
+  @Post('outbox/dead-letter/:eventId/replay')
+  @InternalOnly()
+  async replayDeadLetterEvent(
+    @Param('eventId') eventId: string
+  ) {
+    const success = await this.runtimeService.replayDeadLetterEvent(eventId);
+    if (!success) {
+      throw new NotFoundException(`Dead letter event '${eventId}' not found or not in dead_letter status`);
+    }
+    return { success, eventId, status: 'pending' };
+  }
+
+  @Post('outbox/dead-letter/:eventId/resolve')
+  @InternalOnly()
+  async resolveDeadLetterEvent(
+    @Param('eventId') eventId: string,
+    @Body() body: any,
+    @Req() req: any
+  ) {
+    const resolutionNote = body?.resolutionNote || `Resolved by ${req.authContext?.principalId || 'admin'}`;
+    const success = await this.runtimeService.resolveDeadLetterEvent(eventId, resolutionNote);
+    if (!success) {
+      throw new NotFoundException(`Dead letter event '${eventId}' not found or not in dead_letter status`);
+    }
+    return { success, eventId, status: 'resolved', resolutionNote };
+  }
 }

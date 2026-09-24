@@ -93,7 +93,7 @@ export interface OutboxEventRecord {
   environmentId: EnvironmentId;
   eventType: string;
   payload: any;
-  status: 'pending' | 'leased' | 'published' | 'failed' | 'dead_letter';
+  status: 'pending' | 'leased' | 'published' | 'failed' | 'dead_letter' | 'resolved';
   attempts: number;
   maxAttempts?: number;
   leasedBy?: string;
@@ -102,6 +102,8 @@ export interface OutboxEventRecord {
   createdAt: Date;
   publishedAt?: Date;
   error?: string;
+  resolutionNote?: string;
+  resolvedAt?: Date;
 }
 
 export interface NormalizedProductRecord {

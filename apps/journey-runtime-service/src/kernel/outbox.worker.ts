@@ -3,6 +3,7 @@ import { OutboxEventRecord } from '@journeyax/database';
 import { randomUUID } from 'crypto';
 
 export type OutboxEventDispatcher = (event: OutboxEventRecord) => Promise<void>;
+export type DeadLetterAlertHandler = (event: OutboxEventRecord, error: string) => Promise<void> | void;
 
 export interface OutboxWorkerOptions {
   workerId?: string;
@@ -12,6 +13,7 @@ export interface OutboxWorkerOptions {
   maxAttempts?: number;
   backoffBaseMs?: number;
   dispatcher?: OutboxEventDispatcher;
+  onDeadLetterAlert?: DeadLetterAlertHandler;
 }
 
 export class OutboxWorker {
@@ -22,6 +24,7 @@ export class OutboxWorker {
   private readonly maxAttempts: number;
   private readonly backoffBaseMs: number;
   private readonly dispatcher: OutboxEventDispatcher;
+  private readonly onDeadLetterAlert?: DeadLetterAlertHandler;
 
   private running = false;
   private timer: NodeJS.Timeout | null = null;
@@ -42,6 +45,7 @@ export class OutboxWorker {
       );
     }
     this.dispatcher = options.dispatcher;
+    this.onDeadLetterAlert = options.onDeadLetterAlert;
   }
 
   start(): void {
@@ -56,6 +60,10 @@ export class OutboxWorker {
       clearTimeout(this.timer);
       this.timer = null;
     }
+  }
+
+  async renewCurrentLease(eventId: string, additionalMs?: number): Promise<boolean> {
+    return this.outboxRepo.renewLease(eventId, this.workerId, additionalMs);
   }
 
   private scheduleNext(): void {
@@ -101,6 +109,13 @@ export class OutboxWorker {
           console.error(
             `[OutboxWorker ${this.workerId}] Event '${event.eventId}' (${event.eventType}) reached max retries. Moved to dead-letter.`
           );
+          if (this.onDeadLetterAlert) {
+            try {
+              await this.onDeadLetterAlert(event, err.message || 'Dispatch error');
+            } catch (alertErr: any) {
+              console.error(`[OutboxWorker ${this.workerId}] Operational alert callback failed:`, alertErr.message);
+            }
+          }
         }
       }
     }
