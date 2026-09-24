@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHmac } from 'crypto';
+import { createHmac, generateKeyPairSync, createSign } from 'crypto';
 import {
   NotificationDispatcher,
   NotificationRateLimitError,
@@ -61,15 +61,23 @@ async function runNotificationTests() {
             const item = insertedDeliveries.find((d) => {
               if (query.tenantId && d.tenantId !== query.tenantId) return false;
               if (query.environmentId && d.environmentId !== query.environmentId) return false;
+              if (query.provider && d.provider !== query.provider) return false;
               if (query.$or) {
-                return query.$or.some((cond: any) => {
+                const matches = query.$or.some((cond: any) => {
                   if (cond.deliveryId && d.deliveryId === cond.deliveryId) return true;
                   if (cond.providerDeliveryId && d.providerDeliveryId === cond.providerDeliveryId) return true;
                   return false;
                 });
+                if (!matches) return false;
               }
-              if (query.deliveryId) return d.deliveryId === query.deliveryId;
-              return false;
+              if (query.$nor) {
+                const matchesNor = query.$nor.some((cond: any) => {
+                  return cond.status === d.status && cond['metadata.callbackEvent'] === d.metadata?.callbackEvent;
+                });
+                if (matchesNor) return false;
+              }
+              if (query.deliveryId && d.deliveryId !== query.deliveryId) return false;
+              return true;
             });
             if (item && update.$set) {
               Object.assign(item, update.$set);
@@ -82,6 +90,7 @@ async function runNotificationTests() {
               insertedDeliveries.find((d) => {
                 if (query.tenantId && d.tenantId !== query.tenantId) return false;
                 if (query.environmentId && d.environmentId !== query.environmentId) return false;
+                if (query.provider && d.provider !== query.provider) return false;
                 if (query.$or) {
                   return query.$or.some((cond: any) => {
                     if (cond.deliveryId && d.deliveryId === cond.deliveryId) return true;
@@ -90,7 +99,7 @@ async function runNotificationTests() {
                   });
                 }
                 if (query.deliveryId) return d.deliveryId === query.deliveryId;
-                return false;
+                return true;
               }) || null
             );
           },
@@ -157,6 +166,27 @@ async function runNotificationTests() {
           insertOne: async (doc: any) => {
             insertedCallbacks.push(doc);
             return { acknowledged: true };
+          },
+          updateOne: async (query: any, update: any, opts: any) => {
+            let item = insertedCallbacks.find((c) => c.callbackId === query.callbackId);
+            if (!item && opts?.upsert) {
+              item = { ...query, ...update.$set };
+              insertedCallbacks.push(item);
+              return { matchedCount: 0, upsertedCount: 1 };
+            }
+            if (item && update.$set) {
+              Object.assign(item, update.$set);
+              return { matchedCount: 1, modifiedCount: 1 };
+            }
+            return { matchedCount: item ? 1 : 0 };
+          },
+          deleteOne: async (query: any) => {
+            const idx = insertedCallbacks.findIndex((c) => c.callbackId === query.callbackId);
+            if (idx >= 0) {
+              insertedCallbacks.splice(idx, 1);
+              return { deletedCount: 1 };
+            }
+            return { deletedCount: 0 };
           },
         };
       }
@@ -631,6 +661,320 @@ async function runNotificationTests() {
     );
     assert.equal(callbackResult.processed, 0, 'Unmatched delivery must not be processed');
     assert.equal(insertedCallbacks.length, initialCallbacksCount, 'Unmatched delivery must NOT record deduplication callback');
+  });
+
+  // ── Test 14: SendGrid ECDSA signature contract validation ─────────────────────
+  await test('14. SendGrid ECDSA signature contract verified; generic custom HMAC rejected', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const pubPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+
+    // Create a delivery record for SendGrid
+    const sgDeliveryId = 'deliv_sg_ecdsa_01';
+    insertedDeliveries.push({
+      deliveryId: sgDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'evt_sg_test',
+      channel: 'email',
+      provider: 'sendgrid',
+      recipient: 'user@example.com',
+      routingDecision: { channel: 'email', provider: 'sendgrid', recipient: 'user@example.com', reason: 'test' },
+      status: 'retrying',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const callbackPayload = [{ deliveryId: sgDeliveryId, event: 'delivered', id: 'sg_msg_123' }];
+    const rawPayload = JSON.stringify(callbackPayload);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+
+    const sign = createSign('SHA256');
+    sign.update(`${timestamp}${rawPayload}`);
+    const validEcdsaSig = sign.sign(privateKey, 'base64');
+
+    // 14a: Successful ECDSA verification updates status
+    const sgResult = await dispatcher.handleEmailWebhookCallback(
+      'sendgrid',
+      {
+        'x-twilio-email-event-webhook-signature': validEcdsaSig,
+        'x-twilio-email-event-webhook-timestamp': timestamp,
+      },
+      callbackPayload,
+      {
+        publicKey: pubPem,
+        tenantId: 'tenant_abc',
+        environmentId: 'production',
+      }
+    );
+    assert.equal(sgResult.processed, 1, 'SendGrid ECDSA callback must be processed');
+    const updatedSg = insertedDeliveries.find((d) => d.deliveryId === sgDeliveryId);
+    assert.equal(updatedSg?.status, 'delivered');
+
+    // 14b: Negative: Generic custom HMAC must be rejected when provider is SendGrid
+    const genericHmac = createHmac('sha256', 'mock_secret').update(rawPayload).digest('hex');
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'sendgrid',
+          { 'x-journeyax-signature': `sha256=${genericHmac}` },
+          callbackPayload,
+          {
+            publicKey: pubPem,
+            tenantId: 'tenant_abc',
+            environmentId: 'production',
+          }
+        );
+      },
+      /Generic custom HMAC is not sufficient for SendGrid provider; SendGrid ECDSA signature contract is required/i,
+      'SendGrid provider must reject generic HMAC'
+    );
+
+    // 14c: Negative: Tampered ECDSA signature fails closed
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'sendgrid',
+          {
+            'x-twilio-email-event-webhook-signature': 'invalid_base64_tampered_sig==',
+            'x-twilio-email-event-webhook-timestamp': timestamp,
+          },
+          callbackPayload,
+          {
+            publicKey: pubPem,
+            tenantId: 'tenant_abc',
+            environmentId: 'production',
+          }
+        );
+      },
+      /Invalid SendGrid webhook ECDSA signature/i,
+      'Tampered ECDSA signature must be rejected'
+    );
+  });
+
+  // ── Test 15: Replay attack prevention via timestamp expiration ────────────────
+  await test('15. Replay attack rejection: expired signature timestamp is rejected', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const pubPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    const expiredTimestamp = (Math.floor(Date.now() / 1000) - 900).toString(); // 15 mins ago
+
+    const payload = [{ deliveryId: 'deliv_sg_ecdsa_01', event: 'delivered' }];
+    const rawPayload = JSON.stringify(payload);
+    const sign = createSign('SHA256');
+    sign.update(`${expiredTimestamp}${rawPayload}`);
+    const sig = sign.sign(privateKey, 'base64');
+
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'sendgrid',
+          {
+            'x-twilio-email-event-webhook-signature': sig,
+            'x-twilio-email-event-webhook-timestamp': expiredTimestamp,
+          },
+          payload,
+          {
+            publicKey: pubPem,
+            tenantId: 'tenant_abc',
+            environmentId: 'production',
+          }
+        );
+      },
+      /replay detected/i,
+      'Expired signature timestamp must be rejected as replay'
+    );
+  });
+
+  // ── Test 16: Transactional recoverability on partial failure ───────────────────
+  await test('16. Transactional recoverability: premature callback insert does not ignore retries forever', async () => {
+    const recovDeliveryId = 'deliv_recoverable_01';
+    insertedDeliveries.push({
+      deliveryId: recovDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'evt_recov_test',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'recov@example.com',
+      routingDecision: { channel: 'email', provider: 'generic', recipient: 'recov@example.com', reason: 'test' },
+      status: 'retrying', // Delivery was NEVER updated to delivered
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    // Simulate a prior crash: a callback record was inserted, but delivery update failed
+    const staleDedupKey = `generic:tenant_abc:${recovDeliveryId}:delivered`;
+    insertedCallbacks.push({
+      callbackId: staleDedupKey,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      provider: 'generic',
+      deliveryId: recovDeliveryId,
+      status: 'delivered',
+      processedAt: new Date(Date.now() - 5000),
+      rawPayload: {},
+    });
+
+    const payload = [{ deliveryId: recovDeliveryId, event: 'delivered' }];
+    const rawPayload = JSON.stringify(payload);
+    const hmac = createHmac('sha256', 'mock_secret_val').update(rawPayload).digest('hex');
+
+    // Webhook retry arrives: Must NOT be skipped as duplicate; must recover and update delivery
+    const retryResult = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${hmac}` },
+      payload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+
+    assert.equal(retryResult.processed, 1, 'Retry must successfully process despite stale callback record');
+    const updatedRecov = insertedDeliveries.find((d) => d.deliveryId === recovDeliveryId);
+    assert.equal(updatedRecov?.status, 'delivered', 'Delivery status must be updated on retry');
+  });
+
+  // ── Test 17: Concurrent webhook callbacks processed cleanly ───────────────────
+  await test('17. Concurrent webhook callbacks execute idempotently without unhandled collisions', async () => {
+    const concurrentDeliveryId = 'deliv_concurrent_01';
+    insertedDeliveries.push({
+      deliveryId: concurrentDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'evt_concurrent_test',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'concurrent@example.com',
+      routingDecision: { channel: 'email', provider: 'generic', recipient: 'concurrent@example.com', reason: 'test' },
+      status: 'retrying',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const payload = [{ deliveryId: concurrentDeliveryId, event: 'delivered' }];
+    const rawPayload = JSON.stringify(payload);
+    const hmac = createHmac('sha256', 'mock_secret_val').update(rawPayload).digest('hex');
+
+    // Run parallel callbacks
+    const [resA, resB] = await Promise.all([
+      dispatcher.handleEmailWebhookCallback(
+        'generic',
+        { 'x-webhook-signature': `sha256=${hmac}` },
+        payload,
+        'mock_secret_val',
+        'tenant_abc',
+        'production'
+      ),
+      dispatcher.handleEmailWebhookCallback(
+        'generic',
+        { 'x-webhook-signature': `sha256=${hmac}` },
+        payload,
+        'mock_secret_val',
+        'tenant_abc',
+        'production'
+      ),
+    ]);
+
+    // One updates delivery, one may deduplicate; combined processed count is 1
+    assert.equal(resA.processed + resB.processed, 1, 'Only one concurrent callback should mark processed');
+    const finalDeliv = insertedDeliveries.find((d) => d.deliveryId === concurrentDeliveryId);
+    assert.equal(finalDeliv?.status, 'delivered');
+  });
+
+  // ── Test 18: Mandatory trusted inputs fail-closed (no silent production fallback) ─
+  await test('18. Mandatory trusted inputs: missing tenantId or environmentId fails closed', async () => {
+    const payload = [{ deliveryId: 'deliv_1', event: 'delivered' }];
+    const rawPayload = JSON.stringify(payload);
+    const hmac = createHmac('sha256', 'mock_secret_val').update(rawPayload).digest('hex');
+    const headers = { 'x-webhook-signature': `sha256=${hmac}` };
+
+    // Missing tenantId
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback('generic', headers, payload, {
+          secret: 'mock_secret_val',
+          tenantId: '',
+          environmentId: 'production',
+        });
+      },
+      /Trusted tenantId is mandatory/i,
+      'Empty tenantId must throw fail-closed'
+    );
+
+    // Missing environmentId (no silent default to production)
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback('generic', headers, payload, {
+          secret: 'mock_secret_val',
+          tenantId: 'tenant_abc',
+          environmentId: '' as any,
+        });
+      },
+      /Trusted environmentId is mandatory/i,
+      'Empty environmentId must throw fail-closed without defaulting to production'
+    );
+  });
+
+  // ── Test 19: Wrong tenant, environment, and provider isolation ─────────────────
+  await test('19. Boundary isolation: wrong tenant, environment, or provider matches zero deliveries', async () => {
+    const isoDeliveryId = 'deliv_iso_01';
+    insertedDeliveries.push({
+      deliveryId: isoDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'evt_iso_test',
+      channel: 'email',
+      provider: 'sendgrid',
+      recipient: 'iso@example.com',
+      routingDecision: { channel: 'email', provider: 'sendgrid', recipient: 'iso@example.com', reason: 'test' },
+      status: 'retrying',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const payload = [{ deliveryId: isoDeliveryId, event: 'delivered' }];
+    const rawPayload = JSON.stringify(payload);
+    const hmac = createHmac('sha256', 'mock_secret_val').update(rawPayload).digest('hex');
+    const headers = { 'x-webhook-signature': `sha256=${hmac}` };
+
+    // 19a. Wrong tenant
+    const wrongTenantRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      headers,
+      payload,
+      'mock_secret_val',
+      'tenant_other',
+      'production'
+    );
+    assert.equal(wrongTenantRes.processed, 0);
+    assert.ok(wrongTenantRes.errors[0].includes('No matching delivery record'));
+
+    // 19b. Wrong environment
+    const wrongEnvRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      headers,
+      payload,
+      'mock_secret_val',
+      'tenant_abc',
+      'staging'
+    );
+    assert.equal(wrongEnvRes.processed, 0);
+    assert.ok(wrongEnvRes.errors[0].includes('No matching delivery record'));
+
+    // 19c. Wrong provider
+    const wrongProviderRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      headers,
+      payload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+    assert.equal(wrongProviderRes.processed, 0, 'Generic provider cannot update sendgrid delivery');
+    assert.ok(wrongProviderRes.errors[0].includes('No matching delivery record'));
   });
 
   console.log(`\nNotification Tests Complete: ${passed} passed, ${failed} failed.\n`);
