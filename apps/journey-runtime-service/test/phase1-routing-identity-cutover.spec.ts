@@ -19,6 +19,7 @@ import {
   COLLECTION_TENANT_CUTOVERS,
   COLLECTION_CUTOVER_AUDIT_LOGS,
   COLLECTION_GATEWAY_ASSERTION_NONCES,
+  closeDatabase,
 } from '@journeyax/database';
 import { calculateCanaryBucket } from '../../../apps/journeyax-web/src/lib/routing/cutover';
 
@@ -533,11 +534,15 @@ async function runPhase1Tests() {
   console.log(`==================================================\n`);
 
   if (failed > 0) {
+    await closeDatabase();
     process.exit(1);
   }
+  await closeDatabase();
+  process.exit(0);
 }
 
-runPhase1Tests().catch((err) => {
+runPhase1Tests().catch(async (err) => {
   console.error('Fatal Phase 1 test error:', err);
+  await closeDatabase();
   process.exit(1);
 });
