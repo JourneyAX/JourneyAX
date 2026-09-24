@@ -6,7 +6,7 @@
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "tsx test/project-publishing.spec.ts && tsx test/journey-configuration.spec.ts"
+    "test": "tsx test/project-publishing.spec.ts && tsx test/journey-configuration.spec.ts && tsx test/membership-teams.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
