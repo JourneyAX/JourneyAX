@@ -3,7 +3,7 @@ import { JourneyConfigurationService } from '../src/journey-configuration.servic
 import { CapabilityRegistryService } from '../src/capability-registry.service';
 
 async function runJourneyConfigTests() {
-  console.log('🧪 Running Journey & Capability Registry Tests in Agent 3...\n');
+  console.log('🧪 Running Studio Control-Plane Integrity & Capability Tests (Workstream C)...\n');
 
   let passed = 0;
   let failed = 0;
@@ -15,6 +15,7 @@ async function runJourneyConfigTests() {
       passed++;
     } catch (err: any) {
       console.error(`  ❌ FAIL: ${name}: ${err.message}`);
+      console.error(err.stack);
       failed++;
     }
   }
@@ -22,21 +23,30 @@ async function runJourneyConfigTests() {
   const journeyService = new JourneyConfigurationService();
   const capabilityService = new CapabilityRegistryService();
 
-  // Test 1: Capability Registry provides standard schemas
-  await test('CapabilityRegistryService lists standard schemas with risk and side-effect metadata', () => {
+  // Test 1: Capability Registry provides universal platform schemas ONLY (no commerce in core)
+  await test('1. CapabilityRegistryService lists universal platform contracts only (no commerce tools in core)', () => {
     const schemas = capabilityService.listStandardToolSchemas();
-    assert.ok(schemas.catalog_search);
-    assert.equal(schemas.catalog_search.sideEffect, 'read');
-    assert.equal(schemas.catalog_search.risk, 'low');
 
-    assert.ok(schemas.order_commit);
-    assert.equal(schemas.order_commit.sideEffect, 'transactional');
-    assert.equal(schemas.order_commit.requiresApproval, true);
-    assert.equal(schemas.order_commit.idempotencyRequired, true);
+    // Universal platform contracts must exist
+    assert.ok(schemas['workflow.invoke']);
+    assert.equal(schemas['workflow.invoke'].sideEffect, 'transactional');
+    assert.equal(schemas['workflow.invoke'].risk, 'medium');
+
+    assert.ok(schemas['notification.send']);
+    assert.equal(schemas['notification.send'].sideEffect, 'write');
+    assert.equal(schemas['notification.send'].idempotencyRequired, true);
+
+    // Commerce tools must NOT be hardcoded into core platform contracts
+    assert.equal((schemas as any)['catalog.search'], undefined);
+    assert.equal((schemas as any)['pricing.validate'], undefined);
+    assert.equal((schemas as any)['order.commit'], undefined);
+    assert.equal((schemas as any)['catalog_search'], undefined);
+    assert.equal((schemas as any)['pricing_validate'], undefined);
+    assert.equal((schemas as any)['order_commit'], undefined);
   });
 
   // Test 2: Journey Graph Validation rejects missing trigger
-  await test('validateAndCompileGraph rejects journey graph without trigger node', () => {
+  await test('2. validateAndCompileGraph rejects journey graph without trigger node', () => {
     const graph = {
       nodes: [
         { id: 'action_1', data: { kind: 'action.recommendation', label: 'Recommend Products' } },
@@ -49,7 +59,7 @@ async function runJourneyConfigTests() {
   });
 
   // Test 3: Journey Graph Validation compiles valid graph
-  await test('validateAndCompileGraph compiles valid graph with trigger and action nodes', () => {
+  await test('3. validateAndCompileGraph compiles valid graph with trigger and action nodes', () => {
     const graph = {
       nodes: [
         { id: 'node_trigger', data: { kind: 'trigger.intent', label: 'User Intent' } },
@@ -65,14 +75,20 @@ async function runJourneyConfigTests() {
     assert.equal(res.compiledJourney.journeyId, 'test-proj');
   });
 
-  // Test 4: Dynamic capability discovery
-  await test('discoverCapabilitiesForTenant discovers platform contracts without hardcoded domain tools', async () => {
+  // Test 4: Dynamic capability discovery without automatic commerce capability injection
+  await test('4. discoverCapabilitiesForTenant discovers platform contracts without automatic commerce injection', async () => {
     const discovered = await capabilityService.discoverCapabilitiesForTenant('tenant_abc', 'production');
-    assert.ok(discovered.length >= 3);
-    assert.ok(discovered.some((d) => d.toolId === 'catalog.search'));
-    assert.ok(discovered.some((d) => d.toolId === 'pricing.validate'));
-    assert.ok(discovered.some((d) => d.toolId === 'order.commit'));
-    // Ensure no hardcoded industry tools
+
+    // Universal platform contracts are discovered
+    assert.ok(discovered.some((d) => d.toolId === 'workflow.invoke'));
+    assert.ok(discovered.some((d) => d.toolId === 'notification.send'));
+
+    // Commerce tools are NOT automatically injected
+    assert.equal(discovered.some((d) => d.toolId === 'catalog.search'), false);
+    assert.equal(discovered.some((d) => d.toolId === 'pricing.validate'), false);
+    assert.equal(discovered.some((d) => d.toolId === 'order.commit'), false);
+
+    // No hardcoded industry tools
     assert.equal(discovered.some((d) => d.toolId === 'roster'), false);
     assert.equal(discovered.some((d) => d.toolId === 'teamColours'), false);
     assert.equal(discovered.some((d) => d.toolId === 'warranty'), false);
@@ -80,21 +96,20 @@ async function runJourneyConfigTests() {
   });
 
   // Test 5: Studio validation of tool bindings rejects raw secrets
-  await test('validateToolBinding rejects raw secrets and requires secretRef', () => {
-    // 1. Valid binding with secretRef
+  await test('5. validateToolBinding rejects raw secrets and requires secretRef', () => {
     const validBinding: any = {
-      toolId: 'catalog.search',
+      toolId: 'workflow.invoke',
       tenantId: 'tenant_abc',
       environmentId: 'production',
       executor: {
-        type: 'native_capability',
-        nativeHandler: 'catalog.search',
+        type: 'activepieces_flow',
+        flowId: 'flow_123',
+        connectionRef: 'valid_secret_conn',
       },
     };
-    const res1 = capabilityService.validateToolBinding(validBinding);
+    const res1 = capabilityService.validateToolBinding(validBinding, ['valid_secret_conn']);
     assert.equal(res1.valid, true);
 
-    // 2. Invalid binding with raw secret in policyOverrides
     const invalidBinding: any = {
       toolId: 'crm.sync',
       tenantId: 'tenant_abc',
@@ -114,67 +129,139 @@ async function runJourneyConfigTests() {
     assert.ok(res2.errors.some((e) => e.includes('missing_crm_secret')));
   });
 
-  // Test 6: Reference integrity validation
-  await test('validateBusinessPackReferenceIntegrity detects undeclared tools in stage bindings', () => {
-    const mockPack: any = {
+  // Test 6: Comprehensive Reference Integrity Validation
+  await test('6. validateBusinessPackReferenceIntegrity validates journeys, agents, policies, tools, cards, themes, and secret references', () => {
+    // A pack with multiple deliberate reference errors
+    const invalidPack: any = {
+      agents: [
+        {
+          agentId: 'agent_recommender',
+          policyRef: 'undeclared_policy_id', // Error: undeclared policy
+        },
+      ],
+      modelPolicy: {
+        version: '1.0.0',
+        defaultPolicy: 'undeclared_default', // Error: default policy not in policies
+        policies: [
+          { policyId: 'fast_llm_policy' },
+        ],
+        routes: [
+          { taskType: 'reasoning', policyRef: 'missing_route_policy' }, // Error: route points to missing policy
+        ],
+      },
+      journeys: [
+        {
+          journeyId: 'j1',
+          entryStage: 'ghost_entry_stage', // Error: entryStage not in stages
+          stages: [
+            {
+              stageId: 'stage_1',
+              agentRef: 'phantom_agent', // Error: undeclared agent
+              transitions: [
+                { targetStage: 'nowhere_stage' }, // Error: targetStage does not exist
+              ],
+            },
+          ],
+        },
+      ],
       capabilities: {
         toolDefinitions: [
-          { toolId: 'catalog.search' },
-        ],
-        toolBindings: [
-          { toolId: 'catalog.search' },
-          { toolId: 'undeclared_tool_xyz' }, // Invalid binding referencing undeclared tool
+          { toolId: 'custom.fetch_status' },
         ],
         stageBindings: [
           {
             journeyId: 'j1',
-            stageId: 's1',
-            tools: [{ toolId: 'phantom_tool_123' }], // Invalid stage binding
+            stageId: 'stage_1',
+            // Error: catalog.search is NOT in core; must be declared in Business Pack!
+            tools: [{ toolId: 'catalog.search' }, { toolId: 'phantom_tool' }],
           },
+        ],
+        toolBindings: [
+          {
+            toolId: 'undeclared_binding_tool', // Error: undeclared tool definition
+            executor: {
+              type: 'activepieces_flow',
+              flowId: 'f1',
+              connectionRef: 'unconfigured_conn', // Error: connectionRef not in availableSecrets
+            },
+            policyOverrides: {
+              secret: 'super_secret_token', // Error: raw secret in policyOverrides
+            },
+          },
+        ],
+      },
+      experience: {
+        theme: {
+          primaryColor: '', // Error: missing primaryColor
+        },
+        cards: [
+          { id: 'c1', type: 'invalid_card_envelope_type' }, // Error: unknown cardType
         ],
       },
     };
 
-    const integrity = capabilityService.validateBusinessPackReferenceIntegrity(mockPack);
+    const integrity = capabilityService.validateBusinessPackReferenceIntegrity(invalidPack, {
+      availableSecrets: ['configured_secret_ref_1'],
+    });
+
     assert.equal(integrity.valid, false);
-    assert.ok(integrity.errors.some((e) => e.includes('undeclared_tool_xyz')));
-    assert.ok(integrity.errors.some((e) => e.includes('phantom_tool_123')));
+    assert.ok(integrity.errors.some((e) => e.includes('undeclared_policy_id')));
+    assert.ok(integrity.errors.some((e) => e.includes('undeclared_default')));
+    assert.ok(integrity.errors.some((e) => e.includes('missing_route_policy')));
+    assert.ok(integrity.errors.some((e) => e.includes('ghost_entry_stage')));
+    assert.ok(integrity.errors.some((e) => e.includes('phantom_agent')));
+    assert.ok(integrity.errors.some((e) => e.includes('nowhere_stage')));
+    assert.ok(integrity.errors.some((e) => e.includes('catalog.search')));
+    assert.ok(integrity.errors.some((e) => e.includes('phantom_tool')));
+    assert.ok(integrity.errors.some((e) => e.includes('undeclared_binding_tool')));
+    assert.ok(integrity.errors.some((e) => e.includes('unconfigured_conn')));
+    assert.ok(integrity.errors.some((e) => e.includes('prohibited raw secret')));
+    assert.ok(integrity.errors.some((e) => e.includes('primaryColor')));
+    assert.ok(integrity.errors.some((e) => e.includes('invalid_card_envelope_type')));
   });
 
-  // Test 7: Card and Theme CMS publication and rollback
-  await test('publishCardTheme and rollbackCardTheme validate cards with @journeyax/ui-cards', async () => {
-    const validCard: any = {
-      cardId: 'card_rec_001',
-      type: 'products',
-      version: '1.0.0',
-      data: {
-        title: 'Workwear Boot',
-        priceCents: 15000,
-        currency: 'AUD',
-      },
-    };
+  // Test 7: Fail-Closed card/theme publication and rollback without active MongoDB
+  await test('7. publishCardTheme and rollbackCardTheme fail closed when MongoDB is missing', async () => {
+    const origUri = process.env.MONGODB_URI;
+    delete process.env.MONGODB_URI;
 
-    const publishResult = await capabilityService.publishCardTheme(
-      'tenant_abc',
-      'production',
-      { primaryColor: '#0055ff' },
-      [validCard]
-    );
+    try {
+      const validCard: any = {
+        cardId: 'card_rec_001',
+        type: 'products',
+        version: '1.0.0',
+        data: { title: 'Test Product' },
+      };
 
-    assert.ok(publishResult.version);
-    assert.ok(publishResult.checksum);
-    assert.equal(publishResult.cardCount, 1);
+      // publish must fail closed without MongoDB
+      await assert.rejects(
+        async () => {
+          await capabilityService.publishCardTheme(
+            'tenant_abc',
+            'production',
+            { primaryColor: '#0055ff' },
+            [validCard]
+          );
+        },
+        /requires active MongoDB connection; failing closed/i
+      );
 
-    // Rollback test
-    const rollbackResult = await capabilityService.rollbackCardTheme(
-      'tenant_abc',
-      'production',
-      publishResult.version
-    );
-    assert.equal(rollbackResult.version, publishResult.version);
-    assert.equal(rollbackResult.restored, true);
+      // rollback must fail closed without MongoDB
+      await assert.rejects(
+        async () => {
+          await capabilityService.rollbackCardTheme('tenant_abc', 'production', 'theme_v_old');
+        },
+        /requires active MongoDB connection; failing closed/i
+      );
+    } finally {
+      if (origUri !== undefined) {
+        process.env.MONGODB_URI = origUri;
+      }
+    }
+  });
 
-    // Invalid card fails closed
+  // Test 8: Card and theme envelope validation fails closed on invalid card type
+  await test('8. publishCardTheme rejects invalid card envelopes before database access', async () => {
     const invalidCard: any = {
       cardId: 'card_bad',
       type: 'invalid_type_unknown',
@@ -187,15 +274,15 @@ async function runJourneyConfigTests() {
         await capabilityService.publishCardTheme(
           'tenant_abc',
           'production',
-          {},
+          { primaryColor: '#0055ff' },
           [invalidCard]
         );
       },
-      /Invalid card envelope/
+      /Invalid card envelope/i
     );
   });
 
-  console.log(`\nJourney & Capability Tests Complete: ${passed} passed, ${failed} failed.\n`);
+  console.log(`\nStudio Control-Plane Tests Complete: ${passed} passed, ${failed} failed.\n`);
   if (failed > 0) process.exit(1);
 }
 
