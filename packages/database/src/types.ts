@@ -16,6 +16,10 @@ export const COLLECTION_GATEWAY_ASSERTION_NONCES = 'gateway_assertion_nonces';
 export const COLLECTION_NOTIFICATION_DELIVERIES = 'notification_deliveries';
 export const COLLECTION_NOTIFICATION_SUPPRESSIONS = 'notification_suppressions';
 export const COLLECTION_NOTIFICATION_CALLBACKS = 'notification_callbacks';
+export const COLLECTION_ANALYTICS_EVENTS = 'analytics_events';
+export const COLLECTION_CUSTOM_REPORTS = 'custom_reports';
+export const COLLECTION_ANALYTICS_ALERTS = 'analytics_alerts';
+export const COLLECTION_ANALYTICS_AUDIT_LOGS = 'analytics_audit_logs';
 
 export interface BusinessPackReleaseRecord {
   _id?: any;
@@ -58,6 +62,7 @@ export interface ToolApprovalRecord {
   environmentId: EnvironmentId;
   workspaceId: string;
   approvalRequestId: string;
+  approvalId?: string;
   capabilityId?: string;
   toolId: string;
   inputHash: string;
@@ -70,6 +75,18 @@ export interface ToolApprovalRecord {
   reviewedAt?: Date;
   reason?: string;
   consumedAt?: Date;
+
+  // Immutable context bindings
+  sessionId: string;
+  stageId: string;
+  packVersionId: string;
+  principalId: string;
+  principalRole: string;
+
+  // Execution & event bindings
+  executionReference: string;
+  eventId?: string;
+  consumedByEventId?: string;
 }
 
 export interface ToolExecutionRecord {
@@ -292,4 +309,109 @@ export interface GatewayAssertionNonceRecord {
   environmentId: string;
   expiresAt: Date;
   claimedAt: Date;
+}
+
+export type AnalyticsCategory =
+  | 'journey'
+  | 'model'
+  | 'tool'
+  | 'approval'
+  | 'notification'
+  | 'connector'
+  | 'activepieces';
+
+export interface AnalyticsEventRecord {
+  _id?: any;
+  eventId: string;
+  tenantId: string;
+  environmentId: EnvironmentId;
+  projectId?: string;
+  teamId?: string;
+  workspaceId?: string;
+  sessionId?: string;
+  category: AnalyticsCategory;
+  eventName: string;
+  timestamp: Date;
+  stageId?: string;
+  fromStage?: string;
+  toStage?: string;
+  durationMs?: number;
+  tokens?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  costUsd?: number;
+  modelId?: string;
+  provider?: string;
+  toolId?: string;
+  status: 'success' | 'failure' | 'pending' | 'timeout' | 'rejected' | 'completed';
+  errorCode?: string;
+  errorMessage?: string;
+  packId?: string;
+  packVersionId?: string;
+  principalId?: string;
+  principalRole?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CustomReportDefinition {
+  _id?: any;
+  reportId: string;
+  tenantId: string;
+  name: string;
+  description?: string;
+  filters: {
+    startDate?: string;
+    endDate?: string;
+    environmentId?: EnvironmentId;
+    projectId?: string;
+    teamId?: string;
+    workspaceId?: string;
+    stages?: string[];
+    tools?: string[];
+    models?: string[];
+    status?: string[];
+  };
+  metrics: string[];
+  groupBy?: string[];
+  schedule?: {
+    cron?: string;
+    enabled: boolean;
+    recipients: string[];
+    lastRunAt?: Date;
+    nextRunAt?: Date;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+export interface AnalyticsAlertDefinition {
+  _id?: any;
+  alertId: string;
+  tenantId: string;
+  name: string;
+  metric: string;
+  condition: 'gt' | 'lt' | 'eq' | 'gte' | 'lte';
+  threshold: number;
+  windowMinutes: number;
+  recipients: string[];
+  enabled: boolean;
+  lastTriggeredAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+export interface AnalyticsAuditLogRecord {
+  _id?: any;
+  logId: string;
+  tenantId: string;
+  action: 'report_created' | 'report_executed' | 'report_exported' | 'alert_created' | 'alert_triggered' | 'retention_purged';
+  actorId: string;
+  actorRole: string;
+  targetId?: string;
+  details?: Record<string, any>;
+  timestamp: Date;
 }

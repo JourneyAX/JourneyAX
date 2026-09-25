@@ -248,36 +248,76 @@ export class TurnApplicationService {
     // 8. Commit updated workspace state and outbox events atomically
     workspace.lastProcessedTurnId = command.idempotencyKey || command.correlationId;
 
+    const isProdOrStaging =
+      envId === 'production' ||
+      envId === 'staging' ||
+      process.env.NODE_ENV === 'production' ||
+      process.env.NODE_ENV === 'staging' ||
+      process.env.APP_ENV === 'production' ||
+      process.env.APP_ENV === 'staging';
+
     const uri = process.env.MONGODB_URI;
+    if (isProdOrStaging && !uri) {
+      throw new Error(`[TurnApplicationService] MONGODB_URI is required for atomic transactions in ${envId}`);
+    }
+
     if (uri) {
-      try {
-        const { client } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
-        const session = client.startSession();
-        try {
-          await session.withTransaction(async () => {
-            await this.workspaceRepo.save(workspace, session);
-            await this.outboxRepo.enqueueEvent(
-              tenantId,
-              envId,
-              'journey.turn_completed',
-              {
-                workspaceId,
-                stage: workspace.currentStage,
-                decisionType: decision.type,
-              },
-              command.correlationId,
-              session
-            );
-          });
-          return turnResult;
-        } finally {
-          await session.endSession();
+      const { client } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+      const topologyType = (client as any)?.topology?.description?.type;
+      const setName = (client as any)?.topology?.description?.setName;
+      const isStandalone = !client?.startSession || (topologyType === 'Single' && !setName);
+
+      if (isStandalone) {
+        if (isProdOrStaging) {
+          throw new Error(
+            `[TurnApplicationService] Standalone MongoDB does not support transactions; multi-document transactions are required in ${envId}`
+          );
         }
-      } catch {
-        // Fall through to sequential save if transaction is unsupported (standalone Mongo/dev)
+        // Positively identified local standalone-Mongo before work starts in dev/test only
+        await this.workspaceRepo.save(workspace);
+        await this.outboxRepo.enqueueEvent(
+          tenantId,
+          envId,
+          'journey.turn_completed',
+          {
+            workspaceId,
+            stage: workspace.currentStage,
+            decisionType: decision.type,
+          },
+          command.correlationId
+        );
+        return turnResult;
+      }
+
+      // Transactions are supported (Replica Set / Sharded / session capable)
+      const session = client.startSession();
+      try {
+        await session.withTransaction(async () => {
+          await this.workspaceRepo.save(workspace, session);
+          await this.outboxRepo.enqueueEvent(
+            tenantId,
+            envId,
+            'journey.turn_completed',
+            {
+              workspaceId,
+              stage: workspace.currentStage,
+              decisionType: decision.type,
+            },
+            command.correlationId,
+            session
+          );
+        });
+        return turnResult;
+      } catch (txErr: any) {
+        // NEVER retry sequentially after arbitrary transaction / commit error
+        // Re-throw to prevent duplicating workspace state or outbox events
+        throw txErr;
+      } finally {
+        await session.endSession();
       }
     }
 
+    // In-memory or mock repo in dev/test (no URI configured)
     await this.workspaceRepo.save(workspace);
     await this.outboxRepo.enqueueEvent(
       tenantId,

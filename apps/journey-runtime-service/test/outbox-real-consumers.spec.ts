@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { NestFactory } from '@nestjs/core';
 import { CapabilityDispatcher } from '@journeyax/capability-sdk';
-import { computePackChecksum } from '@journeyax/business-pack';
+import { computePackChecksum, publishBusinessPack } from '@journeyax/business-pack';
 import { RuntimeModule } from '../src/runtime.module';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { OutboxWorker } from '../src/kernel/outbox.worker';
 import { OutboxWorkerService } from '../src/kernel/outbox-worker.service';
 import { ApprovalService } from '../src/kernel/approval.service';
+import { TurnApplicationService } from '../src/kernel/turn-application.service';
+import { ApprovalStore } from '../src/approval/approval.store';
+import { COLLECTION_TOOL_APPROVALS, setTestDatabase } from '@journeyax/database';
 
 process.env.ACTIVEPIECES_API_URL = process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
 process.env.ALLOW_IN_MEMORY_OUTBOX = 'true';
@@ -25,6 +28,8 @@ function createMockOutboxDb(overrides: {
   capabilities?: any;
 } = {}) {
   const approvals = new Map<string, any>();
+  const publishedReleases = new Map<string, any>();
+  const publishedPointers = new Map<string, any>();
   if (overrides.approvalRequests) {
     for (const app of overrides.approvalRequests) {
       const id = app.approvalId || app.approvalRequestId || app._id;
@@ -163,16 +168,35 @@ function createMockOutboxDb(overrides: {
           };
         }
         if (name === 'business_pack_pointers') {
+          const env =
+            query.environmentId ||
+            query.$or?.find((c: any) => c.environmentId || c.channel)?.environmentId ||
+            query.$or?.find((c: any) => c.environmentId || c.channel)?.channel;
+          const key = `${query.tenantId}:${env}`;
+          if (publishedPointers.has(key)) return publishedPointers.get(key);
           if (overrides.businessPackPointers === null) return null;
           return {
             tenantId: query.tenantId || 'tenant_caroma',
             environmentId: query.environmentId || 'production',
             activeVersionId: '1.0.0',
+            activeVersion: '1.0.0',
+            status: 'active',
             checksum: overrides.releaseChecksum !== undefined ? overrides.releaseChecksum : canonicalChecksum,
             ...(overrides.businessPackPointers || {}),
           };
         }
         if (name === 'business_pack_releases') {
+          for (const [_, rel] of publishedReleases.entries()) {
+            if (rel.tenantId === query.tenantId && rel.environmentId === query.environmentId) {
+              const targetVer = query.$or?.find((c: any) => c.versionId || c.version)?.versionId ||
+                query.$or?.find((c: any) => c.versionId || c.version)?.version ||
+                query.versionId ||
+                query.version;
+              if (!targetVer || rel.versionId === targetVer || rel.version === targetVer) {
+                return rel;
+              }
+            }
+          }
           if (overrides.businessPackReleases === null) return null;
           if (overrides.businessPackReleases) {
             if (
@@ -183,6 +207,18 @@ function createMockOutboxDb(overrides: {
               return null;
             }
             return overrides.businessPackReleases;
+          }
+          const requestedVer =
+            query.$or?.find((c: any) => c.versionId || c.version)?.versionId ||
+            query.$or?.find((c: any) => c.versionId || c.version)?.version ||
+            query.versionId ||
+            query.version;
+          if (
+            requestedVer &&
+            defaultRelease.version !== requestedVer &&
+            (defaultRelease as any).versionId !== requestedVer
+          ) {
+            return null;
           }
           if (query.environmentId && defaultRelease.environmentId !== query.environmentId) {
             return null;
@@ -221,53 +257,76 @@ function createMockOutboxDb(overrides: {
           });
           return matched || null;
         }
-        if (name === 'approval_requests') {
-          const searchId = query.approvalId || query.approvalRequestId;
-          let app = searchId ? approvals.get(searchId) : null;
-          if (!app && query.$or) {
-            for (const [_, item] of approvals.entries()) {
+        if (name === 'approval_requests' || name === 'tool_approvals') {
+          for (const [id, item] of approvals.entries()) {
+            if (query.tenantId && item.tenantId !== query.tenantId) continue;
+            if (query.environmentId && item.environmentId !== query.environmentId) continue;
+            if (query.workspaceId && item.workspaceId !== query.workspaceId) continue;
+            if (query.toolId && item.toolId !== query.toolId) continue;
+            if (query.status && item.status !== query.status) continue;
+
+            const targetId = query.approvalId || query.approvalRequestId;
+            if (targetId && item.approvalId !== targetId && item.approvalRequestId !== targetId && id !== targetId) {
+              continue;
+            }
+
+            if (query.$and) {
+              let andMatch = true;
+              for (const cond of query.$and) {
+                if (cond.$or) {
+                  const match = cond.$or.some((c: any) => {
+                    if (c.approvalId && (item.approvalId === c.approvalId || item.approvalRequestId === c.approvalId)) return true;
+                    if (c.approvalRequestId && (item.approvalRequestId === c.approvalRequestId || item.approvalId === c.approvalRequestId)) return true;
+                    if (c.eventId && (item.eventId === c.eventId || item.executionKey === c.eventId || item.executionKey === 'ALLOW_CURRENT')) return true;
+                    if (c.executionReference && (item.executionReference === c.executionReference || item.executionKey === 'ALLOW_CURRENT')) return true;
+                    return false;
+                  });
+                  if (!match) { andMatch = false; break; }
+                }
+              }
+              if (!andMatch) continue;
+            }
+
+            if (query.$or) {
               const match = query.$or.some((c: any) => {
                 if (c.approvalId && (item.approvalId === c.approvalId || item.approvalRequestId === c.approvalId)) return true;
                 if (c.approvalRequestId && (item.approvalRequestId === c.approvalRequestId || item.approvalId === c.approvalRequestId)) return true;
+                if (c.eventId && (item.eventId === c.eventId || item.executionKey === c.eventId || item.executionKey === 'ALLOW_CURRENT')) return true;
+                if (c.executionKey && (item.executionKey === c.executionKey || item.executionKey === 'ALLOW_CURRENT')) return true;
+                if (c.idempotencyKey && (item.idempotencyKey === c.idempotencyKey || item.executionReference === c.idempotencyKey)) return true;
                 return false;
               });
-              if (match) {
-                app = item;
-                break;
-              }
+              if (!match) continue;
             }
+
+            return item;
           }
-          if (!app) return null;
-          if (query.tenantId && app.tenantId !== query.tenantId) return null;
-          if (query.environmentId && app.environmentId !== query.environmentId) return null;
-          if (query.workspaceId && app.workspaceId !== query.workspaceId) return null;
-          if (query.toolId && app.toolId !== query.toolId) return null;
-          if (query.status && app.status !== query.status) return null;
-          if (query.$or) {
-            const matchesOr = query.$or.some((c: any) => {
-              if (app.executionKey === 'ALLOW_CURRENT') return true;
-              if (c.executionKey && app.executionKey === c.executionKey) return true;
-              if (c.idempotencyKey && app.idempotencyKey === c.idempotencyKey) return true;
-              if (c.eventId && (app.eventId === c.eventId || app.executionKey === c.eventId)) return true;
-              return false;
-            });
-            if (!matchesOr) return null;
-          }
-          return app;
+          return null;
         }
         return null;
       },
       insertOne: async (doc: any) => {
-        if (name === 'approval_requests') {
+        if (name === 'approval_requests' || name === 'tool_approvals') {
           const id = doc.approvalId || doc.approvalRequestId || doc._id;
           approvals.set(id, { ...doc, _id: id, approvalId: id, approvalRequestId: id });
           return { insertedId: id };
         }
+        if (name === 'business_pack_releases') {
+          const key = `${doc.tenantId}:${doc.environmentId}:${doc.version}`;
+          publishedReleases.set(key, doc);
+          return { acknowledged: true, insertedId: key };
+        }
+        if (name === 'business_pack_pointers') {
+          const key = `${doc.tenantId}:${doc.environmentId}`;
+          publishedPointers.set(key, doc);
+          return { acknowledged: true, insertedId: key };
+        }
         return { insertedId: 'mock_id' };
       },
       findOneAndUpdate: async (filter: any, update: any, options: any) => {
-        if (name === 'approval_requests') {
+        if (name === 'approval_requests' || name === 'tool_approvals') {
           for (const [id, app] of approvals.entries()) {
+            let matched = false;
             if (
               app._id === filter._id ||
               id === filter.approvalId ||
@@ -275,13 +334,27 @@ function createMockOutboxDb(overrides: {
               id === filter.approvalRequestId ||
               app.approvalRequestId === filter.approvalRequestId
             ) {
+              matched = true;
+            } else if (filter.$or) {
+              matched = filter.$or.some((c: any) =>
+                (c.approvalId && (app.approvalId === c.approvalId || app.approvalRequestId === c.approvalId || id === c.approvalId)) ||
+                (c.approvalRequestId && (app.approvalRequestId === c.approvalRequestId || app.approvalId === c.approvalRequestId || id === c.approvalRequestId))
+              );
+            }
+            if (matched) {
               if (
                 app.consumedByEventId &&
+                update.$set?.consumedByEventId &&
                 app.consumedByEventId !== update.$set?.consumedByEventId
               ) {
                 return { value: null };
               }
               const updated = { ...app, ...update.$set };
+              if (update.$unset) {
+                for (const k of Object.keys(update.$unset)) {
+                  delete updated[k];
+                }
+              }
               approvals.set(id, updated);
               return { value: updated };
             }
@@ -291,8 +364,9 @@ function createMockOutboxDb(overrides: {
         return { value: null };
       },
       updateOne: async (filter: any, update: any, options: any) => {
-        if (name === 'approval_requests') {
+        if (name === 'approval_requests' || name === 'tool_approvals') {
           for (const [id, app] of approvals.entries()) {
+            let matched = false;
             if (
               app._id === filter._id ||
               id === filter.approvalId ||
@@ -300,12 +374,32 @@ function createMockOutboxDb(overrides: {
               id === filter.approvalRequestId ||
               app.approvalRequestId === filter.approvalRequestId
             ) {
+              matched = true;
+            } else if (filter.$or) {
+              matched = filter.$or.some((c: any) =>
+                (c.approvalId && (app.approvalId === c.approvalId || app.approvalRequestId === c.approvalId || id === c.approvalId)) ||
+                (c.approvalRequestId && (app.approvalRequestId === c.approvalRequestId || app.approvalId === c.approvalRequestId || id === c.approvalRequestId))
+              );
+            }
+            if (matched) {
               const updated = { ...app, ...update.$set };
+              if (update.$unset) {
+                for (const k of Object.keys(update.$unset)) {
+                  delete updated[k];
+                }
+              }
               approvals.set(id, updated);
               return { matchedCount: 1, modifiedCount: 1 };
             }
           }
           return { matchedCount: 0, modifiedCount: 0 };
+        }
+        if (name === 'business_pack_pointers') {
+          const key = `${filter.tenantId}:${filter.environmentId}`;
+          const prev = publishedPointers.get(key) || {};
+          const updated = { ...prev, ...update.$set };
+          publishedPointers.set(key, updated);
+          return { matchedCount: 1, modifiedCount: 1 };
         }
         if (name === 'activepieces_executions') {
           executions.push({ filter, update, options });
@@ -867,33 +961,34 @@ async function runOutboxRealConsumersSuite() {
         };
       };
 
-      mockDb.approvals.set('apr_valid_10b', {
-        _id: 'apr_valid_10b',
-        approvalId: 'apr_valid_10b',
-        tenantId: 'tenant_caroma',
-        environmentId: 'production',
-        workspaceId: 'ws_caroma',
-        status: 'approved',
-        toolId: 'activepieces.flow_ct_write_01',
-        executionKey: 'ALLOW_CURRENT',
-        expiresAt: new Date(Date.now() + 60000),
-      });
-
-      const confirmedEventId = await repo.enqueueEvent(
-        'tenant_caroma',
-        'production',
-        'activepieces.dispatch',
+      const approvalService10 = new ApprovalService(undefined, repo, mockDb);
+      const pending10 = await approvalService10.createPending(
+        'activepieces.flow_ct_write_01',
         { input: { force: true } },
-        undefined,
-        undefined,
         {
+          tenantId: 'tenant_caroma',
+          environmentId: 'production',
           workspaceId: 'ws_caroma',
           sessionId: 'session_caroma_10b',
-          toolId: 'activepieces.flow_ct_write_01',
+          stageId: 'stage_sync',
           packVersionId: '1.0.0',
-          approvalId: 'apr_valid_10b',
+          principalRole: 'customer',
+          principalId: 'user_caroma_01',
+          correlationId: 'corr_10b',
         }
       );
+
+      await approvalService10.decide(
+        'tenant_caroma',
+        'production',
+        'ws_caroma',
+        pending10.approvalRequestId,
+        'approved',
+        'admin_10b'
+      );
+
+      const initialEvent = repo.getEvents().find((e) => e.approvalId === pending10.approvalRequestId)!;
+      const confirmedEventId = initialEvent.eventId;
 
       const confirmedBatchRes = await worker.processNextBatch();
       assert.equal(confirmedBatchRes.succeeded, 1, 'Approved policy execution must succeed');
@@ -1214,23 +1309,52 @@ async function runOutboxRealConsumersSuite() {
         json: async () => ({ status: 'success' }),
       });
 
-      mockDb.approvals.set('apr_reuse_single_shot', {
-        _id: 'apr_reuse_single_shot',
-        approvalId: 'apr_reuse_single_shot',
-        tenantId: 'tenant_caroma',
-        environmentId: 'production',
-        workspaceId: 'ws_caroma',
-        status: 'approved',
-        toolId: 'activepieces.flow_ct_write_01',
-        executionKey: 'ALLOW_CURRENT',
-        expiresAt: new Date(Date.now() + 60000),
-      });
+      const approvalService17 = new ApprovalService(undefined, repo, mockDb);
+      const pending17 = await approvalService17.createPending(
+        'activepieces.flow_ct_write_01',
+        { input: { batch: 1 } },
+        {
+          tenantId: 'tenant_caroma',
+          environmentId: 'production',
+          workspaceId: 'ws_caroma',
+          sessionId: 'session_caroma_01',
+          stageId: 'stage_sync',
+          packVersionId: '1.0.0',
+          principalRole: 'customer',
+          principalId: 'user_caroma_01',
+          correlationId: 'corr_17',
+        }
+      );
+
+      await approvalService17.decide(
+        'tenant_caroma',
+        'production',
+        'ws_caroma',
+        pending17.approvalRequestId,
+        'approved',
+        'manager_17'
+      );
 
       const service = new OutboxWorkerService();
       service.configureHandlers({ db: mockDb });
 
-      // First legitimate event consumes approval
-      const event1Id = await repo.enqueueEvent(
+      const event1 = repo.getEvents().find((e) => e.approvalId === pending17.approvalRequestId)!;
+      const event1Id = event1.eventId;
+
+      const worker1 = service.startWithRepository(repo, undefined, {
+        workerId: 'worker_reuse_1',
+        batchSize: 1,
+        pollIntervalMs: 50,
+        leaseDurationMs: 1000,
+      });
+
+      const res1 = await worker1.processNextBatch();
+      assert.equal(res1.succeeded, 1, 'First event must consume approval successfully');
+      assert.equal(event1.status, 'published');
+      service.stopWorker();
+
+      // Second DIFFERENT event attempts to reuse the same approvalId
+      const event2Id = await repo.enqueueEvent(
         'tenant_caroma',
         'production',
         'activepieces.dispatch',
@@ -1242,37 +1366,8 @@ async function runOutboxRealConsumersSuite() {
           sessionId: 'session_caroma_01',
           toolId: 'activepieces.flow_ct_write_01',
           packVersionId: '1.0.0',
-          approvalId: 'apr_reuse_single_shot',
-        }
-      );
-
-      const worker1 = service.startWithRepository(repo, undefined, {
-        workerId: 'worker_reuse_1',
-        batchSize: 1,
-        pollIntervalMs: 50,
-        leaseDurationMs: 1000,
-      });
-
-      const res1 = await worker1.processNextBatch();
-      assert.equal(res1.succeeded, 1, 'First event must consume approval successfully');
-      const event1 = repo.getEvents().find((e) => e.eventId === event1Id)!;
-      assert.equal(event1.status, 'published');
-      service.stopWorker();
-
-      // Second DIFFERENT event attempts to reuse the same approvalId
-      const event2Id = await repo.enqueueEvent(
-        'tenant_caroma',
-        'production',
-        'activepieces.dispatch',
-        { input: { batch: 2 } },
-        undefined,
-        undefined,
-        {
-          workspaceId: 'ws_caroma',
-          sessionId: 'session_caroma_01',
-          toolId: 'activepieces.flow_ct_write_01',
-          packVersionId: '1.0.0',
-          approvalId: 'apr_reuse_single_shot',
+          approvalId: pending17.approvalRequestId,
+          executionReference: pending17.executionReference,
         }
       );
 
@@ -1828,8 +1923,8 @@ async function runOutboxRealConsumersSuite() {
     const repo = new OutboxRepository();
     const mockDb = createMockOutboxDb();
 
-    // Create approval service wired to the outbox repository
-    const approvalService = new ApprovalService(undefined, repo);
+    // Create approval service wired to the outbox repository and mockDb
+    const approvalService = new ApprovalService(undefined, repo, mockDb);
 
     // Turn/capability creates a pending approval request for a high-risk write tool
     const ctx = {
@@ -1852,14 +1947,7 @@ async function runOutboxRealConsumersSuite() {
     assert.ok(pending.approvalRequestId);
     assert.equal(pending.status, 'pending');
 
-    // Also populate in mockDb's approval_requests collection so worker can find and consume it
-    mockDb.approvals.set(pending.approvalRequestId, {
-      ...pending,
-      approvalId: pending.approvalRequestId,
-      executionKey: 'ALLOW_CURRENT',
-    });
-
-    // Approver approves the request
+    // Approver approves the request through authentic ApprovalService path (not hand-inserted approval_requests)
     const approved = await approvalService.decide(
       'tenant_caroma',
       'production',
@@ -1869,14 +1957,6 @@ async function runOutboxRealConsumersSuite() {
       'manager_caroma_01'
     );
     assert.equal(approved, true);
-
-    // Synchronize approved status in mockDb collection for outbox worker consumption
-    const mockAppRecord = mockDb.approvals.get(pending.approvalRequestId);
-    if (mockAppRecord) {
-      mockAppRecord.status = 'approved';
-      mockAppRecord.reviewedBy = 'manager_caroma_01';
-      mockAppRecord.reviewedAt = new Date();
-    }
 
     // Verify activepieces.dispatch was enqueued to OutboxRepository with immutable envelope refs
     const queuedEvents = repo.getEvents();
@@ -1916,6 +1996,9 @@ async function runOutboxRealConsumersSuite() {
       });
 
       const res = await worker.processNextBatch();
+      if (res.failed > 0) {
+        console.error('TEST 29 FAILED EVENT ERROR:', dispatchEvent.error);
+      }
       assert.equal(res.processed, 1, 'Event must be processed by outbox worker');
       assert.equal(res.failed, 0, 'Event execution must succeed without failure');
 
@@ -1928,9 +2011,570 @@ async function runOutboxRealConsumersSuite() {
       assert.equal(health.features?.activepiecesDispatch?.status, 'handler_live_producer_wired');
       assert.equal(health.features?.activepiecesDispatch?.cutoverReady, false);
 
+      // Verify approval record was marked consumed with consumedByEventId
+      const storedApproval = await mockDb.collection('tool_approvals').findOne({
+        approvalRequestId: pending.approvalRequestId,
+      });
+      assert.ok(storedApproval.consumedAt, 'Approval record must be marked as consumed');
+      assert.equal(storedApproval.consumedByEventId, dispatchEvent.eventId, 'Approval must be bound to exact eventId');
+
+      // Verify one-time consumption: replaying with a second event fails
+      const replayEventId = await repo.enqueueEvent(
+        'tenant_caroma',
+        'production',
+        'activepieces.dispatch',
+        input,
+        undefined,
+        undefined,
+        {
+          workspaceId: 'ws_caroma',
+          sessionId: 'session_caroma_01',
+          toolId: 'activepieces.flow_ct_write_01',
+          packVersionId: '1.0.0',
+          approvalId: pending.approvalRequestId,
+          executionReference: pending.executionReference,
+        }
+      );
+      const replayRes = await worker.processNextBatch();
+      assert.equal(replayRes.failed, 1, 'Replay of consumed approval must fail');
+      const replayEvent = repo.getEvents().find((e) => e.eventId === replayEventId)!;
+      assert.equal(replayEvent.status, 'pending');
+      assert.match(replayEvent.error || '', /has already been consumed|replay rejected/);
+
       service.stopWorker();
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  // ── Test 30: Canonical Business Pack publication and runtime consumer resolution ──
+  await test('30. Canonical Business Pack publication via real publishBusinessPack resolves through OutboxWorker with verified checksum', async () => {
+    const repo = new OutboxRepository();
+    const mockDb = createMockOutboxDb();
+
+    const canonicalPack = {
+      manifest: {
+        packId: 'pack_canonical_pub',
+        tenantId: 'tenant_caroma',
+        name: 'Canonical Caroma Pack',
+        version: '3.0.0',
+        description: 'Testing canonical publication contract',
+        schemaVersion: '1.0.0',
+        environmentId: 'production',
+        author: 'system-test',
+      },
+      profile: {
+        companyName: 'Caroma Canonical',
+        industry: 'retail',
+        primaryGoals: ['sales'],
+        locales: ['en-AU'],
+      },
+      vocabulary: {
+        version: '1.0.0',
+        terms: [],
+        acronyms: {},
+        slotSynonyms: {},
+        slotMappings: {},
+        prohibitedTerms: [],
+      },
+      entities: {
+        version: '1.0.0',
+        entities: [],
+      },
+      conversationPolicy: {
+        fencingRules: [],
+        prohibitedTopics: [],
+        escalationThresholds: { sentimentFloor: -0.6, maxTurnsWithoutProgress: 4 },
+      },
+      modelPolicy: {
+        version: '1.0.0',
+        defaultPolicy: 'standard_turn',
+        policies: [
+          {
+            policyId: 'standard_turn',
+            candidates: [{ provider: 'google', model: 'gemini-1.5-pro', priority: 1 }],
+            dataResidency: 'au',
+            maxInputTokens: 20000,
+            maxOutputTokens: 2000,
+            fallbackAllowed: true,
+            timeoutMs: 10000,
+          },
+        ],
+      },
+      agents: [
+        {
+          agentId: 'agent_canonical',
+          name: 'Canonical Agent',
+          purpose: 'Assist customers with catalog operations',
+          modelPolicyRef: 'standard_turn',
+          systemPromptTemplate: 'Assist customers',
+          allowedTools: ['activepieces.flow_ct_sync_01'],
+        },
+      ],
+      journeys: [
+        {
+          journeyId: 'journey_canonical',
+          version: '1.0.0',
+          displayName: 'Canonical Journey',
+          name: 'Canonical Journey',
+          goals: ['sync_catalog'],
+          initialStage: 'stage_sync',
+          stages: {
+            stage_sync: {
+              stageId: 'stage_sync',
+              displayName: 'Sync Stage',
+              allowedCapabilities: ['activepieces.flow_ct_sync_01'],
+              requiredFacts: [],
+            },
+          },
+          transitions: [],
+        },
+      ],
+      rules: [],
+      capabilities: {
+        version: '1.0.0',
+        toolDefinitions: [
+          {
+            toolId: 'activepieces.flow_ct_sync_01',
+            displayName: 'Sync Catalog',
+            description: 'Sync with commercetools',
+            category: 'integration',
+            sideEffect: 'read',
+            risk: 'low',
+            inputSchema: { type: 'object' },
+            outputSchema: { type: 'object' },
+            requiresUserConfirmation: false,
+          },
+        ],
+        toolBindings: [
+          {
+            toolId: 'activepieces.flow_ct_sync_01',
+            tenantId: 'tenant_caroma',
+            environmentId: 'production',
+            executor: {
+              type: 'activepieces_flow',
+              flowId: 'flow_ct_sync_01',
+              connectionRef: 'conn_ct_caroma_secret',
+            },
+            policy: {
+              timeoutMs: 10000,
+              maxRetries: 3,
+              requiresConfirmation: false,
+            },
+          },
+        ],
+        stageBindings: [
+          {
+            journeyId: 'journey_canonical',
+            stageId: 'stage_sync',
+            tools: [{ toolId: 'activepieces.flow_ct_sync_01' }],
+          },
+        ],
+      },
+      experience: {
+        version: '1.0.0',
+        theme: {
+          primaryColor: '#000',
+          accentColor: '#fff',
+          fontFamily: 'sans-serif',
+          borderRadius: '4px',
+          customCssVars: {},
+        },
+        cards: {
+          allowedCardTypes: ['bundle'],
+          defaultCardRenderer: '@journeyax/ui-cards',
+        },
+      },
+      evaluations: [],
+    };
+
+    // Publish using REAL publishBusinessPack
+    const pubResult = await publishBusinessPack(mockDb, canonicalPack as any);
+    assert.ok(pubResult.checksum, 'Publish result must have checksum');
+
+    // Verify release in database has status: 'published' and versionId
+    const releaseDoc = await mockDb.collection('business_pack_releases').findOne({
+      tenantId: 'tenant_caroma',
+      environmentId: 'production',
+      version: '3.0.0',
+    });
+    assert.ok(releaseDoc, 'Release document must be stored');
+    assert.equal(releaseDoc.status, 'published', 'Release document status must be published');
+    assert.equal(releaseDoc.versionId, '3.0.0', 'Release document versionId must be set');
+
+    // Verify pointer in database has status: 'active' and activeVersionId
+    const pointerDoc = await mockDb.collection('business_pack_pointers').findOne({
+      tenantId: 'tenant_caroma',
+      environmentId: 'production',
+    });
+    assert.ok(pointerDoc, 'Pointer document must be stored');
+    assert.equal(pointerDoc.status, 'active', 'Pointer status must be active');
+    assert.equal(pointerDoc.activeVersionId, '3.0.0', 'Pointer activeVersionId must be set');
+    assert.equal(pointerDoc.checksum, pubResult.checksum, 'Pointer checksum must match publication checksum');
+
+    // Consumer resolution via OutboxWorker
+    let capDispatched = false;
+    const mockCapDispatcher = {
+      dispatch: async (toolDef: any, toolBinding: any, req: any, ctx: any) => {
+        capDispatched = true;
+        assert.equal(toolBinding.executor.type, 'activepieces_flow');
+        assert.equal(toolBinding.executor.flowId, 'flow_ct_sync_01');
+        assert.equal(toolBinding.executor.connectionRef, 'conn_ct_caroma_secret');
+        assert.equal(ctx.tenantId, 'tenant_caroma');
+        assert.equal(ctx.environmentId, 'production');
+        return { status: 'success' as const, output: { syncCount: 99 } };
+      },
+    } as any;
+
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
+      db: mockDb,
+      capabilityDispatcher: mockCapDispatcher,
+    });
+
+    const originalFetch = globalThis.fetch;
+    try {
+      (globalThis as any).fetch = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'success' }),
+      });
+
+      const eventId = await repo.enqueueEvent(
+        'tenant_caroma',
+        'production',
+        'activepieces.dispatch',
+        {
+          flowId: 'flow_ct_sync_01',
+          connectionRef: 'conn_ct_caroma_secret',
+          input: { test: 'canonical_resolution' },
+        },
+        undefined,
+        undefined,
+        {
+          workspaceId: 'ws_caroma',
+          sessionId: 'session_caroma_01',
+          toolId: 'activepieces.flow_ct_sync_01',
+          packVersionId: '3.0.0',
+        }
+      );
+
+      const worker = service.startWithRepository(repo, undefined, {
+        workerId: 'worker_canonical_pub',
+        batchSize: 1,
+        pollIntervalMs: 50,
+        leaseDurationMs: 1000,
+      });
+
+      const batchRes = await worker.processNextBatch();
+      assert.equal(batchRes.succeeded, 1, 'Outbox worker must resolve real-published Business Pack successfully');
+      const event = repo.getEvents().find((e) => e.eventId === eventId)!;
+      assert.equal(event.status, 'published', 'Event must transition to published');
+
+      service.stopWorker();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  // ── Test 31: Injected failure between decision and enqueue proves atomic rollback / no stranded approval ──
+  await test('31. Injected failure between decision and enqueue proves atomic rollback without stranded approval', async () => {
+    const testRepo = new OutboxRepository();
+    const mockDb = createMockOutboxDb();
+    const testApprovalService = new ApprovalService(undefined, testRepo, mockDb);
+
+    const pending31 = await testApprovalService.createPending(
+      'activepieces.flow_ct_write_01',
+      { action: 'fail_me' },
+      {
+        tenantId: 'tenant_caroma',
+        environmentId: 'production',
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        stageId: 'stage_sync',
+        packVersionId: '1.0.0',
+        principalRole: 'customer',
+        principalId: 'user_caroma_01',
+        correlationId: 'corr_31',
+      }
+    );
+
+    // Mock enqueueEvent to throw injected failure
+    testRepo.enqueueEvent = async () => {
+      throw new Error('INJECTED_DISPATCH_FAILURE');
+    };
+
+    await assert.rejects(
+      async () => {
+        await testApprovalService.decide(
+          'tenant_caroma',
+          'production',
+          'ws_caroma',
+          pending31.approvalRequestId,
+          'approved',
+          'admin_31'
+        );
+      },
+      /INJECTED_DISPATCH_FAILURE/
+    );
+
+    // Verify atomic rollback: approval status MUST remain 'pending', not stranded as 'approved'
+    const rolledBackApproval = await testApprovalService.getApproval(pending31.approvalRequestId);
+    assert.equal(rolledBackApproval?.status, 'pending', 'Approval must be reverted to pending on enqueue failure');
+    assert.equal((rolledBackApproval as any)?.reviewedBy, undefined, 'reviewedBy must be unset on rollback');
+  });
+
+  // ── Test 32: Missing immutable approval fields fail closed ──
+  await test('32. Missing immutable approval fields fail closed at creation and worker evaluation', async () => {
+    const testRepo = new OutboxRepository();
+    const mockDb = createMockOutboxDb();
+    const testApprovalService = new ApprovalService(undefined, testRepo, mockDb);
+
+    // Missing sessionId
+    await assert.rejects(
+      async () => {
+        await testApprovalService.createPending(
+          'activepieces.flow_ct_write_01',
+          { test: true },
+          {
+            tenantId: 'tenant_caroma',
+            environmentId: 'production',
+            workspaceId: 'ws_caroma',
+            sessionId: '', // Missing
+            stageId: 'stage_sync',
+            packVersionId: '1.0.0',
+            principalRole: 'customer',
+            principalId: 'user_caroma_01',
+            correlationId: 'corr_32a',
+          }
+        );
+      },
+      /missing mandatory immutable execution context bindings/
+    );
+
+    // Missing stageId
+    await assert.rejects(
+      async () => {
+        await testApprovalService.createPending(
+          'activepieces.flow_ct_write_01',
+          { test: true },
+          {
+            tenantId: 'tenant_caroma',
+            environmentId: 'production',
+            workspaceId: 'ws_caroma',
+            sessionId: 'session_caroma_01',
+            stageId: '', // Missing
+            packVersionId: '1.0.0',
+            principalRole: 'customer',
+            principalId: 'user_caroma_01',
+            correlationId: 'corr_32b',
+          }
+        );
+      },
+      /missing mandatory immutable execution context bindings/
+    );
+
+    // Missing principalRole
+    await assert.rejects(
+      async () => {
+        await testApprovalService.createPending(
+          'activepieces.flow_ct_write_01',
+          { test: true },
+          {
+            tenantId: 'tenant_caroma',
+            environmentId: 'production',
+            workspaceId: 'ws_caroma',
+            sessionId: 'session_caroma_01',
+            stageId: 'stage_sync',
+            packVersionId: '1.0.0',
+            principalRole: '', // Missing
+            principalId: 'user_caroma_01',
+            correlationId: 'corr_32c',
+          }
+        );
+      },
+      /missing mandatory immutable execution context bindings/
+    );
+
+    // Missing payload/input
+    await assert.rejects(
+      async () => {
+        await testApprovalService.createPending(
+          'activepieces.flow_ct_write_01',
+          null, // Missing
+          {
+            tenantId: 'tenant_caroma',
+            environmentId: 'production',
+            workspaceId: 'ws_caroma',
+            sessionId: 'session_caroma_01',
+            stageId: 'stage_sync',
+            packVersionId: '1.0.0',
+            principalRole: 'customer',
+            principalId: 'user_caroma_01',
+            correlationId: 'corr_32d',
+          }
+        );
+      },
+      /missing mandatory immutable execution context bindings/
+    );
+  });
+
+  // ── Test 33: Staging/misconfigured Mongo cannot use memory ──
+  await test('33. Staging and production ApprovalStore fail closed loudly when Mongo is unavailable (memory prohibited)', async () => {
+    const origNodeEnv = process.env.NODE_ENV;
+    const origMongoUri = process.env.MONGODB_URI;
+    const origAllowMemory = process.env.ALLOW_IN_MEMORY_APPROVALS;
+    try {
+      delete process.env.MONGODB_URI;
+      delete process.env.ALLOW_IN_MEMORY_APPROVALS;
+
+      // Staging NODE_ENV
+      process.env.NODE_ENV = 'staging';
+      const stagingStore = new ApprovalStore();
+      await assert.rejects(
+        async () => {
+          await stagingStore.createPending(
+            'tool_any',
+            { test: true },
+            {
+              tenantId: 'tenant_caroma',
+              environmentId: 'staging',
+              workspaceId: 'ws_caroma',
+              sessionId: 's1',
+              stageId: 'st1',
+              packVersionId: '1.0.0',
+              principalRole: 'admin',
+              principalId: 'u1',
+              correlationId: 'c1',
+            }
+          );
+        },
+        /MONGODB_URI is required; memory fallback is prohibited in staging/
+      );
+
+      // Production NODE_ENV
+      process.env.NODE_ENV = 'production';
+      const prodStore = new ApprovalStore();
+      await assert.rejects(
+        async () => {
+          await prodStore.createPending(
+            'tool_any',
+            { test: true },
+            {
+              tenantId: 'tenant_caroma',
+              environmentId: 'production',
+              workspaceId: 'ws_caroma',
+              sessionId: 's1',
+              stageId: 'st1',
+              packVersionId: '1.0.0',
+              principalRole: 'admin',
+              principalId: 'u1',
+              correlationId: 'c1',
+            }
+          );
+        },
+        /MONGODB_URI is required; memory fallback is prohibited in production/
+      );
+    } finally {
+      process.env.NODE_ENV = origNodeEnv;
+      process.env.MONGODB_URI = origMongoUri;
+      if (origAllowMemory !== undefined) {
+        process.env.ALLOW_IN_MEMORY_APPROVALS = origAllowMemory;
+      }
+    }
+  });
+
+  // ── Test 34: Transaction unknown-result test proves no sequential duplicate ──
+  await test('34. TurnApplicationService unknown-commit transaction error throws without sequential retry / duplication', async () => {
+    let saveCount = 0;
+    let enqueueCount = 0;
+
+    const mockPackRepo: any = {
+      loadActivePack: async () => ({
+        manifest: { version: '1.0.0', packId: 'pack_test' },
+        journeys: [{ initialStage: 'stage_sync', journeyId: 'journey_test' }],
+      }),
+    };
+    const mockWorkspaceRepo: any = {
+      getOrCreate: async () => ({
+        tenantId: 'tenant_caroma',
+        environmentId: 'production',
+        workspaceId: 'ws_tx_test',
+        currentStage: 'stage_sync',
+        lastProcessedTurnId: 'prev_turn',
+      }),
+      save: async () => {
+        saveCount++;
+      },
+    };
+    const mockOutboxRepo: any = {
+      enqueueEvent: async () => {
+        enqueueCount++;
+        return 'evt_tx_test';
+      },
+    };
+    const mockJourneyResolver: any = {
+      decide: () => ({ type: 'complete' }),
+    };
+    const mockInterpreter: any = {
+      interpret: async () => ({}),
+    };
+    const mockFactReducer: any = {
+      apply: (ws: any) => ws,
+    };
+
+    // Mock Mongo client with session whose withTransaction throws UnknownTransactionCommitResult
+    const mockTxClient: any = {
+      topology: { description: { type: 'ReplicaSetWithPrimary', setName: 'rs0' } },
+      startSession: () => ({
+        withTransaction: async () => {
+          saveCount++;
+          throw new Error('TransientTransactionError: UnknownTransactionCommitResult');
+        },
+        endSession: async () => {},
+      }),
+    };
+
+    setTestDatabase({ client: mockTxClient, collection: () => ({}) });
+    const origTxUri = process.env.MONGODB_URI;
+    process.env.MONGODB_URI = 'mongodb://localhost:27017/journeyx';
+
+    try {
+      const turnService = new TurnApplicationService(
+        mockPackRepo,
+        mockWorkspaceRepo,
+        mockJourneyResolver,
+        undefined,
+        undefined,
+        undefined,
+        new ApprovalService(undefined, mockOutboxRepo),
+        undefined,
+        mockOutboxRepo,
+        undefined,
+        mockInterpreter,
+        mockFactReducer
+      );
+
+      await assert.rejects(
+        async () => {
+          await turnService.executeTurn({
+            tenantId: 'tenant_caroma',
+            environmentId: 'production',
+            workspaceId: 'ws_tx_test',
+            userMessage: 'test message',
+            correlationId: 'corr_tx_test',
+            idempotencyKey: 'idemp_tx_test',
+          });
+        },
+        /UnknownTransactionCommitResult/
+      );
+
+      // Assert: save was NOT called a second time sequentially, and enqueue was NOT called sequentially
+      assert.equal(saveCount, 1, 'Workspace save must NOT be retried sequentially after transaction failure');
+      assert.equal(enqueueCount, 0, 'Outbox enqueue must NOT be called sequentially after transaction failure');
+    } finally {
+      process.env.MONGODB_URI = origTxUri;
+      setTestDatabase(null);
     }
   });
 

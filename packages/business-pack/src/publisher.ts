@@ -148,6 +148,8 @@ export async function publishBusinessPack(
         tenantId,
         environmentId,
         version,
+        versionId: version,
+        status: 'published',
         checksum,
         manifest: pack.manifest,
         profile: pack.profile,
@@ -195,6 +197,8 @@ export async function publishBusinessPack(
         {
           $set: {
             activeVersion: version,
+            activeVersionId: version,
+            status: 'active',
             previousVersion,
             revision,
             rollbackAvailable: Boolean(previousVersion),
@@ -234,6 +238,8 @@ export async function publishBusinessPack(
           tenantId,
           environmentId,
           activeVersion: version,
+          activeVersionId: version,
+          status: 'active',
           previousVersion: null,
           revision: 1,
           rollbackAvailable: false,
@@ -355,6 +361,8 @@ export async function rollbackBusinessPack(
       {
         $set: {
           activeVersion: targetVersion,
+          activeVersionId: targetVersion,
+          status: 'active',
           previousVersion: pointer.activeVersion,
           revision: nextRevision,
           rollbackAvailable: true,

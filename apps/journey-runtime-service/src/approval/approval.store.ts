@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
-import { Collection } from 'mongodb';
+import { Collection, ClientSession } from 'mongodb';
 import { connectToDatabase, COLLECTION_TOOL_APPROVALS, ToolApprovalRecord, EnvironmentId } from '@journeyax/database';
 import { ExecutionContext } from '@journeyax/capability-sdk';
 
@@ -22,16 +22,49 @@ export class ApprovalStore {
   private col: Collection<ToolApprovalRecord> | null = null;
   private memory = new Map<string, ToolApprovalRecord>();
 
-  private get allowMemoryFallback(): boolean {
-    return process.env.NODE_ENV !== 'production' && process.env.ALLOW_IN_MEMORY_APPROVALS !== 'false';
+  constructor(db?: any) {
+    if (db && typeof db.collection === 'function') {
+      this.col = db.collection(COLLECTION_TOOL_APPROVALS);
+    }
   }
 
-  private async getCol(): Promise<Collection<ToolApprovalRecord> | null> {
+  private isMemoryPermitted(environmentId?: string): boolean {
+    if (
+      process.env.NODE_ENV === 'production' ||
+      process.env.NODE_ENV === 'staging' ||
+      process.env.APP_ENV === 'production' ||
+      process.env.APP_ENV === 'staging'
+    ) {
+      return false;
+    }
+    if (environmentId === 'staging' && process.env.NODE_ENV !== 'test') {
+      return false;
+    }
+    return (
+      process.env.NODE_ENV === 'test' ||
+      process.env.ALLOW_IN_MEMORY_APPROVALS === 'true'
+    );
+  }
+
+  private async getCol(environmentId?: string): Promise<Collection<ToolApprovalRecord> | null> {
     if (this.col) return this.col;
+    if (this.isMemoryPermitted(environmentId)) {
+      const uri = process.env.MONGODB_URI;
+      if (!uri) return null;
+      try {
+        const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+        this.col = db.collection<ToolApprovalRecord>(COLLECTION_TOOL_APPROVALS);
+        return this.col;
+      } catch {
+        return null;
+      }
+    }
+
     const uri = process.env.MONGODB_URI;
     if (!uri) {
-      if (this.allowMemoryFallback) return null;
-      throw new Error('[ApprovalStore] MONGODB_URI is required in production.');
+      throw new Error(
+        `[ApprovalStore] MONGODB_URI is required; memory fallback is prohibited in ${environmentId || process.env.NODE_ENV || 'production/staging'}.`
+      );
     }
 
     try {
@@ -39,10 +72,9 @@ export class ApprovalStore {
       this.col = db.collection<ToolApprovalRecord>(COLLECTION_TOOL_APPROVALS);
       return this.col;
     } catch (err: any) {
-      if (this.allowMemoryFallback) {
-        return null;
-      }
-      throw err;
+      throw new Error(
+        `[ApprovalStore] Failed to connect to MongoDB in ${environmentId || process.env.NODE_ENV}; memory fallback prohibited: ${err.message}`
+      );
     }
   }
 
@@ -52,38 +84,51 @@ export class ApprovalStore {
     ctx: ExecutionContext,
     ttlMs = 15 * 60_000
   ): Promise<ToolApprovalRecord> {
+    if (
+      !ctx.sessionId ||
+      !ctx.stageId ||
+      !ctx.packVersionId ||
+      !ctx.principalId ||
+      !ctx.principalRole ||
+      input === undefined ||
+      input === null
+    ) {
+      throw new Error(
+        `[ApprovalStore] Cannot create approval for tool '${toolId}': missing mandatory immutable execution context bindings (sessionId, stageId, packVersionId, principalId, principalRole, and payload/input are required).`
+      );
+    }
+
     const now = new Date();
-    const record: ToolApprovalRecord & { sessionId?: string; packVersionId?: string } = {
+    const approvalRequestId = `apr_${randomUUID()}`;
+    const inputHash = hashToolInput(input);
+    const executionReference = ctx.idempotencyKey || `exec_${approvalRequestId}`;
+
+    const record: ToolApprovalRecord = {
       tenantId: ctx.tenantId,
       environmentId: ctx.environmentId,
       workspaceId: ctx.workspaceId,
-      approvalRequestId: `apr_${randomUUID()}`,
+      approvalRequestId,
+      approvalId: approvalRequestId,
       toolId,
-      inputHash: hashToolInput(input),
+      inputHash,
       requestedPayload: typeof input === 'object' && input !== null ? (input as any) : { input },
       sessionId: ctx.sessionId,
+      stageId: ctx.stageId,
       packVersionId: ctx.packVersionId,
+      principalId: ctx.principalId,
+      principalRole: ctx.principalRole,
+      executionReference,
       status: 'pending',
       requestedBy: ctx.principalId,
       requestedAt: now,
       expiresAt: new Date(now.getTime() + ttlMs),
     };
 
-    const col = await this.getCol();
+    const col = await this.getCol(ctx.environmentId);
     if (col) {
       await col.insertOne(record as any);
-      const db = (col as any).s?.db || (col as any).db;
-      if (db && typeof db.collection === 'function') {
-        try {
-          await db.collection('approval_requests').insertOne({
-            ...record,
-            approvalId: record.approvalRequestId,
-            executionKey: 'ALLOW_CURRENT',
-          });
-        } catch {}
-      }
     } else {
-      this.memory.set(record.approvalRequestId, structuredClone(record as any));
+      this.memory.set(record.approvalRequestId, structuredClone(record));
     }
     return record;
   }
@@ -91,17 +136,10 @@ export class ApprovalStore {
   async getApproval(approvalRequestId: string): Promise<ToolApprovalRecord | null> {
     const col = await this.getCol();
     if (col) {
-      const found = await col.findOne({ approvalRequestId });
+      const found = await col.findOne({
+        $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
+      } as any);
       if (found) return found;
-      const db = (col as any).s?.db || (col as any).db;
-      if (db && typeof db.collection === 'function') {
-        try {
-          const req = await db.collection('approval_requests').findOne({
-            $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
-          });
-          if (req) return req;
-        } catch {}
-      }
     }
     return this.memory.get(approvalRequestId) || null;
   }
@@ -113,51 +151,37 @@ export class ApprovalStore {
     approvalRequestId: string,
     decision: 'approved' | 'rejected',
     decidedBy: string,
-    reason?: string
+    reason?: string,
+    session?: ClientSession,
+    eventId?: string
   ): Promise<boolean> {
     const now = new Date();
-    const col = await this.getCol();
+    const col = await this.getCol(environmentId);
     if (col) {
+      const updateDoc: any = {
+        $set: {
+          status: decision,
+          reviewedBy: decidedBy,
+          reviewedAt: now,
+          reason,
+        },
+      };
+      if (decision === 'approved' && eventId) {
+        updateDoc.$set.eventId = eventId;
+      }
+
       const res = await col.updateOne(
         {
           tenantId,
           environmentId: environmentId as EnvironmentId,
           workspaceId,
-          approvalRequestId,
+          $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
           status: 'pending',
           expiresAt: { $gt: now },
-        },
-        {
-          $set: {
-            status: decision,
-            reviewedBy: decidedBy,
-            reviewedAt: now,
-            reason,
-          },
-        }
+        } as any,
+        updateDoc,
+        session ? { session } : undefined
       );
-      const db = (col as any).s?.db || (col as any).db;
-      if (db && typeof db.collection === 'function') {
-        try {
-          await db.collection('approval_requests').updateOne(
-            {
-              tenantId,
-              environmentId: environmentId as EnvironmentId,
-              workspaceId,
-              $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
-              status: 'pending',
-            },
-            {
-              $set: {
-                status: decision,
-                reviewedBy: decidedBy,
-                reviewedAt: now,
-                reason,
-              },
-            }
-          );
-        } catch {}
-      }
       return res.modifiedCount === 1;
     }
 
@@ -176,8 +200,36 @@ export class ApprovalStore {
     record.reviewedBy = decidedBy;
     record.reviewedAt = now;
     record.reason = reason;
+    if (decision === 'approved' && eventId) {
+      record.eventId = eventId;
+    }
     this.memory.set(approvalRequestId, record);
     return true;
+  }
+
+  async revertApprovalToPending(approvalRequestId: string, session?: ClientSession): Promise<void> {
+    const col = await this.getCol();
+    if (col) {
+      await col.updateOne(
+        {
+          $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
+        } as any,
+        {
+          $set: { status: 'pending' },
+          $unset: { reviewedBy: '', reviewedAt: '', reason: '', eventId: '' },
+        } as any,
+        session ? { session } : undefined
+      );
+    } else {
+      const record = this.memory.get(approvalRequestId);
+      if (record) {
+        record.status = 'pending';
+        delete record.reviewedBy;
+        delete record.reviewedAt;
+        delete record.reason;
+        delete record.eventId;
+      }
+    }
   }
 
   async consumeApproved(
@@ -191,17 +243,26 @@ export class ApprovalStore {
       tenantId: ctx.tenantId,
       environmentId: ctx.environmentId,
       workspaceId: ctx.workspaceId,
-      approvalRequestId,
+      $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
       toolId,
       inputHash: hashToolInput(input),
+      sessionId: ctx.sessionId,
+      stageId: ctx.stageId,
+      packVersionId: ctx.packVersionId,
+      principalRole: ctx.principalRole,
       status: 'approved' as const,
       consumedAt: { $exists: false },
       expiresAt: { $gt: now },
     };
 
-    const col = await this.getCol();
+    const col = await this.getCol(ctx.environmentId);
     if (col) {
-      const result = await col.updateOne(filter, { $set: { consumedAt: now } });
+      const result = await col.updateOne(filter as any, {
+        $set: {
+          consumedAt: now,
+          consumedByEventId: (ctx as any).eventId || undefined,
+        },
+      });
       return result.modifiedCount === 1;
     }
 
@@ -213,6 +274,10 @@ export class ApprovalStore {
       record.workspaceId !== ctx.workspaceId ||
       record.toolId !== toolId ||
       record.inputHash !== hashToolInput(input) ||
+      record.sessionId !== ctx.sessionId ||
+      record.stageId !== ctx.stageId ||
+      record.packVersionId !== ctx.packVersionId ||
+      record.principalRole !== ctx.principalRole ||
       record.status !== 'approved' ||
       record.consumedAt ||
       record.expiresAt <= now
@@ -220,6 +285,9 @@ export class ApprovalStore {
       return false;
     }
     record.consumedAt = now;
+    if ((ctx as any).eventId) {
+      record.consumedByEventId = (ctx as any).eventId;
+    }
     this.memory.set(approvalRequestId, record);
     return true;
   }

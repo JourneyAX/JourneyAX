@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc",
+    "test": "tsx --tsconfig tsconfig.json test/analytics-platform.spec.ts",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js"
   },
@@ -14,6 +15,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "@journeyax/shared-types": "*",
+    "@journeyax/database": "*",
     "mongodb": "^6.8.0"
   },
   "devDependencies": {

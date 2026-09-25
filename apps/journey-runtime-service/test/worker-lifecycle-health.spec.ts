@@ -6,6 +6,7 @@ import { HealthController } from '../src/health.controller';
 
 async function runWorkerLifecycleHealthTests() {
   console.log('--- Starting Worker Lifecycle, Crash Recovery, and Truthful Health Tests ---');
+  process.env.ALLOW_IN_MEMORY_OUTBOX = 'true';
   let passed = 0;
   let failed = 0;
 
@@ -365,6 +366,7 @@ async function runWorkerLifecycleHealthTests() {
               tenantId: query.tenantId,
               environmentId: 'production',
               activeVersionId: '1.0.0',
+              checksum: '813d76bc67fab9a0deca2265337aed07af9404f5fdcacddb27cec699a8a59474',
             };
           }
           if (name === 'business_pack_releases') {
@@ -373,7 +375,7 @@ async function runWorkerLifecycleHealthTests() {
               environmentId: 'production',
               versionId: '1.0.0',
               status: 'published',
-              checksum: 'sha256_valid_checksum_123',
+              checksum: '813d76bc67fab9a0deca2265337aed07af9404f5fdcacddb27cec699a8a59474',
               capabilities: {
                 toolDefinitions: [
                   {
@@ -393,7 +395,23 @@ async function runWorkerLifecycleHealthTests() {
                     },
                   },
                 ],
+                stageBindings: [
+                  {
+                    stageId: 'stage_checkout',
+                    tools: [{ toolId: 'flow_ct_sync_01' }],
+                  },
+                ],
               },
+            };
+          }
+          if (name === 'tenant_connections') {
+            return {
+              tenantId: query.tenantId,
+              environmentId: 'production',
+              connectionRef: 'conn_ct_test',
+              status: 'active',
+              pieceId: '@activepieces/piece-commercetools',
+              allowedFlows: ['flow_ct_sync_01'],
             };
           }
           if (name === 'tenant_secrets') {

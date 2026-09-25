@@ -9,6 +9,7 @@ import { OutboxWorkerService } from '../src/kernel/outbox-worker.service';
 
 async function runArchitectureEnforcementTests() {
   console.log('\n🔒 Running Connector Architecture Boundary & Enforcement Tests (PR 9)...\n');
+  process.env.ALLOW_IN_MEMORY_OUTBOX = 'true';
   let passed = 0;
   let failed = 0;
 

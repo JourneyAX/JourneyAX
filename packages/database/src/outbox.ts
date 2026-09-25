@@ -19,11 +19,12 @@ export class OutboxRepository {
       packVersionId?: string;
       approvalId?: string;
       executionReference?: string;
+      eventId?: string;
     },
     session?: ClientSession
   ): Promise<OutboxEventRecord> {
     const record: OutboxEventRecord = {
-      eventId: `evt_${randomUUID()}`,
+      eventId: event.eventId || `evt_${randomUUID()}`,
       tenantId: event.tenantId,
       environmentId: event.environmentId,
       eventType: event.eventType,

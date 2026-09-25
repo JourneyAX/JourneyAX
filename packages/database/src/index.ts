@@ -27,7 +27,9 @@ export async function connectToDatabase(
   dbName: string = process.env.MONGODB_DB_NAME || 'journeyx'
 ): Promise<{ client: MongoClient; db: Db }> {
   if (testDbInstance) {
-    return { client: client || ({} as any), db: testDbInstance };
+    const testClient = testDbInstance.client || client || ({} as any);
+    const testDb = testDbInstance.db || testDbInstance;
+    return { client: testClient, db: testDb };
   }
 
   if (!client) {

@@ -233,6 +233,7 @@ async function runSecurityTests() {
   // ── TEST 7: Cross-Tenant Approval Tampering Prevention ──────────────────
   await test('Approval decision fails if tenantId or workspaceId does not match record', async () => {
     process.env.NODE_ENV = 'test';
+    process.env.ALLOW_IN_MEMORY_APPROVALS = 'true';
     const store = new ApprovalStore();
 
     const req = await store.createPending(
@@ -242,6 +243,9 @@ async function runSecurityTests() {
         tenantId: 'tenant-alpha',
         environmentId: 'production',
         workspaceId: 'ws-alpha',
+        sessionId: 'sess-alpha',
+        stageId: 'checkout',
+        packVersionId: '1.0.0',
         principalId: 'user-alpha',
         principalRole: 'shopper',
         isInternal: false,

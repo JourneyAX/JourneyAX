@@ -338,7 +338,14 @@ export async function POST(req: Request) {
       tenantId,
       environmentId,
       $or: [{ versionId: targetVersion }, { version: targetVersion }],
-      status: { $in: ['published', 'active'] },
+      $and: [
+        {
+          $or: [
+            { status: { $in: ['published', 'active'] } },
+            { status: { $exists: false } },
+          ],
+        },
+      ],
     });
 
     if (!activeRelease) {

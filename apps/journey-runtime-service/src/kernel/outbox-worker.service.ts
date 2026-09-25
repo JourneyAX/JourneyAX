@@ -3,6 +3,12 @@ import {
   connectToDatabase,
   OutboxRepository as DbOutboxRepository,
   NotificationDispatcher,
+  COLLECTION_TOOL_APPROVALS,
+  ToolApprovalRecord,
+  COLLECTION_ANALYTICS_EVENTS,
+  AnalyticsEventRecord,
+  AnalyticsCategory,
+  EnvironmentId,
 } from '@journeyax/database';
 import {
   CapabilityDispatcher,
@@ -12,6 +18,7 @@ import {
   ExecutionRequest,
 } from '@journeyax/capability-sdk';
 import { computePackChecksum } from '@journeyax/business-pack';
+import { hashToolInput } from '../approval/approval.store';
 import { OutboxRepository } from './outbox.repository';
 import { OutboxWorker, OutboxWorkerOptions } from './outbox.worker';
 import {
@@ -167,6 +174,19 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
           `[OutboxWorker] Notification dispatch failed: ${failureDetails.join('; ') || 'Dispatcher reported failure'}`
         );
       }
+
+      await this.recordAnalyticsEvent(db, {
+        eventId: event.eventId,
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        category: 'notification',
+        eventName: 'notification_delivered',
+        status: 'success',
+        metadata: {
+          recipients: payload.recipients,
+          providerDeliveryId: result.deliveries?.[0]?.providerDeliveryId,
+        },
+      });
     });
 
     // 3. Activepieces dispatch — invokes actual CapabilityDispatcher with Business-Pack definition and tenant credentials
@@ -272,7 +292,14 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         tenantId: event.tenantId,
         environmentId: event.environmentId,
         $or: [{ versionId: packVersionId }, { version: packVersionId }],
-        status: { $in: ['published', 'active'] },
+        $and: [
+          {
+            $or: [
+              { status: { $in: ['published', 'active'] } },
+              { status: { $exists: false } },
+            ],
+          },
+        ],
       });
       if (!releaseDoc) {
         throw new Error(
@@ -492,19 +519,23 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         }
 
         const now = new Date();
-        const approval = await db.collection('approval_requests').findOne({
-          approvalId,
+        const approvalCol = db.collection(COLLECTION_TOOL_APPROVALS);
+        const approval = await approvalCol.findOne({
           tenantId: event.tenantId,
           environmentId: event.environmentId,
           workspaceId,
           toolId,
           status: 'approved',
-          $or: [
-            { executionKey: event.eventId },
-            { idempotencyKey: event.eventId },
-            { eventId: event.eventId },
+          $and: [
+            { $or: [{ approvalRequestId: approvalId }, { approvalId }] },
+            {
+              $or: [
+                { eventId: event.eventId },
+                { executionReference: (event as any).executionReference },
+              ],
+            },
           ],
-        });
+        } as any);
 
         if (!approval) {
           throw new Error(
@@ -513,34 +544,62 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         }
 
         // Validate expiry
-        if (approval.expiresAt && new Date(approval.expiresAt) <= now) {
+        if (!approval.expiresAt || new Date(approval.expiresAt) <= now) {
           throw new Error(`[OutboxWorker] Approval record '${approvalId}' has expired`);
         }
 
-        // Validate principal, session, stage, pack bindings if present on approval
-        if (approval.principalRole && approval.principalRole !== principalRole) {
-          throw new Error(
-            `[OutboxWorker] Approval '${approvalId}' principalRole '${approval.principalRole}' does not match session role '${principalRole}'`
-          );
-        }
-        if (approval.sessionId && approval.sessionId !== targetSessionId) {
+        // Require exact immutable bindings: sessionId, stageId, packVersionId, principalRole, principalId, executionReference, inputHash
+        if (!approval.sessionId || approval.sessionId !== targetSessionId) {
           throw new Error(
             `[OutboxWorker] Approval '${approvalId}' sessionId '${approval.sessionId}' does not match target session '${targetSessionId}'`
           );
         }
-        if (approval.stageId && approval.stageId !== stageId) {
+        if (!approval.stageId || approval.stageId !== stageId) {
           throw new Error(
             `[OutboxWorker] Approval '${approvalId}' stageId '${approval.stageId}' does not match workspace stage '${stageId}'`
           );
         }
-        if (approval.packVersionId && approval.packVersionId !== packVersionId) {
+        if (!approval.packVersionId || approval.packVersionId !== packVersionId) {
           throw new Error(
             `[OutboxWorker] Approval '${approvalId}' packVersionId '${approval.packVersionId}' does not match workspace pack version '${packVersionId}'`
           );
         }
+        if (!approval.principalRole || approval.principalRole !== principalRole) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' principalRole '${approval.principalRole}' does not match session role '${principalRole}'`
+          );
+        }
+        if (!approval.principalId) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' lacks mandatory principalId binding`
+          );
+        }
+        if (!approval.executionReference || approval.executionReference !== (event as any).executionReference) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' executionReference '${approval.executionReference}' does not match event executionReference '${(event as any).executionReference}'`
+          );
+        }
+        if (!approval.inputHash) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' lacks mandatory inputHash binding`
+          );
+        }
+        const { correlationId: _cid, ...cleanPayload } = payload;
+        const candidateInputs = [
+          cleanPayload,
+          payload,
+          payload.input !== undefined ? payload.input : undefined,
+        ].filter((x) => x !== undefined);
+
+        const matchedHash = candidateInputs.some((candidate) => hashToolInput(candidate) === approval.inputHash);
+        if (!matchedHash) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' inputHash '${approval.inputHash}' does not match payload hash '${hashToolInput(cleanPayload)}'`
+          );
+        }
 
         // Atomically consume/link the approval to this event (idempotent only for the same event)
-        const updateRes = await db.collection('approval_requests').findOneAndUpdate(
+        const updateRes = await approvalCol.findOneAndUpdate(
           {
             _id: approval._id,
             status: 'approved',
@@ -611,6 +670,23 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
           },
           { upsert: true }
         );
+        await this.recordAnalyticsEvent(db, {
+          eventId: event.eventId,
+          tenantId: event.tenantId,
+          environmentId: event.environmentId,
+          workspaceId,
+          sessionId: targetSessionId,
+          toolId,
+          packVersionId,
+          category: 'tool',
+          eventName: 'tool_executed',
+          status: 'success',
+          durationMs: (dispatchResult as any)?.durationMs,
+          metadata: {
+            flowId: boundFlowId,
+            connectionRef: boundConnectionRef,
+          },
+        });
       }
     });
 
@@ -640,6 +716,90 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         { upsert: true }
       );
     });
+
+    // 5. Journey turn completed — asynchronously ingests analytics event without blocking runtime
+    this.registerHandler('journey.turn_completed', async (event) => {
+      this.logger.log(
+        `[OutboxWorker] Handling journey.turn_completed for tenant '${event.tenantId}' workspace '${event.payload?.workspaceId}'`
+      );
+      if (db) {
+        await this.recordAnalyticsEvent(db, {
+          eventId: event.eventId,
+          tenantId: event.tenantId,
+          environmentId: event.environmentId,
+          workspaceId: event.payload?.workspaceId || (event as any).workspaceId,
+          sessionId: (event as any).sessionId,
+          packVersionId: (event as any).packVersionId,
+          category: 'journey',
+          eventName: 'stage_transition',
+          stageId: event.payload?.stage,
+          durationMs: event.payload?.durationMs,
+          status: 'completed',
+          metadata: { decisionType: event.payload?.decisionType },
+        });
+      }
+    });
+
+    // 6. Streaming analytics event ingestion — durable and non-blocking
+    this.registerHandler('analytics.event', async (event) => {
+      if (!db) {
+        throw new Error("[OutboxWorker] Database connection required to persist analytics event");
+      }
+      const payload = event.payload || {};
+      await this.recordAnalyticsEvent(db, {
+        eventId: event.eventId,
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        projectId: payload.projectId || event.tenantId,
+        teamId: payload.teamId,
+        workspaceId: payload.workspaceId || (event as any).workspaceId,
+        sessionId: payload.sessionId || (event as any).sessionId,
+        category: payload.category || 'journey',
+        eventName: payload.eventName || 'custom_event',
+        stageId: payload.stageId,
+        fromStage: payload.fromStage,
+        toStage: payload.toStage,
+        durationMs: payload.durationMs,
+        tokens: payload.tokens,
+        costUsd: payload.costUsd,
+        modelId: payload.modelId,
+        provider: payload.provider,
+        toolId: payload.toolId,
+        status: payload.status || 'success',
+        errorCode: payload.errorCode,
+        errorMessage: payload.errorMessage,
+        packId: payload.packId,
+        packVersionId: payload.packVersionId || (event as any).packVersionId,
+        principalId: payload.principalId,
+        principalRole: payload.principalRole,
+        metadata: payload.metadata,
+      });
+    });
+  }
+
+  private async recordAnalyticsEvent(
+    db: any,
+    record: Partial<AnalyticsEventRecord> & {
+      tenantId: string;
+      environmentId: EnvironmentId;
+      category: AnalyticsCategory;
+      eventName: string;
+    }
+  ): Promise<void> {
+    if (!db) return;
+    try {
+      const col = db.collection(COLLECTION_ANALYTICS_EVENTS);
+      if (col && typeof col.insertOne === 'function') {
+        await col.insertOne({
+          eventId: record.eventId || `an_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          timestamp: new Date(),
+          status: record.status || 'success',
+          ...record,
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`[OutboxWorker] Failed to asynchronously record analytics event: ${err.message}`);
+    }
   }
 
   /**

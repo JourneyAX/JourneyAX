@@ -82,6 +82,7 @@ export class OutboxRepository {
       packVersionId?: string;
       approvalId?: string;
       executionReference?: string;
+      eventId?: string;
     }
   ): Promise<string> {
     const isProdOrStaging = this.isProductionOrStaging(environmentId);
@@ -102,6 +103,7 @@ export class OutboxRepository {
             packVersionId: options?.packVersionId,
             approvalId: options?.approvalId,
             executionReference: options?.executionReference,
+            eventId: options?.eventId,
           },
           session
         );
@@ -122,7 +124,7 @@ export class OutboxRepository {
       }
     }
 
-    const eventId = `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const eventId = options?.eventId || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const memRecord: OutboxEventRecord = {
       eventId,
       tenantId,

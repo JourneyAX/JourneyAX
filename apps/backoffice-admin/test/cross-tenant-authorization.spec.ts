@@ -3,7 +3,7 @@ import { scopeTenant, tenantAllowed, isPlatformIdentity, AuthedIdentity } from '
 import { GET as getConnections } from '../src/app/api/integrations/connections/route';
 import { POST as testCommercetools } from '../src/app/api/integrations/test-commercetools/route';
 import { setTestDatabase } from '@journeyax/database';
-import { computePackChecksum } from '@journeyax/business-pack';
+import { computePackChecksum, publishBusinessPack } from '@journeyax/business-pack';
 
 async function runCrossTenantAuthTests() {
   console.log('\n🔒 Running Backoffice Cross-Tenant Authorization & Execution Context Hardening Suite...\n');
@@ -279,6 +279,29 @@ async function runCrossTenantAuthTests() {
           }) || null;
         }
         return null;
+      },
+      insertOne: async (doc: any) => {
+        if (name === 'business_pack_releases') {
+          packReleasesTable.push(doc);
+        }
+        if (name === 'business_pack_pointers') {
+          packPointersTable.push(doc);
+        }
+        return { acknowledged: true, insertedId: 'mock_id' };
+      },
+      updateOne: async (filter: any, update: any, options: any) => {
+        if (name === 'business_pack_pointers') {
+          const idx = packPointersTable.findIndex(
+            (p) => p.tenantId === filter.tenantId && (p.environmentId === filter.environmentId || p.channel === filter.environmentId)
+          );
+          if (idx >= 0) {
+            packPointersTable[idx] = { ...packPointersTable[idx], ...update.$set };
+          } else {
+            packPointersTable.push({ ...filter, ...update.$set });
+          }
+          return { matchedCount: 1, modifiedCount: 1, upsertedCount: idx >= 0 ? 0 : 1 };
+        }
+        return { matchedCount: 1, modifiedCount: 1 };
       },
       find: (query: any) => ({
         project: () => ({
@@ -873,6 +896,208 @@ async function runCrossTenantAuthTests() {
       const json = await res.json();
       assert.equal(json.ok, false);
       assert.match(json.message, /checksum mismatch/i);
+    });
+
+    // ── Test 22: Canonical real Business Pack publication resolves in POST /test-commercetools ──
+    await test('22. Positive: Canonical real Business Pack publication via publishBusinessPack resolves through test-commercetools', async () => {
+      tenantConfigsTable.push({
+        projectId: 'tenant_real_pub',
+        environment: 'production',
+        workspaceId: 'ws_real_pub',
+      } as any);
+      projectMembersTable.push({
+        projectId: 'tenant_real_pub',
+        email: 'super@platform.com',
+        role: 'admin',
+        status: 'active',
+      });
+      connectionsTable.push({
+        tenantId: 'tenant_real_pub',
+        environmentId: 'production',
+        connectionRef: 'conn_real_pub_ct',
+        pieceName: '@activepieces/piece-commercetools',
+        status: 'active',
+        enabled: true,
+        allowedFlows: ['flow_ct_sync'],
+      });
+      tenantSecretsTable.push({
+        tenantId: 'tenant_real_pub',
+        environmentId: 'production',
+        secretRef: 'activepieces_api_key',
+        value: 'mock_key',
+      });
+      workspacesTable.push({
+        tenantId: 'tenant_real_pub',
+        environmentId: 'production',
+        workspaceId: 'ws_real_pub',
+        currentStage: 'stage_sync',
+        activeSessionId: 'sess_real_pub',
+      });
+      sessionsTable.push({
+        tenantId: 'tenant_real_pub',
+        environmentId: 'production',
+        workspaceId: 'ws_real_pub',
+        sessionId: 'sess_real_pub',
+        principalRole: 'admin',
+        principalId: 'super@platform.com',
+      });
+
+      const packToPublish = {
+        manifest: {
+          packId: 'pack_real_pub',
+          tenantId: 'tenant_real_pub',
+          name: 'Real Pub Pack',
+          version: '2.0.0',
+          description: 'Testing real publication in admin',
+          schemaVersion: '1.0.0',
+          environmentId: 'production',
+          author: 'admin-tester',
+        },
+        profile: {
+          companyName: 'Real Pub Co',
+          industry: 'retail',
+          primaryGoals: ['sales'],
+          locales: ['en-AU'],
+        },
+        vocabulary: {
+          version: '1.0.0',
+          terms: [],
+          acronyms: {},
+          slotSynonyms: {},
+          slotMappings: {},
+          prohibitedTerms: [],
+        },
+        entities: {
+          version: '1.0.0',
+          entities: [],
+        },
+        conversationPolicy: {
+          fencingRules: [],
+          prohibitedTopics: [],
+          escalationThresholds: { sentimentFloor: -0.6, maxTurnsWithoutProgress: 4 },
+        },
+        modelPolicy: {
+          version: '1.0.0',
+          defaultPolicy: 'standard_turn',
+          policies: [
+            {
+              policyId: 'standard_turn',
+              candidates: [{ provider: 'google', model: 'gemini-1.5-pro', priority: 1 }],
+              dataResidency: 'au',
+              maxInputTokens: 20000,
+              maxOutputTokens: 2000,
+              fallbackAllowed: true,
+              timeoutMs: 10000,
+            },
+          ],
+        },
+        agents: [
+          {
+            agentId: 'agent_real_pub',
+            name: 'Real Pub Agent',
+            purpose: 'Integration testing',
+            modelPolicyRef: 'standard_turn',
+            systemPromptTemplate: 'Assist customers',
+            allowedTools: ['activepieces.flow_ct_sync'],
+          },
+        ],
+        journeys: [
+          {
+            journeyId: 'journey_real_pub',
+            version: '1.0.0',
+            displayName: 'Real Pub Journey',
+            name: 'Real Pub Journey',
+            goals: ['sync_catalog'],
+            initialStage: 'stage_sync',
+            stages: {
+              stage_sync: {
+                stageId: 'stage_sync',
+                displayName: 'Sync Stage',
+                allowedCapabilities: ['activepieces.flow_ct_sync'],
+                requiredFacts: [],
+              },
+            },
+            transitions: [],
+          },
+        ],
+        rules: [],
+        capabilities: {
+          version: '1.0.0',
+          toolDefinitions: [
+            {
+              toolId: 'activepieces.flow_ct_sync',
+              displayName: 'Sync Catalog',
+              description: 'Sync with commercetools',
+              category: 'integration',
+              sideEffect: 'read',
+              risk: 'low',
+              inputSchema: { type: 'object' },
+              outputSchema: { type: 'object' },
+              requiresUserConfirmation: false,
+            },
+          ],
+          toolBindings: [
+            {
+              toolId: 'activepieces.flow_ct_sync',
+              tenantId: 'tenant_real_pub',
+              environmentId: 'production',
+              executor: {
+                type: 'activepieces_flow',
+                flowId: 'flow_ct_sync',
+                connectionRef: 'conn_real_pub_ct',
+              },
+              policy: {
+                timeoutMs: 10000,
+                maxRetries: 3,
+                requiresConfirmation: false,
+              },
+            },
+          ],
+          stageBindings: [
+            {
+              journeyId: 'journey_real_pub',
+              stageId: 'stage_sync',
+              tools: [{ toolId: 'activepieces.flow_ct_sync' }],
+            },
+          ],
+        },
+        experience: {
+          version: '1.0.0',
+          theme: {
+            primaryColor: '#000',
+            accentColor: '#fff',
+            fontFamily: 'sans-serif',
+            borderRadius: '4px',
+            customCssVars: {},
+          },
+          cards: {
+            allowedCardTypes: ['bundle'],
+            defaultCardRenderer: '@journeyax/ui-cards',
+          },
+        },
+        evaluations: [],
+      };
+
+      const pubResult = await publishBusinessPack(mockDb as any, packToPublish as any);
+      assert.ok(pubResult.checksum, 'Published pack must have checksum');
+
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_platform_admin',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_real_pub',
+          connectionRef: 'conn_real_pub_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 200, 'Real published pack must resolve successfully in test-commercetools');
+      const json = await res.json();
+      assert.equal(json.ok, true);
     });
 
   } finally {

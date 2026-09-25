@@ -12,6 +12,10 @@ import {
   COLLECTION_TENANT_CUTOVERS,
   COLLECTION_CUTOVER_AUDIT_LOGS,
   COLLECTION_GATEWAY_ASSERTION_NONCES,
+  COLLECTION_ANALYTICS_EVENTS,
+  COLLECTION_CUSTOM_REPORTS,
+  COLLECTION_ANALYTICS_ALERTS,
+  COLLECTION_ANALYTICS_AUDIT_LOGS,
 } from './types';
 
 async function safeCreateIndex(
@@ -52,6 +56,10 @@ export async function ensureDatabaseIndices(db: Db): Promise<void> {
   const approvals = db.collection(COLLECTION_TOOL_APPROVALS);
   await safeCreateIndex(approvals, { tenantId: 1, environmentId: 1, approvalRequestId: 1 }, { unique: true });
   await safeCreateIndex(approvals, { expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await safeCreateIndex(approvals, { tenantId: 1, environmentId: 1, workspaceId: 1, toolId: 1, status: 1 });
+  await safeCreateIndex(approvals, { executionReference: 1 }, { sparse: true });
+  await safeCreateIndex(approvals, { eventId: 1 }, { sparse: true });
+  await safeCreateIndex(approvals, { consumedByEventId: 1 }, { sparse: true });
 
   // 5. Tool Executions: idempotent capability runs with input hash and TTL
   const executions = db.collection(COLLECTION_TOOL_EXECUTIONS);
@@ -91,4 +99,24 @@ export async function ensureDatabaseIndices(db: Db): Promise<void> {
   const assertionNonces = db.collection(COLLECTION_GATEWAY_ASSERTION_NONCES);
   await safeCreateIndex(assertionNonces, { jti: 1 }, { unique: true });
   await safeCreateIndex(assertionNonces, { expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+  // 13. Analytics Events: multi-dimensional analytics querying and time-series aggregations
+  const analyticsEvents = db.collection(COLLECTION_ANALYTICS_EVENTS);
+  await safeCreateIndex(analyticsEvents, { tenantId: 1, environmentId: 1, timestamp: -1 });
+  await safeCreateIndex(analyticsEvents, { tenantId: 1, category: 1, timestamp: -1 });
+  await safeCreateIndex(analyticsEvents, { tenantId: 1, workspaceId: 1, timestamp: -1 });
+  await safeCreateIndex(analyticsEvents, { tenantId: 1, sessionId: 1, timestamp: -1 });
+  await safeCreateIndex(analyticsEvents, { tenantId: 1, packVersionId: 1, timestamp: -1 });
+
+  // 14. Custom Reports: tenant-scoped reports
+  const customReports = db.collection(COLLECTION_CUSTOM_REPORTS);
+  await safeCreateIndex(customReports, { tenantId: 1, reportId: 1 }, { unique: true });
+
+  // 15. Analytics Alerts: tenant-scoped threshold alerts
+  const analyticsAlerts = db.collection(COLLECTION_ANALYTICS_ALERTS);
+  await safeCreateIndex(analyticsAlerts, { tenantId: 1, alertId: 1 }, { unique: true });
+
+  // 16. Analytics Audit Logs: immutable audit history of report executions and exports
+  const analyticsAudit = db.collection(COLLECTION_ANALYTICS_AUDIT_LOGS);
+  await safeCreateIndex(analyticsAudit, { tenantId: 1, timestamp: -1 });
 }

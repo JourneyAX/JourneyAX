@@ -280,6 +280,10 @@ async function runTests() {
       tenantId,
       environmentId,
       workspaceId,
+      sessionId: 'sess_test_99',
+      stageId: 'initial',
+      packVersionId: '1.0.0',
+      principalRole: 'agent',
       principalId: 'test_user',
     };
     const apprReq = await runtimeService.appService.approvalService.createPending(
