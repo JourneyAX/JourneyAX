@@ -201,6 +201,130 @@ async function runTypedConnectorOwnershipTests() {
     assert.equal(await repo.validateOwnership('tenant_caroma', 'production', '  '), false);
   });
 
+  // ── Test 8: Substring piece name matching is strictly rejected ─────────────
+  await test('8. Substring piece names do not match canonical aliases', async () => {
+    // Seed a connection with an adversary/substring piece name
+    connectionsTable.push({
+      tenantId: 'tenant_caroma',
+      environmentId: 'production',
+      connectionRef: 'conn_ct_sub_exploit',
+      pieceName: '@activepieces/piece-commercetools-fake',
+      status: 'active',
+      enabled: true,
+      allowedFlows: ['flow_catalog_sync'],
+    });
+
+    const isMatch = await repo.validateOwnership(
+      'tenant_caroma',
+      'production',
+      'conn_ct_sub_exploit',
+      { pieceId: '@activepieces/piece-commercetools' }
+    );
+    assert.equal(isMatch, false, 'Substring piece name must not be accepted as canonical commercetools piece');
+  });
+
+  // ── Test 9: Missing allowedFlows fails closed when flowId is requested ──────
+  await test('9. Missing or empty allowedFlows fails closed when flowId is requested', async () => {
+    // conn_ct_caroma_staging has no allowedFlows defined
+    const hasFlowBinding = await repo.validateOwnership(
+      'tenant_caroma',
+      'staging',
+      'conn_ct_caroma_staging',
+      { flowId: 'flow_any_action' }
+    );
+    assert.equal(hasFlowBinding, false, 'Connection without explicit allowedFlows must fail closed when flowId is requested');
+  });
+
+  // ── Test 10: Wrong flowId fails closed ─────────────────────────────────────
+  await test('10. Wrong flowId fails closed against allowedFlows whitelist', async () => {
+    const isWrongFlowAllowed = await repo.validateOwnership(
+      'tenant_caroma',
+      'production',
+      'conn_ct_caroma_prod',
+      { flowId: 'flow_malicious_export' }
+    );
+    assert.equal(isWrongFlowAllowed, false, 'Unwhitelisted flowId must fail closed');
+  });
+
+  // ── Test 11: Real CapabilityDispatcher with PolicyGate handles requires_approval / denied ──
+  await test('11. CapabilityDispatcher policy gate returns requires_approval and denied appropriately', async () => {
+    const { CapabilityDispatcher } = await import('@journeyax/capability-sdk');
+
+    const dispatcher = new CapabilityDispatcher({
+      activepiecesApiUrl: 'http://localhost:3010',
+      activepiecesApiKey: 'test_key',
+      activepiecesWebhookSecret: 'test_sec',
+      validateConnectionOwnership: async (t, e, c, opts) => repo.validateOwnership(t, e, c, opts),
+    });
+
+    const toolDef = {
+      toolId: 'commercetools.restricted_action',
+      version: '1.0.0',
+      displayName: 'Restricted Action',
+      description: 'Test policy gates',
+      inputSchema: {},
+      outputSchema: {},
+      sideEffect: 'transactional' as const,
+      risk: 'high' as const,
+      timeoutPolicy: { timeoutMs: 5000, retryAttempts: 0 },
+      idempotencyPolicy: { required: true, ttlSeconds: 60 },
+      approvalPolicy: { requiresApproval: true, ttlMinutes: 10 },
+      dataClassification: 'internal' as const,
+    };
+
+    const toolBinding = {
+      tenantId: 'tenant_caroma',
+      environmentId: 'production' as const,
+      toolId: 'commercetools.restricted_action',
+      bindingVersion: '1.0.0',
+      executor: {
+        type: 'activepieces_flow' as const,
+        flowId: 'flow_catalog_sync',
+        connectionRef: 'conn_ct_caroma_prod',
+      },
+      enabled: true,
+      policy: {
+        requiredRole: 'admin',
+        requiresConfirmation: true,
+        idempotencyRequired: true,
+        timeoutMs: 5000,
+        retryAttempts: 0,
+      },
+    };
+
+    // 11a: Role check failure (customer vs admin) -> denied
+    const deniedCtx = {
+      workspaceId: 'ws_caroma',
+      tenantId: 'tenant_caroma',
+      environmentId: 'production' as const,
+      sessionId: 'sess_1',
+      stageId: 'stage_test',
+      packVersionId: '1.0.0',
+      correlationId: 'corr_1',
+      principalRole: 'customer', // Insufficient role
+    };
+    const deniedRes = await dispatcher.dispatch(
+      toolDef,
+      toolBinding,
+      { toolId: toolDef.toolId, input: {}, userConfirmationConfirmed: true, idempotencyKey: 'idemp_1' },
+      deniedCtx
+    );
+    assert.equal(deniedRes.status, 'denied', 'Insufficient role must yield status denied');
+
+    // 11b: Confirmation failure -> requires_approval
+    const unconfirmedCtx = {
+      ...deniedCtx,
+      principalRole: 'admin',
+    };
+    const unconfirmedRes = await dispatcher.dispatch(
+      toolDef,
+      toolBinding,
+      { toolId: toolDef.toolId, input: {}, userConfirmationConfirmed: false, idempotencyKey: 'idemp_2' },
+      unconfirmedCtx
+    );
+    assert.equal(unconfirmedRes.status, 'requires_approval', 'Unconfirmed transactional tool must yield requires_approval');
+  });
+
   console.log(`\nTyped Connector Ownership Suite Complete: ${passed} passed, ${failed} failed.\n`);
   if (failed > 0) process.exit(1);
 }

@@ -12,13 +12,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, message: auth.message }, { status: auth.status });
     }
 
-    const url = new URL(req.url);
-    // Derive tenant strictly from authenticated identity via scopeTenant (never trust unauthenticated caller)
-    const tenantId = scopeTenant(auth.identity, url.searchParams.get('tenantId') || url.searchParams.get('projectId'));
-    const environmentId = (url.searchParams.get('environmentId') || 'production').trim();
+    // Derive project strictly from authenticated server-side membership
+    let tenantId = auth.identity.tenantId;
+    if (auth.identity.role === 'admin' || auth.identity.tenantId === 'platform') {
+      const url = new URL(req.url);
+      const requested = url.searchParams.get('tenantId') || url.searchParams.get('projectId');
+      if (requested && requested.trim()) {
+        tenantId = requested.trim();
+      }
+    }
 
     if (!tenantId) {
-      return NextResponse.json({ ok: false, message: 'Missing tenantId' }, { status: 400 });
+      return NextResponse.json({ ok: false, message: 'Missing authenticated tenant context' }, { status: 400 });
     }
 
     if (!MONGODB_URI) {
@@ -27,7 +32,6 @@ export async function GET(req: Request) {
           ok: false,
           configured: false,
           tenantId,
-          environmentId,
           message: 'Durable storage unconfigured: MONGODB_URI is required to list installed connections',
           connections: [],
         },
@@ -36,6 +40,29 @@ export async function GET(req: Request) {
     }
 
     const { db } = await connectToDatabase(MONGODB_URI, DB_NAME);
+
+    // Derive environment and verify membership from server-side project configuration
+    const projectConfig =
+      (await db.collection('tenant_configs').findOne({ projectId: tenantId })) ||
+      (await db.collection('projects').findOne({ projectId: tenantId }));
+
+    // Verify membership if not platform admin
+    if (auth.identity.role !== 'admin' && auth.identity.tenantId !== 'platform') {
+      if (auth.identity.tenantId !== tenantId) {
+        const member = await db.collection('project_members').findOne({
+          projectId: tenantId,
+          email: auth.identity.email,
+        });
+        if (!member) {
+          return NextResponse.json({ ok: false, message: `Access denied to project '${tenantId}'` }, { status: 403 });
+        }
+      }
+    }
+
+    const environmentId: string =
+      projectConfig?.environment ||
+      projectConfig?.defaultEnvironment ||
+      (process.env.APP_ENV === 'staging' ? 'staging' : 'production');
 
     // Query authoritative tenant_connections collection strictly scoped by authenticated tenant
     // Arbitrary tenant_secrets are strictly excluded from connection enumeration

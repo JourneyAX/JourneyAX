@@ -314,8 +314,8 @@ async function runArchitectureEnforcementTests() {
     assert.notEqual(royalCyber.migrationStatus, 'READY');
 
     // 6b. Synthetic fixtures must NEVER be classified as discovered projects or claim production cutover
-    const placemakers = auditResults.find((r) => r.tenantId === 'placemakers');
-    assert.ok(placemakers, 'placemakers must be in audit results');
+    const placemakers = auditResults.find((r) => r.tenantId === 'placemakers_fixture');
+    assert.ok(placemakers, 'placemakers fixture must be in audit results');
     assert.equal(placemakers.source, 'synthetic_fixture');
     assert.equal(placemakers.migrationStatus, 'FIXTURE_EVALUATION_ONLY');
     assert.ok(

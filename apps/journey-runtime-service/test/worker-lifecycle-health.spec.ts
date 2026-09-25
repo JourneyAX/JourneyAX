@@ -369,7 +369,17 @@ async function runWorkerLifecycleHealthTests() {
       'tenant-prod-test',
       'production',
       'activepieces.dispatch',
-      { flowId: 'flow_ct_sync_01', connectionRef: 'conn_ct_test' }
+      {
+        flowId: 'flow_ct_sync_01',
+        connectionRef: 'conn_ct_test',
+        workspaceId: 'ws_prod_001',
+        sessionId: 'sess_prod_001',
+        stageId: 'stage_checkout',
+        packVersionId: '1.0.0',
+        principalRole: 'customer',
+        principalId: 'user_001',
+        userConfirmationConfirmed: true,
+      }
     );
 
     // 2. Enqueue an unknown, unregistered event type

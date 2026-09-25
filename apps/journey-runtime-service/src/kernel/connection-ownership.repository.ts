@@ -117,17 +117,20 @@ export class DurableConnectionOwnershipRepository implements IConnectionOwnershi
         return false;
       }
 
-      // If a specific pieceId was requested, enforce matching piece/provider
+      // If a specific pieceId was requested, enforce exact canonical aliases (substring matching is strictly prohibited)
       if (options?.pieceId) {
-        const expectedPiece = options.pieceId.trim().toLowerCase();
+        const canonicalAliases = this.getCanonicalPieceAliases(options.pieceId);
         const actualPiece = piece.trim().toLowerCase();
-        if (actualPiece !== expectedPiece && !actualPiece.includes(expectedPiece)) {
+        if (!canonicalAliases.has(actualPiece)) {
           return false;
         }
       }
 
-      // If a specific flowId was requested and the connection limits allowedFlows, enforce binding
-      if (options?.flowId && Array.isArray(connectionDoc.allowedFlows) && connectionDoc.allowedFlows.length > 0) {
+      // If a specific flowId was requested, fail closed when connection has no explicit allowedFlows binding
+      if (options?.flowId) {
+        if (!Array.isArray(connectionDoc.allowedFlows) || connectionDoc.allowedFlows.length === 0) {
+          return false;
+        }
         if (!connectionDoc.allowedFlows.includes(options.flowId) && !connectionDoc.allowedFlows.includes('*')) {
           return false;
         }
@@ -137,5 +140,44 @@ export class DurableConnectionOwnershipRepository implements IConnectionOwnershi
     } catch {
       return false;
     }
+  }
+
+  private getCanonicalPieceAliases(pieceId: string): Set<string> {
+    const norm = pieceId.trim().toLowerCase();
+    const aliases = new Set<string>([norm]);
+    if (
+      norm === 'commercetools' ||
+      norm === '@activepieces/piece-commercetools' ||
+      norm === 'piece-commercetools'
+    ) {
+      aliases.add('commercetools');
+      aliases.add('@activepieces/piece-commercetools');
+      aliases.add('piece-commercetools');
+    } else if (
+      norm === 'shopify' ||
+      norm === '@activepieces/piece-shopify' ||
+      norm === 'piece-shopify'
+    ) {
+      aliases.add('shopify');
+      aliases.add('@activepieces/piece-shopify');
+      aliases.add('piece-shopify');
+    } else if (
+      norm === 'stripe' ||
+      norm === '@activepieces/piece-stripe' ||
+      norm === 'piece-stripe'
+    ) {
+      aliases.add('stripe');
+      aliases.add('@activepieces/piece-stripe');
+      aliases.add('piece-stripe');
+    } else if (
+      norm === 'sap' ||
+      norm === '@activepieces/piece-sap' ||
+      norm === 'piece-sap'
+    ) {
+      aliases.add('sap');
+      aliases.add('@activepieces/piece-sap');
+      aliases.add('piece-sap');
+    }
+    return aliases;
   }
 }

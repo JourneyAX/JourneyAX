@@ -194,6 +194,12 @@ async function runOutboxRealConsumersSuite() {
         flowId: 'flow_ct_sync_01',
         connectionRef: 'conn_ct_caroma_secret',
         input: { fullSync: true },
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        stageId: 'stage_sync',
+        packVersionId: '1.0.0',
+        principalRole: 'customer',
+        userConfirmationConfirmed: true,
       }
     );
 
@@ -241,6 +247,12 @@ async function runOutboxRealConsumersSuite() {
       {
         flowId: 'flow_ct_sync_01',
         connectionRef: 'conn_ct_caroma_secret',
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_02',
+        stageId: 'stage_sync',
+        packVersionId: '1.0.0',
+        principalRole: 'customer',
+        userConfirmationConfirmed: true,
       }
     );
 
@@ -516,6 +528,11 @@ async function runOutboxRealConsumersSuite() {
         flowId: 'flow_ct_sync_01',
         connectionRef: 'conn_ct_caroma_secret',
         risk: 'high',
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_10a',
+        stageId: 'stage_test',
+        packVersionId: '1.0.0',
+        principalRole: 'customer',
         userConfirmationConfirmed: false, // Explicitly unconfirmed
       }
     );
@@ -532,7 +549,7 @@ async function runOutboxRealConsumersSuite() {
     const unconfirmedEvent = repo.getEvents().find((e) => e.eventId === unconfirmedEventId)!;
     assert.notEqual(unconfirmedEvent.status, 'published', 'Unapproved event must NOT be marked published');
     assert.equal(unconfirmedEvent.status, 'pending');
-    assert.match(unconfirmedEvent.error || '', /requires_approval/);
+    assert.match(unconfirmedEvent.error || '', /requires a durable approved approval record or explicit trustworthy confirmation/);
 
     // 10b: When confirmed and ownership is valid, real CapabilityDispatcher calls the provider.
     // Intercept globalThis.fetch to simulate Activepieces responding 200 OK.
@@ -554,6 +571,11 @@ async function runOutboxRealConsumersSuite() {
           flowId: 'flow_ct_sync_01',
           connectionRef: 'conn_ct_caroma_secret',
           risk: 'medium',
+          workspaceId: 'ws_caroma',
+          sessionId: 'session_caroma_10b',
+          stageId: 'stage_test',
+          packVersionId: '1.0.0',
+          principalRole: 'customer',
           userConfirmationConfirmed: true,
           input: { force: true },
         }
@@ -568,6 +590,84 @@ async function runOutboxRealConsumersSuite() {
     } finally {
       globalThis.fetch = originalFetch;
     }
+
+    service.stopWorker();
+  });
+
+  // ── Test 11: Missing durable execution context fails closed and remains pending ──
+  await test('11. Negative: missing durable execution context remains retryable and is not published', async () => {
+    const repo = new OutboxRepository();
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
+      capabilityDispatcher: { dispatch: async () => ({ status: 'success' as const }) } as any,
+    });
+
+    const eventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {
+        flowId: 'flow_ct_sync_01',
+        connectionRef: 'conn_ct_caroma_secret',
+        userConfirmationConfirmed: true,
+        // Omit workspaceId, sessionId, stageId, packVersionId, principalRole
+      }
+    );
+
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker_ctx_fail',
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+
+    const batchRes = await worker.processNextBatch();
+    assert.equal(batchRes.failed, 1, 'Missing durable context must fail batch');
+    const event = repo.getEvents().find((e) => e.eventId === eventId)!;
+    assert.notEqual(event.status, 'published', 'Must NOT be marked published');
+    assert.equal(event.status, 'pending', 'Must remain pending for retry');
+    assert.match(event.error || '', /Missing trusted durable execution context/);
+
+    service.stopWorker();
+  });
+
+  // ── Test 12: Missing approval record or confirmation fails closed and remains pending ──
+  await test('12. Negative: side-effecting dispatch without approval or confirmation remains retryable', async () => {
+    const repo = new OutboxRepository();
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
+      capabilityDispatcher: { dispatch: async () => ({ status: 'success' as const }) } as any,
+    });
+
+    const eventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {
+        flowId: 'flow_ct_sync_01',
+        connectionRef: 'conn_ct_caroma_secret',
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_12',
+        stageId: 'stage_test',
+        packVersionId: '1.0.0',
+        principalRole: 'customer',
+        // userConfirmationConfirmed omitted (must NOT default to true)
+      }
+    );
+
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker_approval_fail',
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+
+    const batchRes = await worker.processNextBatch();
+    assert.equal(batchRes.failed, 1, 'Missing confirmation must fail batch');
+    const event = repo.getEvents().find((e) => e.eventId === eventId)!;
+    assert.notEqual(event.status, 'published', 'Unapproved event must NOT be published');
+    assert.equal(event.status, 'pending', 'Must remain pending for retry');
+    assert.match(event.error || '', /requires a durable approved approval record or explicit trustworthy confirmation/);
 
     service.stopWorker();
   });

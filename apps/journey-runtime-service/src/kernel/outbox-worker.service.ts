@@ -227,23 +227,74 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         },
       };
 
+      // Require trusted durable execution context — no fabricated fallbacks
+      const durableCtx = (event as any).executionContext || payload.executionContext || {};
+      const workspaceId = (event as any).workspaceId || payload.workspaceId || durableCtx.workspaceId;
+      const sessionId = (event as any).sessionId || payload.sessionId || durableCtx.sessionId;
+      const stageId = (event as any).stageId || payload.stageId || durableCtx.stageId;
+      const packVersionId = (event as any).packVersionId || payload.packVersionId || durableCtx.packVersionId;
+      const principalRole = (event as any).principalRole || payload.principalRole || durableCtx.principalRole;
+      const principalId = (event as any).principalId || payload.principalId || durableCtx.principalId;
+
+      if (!workspaceId || !sessionId || !stageId || !packVersionId || !principalRole) {
+        throw new Error(
+          `[OutboxWorker] Missing trusted durable execution context for activepieces.dispatch: ` +
+          `workspaceId=${workspaceId || 'missing'}, sessionId=${sessionId || 'missing'}, ` +
+          `stageId=${stageId || 'missing'}, packVersionId=${packVersionId || 'missing'}, ` +
+          `principalRole=${principalRole || 'missing'}`
+        );
+      }
+
       const ctx: ExecutionContext = {
-        workspaceId: payload.workspaceId || event.workspaceId || `ws_${event.tenantId}`,
+        workspaceId,
         tenantId: event.tenantId,
         environmentId: event.environmentId,
-        sessionId: payload.sessionId || event.sessionId || `session_${event.eventId}`,
-        stageId: payload.stageId || 'stage_outbox',
-        packVersionId: payload.packVersionId || '1.0.0',
+        sessionId,
+        stageId,
+        packVersionId,
         correlationId: event.eventId,
         idempotencyKey: event.eventId,
-        principalRole: payload.principalRole || 'customer',
+        principalRole,
+        principalId,
       };
+
+      // Side-effecting dispatch must require a durable approved approval record or explicit trustworthy confirmation established before enqueue.
+      // Never default userConfirmationConfirmed to true.
+      let userConfirmationConfirmed = false;
+      if (payload.userConfirmationConfirmed === true || (event as any).userConfirmationConfirmed === true) {
+        userConfirmationConfirmed = true;
+      } else if (payload.approvalId && db) {
+        const approval = await db.collection('approval_requests').findOne({
+          approvalId: payload.approvalId,
+          tenantId: event.tenantId,
+          environmentId: event.environmentId,
+          status: 'approved',
+        });
+        if (approval) {
+          userConfirmationConfirmed = true;
+        }
+      } else if (payload.approvalRecord && payload.approvalRecord.status === 'approved') {
+        userConfirmationConfirmed = true;
+      }
+
+      const isSideEffecting =
+        toolDef.sideEffect === 'write' ||
+        toolDef.sideEffect === 'transactional' ||
+        toolDef.risk === 'medium' ||
+        toolDef.risk === 'high' ||
+        toolDef.risk === 'critical';
+
+      if (isSideEffecting && !userConfirmationConfirmed) {
+        throw new Error(
+          `[OutboxWorker] Side-effecting activepieces.dispatch for tool '${toolDef.toolId}' requires a durable approved approval record or explicit trustworthy confirmation established before enqueue`
+        );
+      }
 
       const request: ExecutionRequest = {
         toolId: toolDef.toolId,
         input: payload.input || {},
         idempotencyKey: event.eventId,
-        userConfirmationConfirmed: payload.userConfirmationConfirmed ?? true,
+        userConfirmationConfirmed,
       };
 
       const dispatchResult = await capDispatcher.dispatch(
