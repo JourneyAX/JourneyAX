@@ -34,7 +34,11 @@ export class TurnApplicationService {
     public readonly presentationPort: PresentationPort = new PresentationPort(),
     private readonly interpreter: TurnInterpreter = new TurnInterpreter(),
     private readonly factReducer: FactReducer = new FactReducer()
-  ) {}
+  ) {
+    if (this.approvalService && !this.approvalService.getOutboxRepo()) {
+      this.approvalService.setOutboxRepo(this.outboxRepo);
+    }
+  }
 
   async executeTurn(command: TurnCommand): Promise<TurnResult> {
     const tenantId = command.tenantId;

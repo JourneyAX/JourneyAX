@@ -23,6 +23,8 @@ export interface AuthedIdentity {
   role: string;
   tenantId: string;
   permissions: Permission[];
+  id?: string;
+  userId?: string;
 }
 
 type AuthResult =

@@ -4,6 +4,58 @@ import { ClientSession } from 'mongodb';
 export class OutboxRepository {
   private inMemoryQueue: OutboxEventRecord[] = [];
 
+  private isMemoryPermitted(environmentId?: string): boolean {
+    if (
+      process.env.NODE_ENV === 'production' ||
+      process.env.APP_ENV === 'production' ||
+      process.env.APP_ENV === 'staging'
+    ) {
+      return false;
+    }
+    if (environmentId === 'production' || environmentId === 'staging') {
+      return process.env.ALLOW_IN_MEMORY_OUTBOX === 'true';
+    }
+    return (
+      process.env.ALLOW_IN_MEMORY_OUTBOX === 'true' ||
+      process.env.NODE_ENV === 'development' ||
+      process.env.NODE_ENV === 'test'
+    );
+  }
+
+  private isProductionOrStaging(environmentId?: string): boolean {
+    if (this.isMemoryPermitted(environmentId)) {
+      return false;
+    }
+    return (
+      environmentId === 'production' ||
+      environmentId === 'staging' ||
+      process.env.NODE_ENV === 'production' ||
+      process.env.APP_ENV === 'production' ||
+      process.env.APP_ENV === 'staging'
+    );
+  }
+
+  getHealthState(): {
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    mode: 'mongodb' | 'memory';
+    inMemoryCount: number;
+    warning?: string;
+  } {
+    if (this.inMemoryQueue.length > 0) {
+      return {
+        status: 'degraded',
+        mode: 'memory',
+        inMemoryCount: this.inMemoryQueue.length,
+        warning: `[OutboxRepository DEGRADED] Operating with ${this.inMemoryQueue.length} volatile in-memory events; durable MongoDB storage is bypassed`,
+      };
+    }
+    return {
+      status: 'healthy',
+      mode: 'mongodb',
+      inMemoryCount: 0,
+    };
+  }
+
   private async getDbRepo(): Promise<DbOutboxRepository | null> {
     const uri = process.env.MONGODB_URI;
     if (!uri) return null;
@@ -32,6 +84,9 @@ export class OutboxRepository {
       executionReference?: string;
     }
   ): Promise<string> {
+    const isProdOrStaging = this.isProductionOrStaging(environmentId);
+    const allowMemory = this.isMemoryPermitted(environmentId);
+
     const dbRepo = await this.getDbRepo();
     if (dbRepo) {
       try {
@@ -52,7 +107,18 @@ export class OutboxRepository {
         );
         return record.eventId;
       } catch (err: any) {
-        console.warn('[OutboxRepository] Failed to enqueue to Mongo outbox:', err.message);
+        if (isProdOrStaging || !allowMemory) {
+          throw new Error(
+            `[OutboxRepository] Failed to enqueue event to durable MongoDB outbox in ${environmentId}: ${err.message}`
+          );
+        }
+        console.warn('[OutboxRepository] Failed to enqueue to Mongo outbox, falling back to memory in dev/test:', err.message);
+      }
+    } else {
+      if (isProdOrStaging || !allowMemory) {
+        throw new Error(
+          `[OutboxRepository] Durable MongoDB storage unavailable for environment '${environmentId}'; failing closed in production/staging (in-memory queue prohibited)`
+        );
       }
     }
 
@@ -87,6 +153,9 @@ export class OutboxRepository {
     if (dbRepo) {
       return dbRepo.claimLeases(workerId, leaseDurationMs, batchSize);
     }
+    if (this.isProductionOrStaging()) {
+      throw new Error('[OutboxRepository] Cannot claim leases from in-memory queue in production/staging; durable MongoDB storage required');
+    }
 
     // In-memory simulation of atomic lease claiming
     const now = new Date();
@@ -119,6 +188,9 @@ export class OutboxRepository {
       await dbRepo.markPublished(eventId, session);
       return;
     }
+    if (this.isProductionOrStaging()) {
+      throw new Error('[OutboxRepository] Cannot mark published in in-memory queue in production/staging; durable MongoDB storage required');
+    }
 
     const item = this.inMemoryQueue.find((e) => e.eventId === eventId);
     if (item) {
@@ -138,6 +210,9 @@ export class OutboxRepository {
     const dbRepo = await this.getDbRepo();
     if (dbRepo) {
       return dbRepo.recordFailure(eventId, error, maxAttempts, backoffBaseMs);
+    }
+    if (this.isProductionOrStaging()) {
+      throw new Error('[OutboxRepository] Cannot record failure in in-memory queue in production/staging; durable MongoDB storage required');
     }
 
     const item = this.inMemoryQueue.find((e) => e.eventId === eventId);

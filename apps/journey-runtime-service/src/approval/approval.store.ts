@@ -34,9 +34,16 @@ export class ApprovalStore {
       throw new Error('[ApprovalStore] MONGODB_URI is required in production.');
     }
 
-    const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
-    this.col = db.collection<ToolApprovalRecord>(COLLECTION_TOOL_APPROVALS);
-    return this.col;
+    try {
+      const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+      this.col = db.collection<ToolApprovalRecord>(COLLECTION_TOOL_APPROVALS);
+      return this.col;
+    } catch (err: any) {
+      if (this.allowMemoryFallback) {
+        return null;
+      }
+      throw err;
+    }
   }
 
   async createPending(
@@ -46,13 +53,16 @@ export class ApprovalStore {
     ttlMs = 15 * 60_000
   ): Promise<ToolApprovalRecord> {
     const now = new Date();
-    const record: ToolApprovalRecord = {
+    const record: ToolApprovalRecord & { sessionId?: string; packVersionId?: string } = {
       tenantId: ctx.tenantId,
       environmentId: ctx.environmentId,
       workspaceId: ctx.workspaceId,
       approvalRequestId: `apr_${randomUUID()}`,
       toolId,
       inputHash: hashToolInput(input),
+      requestedPayload: typeof input === 'object' && input !== null ? (input as any) : { input },
+      sessionId: ctx.sessionId,
+      packVersionId: ctx.packVersionId,
       status: 'pending',
       requestedBy: ctx.principalId,
       requestedAt: now,
@@ -60,9 +70,40 @@ export class ApprovalStore {
     };
 
     const col = await this.getCol();
-    if (col) await col.insertOne(record);
-    else this.memory.set(record.approvalRequestId, structuredClone(record));
+    if (col) {
+      await col.insertOne(record as any);
+      const db = (col as any).s?.db || (col as any).db;
+      if (db && typeof db.collection === 'function') {
+        try {
+          await db.collection('approval_requests').insertOne({
+            ...record,
+            approvalId: record.approvalRequestId,
+            executionKey: 'ALLOW_CURRENT',
+          });
+        } catch {}
+      }
+    } else {
+      this.memory.set(record.approvalRequestId, structuredClone(record as any));
+    }
     return record;
+  }
+
+  async getApproval(approvalRequestId: string): Promise<ToolApprovalRecord | null> {
+    const col = await this.getCol();
+    if (col) {
+      const found = await col.findOne({ approvalRequestId });
+      if (found) return found;
+      const db = (col as any).s?.db || (col as any).db;
+      if (db && typeof db.collection === 'function') {
+        try {
+          const req = await db.collection('approval_requests').findOne({
+            $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
+          });
+          if (req) return req;
+        } catch {}
+      }
+    }
+    return this.memory.get(approvalRequestId) || null;
   }
 
   async decide(
@@ -95,6 +136,28 @@ export class ApprovalStore {
           },
         }
       );
+      const db = (col as any).s?.db || (col as any).db;
+      if (db && typeof db.collection === 'function') {
+        try {
+          await db.collection('approval_requests').updateOne(
+            {
+              tenantId,
+              environmentId: environmentId as EnvironmentId,
+              workspaceId,
+              $or: [{ approvalRequestId }, { approvalId: approvalRequestId }],
+              status: 'pending',
+            },
+            {
+              $set: {
+                status: decision,
+                reviewedBy: decidedBy,
+                reviewedAt: now,
+                reason,
+              },
+            }
+          );
+        } catch {}
+      }
       return res.modifiedCount === 1;
     }
 

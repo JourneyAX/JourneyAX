@@ -11,6 +11,7 @@ import {
   ExecutionContext,
   ExecutionRequest,
 } from '@journeyax/capability-sdk';
+import { computePackChecksum } from '@journeyax/business-pack';
 import { OutboxRepository } from './outbox.repository';
 import { OutboxWorker, OutboxWorkerOptions } from './outbox.worker';
 import {
@@ -43,6 +44,13 @@ export interface WorkerHealthResponse {
     leased: number;
     published: number;
     deadLetter: number;
+  };
+  features?: {
+    activepiecesDispatch: {
+      status: string;
+      cutoverReady: boolean;
+      notice: string;
+    };
   };
   timestamp: string;
 }
@@ -227,37 +235,108 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      // Authoritative active business pack release pointer lookup
+      // Authoritative active business pack release pointer lookup strictly scoped to tenant and environment (no fallback to workspace packVersionId)
       const pointer = await db.collection('business_pack_pointers').findOne({
         tenantId: event.tenantId,
         $or: [{ channel: event.environmentId }, { environmentId: event.environmentId }],
       });
 
-      const activeVersion = pointer?.activeVersionId || pointer?.activeVersion || packVersionId;
-      if (pointer && activeVersion !== packVersionId) {
+      if (!pointer) {
+        throw new Error(
+          `[OutboxWorker] Active business pack pointer not found for tenant '${event.tenantId}' (${event.environmentId}); failing closed (fallback prohibited)`
+        );
+      }
+
+      const activeVersion = pointer.activeVersionId || pointer.activeVersion;
+      if (!activeVersion) {
+        throw new Error(
+          `[OutboxWorker] Active business pack pointer for tenant '${event.tenantId}' (${event.environmentId}) lacks activeVersionId; failing closed`
+        );
+      }
+
+      if (activeVersion !== packVersionId) {
         throw new Error(
           `[OutboxWorker] Workspace packVersionId '${packVersionId}' does not match active release pointer '${activeVersion}' for tenant '${event.tenantId}' (${event.environmentId})`
         );
       }
 
-      // Load immutable published Business Pack release
+      const pointerChecksum = typeof pointer.checksum === 'string' ? pointer.checksum.trim() : '';
+      if (!pointerChecksum) {
+        throw new Error(
+          `[OutboxWorker] Active business pack pointer for tenant '${event.tenantId}' (${event.environmentId}) lacks mandatory checksum; failing closed`
+        );
+      }
+
+      // Load immutable published Business Pack release strictly for exact environment (NO environmentId='all')
       const releaseDoc = await db.collection('business_pack_releases').findOne({
         tenantId: event.tenantId,
-        environmentId: { $in: [event.environmentId, 'all'] },
+        environmentId: event.environmentId,
         $or: [{ versionId: packVersionId }, { version: packVersionId }],
         status: { $in: ['published', 'active'] },
       });
       if (!releaseDoc) {
         throw new Error(
-          `[OutboxWorker] Published business pack release '${packVersionId}' not found for tenant '${event.tenantId}' (${event.environmentId})`
+          `[OutboxWorker] Published business pack release '${packVersionId}' not found for tenant '${event.tenantId}' with exact environment '${event.environmentId}'`
         );
       }
 
-      // Validate release checksum
-      const packChecksum = typeof releaseDoc.checksum === 'string' ? releaseDoc.checksum.trim() : '';
-      if (!packChecksum) {
+      // Validate release checksum and recompute canonical Business Pack checksum
+      const releaseChecksum = typeof releaseDoc.checksum === 'string' ? releaseDoc.checksum.trim() : '';
+      if (!releaseChecksum) {
         throw new Error(
           `[OutboxWorker] Business pack release '${packVersionId}' lacks mandatory checksum; failing closed`
+        );
+      }
+
+      const packPayload = releaseDoc.packData || {
+        manifest: releaseDoc.manifest,
+        profile: releaseDoc.profile,
+        vocabulary: releaseDoc.vocabulary,
+        entities: releaseDoc.entities,
+        conversationPolicy: releaseDoc.conversationPolicy,
+        modelPolicy: releaseDoc.modelPolicy,
+        agents: releaseDoc.agents,
+        journeys: releaseDoc.journeys,
+        rules: releaseDoc.rules,
+        capabilities: releaseDoc.capabilities,
+        experience: releaseDoc.experience,
+        evaluations: releaseDoc.evaluations,
+      };
+      const packToHash = releaseDoc.manifest
+        ? packPayload
+        : (({ _id, checksum, status, publishedAt, publishedBy, tenantId: _t, environmentId: _e, version: _v, versionId: _vi, ...rest }) => Object.keys(rest).length > 0 ? rest : releaseDoc)(releaseDoc);
+
+      const computedChecksum = computePackChecksum(packToHash as any);
+      if (computedChecksum !== releaseChecksum) {
+        throw new Error(
+          `[OutboxWorker] Canonical Business Pack checksum mismatch for release '${packVersionId}': stored '${releaseChecksum}', recomputed '${computedChecksum}'`
+        );
+      }
+      if (computedChecksum !== pointerChecksum) {
+        throw new Error(
+          `[OutboxWorker] Business Pack checksum mismatch between release ('${computedChecksum}') and active pointer ('${pointerChecksum}') for tenant '${event.tenantId}' (${event.environmentId})`
+        );
+      }
+
+      // Fail closed when stageBindings is missing, the current stage binding is absent, or the tool is not explicitly allowed
+      const stageBindings = releaseDoc.capabilities?.stageBindings;
+      if (!Array.isArray(stageBindings) || stageBindings.length === 0) {
+        throw new Error(
+          `[OutboxWorker] Published business pack release '${packVersionId}' lacks mandatory 'stageBindings'; failing closed`
+        );
+      }
+
+      const currentStageBinding = stageBindings.find((sb: any) => sb.stageId === stageId);
+      if (!currentStageBinding) {
+        throw new Error(
+          `[OutboxWorker] Stage binding for stage '${stageId}' is absent in published business pack release '${packVersionId}'; failing closed`
+        );
+      }
+
+      const isToolAllowedInStage = Array.isArray(currentStageBinding.tools) && currentStageBinding.tools.some((t: any) => t.toolId === toolId);
+      if (!isToolAllowedInStage) {
+        throw new Error(
+          `[OutboxWorker] Tool '${toolId}' is not allowed in stage '${stageId}' by published business pack release '${packVersionId}'`
         );
       }
 
@@ -270,14 +349,17 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      // Resolve ToolBinding from release
+      // Resolve ToolBinding from release strictly enforcing exact tenant/environment (NO environmentId='all')
       const toolBindings: ToolBinding[] = releaseDoc.capabilities?.toolBindings || [];
       const toolBinding = toolBindings.find(
-        (b: any) => b.toolId === toolId && (b.environmentId === event.environmentId || (b.environmentId as any) === 'all')
+        (b: any) =>
+          b.toolId === toolId &&
+          b.environmentId === event.environmentId &&
+          (!b.tenantId || b.tenantId === event.tenantId)
       );
       if (!toolBinding) {
         throw new Error(
-          `[OutboxWorker] ToolBinding for '${toolId}' (${event.environmentId}) not found in published business pack release '${packVersionId}'`
+          `[OutboxWorker] ToolBinding for '${toolId}' with exact environment '${event.environmentId}' not found in published business pack release '${packVersionId}'`
         );
       }
       if (toolBinding.executor?.type !== 'activepieces_flow') {
@@ -286,25 +368,34 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      // Validate stage allowance if stageBindings are present
-      const stageBindings: any[] = releaseDoc.capabilities?.stageBindings || [];
-      if (stageBindings.length > 0) {
-        const currentStageBinding = stageBindings.find((sb: any) => sb.stageId === stageId);
-        if (currentStageBinding) {
-          const isAllowed = currentStageBinding.tools?.some((t: any) => t.toolId === toolId);
-          if (!isAllowed) {
-            throw new Error(
-              `[OutboxWorker] Tool '${toolId}' is not allowed in stage '${stageId}' by published business pack release '${packVersionId}'`
-            );
-          }
-        }
-      }
-
       const boundFlowId = toolBinding.executor.flowId;
       const boundConnectionRef = toolBinding.executor.connectionRef;
       if (!boundFlowId || !boundConnectionRef) {
         throw new Error(
           `[OutboxWorker] ToolBinding for '${toolId}' lacks mandatory flowId or connectionRef`
+        );
+      }
+
+      // Validate that connection permits the configured flow and piece
+      const configuredPieceId = (toolBinding.executor as any)?.pieceId || (toolDef as any)?.pieceId || (toolBinding as any)?.pieceId;
+      const ownershipRepo = ownershipRepository || (db ? new DurableConnectionOwnershipRepository(() => db) : null);
+      if (!ownershipRepo) {
+        throw new Error(
+          `[OutboxWorker] Durable connection ownership repository required to validate connection for tenant '${event.tenantId}'`
+        );
+      }
+      const isConnectionPermitted = await ownershipRepo.validateOwnership(
+        event.tenantId,
+        event.environmentId,
+        boundConnectionRef,
+        {
+          flowId: boundFlowId,
+          pieceId: configuredPieceId,
+        }
+      );
+      if (!isConnectionPermitted) {
+        throw new Error(
+          `[OutboxWorker] Connection '${boundConnectionRef}' is not authorized for tenant '${event.tenantId}' (${event.environmentId}) or does not permit flow '${boundFlowId}'${configuredPieceId ? ` and piece '${configuredPieceId}'` : ''}; failing closed`
         );
       }
 
@@ -352,11 +443,17 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
             activepiecesWebhookSecret: apWebhookDoc.value,
             validateConnectionOwnership: async (t, e, c) => {
               if (ownershipRepository) {
-                return ownershipRepository.validateOwnership(t, e, c);
+                return ownershipRepository.validateOwnership(t, e, c, {
+                  flowId: boundFlowId,
+                  pieceId: configuredPieceId,
+                });
               }
               if (db) {
                 const repo = new DurableConnectionOwnershipRepository(() => db);
-                return repo.validateOwnership(t, e, c);
+                return repo.validateOwnership(t, e, c, {
+                  flowId: boundFlowId,
+                  pieceId: configuredPieceId,
+                });
               }
               return false;
             },
@@ -688,6 +785,14 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         lastSuccessfulPoll: null,
         leaseStatus: { activeLeases: 0 },
         metrics: { pending: 0, leased: 0, published: 0, deadLetter: 0 },
+        features: {
+          activepiecesDispatch: {
+            status: 'handler_live_producer_wired',
+            cutoverReady: false,
+            notice:
+              'activepieces.dispatch handler is registered and wired to approved capability execution; full production cutover requires end-to-end live testing with production Activepieces cluster',
+          },
+        },
         timestamp: new Date().toISOString(),
       };
     }
@@ -721,6 +826,14 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         leaseDurationMs: state.leaseDurationMs,
       },
       metrics,
+      features: {
+        activepiecesDispatch: {
+          status: 'handler_live_producer_wired',
+          cutoverReady: false,
+          notice:
+            'activepieces.dispatch handler is registered and wired to approved capability execution; full production cutover requires end-to-end live testing with production Activepieces cluster',
+        },
+      },
       configurationFailure: null,
       timestamp: new Date().toISOString(),
     };

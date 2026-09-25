@@ -1352,6 +1352,113 @@ async function runNotificationTests() {
     assert.equal(prodDeliv?.status, 'delivered', 'Production delivery must be delivered');
   });
 
+  // Test 27: Negative: Missing event/type in callback payload is rejected and does not default to delivered
+  await test('27. Negative: Missing event/type in callback payload is rejected and does not fabricate delivery', async () => {
+    const deliveryId = 'deliv_missing_event_type';
+    insertedDeliveries.push({
+      deliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'test.missing_evt',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'noevent@example.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    // Callback payload completely lacks 'event' and 'type'
+    const untypedPayload = [{ deliveryId, id: 'evt_untyped_001' }];
+    const hmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(untypedPayload)).digest('hex');
+
+    const res = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${hmac}` },
+      untypedPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+
+    assert.equal(res.processed, 0, 'Callback with missing event/type must not be processed');
+    assert.ok(
+      res.errors.some((e) => e.includes('Missing mandatory event or type in webhook callback event')),
+      'Must record error indicating missing event or type'
+    );
+    const deliv = insertedDeliveries.find((d) => d.deliveryId === deliveryId);
+    assert.equal(deliv?.status, 'pending', 'Delivery status must remain pending and NOT default to delivered');
+    assert.equal(deliv?.deliveredAt, undefined, 'deliveredAt must not be set');
+  });
+
+  // Test 28: Sent and processed callback events do not mark delivery as delivered
+  await test('28. Sent and processed callback events model status truthfully and do not mark delivery as delivered', async () => {
+    const sentDeliveryId = 'deliv_sent_test';
+    insertedDeliveries.push({
+      deliveryId: sentDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'test.sent_evt',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'sent@example.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const sentPayload = [{ deliveryId: sentDeliveryId, event: 'sent', id: 'evt_sent_001' }];
+    const sentHmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(sentPayload)).digest('hex');
+
+    const sentRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${sentHmac}` },
+      sentPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+
+    assert.equal(sentRes.processed, 1, 'Sent callback must be processed');
+    const sentDeliv = insertedDeliveries.find((d) => d.deliveryId === sentDeliveryId);
+    assert.equal(sentDeliv?.status, 'sent', 'Delivery status must be updated to sent, NOT delivered');
+    assert.equal(sentDeliv?.deliveredAt, undefined, 'deliveredAt must not be populated for sent event');
+
+    const procDeliveryId = 'deliv_processed_test';
+    insertedDeliveries.push({
+      deliveryId: procDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'test.processed_evt',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'processed@example.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const procPayload = [{ deliveryId: procDeliveryId, event: 'processed', id: 'evt_proc_001' }];
+    const procHmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(procPayload)).digest('hex');
+
+    const procRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${procHmac}` },
+      procPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+
+    assert.equal(procRes.processed, 1, 'Processed callback must be processed');
+    const procDeliv = insertedDeliveries.find((d) => d.deliveryId === procDeliveryId);
+    assert.equal(procDeliv?.status, 'processed', 'Delivery status must be updated to processed, NOT delivered');
+    assert.equal(procDeliv?.deliveredAt, undefined, 'deliveredAt must not be populated for processed event');
+  });
+
   console.log(`\nNotification Tests Complete: ${passed} passed, ${failed} failed.\n`);
   if (failed > 0) process.exit(1);
 }

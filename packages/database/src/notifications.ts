@@ -898,7 +898,9 @@ export class NotificationDispatcher {
   private static readonly STATUS_PRECEDENCE: Record<string, number> = {
     pending: 10,
     retrying: 20,
+    accepted: 25,
     sent: 30,
+    processed: 30,
     delivered: 40,
     opened: 50,
     clicked: 60,
@@ -990,7 +992,18 @@ export class NotificationDispatcher {
     for (const evt of events) {
       const deliveryId = evt.deliveryId || evt.custom_args?.deliveryId;
       const providerDeliveryId = evt.providerDeliveryId || evt.sg_message_id || evt.id;
-      const eventStatus = (evt.event || evt.type || 'delivered').toLowerCase();
+
+      const rawEvent = evt.event ?? evt.type;
+      if (
+        rawEvent === undefined ||
+        rawEvent === null ||
+        typeof rawEvent !== 'string' ||
+        !rawEvent.trim()
+      ) {
+        errors.push('Missing mandatory event or type in webhook callback event');
+        continue;
+      }
+      const eventStatus = rawEvent.trim().toLowerCase();
 
       if (!deliveryId && !providerDeliveryId) {
         errors.push('No deliveryId or providerDeliveryId present in webhook event');
@@ -1017,7 +1030,9 @@ export class NotificationDispatcher {
       else if (['dropped', 'spamreport', 'complaint'].includes(eventStatus)) mappedStatus = 'dropped';
       else if (['delivered', 'success'].includes(eventStatus)) mappedStatus = 'delivered';
       else if (['failed', 'failure'].includes(eventStatus)) mappedStatus = 'failed';
-      else if (['sent', 'processed'].includes(eventStatus)) mappedStatus = 'delivered';
+      else if (['sent'].includes(eventStatus)) mappedStatus = 'sent';
+      else if (['processed'].includes(eventStatus)) mappedStatus = 'processed';
+      else if (['accepted'].includes(eventStatus)) mappedStatus = 'accepted';
       else {
         // Reject / record unsupported typed events without changing delivery state
         errors.push(
@@ -1093,17 +1108,22 @@ export class NotificationDispatcher {
         $nor: [{ status: effectiveStatus, 'metadata.callbackEvent': eventStatus }],
       };
 
+      const setFields: Record<string, any> = {
+        status: effectiveStatus,
+        providerDeliveryId: providerDeliveryId || deliveryId,
+        'metadata.callbackEvent': eventStatus,
+        'metadata.callbackTimestamp': eventTimestamp,
+        'metadata.rawPayload': evt,
+        'metadata.lastDedupKey': callbackDedupKey,
+      };
+      if (effectiveStatus === 'delivered') {
+        setFields.deliveredAt = eventTimestamp;
+      }
+
       let updateResult: any;
       try {
         updateResult = await deliveriesCol.updateOne(atomicQuery, {
-          $set: {
-            status: effectiveStatus,
-            providerDeliveryId: providerDeliveryId || deliveryId,
-            'metadata.callbackEvent': eventStatus,
-            'metadata.callbackTimestamp': eventTimestamp,
-            'metadata.rawPayload': evt,
-            'metadata.lastDedupKey': callbackDedupKey,
-          },
+          $set: setFields,
         });
       } catch (err: any) {
         errors.push(`Delivery update failed: ${err.message}`);

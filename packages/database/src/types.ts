@@ -167,7 +167,7 @@ export interface NotificationDeliveryRecord {
   };
   templateId?: string;
   templateVersion?: string;
-  status: 'delivered' | 'failed' | 'retrying' | 'bounced' | 'opened' | 'clicked' | 'dropped';
+  status: 'delivered' | 'failed' | 'retrying' | 'bounced' | 'opened' | 'clicked' | 'dropped' | 'sent' | 'processed' | 'accepted';
   attempts: number;
   maxAttempts: number;
   providerDeliveryId?: string;

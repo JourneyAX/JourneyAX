@@ -3,6 +3,7 @@ import { scopeTenant, tenantAllowed, isPlatformIdentity, AuthedIdentity } from '
 import { GET as getConnections } from '../src/app/api/integrations/connections/route';
 import { POST as testCommercetools } from '../src/app/api/integrations/test-commercetools/route';
 import { setTestDatabase } from '@journeyax/database';
+import { computePackChecksum } from '@journeyax/business-pack';
 
 async function runCrossTenantAuthTests() {
   console.log('\n🔒 Running Backoffice Cross-Tenant Authorization & Execution Context Hardening Suite...\n');
@@ -49,6 +50,7 @@ async function runCrossTenantAuthTests() {
     { projectId: 'tenant_a', email: 'pending@tenant-a.com', role: 'admin', status: 'pending' },
     { projectId: 'tenant_a', email: 'revoked@tenant-a.com', role: 'admin', status: 'revoked' },
     { projectId: 'tenant_a', email: 'viewer@tenant-a.com', role: 'buyer', status: 'active' },
+    { projectId: 'tenant_a', email: 'norole@tenant-a.com', role: '', status: 'active' },
     { projectId: 'tenant_b', email: 'admin@tenant-b.com', role: 'admin', status: 'active' },
   ];
 
@@ -158,12 +160,15 @@ async function runCrossTenantAuthTests() {
     },
   ];
 
+  const mockPackPayload = { capabilities: { toolDefinitions: [] } };
+  const validReleaseChecksum = computePackChecksum(mockPackPayload as any);
+
   const packPointersTable = [
-    { tenantId: 'tenant_a', channel: 'production', environmentId: 'production', activeVersionId: '1.2.0' },
+    { tenantId: 'tenant_a', channel: 'production', environmentId: 'production', activeVersionId: '1.2.0', checksum: validReleaseChecksum },
   ];
 
   const packReleasesTable = [
-    { tenantId: 'tenant_a', environmentId: 'production', versionId: '1.2.0', status: 'active', checksum: 'chk_120' },
+    { tenantId: 'tenant_a', environmentId: 'production', versionId: '1.2.0', status: 'active', checksum: validReleaseChecksum, ...mockPackPayload },
   ];
 
   const workspacesTable = [
@@ -191,7 +196,20 @@ async function runCrossTenantAuthTests() {
     collection: (name: string) => ({
       findOne: async (query: any) => {
         if (name === 'project_members') {
-          return projectMembersTable.find((m) => m.projectId === query.projectId && m.email === query.email) || null;
+          return (
+            projectMembersTable.find((m) => {
+              if (m.projectId !== query.projectId) return false;
+              if (query.email) return m.email === query.email;
+              if (query.$or) {
+                return query.$or.some(
+                  (clause: any) =>
+                    (clause.email && clause.email === m.email) ||
+                    (clause.userId && (m as any).userId === clause.userId)
+                );
+              }
+              return true;
+            }) || null
+          );
         }
         if (name === 'tenant_configs' || name === 'projects') {
           return tenantConfigsTable.find((c) => c.projectId === query.projectId) || null;
@@ -229,6 +247,7 @@ async function runCrossTenantAuthTests() {
         if (name === 'business_pack_releases') {
           return packReleasesTable.find((r) => {
             if (query.tenantId && r.tenantId !== query.tenantId) return false;
+            if (query.environmentId && r.environmentId !== query.environmentId) return false;
             if (query.$or) {
               const matched = query.$or.some((clause: any) => {
                 if (clause.versionId && (r.versionId === clause.versionId || (r as any).version === clause.versionId)) return true;
@@ -350,6 +369,20 @@ async function runCrossTenantAuthTests() {
             payload: {
               sub: 'viewer@tenant-a.com',
               role: 'buyer',
+              tenantId: 'tenant_a',
+            },
+          }),
+        };
+      }
+      if (body.token === 'token_tenant_a_norole') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            valid: true,
+            payload: {
+              sub: 'norole@tenant-a.com',
+              role: 'admin',
               tenantId: 'tenant_a',
             },
           }),
@@ -651,6 +684,7 @@ async function runCrossTenantAuthTests() {
         channel: 'production',
         environmentId: 'production',
         activeVersionId: '3.0.0',
+        checksum: 'chk_d_pointer',
       });
       packReleasesTable.push({
         tenantId: 'tenant_d',
@@ -678,6 +712,167 @@ async function runCrossTenantAuthTests() {
       const json = await res.json();
       assert.equal(json.ok, false);
       assert.match(json.message, /lacks mandatory checksum/);
+    });
+
+    // ── Test 18: Active membership with missing role rejected in GET /connections ──
+    await test('18. Negative: active membership without explicit project role is rejected in connections route (no fallback to global role)', async () => {
+      const req = new Request('http://localhost:3009/api/integrations/connections', {
+        headers: { Authorization: 'Bearer token_tenant_a_norole' },
+      });
+      const res = await getConnections(req);
+      assert.equal(res.status, 403);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /membership lacks an explicit project-scoped role/);
+    });
+
+    // ── Test 19: Active membership with missing role rejected in POST /test-commercetools ──
+    await test('19. Negative: active membership without explicit project role is rejected in test-commercetools (no fallback to global role)', async () => {
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_tenant_a_norole',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_a',
+          connectionRef: 'conn_a_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 403);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /lacks an explicit project role/);
+    });
+
+    // ── Test 20: Release with environmentId='all' is rejected in POST /test-commercetools ──
+    await test('20. Negative: release with environmentId="all" is rejected in test-commercetools (exact environment required)', async () => {
+      tenantConfigsTable.push({
+        projectId: 'tenant_env_all',
+        environment: 'production',
+        workspaceId: 'ws_tenant_env_all',
+      } as any);
+      projectMembersTable.push({
+        projectId: 'tenant_env_all',
+        email: 'super@platform.com',
+        role: 'admin',
+        status: 'active',
+      });
+      connectionsTable.push({
+        tenantId: 'tenant_env_all',
+        environmentId: 'production',
+        connectionRef: 'conn_env_all_ct',
+        pieceName: '@activepieces/piece-commercetools',
+        status: 'active',
+        enabled: true,
+        allowedFlows: ['flow_ct_sync'],
+      });
+      tenantSecretsTable.push({
+        tenantId: 'tenant_env_all',
+        environmentId: 'production',
+        secretRef: 'activepieces_api_key',
+        value: 'mock_key',
+      });
+      packPointersTable.push({
+        tenantId: 'tenant_env_all',
+        channel: 'production',
+        environmentId: 'production',
+        activeVersionId: '2.0.0',
+        checksum: validReleaseChecksum,
+      });
+      packReleasesTable.push({
+        tenantId: 'tenant_env_all',
+        environmentId: 'all', // Non-exact environmentId='all'
+        versionId: '2.0.0',
+        status: 'active',
+        checksum: validReleaseChecksum,
+        ...mockPackPayload,
+      } as any);
+
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_platform_admin',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_env_all',
+          connectionRef: 'conn_env_all_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 412);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /with exact environment 'production'/);
+    });
+
+    // ── Test 21: Canonical checksum mismatch rejected in POST /test-commercetools ──
+    await test('21. Negative: canonical checksum mismatch between release and pointer rejected in test-commercetools', async () => {
+      tenantConfigsTable.push({
+        projectId: 'tenant_bad_chk',
+        environment: 'production',
+        workspaceId: 'ws_tenant_bad_chk',
+      } as any);
+      projectMembersTable.push({
+        projectId: 'tenant_bad_chk',
+        email: 'super@platform.com',
+        role: 'admin',
+        status: 'active',
+      });
+      connectionsTable.push({
+        tenantId: 'tenant_bad_chk',
+        environmentId: 'production',
+        connectionRef: 'conn_bad_chk_ct',
+        pieceName: '@activepieces/piece-commercetools',
+        status: 'active',
+        enabled: true,
+        allowedFlows: ['flow_ct_sync'],
+      });
+      tenantSecretsTable.push({
+        tenantId: 'tenant_bad_chk',
+        environmentId: 'production',
+        secretRef: 'activepieces_api_key',
+        value: 'mock_key',
+      });
+      packPointersTable.push({
+        tenantId: 'tenant_bad_chk',
+        channel: 'production',
+        environmentId: 'production',
+        activeVersionId: '1.0.0',
+        checksum: 'ptr_different_checksum',
+      });
+      packReleasesTable.push({
+        tenantId: 'tenant_bad_chk',
+        environmentId: 'production',
+        versionId: '1.0.0',
+        status: 'active',
+        checksum: validReleaseChecksum,
+        ...mockPackPayload,
+      } as any);
+
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_platform_admin',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_bad_chk',
+          connectionRef: 'conn_bad_chk_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 412);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /checksum mismatch/i);
     });
 
   } finally {

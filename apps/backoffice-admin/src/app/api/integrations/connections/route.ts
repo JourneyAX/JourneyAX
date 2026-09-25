@@ -49,11 +49,30 @@ export async function GET(req: Request) {
     if (!isPlatform) {
       const member = await db.collection('project_members').findOne({
         projectId: tenantId,
-        email: auth.identity.email,
+        $or: [
+          { email: auth.identity.email },
+          ...(auth.identity.id ? [{ userId: auth.identity.id }] : []),
+        ],
       });
 
       if (!member) {
         return NextResponse.json({ ok: false, message: `Access denied to project '${tenantId}'` }, { status: 403 });
+      }
+
+      // Bind the membership to the authenticated user identity
+      const emailMatches =
+        member.email &&
+        auth.identity.email &&
+        member.email.toLowerCase() === auth.identity.email.toLowerCase();
+      const idMatches =
+        member.userId &&
+        auth.identity.id &&
+        member.userId === auth.identity.id;
+      if (!emailMatches && !idMatches) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied to project '${tenantId}': membership identity does not match authenticated user` },
+          { status: 403 }
+        );
       }
 
       // Require accepted/active/non-revoked membership lifecycle
@@ -68,9 +87,16 @@ export async function GET(req: Request) {
         );
       }
 
-      // Require project-scoped permission for project.read
-      const memberRole = member.role || auth.identity.role;
-      if (!can(memberRole, 'project.read')) {
+      // Fail closed unless the accepted active membership contains an explicit project role and required permission; never fall back to global identity role
+      const memberRole = member.role;
+      if (!memberRole || typeof memberRole !== 'string' || !memberRole.trim()) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied to project '${tenantId}': membership lacks an explicit project-scoped role` },
+          { status: 403 }
+        );
+      }
+
+      if (!can(memberRole.trim(), 'project.read')) {
         return NextResponse.json(
           { ok: false, message: `Access denied to project '${tenantId}': role '${memberRole}' lacks 'project.read' permission` },
           { status: 403 }

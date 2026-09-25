@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { requireAuth, scopeTenant, isPlatformIdentity } from "../../../../lib/require-auth";
 import { connectToDatabase } from "@journeyax/database";
 import { can } from "@journeyax/shared-types";
+import { computePackChecksum } from "@journeyax/business-pack";
 import {
   CapabilityDispatcher,
   ToolDefinition,
@@ -82,16 +83,36 @@ export async function POST(req: Request) {
     }
 
     // Verify membership if not a dedicated platform identity
+    // Verify membership if not a dedicated platform identity
     let memberRole = auth.identity.role;
     if (!isPlatform) {
       const member = await db.collection('project_members').findOne({
         projectId: tenantId,
-        email: auth.identity.email,
+        $or: [
+          { email: auth.identity.email },
+          ...(auth.identity.id ? [{ userId: auth.identity.id }] : []),
+        ],
       });
 
       if (!member) {
         return NextResponse.json(
           { ok: false, message: `Access denied: user is not a member of project '${tenantId}'` },
+          { status: 403 }
+        );
+      }
+
+      // Bind the membership to the authenticated user identity
+      const emailMatches =
+        member.email &&
+        auth.identity.email &&
+        member.email.toLowerCase() === auth.identity.email.toLowerCase();
+      const idMatches =
+        member.userId &&
+        auth.identity.id &&
+        member.userId === auth.identity.id;
+      if (!emailMatches && !idMatches) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied: project membership does not match authenticated identity` },
           { status: 403 }
         );
       }
@@ -108,8 +129,16 @@ export async function POST(req: Request) {
         );
       }
 
-      // Require project-scoped permission for config.edit
-      memberRole = member.role || auth.identity.role;
+      // Fail closed unless the accepted active membership contains an explicit project role and required permission; never fall back to global identity role
+      const explicitRole = member.role;
+      if (!explicitRole || typeof explicitRole !== 'string' || !explicitRole.trim()) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied: active membership in project '${tenantId}' lacks an explicit project role` },
+          { status: 403 }
+        );
+      }
+
+      memberRole = explicitRole.trim();
       if (!can(memberRole, 'config.edit')) {
         return NextResponse.json(
           { ok: false, message: `Access denied: role '${memberRole}' lacks required 'config.edit' permission to test connectors` },
@@ -281,33 +310,81 @@ export async function POST(req: Request) {
       $or: [{ channel: environmentId }, { environmentId }],
     });
 
-    const targetVersion = releasePointer?.activeVersionId || releasePointer?.activeVersion;
-    if (!targetVersion) {
+    if (!releasePointer) {
       return NextResponse.json(
         { ok: false, message: `Active business pack release pointer not found for tenant '${tenantId}' (${environmentId}); failing closed.` },
         { status: 412 }
       );
     }
 
-    // Require published/active immutable release scoped to tenant and environment with valid checksum
+    const targetVersion = releasePointer.activeVersionId || releasePointer.activeVersion;
+    if (!targetVersion) {
+      return NextResponse.json(
+        { ok: false, message: `Active business pack release pointer for tenant '${tenantId}' (${environmentId}) lacks activeVersionId; failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    const pointerChecksum = typeof releasePointer.checksum === 'string' ? releasePointer.checksum.trim() : '';
+    if (!pointerChecksum) {
+      return NextResponse.json(
+        { ok: false, message: `Active business pack pointer for tenant '${tenantId}' (${environmentId}) lacks mandatory checksum; failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    // Require published/active immutable release scoped to EXACT tenant and environment (no environment='all') with canonical checksum
     const activeRelease = await db.collection('business_pack_releases').findOne({
       tenantId,
-      environmentId: { $in: [environmentId, 'all'] },
+      environmentId,
       $or: [{ versionId: targetVersion }, { version: targetVersion }],
       status: { $in: ['published', 'active'] },
     });
 
     if (!activeRelease) {
       return NextResponse.json(
-        { ok: false, message: `Published business pack release '${targetVersion}' not found for tenant '${tenantId}' (${environmentId}); failing closed.` },
+        { ok: false, message: `Published business pack release '${targetVersion}' not found for tenant '${tenantId}' with exact environment '${environmentId}'; failing closed.` },
         { status: 412 }
       );
     }
 
-    const packChecksum = typeof activeRelease.checksum === 'string' ? activeRelease.checksum.trim() : '';
-    if (!packChecksum) {
+    const releaseChecksum = typeof activeRelease.checksum === 'string' ? activeRelease.checksum.trim() : '';
+    if (!releaseChecksum) {
       return NextResponse.json(
         { ok: false, message: `Business pack release '${targetVersion}' lacks mandatory checksum; failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    // Recompute canonical Business Pack checksum and enforce match against release and pointer
+    const packPayload = activeRelease.packData || {
+      manifest: activeRelease.manifest,
+      profile: activeRelease.profile,
+      vocabulary: activeRelease.vocabulary,
+      entities: activeRelease.entities,
+      conversationPolicy: activeRelease.conversationPolicy,
+      modelPolicy: activeRelease.modelPolicy,
+      agents: activeRelease.agents,
+      journeys: activeRelease.journeys,
+      rules: activeRelease.rules,
+      capabilities: activeRelease.capabilities,
+      experience: activeRelease.experience,
+      evaluations: activeRelease.evaluations,
+    };
+    const packToHash = activeRelease.manifest
+      ? packPayload
+      : (({ _id, checksum, status, publishedAt, publishedBy, tenantId: _t, environmentId: _e, version: _v, versionId: _vi, ...rest }) => Object.keys(rest).length > 0 ? rest : activeRelease)(activeRelease);
+
+    const computedChecksum = computePackChecksum(packToHash as any);
+    if (computedChecksum !== releaseChecksum) {
+      return NextResponse.json(
+        { ok: false, message: `Canonical Business Pack checksum mismatch for release '${targetVersion}': stored '${releaseChecksum}', recomputed '${computedChecksum}'; failing closed.` },
+        { status: 412 }
+      );
+    }
+    if (computedChecksum !== pointerChecksum) {
+      return NextResponse.json(
+        { ok: false, message: `Business Pack checksum mismatch between release ('${computedChecksum}') and active pointer ('${pointerChecksum}') for tenant '${tenantId}' (${environmentId}); failing closed.` },
         { status: 412 }
       );
     }
