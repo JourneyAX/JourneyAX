@@ -10,7 +10,7 @@
  * 5. Uses shared CapabilityDispatcher with signing, connection ownership, and idempotency.
  */
 import { NextResponse } from "next/server";
-import { requireAuth, scopeTenant } from "../../../../lib/require-auth";
+import { requireAuth, scopeTenant, isPlatformIdentity } from "../../../../lib/require-auth";
 import { connectToDatabase } from "@journeyax/database";
 import {
   CapabilityDispatcher,
@@ -63,21 +63,25 @@ export async function POST(req: Request) {
     const dbName = process.env.MONGODB_DB_NAME || "journeyx";
     const { db } = await connectToDatabase(mongoUri, dbName);
 
-    // Derive project strictly from authenticated server-side membership
+    // Tenant admins remain strictly tenant-scoped unless they hold a dedicated platform identity
+    // or active project membership in the requested project
+    const isPlatform = isPlatformIdentity(auth.identity);
+    const requested = body.projectId || body.tenantId;
+    const targetProject = requested && typeof requested === 'string' && requested.trim() ? requested.trim() : auth.identity.tenantId;
+
     let tenantId = auth.identity.tenantId;
-    if (auth.identity.role === 'admin' || auth.identity.tenantId === 'platform') {
-      const requested = body.projectId || body.tenantId;
-      if (requested && typeof requested === 'string' && requested.trim()) {
-        tenantId = requested.trim();
-      }
+    if (isPlatform) {
+      tenantId = targetProject;
+    } else if (targetProject !== auth.identity.tenantId) {
+      tenantId = targetProject;
     }
 
     if (!tenantId) {
       return NextResponse.json({ ok: false, message: "Missing authenticated tenant context" }, { status: 400 });
     }
 
-    // Verify membership if not platform admin
-    if (auth.identity.role !== 'admin' && auth.identity.tenantId !== 'platform') {
+    // Verify membership if not a dedicated platform identity
+    if (!isPlatform) {
       if (auth.identity.tenantId !== tenantId) {
         const member = await db.collection('project_members').findOne({
           projectId: tenantId,
@@ -96,6 +100,13 @@ export async function POST(req: Request) {
     const projectConfig =
       (await db.collection('tenant_configs').findOne({ projectId: tenantId })) ||
       (await db.collection('projects').findOne({ projectId: tenantId }));
+
+    if (!projectConfig) {
+      return NextResponse.json(
+        { ok: false, message: `Project configuration not found for '${tenantId}'; failing closed.` },
+        { status: 412 }
+      );
+    }
 
     const environmentId: "production" | "staging" | "dev" | "test" =
       projectConfig?.environment ||
@@ -179,7 +190,7 @@ export async function POST(req: Request) {
       'commercetools',
       'piece-commercetools',
     ]);
-    const actualPiece = (connDoc.pieceId || connDoc.pieceName || connDoc.provider || '').trim().toLowerCase();
+    const actualPiece = (connDoc.pieceName || connDoc.provider || connDoc.pieceId || '').trim().toLowerCase();
     if (!CANONICAL_COMMERCETOOLS_PIECES.has(actualPiece)) {
       return NextResponse.json(
         {
@@ -242,11 +253,86 @@ export async function POST(req: Request) {
       },
     });
 
+    // Authoritative active business pack release lookup
+    const releasePointer =
+      (await db.collection('business_pack_pointers').findOne({
+        tenantId,
+        channel: environmentId,
+      })) ||
+      (await db.collection('business_pack_pointers').findOne({
+        tenantId,
+        channel: 'production',
+      }));
+
+    const activeRelease = releasePointer?.activeVersionId
+      ? await db.collection('business_pack_releases').findOne({
+          tenantId,
+          versionId: releasePointer.activeVersionId,
+        })
+      : await db.collection('business_pack_releases').findOne({
+          tenantId,
+          status: 'active',
+        });
+
+    const packVersionId = activeRelease?.versionId || releasePointer?.activeVersionId || projectConfig?.activePackVersionId;
+    if (!packVersionId) {
+      return NextResponse.json(
+        { ok: false, message: `Active business pack release not found for tenant '${tenantId}'; failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    // Resolve durable workspace and session records
+    const workspaceDoc =
+      (await db.collection('workspaces').findOne({
+        tenantId,
+        environmentId,
+      })) ||
+      (projectConfig.workspaceId
+        ? await db.collection('workspaces').findOne({ workspaceId: projectConfig.workspaceId })
+        : null);
+
+    if (!workspaceDoc) {
+      return NextResponse.json(
+        { ok: false, message: `Durable workspace record not found for tenant '${tenantId}' (${environmentId}); failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    const stageId = workspaceDoc.currentStage || workspaceDoc.stageId;
+    if (!stageId) {
+      return NextResponse.json(
+        { ok: false, message: `Durable workspace '${workspaceDoc.workspaceId}' lacks required currentStage; failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    const targetSessionId = workspaceDoc.activeSessionId || workspaceDoc.sessionId;
+    const sessionDoc = targetSessionId
+      ? await db.collection('sessions').findOne({
+          tenantId,
+          environmentId,
+          workspaceId: workspaceDoc.workspaceId,
+          sessionId: targetSessionId,
+        })
+      : await db.collection('sessions').findOne({
+          tenantId,
+          environmentId,
+          workspaceId: workspaceDoc.workspaceId,
+        });
+
+    if (!sessionDoc) {
+      return NextResponse.json(
+        { ok: false, message: `Durable session record not found for workspace '${workspaceDoc.workspaceId}'; failing closed.` },
+        { status: 412 }
+      );
+    }
+
     const toolDef: ToolDefinition = {
-      toolId: "commercetools.test_connection",
-      version: "1.0.0",
-      displayName: "Test Connection",
-      description: "Server-side test connection via Activepieces",
+      toolId: "connector.health_check",
+      version: packVersionId,
+      displayName: "Connector Health Check",
+      description: "Dedicated read-only connector health check",
       inputSchema: {},
       outputSchema: {},
       sideEffect: "read",
@@ -260,8 +346,8 @@ export async function POST(req: Request) {
     const toolBinding: ToolBinding = {
       tenantId,
       environmentId,
-      toolId: "commercetools.test_connection",
-      bindingVersion: "1.0.0",
+      toolId: "connector.health_check",
+      bindingVersion: packVersionId,
       executor: {
         type: "activepieces_flow",
         flowId: normFlowId,
@@ -277,26 +363,26 @@ export async function POST(req: Request) {
       },
     };
 
-    // Build trusted execution context from server-side project configuration
+    // Trusted execution context strictly resolved from durable workspace and session records
     const ctx: ExecutionContext = {
-      workspaceId: projectConfig?.workspaceId || `ws_${tenantId}`,
+      workspaceId: workspaceDoc.workspaceId,
       tenantId,
       environmentId,
-      sessionId: `sess_test_${Date.now()}`,
-      stageId: "stage_test",
-      packVersionId: projectConfig?.currentPackVersionId || "1.0.0",
+      sessionId: sessionDoc.sessionId,
+      stageId,
+      packVersionId,
       correlationId: `test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      principalRole: auth.identity.role || "admin",
-      principalId: auth.identity.email,
+      principalRole: sessionDoc.principalRole || auth.identity.role || "admin",
+      principalId: sessionDoc.principalId || auth.identity.email,
     };
 
     const result = await dispatcher.dispatch(
       toolDef,
       toolBinding,
       {
-        toolId: "commercetools.test_connection",
+        toolId: "connector.health_check",
         input: { pieceName: "@activepieces/piece-commercetools", test: true },
-        userConfirmationConfirmed: true,
+        userConfirmationConfirmed: false,
       },
       ctx
     );

@@ -10,6 +10,14 @@ export * from './cutover.repository';
 
 let client: MongoClient | null = null;
 const dbs = new Map<string, Db>();
+let testDbInstance: any = null;
+
+/**
+ * Injects a test database mock for unit/isolated route testing.
+ */
+export function setTestDatabase(mock: any): void {
+  testDbInstance = mock;
+}
 
 /**
  * Connects to MongoDB, manages the connection pool, and returns the requested database.
@@ -18,6 +26,10 @@ export async function connectToDatabase(
   uri: string,
   dbName: string = process.env.MONGODB_DB_NAME || 'journeyx'
 ): Promise<{ client: MongoClient; db: Db }> {
+  if (testDbInstance) {
+    return { client: client || ({} as any), db: testDbInstance };
+  }
+
   if (!client) {
     client = new MongoClient(uri);
     await client.connect();

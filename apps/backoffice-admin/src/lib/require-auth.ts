@@ -69,13 +69,28 @@ export async function requireAuth(req: Request, permission: Permission): Promise
  * project; every other user is pinned to their own tenant — the query string is
  * NEVER trusted to widen scope (this is the cross-tenant-enumeration fix).
  */
+export function isPlatformIdentity(identity: AuthedIdentity): boolean {
+  return (
+    identity.tenantId === 'platform' ||
+    identity.role === 'platform_admin' ||
+    (identity.role === 'admin' && identity.tenantId === 'platform')
+  );
+}
+
+/**
+ * The tenant this identity may act on. Dedicated platform identities may target the requested
+ * project; every other user (including tenant admins) is pinned to their own tenant —
+ * the query string / payload is NEVER trusted to widen scope without membership.
+ */
 export function scopeTenant(identity: AuthedIdentity, requested?: string | null): string {
-  if (identity.role === 'admin' || identity.tenantId === 'platform') return requested || identity.tenantId;
+  if (isPlatformIdentity(identity)) {
+    return requested && requested.trim() ? requested.trim() : identity.tenantId;
+  }
   return identity.tenantId;
 }
 
-/** May this identity act on this specific tenant's data? (admins: any). */
+/** May this identity act on this specific tenant's data? Only platform identities may target any tenant. */
 export function tenantAllowed(identity: AuthedIdentity, tenant?: string | null): boolean {
-  if (identity.role === 'admin' || identity.tenantId === 'platform') return true;
+  if (isPlatformIdentity(identity)) return true;
   return !!tenant && identity.tenantId === tenant;
 }

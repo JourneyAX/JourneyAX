@@ -29,10 +29,12 @@ async function runNotificationTests() {
   const insertedSuppressions: any[] = [];
   const insertedCallbacks: any[] = [];
   const secretsCollection: any[] = [
-    { tenantId: 'tenant_abc', secretRef: 'resend_secret_ref', value: 're_mock_12345' },
-    { tenantId: 'tenant_abc', secretRef: 'webhook_secret_ref', value: 'wh_mock_secret_key' },
-    { tenantId: 'tenant_abc', secretRef: 'activepieces_webhook_secret', value: 'wh_ap_secret_key' },
-    { tenantId: 'tenant_xyz', secretRef: 'xyz_secret_ref', value: 'xyz_private_key' },
+    { tenantId: 'tenant_abc', environmentId: 'production', secretRef: 'resend_secret_ref', value: 're_mock_12345' },
+    { tenantId: 'tenant_abc', environmentId: 'production', secretRef: 'webhook_secret_ref', value: 'wh_mock_secret_key' },
+    { tenantId: 'tenant_abc', environmentId: 'production', secretRef: 'activepieces_webhook_secret', value: 'wh_ap_secret_key' },
+    { tenantId: 'tenant_xyz', environmentId: 'production', secretRef: 'xyz_secret_ref', value: 'xyz_private_key' },
+    { tenantId: 'tenant_abc', environmentId: 'staging', secretRef: 'staging_only_secret', value: 'staging_secret_val' },
+    { tenantId: 'tenant_svix', environmentId: 'production', secretRef: 'svix_secret_ref', value: 'whsec_54B3p6e5a6r2h3v5a4s5b6c7d8e9f0a1b2c3d4e5f6g=' },
   ];
   const connectionsCollection: any[] = [
     { tenantId: 'tenant_abc', environmentId: 'production', connectionRef: 'conn_ap_valid' },
@@ -80,7 +82,19 @@ async function runNotificationTests() {
               return true;
             });
             if (item && update.$set) {
-              Object.assign(item, update.$set);
+              for (const [key, val] of Object.entries(update.$set)) {
+                if (key.includes('.')) {
+                  const parts = key.split('.');
+                  let target = item;
+                  for (let i = 0; i < parts.length - 1; i++) {
+                    target[parts[i]] = target[parts[i]] || {};
+                    target = target[parts[i]];
+                  }
+                  target[parts[parts.length - 1]] = val;
+                } else {
+                  item[key] = val;
+                }
+              }
               return { matchedCount: 1, modifiedCount: 1 };
             }
             return { matchedCount: item ? 1 : 0, modifiedCount: 0 };
@@ -116,7 +130,12 @@ async function runNotificationTests() {
       if (name === 'tenant_secrets') {
         return {
           findOne: async (query: any) =>
-            secretsCollection.find((s) => s.tenantId === query.tenantId && s.secretRef === query.secretRef) || null,
+            secretsCollection.find(
+              (s) =>
+                s.tenantId === query.tenantId &&
+                s.environmentId === query.environmentId &&
+                s.secretRef === query.secretRef
+            ) || null,
         };
       }
       if (name === 'tenant_connections') {
@@ -302,7 +321,7 @@ async function runNotificationTests() {
 
   // Test 5: Negative Cross-Tenant secret access rejection
   await test('5. Negative Cross-Tenant: Tenant ABC cannot resolve Tenant XYZ secret', async () => {
-    const secret = await dispatcher.resolveSecret('tenant_abc', 'xyz_secret_ref');
+    const secret = await dispatcher.resolveSecret('tenant_abc', 'production', 'xyz_secret_ref');
     assert.equal(secret, null, 'Cross-tenant secret resolution must fail closed');
   });
 
@@ -394,14 +413,20 @@ async function runNotificationTests() {
       },
     ];
 
-    const hmac = createHmac('sha256', secret);
-    hmac.update(JSON.stringify(callbackPayload));
-    const sig = `sha256=${hmac.digest('hex')}`;
+    const svixId = 'msg_svix_test_08';
+    const svixTimestamp = String(Math.floor(Date.now() / 1000));
+    const content = `${svixId}.${svixTimestamp}.${JSON.stringify(callbackPayload)}`;
+    const svixSig = createHmac('sha256', Buffer.from(secret, 'utf-8')).update(content).digest('base64');
+    const svixHeaders = {
+      'svix-id': svixId,
+      'svix-timestamp': svixTimestamp,
+      'svix-signature': `v1,${svixSig}`,
+    };
 
     // First call: successfully processed
     const res1 = await dispatcher.handleEmailWebhookCallback(
       'resend',
-      { 'x-journeyax-signature': sig },
+      svixHeaders,
       callbackPayload,
       {
         secretRef: 'webhook_secret_ref',
@@ -437,7 +462,7 @@ async function runNotificationTests() {
     // Second call: duplicate callback
     const res2 = await dispatcher.handleEmailWebhookCallback(
       'resend',
-      { 'x-journeyax-signature': sig },
+      svixHeaders,
       callbackPayload,
       {
         secretRef: 'webhook_secret_ref',
@@ -975,6 +1000,251 @@ async function runNotificationTests() {
     );
     assert.equal(wrongProviderRes.processed, 0, 'Generic provider cannot update sendgrid delivery');
     assert.ok(wrongProviderRes.errors[0].includes('No matching delivery record'));
+  });
+
+  // Test 20: Cross-environment secret rejection
+  await test('20. Negative Cross-Environment: Tenant ABC staging secret cannot be resolved in production', async () => {
+    // staging_only_secret is defined for staging, not production
+    const prodSecret = await dispatcher.resolveSecret('tenant_abc', 'production', 'staging_only_secret');
+    assert.equal(prodSecret, null, 'Staging secret must not be resolved in production environment');
+
+    const stagingSecret = await dispatcher.resolveSecret('tenant_abc', 'staging', 'staging_only_secret');
+    assert.equal(stagingSecret, 'staging_secret_val', 'Staging secret must be resolved in staging environment');
+  });
+
+  // Test 21: Missing Svix headers reject for Resend provider
+  await test('21. Negative Missing Svix Headers: Resend provider requires svix-id, svix-timestamp, svix-signature', async () => {
+    const payload = [{ deliveryId: 'deliv_svix_01', event: 'delivered' }];
+    const validTimestamp = String(Math.floor(Date.now() / 1000));
+
+    // Missing svix-id
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'resend',
+          { 'svix-timestamp': validTimestamp, 'svix-signature': 'v1,some_sig' },
+          payload,
+          'wh_mock_secret_key',
+          'tenant_abc',
+          'production'
+        );
+      },
+      /requires svix-id header/i
+    );
+
+    // Missing svix-timestamp
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'resend',
+          { 'svix-id': 'msg_01', 'svix-signature': 'v1,some_sig' },
+          payload,
+          'wh_mock_secret_key',
+          'tenant_abc',
+          'production'
+        );
+      },
+      /requires svix-timestamp header/i
+    );
+
+    // Missing svix-signature
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'resend',
+          { 'svix-id': 'msg_01', 'svix-timestamp': validTimestamp },
+          payload,
+          'wh_mock_secret_key',
+          'tenant_abc',
+          'production'
+        );
+      },
+      /requires svix-signature header/i
+    );
+
+    // Expired svix-timestamp (> 300 seconds)
+    const expiredTimestamp = String(Math.floor(Date.now() / 1000) - 305);
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'resend',
+          { 'svix-id': 'msg_01', 'svix-timestamp': expiredTimestamp, 'svix-signature': 'v1,some_sig' },
+          payload,
+          'wh_mock_secret_key',
+          'tenant_abc',
+          'production'
+        );
+      },
+      /timestamp expired or invalid/i
+    );
+  });
+
+  // Test 22: Official Svix signature verification with whsec_ base64 secret decoding
+  await test('22. Official Svix signature: base64-decoded whsec_ secret and v1,<base64> signature verification', async () => {
+    const deliveryId = 'deliv_svix_official_01';
+    insertedDeliveries.push({
+      deliveryId,
+      tenantId: 'tenant_svix',
+      environmentId: 'production',
+      provider: 'resend',
+      recipient: 'user@svix.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const rawSecret = 'whsec_54B3p6e5a6r2h3v5a4s5b6c7d8e9f0a1b2c3d4e5f6g=';
+    const payload = [{ deliveryId, event: 'delivered' }];
+    const rawPayload = JSON.stringify(payload);
+    const svixId = 'msg_svix_official';
+    const svixTimestamp = String(Math.floor(Date.now() / 1000));
+    const toSign = `${svixId}.${svixTimestamp}.${rawPayload}`;
+
+    // Official Svix signing: decode base64 after whsec_ prefix
+    const secretBytes = Buffer.from(rawSecret.slice(6), 'base64');
+    const validSig = createHmac('sha256', secretBytes).update(toSign).digest('base64');
+
+    // Valid official Svix signature succeeds
+    const successRes = await dispatcher.handleEmailWebhookCallback(
+      'resend',
+      {
+        'svix-id': svixId,
+        'svix-timestamp': svixTimestamp,
+        'svix-signature': `v1,${validSig}`,
+      },
+      payload,
+      rawSecret,
+      'tenant_svix',
+      'production'
+    );
+    assert.equal(successRes.processed, 1);
+    const deliv = insertedDeliveries.find((d) => d.deliveryId === deliveryId);
+    assert.equal(deliv?.status, 'delivered');
+
+    // Forged signature fails
+    await assert.rejects(
+      async () => {
+        await dispatcher.handleEmailWebhookCallback(
+          'resend',
+          {
+            'svix-id': svixId,
+            'svix-timestamp': svixTimestamp,
+            'svix-signature': 'v1,forgedBadSignatureBase64==',
+          },
+          payload,
+          rawSecret,
+          'tenant_svix',
+          'production'
+        );
+      },
+      /Invalid webhook callback signature/i
+    );
+  });
+
+  // Test 23: Metadata preservation via dotted MongoDB updates
+  await test('23. Metadata preservation: webhook callback preserves durable fields on delivery record', async () => {
+    const deliveryId = 'deliv_meta_preserve_01';
+    insertedDeliveries.push({
+      deliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      provider: 'generic',
+      recipient: 'meta_user@example.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      metadata: {
+        orderId: 'ord_preserve_999',
+        recipientName: 'Alice Smith',
+        customField: { nested: true, count: 42 },
+      },
+      createdAt: new Date(),
+    });
+
+    const payload = [{ deliveryId, event: 'delivered' }];
+    const rawPayload = JSON.stringify(payload);
+    const hmac = createHmac('sha256', 'mock_secret_val').update(rawPayload).digest('hex');
+
+    const res = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${hmac}` },
+      payload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+    assert.equal(res.processed, 1);
+
+    const updated = insertedDeliveries.find((d) => d.deliveryId === deliveryId);
+    assert.ok(updated);
+    assert.equal(updated.status, 'delivered');
+    // Pre-existing durable metadata fields MUST still exist and not be overwritten!
+    assert.equal(updated.metadata.orderId, 'ord_preserve_999');
+    assert.equal(updated.metadata.recipientName, 'Alice Smith');
+    assert.equal(updated.metadata.customField.nested, true);
+    assert.equal(updated.metadata.customField.count, 42);
+    // Webhook callback fields are merged in
+    assert.equal(updated.metadata.callbackEvent, 'delivered');
+    assert.ok(updated.metadata.callbackTimestamp instanceof Date);
+  });
+
+  // Test 24: Out-of-order webhook callback monotonic terminal-state rules
+  await test('24. Out-of-order callback: status cannot regress from delivered or terminal bounced state', async () => {
+    const deliveryId = 'deliv_order_monotonic_01';
+    const now = Date.now();
+    insertedDeliveries.push({
+      deliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      provider: 'generic',
+      recipient: 'monotonic@example.com',
+      status: 'delivered', // Already reached delivered!
+      attempts: 1,
+      maxAttempts: 3,
+      metadata: {
+        callbackTimestamp: new Date(now),
+        callbackEvent: 'delivered',
+      },
+      createdAt: new Date(now - 10000),
+    });
+
+    // 24a. Out-of-order delayed 'sent' / 'processed' event arrives (lower rank)
+    const delayedPayload = [{ deliveryId, event: 'sent', timestamp: Math.floor((now - 5000) / 1000) }];
+    const delayedHmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(delayedPayload)).digest('hex');
+
+    const delayedRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${delayedHmac}` },
+      delayedPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+    assert.equal(delayedRes.processed, 1);
+    const delivAfterDelayed = insertedDeliveries.find((d) => d.deliveryId === deliveryId);
+    assert.equal(delivAfterDelayed?.status, 'delivered', 'Out-of-order sent event must NOT regress delivered status');
+
+    // 24b. Delivery reaches terminal bounced failure state
+    delivAfterDelayed!.status = 'bounced';
+    delivAfterDelayed!.metadata.callbackTimestamp = new Date(now + 1000);
+    delivAfterDelayed!.metadata.callbackEvent = 'bounced';
+
+    // Out-of-order 'delivered' arrives after bounce: must not regress bounced
+    const lateDelivPayload = [{ deliveryId, event: 'delivered', timestamp: Math.floor(now / 1000) }];
+    const lateHmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(lateDelivPayload)).digest('hex');
+
+    const lateRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${lateHmac}` },
+      lateDelivPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+    assert.equal(lateRes.processed, 1);
+    const delivAfterBounce = insertedDeliveries.find((d) => d.deliveryId === deliveryId);
+    assert.equal(delivAfterBounce?.status, 'bounced', 'Terminal bounced state must not regress on late delivered event');
   });
 
   console.log(`\nNotification Tests Complete: ${passed} passed, ${failed} failed.\n`);

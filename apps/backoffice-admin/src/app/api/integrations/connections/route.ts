@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import { requireAuth, scopeTenant } from '../../../../lib/require-auth';
+import { requireAuth, scopeTenant, isPlatformIdentity } from '../../../../lib/require-auth';
 import { connectToDatabase } from '@journeyax/database';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-const DB_NAME = process.env.MONGODB_DB_NAME || 'journeyx';
 
 export async function GET(req: Request) {
   try {
@@ -12,21 +10,26 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, message: auth.message }, { status: auth.status });
     }
 
-    // Derive project strictly from authenticated server-side membership
+    const isPlatform = isPlatformIdentity(auth.identity);
+    const url = new URL(req.url);
+    const requested = url.searchParams.get('tenantId') || url.searchParams.get('projectId');
+    const targetProject = requested && requested.trim() ? requested.trim() : auth.identity.tenantId;
+
+    // Tenant admins remain strictly tenant-scoped unless they hold a dedicated platform identity
+    // or active project membership in the requested project
     let tenantId = auth.identity.tenantId;
-    if (auth.identity.role === 'admin' || auth.identity.tenantId === 'platform') {
-      const url = new URL(req.url);
-      const requested = url.searchParams.get('tenantId') || url.searchParams.get('projectId');
-      if (requested && requested.trim()) {
-        tenantId = requested.trim();
-      }
+    if (isPlatform) {
+      tenantId = targetProject;
+    } else if (targetProject !== auth.identity.tenantId) {
+      tenantId = targetProject;
     }
 
     if (!tenantId) {
       return NextResponse.json({ ok: false, message: 'Missing authenticated tenant context' }, { status: 400 });
     }
 
-    if (!MONGODB_URI) {
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
       return NextResponse.json(
         {
           ok: false,
@@ -39,15 +42,11 @@ export async function GET(req: Request) {
       );
     }
 
-    const { db } = await connectToDatabase(MONGODB_URI, DB_NAME);
+    const dbName = process.env.MONGODB_DB_NAME || 'journeyx';
+    const { db } = await connectToDatabase(mongoUri, dbName);
 
-    // Derive environment and verify membership from server-side project configuration
-    const projectConfig =
-      (await db.collection('tenant_configs').findOne({ projectId: tenantId })) ||
-      (await db.collection('projects').findOne({ projectId: tenantId }));
-
-    // Verify membership if not platform admin
-    if (auth.identity.role !== 'admin' && auth.identity.tenantId !== 'platform') {
+    // Verify membership if not a dedicated platform identity
+    if (!isPlatform) {
       if (auth.identity.tenantId !== tenantId) {
         const member = await db.collection('project_members').findOne({
           projectId: tenantId,
@@ -57,6 +56,18 @@ export async function GET(req: Request) {
           return NextResponse.json({ ok: false, message: `Access denied to project '${tenantId}'` }, { status: 403 });
         }
       }
+    }
+
+    // Derive environment and verify membership from server-side project configuration
+    const projectConfig =
+      (await db.collection('tenant_configs').findOne({ projectId: tenantId })) ||
+      (await db.collection('projects').findOne({ projectId: tenantId }));
+
+    if (!projectConfig) {
+      return NextResponse.json(
+        { ok: false, message: `Project configuration not found for '${tenantId}'; failing closed.` },
+        { status: 412 }
+      );
     }
 
     const environmentId: string =

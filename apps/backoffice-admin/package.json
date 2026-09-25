@@ -6,7 +6,8 @@
     "dev": "next dev -p 3009",
     "build": "next build",
     "start": "next start -p 3009",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "tsx test/cross-tenant-authorization.spec.ts"
   },
   "dependencies": {
     "@journeyax/business-pack": "*",

@@ -13,7 +13,7 @@ export class PolicyGate {
     const policy = binding.policy || (tool as any)?.policy || {};
 
     // 1. Role / Permission Check
-    if (policy.requiredRole && policy.requiredRole !== 'customer') {
+    if (policy.requiredRole) {
       const userRole = ctx.principalRole || 'customer';
       if (!this.roleSatisfies(userRole, policy.requiredRole)) {
         return {

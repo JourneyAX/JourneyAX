@@ -227,21 +227,59 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         },
       };
 
-      // Require trusted durable execution context — no fabricated fallbacks
-      const durableCtx = (event as any).executionContext || payload.executionContext || {};
-      const workspaceId = (event as any).workspaceId || payload.workspaceId || durableCtx.workspaceId;
-      const sessionId = (event as any).sessionId || payload.sessionId || durableCtx.sessionId;
-      const stageId = (event as any).stageId || payload.stageId || durableCtx.stageId;
-      const packVersionId = (event as any).packVersionId || payload.packVersionId || durableCtx.packVersionId;
-      const principalRole = (event as any).principalRole || payload.principalRole || durableCtx.principalRole;
-      const principalId = (event as any).principalId || payload.principalId || durableCtx.principalId;
+      // Authoritative durable execution context resolution — payload is NOT authoritative
+      const workspaceId = (event as any).workspaceId || payload.workspaceId;
+      if (!workspaceId) {
+        throw new Error("[OutboxWorker] Missing mandatory 'workspaceId' for activepieces.dispatch");
+      }
+      if (!db) {
+        throw new Error("[OutboxWorker] Durable database is required to resolve execution context");
+      }
 
-      if (!workspaceId || !sessionId || !stageId || !packVersionId || !principalRole) {
+      const workspaceDoc = await db.collection('workspaces').findOne({
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        workspaceId,
+      });
+      if (!workspaceDoc) {
         throw new Error(
-          `[OutboxWorker] Missing trusted durable execution context for activepieces.dispatch: ` +
-          `workspaceId=${workspaceId || 'missing'}, sessionId=${sessionId || 'missing'}, ` +
-          `stageId=${stageId || 'missing'}, packVersionId=${packVersionId || 'missing'}, ` +
-          `principalRole=${principalRole || 'missing'}`
+          `[OutboxWorker] Durable workspace record not found for tenant '${event.tenantId}', env '${event.environmentId}', workspace '${workspaceId}'`
+        );
+      }
+
+      const stageId = workspaceDoc.currentStage || workspaceDoc.stageId;
+      const packVersionId = workspaceDoc.packVersionId;
+      if (!stageId || !packVersionId) {
+        throw new Error(
+          `[OutboxWorker] Durable workspace record '${workspaceId}' lacks required currentStage or packVersionId`
+        );
+      }
+
+      // Authoritative session and principal role resolution from durable session record
+      const targetSessionId = (event as any).sessionId || payload.sessionId || workspaceDoc.activeSessionId || workspaceDoc.sessionId;
+      if (!targetSessionId) {
+        throw new Error(
+          `[OutboxWorker] Missing session identifier for workspace '${workspaceId}'`
+        );
+      }
+
+      const sessionDoc = await db.collection('sessions').findOne({
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        workspaceId,
+        sessionId: targetSessionId,
+      });
+      if (!sessionDoc) {
+        throw new Error(
+          `[OutboxWorker] Durable session record not found for session '${targetSessionId}' in workspace '${workspaceId}'`
+        );
+      }
+
+      const principalRole = sessionDoc.principalRole || sessionDoc.role;
+      const principalId = sessionDoc.principalId || sessionDoc.userId || sessionDoc.email;
+      if (!principalRole) {
+        throw new Error(
+          `[OutboxWorker] Durable session '${targetSessionId}' lacks required principalRole`
         );
       }
 
@@ -249,7 +287,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         workspaceId,
         tenantId: event.tenantId,
         environmentId: event.environmentId,
-        sessionId,
+        sessionId: targetSessionId,
         stageId,
         packVersionId,
         correlationId: event.eventId,
@@ -258,36 +296,49 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         principalId,
       };
 
-      // Side-effecting dispatch must require a durable approved approval record or explicit trustworthy confirmation established before enqueue.
-      // Never default userConfirmationConfirmed to true.
+      // Side-effecting dispatch must require an authoritative durable approved approval row
+      // bound to tenant + environment + workspace + tool/execution/idempotency key and unexpired.
+      // Payload/event booleans and embedded approval-record bypasses are strictly prohibited and ignored.
       let userConfirmationConfirmed = false;
-      if (payload.userConfirmationConfirmed === true || (event as any).userConfirmationConfirmed === true) {
-        userConfirmationConfirmed = true;
-      } else if (payload.approvalId && db) {
-        const approval = await db.collection('approval_requests').findOne({
-          approvalId: payload.approvalId,
-          tenantId: event.tenantId,
-          environmentId: event.environmentId,
-          status: 'approved',
-        });
-        if (approval) {
-          userConfirmationConfirmed = true;
-        }
-      } else if (payload.approvalRecord && payload.approvalRecord.status === 'approved') {
-        userConfirmationConfirmed = true;
-      }
-
       const isSideEffecting =
         toolDef.sideEffect === 'write' ||
         toolDef.sideEffect === 'transactional' ||
         toolDef.risk === 'medium' ||
         toolDef.risk === 'high' ||
-        toolDef.risk === 'critical';
+        toolDef.risk === 'critical' ||
+        toolBinding.policy?.requiresConfirmation === true;
 
-      if (isSideEffecting && !userConfirmationConfirmed) {
-        throw new Error(
-          `[OutboxWorker] Side-effecting activepieces.dispatch for tool '${toolDef.toolId}' requires a durable approved approval record or explicit trustworthy confirmation established before enqueue`
-        );
+      if (isSideEffecting) {
+        const now = new Date();
+        const approval = await db.collection('approval_requests').findOne({
+          tenantId: event.tenantId,
+          environmentId: event.environmentId,
+          workspaceId,
+          status: 'approved',
+          $or: [
+            { toolId: toolDef.toolId },
+            { executionKey: event.eventId },
+            { idempotencyKey: event.eventId },
+            ...(payload.approvalId ? [{ approvalId: payload.approvalId }] : []),
+          ],
+          $and: [
+            {
+              $or: [
+                { expiresAt: { $exists: false } },
+                { expiresAt: null },
+                { expiresAt: { $gt: now } },
+              ],
+            },
+          ],
+        });
+
+        if (!approval) {
+          throw new Error(
+            `[OutboxWorker] Side-effecting activepieces.dispatch for tool '${toolDef.toolId}' requires an authoritative, unexpired durable approval record in 'approval_requests' bound to tenant, environment, workspace, and tool/execution/idempotency key`
+          );
+        }
+
+        userConfirmationConfirmed = true;
       }
 
       const request: ExecutionRequest = {

@@ -86,41 +86,47 @@ export class WebhookSignatureValidator {
       const svixSignature =
         normalizedHeaders['svix-signature'] ||
         normalizedHeaders['x-resend-signature'] ||
-        normalizedHeaders['resend-signature'] ||
-        normalizedHeaders['x-journeyax-signature'] ||
-        normalizedHeaders['x-webhook-signature'];
+        normalizedHeaders['resend-signature'];
 
-      if (!svixSignature) {
-        throw new Error('Missing webhook signature');
+      if (!svixId || !svixId.trim()) {
+        throw new Error('Resend/Svix webhook requires svix-id header');
+      }
+      if (!svixTimestamp || !svixTimestamp.trim()) {
+        throw new Error('Resend/Svix webhook requires svix-timestamp header');
+      }
+      if (!svixSignature || !svixSignature.trim()) {
+        throw new Error('Resend/Svix webhook requires svix-signature header');
       }
 
-      // Replay prevention if timestamp present
-      if (svixTimestamp) {
-        const nowSec = Math.floor(Date.now() / 1000);
-        const eventSec = parseInt(svixTimestamp, 10);
-        if (!isNaN(eventSec) && Math.abs(nowSec - eventSec) > 600) {
-          throw new Error('Resend webhook signature timestamp expired or invalid (replay detected)');
-        }
+      // Replay prevention: validate numeric freshness (<= 300 seconds)
+      const nowSec = Math.floor(Date.now() / 1000);
+      const eventSec = parseInt(svixTimestamp.trim(), 10);
+      if (isNaN(eventSec) || Math.abs(nowSec - eventSec) > 300) {
+        throw new Error('Resend/Svix webhook signature timestamp expired or invalid (replay detected)');
       }
 
-      const contentToSign = svixId && svixTimestamp ? `${svixId}.${svixTimestamp}.${rawBody}` : rawBody;
-      const secret = keyOrSecret.startsWith('whsec_') ? keyOrSecret.slice(6) : keyOrSecret;
-      const expectedHex = createHmac('sha256', secret).update(contentToSign).digest('hex');
-      const expectedBase64 = createHmac('sha256', secret).update(contentToSign).digest('base64');
+      const contentToSign = `${svixId.trim()}.${svixTimestamp.trim()}.${rawBody}`;
+      // Svix secrets with whsec_ prefix must be base64-decoded before HMAC computation
+      const secretKey = keyOrSecret.startsWith('whsec_')
+        ? Buffer.from(keyOrSecret.slice(6), 'base64')
+        : Buffer.from(keyOrSecret, 'utf-8');
+
+      const expectedBase64 = createHmac('sha256', secretKey).update(contentToSign).digest('base64');
+      const expectedHex = createHmac('sha256', secretKey).update(contentToSign).digest('hex');
 
       const rawSignatures = svixSignature.split(' ').flatMap((s) => {
-        let clean = s;
+        let clean = s.trim();
         if (clean.startsWith('v1,')) clean = clean.slice(3);
         if (clean.startsWith('sha256=')) clean = clean.slice(7);
-        return clean;
+        return clean ? [clean] : [];
       });
 
       const matches = rawSignatures.some((sig) => {
         try {
-          if (sig.length === expectedHex.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expectedHex))) {
+          if (sig.length === expectedBase64.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expectedBase64))) {
             return true;
           }
-          if (sig.length === expectedBase64.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expectedBase64))) {
+          if (sig.length === expectedHex.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expectedHex))) {
             return true;
           }
           return false;
@@ -253,14 +259,19 @@ export class NotificationDispatcher {
   }
 
   /**
-   * Resolves a secret reference for a tenant strictly from the tenant_secrets collection.
-   * Cross-tenant and global environment fallbacks are strictly prohibited.
+   * Resolves a secret reference strictly scoped by tenantId + environmentId + secretRef.
+   * Cross-tenant and cross-environment lookups are strictly prohibited.
    */
-  async resolveSecret(tenantId: string, secretRef?: string): Promise<string | null> {
-    if (!secretRef || !tenantId) return null;
+  async resolveSecret(
+    tenantId: string,
+    environmentId: string,
+    secretRef?: string
+  ): Promise<string | null> {
+    if (!secretRef || !tenantId || !environmentId) return null;
     try {
       const doc = await this.db.collection('tenant_secrets').findOne({
         tenantId,
+        environmentId,
         secretRef,
       });
       return doc?.value || null;
@@ -423,7 +434,7 @@ export class NotificationDispatcher {
       // Tenant-scoped secret resolution ONLY. No raw apiKey and no global env fallbacks.
       let effectiveApiKey: string | null = null;
       if (emailConfig.apiKeyRef) {
-        effectiveApiKey = await this.resolveSecret(tenantId, emailConfig.apiKeyRef);
+        effectiveApiKey = await this.resolveSecret(tenantId, envId, emailConfig.apiKeyRef);
       }
 
       for (const recipient of recipients) {
@@ -515,7 +526,7 @@ export class NotificationDispatcher {
               if (!apApiUrl || apApiUrl.trim() === '') {
                 throw new Error('Activepieces API URL is required: set ACTIVEPIECES_API_URL');
               }
-              const apWebhookSecret = await this.resolveSecret(tenantId, 'activepieces_webhook_secret');
+              const apWebhookSecret = await this.resolveSecret(tenantId, envId, 'activepieces_webhook_secret');
               if (!apWebhookSecret || apWebhookSecret.trim() === '') {
                 throw new Error(
                   `Activepieces notification dispatch requires configured 'activepieces_webhook_secret' in tenant_secrets for tenant '${tenantId}'`
@@ -523,7 +534,7 @@ export class NotificationDispatcher {
               }
               dispatcher = new CapabilityDispatcher({
                 activepiecesApiUrl: apApiUrl,
-                activepiecesApiKey: (await this.resolveSecret(tenantId, 'activepieces_api_key')) || undefined,
+                activepiecesApiKey: (await this.resolveSecret(tenantId, envId, 'activepieces_api_key')) || undefined,
                 activepiecesWebhookSecret: apWebhookSecret,
                 validateConnectionOwnership: async (tId, eId, cRef) => {
                   return this.validateConnectionOwnership(tId, eId, cRef);
@@ -728,7 +739,7 @@ export class NotificationDispatcher {
         if (!webhookConfig.secretRef || webhookConfig.secretRef.trim() === '') {
           throw new Error(`Outbound webhook requires secretRef for HMAC signing: missing secretRef for tenant '${tenantId}'`);
         }
-        const secret = await this.resolveSecret(tenantId, webhookConfig.secretRef);
+        const secret = await this.resolveSecret(tenantId, envId, webhookConfig.secretRef);
         if (!secret) {
           throw new Error(
             `Outbound webhook signing secret '${webhookConfig.secretRef}' could not be resolved from tenant_secrets for tenant '${tenantId}'`
@@ -868,6 +879,21 @@ export class NotificationDispatcher {
   }
 
   /**
+   * Monotonic status precedence rank: higher rank states cannot regress to lower rank states.
+   */
+  private static readonly STATUS_PRECEDENCE: Record<string, number> = {
+    pending: 10,
+    retrying: 20,
+    sent: 30,
+    delivered: 40,
+    opened: 50,
+    clicked: 60,
+    bounced: 100, // terminal failure
+    dropped: 100, // terminal failure
+    failed: 100,  // terminal failure
+  };
+
+  /**
    * Handles inbound webhook callbacks from email providers to update delivery statuses.
    * Requires verified provider webhook signatures, binds updates strictly to tenant/env/provider/deliveryId,
    * deduplicates callbacks, and maintains bounce/suppression records.
@@ -905,9 +931,9 @@ export class NotificationDispatcher {
       secretOrKey = secretOrOptions.secret || secretOrOptions.publicKey;
       tenantId = secretOrOptions.tenantId || tenantIdParam;
       environmentId = secretOrOptions.environmentId || envIdParam;
-      if (!secretOrKey && (secretOrOptions.secretRef || secretOrOptions.publicKeyRef) && tenantId) {
+      if (!secretOrKey && (secretOrOptions.secretRef || secretOrOptions.publicKeyRef) && tenantId && environmentId) {
         secretOrKey =
-          (await this.resolveSecret(tenantId, secretOrOptions.secretRef || secretOrOptions.publicKeyRef)) ||
+          (await this.resolveSecret(tenantId, environmentId, secretOrOptions.secretRef || secretOrOptions.publicKeyRef)) ||
           undefined;
       }
     }
@@ -969,13 +995,15 @@ export class NotificationDispatcher {
         $or: orMatch,
       };
 
-      // ── Map Status ─────────────────────────────────────────────────────
+      // ── Map Status & Enforce Monotonic Precedence ─────────────────────
       let mappedStatus: NotificationDeliveryRecord['status'] = 'delivered';
       if (['bounce', 'bounced'].includes(eventStatus)) mappedStatus = 'bounced';
       else if (['open', 'opened'].includes(eventStatus)) mappedStatus = 'opened';
       else if (['click', 'clicked'].includes(eventStatus)) mappedStatus = 'clicked';
       else if (['dropped', 'spamreport', 'complaint'].includes(eventStatus)) mappedStatus = 'dropped';
       else if (['delivered', 'success'].includes(eventStatus)) mappedStatus = 'delivered';
+      else if (['failed', 'failure'].includes(eventStatus)) mappedStatus = 'failed';
+      else if (['sent', 'processed'].includes(eventStatus)) mappedStatus = 'delivered';
 
       // ── Validate matching scoped delivery BEFORE processing ────────────
       const matchingDelivery = await deliveriesCol.findOne(query);
@@ -986,13 +1014,34 @@ export class NotificationDispatcher {
         continue;
       }
 
+      // Check monotonic terminal-state rules and event timestamp
+      const currentRank = NotificationDispatcher.STATUS_PRECEDENCE[matchingDelivery.status] || 0;
+      const targetRank = NotificationDispatcher.STATUS_PRECEDENCE[mappedStatus] || 0;
+
+      const eventTimestamp = evt.timestamp
+        ? new Date(typeof evt.timestamp === 'number' ? (evt.timestamp > 1e11 ? evt.timestamp : evt.timestamp * 1000) : evt.timestamp)
+        : evt.created_at
+        ? new Date(evt.created_at)
+        : new Date();
+
+      const existingEventTime = matchingDelivery.metadata?.callbackTimestamp
+        ? new Date(matchingDelivery.metadata.callbackTimestamp)
+        : null;
+
+      const isOlderTimestamp = existingEventTime && eventTimestamp.getTime() < existingEventTime.getTime();
+      // Out-of-order callback regression prevention:
+      // Status cannot regress from a higher rank to a lower rank (e.g. delivered/bounced to sent),
+      // nor from a terminal failure state (bounced/dropped/failed).
+      const isStatusRegression = currentRank > targetRank || (isOlderTimestamp && currentRank >= targetRank);
+      const effectiveStatus = isStatusRegression ? matchingDelivery.status : mappedStatus;
+
       // ── Deduplicate Callback with Transactional Recoverability ─────────
       const callbackDedupKey = `${provider}:${boundTenantId}:${deliveryId || providerDeliveryId}:${eventStatus}`;
       const existingCallback = await callbacksCol.findOne({ callbackId: callbackDedupKey });
       if (existingCallback) {
-        // If delivery was already updated to this mappedStatus, skip as genuine duplicate
+        // If delivery was already updated to this status and callbackEvent, skip as genuine duplicate
         if (
-          matchingDelivery.status === mappedStatus ||
+          matchingDelivery.status === effectiveStatus &&
           matchingDelivery.metadata?.callbackEvent === eventStatus
         ) {
           errors.push(`Duplicate callback detected for key '${callbackDedupKey}' — skipped`);
@@ -1004,26 +1053,25 @@ export class NotificationDispatcher {
       }
 
       // ── Update Delivery Record First with Atomic Mutation Guard ────────
+      // Use dotted field updates ($set: { 'metadata.field': value }) to preserve existing durable metadata fields!
       const atomicQuery: any = {
         tenantId: boundTenantId,
         environmentId: boundEnvId,
         provider,
         $or: orMatch,
-        $nor: [{ status: mappedStatus, 'metadata.callbackEvent': eventStatus }],
+        $nor: [{ status: effectiveStatus, 'metadata.callbackEvent': eventStatus }],
       };
 
       let updateResult: any;
       try {
         updateResult = await deliveriesCol.updateOne(atomicQuery, {
           $set: {
-            status: mappedStatus,
+            status: effectiveStatus,
             providerDeliveryId: providerDeliveryId || deliveryId,
-            metadata: {
-              callbackEvent: eventStatus,
-              callbackTimestamp: new Date(),
-              rawPayload: evt,
-              lastDedupKey: callbackDedupKey,
-            },
+            'metadata.callbackEvent': eventStatus,
+            'metadata.callbackTimestamp': eventTimestamp,
+            'metadata.rawPayload': evt,
+            'metadata.lastDedupKey': callbackDedupKey,
           },
         });
       } catch (err: any) {
@@ -1032,11 +1080,11 @@ export class NotificationDispatcher {
       }
 
       if (!updateResult || updateResult.matchedCount === 0) {
-        // Document either does not exist, or was ALREADY updated to mappedStatus concurrently
+        // Document either does not exist, or was ALREADY updated to effectiveStatus concurrently
         const existing = await deliveriesCol.findOne(query);
         if (
           existing &&
-          (existing.status === mappedStatus || existing.metadata?.callbackEvent === eventStatus)
+          (existing.status === effectiveStatus || existing.metadata?.callbackEvent === eventStatus)
         ) {
           // Concurrently updated by another worker/thread; record callback idempotently and do not double count
           await callbacksCol.updateOne(
@@ -1199,7 +1247,7 @@ export class NotificationDispatcher {
             `Outbound webhook retry requires secretRef for HMAC signing: missing secretRef for tenant '${existing.tenantId}'`
           );
         }
-        const secret = await this.resolveSecret(existing.tenantId, secretRef);
+        const secret = await this.resolveSecret(existing.tenantId, normEnv, secretRef);
         if (!secret) {
           throw new Error(
             `Outbound webhook signing secret '${secretRef}' could not be resolved from tenant_secrets for tenant '${existing.tenantId}'`
@@ -1280,7 +1328,7 @@ export class NotificationDispatcher {
               if (!apApiUrl || apApiUrl.trim() === '') {
                 throw new Error('Activepieces API URL is required: set ACTIVEPIECES_API_URL');
               }
-              const apWebhookSecret = await this.resolveSecret(existing.tenantId, 'activepieces_webhook_secret');
+              const apWebhookSecret = await this.resolveSecret(existing.tenantId, envId, 'activepieces_webhook_secret');
               if (!apWebhookSecret || apWebhookSecret.trim() === '') {
                 throw new Error(
                   `Activepieces notification dispatch requires configured 'activepieces_webhook_secret' in tenant_secrets for tenant '${existing.tenantId}'`
@@ -1288,7 +1336,7 @@ export class NotificationDispatcher {
               }
               dispatcher = new CapabilityDispatcher({
                 activepiecesApiUrl: apApiUrl,
-                activepiecesApiKey: (await this.resolveSecret(existing.tenantId, 'activepieces_api_key')) || undefined,
+                activepiecesApiKey: (await this.resolveSecret(existing.tenantId, envId, 'activepieces_api_key')) || undefined,
                 activepiecesWebhookSecret: apWebhookSecret,
                 validateConnectionOwnership: async (tId, eId, cRef) => {
                   return this.validateConnectionOwnership(tId, eId, cRef);
@@ -1335,7 +1383,7 @@ export class NotificationDispatcher {
             if (!apiKeyRef) {
               throw new Error(`Email provider '${provider}' retry failed: no tenant apiKeyRef configured`);
             }
-            const effectiveApiKey = await this.resolveSecret(existing.tenantId, apiKeyRef);
+            const effectiveApiKey = await this.resolveSecret(existing.tenantId, envId, apiKeyRef);
             if (!effectiveApiKey) {
               throw new Error(
                 `Email provider '${provider}' retry failed: tenant secret reference '${apiKeyRef}' could not be resolved from tenant_secrets for tenant '${existing.tenantId}'`

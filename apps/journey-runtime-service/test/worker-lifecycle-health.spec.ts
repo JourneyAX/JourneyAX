@@ -328,9 +328,40 @@ async function runWorkerLifecycleHealthTests() {
   await test('7. Real registered production events are delivered and acknowledged, whereas unknown events are never acknowledged', async () => {
     const repo = new OutboxRepository();
     const mockDb = {
-      collection: (_name: string) => ({
+      collection: (name: string) => ({
         insertOne: async () => ({ insertedId: 'mock_1' }),
         updateOne: async () => ({ modifiedCount: 1 }),
+        findOne: async (query: any) => {
+          if (name === 'workspaces') {
+            return {
+              tenantId: query.tenantId,
+              environmentId: query.environmentId,
+              workspaceId: query.workspaceId,
+              currentStage: 'stage_checkout',
+              packVersionId: '1.0.0',
+            };
+          }
+          if (name === 'sessions') {
+            return {
+              tenantId: query.tenantId,
+              environmentId: query.environmentId,
+              workspaceId: query.workspaceId,
+              sessionId: query.sessionId,
+              principalRole: 'customer',
+              principalId: 'user_001',
+            };
+          }
+          if (name === 'approval_requests') {
+            return {
+              tenantId: query.tenantId,
+              environmentId: query.environmentId,
+              workspaceId: query.workspaceId,
+              status: 'approved',
+              expiresAt: new Date(Date.now() + 60000),
+            };
+          }
+          return null;
+        },
       }),
     };
     const mockNotifDispatcher = {
