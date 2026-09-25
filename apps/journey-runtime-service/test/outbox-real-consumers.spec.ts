@@ -6,6 +6,230 @@ import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { OutboxWorker } from '../src/kernel/outbox.worker';
 import { OutboxWorkerService } from '../src/kernel/outbox-worker.service';
 
+process.env.ACTIVEPIECES_API_URL = process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
+
+function createMockOutboxDb(overrides: {
+  workspaces?: any;
+  sessions?: any;
+  businessPackPointers?: any;
+  businessPackReleases?: any;
+  tenantSecrets?: any[];
+  approvalRequests?: any[];
+  stageId?: string;
+  principalRole?: string;
+  releaseChecksum?: string;
+  capabilities?: any;
+} = {}) {
+  const approvals = new Map<string, any>();
+  if (overrides.approvalRequests) {
+    for (const app of overrides.approvalRequests) {
+      approvals.set(app.approvalId, { ...app, _id: app._id || app.approvalId });
+    }
+  }
+
+  const executions: any[] = [];
+  const auditLogs: any[] = [];
+
+  const defaultRelease = {
+    tenantId: 'tenant_caroma',
+    environmentId: 'production',
+    versionId: '1.0.0',
+    version: '1.0.0',
+    status: 'published',
+    checksum: overrides.releaseChecksum !== undefined ? overrides.releaseChecksum : 'sha256_mock_checksum',
+    capabilities: overrides.capabilities || {
+      toolDefinitions: [
+        {
+          toolId: 'activepieces.flow_ct_sync_01',
+          sideEffect: 'read',
+          risk: 'low',
+        },
+        {
+          toolId: 'activepieces.flow_ct_write_01',
+          sideEffect: 'write',
+          risk: 'high',
+        },
+      ],
+      toolBindings: [
+        {
+          toolId: 'activepieces.flow_ct_sync_01',
+          environmentId: 'production',
+          executor: {
+            type: 'activepieces_flow',
+            flowId: 'flow_ct_sync_01',
+            connectionRef: 'conn_ct_caroma_secret',
+          },
+        },
+        {
+          toolId: 'activepieces.flow_ct_write_01',
+          environmentId: 'production',
+          executor: {
+            type: 'activepieces_flow',
+            flowId: 'flow_ct_write_01',
+            connectionRef: 'conn_ct_caroma_secret',
+          },
+        },
+      ],
+      stageBindings: [
+        {
+          stageId: 'stage_sync',
+          tools: [{ toolId: 'activepieces.flow_ct_sync_01' }, { toolId: 'activepieces.flow_ct_write_01' }],
+        },
+        {
+          stageId: 'stage_test',
+          tools: [{ toolId: 'activepieces.flow_ct_sync_01' }, { toolId: 'activepieces.flow_ct_write_01' }],
+        },
+        {
+          stageId: 'stage_restricted',
+          tools: [],
+        },
+      ],
+    },
+  };
+
+  const defaultSecrets = overrides.tenantSecrets || [
+    {
+      tenantId: 'tenant_caroma',
+      environmentId: 'production',
+      secretRef: 'activepieces_api_key',
+      value: 'test_ap_key_123',
+    },
+    {
+      tenantId: 'tenant_caroma',
+      environmentId: 'production',
+      secretRef: 'activepieces_webhook_secret',
+      value: 'test_ap_secret_456',
+    },
+  ];
+
+  return {
+    approvals,
+    executions,
+    auditLogs,
+    collection: (name: string) => ({
+      findOne: async (query: any) => {
+        if (name === 'workspaces') {
+          if (overrides.workspaces === null) return null;
+          if (query.workspaceId === 'ws_forged_unauthorized') return null;
+          return {
+            tenantId: query.tenantId || 'tenant_caroma',
+            environmentId: query.environmentId || 'production',
+            workspaceId: query.workspaceId || 'ws_caroma',
+            currentStage: overrides.stageId || 'stage_sync',
+            packVersionId: '1.0.0',
+            ...(overrides.workspaces || {}),
+          };
+        }
+        if (name === 'sessions') {
+          if (overrides.sessions === null) return null;
+          return {
+            tenantId: query.tenantId || 'tenant_caroma',
+            environmentId: query.environmentId || 'production',
+            workspaceId: query.workspaceId || 'ws_caroma',
+            sessionId: query.sessionId || 'session_caroma_01',
+            principalRole: overrides.principalRole || 'customer',
+            principalId: 'user_caroma_01',
+            ...(overrides.sessions || {}),
+          };
+        }
+        if (name === 'business_pack_pointers') {
+          if (overrides.businessPackPointers === null) return null;
+          return {
+            tenantId: query.tenantId || 'tenant_caroma',
+            environmentId: 'production',
+            activeVersionId: '1.0.0',
+            ...(overrides.businessPackPointers || {}),
+          };
+        }
+        if (name === 'business_pack_releases') {
+          if (overrides.businessPackReleases === null) return null;
+          return overrides.businessPackReleases || defaultRelease;
+        }
+        if (name === 'tenant_connections') {
+          if (overrides.tenantConnections === null) return null;
+          return {
+            tenantId: query.tenantId || 'tenant_caroma',
+            environmentId: query.environmentId || 'production',
+            connectionRef: query.connectionRef || 'conn_ct_caroma_secret',
+            status: 'active',
+            pieceId: '@activepieces/piece-commercetools',
+            ...(overrides.tenantConnections || {}),
+          };
+        }
+        if (name === 'tenant_secrets') {
+          const matched = defaultSecrets.find((s: any) => {
+            if (s.tenantId !== query.tenantId) return false;
+            if (s.secretRef !== query.secretRef) return false;
+            if (query.$or) {
+              const envMatch = query.$or.some(
+                (c: any) => c.environmentId === s.environmentId || s.environmentId === 'all'
+              );
+              if (!envMatch) return false;
+            } else if (
+              query.environmentId &&
+              s.environmentId !== query.environmentId &&
+              s.environmentId !== 'all'
+            ) {
+              return false;
+            }
+            return true;
+          });
+          return matched || null;
+        }
+        if (name === 'approval_requests') {
+          const app = query.approvalId ? approvals.get(query.approvalId) : null;
+          if (!app) return null;
+          if (query.tenantId && app.tenantId !== query.tenantId) return null;
+          if (query.environmentId && app.environmentId !== query.environmentId) return null;
+          if (query.workspaceId && app.workspaceId !== query.workspaceId) return null;
+          if (query.toolId && app.toolId !== query.toolId) return null;
+          if (query.status && app.status !== query.status) return null;
+          if (query.$or) {
+            const matchesOr = query.$or.some((c: any) => {
+              if (app.executionKey === 'ALLOW_CURRENT') return true;
+              if (c.executionKey && app.executionKey === c.executionKey) return true;
+              if (c.idempotencyKey && app.idempotencyKey === c.idempotencyKey) return true;
+              if (c.eventId && (app.eventId === c.eventId || app.executionKey === c.eventId)) return true;
+              return false;
+            });
+            if (!matchesOr) return null;
+          }
+          return app;
+        }
+        return null;
+      },
+      findOneAndUpdate: async (filter: any, update: any, options: any) => {
+        if (name === 'approval_requests') {
+          for (const [id, app] of approvals.entries()) {
+            if (app._id === filter._id || id === filter.approvalId || app.approvalId === filter.approvalId) {
+              if (
+                app.consumedByEventId &&
+                app.consumedByEventId !== update.$set?.consumedByEventId
+              ) {
+                return { value: null };
+              }
+              const updated = { ...app, ...update.$set };
+              approvals.set(id, updated);
+              return { value: updated };
+            }
+          }
+          return { value: null };
+        }
+        return { value: null };
+      },
+      updateOne: async (filter: any, update: any, options: any) => {
+        if (name === 'activepieces_executions') {
+          executions.push({ filter, update, options });
+        }
+        if (name === 'audit_logs') {
+          auditLogs.push({ filter, update, options });
+        }
+        return { matchedCount: 1, upsertedCount: 1 };
+      },
+    }),
+  };
+}
+
 async function runOutboxRealConsumersSuite() {
   console.log('\n📦 Running Outbox Real Durable Consumers Test Suite (Workstream A)...\n');
   let passed = 0;
@@ -152,51 +376,7 @@ async function runOutboxRealConsumersSuite() {
   // ── Test 3: activepieces.dispatch success invokes capability dispatcher & persists execution idempotently ──
   await test('3. activepieces.dispatch invokes CapabilityDispatcher and upserts execution idempotently', async () => {
     const repo = new OutboxRepository();
-    const executionsRecorded: any[] = [];
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              currentStage: 'stage_sync',
-              packVersionId: '1.0.0',
-            };
-          }
-          if (name === 'sessions') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              sessionId: 'session_caroma_01',
-              principalRole: 'customer',
-              principalId: 'user_caroma_01',
-            };
-          }
-          if (name === 'approval_requests') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              status: 'approved',
-              toolId: 'activepieces.flow_ct_sync_01',
-              expiresAt: new Date(Date.now() + 60000),
-            };
-          }
-          return null;
-        },
-        updateOne: async (filter: any, update: any, options: any) => {
-          if (name === 'activepieces_executions') {
-            assert.ok(filter.eventId, 'Upsert must filter by eventId');
-            assert.equal(options?.upsert, true, 'Upsert option must be true');
-            executionsRecorded.push({ filter, update });
-          }
-          return { matchedCount: 1, upsertedCount: 1 };
-        },
-      }),
-    };
+    const mockDb = createMockOutboxDb();
 
     let capDispatched = false;
     const mockCapDispatcher = {
@@ -226,8 +406,14 @@ async function runOutboxRealConsumersSuite() {
         flowId: 'flow_ct_sync_01',
         connectionRef: 'conn_ct_caroma_secret',
         input: { fullSync: true },
+      },
+      undefined,
+      undefined,
+      {
         workspaceId: 'ws_caroma',
         sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
       }
     );
 
@@ -245,9 +431,9 @@ async function runOutboxRealConsumersSuite() {
 
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.equal(event.status, 'published');
-    assert.equal(executionsRecorded.length, 1);
-    assert.equal(executionsRecorded[0].filter.eventId, eventId);
-    assert.deepEqual(executionsRecorded[0].update.$set.output, { syncCount: 42 });
+    assert.equal(mockDb.executions.length, 1);
+    assert.equal(mockDb.executions[0].filter.eventId, eventId);
+    assert.deepEqual(mockDb.executions[0].update.$set.output, { syncCount: 42 });
 
     service.stopWorker();
   });
@@ -255,43 +441,7 @@ async function runOutboxRealConsumersSuite() {
   // ── Test 4: activepieces.dispatch failure remains retryable and not published ──
   await test('4. activepieces.dispatch throws when external flow fails and remains pending', async () => {
     const repo = new OutboxRepository();
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              currentStage: 'stage_sync',
-              packVersionId: '1.0.0',
-            };
-          }
-          if (name === 'sessions') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              sessionId: 'session_caroma_02',
-              principalRole: 'customer',
-              principalId: 'user_caroma_02',
-            };
-          }
-          if (name === 'approval_requests') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              status: 'approved',
-              toolId: 'activepieces.flow_ct_sync_01',
-              expiresAt: new Date(Date.now() + 60000),
-            };
-          }
-          return null;
-        },
-        updateOne: async () => ({ matchedCount: 1, upsertedCount: 1 }),
-      }),
-    };
+    const mockDb = createMockOutboxDb();
 
     const failingCapDispatcher = {
       dispatch: async () => ({
@@ -313,8 +463,14 @@ async function runOutboxRealConsumersSuite() {
       {
         flowId: 'flow_ct_sync_01',
         connectionRef: 'conn_ct_caroma_secret',
+      },
+      undefined,
+      undefined,
+      {
         workspaceId: 'ws_caroma',
         sessionId: 'session_caroma_02',
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
       }
     );
 
@@ -340,17 +496,42 @@ async function runOutboxRealConsumersSuite() {
     service.stopWorker();
   });
 
-  // ── Test 5: activepieces.dispatch rejects missing flowId or connectionRef ───────
-  await test('5. activepieces.dispatch fails closed on missing flowId or connectionRef', async () => {
+  // ── Test 5: activepieces.dispatch fails closed on missing tool binding flowId or connectionRef in release ──
+  await test('5. activepieces.dispatch fails closed on missing tool binding flowId or connectionRef in release', async () => {
     const repo = new OutboxRepository();
+    const mockDb = createMockOutboxDb({
+      capabilities: {
+        toolDefinitions: [{ toolId: 'activepieces.flow_missing_ref', sideEffect: 'read', risk: 'low' }],
+        toolBindings: [
+          {
+            toolId: 'activepieces.flow_missing_ref',
+            environmentId: 'production',
+            executor: {
+              type: 'activepieces_flow',
+              flowId: 'flow_ct_sync_01',
+              // missing connectionRef
+            },
+          },
+        ],
+      },
+    });
+
     const service = new OutboxWorkerService();
-    service.configureHandlers({});
+    service.configureHandlers({ db: mockDb });
 
     const missingConnId = await repo.enqueueEvent(
       'tenant_caroma',
       'production',
       'activepieces.dispatch',
-      { flowId: 'flow_ct_sync_01' } // Missing connectionRef
+      {},
+      undefined,
+      undefined,
+      {
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_missing_ref',
+        packVersionId: '1.0.0',
+      }
     );
 
     const worker = service.startWithRepository(repo, undefined, {
@@ -365,7 +546,7 @@ async function runOutboxRealConsumersSuite() {
 
     const event = repo.getEvents().find((e) => e.eventId === missingConnId)!;
     assert.equal(event.status, 'pending');
-    assert.match(event.error || '', /Missing mandatory 'connectionRef'/);
+    assert.match(event.error || '', /lacks mandatory flowId or connectionRef/);
 
     service.stopWorker();
   });
@@ -551,92 +732,24 @@ async function runOutboxRealConsumersSuite() {
   // ── Test 10: Real CapabilityDispatcher policy gate integration ────────────────
   await test('10. Real CapabilityDispatcher policy gate enforces confirmation and throws when denied/requires_approval', async () => {
     const repo = new OutboxRepository();
-    const executionsRecorded: any[] = [];
-    let confirmedEventId = '';
+    const mockDb = createMockOutboxDb();
 
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              currentStage: 'stage_test',
-              packVersionId: '1.0.0',
-            };
-          }
-          if (name === 'sessions') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              sessionId: query.sessionId,
-              principalRole: 'customer',
-              principalId: 'user_caroma',
-            };
-          }
-          if (name === 'approval_requests') {
-            const matchesId =
-              query.executionKey === confirmedEventId ||
-              query.idempotencyKey === confirmedEventId ||
-              (Array.isArray(query.$or) &&
-                query.$or.some(
-                  (c: any) =>
-                    c.executionKey === confirmedEventId ||
-                    c.idempotencyKey === confirmedEventId ||
-                    c.toolId === 'activepieces.flow_ct_sync_01'
-                ));
-            if (confirmedEventId && matchesId) {
-              return {
-                tenantId: 'tenant_caroma',
-                environmentId: 'production',
-                workspaceId: 'ws_caroma',
-                status: 'approved',
-                toolId: 'activepieces.flow_ct_sync_01',
-                expiresAt: new Date(Date.now() + 60000),
-              };
-            }
-            return null;
-          }
-          return null;
-        },
-        updateOne: async (filter: any, update: any, options: any) => {
-          if (name === 'activepieces_executions') {
-            executionsRecorded.push({ filter, update, options });
-          }
-          return { matchedCount: 1, upsertedCount: 1 };
-        },
-      }),
-    };
-
-    // Real CapabilityDispatcher with verified connection ownership and explicit credentials
-    const realCapDispatcher = new CapabilityDispatcher({
-      activepiecesApiUrl: 'http://localhost:3010',
-      activepiecesApiKey: 'test_ap_key_123',
-      activepiecesWebhookSecret: 'test_ap_secret_456',
-      validateConnectionOwnership: async (t, e, c) => {
-        return t === 'tenant_caroma' && e === 'production' && c === 'conn_ct_caroma_secret';
-      },
-    });
-
-    // 10a: When approval record is missing in approval_requests, the handler throws and the outbox event remains pending
+    // 10a: When approvalId is missing for side-effecting write tool, the handler throws and the outbox event remains pending
     const service = new OutboxWorkerService();
-    service.configureHandlers({
-      db: mockDb,
-      capabilityDispatcher: realCapDispatcher,
-    });
+    service.configureHandlers({ db: mockDb });
 
     const unconfirmedEventId = await repo.enqueueEvent(
       'tenant_caroma',
       'production',
       'activepieces.dispatch',
+      { input: { force: true } },
+      undefined,
+      undefined,
       {
-        flowId: 'flow_ct_sync_01',
-        connectionRef: 'conn_ct_caroma_secret',
-        risk: 'high',
         workspaceId: 'ws_caroma',
         sessionId: 'session_caroma_10a',
+        toolId: 'activepieces.flow_ct_write_01', // sideEffect: write
+        packVersionId: '1.0.0',
       }
     );
 
@@ -652,7 +765,7 @@ async function runOutboxRealConsumersSuite() {
     const unconfirmedEvent = repo.getEvents().find((e) => e.eventId === unconfirmedEventId)!;
     assert.notEqual(unconfirmedEvent.status, 'published', 'Unapproved event must NOT be marked published');
     assert.equal(unconfirmedEvent.status, 'pending');
-    assert.match(unconfirmedEvent.error || '', /requires an authoritative, unexpired durable approval record in 'approval_requests'/);
+    assert.match(unconfirmedEvent.error || '', /requires an authoritative top-level 'approvalId' in outbox envelope/);
 
     // 10b: When durable approved record exists and ownership is valid, real CapabilityDispatcher calls the provider.
     const originalFetch = globalThis.fetch;
@@ -665,17 +778,31 @@ async function runOutboxRealConsumersSuite() {
         };
       };
 
-      confirmedEventId = await repo.enqueueEvent(
+      mockDb.approvals.set('apr_valid_10b', {
+        _id: 'apr_valid_10b',
+        approvalId: 'apr_valid_10b',
+        tenantId: 'tenant_caroma',
+        environmentId: 'production',
+        workspaceId: 'ws_caroma',
+        status: 'approved',
+        toolId: 'activepieces.flow_ct_write_01',
+        executionKey: 'ALLOW_CURRENT',
+        expiresAt: new Date(Date.now() + 60000),
+      });
+
+      const confirmedEventId = await repo.enqueueEvent(
         'tenant_caroma',
         'production',
         'activepieces.dispatch',
+        { input: { force: true } },
+        undefined,
+        undefined,
         {
-          flowId: 'flow_ct_sync_01',
-          connectionRef: 'conn_ct_caroma_secret',
-          risk: 'medium',
           workspaceId: 'ws_caroma',
           sessionId: 'session_caroma_10b',
-          input: { force: true },
+          toolId: 'activepieces.flow_ct_write_01',
+          packVersionId: '1.0.0',
+          approvalId: 'apr_valid_10b',
         }
       );
 
@@ -683,8 +810,8 @@ async function runOutboxRealConsumersSuite() {
       assert.equal(confirmedBatchRes.succeeded, 1, 'Approved policy execution must succeed');
       const confirmedEvent = repo.getEvents().find((e) => e.eventId === confirmedEventId)!;
       assert.equal(confirmedEvent.status, 'published', 'Approved event must be published');
-      assert.equal(executionsRecorded.length, 1);
-      assert.equal(executionsRecorded[0].filter.eventId, confirmedEventId);
+      assert.equal(mockDb.executions.length, 1);
+      assert.equal(mockDb.executions[0].filter.eventId, confirmedEventId);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -702,8 +829,7 @@ async function runOutboxRealConsumersSuite() {
       }),
     };
     service.configureHandlers({
-      db: mockEmptyDb,
-      capabilityDispatcher: { dispatch: async () => ({ status: 'success' as const }) } as any,
+      db: mockEmptyDb as any,
     });
 
     const eventId = await repo.enqueueEvent(
@@ -711,9 +837,14 @@ async function runOutboxRealConsumersSuite() {
       'production',
       'activepieces.dispatch',
       {
-        flowId: 'flow_ct_sync_01',
-        connectionRef: 'conn_ct_caroma_secret',
-        // Missing workspaceId entirely
+        input: { sync: true },
+      },
+      undefined,
+      undefined,
+      {
+        // missing workspaceId
+        sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_ct_sync_01',
       }
     );
 
@@ -729,7 +860,10 @@ async function runOutboxRealConsumersSuite() {
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.notEqual(event.status, 'published', 'Must NOT be marked published');
     assert.equal(event.status, 'pending', 'Must remain pending for retry');
-    assert.match(event.error || '', /Missing mandatory 'workspaceId'/);
+    assert.match(
+      event.error || '',
+      /Missing mandatory top-level 'workspaceId' in outbox envelope \(payload fallback prohibited\)/
+    );
 
     service.stopWorker();
   });
@@ -738,49 +872,25 @@ async function runOutboxRealConsumersSuite() {
   await test('12. Negative: side-effecting dispatch without approval record remains retryable', async () => {
     const repo = new OutboxRepository();
     const service = new OutboxWorkerService();
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              currentStage: 'stage_test',
-              packVersionId: '1.0.0',
-            };
-          }
-          if (name === 'sessions') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              sessionId: 'session_caroma_12',
-              principalRole: 'customer',
-            };
-          }
-          if (name === 'approval_requests') {
-            return null; // Missing approval
-          }
-          return null;
-        },
-      }),
-    };
+    const mockDb = createMockOutboxDb();
 
     service.configureHandlers({
       db: mockDb,
-      capabilityDispatcher: { dispatch: async () => ({ status: 'success' as const }) } as any,
     });
 
     const eventId = await repo.enqueueEvent(
       'tenant_caroma',
       'production',
       'activepieces.dispatch',
+      {},
+      undefined,
+      undefined,
       {
-        flowId: 'flow_ct_sync_01',
-        connectionRef: 'conn_ct_caroma_secret',
         workspaceId: 'ws_caroma',
         sessionId: 'session_caroma_12',
+        toolId: 'activepieces.flow_ct_write_01',
+        packVersionId: '1.0.0',
+        approvalId: 'apr_non_existent',
       }
     );
 
@@ -796,7 +906,7 @@ async function runOutboxRealConsumersSuite() {
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.notEqual(event.status, 'published', 'Unapproved event must NOT be published');
     assert.equal(event.status, 'pending', 'Must remain pending for retry');
-    assert.match(event.error || '', /requires an authoritative, unexpired durable approval record in 'approval_requests'/);
+    assert.match(event.error || '', /Authoritative approval record 'apr_non_existent' not found/);
 
     service.stopWorker();
   });
@@ -805,55 +915,36 @@ async function runOutboxRealConsumersSuite() {
   await test('13. Negative: forged payload principalRole (admin) cannot override durable session role (guest) and remains retryable', async () => {
     const repo = new OutboxRepository();
     const service = new OutboxWorkerService();
-
-    // Durable session has principalRole: 'guest' (insufficient for tool requiring 'customer')
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              currentStage: 'stage_test',
-              packVersionId: '1.0.0',
-            };
-          }
-          if (name === 'sessions') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              sessionId: 'session_caroma_guest',
-              principalRole: 'guest', // Authoritative role is guest!
-            };
-          }
-          if (name === 'approval_requests') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              status: 'approved',
-              toolId: 'activepieces.flow_ct_sync_01',
-              expiresAt: new Date(Date.now() + 60000),
-            };
-          }
-          return null;
-        },
-      }),
-    };
-
-    // Real CapabilityDispatcher enforces requiredRole: 'customer'
-    const realCapDispatcher = new CapabilityDispatcher({
-      activepiecesApiUrl: 'http://localhost:3010',
-      activepiecesApiKey: 'test_ap_key_123',
-      activepiecesWebhookSecret: 'test_ap_secret_456',
-      validateConnectionOwnership: async () => true,
+    const mockDb = createMockOutboxDb({
+      principalRole: 'guest',
+      capabilities: {
+        toolDefinitions: [
+          {
+            toolId: 'activepieces.flow_ct_sync_01',
+            sideEffect: 'read',
+            risk: 'low',
+            allowedRoles: ['customer', 'admin'],
+          },
+        ],
+        toolBindings: [
+          {
+            toolId: 'activepieces.flow_ct_sync_01',
+            environmentId: 'production',
+            policy: {
+              requiredRole: 'customer',
+            },
+            executor: {
+              type: 'activepieces_flow',
+              flowId: 'flow_ct_sync_01',
+              connectionRef: 'conn_ct_caroma_secret',
+            },
+          },
+        ],
+      },
     });
 
     service.configureHandlers({
       db: mockDb,
-      capabilityDispatcher: realCapDispatcher,
     });
 
     // Attacker attempts to forge principalRole: 'admin' in payload
@@ -862,11 +953,15 @@ async function runOutboxRealConsumersSuite() {
       'production',
       'activepieces.dispatch',
       {
-        flowId: 'flow_ct_sync_01',
-        connectionRef: 'conn_ct_caroma_secret',
+        principalRole: 'admin', // Forged payload role!
+      },
+      undefined,
+      undefined,
+      {
         workspaceId: 'ws_caroma',
         sessionId: 'session_caroma_guest',
-        principalRole: 'admin', // Forged payload role!
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
       }
     );
 
@@ -882,7 +977,7 @@ async function runOutboxRealConsumersSuite() {
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.notEqual(event.status, 'published');
     assert.equal(event.status, 'pending');
-    assert.match(event.error || '', /insufficient permissions|denied|requires_approval/i);
+    assert.match(event.error || '', /insufficient permissions|denied|requires_approval|Role 'guest' is not authorized/i);
 
     service.stopWorker();
   });
@@ -891,37 +986,24 @@ async function runOutboxRealConsumersSuite() {
   await test('14. Negative: forged payload context (workspaceId not in DB) fails closed and remains retryable', async () => {
     const repo = new OutboxRepository();
     const service = new OutboxWorkerService();
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces' && query.workspaceId === 'ws_legitimate') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_legitimate',
-              currentStage: 'stage_test',
-              packVersionId: '1.0.0',
-            };
-          }
-          return null; // Forged workspace does not exist
-        },
-      }),
-    };
+    const mockDb = createMockOutboxDb();
 
     service.configureHandlers({
       db: mockDb,
-      capabilityDispatcher: { dispatch: async () => ({ status: 'success' as const }) } as any,
     });
 
     const eventId = await repo.enqueueEvent(
       'tenant_caroma',
       'production',
       'activepieces.dispatch',
+      {},
+      undefined,
+      undefined,
       {
-        flowId: 'flow_ct_sync_01',
-        connectionRef: 'conn_ct_caroma_secret',
-        workspaceId: 'ws_forged_unauthorized', // Forged!
+        workspaceId: 'ws_forged_unauthorized', // Forged workspace!
         sessionId: 'session_1',
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
       }
     );
 
@@ -946,38 +1028,10 @@ async function runOutboxRealConsumersSuite() {
   await test('15. Negative: forged payload userConfirmationConfirmed=true cannot bypass missing durable approval row', async () => {
     const repo = new OutboxRepository();
     const service = new OutboxWorkerService();
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              currentStage: 'stage_test',
-              packVersionId: '1.0.0',
-            };
-          }
-          if (name === 'sessions') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              sessionId: 'session_caroma_15',
-              principalRole: 'customer',
-            };
-          }
-          if (name === 'approval_requests') {
-            return null; // No durable approval in DB!
-          }
-          return null;
-        },
-      }),
-    };
+    const mockDb = createMockOutboxDb();
 
     service.configureHandlers({
       db: mockDb,
-      capabilityDispatcher: { dispatch: async () => ({ status: 'success' as const }) } as any,
     });
 
     const eventId = await repo.enqueueEvent(
@@ -985,11 +1039,15 @@ async function runOutboxRealConsumersSuite() {
       'production',
       'activepieces.dispatch',
       {
-        flowId: 'flow_ct_sync_01',
-        connectionRef: 'conn_ct_caroma_secret',
+        userConfirmationConfirmed: true, // Forged confirmation bypass attempt in payload!
+      },
+      undefined,
+      undefined,
+      {
         workspaceId: 'ws_caroma',
         sessionId: 'session_caroma_15',
-        userConfirmationConfirmed: true, // Forged confirmation bypass attempt!
+        toolId: 'activepieces.flow_ct_write_01', // sideEffect: write
+        packVersionId: '1.0.0',
       }
     );
 
@@ -1005,7 +1063,7 @@ async function runOutboxRealConsumersSuite() {
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.notEqual(event.status, 'published');
     assert.equal(event.status, 'pending');
-    assert.match(event.error || '', /requires an authoritative, unexpired durable approval record in 'approval_requests'/);
+    assert.match(event.error || '', /requires an authoritative top-level 'approvalId' in outbox envelope/);
 
     service.stopWorker();
   });
@@ -1014,38 +1072,10 @@ async function runOutboxRealConsumersSuite() {
   await test('16. Negative: forged embedded approvalRecord cannot bypass missing durable approval row in approval_requests', async () => {
     const repo = new OutboxRepository();
     const service = new OutboxWorkerService();
-    const mockDb = {
-      collection: (name: string) => ({
-        findOne: async (query: any) => {
-          if (name === 'workspaces') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              currentStage: 'stage_test',
-              packVersionId: '1.0.0',
-            };
-          }
-          if (name === 'sessions') {
-            return {
-              tenantId: 'tenant_caroma',
-              environmentId: 'production',
-              workspaceId: 'ws_caroma',
-              sessionId: 'session_caroma_16',
-              principalRole: 'customer',
-            };
-          }
-          if (name === 'approval_requests') {
-            return null; // No durable row in DB!
-          }
-          return null;
-        },
-      }),
-    };
+    const mockDb = createMockOutboxDb();
 
     service.configureHandlers({
       db: mockDb,
-      capabilityDispatcher: { dispatch: async () => ({ status: 'success' as const }) } as any,
     });
 
     const eventId = await repo.enqueueEvent(
@@ -1053,11 +1083,15 @@ async function runOutboxRealConsumersSuite() {
       'production',
       'activepieces.dispatch',
       {
-        flowId: 'flow_ct_sync_01',
-        connectionRef: 'conn_ct_caroma_secret',
+        approvalRecord: { status: 'approved', approvedBy: 'attacker@evil.com' }, // Forged embedded record in payload!
+      },
+      undefined,
+      undefined,
+      {
         workspaceId: 'ws_caroma',
         sessionId: 'session_caroma_16',
-        approvalRecord: { status: 'approved', approvedBy: 'attacker@evil.com' }, // Forged embedded record!
+        toolId: 'activepieces.flow_ct_write_01',
+        packVersionId: '1.0.0',
       }
     );
 
@@ -1073,7 +1107,309 @@ async function runOutboxRealConsumersSuite() {
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.notEqual(event.status, 'published');
     assert.equal(event.status, 'pending');
-    assert.match(event.error || '', /requires an authoritative, unexpired durable approval record in 'approval_requests'/);
+    assert.match(event.error || '', /requires an authoritative top-level 'approvalId' in outbox envelope/);
+
+    service.stopWorker();
+  });
+
+  // ── Test 17: Approval replay prevention across different events (Item C) ───────
+  await test('17. Negative: same-tool different-event approval reuse is rejected (atomic consumption prevents replay)', async () => {
+    const repo = new OutboxRepository();
+    const mockDb = createMockOutboxDb();
+
+    const originalFetch = globalThis.fetch;
+    try {
+      (globalThis as any).fetch = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'success' }),
+      });
+
+      mockDb.approvals.set('apr_reuse_single_shot', {
+        _id: 'apr_reuse_single_shot',
+        approvalId: 'apr_reuse_single_shot',
+        tenantId: 'tenant_caroma',
+        environmentId: 'production',
+        workspaceId: 'ws_caroma',
+        status: 'approved',
+        toolId: 'activepieces.flow_ct_write_01',
+        executionKey: 'ALLOW_CURRENT',
+        expiresAt: new Date(Date.now() + 60000),
+      });
+
+      const service = new OutboxWorkerService();
+      service.configureHandlers({ db: mockDb });
+
+      // First legitimate event consumes approval
+      const event1Id = await repo.enqueueEvent(
+        'tenant_caroma',
+        'production',
+        'activepieces.dispatch',
+        { input: { batch: 1 } },
+        undefined,
+        undefined,
+        {
+          workspaceId: 'ws_caroma',
+          sessionId: 'session_caroma_01',
+          toolId: 'activepieces.flow_ct_write_01',
+          packVersionId: '1.0.0',
+          approvalId: 'apr_reuse_single_shot',
+        }
+      );
+
+      const worker1 = service.startWithRepository(repo, undefined, {
+        workerId: 'worker_reuse_1',
+        batchSize: 1,
+        pollIntervalMs: 50,
+        leaseDurationMs: 1000,
+      });
+
+      const res1 = await worker1.processNextBatch();
+      assert.equal(res1.succeeded, 1, 'First event must consume approval successfully');
+      const event1 = repo.getEvents().find((e) => e.eventId === event1Id)!;
+      assert.equal(event1.status, 'published');
+      service.stopWorker();
+
+      // Second DIFFERENT event attempts to reuse the same approvalId
+      const event2Id = await repo.enqueueEvent(
+        'tenant_caroma',
+        'production',
+        'activepieces.dispatch',
+        { input: { batch: 2 } },
+        undefined,
+        undefined,
+        {
+          workspaceId: 'ws_caroma',
+          sessionId: 'session_caroma_01',
+          toolId: 'activepieces.flow_ct_write_01',
+          packVersionId: '1.0.0',
+          approvalId: 'apr_reuse_single_shot',
+        }
+      );
+
+      const worker2 = service.startWithRepository(repo, undefined, {
+        workerId: 'worker_reuse_2',
+        batchSize: 1,
+        pollIntervalMs: 50,
+        leaseDurationMs: 1000,
+      });
+
+      const res2 = await worker2.processNextBatch();
+      assert.equal(res2.failed, 1, 'Reusing approval on different event must fail');
+      const event2 = repo.getEvents().find((e) => e.eventId === event2Id)!;
+      assert.notEqual(event2.status, 'published');
+      assert.equal(event2.status, 'pending');
+      assert.match(
+        event2.error || '',
+        /has already been consumed by another execution; replay rejected|Authoritative approval record/
+      );
+      service.stopWorker();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  // ── Test 18: Forged payload sideEffect / risk cannot bypass Business-Pack definition (Item A) ──
+  await test('18. Negative: forged payload sideEffect=read and risk=low cannot bypass Business-Pack write definition', async () => {
+    const repo = new OutboxRepository();
+    const mockDb = createMockOutboxDb();
+    const service = new OutboxWorkerService();
+    service.configureHandlers({ db: mockDb });
+
+    // Attacker crafts payload claiming sideEffect: 'read', risk: 'low'
+    const eventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {
+        sideEffect: 'read', // Forged in payload!
+        risk: 'low',         // Forged in payload!
+        policy: { requiresConfirmation: false },
+      },
+      undefined,
+      undefined,
+      {
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_ct_write_01', // Pack defines this as sideEffect: 'write', risk: 'high'
+        packVersionId: '1.0.0',
+      }
+    );
+
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker_forged_risk',
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+
+    const res = await worker.processNextBatch();
+    assert.equal(res.failed, 1, 'Pack-defined sideEffect must override payload claims');
+    const event = repo.getEvents().find((e) => e.eventId === eventId)!;
+    assert.equal(event.status, 'pending');
+    assert.match(event.error || '', /requires an authoritative top-level 'approvalId' in outbox envelope/);
+
+    service.stopWorker();
+  });
+
+  // ── Test 19: Forged payload flowId / connectionRef cannot override ToolBinding (Item A) ──
+  await test('19. Negative: forged payload flowId or connectionRef cannot override Business-Pack ToolBinding', async () => {
+    const repo = new OutboxRepository();
+    const mockDb = createMockOutboxDb();
+    const service = new OutboxWorkerService();
+    service.configureHandlers({ db: mockDb });
+
+    // Attacker attempts to redirect execution to malicious flow
+    const forgedFlowEventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {
+        flowId: 'malicious_flow_drain_funds',
+      },
+      undefined,
+      undefined,
+      {
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
+      }
+    );
+
+    // Attacker attempts to hijack connectionRef to another tenant's secret
+    const forgedConnEventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {
+        connectionRef: 'victim_tenant_secret_ref',
+      },
+      undefined,
+      undefined,
+      {
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
+      }
+    );
+
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker_forged_bindings',
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+
+    const res = await worker.processNextBatch();
+    assert.equal(res.failed, 2);
+
+    const flowEvent = repo.getEvents().find((e) => e.eventId === forgedFlowEventId)!;
+    assert.equal(flowEvent.status, 'pending');
+    assert.match(flowEvent.error || '', /Forged flowId in payload 'malicious_flow_drain_funds' does not match pack binding/);
+
+    const connEvent = repo.getEvents().find((e) => e.eventId === forgedConnEventId)!;
+    assert.equal(connEvent.status, 'pending');
+    assert.match(connEvent.error || '', /Forged connectionRef in payload 'victim_tenant_secret_ref' does not match pack binding/);
+
+    service.stopWorker();
+  });
+
+  // ── Test 20: Stage allowance enforcement (Item A) ──────────────────────────────
+  await test('20. Negative: tool invocation not allowed by stageBindings in published release fails closed', async () => {
+    const repo = new OutboxRepository();
+    // Workspace is at 'stage_restricted' where no tools are allowed
+    const mockDb = createMockOutboxDb({ stageId: 'stage_restricted' });
+    const service = new OutboxWorkerService();
+    service.configureHandlers({ db: mockDb });
+
+    const eventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {},
+      undefined,
+      undefined,
+      {
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
+      }
+    );
+
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker_stage_disallowed',
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+
+    const res = await worker.processNextBatch();
+    assert.equal(res.failed, 1);
+    const event = repo.getEvents().find((e) => e.eventId === eventId)!;
+    assert.equal(event.status, 'pending');
+    assert.match(event.error || '', /is not allowed in stage 'stage_restricted' by published business pack release '1.0.0'/);
+
+    service.stopWorker();
+  });
+
+  // ── Test 21: Cross-environment secret isolation (Item D) ───────────────────────
+  await test('21. Negative: cross-environment secret isolation prevents production event from using staging secret', async () => {
+    const repo = new OutboxRepository();
+    // Configure secrets only for staging
+    const mockDb = createMockOutboxDb({
+      tenantSecrets: [
+        {
+          tenantId: 'tenant_caroma',
+          environmentId: 'staging',
+          secretRef: 'activepieces_api_key',
+          value: 'staging_only_key',
+        },
+        {
+          tenantId: 'tenant_caroma',
+          environmentId: 'staging',
+          secretRef: 'activepieces_webhook_secret',
+          value: 'staging_only_secret',
+        },
+      ],
+    });
+
+    const service = new OutboxWorkerService();
+    service.configureHandlers({ db: mockDb });
+
+    // Event is enqueued for PRODUCTION
+    const eventId = await repo.enqueueEvent(
+      'tenant_caroma',
+      'production',
+      'activepieces.dispatch',
+      {},
+      undefined,
+      undefined,
+      {
+        workspaceId: 'ws_caroma',
+        sessionId: 'session_caroma_01',
+        toolId: 'activepieces.flow_ct_sync_01',
+        packVersionId: '1.0.0',
+      }
+    );
+
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId: 'worker_cross_env_secrets',
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+
+    const res = await worker.processNextBatch();
+    assert.equal(res.failed, 1);
+    const event = repo.getEvents().find((e) => e.eventId === eventId)!;
+    assert.equal(event.status, 'pending');
+    assert.match(
+      event.error || '',
+      /Activepieces tenant secrets \(activepieces_api_key \/ activepieces_webhook_secret\) not configured for tenant 'tenant_caroma' \(production\); failing closed/
+    );
 
     service.stopWorker();
   });

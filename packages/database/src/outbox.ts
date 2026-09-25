@@ -13,6 +13,12 @@ export class OutboxRepository {
       eventType: string;
       payload: any;
       maxAttempts?: number;
+      workspaceId?: string;
+      sessionId?: string;
+      toolId?: string;
+      packVersionId?: string;
+      approvalId?: string;
+      executionReference?: string;
     },
     session?: ClientSession
   ): Promise<OutboxEventRecord> {
@@ -26,6 +32,12 @@ export class OutboxRepository {
       attempts: 0,
       maxAttempts: event.maxAttempts || 5,
       createdAt: new Date(),
+      workspaceId: event.workspaceId,
+      sessionId: event.sessionId,
+      toolId: event.toolId,
+      packVersionId: event.packVersionId,
+      approvalId: event.approvalId,
+      executionReference: event.executionReference,
     };
 
     const col = this.db.collection<OutboxEventRecord>(COLLECTION_OUTBOX_EVENTS);

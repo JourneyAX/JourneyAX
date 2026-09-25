@@ -161,79 +161,31 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       }
     });
 
-    // 3. Activepieces dispatch — invokes actual CapabilityDispatcher with connection ownership and idempotency
+    // 3. Activepieces dispatch — invokes actual CapabilityDispatcher with Business-Pack definition and tenant credentials
     this.registerHandler('activepieces.dispatch', async (event) => {
       this.logger.log(
-        `[OutboxWorker] Handling activepieces.dispatch for tenant '${event.tenantId}' flowId '${event.payload?.flowId}'`
+        `[OutboxWorker] Handling activepieces.dispatch for tenant '${event.tenantId}' toolId '${(event as any).toolId}'`
       );
       const payload = event.payload || {};
-      if (!payload.flowId) {
-        throw new Error("[OutboxWorker] Missing mandatory 'flowId' in activepieces.dispatch payload");
-      }
-      if (!payload.connectionRef) {
-        throw new Error("[OutboxWorker] Missing mandatory 'connectionRef' in activepieces.dispatch payload");
-      }
 
-      const capDispatcher =
-        capabilityDispatcher ||
-        new CapabilityDispatcher({
-          activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL,
-          activepiecesApiKey: process.env.ACTIVEPIECES_API_KEY,
-          activepiecesWebhookSecret: process.env.ACTIVEPIECES_WEBHOOK_SECRET,
-          validateConnectionOwnership: async (t, e, c) => {
-            if (ownershipRepository) {
-              return ownershipRepository.validateOwnership(t, e, c);
-            }
-            if (db) {
-              const repo = new DurableConnectionOwnershipRepository(() => db);
-              return repo.validateOwnership(t, e, c);
-            }
-            return false;
-          },
-        });
-
-      const toolDef: ToolDefinition = {
-        toolId: payload.toolId || `activepieces.${payload.flowId}`,
-        version: '1.0.0',
-        displayName: payload.flowId,
-        description: 'Outbox Activepieces flow execution',
-        inputSchema: {},
-        outputSchema: {},
-        sideEffect: payload.sideEffect || 'transactional',
-        risk: payload.risk || 'medium',
-        timeoutPolicy: { timeoutMs: 15000, retryAttempts: 1 },
-        idempotencyPolicy: { required: true, ttlSeconds: 300 },
-        approvalPolicy: { requiresApproval: false, ttlMinutes: 10 },
-        dataClassification: 'internal',
-      };
-
-      const toolBinding: ToolBinding = {
-        tenantId: event.tenantId,
-        environmentId: event.environmentId,
-        toolId: toolDef.toolId,
-        bindingVersion: '1.0.0',
-        executor: {
-          type: 'activepieces_flow',
-          flowId: payload.flowId,
-          connectionRef: payload.connectionRef,
-        },
-        enabled: true,
-        policy: {
-          requiredRole: 'customer',
-          requiresConfirmation: payload.risk === 'high',
-          idempotencyRequired: true,
-          timeoutMs: 15000,
-          retryAttempts: 1,
-        },
-      };
-
-      // Authoritative durable execution context resolution — payload is NOT authoritative
-      const workspaceId = (event as any).workspaceId || payload.workspaceId;
-      if (!workspaceId) {
-        throw new Error("[OutboxWorker] Missing mandatory 'workspaceId' for activepieces.dispatch");
-      }
       if (!db) {
         throw new Error("[OutboxWorker] Durable database is required to resolve execution context");
+      }
+
+      // Authoritative durable execution context resolution — top-level envelope fields are mandatory
+      const workspaceId = (event as any).workspaceId;
+      if (!workspaceId) {
+        throw new Error("[OutboxWorker] Missing mandatory top-level 'workspaceId' in outbox envelope (payload fallback prohibited)");
+      }
+
+      const targetSessionId = (event as any).sessionId;
+      if (!targetSessionId) {
+        throw new Error("[OutboxWorker] Missing mandatory top-level 'sessionId' in outbox envelope (payload fallback prohibited)");
+      }
+
+      const toolId = (event as any).toolId;
+      if (!toolId) {
+        throw new Error("[OutboxWorker] Missing mandatory top-level 'toolId' in outbox envelope (payload fallback prohibited)");
       }
 
       const workspaceDoc = await db.collection('workspaces').findOne({
@@ -248,18 +200,10 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       const stageId = workspaceDoc.currentStage || workspaceDoc.stageId;
-      const packVersionId = workspaceDoc.packVersionId;
+      const packVersionId = (event as any).packVersionId || workspaceDoc.packVersionId;
       if (!stageId || !packVersionId) {
         throw new Error(
           `[OutboxWorker] Durable workspace record '${workspaceId}' lacks required currentStage or packVersionId`
-        );
-      }
-
-      // Authoritative session and principal role resolution from durable session record
-      const targetSessionId = (event as any).sessionId || payload.sessionId || workspaceDoc.activeSessionId || workspaceDoc.sessionId;
-      if (!targetSessionId) {
-        throw new Error(
-          `[OutboxWorker] Missing session identifier for workspace '${workspaceId}'`
         );
       }
 
@@ -283,6 +227,141 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      // Authoritative active business pack release pointer lookup
+      const pointer = await db.collection('business_pack_pointers').findOne({
+        tenantId: event.tenantId,
+        $or: [{ channel: event.environmentId }, { environmentId: event.environmentId }],
+      });
+
+      const activeVersion = pointer?.activeVersionId || pointer?.activeVersion || packVersionId;
+      if (pointer && activeVersion !== packVersionId) {
+        throw new Error(
+          `[OutboxWorker] Workspace packVersionId '${packVersionId}' does not match active release pointer '${activeVersion}' for tenant '${event.tenantId}' (${event.environmentId})`
+        );
+      }
+
+      // Load immutable published Business Pack release
+      const releaseDoc = await db.collection('business_pack_releases').findOne({
+        tenantId: event.tenantId,
+        environmentId: { $in: [event.environmentId, 'all'] },
+        $or: [{ versionId: packVersionId }, { version: packVersionId }],
+        status: { $in: ['published', 'active'] },
+      });
+      if (!releaseDoc) {
+        throw new Error(
+          `[OutboxWorker] Published business pack release '${packVersionId}' not found for tenant '${event.tenantId}' (${event.environmentId})`
+        );
+      }
+
+      // Validate release checksum
+      const packChecksum = typeof releaseDoc.checksum === 'string' ? releaseDoc.checksum.trim() : '';
+      if (!packChecksum) {
+        throw new Error(
+          `[OutboxWorker] Business pack release '${packVersionId}' lacks mandatory checksum; failing closed`
+        );
+      }
+
+      // Resolve stage-scoped ToolDefinition from release (never trust payload for policy/risk/sideEffect)
+      const toolDefs: ToolDefinition[] = releaseDoc.capabilities?.toolDefinitions || [];
+      const toolDef = toolDefs.find((t: any) => t.toolId === toolId);
+      if (!toolDef) {
+        throw new Error(
+          `[OutboxWorker] Tool '${toolId}' is not defined in published business pack release '${packVersionId}'`
+        );
+      }
+
+      // Resolve ToolBinding from release
+      const toolBindings: ToolBinding[] = releaseDoc.capabilities?.toolBindings || [];
+      const toolBinding = toolBindings.find(
+        (b: any) => b.toolId === toolId && (b.environmentId === event.environmentId || (b.environmentId as any) === 'all')
+      );
+      if (!toolBinding) {
+        throw new Error(
+          `[OutboxWorker] ToolBinding for '${toolId}' (${event.environmentId}) not found in published business pack release '${packVersionId}'`
+        );
+      }
+      if (toolBinding.executor?.type !== 'activepieces_flow') {
+        throw new Error(
+          `[OutboxWorker] ToolBinding for '${toolId}' does not use 'activepieces_flow' executor (found '${toolBinding.executor?.type}')`
+        );
+      }
+
+      // Validate stage allowance if stageBindings are present
+      const stageBindings: any[] = releaseDoc.capabilities?.stageBindings || [];
+      if (stageBindings.length > 0) {
+        const currentStageBinding = stageBindings.find((sb: any) => sb.stageId === stageId);
+        if (currentStageBinding) {
+          const isAllowed = currentStageBinding.tools?.some((t: any) => t.toolId === toolId);
+          if (!isAllowed) {
+            throw new Error(
+              `[OutboxWorker] Tool '${toolId}' is not allowed in stage '${stageId}' by published business pack release '${packVersionId}'`
+            );
+          }
+        }
+      }
+
+      const boundFlowId = toolBinding.executor.flowId;
+      const boundConnectionRef = toolBinding.executor.connectionRef;
+      if (!boundFlowId || !boundConnectionRef) {
+        throw new Error(
+          `[OutboxWorker] ToolBinding for '${toolId}' lacks mandatory flowId or connectionRef`
+        );
+      }
+
+      // Payload may carry only validated input / reference IDs, never executable policy
+      if (payload.flowId && payload.flowId !== boundFlowId) {
+        throw new Error(
+          `[OutboxWorker] Forged flowId in payload '${payload.flowId}' does not match pack binding '${boundFlowId}'`
+        );
+      }
+      if (payload.connectionRef && payload.connectionRef !== boundConnectionRef) {
+        throw new Error(
+          `[OutboxWorker] Forged connectionRef in payload '${payload.connectionRef}' does not match pack binding '${boundConnectionRef}'`
+        );
+      }
+
+      // Resolve tenant/environment-configured activepieces secrets — NO global fallbacks
+      const apApiKeyDoc = await db.collection('tenant_secrets').findOne({
+        tenantId: event.tenantId,
+        $or: [{ environmentId: event.environmentId }, { environmentId: 'all' }],
+        secretRef: 'activepieces_api_key',
+      });
+      const apWebhookDoc = await db.collection('tenant_secrets').findOne({
+        tenantId: event.tenantId,
+        $or: [{ environmentId: event.environmentId }, { environmentId: 'all' }],
+        secretRef: 'activepieces_webhook_secret',
+      });
+
+      if (!apApiKeyDoc?.value || !apWebhookDoc?.value) {
+        throw new Error(
+          `[OutboxWorker] Activepieces tenant secrets (activepieces_api_key / activepieces_webhook_secret) not configured for tenant '${event.tenantId}' (${event.environmentId}); failing closed (no global fallback)`
+        );
+      }
+
+      // Use tenant-specific CapabilityDispatcher unless a custom mock dispatcher is injected for testing
+      const isCustomMock =
+        capabilityDispatcher &&
+        typeof (capabilityDispatcher as any).dispatch === 'function' &&
+        capabilityDispatcher.constructor.name !== 'CapabilityDispatcher';
+
+      const capDispatcher = isCustomMock
+        ? capabilityDispatcher
+        : new CapabilityDispatcher({
+            activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL,
+            activepiecesApiKey: apApiKeyDoc.value,
+            activepiecesWebhookSecret: apWebhookDoc.value,
+            validateConnectionOwnership: async (t, e, c) => {
+              if (ownershipRepository) {
+                return ownershipRepository.validateOwnership(t, e, c);
+              }
+              if (db) {
+                const repo = new DurableConnectionOwnershipRepository(() => db);
+                return repo.validateOwnership(t, e, c);
+              }
+              return false;
+            },
+          });
+
       const ctx: ExecutionContext = {
         workspaceId,
         tenantId: event.tenantId,
@@ -296,45 +375,99 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         principalId,
       };
 
-      // Side-effecting dispatch must require an authoritative durable approved approval row
-      // bound to tenant + environment + workspace + tool/execution/idempotency key and unexpired.
-      // Payload/event booleans and embedded approval-record bypasses are strictly prohibited and ignored.
-      let userConfirmationConfirmed = false;
+      // Side-effecting dispatch policy evaluation strictly based on Business-Pack definition
       const isSideEffecting =
         toolDef.sideEffect === 'write' ||
         toolDef.sideEffect === 'transactional' ||
         toolDef.risk === 'medium' ||
         toolDef.risk === 'high' ||
         toolDef.risk === 'critical' ||
-        toolBinding.policy?.requiresConfirmation === true;
+        toolBinding.policy?.requiresConfirmation === true ||
+        toolDef.approvalPolicy?.requiresApproval === true;
 
+      let userConfirmationConfirmed = false;
       if (isSideEffecting) {
+        const approvalId = (event as any).approvalId;
+        if (!approvalId) {
+          throw new Error(
+            `[OutboxWorker] Side-effecting activepieces.dispatch for tool '${toolDef.toolId}' requires an authoritative top-level 'approvalId' in outbox envelope`
+          );
+        }
+
         const now = new Date();
         const approval = await db.collection('approval_requests').findOne({
+          approvalId,
           tenantId: event.tenantId,
           environmentId: event.environmentId,
           workspaceId,
+          toolId,
           status: 'approved',
           $or: [
-            { toolId: toolDef.toolId },
             { executionKey: event.eventId },
             { idempotencyKey: event.eventId },
-            ...(payload.approvalId ? [{ approvalId: payload.approvalId }] : []),
-          ],
-          $and: [
-            {
-              $or: [
-                { expiresAt: { $exists: false } },
-                { expiresAt: null },
-                { expiresAt: { $gt: now } },
-              ],
-            },
+            { eventId: event.eventId },
           ],
         });
 
         if (!approval) {
           throw new Error(
-            `[OutboxWorker] Side-effecting activepieces.dispatch for tool '${toolDef.toolId}' requires an authoritative, unexpired durable approval record in 'approval_requests' bound to tenant, environment, workspace, and tool/execution/idempotency key`
+            `[OutboxWorker] Authoritative approval record '${approvalId}' not found for tenant '${event.tenantId}', env '${event.environmentId}', workspace '${workspaceId}', tool '${toolId}', event '${event.eventId}'`
+          );
+        }
+
+        // Validate expiry
+        if (approval.expiresAt && new Date(approval.expiresAt) <= now) {
+          throw new Error(`[OutboxWorker] Approval record '${approvalId}' has expired`);
+        }
+
+        // Validate principal, session, stage, pack bindings if present on approval
+        if (approval.principalRole && approval.principalRole !== principalRole) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' principalRole '${approval.principalRole}' does not match session role '${principalRole}'`
+          );
+        }
+        if (approval.sessionId && approval.sessionId !== targetSessionId) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' sessionId '${approval.sessionId}' does not match target session '${targetSessionId}'`
+          );
+        }
+        if (approval.stageId && approval.stageId !== stageId) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' stageId '${approval.stageId}' does not match workspace stage '${stageId}'`
+          );
+        }
+        if (approval.packVersionId && approval.packVersionId !== packVersionId) {
+          throw new Error(
+            `[OutboxWorker] Approval '${approvalId}' packVersionId '${approval.packVersionId}' does not match workspace pack version '${packVersionId}'`
+          );
+        }
+
+        // Atomically consume/link the approval to this event (idempotent only for the same event)
+        const updateRes = await db.collection('approval_requests').findOneAndUpdate(
+          {
+            _id: approval._id,
+            status: 'approved',
+            $or: [
+              { consumedByEventId: { $exists: false } },
+              { consumedByEventId: null },
+              { consumedByEventId: event.eventId },
+            ],
+          },
+          {
+            $set: {
+              consumedByEventId: event.eventId,
+              consumedAt: now,
+            },
+          },
+          { returnDocument: 'after' }
+        );
+
+        const updatedDoc = (updateRes && typeof updateRes === 'object' && 'value' in updateRes)
+          ? (updateRes as any).value
+          : updateRes;
+        if (!updatedDoc || (updatedDoc.consumedByEventId && updatedDoc.consumedByEventId !== event.eventId)) {
+          throw new Error(
+            `[OutboxWorker] Approval record '${approvalId}' has already been consumed by another execution; replay rejected`
           );
         }
 
@@ -368,8 +501,9 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
             $set: {
               tenantId: event.tenantId,
               environmentId: event.environmentId,
-              flowId: payload.flowId,
-              connectionRef: payload.connectionRef,
+              flowId: boundFlowId,
+              connectionRef: boundConnectionRef,
+              toolId,
               output: dispatchResult.output,
               status: 'success',
               executedAt: new Date().toISOString(),
@@ -450,8 +584,6 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       const ownershipRepo = new DurableConnectionOwnershipRepository(() => db);
       const capabilityDispatcher = new CapabilityDispatcher({
         activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL,
-        activepiecesApiKey: process.env.ACTIVEPIECES_API_KEY,
-        activepiecesWebhookSecret: process.env.ACTIVEPIECES_WEBHOOK_SECRET,
         validateConnectionOwnership: (tenantId, environmentId, connectionRef) =>
           ownershipRepo.validateOwnership(tenantId, environmentId, connectionRef),
       });

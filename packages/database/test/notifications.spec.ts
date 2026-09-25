@@ -1247,6 +1247,111 @@ async function runNotificationTests() {
     assert.equal(delivAfterBounce?.status, 'bounced', 'Terminal bounced state must not regress on late delivered event');
   });
 
+  // Test 25: Negative: Unsupported/unknown callback event type is rejected without changing delivery state
+  await test('25. Negative: Unsupported/unknown callback event status is rejected and delivery state remains unchanged', async () => {
+    const deliveryId = 'deliv_unknown_type_test';
+    insertedDeliveries.push({
+      deliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'test.unknown_status',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'unknown@example.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const unknownPayload = [{ deliveryId, event: 'billing.payment_succeeded' }];
+    const hmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(unknownPayload)).digest('hex');
+
+    const res = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${hmac}` },
+      unknownPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+
+    assert.equal(res.processed, 0, 'Unsupported event type must not be marked processed');
+    assert.ok(
+      res.errors.some((e) => e.includes("Unsupported or unrecognized callback event status 'billing.payment_succeeded'")),
+      'Must record error indicating unsupported event status'
+    );
+    const deliv = insertedDeliveries.find((d) => d.deliveryId === deliveryId);
+    assert.equal(deliv?.status, 'pending', 'Delivery status must remain unchanged for unsupported event type');
+  });
+
+  // Test 26: Cross-environment callback dedup: equal delivery IDs in different environments cannot collide
+  await test('26. Cross-environment callback dedup: equal delivery IDs in different environments do not collide', async () => {
+    const sharedDeliveryId = 'deliv_shared_cross_env';
+
+    // Insert delivery in staging
+    insertedDeliveries.push({
+      deliveryId: sharedDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'staging',
+      eventId: 'test.staging_evt',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'staging_user@example.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    // Insert delivery with SAME deliveryId in production
+    insertedDeliveries.push({
+      deliveryId: sharedDeliveryId,
+      tenantId: 'tenant_abc',
+      environmentId: 'production',
+      eventId: 'test.prod_evt',
+      channel: 'email',
+      provider: 'generic',
+      recipient: 'prod_user@example.com',
+      status: 'pending',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+    });
+
+    const stagingPayload = [{ deliveryId: sharedDeliveryId, event: 'delivered', id: 'evt_staging_001' }];
+    const stagingHmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(stagingPayload)).digest('hex');
+
+    const stagingRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${stagingHmac}` },
+      stagingPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'staging'
+    );
+    assert.equal(stagingRes.processed, 1, 'Staging delivery callback must succeed');
+
+    const prodPayload = [{ deliveryId: sharedDeliveryId, event: 'delivered', id: 'evt_prod_001' }];
+    const prodHmac = createHmac('sha256', 'mock_secret_val').update(JSON.stringify(prodPayload)).digest('hex');
+
+    const prodRes = await dispatcher.handleEmailWebhookCallback(
+      'generic',
+      { 'x-webhook-signature': `sha256=${prodHmac}` },
+      prodPayload,
+      'mock_secret_val',
+      'tenant_abc',
+      'production'
+    );
+    assert.equal(prodRes.processed, 1, 'Production delivery callback must succeed and NOT collide with staging dedup');
+
+    const stagingDeliv = insertedDeliveries.find((d) => d.deliveryId === sharedDeliveryId && d.environmentId === 'staging');
+    const prodDeliv = insertedDeliveries.find((d) => d.deliveryId === sharedDeliveryId && d.environmentId === 'production');
+
+    assert.equal(stagingDeliv?.status, 'delivered', 'Staging delivery must be delivered');
+    assert.equal(prodDeliv?.status, 'delivered', 'Production delivery must be delivered');
+  });
+
   console.log(`\nNotification Tests Complete: ${passed} passed, ${failed} failed.\n`);
   if (failed > 0) process.exit(1);
 }

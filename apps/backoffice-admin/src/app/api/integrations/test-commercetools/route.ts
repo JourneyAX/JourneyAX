@@ -12,6 +12,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, scopeTenant, isPlatformIdentity } from "../../../../lib/require-auth";
 import { connectToDatabase } from "@journeyax/database";
+import { can } from "@journeyax/shared-types";
 import {
   CapabilityDispatcher,
   ToolDefinition,
@@ -81,18 +82,39 @@ export async function POST(req: Request) {
     }
 
     // Verify membership if not a dedicated platform identity
+    let memberRole = auth.identity.role;
     if (!isPlatform) {
-      if (auth.identity.tenantId !== tenantId) {
-        const member = await db.collection('project_members').findOne({
-          projectId: tenantId,
-          email: auth.identity.email,
-        });
-        if (!member) {
-          return NextResponse.json(
-            { ok: false, message: `Access denied: user is not a member of project '${tenantId}'` },
-            { status: 403 }
-          );
-        }
+      const member = await db.collection('project_members').findOne({
+        projectId: tenantId,
+        email: auth.identity.email,
+      });
+
+      if (!member) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied: user is not a member of project '${tenantId}'` },
+          { status: 403 }
+        );
+      }
+
+      // Require accepted/active/non-revoked membership lifecycle
+      const memberStatus = (member.status || '').toLowerCase();
+      if (
+        !['active', 'accepted'].includes(memberStatus) ||
+        ['pending', 'revoked', 'suspended', 'invited'].includes(memberStatus)
+      ) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied: membership for project '${tenantId}' is in '${memberStatus || 'inactive'}' state` },
+          { status: 403 }
+        );
+      }
+
+      // Require project-scoped permission for config.edit
+      memberRole = member.role || auth.identity.role;
+      if (!can(memberRole, 'config.edit')) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied: role '${memberRole}' lacks required 'config.edit' permission to test connectors` },
+          { status: 403 }
+        );
       }
     }
 
@@ -253,44 +275,51 @@ export async function POST(req: Request) {
       },
     });
 
-    // Authoritative active business pack release lookup
-    const releasePointer =
-      (await db.collection('business_pack_pointers').findOne({
-        tenantId,
-        channel: environmentId,
-      })) ||
-      (await db.collection('business_pack_pointers').findOne({
-        tenantId,
-        channel: 'production',
-      }));
+    // Authoritative active business pack release pointer lookup strictly scoped to tenant and environment (NO cross-environment fallback)
+    const releasePointer = await db.collection('business_pack_pointers').findOne({
+      tenantId,
+      $or: [{ channel: environmentId }, { environmentId }],
+    });
 
-    const activeRelease = releasePointer?.activeVersionId
-      ? await db.collection('business_pack_releases').findOne({
-          tenantId,
-          versionId: releasePointer.activeVersionId,
-        })
-      : await db.collection('business_pack_releases').findOne({
-          tenantId,
-          status: 'active',
-        });
-
-    const packVersionId = activeRelease?.versionId || releasePointer?.activeVersionId || projectConfig?.activePackVersionId;
-    if (!packVersionId) {
+    const targetVersion = releasePointer?.activeVersionId || releasePointer?.activeVersion;
+    if (!targetVersion) {
       return NextResponse.json(
-        { ok: false, message: `Active business pack release not found for tenant '${tenantId}'; failing closed.` },
+        { ok: false, message: `Active business pack release pointer not found for tenant '${tenantId}' (${environmentId}); failing closed.` },
         { status: 412 }
       );
     }
 
-    // Resolve durable workspace and session records
-    const workspaceDoc =
-      (await db.collection('workspaces').findOne({
-        tenantId,
-        environmentId,
-      })) ||
-      (projectConfig.workspaceId
-        ? await db.collection('workspaces').findOne({ workspaceId: projectConfig.workspaceId })
-        : null);
+    // Require published/active immutable release scoped to tenant and environment with valid checksum
+    const activeRelease = await db.collection('business_pack_releases').findOne({
+      tenantId,
+      environmentId: { $in: [environmentId, 'all'] },
+      $or: [{ versionId: targetVersion }, { version: targetVersion }],
+      status: { $in: ['published', 'active'] },
+    });
+
+    if (!activeRelease) {
+      return NextResponse.json(
+        { ok: false, message: `Published business pack release '${targetVersion}' not found for tenant '${tenantId}' (${environmentId}); failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    const packChecksum = typeof activeRelease.checksum === 'string' ? activeRelease.checksum.trim() : '';
+    if (!packChecksum) {
+      return NextResponse.json(
+        { ok: false, message: `Business pack release '${targetVersion}' lacks mandatory checksum; failing closed.` },
+        { status: 412 }
+      );
+    }
+
+    const packVersionId = activeRelease.versionId || activeRelease.version || targetVersion;
+
+    // Resolve durable workspace record strictly scoped by tenantId and environmentId (no cross-environment leaks)
+    const workspaceDoc = await db.collection('workspaces').findOne({
+      tenantId,
+      environmentId,
+      ...(projectConfig.workspaceId ? { workspaceId: projectConfig.workspaceId } : {}),
+    });
 
     if (!workspaceDoc) {
       return NextResponse.json(
@@ -303,27 +332,6 @@ export async function POST(req: Request) {
     if (!stageId) {
       return NextResponse.json(
         { ok: false, message: `Durable workspace '${workspaceDoc.workspaceId}' lacks required currentStage; failing closed.` },
-        { status: 412 }
-      );
-    }
-
-    const targetSessionId = workspaceDoc.activeSessionId || workspaceDoc.sessionId;
-    const sessionDoc = targetSessionId
-      ? await db.collection('sessions').findOne({
-          tenantId,
-          environmentId,
-          workspaceId: workspaceDoc.workspaceId,
-          sessionId: targetSessionId,
-        })
-      : await db.collection('sessions').findOne({
-          tenantId,
-          environmentId,
-          workspaceId: workspaceDoc.workspaceId,
-        });
-
-    if (!sessionDoc) {
-      return NextResponse.json(
-        { ok: false, message: `Durable session record not found for workspace '${workspaceDoc.workspaceId}'; failing closed.` },
         { status: 412 }
       );
     }
@@ -355,7 +363,7 @@ export async function POST(req: Request) {
       },
       enabled: true,
       policy: {
-        requiredRole: "admin",
+        requiredRole: memberRole || "admin",
         requiresConfirmation: false,
         idempotencyRequired: false,
         timeoutMs: 15000,
@@ -363,17 +371,17 @@ export async function POST(req: Request) {
       },
     };
 
-    // Trusted execution context strictly resolved from durable workspace and session records
+    // Trusted execution context strictly bound to the authenticated backoffice identity and project role
     const ctx: ExecutionContext = {
       workspaceId: workspaceDoc.workspaceId,
       tenantId,
       environmentId,
-      sessionId: sessionDoc.sessionId,
+      sessionId: workspaceDoc.activeSessionId || `backoffice_test_${auth.identity.email}`,
       stageId,
       packVersionId,
       correlationId: `test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      principalRole: sessionDoc.principalRole || auth.identity.role || "admin",
-      principalId: sessionDoc.principalId || auth.identity.email,
+      principalRole: memberRole || "admin",
+      principalId: auth.identity.email,
     };
 
     const result = await dispatcher.dispatch(

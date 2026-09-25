@@ -350,7 +350,15 @@ export class NotificationDispatcher {
     tenantId: string,
     environmentId: EnvironmentId,
     eventType: string,
-    payload: Record<string, any>
+    payload: Record<string, any>,
+    options?: {
+      workspaceId?: string;
+      sessionId?: string;
+      toolId?: string;
+      packVersionId?: string;
+      approvalId?: string;
+      executionReference?: string;
+    }
   ): Promise<string> {
     const eventId = `evt_outbox_${Date.now()}_${randomUUID().slice(0, 8)}`;
     await this.db.collection(COLLECTION_OUTBOX_EVENTS).insertOne({
@@ -358,6 +366,12 @@ export class NotificationDispatcher {
       tenantId,
       environmentId,
       eventType,
+      workspaceId: options?.workspaceId,
+      sessionId: options?.sessionId,
+      toolId: options?.toolId,
+      packVersionId: options?.packVersionId,
+      approvalId: options?.approvalId,
+      executionReference: options?.executionReference,
       payload,
       status: 'pending',
       attempts: 0,
@@ -996,7 +1010,7 @@ export class NotificationDispatcher {
       };
 
       // ── Map Status & Enforce Monotonic Precedence ─────────────────────
-      let mappedStatus: NotificationDeliveryRecord['status'] = 'delivered';
+      let mappedStatus: NotificationDeliveryRecord['status'] | null = null;
       if (['bounce', 'bounced'].includes(eventStatus)) mappedStatus = 'bounced';
       else if (['open', 'opened'].includes(eventStatus)) mappedStatus = 'opened';
       else if (['click', 'clicked'].includes(eventStatus)) mappedStatus = 'clicked';
@@ -1004,6 +1018,13 @@ export class NotificationDispatcher {
       else if (['delivered', 'success'].includes(eventStatus)) mappedStatus = 'delivered';
       else if (['failed', 'failure'].includes(eventStatus)) mappedStatus = 'failed';
       else if (['sent', 'processed'].includes(eventStatus)) mappedStatus = 'delivered';
+      else {
+        // Reject / record unsupported typed events without changing delivery state
+        errors.push(
+          `Unsupported or unrecognized callback event status '${eventStatus}' for provider '${provider}' — delivery state unchanged`
+        );
+        continue;
+      }
 
       // ── Validate matching scoped delivery BEFORE processing ────────────
       const matchingDelivery = await deliveriesCol.findOne(query);
@@ -1036,8 +1057,14 @@ export class NotificationDispatcher {
       const effectiveStatus = isStatusRegression ? matchingDelivery.status : mappedStatus;
 
       // ── Deduplicate Callback with Transactional Recoverability ─────────
-      const callbackDedupKey = `${provider}:${boundTenantId}:${deliveryId || providerDeliveryId}:${eventStatus}`;
-      const existingCallback = await callbacksCol.findOne({ callbackId: callbackDedupKey });
+      // Include boundEnvId and provider event ID so identical delivery IDs in different environments cannot collide
+      const providerEventId = evt.id || evt.event_id || evt.svix_id || '';
+      const callbackDedupKey = `${provider}:${boundTenantId}:${boundEnvId}:${deliveryId || providerDeliveryId}:${eventStatus}${providerEventId ? `:${providerEventId}` : ''}`;
+      const existingCallback = await callbacksCol.findOne({
+        callbackId: callbackDedupKey,
+        tenantId: boundTenantId,
+        environmentId: boundEnvId,
+      });
       if (existingCallback) {
         // If delivery was already updated to this status and callbackEvent, skip as genuine duplicate
         if (
@@ -1049,7 +1076,11 @@ export class NotificationDispatcher {
         }
         // If delivery was NOT updated (e.g. prior attempt failed after callback insert),
         // delete stale callback record so this retry is not ignored forever!
-        await callbacksCol.deleteOne({ callbackId: callbackDedupKey });
+        await callbacksCol.deleteOne({
+          callbackId: callbackDedupKey,
+          tenantId: boundTenantId,
+          environmentId: boundEnvId,
+        });
       }
 
       // ── Update Delivery Record First with Atomic Mutation Guard ────────
@@ -1088,7 +1119,7 @@ export class NotificationDispatcher {
         ) {
           // Concurrently updated by another worker/thread; record callback idempotently and do not double count
           await callbacksCol.updateOne(
-            { callbackId: callbackDedupKey },
+            { callbackId: callbackDedupKey, tenantId: boundTenantId, environmentId: boundEnvId },
             {
               $set: {
                 callbackId: callbackDedupKey,
@@ -1113,7 +1144,7 @@ export class NotificationDispatcher {
 
       // ── Record Dedup Callback Entry Only After Delivery Update ─────────
       await callbacksCol.updateOne(
-        { callbackId: callbackDedupKey },
+        { callbackId: callbackDedupKey, tenantId: boundTenantId, environmentId: boundEnvId },
         {
           $set: {
             callbackId: callbackDedupKey,

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, scopeTenant, isPlatformIdentity } from '../../../../lib/require-auth';
 import { connectToDatabase } from '@journeyax/database';
-
+import { can } from '@journeyax/shared-types';
 
 export async function GET(req: Request) {
   try {
@@ -47,14 +47,34 @@ export async function GET(req: Request) {
 
     // Verify membership if not a dedicated platform identity
     if (!isPlatform) {
-      if (auth.identity.tenantId !== tenantId) {
-        const member = await db.collection('project_members').findOne({
-          projectId: tenantId,
-          email: auth.identity.email,
-        });
-        if (!member) {
-          return NextResponse.json({ ok: false, message: `Access denied to project '${tenantId}'` }, { status: 403 });
-        }
+      const member = await db.collection('project_members').findOne({
+        projectId: tenantId,
+        email: auth.identity.email,
+      });
+
+      if (!member) {
+        return NextResponse.json({ ok: false, message: `Access denied to project '${tenantId}'` }, { status: 403 });
+      }
+
+      // Require accepted/active/non-revoked membership lifecycle
+      const memberStatus = (member.status || '').toLowerCase();
+      if (
+        !['active', 'accepted'].includes(memberStatus) ||
+        ['pending', 'revoked', 'suspended', 'invited'].includes(memberStatus)
+      ) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied to project '${tenantId}': membership is in '${memberStatus || 'inactive'}' state` },
+          { status: 403 }
+        );
+      }
+
+      // Require project-scoped permission for project.read
+      const memberRole = member.role || auth.identity.role;
+      if (!can(memberRole, 'project.read')) {
+        return NextResponse.json(
+          { ok: false, message: `Access denied to project '${tenantId}': role '${memberRole}' lacks 'project.read' permission` },
+          { status: 403 }
+        );
       }
     }
 

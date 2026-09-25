@@ -45,8 +45,11 @@ async function runCrossTenantAuthTests() {
 
   // Mock database tables
   const projectMembersTable = [
-    { projectId: 'tenant_a', email: 'admin@tenant-a.com', role: 'admin' },
-    // Notice: admin@tenant-a.com is NOT a member of tenant_b!
+    { projectId: 'tenant_a', email: 'admin@tenant-a.com', role: 'admin', status: 'active' },
+    { projectId: 'tenant_a', email: 'pending@tenant-a.com', role: 'admin', status: 'pending' },
+    { projectId: 'tenant_a', email: 'revoked@tenant-a.com', role: 'admin', status: 'revoked' },
+    { projectId: 'tenant_a', email: 'viewer@tenant-a.com', role: 'buyer', status: 'active' },
+    { projectId: 'tenant_b', email: 'admin@tenant-b.com', role: 'admin', status: 'active' },
   ];
 
   const tenantConfigsTable = [
@@ -88,6 +91,30 @@ async function runCrossTenantAuthTests() {
       secretRef: 'activepieces_webhook_secret',
       value: 'ap_whsec_tenant_b',
     },
+    {
+      tenantId: 'tenant_c',
+      environmentId: 'staging',
+      secretRef: 'activepieces_api_key',
+      value: 'ap_key_tenant_c',
+    },
+    {
+      tenantId: 'tenant_c',
+      environmentId: 'staging',
+      secretRef: 'activepieces_webhook_secret',
+      value: 'ap_whsec_tenant_c',
+    },
+    {
+      tenantId: 'tenant_d',
+      environmentId: 'production',
+      secretRef: 'activepieces_api_key',
+      value: 'ap_key_tenant_d',
+    },
+    {
+      tenantId: 'tenant_d',
+      environmentId: 'production',
+      secretRef: 'activepieces_webhook_secret',
+      value: 'ap_whsec_tenant_d',
+    },
   ];
 
   const connectionsTable = [
@@ -111,14 +138,32 @@ async function runCrossTenantAuthTests() {
       enabled: true,
       allowedFlows: ['flow_ct_sync'],
     },
+    {
+      tenantId: 'tenant_c',
+      environmentId: 'staging',
+      connectionRef: 'conn_c_ct',
+      pieceName: '@activepieces/piece-commercetools',
+      status: 'active',
+      enabled: true,
+      allowedFlows: ['flow_ct_sync'],
+    },
+    {
+      tenantId: 'tenant_d',
+      environmentId: 'production',
+      connectionRef: 'conn_d_ct',
+      pieceName: '@activepieces/piece-commercetools',
+      status: 'active',
+      enabled: true,
+      allowedFlows: ['flow_ct_sync'],
+    },
   ];
 
   const packPointersTable = [
-    { tenantId: 'tenant_a', channel: 'production', activeVersionId: '1.2.0' },
+    { tenantId: 'tenant_a', channel: 'production', environmentId: 'production', activeVersionId: '1.2.0' },
   ];
 
   const packReleasesTable = [
-    { tenantId: 'tenant_a', versionId: '1.2.0', status: 'active' },
+    { tenantId: 'tenant_a', environmentId: 'production', versionId: '1.2.0', status: 'active', checksum: 'chk_120' },
   ];
 
   const workspacesTable = [
@@ -166,13 +211,34 @@ async function runCrossTenantAuthTests() {
           }) || null;
         }
         if (name === 'business_pack_pointers') {
-          return packPointersTable.find((p) => p.tenantId === query.tenantId && p.channel === query.channel) || null;
+          return packPointersTable.find((p) => {
+            if (p.tenantId !== query.tenantId) return false;
+            if (query.$or) {
+              const matched = query.$or.some((clause: any) => {
+                if (clause.channel && p.channel === clause.channel) return true;
+                if (clause.environmentId && (p.environmentId === clause.environmentId || p.channel === clause.environmentId)) return true;
+                return false;
+              });
+              if (!matched) return false;
+            } else if (query.channel && p.channel !== query.channel) {
+              return false;
+            }
+            return true;
+          }) || null;
         }
         if (name === 'business_pack_releases') {
           return packReleasesTable.find((r) => {
             if (query.tenantId && r.tenantId !== query.tenantId) return false;
-            if (query.versionId && r.versionId !== query.versionId) return false;
-            if (query.status && r.status !== query.status) return false;
+            if (query.$or) {
+              const matched = query.$or.some((clause: any) => {
+                if (clause.versionId && (r.versionId === clause.versionId || (r as any).version === clause.versionId)) return true;
+                if (clause.version && (r.versionId === clause.version || (r as any).version === clause.version)) return true;
+                return false;
+              });
+              if (!matched) return false;
+            } else if (query.versionId && r.versionId !== query.versionId) {
+              return false;
+            }
             return true;
           }) || null;
         }
@@ -243,6 +309,48 @@ async function runCrossTenantAuthTests() {
               sub: platformAdmin.email,
               role: platformAdmin.role,
               tenantId: platformAdmin.tenantId,
+            },
+          }),
+        };
+      }
+      if (body.token === 'token_tenant_a_pending') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            valid: true,
+            payload: {
+              sub: 'pending@tenant-a.com',
+              role: 'admin',
+              tenantId: 'tenant_a',
+            },
+          }),
+        };
+      }
+      if (body.token === 'token_tenant_a_revoked') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            valid: true,
+            payload: {
+              sub: 'revoked@tenant-a.com',
+              role: 'admin',
+              tenantId: 'tenant_a',
+            },
+          }),
+        };
+      }
+      if (body.token === 'token_tenant_a_viewer') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            valid: true,
+            payload: {
+              sub: 'viewer@tenant-a.com',
+              role: 'buyer',
+              tenantId: 'tenant_a',
             },
           }),
         };
@@ -391,7 +499,7 @@ async function runCrossTenantAuthTests() {
       assert.equal(res.status, 412);
       const json = await res.json();
       assert.equal(json.ok, false);
-      assert.match(json.message, /Active business pack release not found/);
+      assert.match(json.message, /Active business pack release.*not found/);
     });
 
     // ── Test 8: Positive: Authorized user tests connection via read-only health probe without confirmation bypass ──
@@ -414,6 +522,162 @@ async function runCrossTenantAuthTests() {
       const json = await res.json();
       assert.equal(json.ok, true);
       assert.match(json.message, /Connected via Activepieces connection 'conn_a_ct'/);
+    });
+
+    // ── Test 9: Negative: Pending project member invite cannot test connectors ───
+    await test('9. Negative: Pending project member invite cannot test connectors (403 Access Denied)', async () => {
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_tenant_a_pending',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_a',
+          connectionRef: 'conn_a_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 403);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /membership for project 'tenant_a' is in 'pending' state/);
+    });
+
+    // ── Test 10: Negative: Revoked project member cannot test connectors ─────────
+    await test('10. Negative: Revoked project member cannot test connectors (403 Access Denied)', async () => {
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_tenant_a_revoked',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_a',
+          connectionRef: 'conn_a_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 403);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /membership for project 'tenant_a' is in 'revoked' state/);
+    });
+
+    // ── Test 11: Negative: Active viewer / buyer lacks config.edit permission ─────
+    await test('11. Negative: Active viewer / buyer cannot test connectors (403 config.edit required)', async () => {
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_tenant_a_viewer',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_a',
+          connectionRef: 'conn_a_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 403);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /requires the 'config.edit' permission|lacks required 'config.edit' permission/);
+    });
+
+    // ── Test 12: Negative: Cross-environment release pointer fallback prohibited ─
+    await test('12. Negative: Staging request cannot fall back to production pack release pointer (412)', async () => {
+      // Configure tenant_c with staging environment, but only production pointer exists
+      tenantConfigsTable.push({
+        projectId: 'tenant_c',
+        environment: 'staging',
+        workspaceId: 'ws_tenant_c',
+      });
+      workspacesTable.push({
+        tenantId: 'tenant_c',
+        environmentId: 'staging',
+        workspaceId: 'ws_tenant_c',
+        currentStage: 'stage_test',
+        activeSessionId: 'sess_tenant_c',
+      });
+      packPointersTable.push({
+        tenantId: 'tenant_c',
+        channel: 'production', // Only production pointer exists!
+        environmentId: 'production',
+        activeVersionId: '1.0.0',
+      });
+
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_platform_admin',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_c',
+          connectionRef: 'conn_c_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 412);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /Active business pack release pointer not found for tenant 'tenant_c' \(staging\)/);
+    });
+
+    // ── Test 13: Negative: Release with missing checksum fails closed ─────────────
+    await test('13. Negative: Release with missing checksum fails closed (412)', async () => {
+      tenantConfigsTable.push({
+        projectId: 'tenant_d',
+        environment: 'production',
+        workspaceId: 'ws_tenant_d',
+      });
+      workspacesTable.push({
+        tenantId: 'tenant_d',
+        environmentId: 'production',
+        workspaceId: 'ws_tenant_d',
+        currentStage: 'stage_test',
+        activeSessionId: 'sess_tenant_d',
+      });
+      packPointersTable.push({
+        tenantId: 'tenant_d',
+        channel: 'production',
+        environmentId: 'production',
+        activeVersionId: '3.0.0',
+      });
+      packReleasesTable.push({
+        tenantId: 'tenant_d',
+        environmentId: 'production',
+        versionId: '3.0.0',
+        status: 'active',
+        // checksum is MISSING!
+      } as any);
+
+      const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token_platform_admin',
+        },
+        body: JSON.stringify({
+          projectId: 'tenant_d',
+          connectionRef: 'conn_d_ct',
+          flowId: 'flow_ct_sync',
+        }),
+      });
+
+      const res = await testCommercetools(req);
+      assert.equal(res.status, 412);
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.message, /lacks mandatory checksum/);
     });
 
   } finally {

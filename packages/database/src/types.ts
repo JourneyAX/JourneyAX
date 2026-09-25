@@ -94,6 +94,12 @@ export interface OutboxEventRecord {
   tenantId: string;
   environmentId: EnvironmentId;
   eventType: string;
+  workspaceId?: string;
+  sessionId?: string;
+  toolId?: string;
+  packVersionId?: string;
+  approvalId?: string;
+  executionReference?: string;
   payload: any;
   status: 'pending' | 'leased' | 'published' | 'failed' | 'dead_letter' | 'resolved';
   attempts: number;

@@ -22,7 +22,15 @@ export class OutboxRepository {
     eventType: string,
     payload: Record<string, any>,
     correlationId?: string,
-    session?: ClientSession
+    session?: ClientSession,
+    options?: {
+      workspaceId?: string;
+      sessionId?: string;
+      toolId?: string;
+      packVersionId?: string;
+      approvalId?: string;
+      executionReference?: string;
+    }
   ): Promise<string> {
     const dbRepo = await this.getDbRepo();
     if (dbRepo) {
@@ -33,6 +41,12 @@ export class OutboxRepository {
             environmentId,
             eventType,
             payload: { ...payload, correlationId },
+            workspaceId: options?.workspaceId,
+            sessionId: options?.sessionId,
+            toolId: options?.toolId,
+            packVersionId: options?.packVersionId,
+            approvalId: options?.approvalId,
+            executionReference: options?.executionReference,
           },
           session
         );
@@ -53,6 +67,12 @@ export class OutboxRepository {
       attempts: 0,
       maxAttempts: 5,
       createdAt: new Date(),
+      workspaceId: options?.workspaceId,
+      sessionId: options?.sessionId,
+      toolId: options?.toolId,
+      packVersionId: options?.packVersionId,
+      approvalId: options?.approvalId,
+      executionReference: options?.executionReference,
     };
     this.inMemoryQueue.push(memRecord);
     return eventId;

@@ -360,6 +360,50 @@ async function runWorkerLifecycleHealthTests() {
               expiresAt: new Date(Date.now() + 60000),
             };
           }
+          if (name === 'business_pack_pointers') {
+            return {
+              tenantId: query.tenantId,
+              environmentId: 'production',
+              activeVersionId: '1.0.0',
+            };
+          }
+          if (name === 'business_pack_releases') {
+            return {
+              tenantId: query.tenantId,
+              environmentId: 'production',
+              versionId: '1.0.0',
+              status: 'published',
+              checksum: 'sha256_valid_checksum_123',
+              capabilities: {
+                toolDefinitions: [
+                  {
+                    toolId: 'flow_ct_sync_01',
+                    sideEffect: 'read',
+                    risk: 'low',
+                  },
+                ],
+                toolBindings: [
+                  {
+                    toolId: 'flow_ct_sync_01',
+                    environmentId: 'production',
+                    executor: {
+                      type: 'activepieces_flow',
+                      flowId: 'flow_ct_sync_01',
+                      connectionRef: 'conn_ct_test',
+                    },
+                  },
+                ],
+              },
+            };
+          }
+          if (name === 'tenant_secrets') {
+            return {
+              tenantId: query.tenantId,
+              environmentId: 'production',
+              secretRef: query.secretRef,
+              value: 'mock_secret_val',
+            };
+          }
           return null;
         },
       }),
@@ -403,13 +447,14 @@ async function runWorkerLifecycleHealthTests() {
       {
         flowId: 'flow_ct_sync_01',
         connectionRef: 'conn_ct_test',
+      },
+      undefined,
+      undefined,
+      {
         workspaceId: 'ws_prod_001',
         sessionId: 'sess_prod_001',
-        stageId: 'stage_checkout',
+        toolId: 'flow_ct_sync_01',
         packVersionId: '1.0.0',
-        principalRole: 'customer',
-        principalId: 'user_001',
-        userConfirmationConfirmed: true,
       }
     );
 
