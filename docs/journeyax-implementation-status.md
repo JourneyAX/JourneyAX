@@ -5,6 +5,30 @@ Companion to `journeyax-conversational-agent-requirements-and-implementation-pla
 
 ---
 
+## Current staged change set — configuration and tool cleanup
+
+The commerce agent has completed a staged migration toward Back Office
+configuration and separated tool execution. The detailed record is in
+docs/config-cleanup/README.md.
+
+Completed in this change set:
+
+- normalized runtime configuration and platform defaults;
+- generic, configuration-aware prompts and Back Office business overlays;
+- authoritative customisation/configurator gating;
+- generic versus tenant tool definitions;
+- tool contracts, registry, capability policy, and executor modules;
+- retrieval, presentation, commerce, customisation, support, and team executors;
+- shared cart mutation, order-placed, and server-authoritative quote execution;
+- build and diff validation with no duplicate legacy executor functions.
+
+The migration is not a complete extraction of AgentService. Model-loop
+orchestration, retry sequencing, journey-state reduction, persistence, and
+buffered/streaming response finalisation remain centralized intentionally until
+behavioral tests cover those side effects.
+
+---
+
 ## 1. Architecture principles now enforced in code
 
 1. **Per-project config lives in the DB, edited in the back office.** Only platform

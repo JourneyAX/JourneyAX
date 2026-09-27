@@ -1,11 +1,5 @@
-/**
- * Step 3 — Retrieval Router.
- *
- * Pure logic (no LLM). Given the resolved intent, decides whether retrieval is
- * allowed this turn and which knowledge types are appropriate — then produces a
- * short guidance string injected into the generation prompt. This is what stops
- * the agent pulling installation PDFs during a remodel discovery.
- */
+/** Generic retrieval policy builder. Business-specific routing belongs in the active pack. */
+import { EffectiveAgentConfig } from '../runtime-config';
 import { IntentResult } from './types';
 
 export interface RetrievalPolicy {
@@ -14,93 +8,28 @@ export interface RetrievalPolicy {
   guidance: string;
 }
 
-export function buildRetrievalPolicy(intent: IntentResult): RetrievalPolicy {
-  // Policy, FAQ, Warranty, and General Inquiries: ALWAYS allow retrieval even if stage was intro
-  if (
-    intent.intent === 'general_question' ||
-    intent.retrievalType === 'faq' ||
-    intent.space === 'policy' ||
-    intent.stage === 'faq'
-  ) {
-    return {
-      allowRetrieval: true,
-      allowedTypes: ['faq', 'policy', 'general', 'product'],
-      guidance:
-        'RETRIEVAL POLICY: The customer is asking a direct question (policy, return, warranty, shipping, store info, FAQ). ' +
-        'Call searchKnowledge with type:"faq" or type:"general" to retrieve the authoritative answer. ' +
-        'Answer their question directly, concisely, and warmly. Do NOT call setPhase("clarify").',
-    };
-  }
-
-  // Early discovery: ask first, do not retrieve. NOT when the classifier
-  // itself failed (confidence 0, intent unknown): that is an outage, not a
-  // discovery signal — the catalogue stays available and the model decides.
-  const classifierDown = intent.confidence === 0 && intent.intent === 'unknown';
-  if (!classifierDown && (!intent.needsRetrieval || intent.stage === 'intro')) {
-    return {
-      allowRetrieval: false,
-      allowedTypes: [],
-      guidance:
-        'RETRIEVAL POLICY: This is a discovery turn — do NOT call searchKnowledge yet. ' +
-        'You MUST call setPhase("clarify") with 3-5 selectable questions (each with 3-4 options) ' +
-        'so they render as chips on the RIGHT panel. In the CHAT, be a warm, consultative stylist: ' +
-        'acknowledge their goal, and where you can, sketch a style direction and the reasoning ' +
-        '(a couple of short paragraphs is great — like a real showroom expert). ' +
-        'The ONE thing you must NOT do is type the clarifying questions or their options into the ' +
-        'chat text — those belong on the right. Close by pointing them to the questions on the right.',
-    };
-  }
-
-  let allowedTypes: string[];
-  // Prescriptive lead — which type to search FIRST for this intent. Advising the
-  // allowed set isn't enough: without a lead, the model defaults to 'product' and
-  // never pulls the design/collection/troubleshooting content the intent needs.
-  let lead: string;
-  switch (intent.intent) {
-    case 'leak_repair':
-      allowedTypes = ['troubleshooting', 'installation', 'product'];
-      lead = 'LEAD with a type:"troubleshooting" search for the specific symptom (e.g. "mixer leaking base"). Only search type:"product" if a replacement part is genuinely needed.';
-      break;
-    case 'installation_help':
-      allowedTypes = ['installation', 'troubleshooting', 'product'];
-      lead = 'LEAD with a type:"installation" search for that product\'s install/rough-in guide.';
-      break;
-    case 'bathroom_remodel':
-    case 'design_inspiration':
-      allowedTypes = ['design', 'collection', 'product'];
-      lead = 'LEAD with a type:"design" search to anchor the style/concept the customer described (or type:"collection" for a coordinated matching range across fixtures), THEN type:"product" for the individual fixtures inside that look. Do NOT skip the design/collection search — it is what makes a remodel feel curated rather than a parts list.';
-      break;
-    case 'product_recommendation':
-      // Stage-additive: once products are on the table, the agent may also fetch
-      // installation guides and warranty/policy so it can surface them in the
-      // journey (per journeyGuidance) — previously these were blocked here, which
-      // is why guides/warranty never appeared during the buying flow.
-      allowedTypes = ['product', 'collection', 'design', 'installation', 'faq'];
-      lead = 'Search type:"product" for the fixtures the customer wants (add type:"collection" for a matching range). Once a product is chosen, you MAY also search type:"installation" for its fitting guide and type:"faq" for its warranty/care before quoting.';
-      break;
-    case 'quote_order':
-      allowedTypes = ['product', 'installation', 'faq'];
-      lead = 'Search type:"product" to confirm exact SKUs/prices; you MAY also pull type:"faq" (warranty) and type:"installation" so the quote includes accurate warranty and fitting guidance.';
-      break;
-    default:
-      allowedTypes = ['product', 'faq', 'general'];
-      lead = 'Search type:"faq" for policy/warranty/care questions, otherwise type:"product".';
-  }
-
-  // Dimension scoping (config-driven): bind searches to whatever context dimensions
-  // the model extracted this turn (space=Kitchen, occasion=party, industry=mining…),
-  // so retrieval stays within the right slice regardless of vertical.
-  const scoped = Object.entries(intent.dimensions || {})
-    .filter(([, v]) => v && !['general', 'out_of_scope', 'unknown'].includes(String(v).toLowerCase()));
-  const dimScope = scoped.length
-    ? ` SCOPE every search to: ${scoped.map(([k, v]) => `${k}=${v}`).join(', ')} (include those terms in the query).`
+export function buildRetrievalPolicy(intent: IntentResult, pack?: EffectiveAgentConfig): RetrievalPolicy {
+  const availableTypes = pack?.retrieval?.types?.filter((type) => type !== 'none') || [];
+  const configured = pack?.retrieval?.intentPolicies?.[intent.intent]
+    || pack?.retrieval?.defaultPolicy;
+  const requestedType = intent.retrievalType && intent.retrievalType !== 'none'
+    ? intent.retrievalType
+    : undefined;
+  const allowRetrieval = configured?.allow ?? Boolean(intent.needsRetrieval);
+  const allowedTypes = (configured?.allowedTypes?.length
+    ? configured.allowedTypes
+    : requestedType ? [requestedType] : availableTypes)
+    .filter((type) => availableTypes.length === 0 || availableTypes.includes(type));
+  const dimensionScopes = Object.entries(intent.dimensions || {})
+    .filter(([, value]) => value && !['general', 'out_of_scope', 'unknown'].includes(String(value).toLowerCase()))
+    .map(([key, value]) => `${key}=${value}`);
+  const scopeGuidance = dimensionScopes.length
+    ? ` Scope retrieval to the configured context: ${dimensionScopes.join(', ')}.`
     : '';
+  const guidance = configured?.guidance
+    || (allowRetrieval
+      ? `Retrieve verified information using the most relevant available content type${allowedTypes.length === 1 ? '' : 's'}${allowedTypes.length ? ` (${allowedTypes.join(', ')})` : ''}. Reassess if the customer's goal changes.${scopeGuidance}`
+      : 'This turn is for understanding the customer’s goal or missing context. Do not retrieve yet; ask only the most useful clarifying question(s).');
 
-  return {
-    allowRetrieval: true,
-    allowedTypes,
-    guidance:
-      `RETRIEVAL POLICY: Allowed content types this turn: [${allowedTypes.join(', ')}].${dimScope} ${lead} ` +
-      `Re-classify if the customer's intent shifts. Use short 2-4 word queries.`,
-  };
+  return { allowRetrieval: allowRetrieval && allowedTypes.length > 0, allowedTypes, guidance };
 }

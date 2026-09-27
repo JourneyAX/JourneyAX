@@ -5,15 +5,48 @@ import { getChatClient } from './llm/provider';
 import { QuoteService } from './commerce/quote.service';
 import { OrderService } from './commerce/order.service';
 import { SchoolResearchService } from './commerce/school-research.service';
-import { ProjectCalculatorService } from './commerce/project-calculator.service';
-import { BranchStockService } from './commerce/branch-stock.service';
 import {
   JourneyState, emptyJourneyState, reduceActions, alreadyPresented,
   renderJourneyStateBlock,
 } from './pipeline/journey-memory';
 import { verifyComparisonProvenance, lookupSkuFacts } from './presentation/provenance';
 import { sanitizeChips, fenceSearchResultText } from './presentation/fencing';
-import { skillIndexBlock, loadSkillBody } from './skills/loader';
+import { skillIndexBlock, loadSkillBody, ConfiguredSkillSummary } from './skills/loader';
+import type { EffectiveAgentConfig } from './runtime-config';
+import { UI_TOOL_NAMES } from './tools/registry';
+import { buildToolset } from './tools/policy';
+import { lookupOptions, lookupRelated, resolveSkuByName } from './tools/executors/retrieval';
+import { bundleRefused, emptyShowItemsVerdict, findCatalogueMatch, groundItemFacts } from './tools/executors/presentation';
+import { DEMO_CUSTOMER_TOOLS, applyOrderPlacedContext, applyStorefrontCartCommand, buildAuthoritativeQuote, demoProfile, recommendSize, recommendStorage, runDemoCustomerTool } from './tools/executors/commerce';
+import { checkArtworkApproval, checkReviewStatus, requestArtwork } from './tools/executors/customisation';
+import { designableAlternatives, validateDesign, analyzeDesign, generateDesign, generateTeamDesign, uploadPhotosFor3D, submitForReview, submitTeamOrder } from './tools/executors/customisation';
+import { handleBuildProjectPlan, handleCheckBranchStock, saveEntity } from './tools/executors/support';
+import { getTeamColours, readRoster, lookupEntities, skusThatExist } from './tools/executors/team';
+
+export { AVAILABLE_CAPABILITIES, buildToolset } from './tools/policy';
+
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || 'default';
+
+function configuredSkillIds(agentConfig?: EffectiveAgentConfig): string[] | undefined {
+  const skills = agentConfig?.skills;
+  if (!Array.isArray(skills)) return undefined;
+  return skills
+    .map((skill: any) => typeof skill === 'string' ? skill : skill?.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+function configuredSkills(agentConfig?: EffectiveAgentConfig): ConfiguredSkillSummary[] | undefined {
+  const skills = agentConfig?.skills;
+  if (!Array.isArray(skills)) return undefined;
+  const result: ConfiguredSkillSummary[] = [];
+  for (const skill of skills as any[]) {
+    const id = typeof skill === 'string' ? skill : skill?.id;
+    if (typeof id === 'string' && id.length > 0) {
+      result.push({ id, name: skill?.name, description: skill?.description });
+    }
+  }
+  return result;
+}
 
 /** Keep transcripts bounded (context editing) — recent turns are enough; the
  *  journey-memory block carries the durable facts. */
@@ -132,895 +165,29 @@ import { randomUUID } from 'crypto';
 
 // System prompt is assembled per-turn from ./prompts (base + mode + stage).
 
-// ── Tool Definitions ──────────────────────────────────────────────────
-const tools: OpenAI.ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'researchSchool',
-      description:
-        "FIRST STEP whenever the customer names a school, college, university or club team (e.g. \"Neuqua Valley\", \"Duke\", \"our high school\"). Research its OFFICIAL brand LIVE: team name, mascot, official colours (mapped to this brand's real palette), typeface, uniform design cues, and where the official logo lives. This shows a research card on the panel for the customer to CONFIRM before anything is designed. After they confirm, use the returned palette colour names when you searchKnowledge and render the garment. NEVER recreate the official logo — the customer supplies their approved artwork. Call this ONCE per school; results are cached.",
-      parameters: {
-        type: 'object',
-        properties: {
-          school: { type: 'string', description: 'The school / college / team name exactly as the customer gave it' },
-          location: { type: 'string', description: 'City and state if known — sharpens accuracy (e.g. "Naperville, Illinois")' },
-        },
-        required: ['school'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'searchKnowledge',
-      description: "Search this business's knowledge base for items, troubleshooting guides, inspiration, collections, installation/how-to info, warranty/policy, or any other content relevant to the customer's request.",
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Natural language search query' },
-          type: {
-            type: 'string',
-            enum: ['product', 'troubleshooting', 'design', 'collection', 'installation', 'faq', 'sizing', 'general'],
-            description:
-              "Pick the type that matches the CUSTOMER'S INTENT — this is critical for accurate results, each type carries different data:\n" +
-              "• 'product' — they want to choose/compare specific fixtures (basin, toilet, tapware, shower). Carries real images, prices, specs, finishes.\n" +
-              "• 'design' — they're building new / renovating / want inspiration or a room concept ('modern bathroom', 'Hamptons style', 'small ensuite ideas'). Carries curated looks & concepts.\n" +
-              "• 'collection' — they want a coordinated matching range across fixtures (e.g. do the whole bathroom in one look). Carries collection groupings.\n" +
-              "• 'troubleshooting' — something is broken/leaking/running/not working. Carries diagnostic fix steps.\n" +
-              "• 'installation' — how to fit/install/rough-in a product. Carries install guides.\n" +
-              "• 'faq' — warranty, policy, care/cleaning questions.\n" +
-              "• 'sizing' — fit & size questions (size charts, 'what size am I', 'does it run small', how to measure, which fit/cut suits, fabric care, occasion styling). Carries fit guides & size charts. Use this for apparel/footwear whenever fit or sizing is in play.\n" +
-              "Classify each turn from what the customer actually said; do not default to 'product'. For a full bathroom build, lead with 'design' or 'collection', then search 'product' for the individual fixtures. Omit only if genuinely ambiguous.",
-          },
-          category: { type: 'string', description: 'Optional filter by category (Basins, Showers, Tapware, Toilet Suites, Baths, Accessories)' }
-        },
-        required: ['query']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'registerEntity',
-      description:
-        "Save a {ENTITY} that is NOT already in the directory — call this once the customer has given you its name and details. " +
-        "Many {ENTITY_PLURAL} are in no public directory, so recording what the customer tells you is the ONLY way to have it, and it makes their next reorder instant. " +
-        "Record what the customer stated, exactly; do not look anything up or embellish. Confirm the details back before saving.",
-      parameters: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: 'Name as the customer says it.' },
-          kind: { type: 'string', enum: ['club', 'school', 'league', 'business'], description: 'What kind of organisation this is.' },
-          city: { type: 'string' },
-          state: { type: 'string', description: 'State/province code.' },
-          sport: { type: 'string' },
-          colours: {
-            type: 'array',
-            description: 'Colours the CUSTOMER stated. Hex only if they gave one.',
-            items: { type: 'object', properties: { name: { type: 'string' }, hex: { type: 'string' } } },
-          },
-        },
-        required: ['name'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'requestArtwork',
-      description:
-        "Ask the customer to supply their own logo/artwork, and show what is already on file for this order. " +
-        "Use this ONLY when the customer actually wants a logo, crest or photo on the product — NEVER for a text-only personalization (a name, initials, a message prints fine without any uploaded artwork). " +
-        "IMPORTANT: this business NEVER supplies or recreates a school, club or league mark — those are trademarked and licensed, and only the customer is entitled to provide theirs. " +
-        "Never describe, generate or source a crest yourself. If the customer asks you to find their logo, explain that they need to upload it (or confirm artwork already held on their account).",
-      parameters: {
-        type: 'object',
-        properties: {
-          reason: { type: 'string', description: 'Why artwork is needed now, in one line for the customer.' },
-          placement: { type: 'string', description: "Where it will be decorated, if known (e.g. 'left chest')." },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'checkArtworkApproval',
-      description:
-        "Check whether customer-supplied ARTWORK for this order has been approved. " +
-        "Call this ONLY when the design includes the customer's OWN uploaded artwork — a logo, crest, or photo. " +
-        "A TEXT-ONLY personalization (a name, initials, a number, a short message) is NOT customer artwork and needs NO approval: go straight to the quote, never ask for a photo or artwork approval. " +
-        "When uploaded artwork IS involved and approval is not clear, tell the customer what is outstanding — nothing goes to production on unapproved artwork, and you CANNOT approve it on their behalf.",
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'readRoster',
-      description:
-        'Read a list of players the customer pasted (from a spreadsheet, a CSV, or typed out) and work out which column is the name, the number and each size. ' +
-        'Use this the moment a customer supplies players — do NOT try to read the list yourself, and never retype it into another tool. ' +
-        'It returns the columns it identified AND WHY, plus any rows with problems (duplicate numbers, sizes this brand does not stock, missing names). ' +
-        'NOTHING IS ORDERED BY THIS TOOL. If needsConfirmation is true, or any row has issues, show the customer what you read and ask them to confirm before going further — a misread column prints the wrong name on a shirt.',
-      parameters: {
-        type: 'object',
-        properties: {
-          text: { type: 'string', description: 'The roster exactly as the customer supplied it. Paste it through verbatim — do not clean it up, reorder it, or fix what look like typos.' },
-          garments: {
-            type: 'array', items: { type: 'string' },
-            description: "Which kit items are being sized, in order, e.g. ['jersey','pants']. Use the items actually being ordered so a two-size sheet maps to the right two garments.",
-          },
-        },
-        required: ['text'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getProductOptions',
-      description:
-        "Look up the EXACT choices available on a specific item code: which colours and sizes can actually be ordered, the item's fixed characteristics (fabric, closure, fit), and items that coordinate with it. " +
-        "Use this before confirming any colour or size to a customer, and when they ask 'what colours does it come in?' or 'does it come in XL?'. " +
-        "Only what is returned is orderable — if a colour or size is absent it does NOT exist, so say so rather than offering it. " +
-        "`preview3D` is the ONLY authority on whether this platform can show the item in 3D: 'yes' means show it, " +
-        "'no' means offer the catalogue photo instead, and 'unknown' means WE HAVE NOT CHECKED — in that case just try showConfigurator. " +
-        "NEVER tell a customer an item cannot be customised or previewed unless preview3D is explicitly 'no'; supplier data contains stale flags that claim otherwise.",
-      parameters: {
-        type: 'object',
-        properties: {
-          sku: { type: 'string', description: 'The item/style code (must be a real code from a previous search result).' },
-        },
-        required: ['sku'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'analyzeDesign',
-      description:
-        "Read a CUSTOM DESIGN IMAGE the customer attached this turn and match it to our make-able template library. " +
-        "Call this the moment you are told a design image was attached — before saying anything else. " +
-        "It runs vision on the image (reads the garment type, sport, colours, and whether it has a team name / number / logo) and returns a decision: " +
-        "`decision:'use'` means we ALREADY make this exact style — a real template with all the needed sizes exists, and `match.best.parentSku` is the style code to design on; " +
-        "`decision:'create'` means NO existing template matches, so this is a brand-new design whose cut pieces must be generated and finalised by an artist. " +
-        "On 'use', follow up by calling showConfigurator with `match.best.parentSku` and the analysed colours so the customer sees THEIR design on our real template in 3D. " +
-        "On 'create', do NOT invent a style code — tell the customer warmly it is a fresh design that we will pattern and an artist will finalise. " +
-        "You do not pass the image yourself; it is already attached server-side. Only pass `sizes` if the customer named the sizes they need.",
-      parameters: {
-        type: 'object',
-        properties: {
-          sizes: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Sizes the customer explicitly needs (e.g. ["YM","YL","AS","AM","AL","AXL"]). Omit if not stated — matching still works.',
-          },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'generateDesign',
-      description:
-        "DESIGN a brand-new jersey concept FOR the customer from their description — you are their designer, so they never have to go to another tool to make an image. " +
-        "Call this whenever the customer describes a look they want (colours, team name, number, style, vibe) rather than uploading one, e.g. 'design me a navy and orange baseball jersey for the Cougars, number 30, aggressive'. " +
-        "It generates a concept image, then reads and matches it to our make-able template library, returning the same decision as analyzeDesign: " +
-        "`decision:'use'` (we already make this style — `template.sku` is the code, and the configurator will open) or `decision:'create'` (a brand-new pattern our artist will finalise). " +
-        "After it returns on 'use', tell the customer you've designed their concept and it's shown below; invite them to tweak colours, name or number. " +
-        "If they then say 'make the sleeves brighter' or similar, call generateDesign again with the refined brief to iterate.",
-      parameters: {
-        type: 'object',
-        properties: {
-          brief: { type: 'string', description: "The customer's design description in your own words — capture sport, garment (jersey/top), colours, team name, number and any style/vibe they mentioned." },
-          sizes: { type: 'array', items: { type: 'string' }, description: 'Sizes the customer needs, if stated. Optional.' },
-        },
-        required: ['brief'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'generateTeamDesign',
-      description:
-        "DESIGN a WHOLE TEAM's look, not one customer's garment — use when a coach/dealer describes a roster/team order rather than a single design: multiple players, a team name, 'coach', 'our team', 'need N jerseys', etc. " +
-        "Produces four FLAT 2D views (front/back/left sleeve/right sleeve) from the accumulated brief — a fast 2D preview, not a 3D bake. If the coach attached a team logo this turn, it is used automatically as the base artwork; you do not pass image bytes yourself. " +
-        "After it returns, tell the coach their team's design is shown (four views) and invite them to approve or ask for changes; the panel itself offers 'Approve — let's do the roster' once they're happy — you do not need a separate tool for that step. " +
-        "If they ask for a change ('make the body black, orange shoulders'), call generateTeamDesign again with the FULL accumulated brief (not just the delta) — this regenerates all four views from scratch, it does not surgically edit one. " +
-        "IMPORTANT: before the coach's FIRST design generation, confirm which real style/garment they want using getProductOptions (grounded in our actual catalogue) and pass its code as `sku` — the roster step that follows needs a real style to price against.",
-      parameters: {
-        type: 'object',
-        properties: {
-          brief: { type: 'string', description: "The running, accumulated design description in your own words — sport, garment, colours, lettering, style. Re-send the whole thing on every edit, not just what changed." },
-          sourceId: { type: 'string', description: 'Optional — a previously generated concept/design id to use as the base artwork instead of a fresh description.' },
-          sku: { type: 'string', description: 'The confirmed style/template code (from getProductOptions) the team order is being priced against. Pass it every time it is known, even on a re-generation.' },
-        },
-        required: ['brief'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'uploadPhotosFor3D',
-      description:
-        "Switch the customer into the REAL-PHOTO 3D match flow — use when they say they have actual photos of a garment they want matched/baked in 3D ('I have real photos of the jersey I want to match', 'can you show my actual jersey in 3D', 'I'll upload pictures of it'), as opposed to describing a look for us to design (use generateDesign/generateTeamDesign for that). " +
-        "This tool does NOT do the baking itself — it only opens the upload panel where the customer picks up to 4 real photos (front required; back/left sleeve/right sleeve optional) and the bake happens client-side once they submit. " +
-        "Confirm which real style/garment the photos should be matched to using getProductOptions first if not already known, and pass its code as `sku` — the bake needs a real style's 3D mesh. " +
-        "After calling this, tell the customer briefly that the upload panel is open and to add their photos (front is required).",
-      parameters: {
-        type: 'object',
-        properties: {
-          sku: { type: 'string', description: 'The confirmed style/template code (from getProductOptions) the real-photo bake will be matched against, if already known.' },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'submitForReview',
-      description:
-        "Send the customer's finished design to our ARTIST for review — the artist is the production authority and every custom design is checked before it can print. " +
-        "Call this once the customer is happy with how their design looks (after the configurator, colours, name and number are set), or immediately when the design is a brand-new one we don't yet have a pattern for (kind 'create'). " +
-        "kind 'use' = the design sits on an existing style we make; kind 'create' = a new design whose cut pieces the artist must generate at all sizes first. " +
-        "After submitting, tell the customer it's with our artist and you'll confirm once it's approved — do NOT tell them it is production-ready yourself.",
-      parameters: {
-        type: 'object',
-        properties: {
-          kind: { type: 'string', enum: ['use', 'create'], description: "'use' if the design is on an existing style code; 'create' if it is a brand-new design needing new cut pieces." },
-          sku: { type: 'string', description: 'The style code the design sits on (for kind "use").' },
-          summary: { type: 'string', description: 'A one-line human summary of the design (garment, colours, team, number) for the artist.' },
-          sizes: { type: 'array', items: { type: 'string' }, description: 'Sizes required, if known.' },
-        },
-        required: ['kind'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'checkReviewStatus',
-      description:
-        "Check where the customer's design is in artist review (pending with the artist, changes requested, artist-approved, or ready to print). " +
-        "Use it when the customer asks 'is it ready?' or after they've submitted a design. " +
-        "If it is 'artist_approved', invite the customer to AGREE to the proof so it can go to print — you cannot agree for them. If 'ready_for_print', proceed to quote/checkout. If still pending, say so honestly.",
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'submitTeamOrder',
-      description:
-        "Send the coach's finished team order — design + roster — to our ARTIST for review, the same production-authority gate as submitForReview but for a whole team. " +
-        "Call this when the coach says the design and roster both look good and wants to proceed ('submit', 'looks good, order it', 'send it in'). " +
-        "Prefer letting the coach use the on-screen 'Submit team order' button once they reach the 3D preview — only call this tool if they ask verbally instead of clicking it. " +
-        "After submitting, tell the coach it is with our artist and you will confirm once approved — do NOT tell them it is production-ready yourself.",
-      parameters: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string', description: 'A one-line human summary of the team order (team name, sport, colours, player count) for the artist.' },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'recommendSize',
-      description:
-        "Recommend a size for an item, GROUNDED in this store's real size chart — never invent or guess a size. " +
-        "Ask at most 2-4 targeted sizing questions first, varying by category: for jeans/shorts, ask their usual WAIST size (a number); " +
-        "for tops/tees/hoodies/dresses/jerseys, ask their usual letter size (XS/S/M/L/XL…) at a similar brand, or a chest/bust measurement if they don't know it; " +
-        "for teamwear (a coach/team order), ask their usual size and whether it's for an adult or youth player. " +
-        "Call this ONLY once you have at least one concrete answer (a waist number, a usual letter size, or a measurement) — do not call it speculatively. " +
-        "If the response comes back with ok:false or no recommendedSize, that means we genuinely do not have real size data for this category yet — " +
-        "tell the customer honestly that we can't confirm a size for that item rather than guessing one.",
-      parameters: {
-        type: 'object',
-        properties: {
-          category: { type: 'string', description: 'The kind of item, in the customer\'s words, e.g. "jeans", "shorts", "t-shirt", "jersey", "dress".' },
-          usualSize: { type: 'string', description: 'The size they say they usually wear (e.g. "32", "Medium", "L"). Optional.' },
-          waistIn: { type: 'number', description: 'Waist measurement in inches, if given directly. Optional.' },
-          chestIn: { type: 'number', description: 'Chest/bust measurement in inches, if given directly. Optional.' },
-          division: { type: 'string', enum: ['adult', 'youth'], description: 'Teamwear only — adult or youth player. Optional.' },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'findRelated',
-      description:
-        "Look up EXACT catalogue relationships for a specific item code you already have: other items in the same collection, coordinated pieces that complete the look, and the matching adult / youth / ladies versions of the same garment. " +
-        "Use this instead of guessing whenever the customer asks 'what matches this?', 'is there a youth size?', 'what else is in this range?', or you are assembling a coordinated team/uniform set. " +
-        "Returns only relationships that genuinely exist — if a field comes back empty, that version does NOT exist and you must say so rather than inventing an item code.",
-      parameters: {
-        type: 'object',
-        properties: {
-          sku: { type: 'string', description: 'The item/style code to find relationships for (must be a real code from a previous search result).' },
-        },
-        required: ['sku'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'setPhase',
-      description: 'Update the UI phase. When transitioning to "clarify", you MUST provide dynamic questions tailored to the user\'s context. These questions will render in the conversation.',
-      parameters: {
-        type: 'object',
-        properties: {
-          phase: { type: 'string', enum: ['intro', 'clarify', 'validating', 'products', 'quote', 'ordered'] },
-          questions: {
-            type: 'array',
-            description: 'Dynamic clarification questions to show in the conversation. Required when phase is "clarify".',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string', description: 'Unique ID for this question (e.g. "scope", "finish", "shower_type")' },
-                title: { type: 'string', description: 'The question text shown to the user' },
-                options: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'The selectable answer options (2-5 options)'
-                }
-              },
-              required: ['id', 'title', 'options']
-            }
-          }
-        },
-        required: ['phase']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'updateQuote',
-      description: 'Assemble the final quote (Bill of Materials). You propose ONLY real SKUs and quantities from the catalogue — the server looks up the real price, stock and totals. NEVER call updateQuote with 0 items or for an assessment summary. A quote MUST contain at least one real product SKU to order. For diagnostic guides or troubleshooting without products, call showGuide. For product recommendations, call showItems.',
-      parameters: {
-        type: 'object',
-        properties: {
-          title: { type: 'string', description: 'Title of the quote (e.g. "Your Quote")' },
-          installationSummary: { type: 'string', description: 'Narrative installation notes (what to remove, sealants needed, etc.). NOT priced.' },
-          warrantySummary: { type: 'string', description: 'Narrative warranty/guarantee/compliance notes. NOT priced.' },
-          items: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                sku: { type: 'string', description: 'The product SKU (must be a real SKU from searchKnowledge)' },
-                quantity: { type: 'number', default: 1 },
-                reason: { type: 'string', description: 'Why this item is included' },
-                required: { type: 'boolean', default: false, description: 'Whether this is a mandatory component' }
-              },
-              required: ['sku']
-            }
-          }
-        },
-        required: ['items']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'showItems',
-      description: 'Show recommendation cards (items — products, services or options) in the conversation. Use AFTER searchKnowledge to present items for review BEFORE building the final quote. Use only real data returned by searchKnowledge — never invent.',
-      parameters: {
-        type: 'object',
-        properties: {
-          products: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                name: { type: 'string', description: 'Product name' },
-                sku: { type: 'string', description: 'Product SKU' },
-                price: { type: 'number', description: 'Price as a number, in the store\'s own currency (do NOT convert or assume a currency).' },
-                imageUrl: { type: 'string', description: 'Product image URL, exactly as returned by retrieval.' },
-                category: { type: 'string', description: 'Product category, as it appears in the catalogue for THIS business (e.g. the retrieved breadcrumb/category).' },
-                collection: { type: 'string', description: 'Collection or range name, if the item belongs to one' },
-                description: { type: 'string', description: 'A 1-2 sentence explanation of WHY this product fits the user\'s brief' },
-                features: { type: 'array', items: { type: 'string' }, description: '2-3 key features or benefits' },
-                finishes: { type: 'array', items: { type: 'string' }, description: 'Available finishes / colours, if the item has them' },
-                recommendedSize: { type: 'string', description: 'The single size you recommend for THIS shopper based on the occasion, their stated size and this garment\'s fit (e.g. "M"). Set this once the shopper has given their size so the card can pre-select it. Must be one of the item\'s available sizes.' },
-                specs: {
-                  type: 'object',
-                  description: 'Key product specifications as key-value pairs — include ONLY specs that are EXPLICITLY present in the retrieved data for THIS item, using whatever fields that business actually publishes (e.g. material/fit/care for apparel; dimensions/rating for fixtures). CRITICAL: never invent or carry over a spec that is not in the retrieved data — in particular do NOT add a Warranty, rating, or installation field unless the retrieval explicitly states one. Omit anything not stated.',
-                  additionalProperties: { type: 'string' }
-                },
-                url: { type: 'string', description: 'Item page URL from the catalogue' },
-                accessories: {
-                  type: 'array',
-                  description: 'Optional matching add-ons — ONLY REAL items that retrieval returned for THIS business (e.g. a coordinating piece the catalogue actually carries). NEVER invent an accessory, SKU, or price to fill this in. If retrieval surfaced no genuine related items, leave this empty.',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      name: { type: 'string' },
-                      sku: { type: 'string' },
-                      price: { type: 'number' }
-                    },
-                    required: ['name']
-                  }
-                },
-                installationParts: {
-                  type: 'array',
-                  description: 'Mandatory parts required for installation (e.g. In-wall body, Connector). You MUST proactively suggest at least 1 installation part if applicable.',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      name: { type: 'string' },
-                      sku: { type: 'string' },
-                      price: { type: 'number' },
-                      required: { type: 'boolean', description: 'True if this part is mandatory for installation' }
-                    },
-                    required: ['name']
-                  }
-                }
-              },
-              required: ['name', 'description']
-            }
-          }
-        },
-        required: ['products']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'showGuide',
-      description: 'Show an interactive troubleshooting or installation guide in the conversation. Use this for step-by-step instructions (e.g. diagnosing a leak, installing a product).',
-      parameters: {
-        type: 'object',
-        properties: {
-          steps: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string', description: 'Unique identifier for the step (e.g., "step-1")' },
-                title: { type: 'string', description: 'Short title for the step (e.g., "Turn Off Water Supply")' },
-                description: { type: 'string', description: 'Detailed explanation of what to do.' }
-              },
-              required: ['id', 'title', 'description']
-            }
-          }
-        },
-        required: ['steps']
-      }
-    }
-  },
-  // ── Phase B capabilities (generic building blocks, business-agnostic) ──
-  {
-    type: 'function',
-    function: {
-      name: 'showAddons',
-      description: 'Show recommended accessories / add-on parts for the selected product(s) in the conversation, grouped by necessity. Use AFTER the customer has chosen their main products. Use only real items from searchKnowledge — do NOT invent SKUs, prices, or images.',
-      parameters: {
-        type: 'object',
-        properties: {
-          accessories: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                sku: { type: 'string' },
-                price: { type: 'number' },
-                imageUrl: { type: 'string' },
-                category: { type: 'string' },
-                group: { type: 'string', enum: ['required', 'recommended', 'optional'], description: 'required = needed to install/use; recommended = strongly suggested; optional = nice-to-have' },
-                reason: { type: 'string', description: 'Why this accessory (1 short sentence)' },
-              },
-              required: ['name', 'group'],
-            },
-          },
-        },
-        required: ['accessories'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'presentChoice',
-      description: 'Present a decision to the customer as selectable options in the conversation (e.g. "DIY vs professional installation", "which finish"). Generic — use whenever the journey needs the customer to pick a path before continuing.',
-      parameters: {
-        type: 'object',
-        properties: {
-          title: { type: 'string', description: 'The question (e.g. "How would you like to install this?")' },
-          key: { type: 'string', description: 'A short key for this choice (e.g. "install_path")' },
-          options: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                label: { type: 'string' },
-                description: { type: 'string', description: 'What choosing this means' },
-              },
-              required: ['id', 'label'],
-            },
-          },
-        },
-        required: ['title', 'options'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'showDocuments',
-      description: 'Show official installation / troubleshooting guide documents (PDFs) for a product in the conversation, with view + download links. Use the documents returned by searchKnowledge — NEVER invent URLs. If a product has multiple guides, include all relevant ones.',
-      parameters: {
-        type: 'object',
-        properties: {
-          productName: { type: 'string' },
-          summary: { type: 'string', description: 'Customer-friendly high-level summary of the install, based ONLY on the official documents' },
-          guides: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                title: { type: 'string' },
-                url: { type: 'string', description: 'The real PDF/document URL from the knowledge base' },
-                kind: { type: 'string', description: 'install | spec | warranty | cad | troubleshooting' },
-              },
-              required: ['title', 'url'],
-            },
-          },
-        },
-        required: ['guides'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'showInfo',
-      description: 'Show warranty & guarantee information for the selected product(s) in the conversation, BEFORE building the quote. Use ONLY warranty facts found in the knowledge base. If product-specific warranty is not in the data, say so honestly (do not invent terms). Optionally offer an extended warranty / service package if one is configured.',
-      parameters: {
-        type: 'object',
-        properties: {
-          productName: { type: 'string' },
-          standardWarranty: { type: 'string', description: 'e.g. "10 years on the ceramic, 5 years on the mechanism" — or state that product-specific warranty was not found' },
-          conditions: { type: 'string', description: 'Key warranty conditions, if known' },
-          installationNote: { type: 'string', description: 'How DIY vs licensed-plumber installation affects the warranty, if known' },
-          documentUrl: { type: 'string', description: 'Link to the official warranty document, if available' },
-          extendedPackage: {
-            type: 'object',
-            properties: {
-              name: { type: 'string' },
-              price: { type: 'number' },
-              summary: { type: 'string' },
-            },
-          },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      // ── Presentation contract additions (v3 Card CMS, docs/v3-card-cms-
-      // architecture.md — modelled on anthropics/commerce-agents' present_*
-      // tools): the model's judgment is which SKUs, in what order, and why —
-      // every fact is joined server-side from records already seen this
-      // session, never re-typed by the model. See enforceItemDesignability's
-      // presentComparison/presentSuggestions branches for the provenance and
-      // sanitisation this contract requires before either ever renders.
-      name: 'presentComparison',
-      description: 'Compare two to four products the customer is deciding between, side by side on named dimensions (price, size, material, warranty — whatever they actually raised). Use when they have narrowed to a few finalists, AND whenever they ask what the DIFFERENCE is between two named products, ranges or variants ("Matte vs Dual Matte", "standard or Japanese size") — for that ask, searchKnowledge each one, showItems the real matches, then present them side by side in the SAME turn; a prose-only answer to a "which is different how" question is a miss. Never as a first response to a broad ask; searchKnowledge + showItems comes first. Not needed when one product answers the request, or when the differences are better said in a sentence than a table. Every SKU MUST already have been returned by searchKnowledge or shown in showItems this conversation — a SKU that does not exist in the real catalogue is dropped before this renders, and specs must come from what was actually retrieved, never invented.',
-      parameters: {
-        type: 'object',
-        properties: {
-          skus: { type: 'array', items: { type: 'string' }, description: 'Two to four real SKUs, in the order they should be compared.' },
-          dimensions: { type: 'array', items: { type: 'string' }, description: 'What is being compared, in the order to show it — e.g. ["Price","Capacity","Warranty"].' },
-          rows: {
-            type: 'array',
-            items: { type: 'array', items: { type: 'string' } },
-            description: 'One row per dimension (same order as `dimensions`), one cell per SKU (same order as `skus`). Values must come from real specs already retrieved this conversation.',
-          },
-          verdict: { type: 'string', description: 'One sentence naming the trade-off, or your recommendation, if you have one.' },
-        },
-        required: ['skus', 'dimensions', 'rows'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'presentSuggestions',
-      description: "Offer up to four short next-step suggestions as tappable chips (e.g. \"Show me cheaper options\", \"Compare with X\", \"Add to quote\"). Call it in the same round as the turn's last card, or right after your text when the turn has no card. A tapped chip is sent back as the customer's next message worded exactly as shown — word each one as something the CUSTOMER would say, not an instruction to yourself. Not needed when the natural next step is obvious from the card alone, or on a turn that already ends in a question.",
-      parameters: {
-        type: 'object',
-        properties: {
-          chips: { type: 'array', items: { type: 'string' }, description: "Up to four short chips, in the customer's voice, each under 80 characters." },
-        },
-        required: ['chips'],
-      },
-    },
-  },
-  // ── Sample-customer history (capability `customerHistory`) ──────────
-  // Read-only, over the project's demoCustomers fixtures, bound to the demo
-  // principal the storefront visitor picked. No identity argument on any of
-  // them by design: the server decides whose history a call reads.
-  {
-    type: 'function',
-    function: {
-      name: 'getMyOrders',
-      description: "The signed-in customer's own order history (most recent first). Use for 'what did I buy', 'my last order', 'same as before'. Refuses with sign_in_required for a guest. Never accepts or needs a customer id — it is bound server-side.",
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getMyLatestOrder',
-      description: "The signed-in customer's most recent order only. Use when the customer says 'last time', 'my latest order', 'what I bought before'.",
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getMyOrder',
-      description: "One of the signed-in customer's orders by its reference (as returned by getMyOrders). Refuses references that belong to anyone else.",
-      parameters: { type: 'object', properties: { orderReference: { type: 'string', description: 'The order reference exactly as returned by getMyOrders.' } }, required: ['orderReference'] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getCurrentOffer',
-      description: "TODAY's unit price and available stock for a SKU in the signed-in customer's market, plus the subtotal for a quantity. Historical order prices are NOT current prices — call this before quoting a price for a repeat purchase. Returns demo_offer_not_available when the market has no offer for that SKU.",
-      parameters: { type: 'object', properties: { sku: { type: 'string', description: 'A real catalogue SKU (from an order line, searchKnowledge or showItems).' }, quantity: { type: 'integer', minimum: 1, description: 'Packs wanted (default 1).' } }, required: ['sku'] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getStaffInventory',
-      description: 'Staff-only inventory snapshot (on-hand, reserved, lead time, inbound) for replenishment questions. Refuses unless the signed-in profile has the staff role. Never claim a demand forecast from it — say what is missing when lead time or inbound data is absent.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'presentBundle',
-      description: 'Present a set of products that belong TOGETHER as one card with a total and one "Add all" — a coordinated set from a series, a double-sleeving kit (outer + inner + box), a gift bundle for a budget. Every SKU MUST already have been returned by searchKnowledge or shown this conversation; prices and names are joined by the server. Use after retrieval, not as a first response to a broad ask. Not needed for a single item or a plain list of alternatives (showItems is for those).',
-      parameters: {
-        type: 'object',
-        properties: {
-          heading: { type: 'string', description: 'What the set is, in the customer\'s terms — e.g. "The Raid set", "Double-sleeving kit for your Commander deck".' },
-          why: { type: 'string', description: 'One sentence on why these belong together.' },
-          items: { type: 'array', items: { type: 'object', properties: { sku: { type: 'string' }, quantity: { type: 'integer', minimum: 1 }, reason: { type: 'string', description: 'One clause on this item\'s role in the set.' } }, required: ['sku'] }, description: 'Two to six real SKUs with quantities.' },
-        },
-        required: ['heading', 'items'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'recommendStorage',
-      description: 'Which storage products (deck boxes, binders, portfolios, drawers) fit a given number of cards, from the business\'s own capacity facts — arithmetic done for you, never guessed. Call it before recommending storage when the customer has given a card or deck count. Returns the families that fit with their exact capacities; then searchKnowledge/showItems those families to present real SKUs.',
-      parameters: {
-        type: 'object',
-        properties: {
-          cards: { type: 'integer', minimum: 1, description: 'Total cards to store (a Commander deck is 100, a Standard deck 60).' },
-          sleeving: { type: 'string', enum: ['unsleeved', 'single', 'double', 'sealable-double'], description: 'How the cards are sleeved — it changes capacity.' },
-          kind: { type: 'string', enum: ['deck-box', 'binder', 'portfolio', 'drawer', 'case', 'any'], description: 'What kind of storage they want, if stated.' },
-        },
-        required: ['cards'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'loadSkill',
-      description: "Load the full technique for one named skill (from the skills list in your system prompt) when its description applies to this turn. The system prompt only ever carries each skill's name and one-line summary — call this to read the actual guidance before acting on it.",
-      parameters: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: 'The exact skill name as listed in the system prompt.' },
-        },
-        required: ['name'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'showConfigurator',
-      description:
-        'CALL THIS — do not describe the design in words instead. If you find yourself about to write "let us visualise", "here is how it would look" or "let me show you", call this tool in the SAME turn: the customer sees nothing until you do. '
-        + 'It opens the interactive 3D configurator AND pre-fills it with what they have already told you, so they never re-enter it. ' +
-        "If they said \"navy with white trim, number 23, name SANCHEZ\", pass those here and the 3D preview opens already showing it. " +
-        'Pass `sku` whenever you know the item, so the configurator offers that product\'s REAL orderable colours instead of generic ones. ' +
-        'Call this again on any later change (\"make it maroon\", \"number 7 instead\") — it updates the live preview rather than reopening. ' +
-        'Only pass colours you have verified with getProductOptions; if unsure, pass the sku alone and let the customer pick.',
-      parameters: {
-        type: 'object',
-        properties: {
-          sku: { type: 'string', description: "Item code being configured. If the customer NAMED a style or item code, pass exactly that one — never substitute a different code you found while searching, or the customer is shown the wrong garment. Only use a retrieved code when they have not named one." },
-          baseColor: { type: 'string', description: 'Main garment colour, by NAME as the catalogue lists it (e.g. "Navy") or hex.' },
-          accentColor: { type: 'string', description: 'Trim/secondary colour, by catalogue name or hex.' },
-          name: { type: 'string', description: 'Player or team name to show on the garment.' },
-          number: { type: 'string', description: 'Player number to show.' },
-          designLine: { type: 'string', description: "The design line / pattern, e.g. 'serpentine', 'all-over pattern', 'center field'. REQUIRED for a sublimated garment: without it the pattern layer stays off and the garment renders blank no matter which colours are chosen. Design lines differ PER STYLE — use getProductOptions for the style and pass one it actually offers, never one you remember from another item." },
-          textColour: { type: 'string', description: 'Colour of the lettering itself, by catalogue name. Pass explicitly rather than assuming it follows the body or trim.' },
-          outlineColour: { type: 'string', description: 'Outline/stroke colour of the lettering, by catalogue name.' },
-          note: { type: 'string', description: 'One line telling the customer what they are looking at.' },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'buildProjectPlan',
-      description:
-        "CALCULATE a complete authoritative bill-of-materials and project plan for DIY and trade building projects (Decking, Fencing, Wall Lining, Retaining, Cladding). " +
-        "Call this whenever a customer asks to plan, size, estimate, or calculate materials for a project (e.g. 'help me plan a 4x3m deck', 'estimate materials for a 20m fence', 'how much GIB board for 40m2 wall'). " +
-        "It deterministically computes structural bearers, joists, palings/boards, fasteners, concrete, tools needed, and NZ Building Code compliance notes, and opens the interactive Project Plan in the conversation.",
-      parameters: {
-        type: 'object',
-        properties: {
-          projectType: {
-            type: 'string',
-            enum: ['decking', 'fencing', 'lining', 'retaining', 'cladding'],
-            description: 'The type of building project.',
-          },
-          lengthM: { type: 'number', description: 'Length of the deck, fence, or room in metres.' },
-          widthM: { type: 'number', description: 'Width of the deck or room in metres.' },
-          heightM: { type: 'number', description: 'Height of the fence, deck, or wall in metres (optional).' },
-          areaM2: { type: 'number', description: 'Total wall surface area in square metres (for wall lining).' },
-          material: { type: 'string', description: 'Material preference if stated (e.g. "Kwila", "Radiata Pine H3.2", "Composite", "GIB Aqualine").' },
-        },
-        required: ['projectType'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'checkBranchStock',
-      description:
-        "Check real-time stock availability, inventory counts, and Click & Collect pickup readiness across PlaceMakers NZ branches (Mount Wellington, Cook Street, Albany, Riccarton, Te Rapa, Petone). " +
-        "Use when a customer asks about stock at a branch or where they can collect materials today (e.g. 'Can I collect this from Mt Wellington?', 'Do you have stock in Cook St?').",
-      parameters: {
-        type: 'object',
-        properties: {
-          sku: { type: 'string', description: 'The product SKU code or identifier.' },
-          productTitle: { type: 'string', description: 'Product title or description.' },
-          branch: { type: 'string', description: 'Preferred branch name or region (e.g. "Mt Wellington", "Cook St", "Albany").' },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'openSpacePlanner',
-      description:
-        "LAUNCH the interactive 3D and 2D PlaceMakers Space & Modular Cabinet Planner in the conversation. " +
-        "Call this whenever the customer wants to build or plan a laundry cabinet, kitchen modular units, bathroom vanity & tower, or modular cabinetry space (e.g. 'I want to build a laundry cabinet', 'plan kitchen cabinets', 'space planner for laundry'). " +
-        "It provides a live 3D visual canvas where customers can configure and place modular cabinets, choose finishes, and generate a live bill of materials.",
-      parameters: {
-        type: 'object',
-        properties: {
-          roomType: { type: 'string', enum: ['laundry', 'kitchen', 'bathroom', 'utility'], description: 'The room type (e.g. laundry, kitchen, bathroom).' },
-          wallWidthMm: { type: 'number', description: 'Wall width in millimetres if specified (e.g. 2000).' },
-          installType: { type: 'string', enum: ['diy', 'trade'], description: "Pass this ONLY if the customer already stated it in their message (e.g. 'trade installer', 'DIY', 'myself') — pre-selects the panel's install toggle so it matches what they said instead of defaulting to DIY. Omit if not stated." },
-          finish: { type: 'string', enum: ['white-gloss', 'anthracite', 'natural-oak', 'coastal-elm'], description: "Pass this ONLY if the customer already stated a style/finish preference (e.g. 'modern gloss white' → white-gloss, 'dark charcoal' → anthracite, 'warm timber' → natural-oak, 'grey timber' → coastal-elm). Omit if not stated." },
-        },
-        required: [],
-      },
-    },
-  },
-];
+/** Back Office is authoritative; Brand Hub is used only by legacy tenants that
+ * have not published a Back Office business profile. Custom work alone does
+ * not make a configurator usable: its component and capability must be on. */
+function resolveCustomisationAvailability(projectConfig: any, brandHubProfile: any): {
+  supportsCustomisation: boolean;
+  configuratorAvailable: boolean;
+} {
+  const backOfficeValue = projectConfig?.business?.customised;
+  const supportsCustomisation = typeof backOfficeValue === 'boolean'
+    ? backOfficeValue
+    : brandHubProfile?.model?.customised === true;
+  const configuratorAvailable = supportsCustomisation
+    && projectConfig?.configuratorEnabled === true
+    && Array.isArray(projectConfig?.capabilities)
+    && projectConfig.capabilities.includes('configurator');
+  return { supportsCustomisation, configuratorAvailable };
+}
 
-// ── UI Tool Names ─────────────────────────────────────────────────────
-const UI_TOOL_NAMES = new Set(['setPhase', 'updateQuote', 'presentBundle', 'researchSchool', 'showItems', 'showGuide', 'showAddons', 'presentChoice', 'showDocuments', 'showInfo', 'showConfigurator', 'generateTeamDesign', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner', 'presentComparison', 'presentSuggestions']);
-
-// ── Capability registry: project-configurable toolset ─────────────────
-// `presentSuggestions` is universal — like commerce-agents' present_suggestions,
-// every turn may offer next-step chips regardless of which product/quote
-// capabilities this tenant has enabled.
-const UNIVERSAL_TOOL_NAMES = new Set(['searchKnowledge', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'setPhase', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner', 'presentSuggestions', 'loadSkill']);
-
+function withoutConfiguratorTool(toolDefinitions: OpenAI.ChatCompletionTool[]): OpenAI.ChatCompletionTool[] {
+  return toolDefinitions.filter((tool) => tool.type !== 'function' || tool.function.name !== 'showConfigurator');
+}
 /** Persist a customer-named entity through the BUSINESS port. Provenance is
  *  recorded as customer-stated so nothing here is mistaken for verified fact. */
-async function saveEntity(tenantId: string, rawArgs: string): Promise<unknown> {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
-  if (!args?.name) return { ok: false, message: 'A name is required — ask the customer.' };
-  try {
-    const business = await adapterRegistry.getBusiness(tenantId);
-    if (typeof business.registerEntity !== 'function') {
-      return { ok: false, message: 'This business cannot save records; carry the details in the conversation instead.' };
-    }
-    return await business.registerEntity({ tenantId }, args);
-  } catch (err) {
-    console.error('[AgentService] registerEntity error:', err);
-    return { ok: false, message: 'Could not save right now.' };
-  }
-}
-
-/** Artwork helpers (AUG-16). The agent may ASK for artwork and CHECK approval;
- *  it can never grant approval — that gate belongs to the customer, because it
- *  authorises irreversible printing. */
-async function artworkCall(tenantId: string, path: string, body: unknown): Promise<any> {
-  const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-  const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Tenant-ID': tenantId,
-      'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-async function requestArtwork(tenantId: string, sessionId: string, rawArgs: string): Promise<unknown> {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
-  const policy =
-    'This business does not supply or recreate school, club or league marks — they are trademarked. ' +
-    'Ask the customer to upload their own artwork, and to confirm they are entitled to use it.';
-  try {
-    const onFile = await artworkCall(tenantId, 'artwork/list', { sessionId });
-    return {
-      uploadRequired: true,
-      reason: args.reason || 'Artwork is needed before this order can be proofed.',
-      placement: args.placement,
-      onFile: onFile.items || [],
-      approvedCount: onFile.approvedCount || 0,
-      policy,
-    };
-  } catch {
-    return { uploadRequired: true, onFile: [], approvedCount: 0, policy };
-  }
-}
-
-async function checkArtworkApproval(tenantId: string, sessionId: string): Promise<unknown> {
-  try {
-    const gate = await artworkCall(tenantId, 'artwork/gate', { sessionId });
-    return {
-      ...gate,
-      instruction: gate.clear
-        ? 'Artwork is approved. It is safe to proceed to a final quote.'
-        : 'Do NOT present this as production-ready. Tell the customer exactly what is outstanding and ask them to approve the proof. You cannot approve it for them.',
-    };
-  } catch {
-    return { clear: false, reason: 'Could not verify artwork approval — treat as NOT approved and say so.' };
-  }
-}
 
 /**
  * Identity guard for the configurator (AUG-22).
@@ -1206,38 +373,6 @@ async function attachBundleFacts(tenantId: string, call: any): Promise<Record<st
   return null;
 }
 
-function bundleRefused(call: any, verdict: any): boolean {
-  return call?.function?.name === 'presentBundle' && !!verdict && verdict.success === false;
-}
-
-/**
- * recommendStorage: the tenant's storage-capacity facts (config `storageGuide`)
- * turned into "what fits N cards" — arithmetic in code, not narration.
- */
-function recommendStorage(cfg: any, rawArgs: string): Record<string, unknown> {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* empty */ }
-  const guide: any[] = Array.isArray(cfg?.storageGuide) ? cfg.storageGuide : [];
-  if (!guide.length) return { found: false, message: 'This business has no storage capacity guide configured — recommend from retrieved product descriptions and say the capacity comes from the product page.' };
-  const cards = Math.max(1, Math.floor(Number(args.cards) || 0));
-  if (!cards) return { found: false, message: 'cards is required.' };
-  const sleeving = String(args.sleeving || 'single');
-  const kind = String(args.kind || 'any');
-  const capOf = (g: any) => sleeving === 'unsleeved' ? (g.unsleeved ?? g.singleSleeved) : sleeving === 'double' ? g.doubleSleeved : sleeving === 'sealable-double' ? (g.sealableDoubleSleeved ?? g.doubleSleeved) : g.singleSleeved;
-  const rows = guide
-    .filter((g) => kind === 'any' || g.kind === kind)
-    .map((g) => ({ family: g.family, kind: g.kind, capacity: capOf(g), fits: (capOf(g) || 0) >= cards, spare: (capOf(g) || 0) - cards, note: g.note, searchFor: g.match?.titleContains || g.family }))
-    .filter((r) => typeof r.capacity === 'number');
-  const fits = rows.filter((r) => r.fits).sort((a, b) => a.spare - b.spare);
-  const tooSmall = rows.filter((r) => !r.fits).sort((a, b) => b.capacity - a.capacity);
-  return {
-    found: fits.length > 0, cards, sleeving, kind,
-    fits: fits.slice(0, 4),
-    tooSmall: tooSmall.slice(0, 3),
-    note: 'Capacities are the business\'s own per-family facts for the sleeving stated. Present the fitting families with searchKnowledge + showItems (search by family name), and say the capacity number you used.',
-  };
-}
-
 /**
  * The storage ask, read in code: "a box for 100 double-sleeved Commander
  * cards" → { cards: 100, sleeving: 'double', kind: 'deck-box' }. The model was
@@ -1290,26 +425,6 @@ function storageFactsBlock(f: StorageFacts): string {
  * reach the storefront as an empty card, and the model must hear WHY so its
  * text says "sold out" instead of praising an item nobody can buy.
  */
-function emptyShowItemsVerdict(call: any, facts: { soldOut: string[] } | void, hardDropped: string[] = []): Record<string, unknown> | null {
-  if (call?.function?.name !== 'showItems') return null;
-  let args: any = {};
-  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
-  if (Array.isArray(args?.products) && args.products.length) return null;
-  const soldOut = facts?.soldOut || [];
-  if (hardDropped.length) {
-    return { success: false, shown: 0, wrongVariant: hardDropped,
-      message: `Nothing was shown — every item was the wrong variant for this customer: ${hardDropped.join('; ')}. searchKnowledge again with the customer's variant in the query (it is appended automatically) and showItems only matching items. Say the size/variant reason once, plainly.` };
-  }
-  return {
-    success: false,
-    shown: 0,
-    soldOut,
-    message: soldOut.length
-      ? `Nothing was shown: ${soldOut.join(', ')} ${soldOut.length > 1 ? 'are' : 'is'} SOLD OUT. Tell the customer plainly it is sold out, then searchKnowledge for an in-stock alternative in the same family/art style and showItems those. Never describe a sold-out item as available.`
-      : 'Nothing was shown: none of those items exist in the catalogue. searchKnowledge again with the customer\'s own words and showItems only real results.',
-  };
-}
-
 async function enforceItemDesignability(
   tenantId: string, call: any, designFirst = false,
 ): Promise<Record<string, unknown> | null> {
@@ -1674,26 +789,6 @@ async function markDesignable(tenantId: string, result: any): Promise<any> {
  * Prose stays the model's — only facts are overwritten, and only when the
  * lookup actually returns one, so a thin catalogue row never blanks a card.
  */
-/** The closest REAL catalogue product for a fabricated card, matched by text
- *  (the name/category the model was trying to show). Lets grounding replace an
- *  invented card with a genuine product instead of dropping it to an empty panel. */
-async function findCatalogueMatch(tenantId: string, query: string): Promise<any | null> {
-  if (!query || !query.trim()) return null;
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({ query, limit: 1 }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return null;
-    const j: any = await res.json();
-    const arr = j?.results || j?.items || (Array.isArray(j) ? j : []);
-    return Array.isArray(arr) && arr.length ? arr[0] : null;
-  } catch { return null; }
-}
-
 function extractSearchQuery(lastUserText: string, messages?: any[]): string {
   const lt = lastUserText.toLowerCase();
 
@@ -1825,259 +920,8 @@ function normalizeTradeProduct(it: any): any {
   return out;
 }
 
-async function groundItemFacts(tenantId: string, call: any): Promise<{ soldOut: string[] }> {
-  const out = { soldOut: [] as string[] };
-  if (call?.function?.name !== 'showItems') return out;
-  let args: any = {};
-  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return out; }
-  const products = args?.products;
-  if (!Array.isArray(products) || !products.length) return out;
 
-  const skus = [...new Set(products.map((p: any) => String(p?.sku || '').trim()).filter(Boolean))];
-  if (!skus.length) return out;
 
-  let payload: any = null;
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/pricebook`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId,
-                 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({ skus }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return out;   // lookup failed → keep cards untouched (best-effort, never block)
-    payload = await res.json();
-  } catch {
-    return out;
-  }
-  if (!payload) return out;
-
-  const items: any[] = payload.items || [];
-  const bySku = new Map(items.map((i: any) => [String(i.sku).trim().toUpperCase(), i]));
-  /* HALLUCINATION GATE: the pricebook tells us which SKUs the catalogue does NOT
-     have (`missing`). A card carrying such a SKU is a fabricated product — e.g.
-     the model invented "LN-12345" for a linen shirt even though real linen
-     shirts were retrieved — and it must NEVER reach the customer. Drop it. Only
-     SKUs the catalogue AUTHORITATIVELY reports missing are dropped (a real SKU
-     resolves as `found` even when its price row is thin), so this can't remove a
-     genuine item. Prompt rules alone did not hold; this makes it structural. */
-  const missing = new Set((payload.missing || []).map((s: any) => String(s).trim().toUpperCase()));
-  const usedSkus = new Set<string>();
-  let grounded = 0, dropped = 0, substituted = 0;
-  const kept: any[] = [];
-  for (const p of products as any[]) {
-    const key = String(p?.sku || '').trim().toUpperCase();
-    if (key && missing.has(key)) {
-      // FABRICATED SKU (the catalogue does not have it). Instead of a fake card
-      // OR an empty panel (which makes the model wrongly claim "we don't carry
-      // it"), swap in the closest REAL product for what the model meant to show.
-      const match = await findCatalogueMatch(tenantId, String(p?.name || p?.category || '').trim());
-      const mkey = match ? String(match.sku || '').trim().toUpperCase() : '';
-      if (match && mkey && !usedSkus.has(mkey)) {
-        usedSkus.add(mkey);
-        substituted++;
-        kept.push({ ...p,
-          sku: match.sku,
-          name: match.name || p.name,
-          price: typeof match.price === 'number' ? match.price : p.price,
-          imageUrl: match.imageUrl || match.mainImage || p.imageUrl,
-          url: match.url || p.url,
-          category: match.category || p.category,
-        });
-      } else {
-        dropped++;   // no real match (or dup) → drop rather than ever show a fake
-      }
-      continue;
-    }
-    if (key) usedSkus.add(key);
-    const row: any = key ? bySku.get(key) : null;
-    if (!row) { kept.push(p); continue; }                      // real (not flagged missing) but thin row → keep
-    // SOLD OUT (the source platform reported the SKU unavailable): never a
-    // buyable card. Dropped here, structurally — the business rule in prose
-    // is a reminder, this is the guarantee.
-    if (row.inStock === false) { dropped++; out.soldOut.push(String(row.name || p.name || key)); console.log(`[AgentService] showItems: dropped sold-out ${key}`); continue; }
-    const g = { ...p };
-    if (row.imageUrl) g.imageUrl = row.imageUrl;
-    if (typeof row.price === 'number') g.price = row.price;
-    if (row.name) g.name = row.name;
-    if (row.url) g.url = row.url;
-    // ANF-98: the authoritative variant axis rides on the pricebook row now —
-    // attach real colour swatches + size pills + rating so the card renders them
-    // (the model can't be trusted to carry structured colours through showItems).
-    if (Array.isArray(row.colors) && row.colors.length) g.colors = row.colors;
-    if (Array.isArray(row.sizes) && row.sizes.length) g.sizes = row.sizes;
-    if (row.rating) g.rating = row.rating;
-    // ANF-99: real "Wear It With" complete-the-look strip, code-attached (never LLM-authored).
-    if (Array.isArray(row.completeTheLook) && row.completeTheLook.length) g.completeTheLook = row.completeTheLook.slice(0, 12);
-    if (typeof row.originalPrice === 'number' && row.originalPrice > (row.price || 0)) g.originalPrice = row.originalPrice;
-    if (g.imageUrl !== p.imageUrl || g.price !== p.price) grounded++;
-    kept.push(g);
-  }
-  // The live catalogue has many same-named variants; showing two visually identical
-  // cards (same name + price + image) reads as broken. Drop exact visual duplicates,
-  // keeping the first. Different image/price = a genuinely different variant, kept.
-  const seenSig = new Set<string>();
-  const deduped = kept.filter((p: any) => {
-    // Two cards with the same NAME + PRICE read as a duplicate to a shopper even if
-    // their SKU/image differ (the live catalogue lists many same-named variants).
-    const sig = `${String(p?.name || '').trim().toLowerCase()}|${p?.price ?? ''}`;
-    if (seenSig.has(sig)) return false;
-    seenSig.add(sig);
-    return true;
-  });
-  args.products = deduped;
-  call.function.arguments = JSON.stringify(args);
-  if (grounded || dropped || substituted || deduped.length !== kept.length) {
-    console.warn(`[AgentService] showItems: grounded ${grounded}, substituted ${substituted} fabricated→real, dropped ${dropped}, deduped ${kept.length - deduped.length}; ${deduped.length} real card(s)`);
-  }
-  return out;
-}
-
-async function designableAlternatives(
-  tenantId: string, sku: string, limit = 4, likeName?: string,
-): Promise<{ sku: string; name?: string; price?: number; image?: string }[]> {
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const headers = { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId,
-                      'X-Internal-Key': process.env.INTERNAL_API_KEY || '' };
-
-    // The failed style's own name describes what was wanted; product-service
-    // resolves it from the sku so the name never has to travel through here.
-    // Except when it CANNOT: an item offered from a text chunk has no product
-    // row, so its code resolves to nothing and the lookup came back empty —
-    // which sent the caller down the "keep the unprovable items" path. The
-    // item's display name is the fallback description of what was wanted.
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/designable`, {
-      method: 'POST', headers,
-      body: JSON.stringify(sku ? { likeSku: sku, limit } : { like: likeName || '', limit }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return [];
-    return ((await res.json())?.items || [])
-      .map((i: any) => ({ sku: i.sku, name: i.name, price: i.price, image: i.image }));
-  } catch {
-    return [];
-  }
-}
-
-async function validateDesign(tenantId: string, call: any, configuratorType?: string): Promise<Record<string, unknown>> {
-  if (call?.function?.name !== 'showConfigurator') return { success: true };
-  // A candy configurator has no server-side mesh to render — the disc is
-  // composited client-side from config. Running the garment renderer here would
-  // return not-renderable and make the agent apologise over a panel that opened
-  // fine. The design step itself enforces the print rules (shells, 2×9 text),
-  // so the open IS the success.
-  if (configuratorType === 'candy') {
-    return { success: true, note: 'The candy designer is open — the customer is personalising it now. Do NOT say there was a problem; invite them to pick colours and a message, then build the quote.' };
-  }
-  let args: any = {};
-  try { args = JSON.parse(call.function.arguments || '{}'); } catch { return { success: true }; }
-  if (!args.sku) return { success: true, note: 'No style specified.' };
-
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/render`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
-      body: JSON.stringify({
-        style: args.sku,
-        designLine: args.designLine,
-        colours: [args.baseColor, args.accentColor].filter(Boolean),
-        text: { teamName: args.name, number: args.number },
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) return { success: true };
-    const r: any = await res.json();
-
-    const available: string[] = (r.designLines || []).map((d: any) => d.slug);
-    const rejected: string[] = r.rejectedColours || [];
-    const out: Record<string, unknown> = { success: !!r.renderable };
-    let corrected = false;
-
-    // A design line the style does not offer leaves its layer hidden, so the
-    // garment renders blank. Substituting silently would be its own lie, so the
-    // correction is reported back and the model must mention it.
-    if (args.designLine && available.length
-        && !available.includes(String(args.designLine).toLowerCase())) {
-      out.designLineRejected = args.designLine;
-      out.availableDesignLines = available;
-      delete args.designLine;
-      corrected = true;
-    }
-    if (!args.designLine && available.length) {
-      /* The renderer no longer ships a blank garment when no design line is
-       * named — it applies the style's widest one so the customer's colours are
-       * actually visible. Telling the model "no design line was applied" while
-       * the panel shows one produces a description that contradicts the screen,
-       * which is the failure this whole validation exists to prevent. */
-      if (r.appliedDesignLine) {
-        out.designLineDefaulted = r.appliedDesignLine;
-        out.availableDesignLines = available;
-      } else {
-        out.designLineMissing = true;
-        out.availableDesignLines = available;
-      }
-    }
-    /* Zones that reused a colour because the design has more zones than the
-     * customer named. Not an error — but they should be told, so they can pick
-     * a distinct colour for each rather than discover the repeat on delivery. */
-    if (r.zonesFilledByRepeat) out.zonesReusingAColour = r.zonesFilledByRepeat;
-
-    if (rejected.length) {
-      out.coloursNotStocked = rejected;
-      // Drop them rather than let Scene7 substitute — an unknown colour renders
-      // black, which the customer never asked for.
-      for (const key of ['baseColor', 'accentColor']) {
-        if (rejected.some((c) => String(args[key] || '').toUpperCase() === c.toUpperCase())) {
-          delete args[key]; corrected = true;
-        }
-      }
-    }
-
-    if (!r.renderable) {
-      out.previewUnavailable = true;
-      out.showingInstead = r.catalogueImage ? 'catalogue photograph' : 'nothing';
-
-      /* Saying "this one cannot be previewed" is honest and useless. The style
-       * was almost certainly a STOCK garment — retrieval ranks on text, which
-       * cannot tell a made-to-order jersey from a fixed-colourway one, so a
-       * custom team request lands on a style that can never wear the team's
-       * colours. Offer styles proven designable instead, so the customer is
-       * steered to something that works rather than left at a dead end. */
-      const alternatives = await designableAlternatives(tenantId, args.sku);
-      if (alternatives.length) out.designableAlternatives = alternatives;
-    }
-
-    if (corrected) {
-      // The note was written BEFORE validation, so it still describes the design
-      // the model intended — "in maroon and gold with the center field design".
-      // Left alone it becomes the panel's caption and contradicts the garment
-      // actually shown, which is the same lie in a different place.
-      args.note = 'Some of what you asked for is not available on this style — see the note below.';
-      call.function.arguments = JSON.stringify(args);
-    }
-
-    out.instruction =
-      out.designableAlternatives
-        ? 'This style CANNOT be custom-designed — it is a stock garment, so the team colours can never '
-          + 'be applied to it. Do not offer to proceed with it and do not apologise for a technical '
-          + 'fault. Name one or two of the designable styles listed above and ask which they want.'
-        : (out.designLineRejected || out.coloursNotStocked || out.previewUnavailable || out.designLineMissing)
-          ? 'Do NOT tell the customer this design is ready. Say plainly what could not be applied and '
-            + 'offer them a real alternative from the lists above, then wait for their choice.'
-          : out.designLineDefaulted
-            ? `The garment on screen is wearing the "${out.designLineDefaulted}" design line, chosen `
-              + 'because none was named. Say which design line they are looking at and offer the '
-              + 'alternatives above — do NOT say a design line was not applied, because one was.'
-            : 'The design rendered as described.';
-    return out;
-  } catch {
-    // Best-effort: a validation hiccup must not block the render.
-    return { success: true };
-  }
-}
 
 /**
  * A confirmed programme's colours (AUG-27).
@@ -2085,117 +929,6 @@ async function validateDesign(tenantId: string, call: any, configuratorType?: st
  * Delegated so the model never states colours from memory: the service decides
  * whether they are confirmed, merely proposed, or unknown, and maps them onto
  * what the brand can actually print.
- */
-async function getTeamColours(tenantId: string, rawArgs: string): Promise<unknown> {
-  let slug = '';
-  try { slug = String(JSON.parse(rawArgs || '{}').slug || '').trim(); } catch { /* ignore */ }
-  if (!slug) return { status: 'unknown', guidance: 'No programme confirmed yet — confirm which one first.' };
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/teams/colours`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
-      body: JSON.stringify({ slug }),
-      signal: AbortSignal.timeout(25000),
-    });
-    if (!res.ok) return { status: 'unknown', guidance: 'Could not look those up — ask the customer.' };
-    return await res.json();
-  } catch {
-    return { status: 'unknown', guidance: 'Could not look those up — ask the customer.' };
-  }
-}
-
-/**
- * Read a pasted roster (AUG-32).
- *
- * Delegated to the roster endpoint so the model never parses the list itself —
- * an LLM reading 24 rows of names and sizes will quietly normalise a typo or
- * drop a row, and nobody finds out until the box arrives. The parser is
- * deterministic and reports its own guesses.
- */
-async function readRoster(tenantId: string, rawArgs: string): Promise<unknown> {
-  let text = ''; let garments: string[] = ['jersey'];
-  try {
-    const a = JSON.parse(rawArgs || '{}');
-    text = String(a.text || '');
-    if (Array.isArray(a.garments) && a.garments.length) garments = a.garments.map(String);
-  } catch { /* fall through */ }
-  if (!text.trim()) return { playerCount: 0, guidance: 'No roster supplied — ask the customer to paste their player list.' };
-
-  try {
-    const base = process.env.AGENT_SELF_URL || 'http://localhost:3004';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/commerce/roster/parse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, garments }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) return { error: 'Could not read the roster.' };
-    const r: any = await res.json();
-    return {
-      ...r,
-      guidance: r.needsConfirmation || r.needsReview?.length
-        ? 'Show the customer the columns you read and every flagged row, and ASK THEM TO CONFIRM before ordering anything. Do not fix issues on their behalf.'
-        : 'Columns were unambiguous and every row is clean. Summarise the player count and sizes, then confirm before pricing.',
-    };
-  } catch {
-    return { error: 'Could not read the roster.' };
-  }
-}
-
-/** Resolve a findEntity call through the BUSINESS port. Always returns the
- *  confirm-with-the-customer guidance, so a directory match — or its colours —
- *  is never treated as settled fact. */
-async function lookupEntities(tenantId: string, rawArgs: string): Promise<unknown> {
-  let query = ''; let where: Record<string, string> = {};
-  try {
-    const a = JSON.parse(rawArgs || '{}');
-    query = String(a.query || '').trim();
-    if (a.state) where.state = a.state;
-    if (a.city) where.city = a.city;
-  } catch { /* fall through */ }
-  if (!query) return { matches: [], guidance: 'No name supplied — ask the customer.' };
-  try {
-    const business = await adapterRegistry.getBusiness(tenantId);
-    if (typeof business.findEntities !== 'function') {
-      return { matches: [], guidance: 'No directory for this business — ask the customer directly and record what they tell you.' };
-    }
-    const r = await business.findEntities({ tenantId }, query, where);
-    if (!r.matches?.length) {
-      return { query, matches: [], guidance:
-        `Nothing matching "${query}" is on file. If your query combined a name with a place ` +
-        `(e.g. "IIT Chicago"), retry with the distinctive part alone ("IIT") — directories store the ` +
-        `official name, not how people say it. Otherwise ask the customer to confirm the exact name ` +
-        `and details — do NOT guess — and offer to save it so it is there next time.` };
-    }
-    return r;
-  } catch (err) {
-    console.error('[AgentService] findEntity error:', err);
-    return { query, matches: [], guidance: 'Lookup failed — ask the customer directly.' };
-  }
-}
-
-/** Resolve a getProductOptions call through the KnowledgePort. Shared by both
- *  dispatch paths. An unknown SKU returns an explicit "not recorded" so the
- *  model states that instead of offering a colour the catalogue doesn't carry. */
-/**
- * Resolve a product NAME to its real style code.
- *
- * Customers (and the model) refer to products by the NAME we just showed them —
- * "the FreeStyle Sublimated Turbo Full-Button Baseball Jersey" — not by "227130".
- * The options/related lookups key on the style code, so a name came back
- * `found: false` and the agent told the customer it "couldn't retrieve the
- * colour and size options" for a style whose options are fully populated, then
- * dead-ended them to customer service. Search the catalogue and take the best
- * match's code. Returns '' when nothing convincing is found — the caller then
- * reports honestly rather than guessing a code.
- */
-/**
- * Resolve a positional reference against the cards on screen.
- *
- * "product 2", "the first one", "option 3", "#2", "the 2nd" — all map to an
- * index into what the panel is showing. Returns '' when the text carries no
- * position, so a genuine style code or product name falls through untouched.
  */
 export function resolveOrdinalSku(raw: string, lastShown?: { sku: string }[]): string {
   const list = lastShown || [];
@@ -2235,396 +968,7 @@ export function resolveOrdinalSku(raw: string, lastShown?: { sku: string }[]): s
  * which is how a customer naming PG8130 was treated as though they had named
  * nothing at all.
  */
-async function skusThatExist(tenantId: string, tokens: string[]): Promise<string[]> {
-  if (!tokens.length) return [];
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/skus/exists`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId,
-                 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({ skus: tokens }),
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!res.ok) return [];
-    return ((await res.json())?.found || []).map((x: string) => String(x).toUpperCase());
-  } catch {
-    return [];
-  }
-}
 
-async function resolveSkuByName(tenantId: string, nameOrSku: string): Promise<string> {
-  try {
-    const port = await adapterRegistry.getKnowledge(tenantId);
-    const r: any = await port.search({ tenantId }, { query: nameOrSku, type: 'product', limit: 3 });
-    const hit = (r?.results || []).find((p: any) => p?.sku);
-    return hit?.sku ? String(hit.sku) : '';
-  } catch {
-    return '';
-  }
-}
-
-/**
- * Quote lines must carry real style CODES, never product names.
- *
- * The model quotes what it sees on screen — "Youth FreeStyle Sublimated
- * Two-Button Baseball Jersey" — but the quote engine prices by code, so an
- * unresolved name yields unitPrice null and a $0 line. A zero total is worse
- * than a missing quote: it looks authoritative. A style code never contains
- * whitespace, so anything that does is a name to resolve.
- */
-async function resolveQuoteItemSkus(tenantId: string, items: any[]): Promise<any[]> {
-  return Promise.all((items || []).map(async (it: any) => {
-    const sku = String(it?.sku || '').trim();
-    if (!sku || !/\s/.test(sku)) return it;           // already a code
-    const resolved = await resolveSkuByName(tenantId, sku);
-    return resolved ? { ...it, sku: resolved, quotedAs: sku } : it;
-  }));
-}
-
-/**
- * CDL: read a customer's attached design image and match it to the template
- * library. The image never touches the LLM prompt — it's held server-side for
- * the turn and passed here. Delegates the vision + match to product-service's
- * /cdl/analyze (same engine as the standalone CDL studio), then trims the
- * response to what the model needs to drive the next step (decision + the style
- * code to design on + the colours it read).
- */
-async function analyzeDesign(
-  tenantId: string,
-  image: { imageBase64?: string; imageUrl?: string },
-  rawArgs: string,
-): Promise<unknown> {
-  if (!image?.imageBase64 && !image?.imageUrl) {
-    return { ok: false, message: 'No design image is attached to this turn. Ask the customer to upload their design, or describe it so we can generate one.' };
-  }
-  let sizes: string[] | undefined;
-  try { const a = JSON.parse(rawArgs || '{}'); if (Array.isArray(a?.sizes)) sizes = a.sizes; } catch { /* optional */ }
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId,
-                 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({ imageBase64: image.imageBase64, imageUrl: image.imageUrl, sizes }),
-      signal: AbortSignal.timeout(60000),
-    });
-    if (!res.ok) return { ok: false, message: 'The design analyser is unavailable right now. Try again in a moment.' };
-    const j: any = await res.json();
-    const a = j?.analysis || {};
-    const m = j?.match || {};
-    // The matcher wraps each hit as { score, template: {...} } — the style code
-    // lives on best.template, not best directly.
-    const bestT = m?.best?.template || m?.best;
-    // FAITHFUL PROOF (Path A): parametric colour zones cannot reproduce an all-
-    // over artwork / logo (Rink Rippers renders as muddy stripes). So when the
-    // customer UPLOADED a design and it matched a make-able style, composite their
-    // actual artwork onto that style's garment via image-gen — the proof then
-    // looks like their design. Best-effort: a failure just omits the proof.
-    let proofId: string | null = null;
-    if (m?.decision === 'use' && bestT?.parentSku && (image.imageBase64 || image.imageUrl)) {
-      try {
-        const pr = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/proof`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-          body: JSON.stringify({ sku: bestT.parentSku, artworkBase64: image.imageBase64, artworkUrl: image.imageUrl }),
-          signal: AbortSignal.timeout(90000),
-        });
-        if (pr.ok) { const pj: any = await pr.json(); proofId = pj?.proofId || null; }
-      } catch { /* proof is best-effort */ }
-    }
-    return {
-      ok: true,
-      decision: m?.decision || (bestT ? 'use' : 'create'),   // 'use' | 'create'
-      design: {
-        sport: a.sport, garmentType: a.garmentType, division: a.division,
-        colours: a.colors || [], keywords: a.keywords || [],
-        elements: a.elements || {},       // { logo, name, number, allOverPattern }
-        summary: a.summary,
-      },
-      // On 'use' → the real style code to hand to showConfigurator.
-      template: bestT?.parentSku ? { sku: bestT.parentSku, name: bestT.name, sizes: bestT.sizes } : null,
-      // Deterministic configurator config (colours mapped to the palette + text) —
-      // the server, not the model, decides how the design renders (colour fix).
-      suggestedConfig: j?.suggestedConfig || null,
-      // Faithful proof image id (their artwork on our garment) — shown big.
-      proofId,
-      // A couple of alternates the model can offer if the customer dislikes the top match.
-      alternates: (m?.results || []).slice(1, 4)
-        .map((r: any) => r?.template || r)
-        .filter((t: any) => t?.parentSku)
-        .map((t: any) => ({ sku: t.parentSku, name: t.name })),
-    };
-  } catch (err) {
-    console.error('[AgentService] analyzeDesign error:', err);
-    return { ok: false, message: 'Could not analyse the design right now.' };
-  }
-}
-
-/**
- * CDL "design it in chat" (Door A): generate a jersey concept from the
- * customer's brief (nano-banana via product-service), then analyse + match it to
- * a make-able template — the same use/create decision as an upload. The concept
- * image itself never enters the LLM prompt (it's ~1–2MB); we return a short
- * conceptId the panel fetches, plus the decision/design/template the model needs.
- */
-async function generateDesign(tenantId: string, rawArgs: string): Promise<any> {
-  let brief = ''; let sizes: string[] | undefined;
-  try { const a = JSON.parse(rawArgs || '{}'); brief = String(a?.brief || '').trim(); if (Array.isArray(a?.sizes)) sizes = a.sizes; } catch { /* */ }
-  if (!brief) return { ok: false, message: 'Ask the customer to describe the design (colours, team, number, style).' };
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/design`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({ brief, sizes }),
-      signal: AbortSignal.timeout(120000),
-    });
-    if (!res.ok) return { ok: false, message: 'The design generator is busy right now — try again in a moment.' };
-    const j: any = await res.json();
-    const a = j?.analysis || {};
-    const m = j?.match || {};
-    const bestT = m?.best?.template || m?.best;
-    return {
-      ok: true,
-      conceptId: j?.conceptId || null,           // panel fetches the concept image by this id
-      decision: m?.decision || (bestT ? 'use' : 'create'),
-      design: {
-        sport: a.sport, garmentType: a.garmentType, division: a.division,
-        colours: a.colors || [], keywords: a.keywords || [], elements: a.elements || {}, summary: a.summary,
-      },
-      template: bestT?.parentSku ? { sku: bestT.parentSku, name: bestT.name, sizes: bestT.sizes } : null,
-      suggestedConfig: j?.suggestedConfig || null,
-      alternates: (m?.results || []).slice(1, 4).map((r: any) => r?.template || r).filter((t: any) => t?.parentSku).map((t: any) => ({ sku: t.parentSku, name: t.name })),
-    };
-  } catch (err) {
-    console.error('[AgentService] generateDesign error:', err);
-    return { ok: false, message: 'Could not generate the design right now.' };
-  }
-}
-
-/**
- * Coach Team-Order Journey (Step 3): generate up to four FLAT 2D team-jersey
- * views (front/back/left/right) from the accumulated brief, via
- * product-service's `/cdl/flat-views` (same base URL pattern as generateDesign
- * → `/cdl/design`). Unlike generateDesign/analyzeDesign there is no
- * decision/template matching here — this stays 2D-only, no 3D bake, and no
- * catalogue-template lookup. An uploaded team logo attached this turn is
- * threaded through the same way analyzeDesign receives it (`turnImage`),
- * becoming the seed artwork the four views are generated from.
- */
-async function generateTeamDesign(
-  tenantId: string,
-  image: { imageBase64?: string; imageUrl?: string } | undefined,
-  rawArgs: string,
-): Promise<any> {
-  let brief = ''; let sourceId = ''; let sku = '';
-  try {
-    const a = JSON.parse(rawArgs || '{}');
-    brief = String(a?.brief || '').trim();
-    sourceId = String(a?.sourceId || '').trim();
-    sku = String(a?.sku || '').trim();
-  } catch { /* */ }
-  if (!brief && !sourceId && !image?.imageBase64 && !image?.imageUrl) {
-    return { ok: false, message: "Ask the coach to describe the team's look (sport, colours, garment, lettering), or attach the team logo." };
-  }
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/flat-views`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({
-        brief,
-        ...(sourceId ? { sourceId } : {}),
-        ...(image?.imageBase64 ? { artworkBase64: image.imageBase64 } : {}),
-        ...(image?.imageUrl ? { artworkUrl: image.imageUrl } : {}),
-      }),
-      signal: AbortSignal.timeout(120000),
-    });
-    if (!res.ok) return { ok: false, message: 'The team design generator is busy right now — try again in a moment.' };
-    const j: any = await res.json();
-    if (!j?.ok) return { ok: false, message: j?.message || 'Could not generate the team views right now.' };
-    return {
-      ok: true,
-      frontId: j.frontId, backId: j.backId, leftId: j.leftId, rightId: j.rightId,
-      frontError: j.frontError, backError: j.backError, leftError: j.leftError, rightError: j.rightError,
-      brief,
-      ...(sku ? { sku } : {}),
-      instruction: 'The four views (front/back/left/right, whichever generated) are now shown to the coach. Tell them briefly what is shown and invite them to approve or ask for a change. The panel itself offers the "approve, go to roster" step — you do not need another tool call for that.',
-    };
-  } catch (err) {
-    console.error('[AgentService] generateTeamDesign error:', err);
-    return { ok: false, message: 'Could not generate the team design right now.' };
-  }
-}
-
-/** uploadPhotosFor3D is deliberately server-thin: the actual bake happens
- *  CLIENT-SIDE in PhotoUploadDesignPanel once the customer submits their real
- *  photos (POST /api/cdl/bake3d, not this function). This tool's only job is
- *  to hand back an ok:true so the UI dispatch layer opens the upload panel —
- *  mirrors generateTeamDesign's dispatch-then-uiAction shape without the
- *  network round trip generateTeamDesign needs (there is no server-side
- *  generation step here, just a phase switch). */
-async function uploadPhotosFor3D(rawArgs: string): Promise<any> {
-  let sku = '';
-  try {
-    const a = JSON.parse(rawArgs || '{}');
-    sku = String(a?.sku || '').trim();
-  } catch { /* */ }
-  return {
-    ok: true,
-    ...(sku ? { sku } : {}),
-    instruction: 'The real-photo upload panel is now shown to the customer. They will upload up to 4 real photos (front required) of their actual garment and the 3D bake runs when they submit — you do not do anything further here; just tell them briefly the panel is open and to add their photos.',
-  };
-}
-
-/** CDL: submit the current design for artist review (the production-authority
- *  gate). The artist signs off before anything prints; the agent can never
- *  approve for them. */
-async function submitForReview(tenantId: string, sessionId: string, rawArgs: string): Promise<any> {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* */ }
-  const kind = args?.kind === 'create' ? 'create' : 'use';
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({ sessionId, kind, sku: args?.sku, summary: args?.summary, sizes: args?.sizes }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return { ok: false, message: 'Could not submit for review right now.' };
-    const j: any = await res.json();
-    return {
-      ok: true, jobId: j.jobId, status: j.status, kind,
-      instruction: kind === 'create'
-        ? 'Submitted as a NEW design. Tell the customer our artist will generate the cut pieces at every size and finalise it, then you will confirm once approved. Do NOT promise a timeline you were not given.'
-        : 'Submitted to the artist for a production check. Tell the customer it is with our artist and you will confirm once approved. Do NOT call it production-ready yourself.',
-    };
-  } catch (err) {
-    console.error('[AgentService] submitForReview error:', err);
-    return { ok: false, message: 'Could not submit for review right now.' };
-  }
-}
-
-/**
- * Coach Team-Order Journey (Step 6): submit the team's finished design +
- * roster for artist review — the same lifecycle as submitForReview
- * (POST :projectId/cdl/review, kind 'use'), sourcing sku the same way
- * submitForReview does (a model-supplied or journeyState-known style code).
- *
- * HONEST LIMITATION: the roster and four flat-view ids only ever exist in the
- * BROWSER's journey state — the server-side `journeyState` this function
- * receives (unlike the client's React JourneyState) never accumulates them,
- * so a chat-triggered submit here goes through WITHOUT roster/flatViews on
- * the review record. The reliable, fully-populated path is the "Submit team
- * order" button in ConfiguratorPanel (teamPreview phase), which posts the
- * browser's actual roster + views directly. This tool exists so a coach who
- * says "submit it" in chat still gets a real jobId rather than silence.
- */
-async function submitTeamOrder(tenantId: string, sessionId: string, journeyState: any, rawArgs: string): Promise<any> {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* */ }
-  const sku = String(args?.sku || journeyState?.activeSku || '').trim() || undefined;
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({ sessionId, kind: 'use', sku, summary: args?.summary }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return { ok: false, message: 'Could not submit the team order right now.' };
-    const j: any = await res.json();
-    return {
-      ok: true, jobId: j.jobId, status: j.status,
-      instruction: 'Submitted the team order to our artist. Tell the coach it is with our artist and you will confirm once approved — do NOT call it production-ready yourself. If the roster or design views look incomplete on the artist side, tell the coach to use the "Submit team order" button on the 3D preview instead, which carries the full roster.',
-    };
-  } catch (err) {
-    console.error('[AgentService] submitTeamOrder error:', err);
-    return { ok: false, message: 'Could not submit the team order right now.' };
-  }
-}
-
-/** CDL: report where the design sits in artist review. The customer may only be
- *  invited to agree once the artist has approved; neither gate acts for the other. */
-async function checkReviewStatus(tenantId: string, sessionId: string): Promise<any> {
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/cdl/reviews?sessionId=${encodeURIComponent(sessionId)}`, {
-      headers: { 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return { ok: false, message: 'Could not check the review status.' };
-    const j: any = await res.json();
-    const latest = (j.reviews || []).slice(-1)[0];
-    if (!latest) return { ok: true, status: 'none', instruction: 'No design has been submitted for review yet. Submit one with submitForReview once the customer is happy.' };
-    const map: Record<string, string> = {
-      pending_artist: 'Still with our artist for review — tell the customer honestly it is being checked; do NOT say it is ready.',
-      changes_requested: `Our artist asked for changes${latest.artist?.notes ? ` (${latest.artist.notes})` : ''} — relay this and help the customer revise.`,
-      artist_approved: 'The artist has APPROVED the proof. Invite the customer to AGREE to it so it can go to print — you cannot agree for them.',
-      customer_agreed: 'The customer has agreed; it is being finalised for print.',
-      ready_for_print: 'Approved by artist AND agreed by the customer — it is READY FOR PRINT. Proceed to quote/checkout.',
-    };
-    return { ok: true, jobId: latest.jobId, status: latest.status, kind: latest.kind, instruction: map[latest.status] || 'Report the status honestly.' };
-  } catch (err) {
-    console.error('[AgentService] checkReviewStatus error:', err);
-    return { ok: false, message: 'Could not check the review status.' };
-  }
-}
-
-/**
- * Fitment guide (v1): call product-service's `/sizing/recommend`, which is
- * backed by SizingService's real per-tenant size-chart lookup (never an LLM
- * guess). Mirrors analyzeDesign's fetch shape/error handling exactly.
- */
-async function recommendSize(tenantId: string, rawArgs: string): Promise<any> {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* */ }
-  try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
-    const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/sizing/recommend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },
-      body: JSON.stringify({
-        category: args?.category,
-        usualSize: args?.usualSize,
-        waistIn: typeof args?.waistIn === 'number' ? args.waistIn : undefined,
-        chestIn: typeof args?.chestIn === 'number' ? args.chestIn : undefined,
-        division: args?.division,
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return { ok: false, message: 'The sizing guide is unavailable right now.' };
-    const data: any = await res.json();
-    /* State the number this returns, verbatim — nothing else (2026-08-24 live
-     * finding). A prior version of this result had no such instruction: the
-     * model received `recommendedSize:"34"` and still told the customer "36,"
-     * inventing a stretch-fabric justification the real size chart says
-     * nothing about. The tool firing correctly is not enough on its own — the
-     * same "settle it in code" lesson as enforceItemDesignability, applied to
-     * a text answer instead of a UI render. */
-    return {
-      ...data,
-      instruction: data.recommendedSize
-        ? `State the size as exactly "${data.recommendedSize}" — do not round up or down, and do not invent a reason (stretch fabric, fit style, etc.) not present in this result.`
-        : 'No real size chart data matched — say plainly you cannot confirm a size for this yet. Do not guess one.',
-    };
-  } catch (err) {
-    console.error('[AgentService] recommendSize error:', err);
-    return { ok: false, message: 'Could not look up a size recommendation right now.' };
-  }
-}
-
-/* An explicit sizing question ("what size should I get", "I don't know my
- * size, my waist is 35 inches") does not reliably make the model call
- * recommendSize on its own — live-tested 2026-08-24: it consistently answers
- * through the normal clarify/showItems path instead, even with a concrete
- * measurement stated. Same lesson as enforceNamedSku/enforceItemDesignability:
- * wording does not hold, so it is settled in code. Conservative regex (only
- * fires on an unmistakable sizing ask); the forced call still lets the MODEL
- * extract category/measurement from free text, since that generalises far
- * better than hand-parsing arbitrary phrasing. */
 const SIZE_QUESTION_RE = /\b(what|which)('?s| is| are)?\s+size\b|\bsize\s+should\s+i\b|\bwhat\s+size\s+am\s+i\b|\bdon'?t\s+know\s+(my|what)\s+size\b|\bwaist\s+(is|measurement)\b|\b\d{2,3}\s*(inch|in|cm)\s*waist\b|\bwaist\s+of\s+\d{2,3}\b/i;
 
 async function maybeForceSizeRecommendation(
@@ -2670,159 +1014,42 @@ async function maybeForceSizeRecommendation(
   }
 }
 
-function handleBuildProjectPlan(rawArgs: string): any {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
-  const projectType = String(args.projectType || 'decking').toLowerCase();
-  if (projectType === 'fencing') {
-    return ProjectCalculatorService.calculateFencing(args.lengthM || 15, args.heightM || 1.8, args.material || 'Timber Palings');
-  }
-  if (projectType === 'lining') {
-    return ProjectCalculatorService.calculateWallLining(args.areaM2 || 35, args.material || 'GIB Standard 10mm');
-  }
-  // Default to decking
-  return ProjectCalculatorService.calculateDecking(args.lengthM || 4, args.widthM || 3, args.material || 'Kwila', args.heightM || 0.4);
-}
+/**
+ * The customisation flow is a business concern, not a garment/team concern.
+ * Its wording comes from the published Business Profile and labels, while the
+ * configured capability still determines which underlying action is available.
+ */
+function configuredCustomisationGuidance(
+  projectConfig: any,
+  options: { activeSku?: string; hasDesignImage: boolean; enabled: boolean },
+): Array<{ role: 'system'; content: string }> {
+  if (!options.enabled) return [];
+  const business = projectConfig?.business || {};
+  const entity = business?.entityModel || {};
+  const item = business?.vocabulary?.secondaryDimension || projectConfig?.labels?.itemsSingular || 'item';
+  const orderFor = entity?.label ? ` for the ${entity.label}` : '';
+  const approval = business?.approvalRequired === true
+    ? ' Customer approval is required before describing an order as production-ready.'
+    : '';
+  const out: Array<{ role: 'system'; content: string }> = [];
 
-function handleCheckBranchStock(rawArgs: string): any {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
-  return BranchStockService.getStockForSku(args.sku || 'PM-TIMBER-100', args.productTitle || 'Building Material / Tool', args.branch);
-}
-
-async function lookupOptions(tenantId: string, rawArgs: string): Promise<unknown> {
-  let sku = '';
-  try { sku = String(JSON.parse(rawArgs || '{}').sku || '').trim(); } catch { /* fall through */ }
-  if (!sku) return { found: false, message: 'No item code supplied.' };
-  try {
-    const port = await adapterRegistry.getKnowledge(tenantId);
-    if (typeof port.options !== 'function') {
-      return { found: false, sku, message: 'Option data is not available for this catalogue.' };
-    }
-    let r = await port.options({ tenantId }, sku);
-    // Not found by code → the caller probably passed a product NAME. Resolve and retry once.
-    if (!r.found) {
-      const resolved = await resolveSkuByName(tenantId, sku);
-      if (resolved && resolved !== sku) {
-        const r2 = await port.options({ tenantId }, resolved);
-        if (r2.found) return { ...r2, sku: resolved, resolvedFrom: sku };
-      }
-    }
-    return r.found
-      ? r
-      : { found: false, sku, message: `No per-variant colour/size list is recorded for ${sku}. Do NOT tell the customer you "couldn't retrieve" or "failed to find" anything — that reads as a broken feature. Instead, describe the item's known details (fabric, fit, materials, care) confidently, and if they want a specific colour or size, say it can be confirmed at checkout. Never invent specific colours or sizes you have not verified.` };
-  } catch (err) {
-    console.error('[AgentService] getProductOptions error:', err);
-    return { found: false, sku, message: 'Option lookup failed.' };
+  if (options.activeSku && !options.hasDesignImage) {
+    out.push({ role: 'system', content:
+      `[CONFIGURED CUSTOMISATION IN PROGRESS] The customer is already viewing a configured ${item}${orderFor}. ` +
+      'Do not restart discovery or repeat completed questions. Answer their actual request about the item shown, apply only supported changes, or explain the next configured approval step.' + approval });
   }
-}
-
-/** Resolve a findRelated tool call through the KnowledgePort. Shared by the
- *  streaming and non-streaming dispatch paths so they cannot drift. Always
- *  returns a shape the model can read — including an explicit "nothing known"
- *  so it states that instead of inventing a matching item code. */
-async function lookupRelated(tenantId: string, rawArgs: string): Promise<unknown> {
-  let sku = '';
-  try { sku = String(JSON.parse(rawArgs || '{}').sku || '').trim(); } catch { /* fall through */ }
-  if (!sku) return { found: false, message: 'No item code supplied.' };
-  try {
-    const port = await adapterRegistry.getKnowledge(tenantId);
-    if (typeof port.related !== 'function') {
-      return { found: false, sku, message: 'Relationship data is not available for this catalogue.' };
-    }
-    let r = await port.related({ tenantId }, sku);
-    let found = !!(r.collections.length || r.outfittingSets.length || r.sizingGroup);
-    // Same name-vs-code trap as getProductOptions — resolve a product NAME once.
-    if (!found) {
-      const resolved = await resolveSkuByName(tenantId, sku);
-      if (resolved && resolved !== sku) {
-        const r2 = await port.related({ tenantId }, resolved);
-        if (r2.collections.length || r2.outfittingSets.length || r2.sizingGroup) {
-          return { found: true, ...r2, sku: resolved, resolvedFrom: sku };
-        }
-      }
-    }
-    return found
-      ? { found: true, ...r }
-      : { found: false, sku, message: `No collection, coordinating set or alternate-size version is recorded for ${sku}. Say so plainly — do not infer or construct one.` };
-  } catch (err) {
-    console.error('[AgentService] findRelated error:', err);
-    return { found: false, sku, message: 'Relationship lookup failed.' };
+  if (options.hasDesignImage) {
+    out.push({ role: 'system', content:
+      `[CUSTOMISATION REFERENCE ATTACHED] The customer supplied a reference for a configured ${item}. ` +
+      'Analyse it against the tenant’s verified templates first. If a verified template matches, present it as a proof on that template; otherwise explain that a new production pattern may be required. Never invent an item code or claim the reference is production-ready.' + approval });
   }
-}
-const CAPABILITY_TO_TOOL: Record<string, string | string[]> = {
-  // presentComparison rides with the same 'products' capability — a tenant
-  // that can list products can also compare a shortlist of them.
-  products: ['showItems', 'presentComparison', 'presentBundle', 'recommendStorage'],
-  // Sample-customer history: read-only tools over the project's demo fixtures.
-  customerHistory: ['getMyOrders', 'getMyLatestOrder', 'getMyOrder', 'getCurrentOffer', 'getStaffInventory'],
-  steps: 'showGuide',
-  quote: 'updateQuote',
-  accessories: 'showAddons',
-  choice: 'presentChoice',
-  installGuide: 'showDocuments',
-  warranty: 'showInfo',
-  configurator: 'showConfigurator',
-  roster: 'readRoster',
-  teamColours: 'getTeamColours',
-  // CDL "design line": both front doors — analyse an uploaded design AND generate
-  // one from a description — the configurator to render the matched template, and
-  // the artist-review gate (submit + status) that guards production.
-  customDesign: ['analyzeDesign', 'generateDesign', 'showConfigurator', 'submitForReview', 'checkReviewStatus'],
-  // Coach team-order journey (Wednesday thin slice) — a NEW, separate capability
-  // key rather than folding into customDesign, so it's Augusta-only opt-in and
-  // never changes what other tenants' agents can call.
-  teamOrder: ['generateTeamDesign', 'submitTeamOrder'],
-  // Real-photo 3D match — upload up to 4 REAL photos of an actual garment and
-  // bake them onto the real 3D mesh. A separate, new capability (not folded
-  // into customDesign/teamOrder) so it stays an explicit per-tenant opt-in —
-  // today only Augusta, since it needs a renderable style with a real mesh.
-  photoUpload3D: 'uploadPhotosFor3D',
-  // Fitment guide (v1) — sizing questions + a size recommendation grounded in a
-  // real per-tenant size chart. Opt-in per tenant: only enabled where we have
-  // verified real size data (see SizingService for the grounding notes).
-  fitmentGuide: 'recommendSize',
-};
-/** Every capability id an admin can enable (used by the back office to render toggles). */
-export const AVAILABLE_CAPABILITIES = Object.keys(CAPABILITY_TO_TOOL);
-
-/** Assemble this turn's toolset from the project's enabled capabilities.
- *  Empty/undefined → all tools (back-compat for projects not yet configured). */
-export function buildToolset(enabled?: string[], entityModel?: { label?: string; labelPlural?: string }, closing: 'bag' | 'quote' = 'quote'): OpenAI.ChatCompletionTool[] {
-  const allow = new Set(UNIVERSAL_TOOL_NAMES);
-  // A bag tenant has a bag whether or not it sells quotes: without updateQuote
-  // a typed "add to bag" left the model with no tool and it invented a reason
-  // ("not available in your region"). Same authoritative QuoteService underneath.
-  if (closing === 'bag') allow.add('updateQuote');
-  if (enabled?.length) for (const cap of enabled) {
-    const t = CAPABILITY_TO_TOOL[cap];
-    if (Array.isArray(t)) t.forEach((x) => allow.add(x));
-    else if (t) allow.add(t);
+  if ((projectConfig?.capabilities || []).includes('customDesign') && !options.hasDesignImage) {
+    out.push({ role: 'system', content:
+      `[CONFIGURED CUSTOMISATION] This business offers per-order customisation${orderFor}. ` +
+      `When the customer asks to create or change a ${item}, use the configured customisation flow before browsing unrelated catalogue items. ` +
+      'Use verified catalogue data for any template or price, and explain the configured approval step when it applies.' + approval });
   }
-  const picked = enabled?.length
-    ? tools.filter((t) => t.type !== 'function' || allow.has(t.function.name))
-    : tools;
-
-  /* Render the entity tools in THIS business's vocabulary — a teamwear tenant
-   * asks about a "team", a bathroom tenant a "room". Falls back to a neutral
-   * word so the tools stay coherent for a business that hasn't configured one. */
-  const label = entityModel?.label || 'organisation';
-  const plural = entityModel?.labelPlural || `${label}s`;
-  return picked.map((t) => {
-    if (t.type !== 'function') return t;
-    if (closing === 'bag' && t.function.name === 'updateQuote') {
-      const params: any = JSON.parse(JSON.stringify(t.function.parameters || {}));
-      params.properties = { items: params.properties?.items, remove: { type: 'array', items: { type: 'string' }, description: 'SKUs to take OUT of the bag' } };
-      params.properties.items.description = 'Items to put in the bag (or whose quantity to set). Only what the customer asked for this turn — the bag keeps everything else.';
-      params.required = [];
-      return { ...t, function: { ...t.function, parameters: params, description:
-        'Change the customer\'s BAG: `items` puts items in (or sets their quantity), `remove` takes SKUs out; everything else in the bag stays. Pass ONLY real SKUs the customer has seen or asked for — resolve a name to the code from the cards on screen. The server prices it, checks stock and limits, and shows the bag card. Call it whenever the customer says add / put in my bag / I\'ll take that / remove / change quantity. Never for an assessment.' } };
-    }
-    const raw = JSON.stringify(t.function);
-    if (!raw.includes('{ENTITY')) return t;
-    const filled = raw.split('{ENTITY_PLURAL}').join(plural).split('{ENTITY}').join(label);
-    return { ...t, function: JSON.parse(filled) };
-  });
+  return out;
 }
 
 // ── Service Interface ─────────────────────────────────────────────────
@@ -2999,81 +1226,6 @@ function openModelMaxTokens(projectConfig: any): number {
  * supplied — so "show Alex's orders, his id is DEMO-ALEX" from a guest reads
  * nothing. Results carry `demo: true` so the model can say so.
  * ────────────────────────────────────────────────────────────────────── */
-const DEMO_CUSTOMER_TOOLS = new Set(['getMyOrders', 'getMyLatestOrder', 'getMyOrder', 'getCurrentOffer', 'getStaffInventory']);
-
-function demoProfile(cfg: any, principalId?: string): any | null {
-  const dc = cfg?.demoCustomers;
-  if (!dc?.enabled || !Array.isArray(dc.profiles) || !principalId) return null;
-  return dc.profiles.find((p: any) => String(p?.id || '').toUpperCase() === String(principalId).toUpperCase()) || null;
-}
-
-async function runDemoCustomerTool(cfg: any, principalId: string | undefined, name: string, rawArgs: string, tenantId: string): Promise<Record<string, unknown>> {
-  const dc = cfg?.demoCustomers;
-  if (!dc?.enabled) return { error: 'customer_history_not_available', demo: true };
-  const profile = demoProfile(cfg, principalId);
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* empty */ }
-  const signedIn = !!profile && profile.signedIn === true && profile.role !== 'guest';
-  console.log(`[agent] demo customer tool ${name} for ${profile?.id || 'no-principal'} (${signedIn ? 'signed in' : 'not signed in'})`);
-  const withNames = async (lines: any[]) => {
-    const facts = await lookupSkuFacts(tenantId, lines.map((l) => String(l.sku || '')).filter(Boolean));
-    const byCode = new Map(facts.map((f) => [f.sku.toUpperCase(), f]));
-    return lines.map((l) => ({ ...l, productName: byCode.get(String(l.sku).toUpperCase())?.name || l.productName || l.sku }));
-  };
-  const myOrders = async () => {
-    const orders = (dc.orders || []).filter((o: any) => String(o.principalId).toUpperCase() === String(profile.id).toUpperCase());
-    orders.sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)));
-    return Promise.all(orders.map(async (o: any) => ({
-      orderReference: o.orderId, date: o.date, currency: o.currency, status: o.status,
-      lines: await withNames(o.lines || []), merchandiseSubtotal: o.subtotal,
-      purposeNote: o.purposeNote, issue: o.issue, note: o.note,
-    })));
-  };
-  switch (name) {
-    case 'getMyOrders': {
-      if (!signedIn) return { error: 'sign_in_required', message: 'Order history is only available to a signed-in customer for their own account.', demo: true };
-      const orders = await myOrders();
-      return { orders: orders.slice(0, 10), sortOrder: 'date_descending', mostRecentOrderReference: orders[0]?.orderReference || null, customerIdentity: 'server_bound_demo_profile', demo: true };
-    }
-    case 'getMyLatestOrder': {
-      if (!signedIn) return { error: 'sign_in_required', message: 'Order history is only available to a signed-in customer for their own account.', demo: true };
-      const orders = await myOrders();
-      if (!orders.length) return { error: 'no_order_history', demo: true };
-      return { order: orders[0], selection: 'most_recent_by_date', demo: true };
-    }
-    case 'getMyOrder': {
-      if (!signedIn) return { error: 'sign_in_required', message: 'Order history is only available to a signed-in customer for their own account.', demo: true };
-      const ref = String(args.orderReference || '').trim();
-      const order = (await myOrders()).find((o: any) => String(o.orderReference).toUpperCase() === ref.toUpperCase());
-      return order ? { order, demo: true } : { error: 'not_found_or_not_authorized', demo: true };
-    }
-    case 'getCurrentOffer': {
-      const sku = String(args.sku || '').trim().toUpperCase();
-      const quantity = Math.max(1, Math.min(1000, Math.floor(Number(args.quantity) || 1)));
-      const country = profile?.country ? String(profile.country).toUpperCase() : null;
-      if (!sku) return { error: 'invalid_arguments', reason: 'sku is required', demo: true };
-      const offers = (dc.offers || []).filter((o: any) => String(o.sku).toUpperCase() === sku);
-      const offer = offers.find((o: any) => !country || String(o.country).toUpperCase() === country) || null;
-      if (!offer) return { error: 'demo_offer_not_available_for_variant_and_market', sku, country, demo: true, liveConnection: false };
-      if (offer.unitPrice === null || offer.unitPrice === undefined) return { error: 'price_on_request', sku, country: offer.country, note: offer.note, demo: true };
-      const [fact] = await lookupSkuFacts(tenantId, [sku]);
-      return {
-        sku, productName: fact?.name || sku, country: offer.country, currency: offer.currency,
-        unitPrice: offer.unitPrice, availableQuantity: offer.availableUnits, quantityRequested: quantity,
-        subtotal: Number((offer.unitPrice * quantity).toFixed(2)), taxAndShippingIncluded: false,
-        demo: true, liveConnection: false, observedAt: new Date().toISOString(),
-      };
-    }
-    case 'getStaffInventory': {
-      const staff = signedIn && (profile.role === 'staff_read_only' || (profile.permissions || []).includes('demo_inventory_read'));
-      if (!staff) return { error: 'staff_authorization_required', message: 'Inventory is only available to a signed-in staff profile.', demo: true };
-      const inventory = await withNames(dc.inventory || []);
-      return { inventory, demo: true, forecastReady: false, reason: 'Missing lead times, inbound stock and adequate real demand history — a replenishment commitment cannot be grounded.' };
-    }
-    default:
-      return { error: 'unsupported_tool', demo: true };
-  }
-}
 
 /** The per-turn identity block the model reasons from. Server-bound; the
  *  rules here are what the demo checks (D01–D07) test for. */
@@ -3664,39 +1816,61 @@ export class AgentService {
   }
 
   /**
-   * Prompts open models (e.g. PlaceMakers Gemma 27B / MLX) with trade consultant persona,
-   * tool syntax instructions, and diagnostic question capabilities.
+   * Open models depend on a short, explicit action protocol. Keep that protocol
+   * stable, but substitute a bounded Back Office business overlay for the old
+   * tenant-specific trade prose so config does not increase prefill latency.
    */
   private buildOpenModelTradePrompt(projectConfig?: any): string {
-    // Persona from the tenant's own config — this prompt used to open with a
-    // hardcoded "PlaceMakers trade specialist in New Zealand" for every
-    // open-model tenant. Standards/vocabulary detail belongs in the project's
-    // journeyGuidance, which is appended below when present.
     const company = String(projectConfig?.companyName || 'this business').replace(/\s*\(.*?\)\s*$/, '');
     const persona = String(projectConfig?.systemName || `${company} consultant`);
-    const guidance = String(projectConfig?.journeyGuidance || '').trim();
+    const business = projectConfig?.business || {};
+    const entity = business?.entityModel || {};
+    const dimensions = Array.isArray(projectConfig?.contextDimensions)
+      ? projectConfig.contextDimensions.slice(0, 4)
+        .map((dimension: any) => {
+          const label = String(dimension?.label || dimension?.key || '').trim();
+          const question = String(dimension?.question || '').trim();
+          const values = Array.isArray(dimension?.values) ? dimension.values.slice(0, 6).join(', ') : '';
+          return label ? `${label}${question ? `: ${question}` : ''}${values ? ` [${values}]` : ''}` : '';
+        })
+        .filter(Boolean)
+      : [];
+    const activeRules = Array.isArray(projectConfig?.agentConfig?.rules?.business)
+      ? projectConfig.agentConfig.rules.business.slice(0, 3)
+        .map((rule: any) => [rule?.condition, rule?.action].filter(Boolean).join(' → '))
+        .filter(Boolean)
+      : [];
+    const compactBusinessContext = [
+      String(business?.summary || '').trim(),
+      business?.sellsTo ? `Serves: ${business.sellsTo}.` : '',
+      business?.orderPattern ? `Order pattern: ${business.orderPattern}.` : '',
+      entity?.label ? `Every order is for a ${entity.label}. ${entity.askPrompt || ''}` : '',
+      business?.customised === true ? 'Customisation is available only through configured, verified options.' : '',
+      business?.approvalRequired === true ? 'Customer approval is required before describing an order as production-ready.' : '',
+      dimensions.length ? `Configured discovery context: ${dimensions.join('; ')}.` : '',
+      String(projectConfig?.journeyGuidance || '').trim(),
+      activeRules.length ? `Active rules: ${activeRules.join('; ')}.` : '',
+    ].filter(Boolean).join('\n').slice(0, 1_600);
     return (
-      `You are ${persona} — an expert trade specialist and project consultant for ${company}.\n` +
-      `Provide practical, professional trade advice that follows the applicable building code and standards for ${company}'s market.\n` +
-      `Tone: Professional, direct, trade-certified consultant. Do NOT use cheesy conversational filler (NEVER say "Oh no, leaking bathroom is never fun!" or generic robotic empathy). Be authoritative, pragmatic, and helpful.\n` +
-      (guidance ? `BUSINESS GUIDANCE:\n${guidance}\n` : '') +
-      `You have access to tools to control the UI and lookup data:\n` +
+      `You are ${persona} — an expert advisor for ${company}.\n` +
+      `Provide practical, professional advice that follows this business's configured policies, terminology, and market requirements.\n` +
+      `Tone: professional, direct, and helpful. Avoid filler and unsupported claims.\n` +
+      (compactBusinessContext ? `BUSINESS CONTEXT:\n${compactBusinessContext}\n` : '') +
+      `You have access to UI and lookup actions:\n` +
       `1. DIAGNOSTIC & CLARIFYING QUESTIONS (tappable options in the conversation):\n` +
-      `SHOW FIRST, THEN NARROW. Whenever the customer names a product, material or project (e.g. "laundry tubs", "kwila decking", "a laundry makeover with cabinetry and a tub"), emit TOOL_CALL: searchKnowledge with their own words FIRST so real items appear immediately — never make them answer a questionnaire before seeing anything. THEN, when the scope is open-ended or you are diagnosing a repair, leak or moisture issue, ALSO ask 2-3 targeted questions beside those items so the customer can narrow them by tapping options.\n` +
+      `SHOW FIRST, THEN NARROW. Whenever the customer names an offering or a project, emit TOOL_CALL: searchKnowledge with their own words FIRST so verified results appear immediately — never make them answer a questionnaire before seeing anything. Then, when the request is open-ended or needs diagnosis, ask only the configured missing questions beside those results.\n` +
       `Emit a TOOL_CALL line:\n` +
       `TOOL_CALL: setPhase({"phase": "clarify", "questions": [{"id": "<id>", "title": "<diagnostic question>", "options": ["<opt1>", "<opt2>", "<opt3>", "<opt4>"]}]})\n` +
-      `Example for leak/plumbing repair:\n` +
-      `TOOL_CALL: setPhase({"phase": "clarify", "questions": [{"id": "leak_location", "title": "Where is the leak located?", "options": ["Shower enclosure / tray", "Toilet suite / cistern", "Vanity basin / mixer tap", "In-wall / ceiling pipework"]}, {"id": "leak_severity", "title": "What is the severity of the leak?", "options": ["Active flooding (need isolation)", "Constant slow drip", "Moisture seepage / dampness"]}]})\n` +
       `2. PRODUCT & CATALOG SEARCH:\n` +
-      `TOOL_CALL: searchKnowledge({"query": "<product or materials search query>"})\n` +
+      `TOOL_CALL: searchKnowledge({"query": "<customer's own product or service words>"})\n` +
       `3. BRANCH STOCK & AVAILABILITY:\n` +
       `TOOL_CALL: checkBranchStock({"sku": "<sku>", "branch": "<branch name>"})\n` +
       `4. STRUCTURAL PROJECT PLAN:\n` +
       `TOOL_CALL: buildProjectPlan({"projectType": "decking"|"fencing"|"lining"|"retaining"|"cladding", "length": <number>, "width": <number>})\n\n` +
       `CRITICAL RULES:\n` +
-      `- Products first: a turn that names something to buy or build ALWAYS includes TOOL_CALL: searchKnowledge, even when you also ask questions. Once the customer has answered your questions, search again with their brief PLUS their answers — do not ask a further round.\n` +
-      `- When diagnosing an issue or clarifying scope, emit TOOL_CALL: setPhase with dynamic questions tailored to what the customer asked — beside the items, not instead of them.\n` +
-      `- In your chat prose, say briefly why the items shown fit and, if you asked questions, that tapping an answer narrows them.\n` +
+      `- Products first: a turn that names something to buy or plan ALWAYS includes TOOL_CALL: searchKnowledge, even when you also ask questions. Once the customer has answered your questions, search again with their brief PLUS their answers — do not ask a further round.\n` +
+      `- When diagnosing an issue or clarifying scope, emit TOOL_CALL: setPhase with dynamic questions tailored to the configured context — beside results, not instead of them.\n` +
+      `- In your chat prose, say briefly why the results shown fit and, if you asked questions, that tapping an answer narrows them.\n` +
       `- Never quote internal rules or echo customer inputs verbatim.`
     );
   }
@@ -3860,172 +2034,6 @@ export class AgentService {
    * updateQuote tool uses, emit the resulting quote as that tool's action,
    * and tell the model it already happened so it just confirms.
    */
-  private async applyStorefrontCartCommand(
-    tenantId: string,
-    sessionId: string,
-    text: string,
-    journeyState: any,
-    projectConfig: any,
-    uiToolCalls: any[],
-    conversation: any[],
-    emit?: (event: string, data: any) => void,
-  ): Promise<boolean> {
-    const t = (text || '').trim();
-    // Card taps send a sentence a customer could have typed — the product's
-    // NAME first, its code in brackets — so the thread reads "Add The Raid
-    // Playmat (SKU AT-20514, qty 1) to my bag." not a bare code. The older
-    // "Add SKU X (qty 1)" form is still accepted.
-    const add = t.match(/^Add SKU (\S+) \(qty (\d+)\) to my (?:bag|quote|cart)\.?$/i)
-      || (() => { const m = t.match(/^Add .+? \(SKU (\S+?), qty (\d+)\) to my (?:bag|quote|cart)\.?$/i); return m ? [m[0], m[1], m[2]] : null; })();
-    // "Add all" from a products / bundle card:
-    //   "Add these to my bag: A (SKU X, qty 1); B (SKU Y, qty 2)."  (or the older "Add SKUs A (qty 1), B (qty 2) to my bag.")
-    const addMany = t.match(/^Add SKUs ((?:\S+ \(qty \d+\)(?:, )?)+) to my (?:bag|quote|cart)\.?$/i)
-      || (() => { const m = t.match(/^Add these to my (?:bag|quote|cart): (.+)$/i); return m ? [m[0], m[1].replace(/\(SKU (\S+?), qty (\d+)\)/g, '$1 (qty $2)')] : null; })();
-    const remove = t.match(/^Remove SKU (\S+) from my (?:bag|quote|cart)\.?$/i);
-    const change = t.match(/^Change the quantity of SKU (\S+) to (\d+)\.?$/i);
-    if (!add && !addMany && !remove && !change) {
-      // Typed, not tapped: "add to bag", "add the non-glare ones", "remove the
-      // sleeves", "change the binder to 2". Resolved against the bag and every
-      // product shown this session; only an unambiguous match is applied here
-      // — anything else goes to the model, which has the bag tool.
-      const num: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5 };
-      const typedAdd = t.match(/^(?:please\s+)?(?:add|put)\s+(?:(\d+|one|two|three|four|five)\s+(?:of\s+)?)?(?:the\s+|these\s+|those\s+|it\s+|them\s+|that\s+|this\s+)?(.*?)\s*(?:(?:to|in|into)\s+(?:my\s+|the\s+)?(?:bag|cart|basket))?\s*[.!]?$/i);
-      const typedRemove = !typedAdd && t.match(/^(?:please\s+)?(?:remove|delete|take\s+out)\s+(?:the\s+)?(.*?)\s*(?:(?:from|out\s+of)\s+(?:my\s+|the\s+)?(?:bag|cart|basket))?\s*[.!]?$/i);
-      const typedQty = !typedAdd && !typedRemove && t.match(/^(?:please\s+)?(?:change|make|set|update)\s+(?:the\s+)?(?:quantity\s+of\s+)?(.*?)\s*(?:quantity\s+)?(?:to|=)\s+(\d+|one|two|three|four|five)\s*[.!]?$/i);
-      if (!typedAdd && !typedRemove && !typedQty) return false;
-      const bagWordT = projectConfig?.commerceMode === 'cart' ? 'bag' : 'quote';
-      const bag = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
-      const bagLines = (bag?.lines || []).map((l: any) => ({ sku: String(l.sku), name: l.name }));
-      const shownAll = [...(journeyState?.lastShown || []), ...((journeyState?.selections?.products || []).map((p: any) => ({ sku: String(p.sku || ''), name: p.name })))];
-      const pool = typedAdd ? [...bagLines, ...shownAll] : bagLines;   // remove / quantity only apply to what is in the bag
-      const ref = typedAdd ? typedAdd[2] : typedRemove ? typedRemove[1] : (typedQty as RegExpMatchArray)[1];
-      const pick = pickNamedProduct(ref || '', pool);
-      if (!pick) return false;
-      const sentence = typedAdd
-        ? `Add ${pick.name || pick.sku} (SKU ${pick.sku}, qty ${typedAdd[1] ? (num[typedAdd[1].toLowerCase()] || Number(typedAdd[1]) || 1) : 1}) to my ${bagWordT}.`
-        : typedRemove
-          ? `Remove SKU ${pick.sku} from my ${bagWordT}.`
-          : `Change the quantity of SKU ${pick.sku} to ${num[(typedQty as RegExpMatchArray)[2].toLowerCase()] || Number((typedQty as RegExpMatchArray)[2]) || 1}.`;
-      console.log(`[agent] typed cart command "${t}" → ${sentence}`);
-      return this.applyStorefrontCartCommand(tenantId, sessionId, sentence, journeyState, projectConfig, uiToolCalls, conversation, emit);
-    }
-
-    const current = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
-    const qty = new Map<string, number>();
-    for (const l of current?.lines || []) if (l?.sku) qty.set(String(l.sku).toUpperCase(), Math.max(1, Number(l.quantity) || 1));
-    const key = (add?.[1] || remove?.[1] || change?.[1] || '').toUpperCase();
-    const touched: string[] = [];
-    if (add) { qty.set(key, (qty.get(key) || 0) + Math.max(1, Number(add[2]) || 1)); touched.push(key); }
-    else if (addMany) {
-      for (const m of addMany[1].matchAll(/(\S+) \(qty (\d+)\)/g)) { const k = m[1].toUpperCase(); qty.set(k, (qty.get(k) || 0) + Math.max(1, Number(m[2]) || 1)); touched.push(k); }
-    }
-    else if (remove) qty.delete(key);
-    else if (change) { const n = Number(change[2]) || 0; if (n <= 0) qty.delete(key); else qty.set(key, n); touched.push(key); }
-
-    const isCart = projectConfig?.commerceMode === 'cart';
-    const bagWord = isCart ? 'bag' : 'quote';
-
-    // SOLD OUT never enters the bag — the QuoteService only warns, and a
-    // customer paid for a sold-out playmat that way. Checked on the catalogue's
-    // own availability for the SKUs this tap touched.
-    const soldOut: string[] = [];
-    if (touched.length && (add || addMany || change)) {
-      const before = new Map<string, number>();
-      for (const l of current?.lines || []) if (l?.sku) before.set(String(l.sku).toUpperCase(), Math.max(1, Number(l.quantity) || 1));
-      for (const row of await fetchPricebookRows(tenantId, touched)) {
-        if (row.inStock !== false) continue;
-        const k = String(row.sku).toUpperCase();
-        soldOut.push(String(row.name || k));
-        if (before.has(k)) qty.set(k, before.get(k)!); else qty.delete(k);
-      }
-      const changed = touched.some((k) => (qty.get(k) ?? 0) !== (before.get(k) ?? 0));
-      if (soldOut.length && !changed) {
-        conversation.push({ role: 'system', content: `[${bagWord.toUpperCase()} NOT UPDATED] ${soldOut.join(', ')} ${soldOut.length > 1 ? 'are' : 'is'} SOLD OUT, so nothing was added. Say so plainly by product name, then offer to find an in-stock alternative (searchKnowledge + showItems if they say yes). Do NOT call updateQuote.` });
-        return true;
-      }
-    }
-
-    // Purchase limits (config `purchaseLimits`, e.g. one limited-drop item per
-    // person) are enforced HERE, at the bag, not only in prose — matched on
-    // the catalogue's own facts for the touched SKUs.
-    const capped: string[] = [];
-    const limits: any[] = Array.isArray(projectConfig?.purchaseLimits) ? projectConfig.purchaseLimits : [];
-    if (limits.length && touched.length) {
-      const facts = await lookupSkuFacts(tenantId, touched);
-      for (const f of facts) {
-        for (const lim of limits) {
-          if (!productMatches(lim.match, f) || !(lim.maxQuantity > 0)) continue;
-          const k = f.sku.toUpperCase();
-          if ((qty.get(k) || 0) > lim.maxQuantity) { qty.set(k, lim.maxQuantity); capped.push(`${f.name} (limit ${lim.maxQuantity}${lim.reason ? ` — ${lim.reason}` : ''})`); }
-        }
-      }
-    }
-    const items = [...qty.entries()].map(([sku, quantity]) => ({ sku, quantity }));
-    if (!items.length) {
-      // Nothing left to price. The storefront keeps its last quote card; the
-      // model just acknowledges. (An empty quote cannot be emitted — the
-      // authoritative-quote contract refuses zero lines.)
-      conversation.push({ role: 'system', content: `[${bagWord.toUpperCase()} UPDATED] The customer removed the last item; their ${bagWord} is now empty. Confirm that in one short sentence and offer to find something else. Do NOT call updateQuote.` });
-      return true;
-    }
-    const quote = await this.quoteService.build({
-      tenantId, sessionId,
-      title: current?.title || (isCart ? 'Your bag' : 'Your quote'),
-      items,
-      pricing: projectConfig.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
-    });
-    if (!quote.lines?.length) {
-      console.warn(`[agent] storefront cart command: SKU ${key} not priceable for tenant ${tenantId} (pricebook returned no line)`);
-      conversation.push({ role: 'system', content: `[${bagWord.toUpperCase()} NOT UPDATED] SKU ${key} could not be priced from the catalogue, so nothing was added. Say so in one sentence and offer to find the right item. Do NOT call updateQuote.` });
-      return true;
-    }
-    journeyState.quoteId = quote.quoteId;
-    const call: any = {
-      id: `storefront_cart_${Date.now()}`,
-      type: 'function',
-      function: { name: 'updateQuote', arguments: JSON.stringify({ items }) },
-      __quote: quote,
-    };
-    uiToolCalls.push(call);
-    if (emit) emit('uiAction', { name: 'updateQuote', arguments: quote });
-    const lines = quote.lines.map((l) => `${l.name} × ${l.quantity}${l.unitPrice !== null ? ` @ ${quote.symbol || ''}${l.unitPrice}` : ''}`).join('; ');
-    console.log(`[agent] storefront cart command applied (${add ? 'add' : addMany ? 'add-many' : remove ? 'remove' : 'qty'} ${addMany ? touched.join(',') : key}) → ${quote.lines.length} line(s), total ${quote.total}${capped.length ? ` | capped: ${capped.join('; ')}` : ''}`);
-    conversation.push({ role: 'system', content:
-      `[${bagWord.toUpperCase()} UPDATED — already applied by the customer's own tap, server-authoritative] ` +
-      `${bagWord} now: ${lines}. Total ${quote.symbol || ''}${quote.total} ${quote.currency || ''}. The updated ${bagWord} card is already on screen. ` +
-      (capped.length ? `A purchase limit applied and the quantity was held at the maximum for: ${capped.join('; ')} — say so plainly. ` : '') +
-      (soldOut.length ? `${soldOut.join(', ')} ${soldOut.length > 1 ? 'are' : 'is'} SOLD OUT and was NOT added — say so. ` : '') +
-      `Reply in ONE short sentence confirming what changed — call the product by its NAME (never by its code), e.g. "Added The Raid Playmat to your bag." — then offer one natural next step. Do NOT call updateQuote, searchKnowledge or showItems this turn, and do not restate the line items.` });
-    return true;
-  }
-
-  /**
-   * Back from checkout. The storefront sends one silent turn — "Payment
-   * received for order <id>." — once the order is confirmed paid, so the
-   * conversation continues on the agent's side: a thank-you with the order
-   * number, then ONE relevant add-on offer. The order is read from the
-   * OrderService (never trusted from the message), lines from its quote.
-   */
-  private async applyOrderPlacedContext(tenantId: string, text: string, conversation: any[], journeyState: any): Promise<boolean> {
-    const m = (text || '').trim().match(/^Payment received for order (\S+?)\.?$/i);
-    if (!m) return false;
-    const orderId = m[1];
-    const order = await this.orderService.get(orderId, tenantId).catch(() => null);
-    if (!order) {
-      conversation.push({ role: 'system', content: `[ORDER] No order ${orderId} exists for this business. Say you could not find that order and offer to help.` });
-      return true;
-    }
-    const quote = order.quoteId ? await this.quoteService.get(order.quoteId, tenantId).catch(() => null) : null;
-    const lines = (quote?.lines || []).map((l: any) => `${l.name} × ${l.quantity}`).join('; ');
-    const paid = order.status === 'paid';
-    if (paid) journeyState.quoteId = null;   // the bag is now an order; the next Add starts a fresh one
-    conversation.push({ role: 'system', content:
-      `[ORDER ${paid ? 'PLACED' : 'PENDING'}] Order ${order.orderId} — status ${order.status}, total ${quote?.symbol || ''}${order.total} ${order.currency || ''}${lines ? `, items: ${lines}` : ''}. The order card is already on screen. ` +
-      (paid
-        ? `Thank the customer warmly, quote the order number ${order.orderId} once, and say a confirmation email is on its way${order.customer?.email ? ` to ${order.customer.email}` : ''}. Then offer ONE natural add-on that goes with what they bought (a matching sleeve size, a box for that deck, a playmat) — searchKnowledge for it and showItems the real matches if you have a clear complement; otherwise just ask what they play next. Do NOT call updateQuote.`
-        : 'Payment has not been confirmed yet — say you are waiting on the payment provider and will confirm shortly. Do not thank them for a completed order.') });
-    return true;
-  }
 
   private async executeOpenModelToolCalls(
     tenantId: string,
@@ -4874,15 +2882,16 @@ export class AgentService {
    * code is real, so a mistyped number still gets a normal conversation.
    */
   private async noteNamedStyle(
-    tenantId: string, conversation: any[], journeyState: any, projectConfig: any,
+    tenantId: string, conversation: any[], journeyState: any, configuratorAvailable: boolean,
   ): Promise<void> {
-    const caps = projectConfig?.capabilities;
-    if (caps?.length && !caps.includes('configurator')) return;
+    if (!configuratorAvailable) return;
     const lastUser = [...(conversation || [])].reverse().find((m: any) => m.role === 'user');
     const code = this.namedStyleCode(String(lastUser?.content || ''));
     if (!code || journeyState?.activeSku === code) return;
     const found = await skusThatExist(tenantId, [code.toUpperCase()]);
     if (!found.includes(code.toUpperCase())) return;  // not a style here — say nothing
+    const designable = await designableAlternatives(tenantId, code);
+    if (!designable.some((item) => String(item.sku || '').toUpperCase() === code.toUpperCase())) return;
     conversation.push({ role: 'system', content:
       `The customer named style ${code}. Call showConfigurator with sku="${code}" THIS TURN, applying any design ` +
       `line and colours they mentioned. Do not ask for sport, gender or quantity first — show them the garment, ` +
@@ -4981,15 +2990,16 @@ export class AgentService {
    */
   private requiredUiTool(
     intent: IntentResult,
-    opts: { customised?: boolean; capabilities?: string[] } = {},
+    opts: { configuratorAvailable?: boolean; activeSku?: string } = {},
   ): 'showItems' | 'showGuide' | 'showConfigurator' | null {
     // Customer explicitly said "don't render yet" / "just tell me what to look for" —
     // honour that by keeping the panel blank this turn.
     if (intent.panelRenderBlocked) return null;
     const rt = intent.retrievalType;
     const productish = intent.stage === 'products' || rt === 'product' || rt === 'design' || rt === 'collection';
-    const canConfigure = !!opts.customised
-      && (!opts.capabilities?.length || opts.capabilities.includes('configurator'));
+    // Do not force a configurator before a real, designable SKU is selected.
+    // Direct model calls are independently validated before the UI is emitted.
+    const canConfigure = opts.configuratorAvailable === true && !!opts.activeSku;
     if (productish && canConfigure) return 'showConfigurator';
     if (productish) return 'showItems';
     if (intent.stage === 'installation' || rt === 'troubleshooting' || rt === 'installation') return 'showGuide';
@@ -5075,7 +3085,7 @@ export class AgentService {
             continue;
           }
           // Undesignable styles never reach the panel — see the streaming path.
-          if (verdict.designableAlternatives) {
+          if (verdict.designableAlternatives || (call.function.name === 'showConfigurator' && verdict.success === false)) {
             conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(verdict) });
             continue;
           }
@@ -5167,7 +3177,7 @@ export class AgentService {
    * One visible agent, controlled internally (see docs/ARCHITECTURE.md §5).
    */
   async processChat(request: ChatRequest): Promise<ChatResponse> {
-    const { tenantId = 'caroma' } = request;
+    const { tenantId = DEFAULT_TENANT_ID } = request;
     // CDL: design image held server-side for this turn (mirrors processChatStream).
     const turnImage = { imageBase64: request.imageBase64, imageUrl: request.imageUrl };
     const hasDesignImage = !!(turnImage.imageBase64 || turnImage.imageUrl);
@@ -5198,6 +3208,10 @@ export class AgentService {
     // (AUG-14). Cached; never blocks the turn.
     const brandHubProfile = await this.configLoader.loadBrandHub(tenantId);
     const brandHubBlock = this.configLoader.renderBrandHubBlock(brandHubProfile, projectConfig.capabilities, projectConfig);
+    // Prefer the published Back Office Business Profile. Brand Hub remains a
+    // compatibility fallback for tenants that predate that profile.
+    const configuredEntityModel = projectConfig.business?.entityModel || brandHubProfile?.entityModel;
+    const { supportsCustomisation, configuratorAvailable } = resolveCustomisationAvailability(projectConfig, brandHubProfile);
     trace.push({ step: 'config', detail: `model=${model} · configV=${projectConfig.configVersion ?? 'draft'}${projectConfig.journeyGuidance ? ' · +journeyGuidance' : ''}` });
 
     // ── Step 1: Intent detection (config-driven, no keyword routing) ──
@@ -5207,7 +3221,7 @@ export class AgentService {
     // provider (a self-hosted tenant spends nothing on OpenAI); a model name →
     // that model on the platform key; unset → the platform classifier.
     const onProject = projectConfig.intentModel === 'project';
-    const intent = await this.intentResolver.resolve(messages, state, onProject ? model : (projectConfig.intentModel || this.intentModel), projectConfig.contextDimensions, onProject ? llm : undefined);
+    const intent = await this.intentResolver.resolve(messages, state, onProject ? model : (projectConfig.intentModel || this.intentModel), projectConfig.contextDimensions, onProject ? llm : undefined, projectConfig.agentConfig);
     // Everything known about this customer so far (memory + this turn), with
     // derived dimensions filled in code (size from game) — never asked, always filters.
     const knownDims = deriveDimensions(projectConfig.contextDimensions, inferDimensionsFromText(projectConfig.contextDimensions, messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content || '')).join(' \n '), { ...(journeyState.dimensions || {}), ...(intent.dimensions || {}) }));
@@ -5242,9 +3256,18 @@ export class AgentService {
       (projectConfig.baseUrl || '').includes('jax-placemakers');
 
     // ── Load back-office business rules (config over code) ──
-    const activeRules = await this.configLoader.loadActiveRules(tenantId);
-    const rulesBlock = this.configLoader.renderRulesBlock(activeRules);
-    const skillsBlock = skillIndexBlock(tenantId);
+    const activeRulesResult = await this.configLoader.loadActiveRules(tenantId);
+    const activeRules = activeRulesResult.rules;
+    if (activeRulesResult.ok && projectConfig.agentConfig) {
+      projectConfig.agentConfig.rules.business = activeRules.map((rule) => ({
+        name: rule.name,
+        scope: rule.scope,
+        condition: rule.condition,
+        action: rule.action,
+      }));
+    }
+    const skillIds = configuredSkillIds(projectConfig.agentConfig);
+    const skillsBlock = skillIndexBlock(tenantId, skillIds, configuredSkills(projectConfig.agentConfig));
     trace.push({
       step: 'config-rules',
       detail: activeRules.length ? `${activeRules.length} active rule(s) loaded` : 'no rules configured',
@@ -5252,7 +3275,7 @@ export class AgentService {
     });
 
     // ── Step 3: Retrieval routing (don't fetch PDFs during discovery) ─
-    const policy = buildRetrievalPolicy(intent);
+    const policy = buildRetrievalPolicy(intent, projectConfig.agentConfig);
     trace.push({
       step: 'retrieval-policy',
       detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)',
@@ -5264,10 +3287,15 @@ export class AgentService {
 
     // ENFORCEMENT (not advice): when retrieval is disallowed this turn, remove
     // searchKnowledge from the tool set so the model physically cannot call it.
-    const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
-    const activeTools = policy.allowRetrieval
+    const projectTools = buildToolset({
+      enabledCapabilities: projectConfig.capabilities,
+      entityModel: configuredEntityModel,
+      closing: projectConfig.commerceMode === 'cart' ? 'bag' : 'quote',
+    });
+    const policyTools = policy.allowRetrieval
       ? projectTools
       : projectTools.filter((t) => t.type !== 'function' || t.function.name !== 'searchKnowledge');
+    const activeTools = configuratorAvailable ? policyTools : withoutConfiguratorTool(policyTools);
 
     // ── Journey working-memory block (server-owned; the loop guard) ──────────
     // Replaces the thin, client-supplied state string. Tells the model exactly
@@ -5278,14 +3306,11 @@ export class AgentService {
     // journey block carries durable facts). No client-side compaction needed.
     const activeMessages = messages;
 
-    const isLeakOrTroubleshooting =
-      intent.intent === 'leak_repair' ||
-      (lastUserText || '').toLowerCase().includes('leak') ||
-      (lastUserText || '').toLowerCase().includes('drip') ||
-      (lastUserText || '').toLowerCase().includes('water damage');
+    const needsDiagnosticClarification =
+      intent.retrievalType === 'troubleshooting' || intent.stage === 'installation';
 
-    const leakGuidance = isLeakOrTroubleshooting
-      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions in the conversation (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
+    const diagnosticGuidance = needsDiagnosticClarification
+      ? '\n- DIAGNOSIS FIRST: This is a support or installation issue. Use the configured context dimensions and active business rules to ask only the diagnostic questions needed before recommending a product or next step. Do not output a questionnaire in chat text.'
       : '';
 
     // Intent + retrieval guidance injected as a system message so the generation
@@ -5293,7 +3318,7 @@ export class AgentService {
     const intentGuidance =
       `[TURN GUIDANCE]\n- Detected intent: ${intent.intent} (stage: ${intent.stage}, mode: ${intent.mode})\n` +
       `- Missing context: ${intent.missingInfo.length ? intent.missingInfo.join(', ') : '(none)'}\n` +
-      `- ${policy.guidance}${leakGuidance}`;
+      `- ${policy.guidance}${diagnosticGuidance}`;
 
     // ── Build Conversation Array ────────────────────────────────────
     // For open models (e.g. local Gemma 2 9B), provide a concise, high-speed trade persona
@@ -5307,10 +3332,9 @@ export class AgentService {
           ...activeMessages,
         ]
       : [
-          { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage) },
+          { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage, projectConfig.agentConfig) },
           ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
           ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
-          ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
           // v3 Card CMS skills (docs/v3-card-cms-architecture.md): name + one-line
           // "not needed when" description only — the full technique loads on
           // demand via the loadSkill tool, so a rarely-needed skill never
@@ -5318,36 +3342,7 @@ export class AgentService {
           ...(skillsBlock ? [{ role: 'system', content: skillsBlock }] : []),
           ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
           { role: 'system', content: intentGuidance },
-          ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
-            `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
-            `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
-          ...(hasDesignImage ? [{ role: 'system', content:
-            '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
-            'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
-            'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
-          ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
-            '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer. ' +
-            'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — "design me a…", "can you make a…", "create a…" — call generateDesign with their brief FIRST; do NOT answer with searchKnowledge/showItems catalogue cards. ' +
-            'Only use searchKnowledge/showItems when they want to BROWSE existing products. Iterations ("make the sleeves brighter") → generateDesign again. ' +
-            'When the customer is happy or says "send it to your artist/for review", call submitForReview (kind "use" or "create"); when they ask "is it ready?", call checkReviewStatus. A custom design needs artist approval AND customer agreement before print — never call it production-ready yourself.' }] : []),
-          ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-            '[PROJECT & MATERIALS PLANNER] This brand provides complete, authoritative materials calculation for STRUCTURAL building projects (decking, fencing, wall lining, retaining, cladding) — NOT rooms. ' +
-            'When the customer asks to plan, size, estimate, or get materials for one of those (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType: "decking" | "fencing" | "lining" | "retaining" | "cladding" — never "laundry"/"bathroom"/"kitchen", those are rooms, see below). ' +
-            'CRITICAL RULE FOR ROOM MAKEOVERS: on the first turn of a room makeover or cabinet build, clarify requirements FIRST — do NOT jump straight into 3D openSpacePlanner or product cards before asking the customer! Call setPhase("clarify") to present the interactive question cards in the conversation. Once the customer answers the clarifying questions (e.g. "My answers: ..."), THEN advance to products or openSpacePlanner with their chosen setup.' }] : []),
-          ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-            '[CONSULTATIVE SALES REP PARTNERSHIP & ROOM DISCOVERY] You are an experienced PlaceMakers Project Consultant & Sales Rep partnering with the customer to design their space. ' +
-            'When the customer asks to build or plan a laundry cabinet, room makeover, or kitchen space (e.g. "I want to build a laundry cabinet", "plan my laundry space", "laundry room makeover"): ' +
-            '1. Engage warmly as a pair-planning sales rep: congratulate their project, explain that you will build it together step-by-step. ' +
-            '2. Check what they already told you in THIS message before asking anything else, then ask ONLY about whichever of these 4 is still missing — never re-ask one they already answered: (a) Wall Width / Room Run (e.g., 1.8m compact, 2.4m standard, 3.0m spacious), (b) Style & Finish (Modern Gloss White, Natural Warm Oak Timber Veneer, or Architectural Charcoal), (c) Appliance & Tub Cavity (front-loader washer/dryer overhang + Robinhood SuperTub), and (d) Installation preference (DIY with tool checklist vs. PlaceMakers Certified Trade Installation). ' +
-            '3. On discovery, call setPhase("clarify") to render the question cards in the conversation with selectable options. Do NOT call openSpacePlanner or showItems yet. ' +
-            '4. Once the customer answers the clarifying questions, then openSpacePlanner or product recommendations can be launched with their chosen configuration.' }] : []),
-          ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
-            '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
-          ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-            '[REACT FLUID JOURNEY TRANSITIONS] You are an intelligent ReAct agent supporting 5 interconnected journeys (Shop, Plan Your Space, Services, Tools, and Customer Service). ' +
-            'Customers can pivot between journeys at any time (e.g. asking for trade installation or branch pickup in the middle of a 3D room plan). ' +
-            'Preserve all room dimensions, active materials, and customer context during transitions. ' +
-            'When a customer asks for a design consultation or certified trade installer (e.g. "book a bathroom consultation", "can you install this for me?"), explain this brand\'s certified installed-solutions program, attach their active materials list, and offer to schedule their 60-minute consultation in-branch or virtually.' }] : []),
+          ...configuredCustomisationGuidance(projectConfig, { activeSku: journeyState?.activeSku, hasDesignImage, enabled: configuratorAvailable }),
           ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
           // The chips exist for shopping turns only — a complaint, a policy or how-to question, or an unknown ask never carries them.
           ...((() => { if (!/product_recommendation|design_inspiration|quote_order|remodel/.test(String(intent?.intent || ''))) return []; const m = missingAskableDimensions(projectConfig.contextDimensions, knownDims); return m.length ? [{ role: 'system', content: askBesideBlock(m) }] : []; })()),
@@ -5371,7 +3366,9 @@ export class AgentService {
         ];
 
     const maxLoops = 6;
-    const MAX_SEARCHES = 6;          // collection + core fixtures need multiple searches
+    // Backoffice retrieval policy is authoritative; the platform default is the
+    // fallback when no tenant value is published.
+    const MAX_SEARCHES = Math.max(1, projectConfig.agentConfig?.retrieval?.maxSearchCallsPerTurn ?? 3);
     let loops = 0;
     let searchCount = 0;
     let hadRetrieval = false;        // did any searchKnowledge run this turn? (for grounding check)
@@ -5382,19 +3379,19 @@ export class AgentService {
     let cdlUseSku: string | null = null;  // CDL: analyzeDesign matched a real template → force the configurator
     let cdlSuggested: any = null;         // CDL: server-built configurator config (colours+text mapped to the palette)
     const uiToolCalls: any[] = [];
-    const wantUiTool = this.requiredUiTool(intent, { customised: brandHubProfile?.model?.customised, capabilities: projectConfig.capabilities });
+    const wantUiTool = this.requiredUiTool(intent, { configuratorAvailable, activeSku: journeyState?.activeSku });
 
     // Mandatory opening move: research the named org before the model acts.
     // When it researches THIS turn, the colour-confirmation card owns the panel —
     // suppress a same-turn clarify so the model can't bury it under a question form.
     this.noteTeamSize(conversation, journeyState);
     this.noteShownItems(conversation, journeyState);
-    await this.noteNamedStyle(tenantId, conversation, journeyState, projectConfig);
+    await this.noteNamedStyle(tenantId, conversation, journeyState, configuratorAvailable);
     const researchedThisTurn = await this.maybeResearchOrg(tenantId, projectConfig, intent, journeyState, conversation, uiToolCalls);
     await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, () => {}, model, llm);
 
-    const cartCommandApplied = await this.applyStorefrontCartCommand(tenantId, sessionId, lastUserText, journeyState, projectConfig, uiToolCalls, conversation);
-    await this.applyOrderPlacedContext(tenantId, lastUserText, conversation, journeyState);
+    const cartCommandApplied = await applyStorefrontCartCommand({ tenantId, sessionId, text: lastUserText, journeyState, projectConfig, uiToolCalls, conversation, quoteService: this.quoteService, fetchPricebookRows, lookupSkuFacts, productMatches, pickNamedProduct });
+    await applyOrderPlacedContext({ tenantId, text: lastUserText, conversation, journeyState, orderService: this.orderService, quoteService: this.quoteService });
 
     // ── Step 5: Generation — controlled tool-calling loop ───────────
     while (loops < maxLoops) {
@@ -5465,13 +3462,13 @@ export class AgentService {
         // Never force a UI render on the research turn — the colour-confirmation
         // card owns the panel and the customer must confirm first.
         // CDL match forces the configurator regardless of the intent-derived want.
-        const effWantUi = cdlUseSku ? 'showConfigurator' : wantUiTool;
+        const effWantUi = cdlUseSku && configuratorAvailable ? 'showConfigurator' : wantUiTool;
         if (!forceText && !researchedThisTurn && (hadRetrieval || effWantUi === 'showConfigurator') && effWantUi && !forcedUi &&
             !intent.panelRenderBlocked &&
             !uiToolCalls.some((c) => c.function?.name === effWantUi)) {
           forcedUi = true;
           trace.push({ step: 'forced-ui', detail: `${effWantUi}${cdlUseSku ? ` (CDL match ${cdlUseSku})` : ''} (model answered in prose)` });
-          await this.forceUiTool(tenantId, conversation, activeTools, effWantUi, uiToolCalls, () => {}, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+          await this.forceUiTool(tenantId, conversation, activeTools, effWantUi, uiToolCalls, () => {}, model, llm, journeyState, supportsCustomisation, projectConfig.configuratorType);
         }
         break;
       }
@@ -5587,7 +3584,7 @@ export class AgentService {
               && !uiToolCalls.some((c) => c.function?.name === 'recommendSize')) {
             uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'recommendSize', arguments: JSON.stringify(result) } } as any);
           }
-          if (cdlUseSku && !forcedUi && !intent.panelRenderBlocked &&
+          if (cdlUseSku && configuratorAvailable && !forcedUi && !intent.panelRenderBlocked &&
               !uiToolCalls.some((c) => c.function?.name === 'showConfigurator')) {
             forcedUi = true;
             if (cdlSuggested?.sku) {
@@ -5599,7 +3596,7 @@ export class AgentService {
               conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already shown in the conversation in their colours on style ${cdlUseSku}. Do NOT call showConfigurator again this turn; tell them it's shown and invite tweaks or sending it to the artist.` });
             } else {
               trace.push({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku})` });
-              await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, () => {}, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+              await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, () => {}, model, llm, journeyState, supportsCustomisation, projectConfig.configuratorType);
             }
           }
           continue;
@@ -5612,7 +3609,7 @@ export class AgentService {
           // on a turn that doesn't need it.
           let skillArgs: any = {};
           try { skillArgs = JSON.parse(call.function.arguments || '{}'); } catch { /* keep {} */ }
-          const body = loadSkillBody(tenantId, String(skillArgs?.name || ''));
+          const body = loadSkillBody(tenantId, String(skillArgs?.name || ''), skillIds);
           conversation.push({
             role: 'tool', tool_call_id: call.id,
             content: JSON.stringify(body ? { found: true, name: skillArgs.name, body } : { found: false, message: `No skill named '${skillArgs?.name}'.` }),
@@ -5776,7 +3773,7 @@ export class AgentService {
               // path's own system notes are collected and appended after it.
               let applied = false;
               const notes: any[] = [];
-              for (const c of cmds) if (await this.applyStorefrontCartCommand(tenantId, sessionId, c, journeyState, projectConfig, uiToolCalls, notes, undefined)) applied = true;
+              for (const c of cmds) if (await applyStorefrontCartCommand({ tenantId, sessionId, text: c, journeyState, projectConfig, uiToolCalls, conversation: notes, quoteService: this.quoteService, fetchPricebookRows, lookupSkuFacts, productMatches, pickNamedProduct })) applied = true;
               const bagNow = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
               conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(applied
                 ? { success: true, applied: true, bagNow: (bagNow?.lines || []).map((l: any) => ({ sku: l.sku, name: l.name, quantity: l.quantity })), total: bagNow?.total, note: 'Applied by the server. bagNow is the complete bag after this change — confirm ONLY what changed this turn, by product name, in one sentence; never say something was removed if it is still in bagNow.' }
@@ -5796,14 +3793,7 @@ export class AgentService {
               continue;
             }
 
-            const quote = await this.quoteService.build({
-              tenantId, sessionId,
-              title: parsedArgs.title,
-              items: await resolveQuoteItemSkus(tenantId, Array.isArray(parsedArgs.items) ? parsedArgs.items : []),
-              installationSummary: parsedArgs.installationSummary,
-              warrantySummary: parsedArgs.warrantySummary,
-              pricing: projectConfig.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
-            });
+            const quote = await buildAuthoritativeQuote({ quoteService: this.quoteService, tenantId, sessionId, args: parsedArgs, pricing: projectConfig.pricing });
 
             // P0 GUARD: If no quoted items could be priced from the catalogue, do not emit an empty quote!
             if (!quote.lines || quote.lines.length === 0) {
@@ -5878,7 +3868,7 @@ export class AgentService {
           // printed at all.
           const verdict = await validateDesign(tenantId, call, projectConfig.configuratorType);
           const itemVerdict = await enforceItemDesignability(
-            tenantId, call, !!brandHubProfile?.model?.customised);
+            tenantId, call, supportsCustomisation);
           // A bundle the catalogue cannot back (fewer than two real, in-stock,
           // priced members) is withheld — the model hears why and searches.
           if (bundleRefused(call, itemVerdict)) {
@@ -5911,7 +3901,7 @@ export class AgentService {
             continue;
           }
           // Undesignable styles never reach the panel — see the streaming path.
-          if (!verdict.designableAlternatives) uiToolCalls.push(call);
+          if (call.function.name !== 'showConfigurator' || verdict.success !== false) uiToolCalls.push(call);
           conversation.push({
             role: 'tool',
             tool_call_id: call.id,
@@ -6037,7 +4027,7 @@ export class AgentService {
     request: ChatRequest,
     emit: (event: string, data: any) => void,
   ): Promise<void> {
-    const { tenantId = 'caroma' } = request;
+    const { tenantId = DEFAULT_TENANT_ID } = request;
     // CDL: a design image attached this turn is held server-side (never in the
     // prompt) and read by analyzeDesign. A note in the conversation tells the
     // model to call that tool.
@@ -6066,6 +4056,10 @@ export class AgentService {
     // (AUG-14). Cached; never blocks the turn.
     const brandHubProfile = await this.configLoader.loadBrandHub(tenantId);
     const brandHubBlock = this.configLoader.renderBrandHubBlock(brandHubProfile, projectConfig.capabilities, projectConfig);
+    // Prefer the published Back Office Business Profile. Brand Hub remains a
+    // compatibility fallback for tenants that predate that profile.
+    const configuredEntityModel = projectConfig.business?.entityModel || brandHubProfile?.entityModel;
+    const { supportsCustomisation, configuratorAvailable } = resolveCustomisationAvailability(projectConfig, brandHubProfile);
     pushTrace({ step: 'config', detail: `model=${model} · configV=${projectConfig.configVersion ?? 'draft'}${projectConfig.journeyGuidance ? ' · +journeyGuidance' : ''}` });
 
     // Intent (config-driven) — bounded by the project's configured context dimensions
@@ -6073,7 +4067,7 @@ export class AgentService {
     // provider (a self-hosted tenant spends nothing on OpenAI); a model name →
     // that model on the platform key; unset → the platform classifier.
     const onProject = projectConfig.intentModel === 'project';
-    const intent = await this.intentResolver.resolve(messages, state, onProject ? model : (projectConfig.intentModel || this.intentModel), projectConfig.contextDimensions, onProject ? llm : undefined);
+    const intent = await this.intentResolver.resolve(messages, state, onProject ? model : (projectConfig.intentModel || this.intentModel), projectConfig.contextDimensions, onProject ? llm : undefined, projectConfig.agentConfig);
     const knownDims = deriveDimensions(projectConfig.contextDimensions, inferDimensionsFromText(projectConfig.contextDimensions, messages.filter((m: any) => m.role === 'user').map((m: any) => String(m.content || '')).join(' \n '), { ...(journeyState.dimensions || {}), ...(intent.dimensions || {}) }));
     intent.dimensions = { ...(intent.dimensions || {}), ...knownDims };
     const dimStr = Object.entries(intent.dimensions || {}).map(([k, v]) => `${k}=${v}`).join(',') || '—';
@@ -6099,13 +4093,22 @@ export class AgentService {
       (projectConfig.baseUrl || '').includes('jax-placemakers');
 
     // Config rules
-    const activeRules = await this.configLoader.loadActiveRules(tenantId);
-    const rulesBlock = this.configLoader.renderRulesBlock(activeRules);
-    const skillsBlock = skillIndexBlock(tenantId);
+    const activeRulesResult = await this.configLoader.loadActiveRules(tenantId);
+    const activeRules = activeRulesResult.rules;
+    if (activeRulesResult.ok && projectConfig.agentConfig) {
+      projectConfig.agentConfig.rules.business = activeRules.map((rule) => ({
+        name: rule.name,
+        scope: rule.scope,
+        condition: rule.condition,
+        action: rule.action,
+      }));
+    }
+    const skillIds = configuredSkillIds(projectConfig.agentConfig);
+    const skillsBlock = skillIndexBlock(tenantId, skillIds, configuredSkills(projectConfig.agentConfig));
     pushTrace({ step: 'config-rules', detail: activeRules.length ? `${activeRules.length} active rule(s) loaded` : 'no rules configured' });
 
     // Retrieval policy + enforcement
-    const policy = buildRetrievalPolicy(intent);
+    const policy = buildRetrievalPolicy(intent, projectConfig.agentConfig);
     pushTrace({ step: 'retrieval-policy', detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)' });
     // The turn's likely search starts NOW, while the model is still thinking —
     // when it asks questions, the cards beside them cost no extra wait.
@@ -6113,28 +4116,30 @@ export class AgentService {
     if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !isDetailAsk(lastUserText) && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
       searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
     }
-    const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
-    const activeTools = policy.allowRetrieval
+    const projectTools = buildToolset({
+      enabledCapabilities: projectConfig.capabilities,
+      entityModel: configuredEntityModel,
+      closing: projectConfig.commerceMode === 'cart' ? 'bag' : 'quote',
+    });
+    const policyTools = policy.allowRetrieval
       ? projectTools
       : projectTools.filter((t) => t.type !== 'function' || t.function.name !== 'searchKnowledge');
+    const activeTools = configuratorAvailable ? policyTools : withoutConfiguratorTool(policyTools);
 
     // Prompt assembly (mirrors processChat) — journey working-memory block.
     const stateContext = renderJourneyStateBlock(journeyState);
 
-    const isLeakOrTroubleshooting =
-      intent.intent === 'leak_repair' ||
-      (lastUserText || '').toLowerCase().includes('leak') ||
-      (lastUserText || '').toLowerCase().includes('drip') ||
-      (lastUserText || '').toLowerCase().includes('water damage');
+    const needsDiagnosticClarification =
+      intent.retrievalType === 'troubleshooting' || intent.stage === 'installation';
 
-    const leakGuidance = isLeakOrTroubleshooting
-      ? '\n- DIAGNOSIS FIRST: This is an active leak / repair issue. Call setPhase("clarify") to present diagnostic questions in the conversation (where it is leaking, fixture, severity) so the customer can select options. Do NOT output a product list or questionnaire in chat text.'
+    const diagnosticGuidance = needsDiagnosticClarification
+      ? '\n- DIAGNOSIS FIRST: This is a support or installation issue. Use the configured context dimensions and active business rules to ask only the diagnostic questions needed before recommending a product or next step. Do not output a questionnaire in chat text.'
       : '';
 
     const intentGuidance =
       `[TURN GUIDANCE]\n- Detected intent: ${intent.intent} (stage: ${intent.stage}, mode: ${intent.mode})\n` +
       `- Missing context: ${intent.missingInfo.length ? intent.missingInfo.join(', ') : '(none)'}\n` +
-      `- ${policy.guidance}${leakGuidance}`;
+      `- ${policy.guidance}${diagnosticGuidance}`;
 
     const conversation: any[] = isOpenModel
       ? [
@@ -6145,10 +4150,9 @@ export class AgentService {
           ...messages,
         ]
       : [
-          { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage) },
+          { role: 'system', content: assembleSystemPrompt(intent.mode, intent.stage, projectConfig.agentConfig) },
           ...(brandHubBlock ? [{ role: 'system', content: brandHubBlock }] : []),
           ...(configBlock ? [{ role: 'system', content: configBlock }] : []),
-          ...(rulesBlock ? [{ role: 'system', content: rulesBlock }] : []),
           // v3 Card CMS skills (docs/v3-card-cms-architecture.md): name + one-line
           // "not needed when" description only — the full technique loads on
           // demand via the loadSkill tool, so a rarely-needed skill never
@@ -6156,18 +4160,7 @@ export class AgentService {
           ...(skillsBlock ? [{ role: 'system', content: skillsBlock }] : []),
           ...(stateContext ? [{ role: 'system', content: stateContext }] : []),
           { role: 'system', content: intentGuidance },
-          ...(journeyState?.activeSku && !hasDesignImage ? [{ role: 'system', content:
-            `[DESIGN ALREADY ON THE PANEL] The customer is already looking at their design on style ${journeyState.activeSku}. IGNORE any "discovery — ask first" guidance above and do NOT re-onboard — never ask which school/team/sport/gender/colours when a design is already shown. Answer the customer's actual question about the design in front of them: tweak colours/name/number, explain what they see, or offer to send it to the artist. ` +
-            `If they ask "where is the 3D" or "why is it my exact image": the panel is showing THEIR design reproduced on our garment — a faithful proof, the accurate preview for a full custom all-over print. Be honest that it is a proof image (not a spinnable 3D); interactive 3D spin only applies to simpler template designs, and the artist finalises the print file. Do not claim it is "3D".` }] : []),
-          ...(hasDesignImage ? [{ role: 'system', content:
-            '[CUSTOM DESIGN ATTACHED] The customer attached a design image this turn. FIRST call analyzeDesign to read the garment and match it to our make-able template library. ' +
-            'If it returns decision "use", call showConfigurator with template.sku and the analysed colours. The panel shows their design REPRODUCED on our garment as a faithful PROOF — tell them "here is your design on our <style>" and that we make this style; call it a proof/preview, do NOT call it "3D". ' +
-            'If it returns decision "create", warmly tell them it is a brand-new design — we will generate the cut pieces at their sizes and an artist will finalise it — and do NOT invent a style code or call showConfigurator.' }] : []),
-          ...((projectConfig.capabilities || []).includes('customDesign') && !hasDesignImage ? [{ role: 'system', content:
-            '[YOU CAN DESIGN] This brand can DESIGN a custom garment for the customer — you are their designer, so they never need another tool. ' +
-            'When the customer DESCRIBES a look they want created/made (colours, team, number, style, vibe) — e.g. "design me a…", "can you make a…", "I want a jersey that…", "create a…" — call generateDesign with their brief FIRST. Do NOT answer such a request with searchKnowledge/showItems catalogue cards. ' +
-            'Only use searchKnowledge/showItems when the customer wants to BROWSE existing catalogue products ("show me…", "what baseball jerseys do you have"). If they iterate ("make the sleeves brighter"), call generateDesign again with the refined brief. ' +
-            'ARTIST REVIEW: when the customer is happy and wants to proceed, or explicitly says "send it to your artist / for review / to production", call submitForReview (kind "use" if it is on an existing style, "create" if it is a new design). When they ask "is it ready / approved?", call checkReviewStatus. A custom design must be artist-approved AND customer-agreed before it can print — never call it production-ready yourself.' }] : []),
+          ...configuredCustomisationGuidance(projectConfig, { activeSku: journeyState?.activeSku, hasDesignImage, enabled: configuratorAvailable }),
           ...(demoBlock ? [{ role: 'system', content: demoBlock }] : []),
           // The chips exist for shopping turns only — a complaint, a policy or how-to question, or an unknown ask never carries them.
           ...((() => { if (!/product_recommendation|design_inspiration|quote_order|remodel/.test(String(intent?.intent || ''))) return []; const m = missingAskableDimensions(projectConfig.contextDimensions, knownDims); return m.length ? [{ role: 'system', content: askBesideBlock(m) }] : []; })()),
@@ -6192,7 +4185,8 @@ export class AgentService {
 
     // ── Tool rounds (non-streamed) — resolve searches + UI actions ──
     const maxLoops = 6;
-    const MAX_SEARCHES = 6;          // collection + core fixtures need multiple searches
+    // Keep the streamed path on the same effective Backoffice retrieval policy.
+    const MAX_SEARCHES = Math.max(1, projectConfig.agentConfig?.retrieval?.maxSearchCallsPerTurn ?? 3);
     let loops = 0;
     let searchCount = 0;
     let hadRetrieval = false;
@@ -6204,20 +4198,20 @@ export class AgentService {
     let cdlUseSku: string | null = null;  // CDL: analyzeDesign matched a real template → force the configurator
     let cdlSuggested: any = null;         // CDL: server-built configurator config (colours+text mapped to the palette)
     const uiToolCalls: any[] = [];
-    const wantUiTool = this.requiredUiTool(intent, { customised: brandHubProfile?.model?.customised, capabilities: projectConfig.capabilities });
+    const wantUiTool = this.requiredUiTool(intent, { configuratorAvailable, activeSku: journeyState?.activeSku });
 
     // Mandatory opening move (streaming): research the named org before the model acts.
     // Same guard as the buffered path — a same-turn clarify would bury the card.
     this.noteTeamSize(conversation, journeyState);
     this.noteShownItems(conversation, journeyState);
-    await this.noteNamedStyle(tenantId, conversation, journeyState, projectConfig);
+    await this.noteNamedStyle(tenantId, conversation, journeyState, configuratorAvailable);
     const researchedThisTurn = await this.maybeResearchOrg(tenantId, projectConfig, intent, journeyState, conversation, uiToolCalls, emit);
     await maybeForceSizeRecommendation(tenantId, conversation, activeTools, projectConfig.capabilities, uiToolCalls, emit, model, llm);
     // A storefront cart tap is executed here, not interpreted by the model;
     // when it was one, skip the tool rounds — the model only confirms.
-    cartCommandApplied = await this.applyStorefrontCartCommand(tenantId, sessionId, lastUserText, journeyState, projectConfig, uiToolCalls, conversation, emit);
+    cartCommandApplied = await applyStorefrontCartCommand({ tenantId, sessionId, text: lastUserText, journeyState, projectConfig, uiToolCalls, conversation, emit, quoteService: this.quoteService, fetchPricebookRows, lookupSkuFacts, productMatches, pickNamedProduct });
     if (cartCommandApplied) readyToSpeak = true;
-    await this.applyOrderPlacedContext(tenantId, lastUserText, conversation, journeyState);
+    await applyOrderPlacedContext({ tenantId, text: lastUserText, conversation, journeyState, orderService: this.orderService, quoteService: this.quoteService });
 
     // Open model retrieval accelerator (Gemma 2 / MLX Metal):
     if (isOpenModel) {
@@ -6253,14 +4247,14 @@ export class AgentService {
         // CDL: a matched template ('use') forces the configurator even though the
         // intent-derived want isn't showConfigurator (an uploaded design isn't a
         // catalogue search).
-        const effWantUi = cdlUseSku ? 'showConfigurator' : wantUiTool;
+        const effWantUi = cdlUseSku && configuratorAvailable ? 'showConfigurator' : wantUiTool;
         pushTrace({ step: 'forced-ui?', detail: `cdlUseSku=${cdlUseSku ?? '—'} effWantUi=${effWantUi ?? '—'} forcedUi=${forcedUi} blocked=${intent.panelRenderBlocked} already=${uiToolCalls.some((c) => c.function?.name === effWantUi)}` });
         if (!researchedThisTurn && (hadRetrieval || effWantUi === 'showConfigurator') && effWantUi && !forcedUi &&
             !intent.panelRenderBlocked &&
             !uiToolCalls.some((c) => c.function?.name === effWantUi)) {
           forcedUi = true;
           pushTrace({ step: 'forced-ui', detail: `${effWantUi}${cdlUseSku ? ` (CDL ${cdlUseSku})` : ''}` });
-          await this.forceUiTool(tenantId, conversation, activeTools, effWantUi, uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+          await this.forceUiTool(tenantId, conversation, activeTools, effWantUi, uiToolCalls, emit, model, llm, journeyState, supportsCustomisation, projectConfig.configuratorType);
         }
         // ANF-10: the model DEFERRED — it returned prose only ("let me find some
         // options… give me a moment!") with NO search this turn, while a product
@@ -6408,7 +4402,7 @@ export class AgentService {
         // A CDL data tool sets didSearch=false, so the loop would set readyToSpeak
         // and exit before the model ever renders the match. Render it here, now,
         // deterministically — the matched style is producible by definition.
-        if (cdlUseSku && !forcedUi && !intent.panelRenderBlocked &&
+        if (cdlUseSku && configuratorAvailable && !forcedUi && !intent.panelRenderBlocked &&
             !uiToolCalls.some((c) => c.function?.name === 'showConfigurator')) {
           forcedUi = true;
           if (cdlSuggested?.sku) {
@@ -6426,7 +4420,7 @@ export class AgentService {
             conversation.push({ role: 'system', content: `[RENDERED] The customer's design is already shown in the conversation in their colours (${(cdlSuggested.colours || []).join(', ') || 'their palette'}) on style ${cdlUseSku}. Do NOT call showConfigurator again this turn. Tell them their design is shown, invite tweaks to colours/name/number, or offer to send it to the artist for review.` });
           } else {
             pushTrace({ step: 'forced-ui', detail: `showConfigurator (CDL ${cdlUseSku})` });
-            await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, emit, model, llm, journeyState, !!brandHubProfile?.model?.customised, projectConfig.configuratorType);
+            await this.forceUiTool(tenantId, conversation, activeTools, 'showConfigurator', uiToolCalls, emit, model, llm, journeyState, supportsCustomisation, projectConfig.configuratorType);
           }
         }
       }
@@ -6473,7 +4467,7 @@ export class AgentService {
           // prompt. Not a SKU-bearing tool, so it skips enforceNamedSku.
           let skillArgs: any = {};
           try { skillArgs = JSON.parse(call.function.arguments || '{}'); } catch { /* keep {} */ }
-          const body = loadSkillBody(tenantId, String(skillArgs?.name || ''));
+          const body = loadSkillBody(tenantId, String(skillArgs?.name || ''), skillIds);
           conversation.push({
             role: 'tool', tool_call_id: call.id,
             content: JSON.stringify(body ? { found: true, name: skillArgs.name, body } : { found: false, message: `No skill named '${skillArgs?.name}'.` }),
@@ -6577,7 +4571,7 @@ export class AgentService {
             // path's own system notes are collected and appended after it.
             let applied = false;
             const notes: any[] = [];
-            for (const c of cmds) if (await this.applyStorefrontCartCommand(tenantId, sessionId, c, journeyState, projectConfig, uiToolCalls, notes, emit)) applied = true;
+            for (const c of cmds) if (await applyStorefrontCartCommand({ tenantId, sessionId, text: c, journeyState, projectConfig, uiToolCalls, conversation: notes, emit, quoteService: this.quoteService, fetchPricebookRows, lookupSkuFacts, productMatches, pickNamedProduct })) applied = true;
             const bagNow = journeyState?.quoteId ? await this.quoteService.get(journeyState.quoteId, tenantId).catch(() => null) : null;
             conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(applied
               ? { success: true, applied: true, bagNow: (bagNow?.lines || []).map((l: any) => ({ sku: l.sku, name: l.name, quantity: l.quantity })), total: bagNow?.total, note: 'Applied by the server. bagNow is the complete bag after this change — confirm ONLY what changed this turn, by product name, in one sentence; never say something was removed if it is still in bagNow.' }
@@ -6596,14 +4590,7 @@ export class AgentService {
             didSearch = true;
             continue;
           }
-          const quote = await this.quoteService.build({
-            tenantId, sessionId,
-            title: parsedArgs.title,
-            items: await resolveQuoteItemSkus(tenantId, Array.isArray(parsedArgs.items) ? parsedArgs.items : []),
-            installationSummary: parsedArgs.installationSummary,
-            warrantySummary: parsedArgs.warrantySummary,
-            pricing: projectConfig.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
-          });
+          const quote = await buildAuthoritativeQuote({ quoteService: this.quoteService, tenantId, sessionId, args: parsedArgs, pricing: projectConfig.pricing });
 
           // P0 GUARD: If no quoted items could be priced from the catalogue, do not emit an empty quote!
           if (!quote.lines || quote.lines.length === 0) {
@@ -6664,7 +4651,7 @@ export class AgentService {
         const verdict = await validateDesign(tenantId, call, projectConfig.configuratorType);
         // showItems may not present stock styles as customisable (AUG-25).
         const itemVerdict = await enforceItemDesignability(
-          tenantId, call, !!brandHubProfile?.model?.customised);
+            tenantId, call, supportsCustomisation);
         // A bundle the catalogue cannot back (fewer than two real, in-stock,
         // priced members) is withheld — the model hears why and searches.
         if (bundleRefused(call, itemVerdict)) {
@@ -6717,7 +4704,7 @@ export class AgentService {
          * so the customer reads one thing and looks at another. The verdict
          * already carries real alternatives; withholding the action lets the
          * model's question stand until they pick one. */
-        if (verdict.designableAlternatives) {
+        if (verdict.designableAlternatives || (call.function.name === 'showConfigurator' && verdict.success === false)) {
           conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(verdict) });
           {
             const _s = summarizeToolCall(call.function.name, parsedArgs, verdict);

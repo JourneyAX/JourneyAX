@@ -7,7 +7,7 @@
  *
  * Run:  npx tsx apps/agent-commerce-service/src/eval/run-evals.ts
  *   env AGENT_URL     (default http://localhost:3004)
- *   env EVAL_PROJECT  (default caroma)
+ *   env EVAL_PROJECT  (default default)
  *   env EVAL_FILTER   substring — run only scenarios whose name matches
  *   env EVAL_FAST     "1" → only fast (single-turn) scenarios
  *
@@ -16,7 +16,7 @@
  */
 
 const AGENT = process.env.AGENT_URL || 'http://localhost:3004';
-const PROJECT = process.env.EVAL_PROJECT || 'caroma';
+const PROJECT = process.env.EVAL_PROJECT || 'default';
 
 interface Expect {
   intent?: string;               // intent classification must equal this
@@ -122,7 +122,7 @@ const SCENARIOS: Scenario[] = [
     messages: [{ role: 'user', content: 'I want to buy a bedroom wardrobe and a study desk.' }],
     expect: { space: 'out_of_scope', forbid: ['showItems'] } },
   // ── Context dimensions engine — per-project configured dimensions, same code ──
-  { name: 'dim-caroma-multi', category: 'dimensions', fast: true,
+  { name: 'dim-multi', category: 'dimensions', fast: true,
     messages: [{ role: 'user', content: 'I am renovating my kitchen and need a new sink.' }],
     expect: { dimensions: { space: 'Kitchen', projectType: 'renovation' } } },
   { name: 'dim-fashion-occasion', category: 'dimensions', fast: true, project: 'abercrombie',

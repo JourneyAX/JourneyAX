@@ -27,6 +27,12 @@ interface SkillFile extends SkillMeta {
   body: string;
 }
 
+export interface ConfiguredSkillSummary {
+  id: string;
+  name?: string;
+  description?: string;
+}
+
 const cache = new Map<string, SkillFile>();
 
 function parseFrontMatter(raw: string): { name?: string; description?: string; body: string } {
@@ -65,14 +71,17 @@ function readSkillDir(dir: string): SkillFile[] {
 }
 
 /** Every skill available to this tenant: platform skills, then the tenant's own. */
-function listSkills(projectId: string): SkillFile[] {
+function listSkills(projectId: string, allowedSkillIds?: readonly string[]): SkillFile[] {
   const platform = readSkillDir(path.join(SKILLS_ROOT, '_platform'));
   const tenant = projectId ? readSkillDir(path.join(SKILLS_ROOT, projectId)) : [];
   // A tenant skill with the same name overrides the platform one, matching
   // how ProjectConfig overrides generally work in this codebase.
   const byName = new Map<string, SkillFile>();
   for (const s of [...platform, ...tenant]) byName.set(s.name, s);
-  return [...byName.values()];
+  const skills = [...byName.values()];
+  if (!allowedSkillIds) return skills;
+  const allowed = new Set(allowedSkillIds);
+  return skills.filter((skill) => allowed.has(skill.name));
 }
 
 /**
@@ -80,16 +89,26 @@ function listSkills(projectId: string): SkillFile[] {
  * what `loadSkill` is for, so a rarely-needed technique doesn't sit in every
  * turn's context). Empty string when no skills exist yet for this tenant.
  */
-export function skillIndexBlock(projectId: string): string {
-  const skills = listSkills(projectId);
-  if (!skills.length) return '';
-  const lines = skills.map((s) => `- **${s.name}**: ${s.description}`).join('\n');
+export function skillIndexBlock(
+  projectId: string,
+  allowedSkillIds?: readonly string[],
+  configuredSkills?: readonly ConfiguredSkillSummary[],
+): string {
+  const skills = listSkills(projectId, allowedSkillIds);
+  const configured = (configuredSkills || [])
+    .filter((skill) => typeof skill?.id === 'string' && skill.id.length > 0)
+    .map((skill) => ({ name: skill.name || skill.id, description: skill.description || '' }));
+  const byName = new Map<string, { name: string; description: string }>();
+  for (const skill of configured) byName.set(skill.name, skill);
+  for (const skill of skills) if (!byName.has(skill.name)) byName.set(skill.name, skill);
+  if (!byName.size) return '';
+  const lines = [...byName.values()].map((s) => `- **${s.name}**: ${s.description}`).join('\n');
   return `\n\n## Skills (load by name with loadSkill when the description applies to this turn)\n${lines}\n`;
 }
 
 /** The full technique for one named skill, for the `loadSkill` tool's result. */
-export function loadSkillBody(projectId: string, name: string): string | null {
-  const skill = listSkills(projectId).find((s) => s.name === name);
+export function loadSkillBody(projectId: string, name: string, allowedSkillIds?: readonly string[]): string | null {
+  const skill = listSkills(projectId, allowedSkillIds).find((s) => s.name === name);
   return skill ? skill.body : null;
 }
 
