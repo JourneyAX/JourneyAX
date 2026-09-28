@@ -1,80 +1,49 @@
 # JourneyAX Tenant Connector Migration Inventory & Truthful Audit
 
-**Audit Timestamp**: `2026-09-28T03:02:09.603Z`
-**Branch**: `JourneyAX-dev-v4`
+**Audit Timestamp**: `2026-09-28T03:48:57.516Z`
+**Portfolio Manifest Version**: `1.0.0`
 **Audit Mode**: Read-Only Architecture Enforcement & Evidence-Backed Verification
 
-> **MIGRATION STATUS NOTICE**: This inventory reflects actual computed evaluations. Discovered repository migration sources are strictly separated from synthetic test fixtures. Synthetic fixtures are excluded from customer readiness metrics. No hardcoded compliance claims or artificial pass flags are permitted. Undiscovered required tenants fail closed as `NOT_DISCOVERED` / `BLOCKED`.
+> **MIGRATION STATUS NOTICE**: Parked tenants do not affect active-portfolio readiness. Synthetic fixtures are excluded from readiness counts. Undiscovered active-portfolio tenants fail closed as `NOT_DISCOVERED` / `BLOCKED`.
 
 ---
 
 ## 1. Executive Summary
 
-| Metric | Computed Value | Assessment |
+| Metric | Value |
+| :--- | :--- |
+| Active portfolio tenants | 4 |
+| Discovered active tenants | 2 / 4 |
+| Undiscovered active tenants | 2 / 4 |
+| Immutable release ready (active) | 0 / 4 |
+| Parked tenants (not counted) | 5 |
+| Synthetic test fixtures (excluded) | 5 |
+
+## 2. Active Portfolio Readiness Matrix
+
+| Tenant ID | Display Name | Discovered | Schema | Semantics | Isolation | Status | Notes |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| `placemakers` | PlaceMakers New Zealand | ✅ | PASS | PASS | YES | `BLOCKED` | First canonical migration. LOCAL_CANARY_PASSED. Production cutover pending DurableCutoverRecord approval. |
+| `workweargroup` | Workwear Group | ✅ | PASS | PASS | YES | `BLOCKED` | Business Pack discovered on filesystem. Remaining gates computed from evidence. |
+| `abercrombie` | Abercrombie & Fitch | ❌ | FAIL | FAIL | NO | `BLOCKED` | Not yet discovered. Business Pack authoring pending. |
+| `caroma` | Caroma Australia | ❌ | FAIL | FAIL | NO | `BLOCKED` | Not yet discovered. Business Pack authoring pending. |
+
+## 3. Parked Tenants (Not Counted in Active Readiness)
+
+| Tenant ID | Display Name | Reason |
 | :--- | :--- | :--- |
-| **Required Customer Tenants** | 9 | Mandatory customer tenants tracked for migration |
-| **Discovered Customer Tenants** | 3 / 9 | Filesystem packs (3) + Non-prod DB (0) |
-| **Undiscovered Customer Tenants** | 6 / 9 | Missing from filesystem and database; marked `BLOCKED` |
-| **Immutable Release Ready (Customers)** | 0 / 9 | Computed via real schema, isolation, and absence of blockers |
-| **Connector Boundary Compliant (Customers)** | 1 / 9 | Scanned for direct provider URLs and raw secrets |
-| **Parity Evaluation Status (Customers)** | 0 Verified / 9 Unevaluated | Parity is `UNEVALUATED` unless real scenario evidence exists |
-| **Synthetic Test Fixtures** | 6 | Topology testing only; excluded from customer readiness |
+| `royalcyber` | Royal Cyber Digital | Parked pending business prioritisation. Do not count as active blocker. |
+| `caroma-nz` | Caroma New Zealand | Parked — will follow caroma (AU) once AU is migrated. |
+| `momentec` | Momentec Brands | Parked pending stakeholder sign-off. |
+| `garts` | Gart Sports & Outdoor | Parked pending stakeholder sign-off. |
+| `dragonshield` | Dragon Shield (Arcane Tinmen) | Parked pending stakeholder sign-off. |
 
-## 2. Customer Tenant Migration Matrix
+## 4. Synthetic Test Fixtures (Topology Matrix Only)
 
-| Tenant ID | Brand Name | Source Category | Industry | Commerce Mode | Activepieces Flows | Status |
-| :--- | :--- | :---: | :--- | :---: | :---: | :---: |
-| `placemakers` | PlaceMakers (Fletcher Building) | `filesystem_pack` | Building Materials & Trade Supplies | `quote` | 1 flows | `BLOCKED` |
-| `royalcyber` | Royal Cyber Inc. | `filesystem_pack` | IT Consulting & Digital Transformation | `quote` | 2 flows | `BLOCKED` |
-| `workweargroup` | Workwear Group | `filesystem_pack` | Industrial Workwear, Uniforms & Safety Apparel | `quote` | 1 flows | `BLOCKED` |
-| `abercrombie` | Abercrombie & Fitch | `not_discovered` | Retail Apparel & Fashion | `cart` | 0 flows | `BLOCKED` |
-| `caroma` | Caroma Australia | `not_discovered` | Commercial & Residential Fixtures | `quote` | 0 flows | `BLOCKED` |
-| `caroma-nz` | Caroma New Zealand | `not_discovered` | Commercial & Residential Fixtures | `quote` | 0 flows | `BLOCKED` |
-| `momentec` | Momentec Brands | `not_discovered` | Custom Sports & Athletic Apparel | `cart` | 0 flows | `BLOCKED` |
-| `garts` | Gart Sports & Outdoor | `not_discovered` | Sporting Goods & Outdoor Recreation | `quote` | 0 flows | `BLOCKED` |
-| `dragonshield` | Dragon Shield (Arcane Tinmen) | `not_discovered` | Gaming Accessories & Card Sleeves | `cart` | 0 flows | `BLOCKED` |
-
-## 3. Customer Tenant Conformance & Evidence Audit
-
-| Tenant ID | Schema | Semantics | Ref Integrity | Isolated? | Raw Secrets | Direct URLs | Parity | Checksum |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| `placemakers` | PASS | PASS | PASS | YES | 0 | 0 | `UNEVALUATED` | `3f66adbae9468d3d...` |
-| `royalcyber` | PASS | PASS | PASS | YES | 0 | 0 | `UNEVALUATED` | `3377aa6848a96e9c...` |
-| `workweargroup` | PASS | PASS | PASS | YES | 0 | 0 | `UNEVALUATED` | `fb5133ff8f2e7f93...` |
-| `abercrombie` | FAIL | FAIL | FAIL | NO | 0 | 0 | `UNEVALUATED` | NOT_AVAILABLE |
-| `caroma` | FAIL | FAIL | FAIL | NO | 0 | 0 | `UNEVALUATED` | NOT_AVAILABLE |
-| `caroma-nz` | FAIL | FAIL | FAIL | NO | 0 | 0 | `UNEVALUATED` | NOT_AVAILABLE |
-| `momentec` | FAIL | FAIL | FAIL | NO | 0 | 0 | `UNEVALUATED` | NOT_AVAILABLE |
-| `garts` | FAIL | FAIL | FAIL | NO | 0 | 0 | `UNEVALUATED` | NOT_AVAILABLE |
-| `dragonshield` | FAIL | FAIL | FAIL | NO | 0 | 0 | `UNEVALUATED` | NOT_AVAILABLE |
-
-## 4. Customer Tenant Operational State & Cutover Blockers
-
-| Tenant ID | Cutover Record (`tenant_cutovers`) | Rollback Baseline | Blockers Count | Specific Blockers |
-| :--- | :---: | :---: | :---: | :--- |
-| `placemakers` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 2 | Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers or tenant_cutovers |
-| `royalcyber` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Connector boundary compliance violated; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers or tenant_cutovers |
-| `workweargroup` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Connector boundary compliance violated; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers or tenant_cutovers |
-| `abercrombie` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Required customer tenant not discovered on filesystem or database; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers |
-| `caroma` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Required customer tenant not discovered on filesystem or database; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers |
-| `caroma-nz` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Required customer tenant not discovered on filesystem or database; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers |
-| `momentec` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Required customer tenant not discovered on filesystem or database; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers |
-| `garts` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Required customer tenant not discovered on filesystem or database; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers |
-| `dragonshield` | `NO_RECORD_FOUND` | `NO_ROLLBACK_BASELINE` | 3 | Required customer tenant not discovered on filesystem or database; Cutover approval record missing in tenant_cutovers; Rollback baseline snapshot missing in business_pack_pointers |
-
-## 5. Synthetic Test Fixtures (Topology Matrix Only - Excluded from Customer Readiness)
-
-| Tenant ID | Brand Name | Topology Category | Commerce Mode | Activepieces Flows | Status |
-| :--- | :--- | :--- | :---: | :---: | :---: |
-| `placemakers_fixture` | PlaceMakers Topology Fixture | Building Materials & Trade Supplies | `quote` | 1 flows | `FIXTURE_EVALUATION_ONLY` |
-| `abercrombie_fixture` | Abercrombie Topology Fixture | Retail Apparel & Fashion | `cart` | 1 flows | `FIXTURE_EVALUATION_ONLY` |
-| `caroma_fixture` | Caroma Topology Fixture | Commercial & Residential Fixtures | `quote` | 1 flows | `FIXTURE_EVALUATION_ONLY` |
-| `momentec_fixture` | Momentec Topology Fixture | Custom Sports & Athletic Apparel | `cart` | 1 flows | `FIXTURE_EVALUATION_ONLY` |
-| `garts_fixture` | Gart Sports Topology Fixture | Sporting Goods & Outdoor Recreation | `quote` | 1 flows | `FIXTURE_EVALUATION_ONLY` |
-| `dragonshield_fixture` | Dragon Shield Topology Fixture | Gaming Accessories & Card Sleeves | `cart` | 1 flows | `FIXTURE_EVALUATION_ONLY` |
-
-## 6. Architecture Governance Signoff Status
-
-**STATUS**: PENDING ARCHITECTURE GOVERNANCE & SECURITY APPROVAL
-
-*Notice: In compliance with Workstream C truthful reporting requirements, no approval or signature is certified because cutover records in `tenant_cutovers` remain pending and undiscovered required tenants remain blocked.*
+| Tenant ID | Schema | Status |
+| :--- | :---: | :---: |
+| `placemakers_fixture` | PASS | `FIXTURE_EVALUATION_ONLY` |
+| `abercrombie_fixture` | PASS | `FIXTURE_EVALUATION_ONLY` |
+| `caroma_fixture` | PASS | `FIXTURE_EVALUATION_ONLY` |
+| `momentec_fixture` | PASS | `FIXTURE_EVALUATION_ONLY` |
+| `dragonshield_fixture` | PASS | `FIXTURE_EVALUATION_ONLY` |

@@ -1,0 +1,129 @@
+{
+  "$schema": "./portfolio-manifest.schema.json",
+  "version": "1.0.0",
+  "description": "JourneyAX Active Customer Portfolio — single source of truth for migration inventory and dry-run evaluation. Parked tenants do not affect active-portfolio readiness.",
+  "updatedAt": "2026-09-27",
+
+  "activePortfolio": [
+    {
+      "tenantId": "placemakers",
+      "displayName": "PlaceMakers New Zealand",
+      "industry": "Building Materials & Trade Supplies",
+      "commerceMode": "quote",
+      "dataResidency": "nz",
+      "migrationPriority": 1,
+      "notes": "First canonical migration. LOCAL_CANARY_PASSED. Production cutover pending DurableCutoverRecord approval."
+    },
+    {
+      "tenantId": "workweargroup",
+      "displayName": "Workwear Group",
+      "industry": "Industrial & Uniform Apparel",
+      "commerceMode": "quote",
+      "dataResidency": "au",
+      "migrationPriority": 2,
+      "notes": "Business Pack discovered on filesystem. Remaining gates computed from evidence."
+    },
+    {
+      "tenantId": "abercrombie",
+      "displayName": "Abercrombie & Fitch",
+      "industry": "Retail Apparel & Fashion",
+      "commerceMode": "cart",
+      "dataResidency": "us",
+      "migrationPriority": 3,
+      "notes": "Not yet discovered. Business Pack authoring pending."
+    },
+    {
+      "tenantId": "caroma",
+      "displayName": "Caroma Australia",
+      "industry": "Commercial & Residential Fixtures",
+      "commerceMode": "quote",
+      "dataResidency": "au",
+      "migrationPriority": 4,
+      "notes": "Not yet discovered. Business Pack authoring pending."
+    }
+  ],
+
+  "parked": [
+    {
+      "tenantId": "royalcyber",
+      "displayName": "Royal Cyber Digital",
+      "industry": "Commercial Consulting & Services",
+      "commerceMode": "quote",
+      "dataResidency": "us",
+      "reason": "Parked pending business prioritisation. Do not count as active blocker."
+    },
+    {
+      "tenantId": "caroma-nz",
+      "displayName": "Caroma New Zealand",
+      "industry": "Commercial & Residential Fixtures",
+      "commerceMode": "quote",
+      "dataResidency": "nz",
+      "reason": "Parked — will follow caroma (AU) once AU is migrated."
+    },
+    {
+      "tenantId": "momentec",
+      "displayName": "Momentec Brands",
+      "industry": "Custom Sports & Athletic Apparel",
+      "commerceMode": "cart",
+      "dataResidency": "us",
+      "reason": "Parked pending stakeholder sign-off."
+    },
+    {
+      "tenantId": "garts",
+      "displayName": "Gart Sports & Outdoor",
+      "industry": "Sporting Goods & Outdoor Recreation",
+      "commerceMode": "quote",
+      "dataResidency": "us",
+      "reason": "Parked pending stakeholder sign-off."
+    },
+    {
+      "tenantId": "dragonshield",
+      "displayName": "Dragon Shield (Arcane Tinmen)",
+      "industry": "Gaming Accessories & Card Sleeves",
+      "commerceMode": "cart",
+      "dataResidency": "eu",
+      "reason": "Parked pending stakeholder sign-off."
+    }
+  ],
+
+  "syntheticFixtures": [
+    {
+      "tenantId": "placemakers_fixture",
+      "displayName": "PlaceMakers Topology Fixture",
+      "industry": "Building Materials & Trade Supplies",
+      "commerceMode": "quote",
+      "dataResidency": "nz"
+    },
+    {
+      "tenantId": "abercrombie_fixture",
+      "displayName": "Abercrombie Topology Fixture",
+      "industry": "Retail Apparel & Fashion",
+      "commerceMode": "cart",
+      "dataResidency": "us"
+    },
+    {
+      "tenantId": "caroma_fixture",
+      "displayName": "Caroma Topology Fixture",
+      "industry": "Commercial & Residential Fixtures",
+      "commerceMode": "quote",
+      "dataResidency": "au"
+    },
+    {
+      "tenantId": "momentec_fixture",
+      "displayName": "Momentec Topology Fixture",
+      "industry": "Custom Sports & Athletic Apparel",
+      "commerceMode": "cart",
+      "dataResidency": "us"
+    },
+    {
+      "tenantId": "dragonshield_fixture",
+      "displayName": "Dragon Shield Topology Fixture",
+      "industry": "Gaming Accessories & Card Sleeves",
+      "commerceMode": "cart",
+      "dataResidency": "eu"
+    }
+  ],
+
+  "syntheticFixtureSuffix": "_fixture",
+  "packsRoot": "packs"
+}
