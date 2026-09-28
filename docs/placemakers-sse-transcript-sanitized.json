@@ -1,7 +1,7 @@
 {
   "metadata": {
     "tenantId": "placemakers",
-    "generatedAt": "2026-09-28T14:57:13.129Z",
+    "generatedAt": "2026-09-28T15:05:21.608Z",
     "evaluationSuiteId": "placemakers_acceptance",
     "allPassed": true
   },
@@ -19,7 +19,7 @@
         {
           "turn": 1,
           "userMessage": "Hi, I'm planning to build a hardwood deck of 5x3 meters",
-          "assistantMessage": "Specifications and items have been updated for Materials Specification.",
+          "assistantMessage": "I found 1 product(s) matching your criteria.",
           "stage": "materials_spec",
           "decision": "invoke_capability",
           "cards": []
@@ -27,7 +27,7 @@
         {
           "turn": 2,
           "userMessage": "Generate the quote for this deck project",
-          "assistantMessage": "Specifications and items have been updated for Quote Delivery & Branch Pickup.",
+          "assistantMessage": "I found 2 product(s) matching your criteria.",
           "stage": "quote_delivery",
           "decision": "invoke_capability",
           "cards": []
@@ -47,7 +47,7 @@
         {
           "turn": 1,
           "userMessage": "I want to do a complete laundry makeover for room size 3x2",
-          "assistantMessage": "Specifications and items have been updated for Multi-Trade Specification.",
+          "assistantMessage": "I found 1 product(s) matching your criteria.",
           "stage": "specification",
           "decision": "invoke_capability",
           "cards": []
@@ -55,7 +55,7 @@
         {
           "turn": 2,
           "userMessage": "Select the standard laundry package and prepare my quote",
-          "assistantMessage": "Specifications and items have been updated for Package Review & Pickup.",
+          "assistantMessage": "I found 2 product(s) matching your criteria.",
           "stage": "bundle_review",
           "decision": "invoke_capability",
           "cards": []
@@ -83,7 +83,7 @@
         {
           "turn": 2,
           "userMessage": "Confirm the bill of materials and create trade quote",
-          "assistantMessage": "Specifications and items have been updated for Trade Account Approval & Sync.",
+          "assistantMessage": "I found 2 product(s) matching your criteria.",
           "stage": "trade_approval",
           "decision": "invoke_capability",
           "cards": []

@@ -431,8 +431,134 @@ async function runTests() {
     console.log('✓ Runtime Service & Controller Cutover Registry verified\n');
   }
 
+  // Test 7: Grounded Products Card Emission
+  {
+    console.log('Test 7: Grounded products card emission with grounded fields only');
+    const decision: Decision = {
+      decisionId: 'dec_search_1',
+      type: 'invoke_capability',
+      payload: {},
+      reason: 'Products found',
+      createdAt: new Date().toISOString(),
+    };
+
+    const outcome = {
+      products: [
+        {
+          sku: 'SKU-REC-1',
+          name: 'Professional Tool Alpha',
+          priceCents: 9900,
+          currency: 'USD',
+          image: 'https://example.com/alpha.jpg',
+          description: 'High durability build',
+        },
+        {
+          sku: 'SKU-REC-2',
+          title: 'Professional Tool Beta',
+          price: 149.00,
+          currency: 'USD',
+          imageUrl: 'https://example.com/beta.jpg',
+        },
+      ],
+    };
+
+    const res = port.compose({ valid: true, outcome }, decision, mockWs, mockRelease);
+    const prodInst = res.uiInstructions.find((i) => i.component === 'products');
+    assert.ok(prodInst, 'Products UI instruction must be present');
+    assert.equal(prodInst?.envelope?.name, 'presentCard');
+    assert.equal(prodInst?.envelope?.arguments.card.cardType, 'products');
+
+    const cardProducts = (prodInst?.envelope?.arguments.card.state as any).products;
+    assert.equal(cardProducts.length, 2);
+    assert.equal(cardProducts[0].sku, 'SKU-REC-1');
+    assert.equal(cardProducts[0].title, 'Professional Tool Alpha');
+    assert.equal(cardProducts[0].price, 99);
+    assert.equal(cardProducts[0].currency, 'USD');
+    assert.equal(cardProducts[0].imageUrl, 'https://example.com/alpha.jpg');
+    assert.equal(cardProducts[0].recommended, true);
+    assert.equal(cardProducts[1].sku, 'SKU-REC-2');
+    assert.equal(cardProducts[1].price, 149);
+    console.log('✓ Grounded products card emitted strictly with grounded fields\n');
+  }
+
+  // Test 8: CARD_TYPES schemas validation for action_button_group and order_confirmation
+  {
+    console.log('Test 8: CARD_TYPES schemas validation for action_button_group and order_confirmation');
+    const { CARD_TYPES } = await import('@journeyax/ui-cards');
+
+    const validActionButtons = {
+      heading: 'Choose Option',
+      actions: [
+        { id: 'opt_1', label: 'Option 1', primary: true },
+        { id: 'opt_2', label: 'Option 2', variant: 'secondary' as const },
+      ],
+    };
+    const parsedActions = CARD_TYPES.action_button_group.state.safeParse(validActionButtons);
+    assert.ok(parsedActions.success, 'action_button_group schema must accept valid actions');
+
+    const validOrder = {
+      orderId: 'ORD-9999',
+      currency: 'USD',
+      totalPriceCents: 15000,
+      total: 150.00,
+      status: 'confirmed',
+      committedAt: new Date().toISOString(),
+    };
+    const parsedOrder = CARD_TYPES.order_confirmation.state.safeParse(validOrder);
+    assert.ok(parsedOrder.success, 'order_confirmation schema must accept valid order state');
+    console.log('✓ action_button_group and order_confirmation CARD_TYPES schemas verified\n');
+  }
+
+  // Test 9: LLM Phrasing Step with Model Gateway & Fallback
+  {
+    console.log('Test 9: LLM phrasing step through Model Gateway with fallback');
+    // Test without model gateway (returns fallback directly)
+    const fallbackMsg = 'Specifications and items have been updated for Assembly Stage.';
+    const phrased1 = await port.phraseMessage(mockRelease, { stage: 'assembly' }, fallbackMsg);
+    assert.equal(phrased1, fallbackMsg, 'Must safely return fallback when model gateway is absent');
+
+    // Test with mock model gateway
+    const mockGateway: any = {
+      execute: async () => ({
+        content: 'Your materials specification has been verified and your quote is ready for review.',
+        latencyMs: 15,
+      }),
+    };
+    const portWithGateway = new PresentationPort(mockGateway);
+    const mockReleaseWithPolicy = {
+      ...mockRelease,
+      modelPolicy: { defaultPolicy: 'default', policies: [] },
+    } as any;
+
+    const phrased2 = await portWithGateway.phraseMessage(
+      mockReleaseWithPolicy,
+      { stage: 'assembly' },
+      fallbackMsg
+    );
+    assert.equal(
+      phrased2,
+      'Your materials specification has been verified and your quote is ready for review.'
+    );
+
+    // Test technical leakage suppression in model output
+    const leakingGateway: any = {
+      execute: async () => ({
+        content: "Stage 'stage_assembly' requires input for Capability 'catalog.search'",
+        latencyMs: 15,
+      }),
+    };
+    const portWithLeakingGateway = new PresentationPort(leakingGateway);
+    const phrased3 = await portWithLeakingGateway.phraseMessage(
+      mockReleaseWithPolicy,
+      { stage: 'assembly' },
+      fallbackMsg
+    );
+    assert.equal(phrased3, fallbackMsg, 'Must suppress technical debug leakages from model output');
+    console.log('✓ LLM phrasing step with verified results & safe fallback verified\n');
+  }
+
   console.log('====================================================');
-  console.log('✓ All 6 UI Standardization & Cutover Tests PASSED!');
+  console.log('✓ All 9 UI Standardization & Cutover Tests PASSED!');
   console.log('====================================================\n');
 }
 

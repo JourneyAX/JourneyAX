@@ -24,6 +24,7 @@ import { CardRenderer } from "@journeyax/ui-cards/react";
 import { cardsApi, projectApi, type Project, type CardListEntry } from "../lib/api";
 import { sampleStateFor } from "../lib/cardSampleState";
 import { CardPuckEditor } from "./CardPuckEditor";
+import { JsonSpecDesigner } from "./JsonSpecDesigner";
 import { puckDataToSpec, specToPuckData, type PuckData } from "../lib/cardPuck/specAdapter";
 import {
   ADVANCED_TOKEN_GROUPS, BRAND_COLORS, BUILTIN_THEMES, CORNER_CHIPS, CORNER_PRESETS,
@@ -84,7 +85,7 @@ const badStyle: React.CSSProperties = { padding: 16, borderRadius: 8, background
 const TABS = [
   { id: "tokens", label: "Theme tokens" },
   { id: "gallery", label: "Card gallery" },
-  { id: "editor", label: "Template editor" },
+  { id: "editor", label: "Component Studio (JSON Lib)" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -849,6 +850,7 @@ function EditorTab({
   onSaved: () => void;
 }) {
   const [selected, setSelected] = useState<CardType>(initialCard);
+  const [designMode, setDesignMode] = useState<"json" | "puck">("json");
   const [parsed, setParsed] = useState<any>(DEFAULT_TEMPLATES.products);
   const [puckData, setPuckData] = useState<PuckData>(() => specToPuckData(DEFAULT_TEMPLATES.products));
   const [editorEpoch, setEditorEpoch] = useState(0);
@@ -1011,54 +1013,112 @@ function EditorTab({
       <div className="panel cards-theme-editor-pane" data-testid="editor-pane-puck">
         <div className="cards-theme-editor-pane-head">
           <div data-testid="editor-heading" className="cards-theme-editor-heading">{CARD_TYPES[selected].title} — {sourceLabel}</div>
-          <button type="button" className="cards-theme-editor-cheat-btn" onClick={() => setShowSpec((v) => !v)}>
-            {showSpec ? "Hide spec" : "View spec"}
-          </button>
-        </div>
-        {showSpec && (
-          <pre className="cards-theme-editor-spec" data-testid="editor-view-spec">{JSON.stringify(parsed, null, 2)}</pre>
-        )}
-        <div className="cards-theme-editor-pane-body cards-theme-editor-puck-body">
-          <CardPuckEditor
-            key={`${selected}-${editorEpoch}`}
-            cardType={selected}
-            data={puckData}
-            onChange={onPuckChange}
-            tokens={tokens}
-            settings={cardSettings[selected] as any}
-          />
-        </div>
-        <div className="cards-theme-editor-foot">
-          {naming ? (
-            <form className="theme-switcher-name" onSubmit={(e) => { e.preventDefault(); void saveNamedTheme(); }}>
-              <input
-                className="field"
-                value={themeName}
-                onChange={(e) => setThemeName(e.target.value)}
-                placeholder="Theme name"
-                aria-label="New theme name"
-                data-testid="editor-theme-name"
-                autoFocus
-                style={{ padding: "7px 10px", fontSize: 13, width: 180 }}
-              />
-              <button type="submit" className="btn y" disabled={busy || problems.length > 0 || !themeName.trim()}>Save</button>
-              <button type="button" className="btn" onClick={() => { setNaming(false); setThemeName(""); }} disabled={busy}>Cancel</button>
-            </form>
-          ) : (
-            <>
-              <button type="button" className="btn y" data-testid="editor-save-draft" onClick={() => void saveDraft()} disabled={busy || problems.length > 0}>Save draft</button>
-              <button type="button" className="btn" data-testid="editor-save-as-theme" onClick={startNaming} disabled={busy || problems.length > 0}>Save as new theme</button>
-            </>
-          )}
-          <button type="button" className="btn" onClick={() => applySpec(DEFAULT_TEMPLATES[selected])}>Copy default into editor</button>
-          <button type="button" className="btn" onClick={revert} disabled={busy || entry?.source !== "tenant"}>Revert to platform default</button>
-          {problems.length > 0 && (
-            <div style={{ ...badStyle, margin: 0, flex: "1 1 100%" }}>
-              {problems.map((p, i) => <div key={i}>• {p}</div>)}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "2px", background: "var(--jx-gray-100)", padding: "2px", borderRadius: "8px", border: "1px solid var(--jx-gray-200)" }}>
+              <button
+                type="button"
+                className={`btn btn-sm${designMode === "json" ? " y" : ""}`}
+                onClick={() => setDesignMode("json")}
+                style={{ fontSize: "11px", padding: "3px 8px", borderRadius: "6px" }}
+                data-testid="mode-json-spec"
+              >
+                💻 JSON Spec Designer
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm${designMode === "puck" ? " y" : ""}`}
+                onClick={() => {
+                  setPuckData(specToPuckData(parsed));
+                  setDesignMode("puck");
+                }}
+                style={{ fontSize: "11px", padding: "3px 8px", borderRadius: "6px" }}
+                data-testid="mode-puck-canvas"
+              >
+                🎨 Visual Drag & Drop
+              </button>
             </div>
-          )}
-          {note && !problems.length && <div style={{ ...badStyle, background: "#E6F4EA", color: "#1F8A4C", borderColor: "#A6E3B8", margin: 0 }}>{note}</div>}
+            {designMode === "puck" && (
+              <button type="button" className="cards-theme-editor-cheat-btn" onClick={() => setShowSpec((v) => !v)}>
+                {showSpec ? "Hide spec" : "View spec"}
+              </button>
+            )}
+          </div>
         </div>
+
+        {designMode === "json" ? (
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <JsonSpecDesigner
+              projectId={projectId}
+              cardType={selected}
+              spec={parsed}
+              tokens={tokens}
+              cardSettings={cardSettings[selected] as any}
+              onSpecChange={(nextSpec) => {
+                setParsed(nextSpec);
+                setPuckData(specToPuckData(nextSpec));
+                setProblems(validateSpecLocally(nextSpec));
+              }}
+              onSaveDraft={saveDraft}
+              onSaveNamedTheme={startNaming}
+              naming={naming}
+              themeName={themeName}
+              setThemeName={setThemeName}
+              onCommitNamedTheme={saveNamedTheme}
+              onCancelNamedTheme={() => { setNaming(false); setThemeName(""); }}
+              onRevert={revert}
+              busy={busy}
+              isOverride={entry?.source === "tenant"}
+              suggestedThemeName={suggestedThemeName}
+            />
+          </div>
+        ) : (
+          <>
+            {showSpec && (
+              <pre className="cards-theme-editor-spec" data-testid="editor-view-spec">{JSON.stringify(parsed, null, 2)}</pre>
+            )}
+            <div className="cards-theme-editor-pane-body cards-theme-editor-puck-body">
+              <CardPuckEditor
+                key={`${selected}-${editorEpoch}`}
+                cardType={selected}
+                data={puckData}
+                onChange={onPuckChange}
+                tokens={tokens}
+                settings={cardSettings[selected] as any}
+              />
+            </div>
+            <div className="cards-theme-editor-foot">
+              {naming ? (
+                <form className="theme-switcher-name" onSubmit={(e) => { e.preventDefault(); void saveNamedTheme(); }}>
+                  <input
+                    className="field"
+                    value={themeName}
+                    onChange={(e) => setThemeName(e.target.value)}
+                    placeholder="Theme name"
+                    aria-label="New theme name"
+                    data-testid="editor-theme-name"
+                    autoFocus
+                    style={{ padding: "7px 10px", fontSize: 13, width: 180 }}
+                  />
+                  <button type="submit" className="btn y" disabled={busy || problems.length > 0 || !themeName.trim()}>Save</button>
+                  <button type="button" className="btn" onClick={() => { setNaming(false); setThemeName(""); }} disabled={busy}>Cancel</button>
+                </form>
+              ) : (
+                <>
+                  <button type="button" className="btn y" data-testid="editor-save-draft" onClick={() => void saveDraft()} disabled={busy || problems.length > 0}>Save draft</button>
+                  <button type="button" className="btn" data-testid="editor-save-as-theme" onClick={startNaming} disabled={busy || problems.length > 0}>Save as new theme</button>
+                </>
+              )}
+              <button type="button" className="btn" onClick={() => applySpec(DEFAULT_TEMPLATES[selected])}>Copy default into editor</button>
+              <button type="button" className="btn" onClick={revert} disabled={busy || entry?.source !== "tenant"}>Revert to platform default</button>
+              {problems.length > 0 && (
+                <div style={{ ...badStyle, margin: 0, flex: "1 1 100%" }}>
+                  {problems.map((p, i) => <div key={i}>• {p}</div>)}
+                </div>
+              )}
+              {note && !problems.length && <div style={{ ...badStyle, background: "#E6F4EA", color: "#1F8A4C", borderColor: "#A6E3B8", margin: 0 }}>{note}</div>}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

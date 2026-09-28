@@ -227,6 +227,50 @@ export const CARD_TYPES = {
       lastReply: z.string().optional(),
     }),
   },
+  action_button_group: {
+    title: 'Action button group',
+    description: 'Interactive button group for user choices or approvals.',
+    state: z.object({
+      heading: z.string().optional(),
+      description: z.string().optional(),
+      actions: z.array(z.object({
+        id: z.string(),
+        label: z.string(),
+        primary: z.boolean().optional(),
+        action: z.string().optional(),
+        payload: z.record(z.string(), z.unknown()).optional(),
+        variant: z.enum(['primary', 'secondary', 'danger', 'outline']).optional(),
+        disabled: z.boolean().optional(),
+      })).optional(),
+      buttons: z.array(z.object({
+        id: z.string(),
+        label: z.string(),
+        primary: z.boolean().optional(),
+        action: z.string().optional(),
+        payload: z.record(z.string(), z.unknown()).optional(),
+        variant: z.enum(['primary', 'secondary', 'danger', 'outline']).optional(),
+        disabled: z.boolean().optional(),
+      })).optional(),
+    }),
+  },
+  order_confirmation: {
+    title: 'Order confirmation',
+    description: 'Confirmed order receipt with order number, summary, items, and next steps.',
+    state: z.object({
+      orderId: z.string(),
+      currency: z.string().optional(),
+      totalPriceCents: z.number().optional(),
+      total: z.number().optional(),
+      status: z.string().optional(),
+      items: z.array(z.unknown()).optional(),
+      lines: z.array(QuoteLine).optional(),
+      totals: QuoteTotals.optional(),
+      committedAt: z.string().optional(),
+      confirmedAt: z.string().optional(),
+      fulfilment: z.record(z.string(), z.unknown()).optional(),
+      notes: z.string().optional(),
+    }),
+  },
 } as const;
 
 export type CardType = keyof typeof CARD_TYPES;

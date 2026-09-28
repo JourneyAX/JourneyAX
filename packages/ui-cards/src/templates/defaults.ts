@@ -304,6 +304,71 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     steps: el('Steps', { items: S('/steps') }, { visible: [S('/steps')] }),
     reply: el('Text', { text: S('/lastReply'), variant: 'body' }, { visible: [S('/lastReply')] }),
   }),
+
+  action_button_group: spec('root', {
+    root: el('Box', { gap: 'sm', pad: 'sm', maxWidth: '600px' }, { children: ['head', 'desc', 'btnList', 'btnListAlt'] }),
+    head: el('Text', { text: S('/heading'), variant: 'subheading' }, { visible: [S('/heading')] }),
+    desc: el('Text', { text: S('/description'), variant: 'small', tone: 'muted' }, { visible: [S('/description')] }),
+    btnList: el('Box', { direction: 'row', gap: 'sm', wrap: true }, {
+      children: ['btnItem'],
+      repeat: { statePath: '/actions', key: 'id' },
+      visible: [S('/actions')],
+    }),
+    btnItem: el('Button', {
+      label: I('label'),
+      variant: I('variant'),
+    }, {
+      on: {
+        press: {
+          action: 'sendMessage',
+          params: { text: I('label'), actionId: I('id') },
+        },
+      },
+    }),
+    btnListAlt: el('Box', { direction: 'row', gap: 'sm', wrap: true }, {
+      children: ['btnItemAlt'],
+      repeat: { statePath: '/buttons', key: 'id' },
+      visible: [S('/buttons')],
+    }),
+    btnItemAlt: el('Button', {
+      label: I('label'),
+      variant: I('variant'),
+    }, {
+      on: {
+        press: {
+          action: 'sendMessage',
+          params: { text: I('label'), actionId: I('id') },
+        },
+      },
+    }),
+  }),
+
+  order_confirmation: spec('root', {
+    root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '640px' }, { children: ['header', 'meta', 'alert', 'linesList', 'foot'] }),
+    header: el('Box', { gap: 'xs' }, { children: ['eyebrow', 'title'] }),
+    eyebrow: el('Text', { text: 'Order Confirmed', variant: 'eyebrow', tone: 'brand' }),
+    title: el('Text', { text: { $template: 'Order #${/orderId}' }, variant: 'title' }),
+    meta: el('Box', { direction: 'row', gap: 'md', align: 'center', wrap: true }, { children: ['statusDot', 'date'] }),
+    statusDot: el('StatusDot', { label: S('/status'), tone: 'success' }),
+    date: el('Text', { text: S('/committedAt'), variant: 'small', tone: 'muted' }, { visible: [S('/committedAt')] }),
+    alert: el('Alert', { title: 'Order placed successfully', text: 'Your order has been recorded and is being processed.', tone: 'success', icon: 'check' }),
+    linesList: el('Box', { gap: 'sm' }, {
+      children: ['lineItem'],
+      repeat: { statePath: '/lines', key: 'sku' },
+      visible: [S('/lines')],
+    }),
+    lineItem: el('Box', { direction: 'row', justify: 'between', align: 'center', pad: 'xs' }, {
+      children: ['itemTitle', 'itemPrice'],
+    }),
+    itemTitle: el('Text', { text: I('title'), variant: 'body' }),
+    itemPrice: el('Price', { amount: I('lineTotal'), currency: S('/currency'), size: 'sm' }),
+    foot: el('Box', { direction: 'row', justify: 'between', align: 'center', pad: 'sm', border: true, radius: 'sm' }, {
+      children: ['totalLabel', 'totalPrice'],
+      visible: [S('/currency')],
+    }),
+    totalLabel: el('Text', { text: 'Total', variant: 'heading' }),
+    totalPrice: el('Price', { amount: S('/total'), currency: S('/currency'), size: 'lg' }),
+  }),
 };
 
 export function getDefaultTemplate(cardType: CardType): Spec {

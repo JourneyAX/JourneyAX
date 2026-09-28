@@ -15,7 +15,8 @@
     "lint": "turbo run lint",
     "inventory:connectors": "tsx scripts/inventory-tenant-connectors.ts",
     "demo:e2e": "tsx scripts/demo-local-e2e.ts",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "cleanup:test-data": "tsx scripts/cleanup-v4-test-data.ts"
   },
   "packageManager": "npm@10.9.2",
   "devDependencies": {

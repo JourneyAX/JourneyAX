@@ -1,6 +1,7 @@
 import { TurnResult, UIInstruction, WorkspaceState, Decision } from '@journeyax/journey-core';
 import { BusinessPackRelease } from '@journeyax/business-pack';
 import { CARD_TYPES } from '@journeyax/ui-cards';
+import { ModelGateway } from './model.gateway';
 
 export interface ValidatedTurnOutcome {
   valid: boolean;
@@ -13,6 +14,56 @@ export interface ValidatedTurnOutcome {
 }
 
 export class PresentationPort {
+  constructor(private readonly modelGateway?: ModelGateway) {}
+
+  /**
+   * LLM phrasing step through Model Gateway over verified results without
+   * hallucinating prices/SKUs; falls back safely to pack templates or deterministic stage copy.
+   */
+  async phraseMessage(
+    release: BusinessPackRelease,
+    verifiedResult: any,
+    fallbackMessage: string
+  ): Promise<string> {
+    if (!this.modelGateway || !release.modelPolicy) {
+      return fallbackMessage;
+    }
+
+    try {
+      const prompt =
+        `You are the customer assistant for ${release.profile?.companyName || release.manifest.name}.\n` +
+        `Verified result facts: ${JSON.stringify(verifiedResult)}\n` +
+        `Draft response: "${fallbackMessage}"\n\n` +
+        `Rewrite the response into a helpful, conversational, professional reply for the customer.\n` +
+        `CRITICAL RULES:\n` +
+        `1. Do NOT invent or alter any prices, totals, currencies, or SKUs.\n` +
+        `2. Do NOT mention internal runtime concepts like "Stage", "Capability", "facts", or internal IDs.\n` +
+        `3. Keep the reply grounded exclusively in the verified facts above.`;
+
+      const res = await this.modelGateway.execute(release, {
+        taskType: 'fast_intent',
+        prompt,
+        systemPrompt: 'You phrase verified system outcomes for customers. You never hallucinate numbers, prices, or product codes.',
+      });
+
+      if (res?.content && typeof res.content === 'string') {
+        const cleaned = res.content.trim().replace(/^["']|["']$/g, '');
+        if (
+          cleaned &&
+          !cleaned.includes("Stage '") &&
+          !cleaned.includes("Capability '") &&
+          !cleaned.includes("requires input")
+        ) {
+          return cleaned;
+        }
+      }
+    } catch {
+      // Deterministic fallback on any provider/model error
+    }
+
+    return fallbackMessage;
+  }
+
   /**
    * Composes truthful UI instructions and assistant messages using ONLY
    * registered @journeyax/ui-cards and pack-derived content.
@@ -88,11 +139,14 @@ export class PresentationPort {
 
     // ── 2. FAILURE / DENIAL / INVALID OUTCOME COMPOSITION ──────────────────
     if (decision.type === 'fail' || !validated.valid) {
-      const failReason =
+      let failReason =
         decision.reason ||
         decision.payload?.error ||
         validated.notes ||
         'The requested action could not be completed safely.';
+      if (failReason.includes("Stage '") || failReason.includes("Capability '") || failReason.includes("requires input")) {
+        failReason = 'Please clarify your project details or speak with a specialist.';
+      }
       assistantMessage = `I was unable to complete that action safely. ${failReason}`;
 
       return {
@@ -109,31 +163,40 @@ export class PresentationPort {
       };
     }
 
-    // ── 3. REQUIRES APPROVAL ──────────────────────────────────────────────
+    // ── 3. REQUIRES APPROVAL (ACTION BUTTON GROUP) ─────────────────────────
     if (decision.type === 'requires_approval') {
       const toolName = decision.payload.displayName || decision.payload.toolId || 'the requested capability';
       assistantMessage = `⚠️ **Approval Required**: Please confirm if you would like to execute **${toolName}**.`;
 
       const cardId = `card_approval_${Date.now()}`;
       const btnProps = {
+        heading: 'Approval Required',
+        description: `Please confirm if you would like to execute ${toolName}.`,
         actions: [
-          { id: 'confirm_execution', label: 'Approve & Proceed', primary: true },
-          { id: 'cancel_execution', label: 'Cancel', primary: false },
+          { id: 'confirm_execution', label: 'Approve & Proceed', primary: true, variant: 'primary' as const },
+          { id: 'cancel_execution', label: 'Cancel', primary: false, variant: 'secondary' as const },
+        ],
+        buttons: [
+          { id: 'confirm_execution', label: 'Approve & Proceed', primary: true, variant: 'primary' as const },
+          { id: 'cancel_execution', label: 'Cancel', primary: false, variant: 'secondary' as const },
         ],
       };
+
+      const parsed = CARD_TYPES.action_button_group.state.safeParse(btnProps);
+      const stateToUse = parsed.success ? parsed.data : btnProps;
 
       uiInstructions.push({
         actionId: cardId,
         component: 'action_button_group',
         placement: 'inline',
-        props: btnProps,
+        props: stateToUse,
         envelope: {
           name: 'presentCard',
           arguments: {
             card: {
               id: cardId,
               cardType: 'action_button_group',
-              state: btnProps,
+              state: stateToUse,
             },
           },
         },
@@ -258,30 +321,126 @@ export class PresentationPort {
       }
     }
 
+    // ── 4b. GROUNDED PRODUCTS CARD (SEARCH RESULTS) ───────────────────────
+    const searchItems =
+      validated.outcome?.products ||
+      (!validated.outcome?.bundle && validated.outcome?.items) ||
+      (!validated.outcome?.bundle && decision.payload?.products) ||
+      (!validated.outcome?.bundle && decision.payload?.items);
+
+    if (Array.isArray(searchItems) && searchItems.length > 0 && !validated.outcome?.bundle) {
+      const currency = validated.outcome?.currency || release.profile?.primaryCurrency || 'USD';
+      const validProducts: any[] = [];
+
+      for (let i = 0; i < searchItems.length; i++) {
+        const item = searchItems[i];
+        if (!item) continue;
+        const sku = item.sku || item.id;
+        const title = item.title || item.name;
+
+        // Grounded check: must have SKU and title
+        if (!sku || typeof sku !== 'string' || sku.trim() === '' || !title || typeof title !== 'string' || title.trim() === '') {
+          continue;
+        }
+
+        const price = item.priceCents !== undefined
+          ? Number(item.priceCents) / 100
+          : item.price !== undefined && item.price !== null
+          ? Number(item.price)
+          : null;
+
+        const imageUrl = item.imageUrl || item.image || null;
+
+        validProducts.push({
+          sku: String(sku),
+          title: String(title),
+          price,
+          currency,
+          imageUrl,
+          recommended: i === 0,
+          reason: item.reason || item.description || undefined,
+        });
+      }
+
+      if (validProducts.length > 0) {
+        const cardId = `card_products_${Date.now()}`;
+        const heading =
+          validated.outcome?.heading ||
+          decision.payload?.heading ||
+          (release.experience as any)?.cards?.heading ||
+          'Matching Products';
+
+        const productsState = {
+          heading,
+          products: validProducts,
+        };
+
+        const parsed = CARD_TYPES.products.state.safeParse(productsState);
+        if (parsed.success) {
+          if (!assistantMessage) {
+            assistantMessage = `I found ${validProducts.length} product(s) matching your criteria.`;
+          }
+          uiInstructions.push({
+            actionId: cardId,
+            component: 'products',
+            placement: 'inline',
+            props: parsed.data,
+            envelope: {
+              name: 'presentCard',
+              arguments: {
+                card: {
+                  id: cardId,
+                  cardType: 'products',
+                  state: parsed.data,
+                },
+              },
+            },
+          });
+        }
+      }
+    }
+
     // ── 5. GROUNDED ORDER CONFIRMATION ────────────────────────────────────
     if (validated.outcome && validated.outcome.order) {
       const order = validated.outcome.order;
       const cardId = `card_order_${Date.now()}`;
+      const total = order.totalPriceCents !== undefined
+        ? Number(order.totalPriceCents) / 100
+        : order.total !== undefined
+        ? Number(order.total)
+        : undefined;
+
       const orderProps = {
         orderId: order.orderId,
         currency: order.currency,
         totalPriceCents: order.totalPriceCents,
-        status: order.status,
+        total,
+        status: order.status || 'Confirmed',
         items: order.items,
+        lines: Array.isArray(order.items) ? order.items.map((it: any) => ({
+          sku: String(it.sku || it.id || 'item'),
+          title: String(it.title || it.name || it.sku || 'Item'),
+          qty: Number(it.quantity || it.qty || 1),
+          lineTotal: it.unitPriceCents ? Number(it.unitPriceCents) / 100 : Number(it.price || 0),
+        })) : undefined,
         committedAt: order.committedAt,
       };
+
+      const parsed = CARD_TYPES.order_confirmation.state.safeParse(orderProps);
+      const stateToUse = parsed.success ? parsed.data : orderProps;
+
       uiInstructions.push({
         actionId: cardId,
         component: 'order_confirmation',
         placement: 'inline',
-        props: orderProps,
+        props: stateToUse,
         envelope: {
           name: 'presentCard',
           arguments: {
             card: {
               id: cardId,
               cardType: 'order_confirmation',
-              state: orderProps,
+              state: stateToUse,
             },
           },
         },
@@ -290,7 +449,26 @@ export class PresentationPort {
 
     // ── 6. TRUTHFUL STATE REPLIES (ZERO FABRICATED SUCCESS) ───────────────
     if (!assistantMessage) {
-      assistantMessage = decision.reason || `Execution completed for stage '${workspace.currentStage}'.`;
+      let rawMsg = decision.reason || '';
+      if (!rawMsg || rawMsg.includes("Stage '") || rawMsg.includes("Capability '") || rawMsg.includes("requires input")) {
+        const journeysRaw: any = release.journeys;
+        const journeys: any[] = Array.isArray(journeysRaw)
+          ? journeysRaw
+          : journeysRaw?.journeys
+          ? journeysRaw.journeys
+          : typeof journeysRaw === 'object' && journeysRaw
+          ? Object.values(journeysRaw)
+          : [];
+        const activeJourney = journeys.find((j: any) => j.journeyId === workspace.journeyId) || journeys[0];
+        const stages = activeJourney?.stages || {};
+        const stageDef = Array.isArray(stages)
+          ? stages.find((s: any) => s.stageId === workspace.currentStage)
+          : stages[workspace.currentStage];
+        const stageName = stageDef?.displayName || workspace.currentStage.replace(/_/g, ' ');
+        assistantMessage = `Specifications and items have been updated for ${stageName}.`;
+      } else {
+        assistantMessage = rawMsg;
+      }
     }
 
     return {

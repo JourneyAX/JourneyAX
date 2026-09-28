@@ -50,6 +50,8 @@ async function forward(req: Request, path: string[]): Promise<Response> {
 
   const headers: Record<string, string> = { 'Content-Type': req.headers.get('content-type') || 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const tenantHdr = req.headers.get('x-tenant-id');
+  if (tenantHdr) headers['x-tenant-id'] = tenantHdr;
 
   const method = req.method.toUpperCase();
   const body = method === 'GET' || method === 'HEAD' ? undefined : await req.text();

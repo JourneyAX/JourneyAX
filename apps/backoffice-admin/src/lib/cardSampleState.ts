@@ -73,6 +73,28 @@ export const SAMPLE_STATE: Record<CardType, Record<string, unknown>> = {
   disclosure: { title: 'Custom print terms', text: 'Custom-printed items are made to order and cannot be returned once production has started.', acceptLabel: 'I understand' },
   suggestions: { chips: ['Show me cheaper options', 'Compare with another brand', 'Add to my quote'] },
   working: { elapsed: 8, label: 'Building your quote', heard: 'One-piece toilet, steady drip, I’ll DIY this myself.', steps: [{ title: 'Searched the catalogue', status: 'done' }, { title: 'Checked stock', status: 'done' }, { title: 'Building your quote', status: 'running' }], lastReply: 'Here’s what I’d start with — all in stock, ready today.' },
+  action_button_group: {
+    heading: 'Approval Required',
+    description: 'Please confirm whether you want to proceed with this operation.',
+    actions: [
+      { id: 'confirm_execution', label: 'Approve & Proceed', primary: true, variant: 'primary' },
+      { id: 'cancel_execution', label: 'Cancel', primary: false, variant: 'secondary' },
+    ],
+    buttons: [
+      { id: 'confirm_execution', label: 'Approve & Proceed', primary: true, variant: 'primary' },
+      { id: 'cancel_execution', label: 'Cancel', primary: false, variant: 'secondary' },
+    ],
+  },
+  order_confirmation: {
+    orderId: 'ORD-SAMPLE-001',
+    currency: 'USD',
+    totalPriceCents: 12500,
+    total: 125.00,
+    status: 'Confirmed',
+    committedAt: new Date().toISOString(),
+    lines: QUOTE_LINES,
+    totals: TOTALS,
+  },
 };
 
 export function sampleStateFor(cardType: CardType): Record<string, unknown> {

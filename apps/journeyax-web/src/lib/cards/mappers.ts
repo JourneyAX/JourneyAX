@@ -309,3 +309,51 @@ export function mapHeroCard(intro: { heroHeadline?: string; heroSubtitle?: strin
     chips: (intro?.starters || []).slice(0, 4).map((s) => s.label),
   };
 }
+
+export function mapActionButtonGroupCard(data: {
+  heading?: string;
+  description?: string;
+  actions?: Array<{ id: string; label: string; primary?: boolean; action?: string; variant?: 'primary' | 'secondary' | 'danger' | 'outline'; disabled?: boolean }>;
+  buttons?: Array<{ id: string; label: string; primary?: boolean; action?: string; variant?: 'primary' | 'secondary' | 'danger' | 'outline'; disabled?: boolean }>;
+}) {
+  return {
+    heading: data.heading,
+    description: data.description,
+    actions: data.actions || data.buttons || [],
+    buttons: data.buttons || data.actions || [],
+  };
+}
+
+export function mapOrderConfirmationCard(data: {
+  orderId: string;
+  currency?: string;
+  totalPriceCents?: number;
+  total?: number;
+  status?: string;
+  items?: any[];
+  lines?: any[];
+  committedAt?: string;
+  confirmedAt?: string;
+  notes?: string;
+}) {
+  const total = data.total !== undefined
+    ? data.total
+    : data.totalPriceCents !== undefined
+    ? data.totalPriceCents / 100
+    : undefined;
+
+  return {
+    orderId: data.orderId,
+    currency: data.currency,
+    totalPriceCents: data.totalPriceCents,
+    total,
+    status: data.status || 'Confirmed',
+    committedAt: data.committedAt || data.confirmedAt || new Date().toISOString(),
+    lines: (data.lines || data.items || []).map((l: any, i: number) => ({
+      sku: l.sku || `item-${i}`,
+      title: l.title || l.name || l.sku || 'Item',
+      lineTotal: l.lineTotal || (l.unitPriceCents ? l.unitPriceCents / 100 : l.price),
+    })),
+    notes: data.notes,
+  };
+}
