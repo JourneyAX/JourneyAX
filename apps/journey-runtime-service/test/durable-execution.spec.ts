@@ -56,7 +56,8 @@ const mockDurablePack: BusinessPackRelease = {
     {
       journeyId: 'durable_journey',
       version: '1.0.0',
-      goals: ['Verify durable execution'],
+      goals: ['Verify durable execution', 'Charge card'],
+      metadata: { triggerIntents: ['charge_card', 'Charge card'] },
       initialStage: 'stage_exec',
       stages: {
         stage_exec: {

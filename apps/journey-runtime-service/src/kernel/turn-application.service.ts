@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   TurnCommand,
   TurnResult,
@@ -5,6 +6,8 @@ import {
   Decision,
   EnvironmentId,
   DuplicateTurnError,
+  Transition,
+  FactsMap,
 } from '@journeyax/journey-core';
 import { ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase } from '@journeyax/database';
@@ -21,6 +24,52 @@ import { PresentationPort } from './presentation.port';
 import { TurnInterpreter } from '../turn/interpret-event';
 import { FactReducer } from '../turn/fact-reducer';
 import { OutcomeValidator } from '../turn/validate-outcome';
+function extractValueByJsonPath(obj: any, path: string): any {
+  if (!obj || !path) return undefined;
+  if (path === 'true') return true;
+  if (path === 'false') return false;
+  if (!isNaN(Number(path))) return Number(path);
+
+  const compMatch = path.match(/^([a-zA-Z0-9_.]+)\s*(>|<|>=|<=|==|===|!=|!==)\s*(.+)$/);
+  if (compMatch) {
+    const [, subPath, op, rawRight] = compMatch;
+    const leftVal = extractValueByJsonPath(obj, subPath);
+    let rightVal: any = rawRight.trim();
+    if (!isNaN(Number(rightVal))) rightVal = Number(rightVal);
+    else if (rightVal === 'true') rightVal = true;
+    else if (rightVal === 'false') rightVal = false;
+    else if (
+      (rightVal.startsWith('"') && rightVal.endsWith('"')) ||
+      (rightVal.startsWith("'") && rightVal.endsWith("'"))
+    ) {
+      rightVal = rightVal.slice(1, -1);
+    }
+    switch (op) {
+      case '>': return leftVal > rightVal;
+      case '<': return leftVal < rightVal;
+      case '>=': return leftVal >= rightVal;
+      case '<=': return leftVal <= rightVal;
+      case '==': return leftVal == rightVal;
+      case '===': return leftVal === rightVal;
+      case '!=': return leftVal != rightVal;
+      case '!==': return leftVal !== rightVal;
+    }
+  }
+
+  const parts = path.split('.');
+  let curr = obj;
+  for (const part of parts) {
+    if (curr === null || curr === undefined) return undefined;
+    if (Array.isArray(curr) && !isNaN(Number(part))) {
+      curr = curr[Number(part)];
+    } else if (typeof curr === 'object' && part in curr) {
+      curr = curr[part];
+    } else {
+      return undefined;
+    }
+  }
+  return curr;
+}
 
 export class TurnApplicationService {
   constructor(
@@ -99,18 +148,43 @@ export class TurnApplicationService {
     );
 
     if (resolution.status === 'ambiguous') {
-      const decision = this.journeyResolver.decide(release, workspace || ({} as any), command, interpretation);
-      return this.presentationPort.compose({ valid: true }, decision, workspace || ({} as any), release);
+      if (!workspace) {
+        workspace = await this.workspaceRepo.getOrCreate(
+          tenantId,
+          envId,
+          workspaceId,
+          'unassigned',
+          'initial',
+          undefined,
+          release.manifest.version || release.manifest.packId
+        );
+      }
+      // Preserve candidate facts already captured
+      workspace = this.factReducer.apply(workspace, interpretation.candidateFacts);
+      const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+      if (decision.type === 'ask_fact' && decision.payload?.targetFact) {
+        workspace.openQuestions = [decision.payload.targetFact];
+      }
+      workspace.decisions.push({
+        ...decision,
+        executedAt: new Date().toISOString(),
+        outcomeStatus: 'pending',
+      });
+      workspace.lastProcessedTurnId = turnId;
+      await this.workspaceRepo.save(workspace);
+
+      const turnResult = this.presentationPort.compose({ valid: true }, decision, workspace, release);
+      if (turnResult.trace) {
+        turnResult.trace.transitions = [];
+        if (interpretation.failure) {
+          (turnResult.trace as any).errors = [interpretation.failure];
+        }
+      }
+      return turnResult;
     }
 
     if (resolution.status !== 'resolved') {
-      const decision: Decision = {
-        decisionId: `dec_${Date.now()}`,
-        type: 'handoff',
-        payload: { error: 'No active journey matched' },
-        reason: (resolution as any).reason || `No matching journey found for tenant='${tenantId}' goal/intent`,
-        createdAt: new Date().toISOString(),
-      };
+      const decision = this.journeyResolver.decide(release, workspace || ({} as any), command, interpretation);
       return this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
     }
 
@@ -156,15 +230,24 @@ export class TurnApplicationService {
       });
     }
 
-    // 4. Resolve Stage Decision & Handle Stage Transitions
-    let decision = this.journeyResolver.decide(release, workspace, command, interpretation);
-    let outcome: any = null;
-    let pendingApproval: any = null;
-    let execResponse: any = null;
-    let executedToolId: string | null = null;
+    const transitions: Transition[] = [];
+    let transitionCount = 0;
+    const MAX_TRANSITIONS = 5;
 
-    // Check if decision is a stage transition
-    if (decision.type === 'transition_stage' && decision.targetStage) {
+    // 4. Resolve Stage Decision & Handle Stage Transitions (with loop cap)
+    let decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+
+    while (decision.type === 'transition_stage' && decision.targetStage && transitionCount < MAX_TRANSITIONS) {
+      transitionCount++;
+      const fromStage = workspace.currentStage;
+      const toStage = decision.targetStage;
+      transitions.push({
+        fromStage,
+        toStage,
+        trigger: 'stage_exit_condition',
+        reason: decision.reason,
+        evaluatedAt: new Date().toISOString(),
+      });
       workspace.decisions.push({
         ...decision,
         executedAt: new Date().toISOString(),
@@ -172,18 +255,36 @@ export class TurnApplicationService {
       });
       workspace = {
         ...workspace,
-        currentStage: decision.targetStage,
+        currentStage: toStage,
         updatedAt: new Date(),
       };
-      // Re-evaluate newly entered stage in the SAME turn!
       decision = this.journeyResolver.decide(release, workspace, command, interpretation);
     }
+
+    let outcome: any = null;
+    let pendingApproval: any = null;
+    let execResponse: any = null;
+    let executedToolId: string | null = null;
 
     // 5. Capability Execution (including in newly entered stage in the same turn)
     if (decision.type === 'invoke_capability' && decision.targetCapability) {
       executedToolId = decision.targetCapability;
       const toolId = executedToolId;
-      const toolIdempotencyKey = command.idempotencyKey || `${command.correlationId}:${toolId}`;
+
+      // Find tool definition
+      const toolDef = release.capabilities?.toolDefinitions?.find((t) => t.toolId === toolId);
+      const isReadTool = !toolDef || toolDef.sideEffect === 'read' || (toolDef as any).sideEffect === undefined;
+
+      let toolIdempotencyKey: string;
+      if (isReadTool) {
+        const inputHash = createHash('sha256')
+          .update(JSON.stringify(decision.payload || {}))
+          .digest('hex')
+          .slice(0, 16);
+        toolIdempotencyKey = `read:${workspace.workspaceId}:${workspace.currentStage}:${toolId}:${inputHash}`;
+      } else {
+        toolIdempotencyKey = command.idempotencyKey || `${command.correlationId}:${toolId}`;
+      }
 
       // Pre-dispatch tool idempotency check
       const existingExec = await this.executionRepo.findExecution(
@@ -278,9 +379,39 @@ export class TurnApplicationService {
             durationMs: execResponse.durationMs,
           });
 
-          // Merge outcome facts if capability returned structured facts
+          // 1. Merge outcome facts if capability returned structured facts
           if (outcome && typeof outcome === 'object' && outcome.facts) {
             workspace = this.factReducer.apply(workspace, outcome.facts);
+          }
+
+          // 2. Generic declared output→fact mapping on tool binding / stage binding / tool definition
+          const stageBinding = release.capabilities?.stageBindings?.find(
+            (sb) => sb.journeyId === activeJourney.journeyId && sb.stageId === workspace.currentStage
+          );
+          const stageTool = stageBinding?.tools?.find((t) => t.toolId === toolId);
+          const toolBinding = release.capabilities?.toolBindings?.find((tb) => tb.toolId === toolId);
+          const outputFactMapping: Record<string, string> =
+            (stageTool as any)?.outputFactMapping ||
+            (toolBinding as any)?.outputFactMapping ||
+            (toolDef as any)?.outputFactMapping ||
+            {};
+
+          if (outputFactMapping && Object.keys(outputFactMapping).length > 0 && outcome) {
+            const mappedFacts: FactsMap = {};
+            for (const [factKey, jsonPath] of Object.entries(outputFactMapping)) {
+              const val = extractValueByJsonPath(outcome, jsonPath);
+              if (val !== undefined && val !== null) {
+                mappedFacts[factKey] = {
+                  value: val,
+                  source: 'capability',
+                  confidence: 1.0,
+                  extractedAt: new Date().toISOString(),
+                };
+              }
+            }
+            if (Object.keys(mappedFacts).length > 0) {
+              workspace = this.factReducer.apply(workspace, mappedFacts);
+            }
           }
         } else {
           await this.executionRepo.recordExecution({
@@ -289,6 +420,35 @@ export class TurnApplicationService {
             error: execResponse.error,
             durationMs: execResponse.durationMs,
           });
+        }
+      }
+
+      // After capability execution and fact reduction, check if new facts trigger stage transitions!
+      if (execResponse?.status === 'success') {
+        let postCapDecision = this.journeyResolver.decide(release, workspace, command, interpretation);
+        while (postCapDecision.type === 'transition_stage' && postCapDecision.targetStage && transitionCount < MAX_TRANSITIONS) {
+          transitionCount++;
+          const fromStage = workspace.currentStage;
+          const toStage = postCapDecision.targetStage;
+          transitions.push({
+            fromStage,
+            toStage,
+            trigger: 'capability_produced_facts',
+            reason: postCapDecision.reason,
+            evaluatedAt: new Date().toISOString(),
+          });
+          workspace.decisions.push({
+            ...postCapDecision,
+            executedAt: new Date().toISOString(),
+            outcomeStatus: 'success',
+          });
+          workspace = {
+            ...workspace,
+            currentStage: toStage,
+            updatedAt: new Date(),
+          };
+          postCapDecision = this.journeyResolver.decide(release, workspace, command, interpretation);
+          decision = postCapDecision;
         }
       }
     }
@@ -339,19 +499,29 @@ export class TurnApplicationService {
       release
     );
 
-    if (release.modelPolicy && turnResult.trace) {
-      try {
-        const route = this.modelGateway.router.resolveModel('fast_intent', release, {
-          policyRef: resolvedAgentInfo?.modelPolicyRef,
-        });
-        turnResult.trace.modelRoute = {
-          policyId: route.policyId,
-          provider: route.provider,
-          model: route.model,
-          dataResidency: route.dataResidency,
-        };
-      } catch (err: any) {
-        // Fallback or warning if credentials unconfigured in test
+    if (turnResult.trace) {
+      turnResult.trace.transitions = transitions;
+
+      if ((interpretation as any)?.modelRoute) {
+        turnResult.trace.modelRoute = (interpretation as any).modelRoute;
+      } else if (release.modelPolicy) {
+        try {
+          const route = this.modelGateway.router.resolveModel('fast_intent', release, {
+            policyRef: resolvedAgentInfo?.modelPolicyRef,
+          });
+          turnResult.trace.modelRoute = {
+            policyId: route.policyId,
+            provider: route.provider,
+            model: route.model,
+            dataResidency: route.dataResidency,
+          };
+        } catch (err: any) {
+          // Fallback or warning if credentials unconfigured in test
+        }
+      }
+
+      if (interpretation.failure) {
+        turnResult.trace.errors = [interpretation.failure];
       }
     }
 

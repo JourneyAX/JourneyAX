@@ -96,7 +96,11 @@ export function findMissingRequiredFacts(stage: JourneyStage, facts: FactsMap): 
  * Evaluates stage exit conditions in order.
  * First condition that passes triggers the transition to `nextStage`.
  */
-export function evaluateStageExit(stage: JourneyStage, facts: FactsMap): TransitionEvaluationResult {
+export function evaluateStageExit(
+  stage: JourneyStage,
+  facts: FactsMap,
+  releaseRules?: any[]
+): TransitionEvaluationResult {
   if (!stage.exitConditions || stage.exitConditions.length === 0) {
     return { shouldTransition: false };
   }
@@ -120,6 +124,21 @@ export function evaluateStageExit(stage: JourneyStage, facts: FactsMap): Transit
       const exprPassed = evaluateControlledExpression(condition.ruleExpression, facts);
       if (!exprPassed) {
         matched = false;
+      }
+    }
+
+    if (matched && condition.conditionRuleRef && Array.isArray(releaseRules)) {
+      const referencedRule = releaseRules.find(
+        (r) => (r.ruleId && r.ruleId === condition.conditionRuleRef) || (r.name && r.name === condition.conditionRuleRef)
+      );
+      if (referencedRule) {
+        const ruleExpr = referencedRule.condition?.ruleExpression || referencedRule.expression;
+        if (ruleExpr) {
+          const rulePassed = evaluateControlledExpression(ruleExpr, facts);
+          if (!rulePassed) {
+            matched = false;
+          }
+        }
       }
     }
 
@@ -180,7 +199,7 @@ export function evaluateControlledExpression(expression: string, facts: FactsMap
   try {
     const trimmed = expression.trim();
     // Match: path (op) literal
-    const match = trimmed.match(/^([a-zA-Z0-9_.]+)\s*(<=|>=|==|!=|<|>)\s*(.+)$/);
+    const match = trimmed.match(/^([a-zA-Z0-9_.]+)\s*(<=|>=|===|!==|==|!=|<|>)\s*(.+)$/);
     if (!match) return false;
 
     const [, path, operator, rawLiteral] = match;
@@ -203,6 +222,10 @@ export function evaluateControlledExpression(expression: string, facts: FactsMap
     }
 
     switch (operator) {
+      case '===':
+        return resolvedValue === targetLiteral;
+      case '!==':
+        return resolvedValue !== targetLiteral;
       case '==':
         return resolvedValue == targetLiteral;
       case '!=':

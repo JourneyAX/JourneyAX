@@ -27,7 +27,7 @@ function resolvePath(obj: any, path: string): any {
 
 function evaluateSafeExpression(expr: string, context: Record<string, any>): boolean {
   try {
-    const match = expr.trim().match(/^([a-zA-Z0-9_.]+)\s*(<=|>=|==|!=|<|>)\s*(.+)$/);
+    const match = expr.trim().match(/^([a-zA-Z0-9_.]+)\s*(<=|>=|===|!==|==|!=|<|>)\s*(.+)$/);
     if (!match) return false;
     const [, path, op, rawVal] = match;
     const left = resolvePath(context, path);
@@ -45,6 +45,10 @@ function evaluateSafeExpression(expr: string, context: Record<string, any>): boo
     }
 
     switch (op) {
+      case '===':
+        return left === right;
+      case '!==':
+        return left !== right;
       case '==':
         return left == right;
       case '!=':
@@ -142,14 +146,31 @@ export class OutcomeValidator {
     };
 
     const packRules = release.rules || [];
+    const notesList: string[] = [];
+
     for (const rule of packRules) {
+      // Scope rules by appliesTo { toolIds, stageIds, journeyIds }
+      const appliesTo = (rule as any).appliesTo;
+      if (appliesTo) {
+        if (Array.isArray(appliesTo.toolIds) && appliesTo.toolIds.length > 0) {
+          if (!toolId || !appliesTo.toolIds.includes(toolId)) continue;
+        }
+        if (Array.isArray(appliesTo.stageIds) && appliesTo.stageIds.length > 0) {
+          if (!workspace.currentStage || !appliesTo.stageIds.includes(workspace.currentStage)) continue;
+        }
+        if (Array.isArray(appliesTo.journeyIds) && appliesTo.journeyIds.length > 0) {
+          if (!workspace.journeyId || !appliesTo.journeyIds.includes(workspace.journeyId)) continue;
+        }
+      }
+
       const expr = rule.condition?.ruleExpression || (rule as any).expression;
       if (expr && typeof expr === 'string') {
-        const passed = evaluateSafeExpression(expr, evalContext);
+        // Record appliedRules only for rules actually evaluated
         appliedRules.push(rule.ruleId || rule.name || 'declarative_rule');
+        const passed = evaluateSafeExpression(expr, evalContext);
 
         if (!passed) {
-          const action = rule.action || 'deny';
+          const action = (rule as any).action || 'deny';
           if (action === 'deny') {
             return {
               valid: false,
@@ -161,45 +182,24 @@ export class OutcomeValidator {
                 rule.description ||
                 `Capability outcome violated business rule '${rule.ruleId || rule.name}'.`,
             };
+          } else if (action === 'require_approval') {
+            return {
+              valid: false,
+              status: 'pending',
+              outcome,
+              appliedRules,
+              notes:
+                rule.remediationMessage ||
+                rule.description ||
+                `Capability outcome requires business approval per rule '${rule.ruleId || rule.name}'.`,
+            };
+          } else if (action === 'warn') {
+            const warningMsg =
+              rule.remediationMessage ||
+              rule.description ||
+              `Warning: Capability outcome flagged by rule '${rule.ruleId || rule.name}'.`;
+            notesList.push(warningMsg);
           }
-        }
-      }
-    }
-
-    // 3. Dynamic Budget Constraint Evaluation from Workspace State (if present)
-    const budgetFact = workspace.facts?.['budget']?.value;
-    if (budgetFact && typeof budgetFact === 'object' && budgetFact.amountCents) {
-      const maxBudget = budgetFact.amountCents;
-
-      if (outcome.bundle && typeof outcome.bundle.totalPriceCents === 'number') {
-        appliedRules.push('total_bundle_budget');
-
-        if (outcome.bundle.totalPriceCents > maxBudget) {
-          // Check for compliant alternatives
-          if (outcome.alternatives && Array.isArray(outcome.alternatives)) {
-            const fittingAlt = outcome.alternatives.find(
-              (alt: any) => alt.bundle && alt.bundle.totalPriceCents <= maxBudget
-            );
-            if (fittingAlt) {
-              return {
-                valid: true,
-                status: 'success',
-                outcome: fittingAlt,
-                appliedRules,
-                remediationApplied: true,
-                notes: 'Primary recommendation exceeded budget; selected verified compliant alternative.',
-              };
-            }
-          }
-
-          const currency = outcome.bundle.currency || '';
-          return {
-            valid: false,
-            status: 'failed',
-            outcome: null,
-            appliedRules,
-            notes: `Bundle total ${outcome.bundle.totalPriceCents / 100} ${currency} exceeds budget ceiling of ${maxBudget / 100} ${currency}.`,
-          };
         }
       }
     }
@@ -209,6 +209,7 @@ export class OutcomeValidator {
       status: 'success',
       outcome,
       appliedRules,
+      notes: notesList.length > 0 ? notesList.join('; ') : undefined,
     };
   }
 }

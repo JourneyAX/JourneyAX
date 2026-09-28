@@ -40,6 +40,52 @@ This document records cross-agent interface agreements and schema contracts betw
 
 ## Agent 2 (Durable Runtime & Journey Engine) -> Agent 3 (Business Packs & Studio)
 
-*(To be filled during Agent 2 execution)*
-- `capabilityPlan` schema contract on stage definition.
-- `outputFactMapping` schema contract on tool binding.
+1. **Declarative Stage Capability Planning (`capabilityPlan`)**:
+   - `packages/journey-core/src/types.ts` and `packages/business-pack/src/schemas/journey.schema.ts` now support `capabilityPlan` on each `JourneyStage`:
+     ```json
+     "capabilityPlan": [
+       {
+         "toolId": "catalog.search",
+         "when": {
+           "factsMissing": ["catalog_items"],
+           "factsPresent": ["deck_dimensions"]
+         },
+         "producesFacts": ["catalog_items"]
+       },
+       {
+         "toolId": "trade.quote_create",
+         "when": {
+           "factsPresent": ["catalog_items"],
+           "factsMissing": ["quote_generated"]
+         },
+         "producesFacts": ["quote_generated", "bom_confirmed"]
+       }
+     ]
+     ```
+   - Evaluation: Items are evaluated in array order. The first item whose `when` condition passes and whose `producesFacts` are not yet all present in `workspace.facts` is chosen for invocation.
+   - Fallback: If no `capabilityPlan` is declared, `allowedCapabilities` is evaluated sequentially, checking whether a capability's mapped output facts are already present before selecting the next capability.
+
+2. **Output-to-Fact Mapping (`outputFactMapping`) on Tool Bindings**:
+   - Tool bindings (in `capabilities.toolBindings` or within `stageBindings[].tools[]`) now support `outputFactMapping: Record<string, string>`:
+     ```json
+     {
+       "toolId": "trade.quote_create",
+       "outputFactMapping": {
+         "quote_generated": "quoteId",
+         "bom_confirmed": "confirmed"
+       }
+     }
+     ```
+   - Values are JSON paths (e.g. `'quoteId'`, `'items.0.sku'`, `'summary.total'`).
+   - When the capability completes successfully and passes validation, `TurnApplicationService` extracts each path from the capability outcome, asserting it into `workspace.facts` with `source: 'capability'` and `confidence: 1.0`.
+
+3. **Stage Rules and `appliesTo`**:
+   - `validate-outcome.ts` now evaluates rules filtered strictly by `appliesTo { toolIds, stageIds, journeyIds }`.
+   - Supported actions: `deny`, `require_approval`, `warn`.
+   - Strict equality operators `===` and `!==` are now fully supported in rule expressions.
+   - The hardcoded 'budget' fact key has been removed from core. Packs should declare budget compliance as a pack rule using `appliesTo`.
+
+4. **Journey Matching & Fallbacks**:
+   - Matching is strictly based on pack-declared `triggerIntents`, `goals`, `displayName`, and interpreted intent. Capability name fuzzing and 4-char prefix heuristics have been completely removed.
+   - Greetings ("hi", "hello", etc.) or unrecognised requests trigger pack-declared welcome decisions or fail closed, rather than technical internal handoff messages.
+

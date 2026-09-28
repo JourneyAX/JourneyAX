@@ -7,6 +7,9 @@ import {
   normalizeFactRequirements,
   findMissingRequiredFacts,
   evaluateStageExit,
+  evaluateControlledExpression,
+  areAllFactsPresent,
+  areAnyFactsPresent,
   TurnCommand,
 } from '@journeyax/journey-core';
 import { BusinessPackRelease } from '@journeyax/business-pack';
@@ -32,8 +35,45 @@ export class JourneyResolver {
       return { status: 'no_match', reason: 'Release contains no journeys' };
     }
 
-    // 1. If workspace already has a journey pinned, require it to exist in the pack or fail closed
+    const rawMessage = (command?.message || (command as any)?.userInput || '').trim().toLowerCase();
+    const targetIntent = (interpretation?.intent || (command as any)?.intent || '').trim();
+
+    // Check if user answered selected_journey fact
+    const selectedJourneyFact =
+      workspace?.facts?.['selected_journey']?.value ||
+      interpretation?.candidateFacts?.['selected_journey']?.value ||
+      (command as any)?.inputFacts?.selected_journey;
+    if (selectedJourneyFact) {
+      const match = release.journeys.find(
+        (j) =>
+          j.journeyId === selectedJourneyFact ||
+          j.displayName === selectedJourneyFact ||
+          j.journeyId.toLowerCase() === String(selectedJourneyFact).toLowerCase() ||
+          (j.displayName && j.displayName.toLowerCase() === String(selectedJourneyFact).toLowerCase())
+      );
+      if (match) return { status: 'resolved', journey: match };
+    }
+
+    // 1. Check for intentional journey switch if workspace already has a pinned journey
+    // (a pack-declared switch policy allows customer to explicitly switch journeys)
     if (workspace && workspace.journeyId) {
+      const allowSwitch =
+        (release.conversationPolicy as any)?.allowJourneySwitch !== false;
+
+      if (allowSwitch && rawMessage.length > 0) {
+        // Check if customer explicitly requested another journey
+        const otherJourneys = release.journeys.filter((j) => j.journeyId !== workspace.journeyId);
+        for (const other of otherJourneys) {
+          const switchRequested =
+            (other.displayName && rawMessage.includes(other.displayName.toLowerCase())) ||
+            rawMessage.includes(other.journeyId.toLowerCase()) ||
+            (rawMessage.includes('switch') && other.goals.some((g) => rawMessage.includes(g.toLowerCase())));
+          if (switchRequested) {
+            return { status: 'resolved', journey: other };
+          }
+        }
+      }
+
       const match = release.journeys.find((j) => j.journeyId === workspace.journeyId);
       if (match) return { status: 'resolved', journey: match };
       return {
@@ -53,17 +93,16 @@ export class JourneyResolver {
       };
     }
 
-    // 3. Goal/Policy-based semantic matching across journeys using typed interpreted intent
-    const targetIntent = interpretation?.intent || (command as any)?.intent;
-    const rawMessage = (command?.message || (command as any)?.userInput || '').trim().toLowerCase();
-    const matchingJourneys: JourneyDefinition[] = [];
+    // 3. Goal/Policy-based semantic matching using pack-declared triggerIntents, goal phrases, and interpreter intent
+    // (Drop capability-name keywords and prefix fuzzing. Score matches and resolve when top score beats runner-up by a margin.)
+    const scoredJourneys: { journey: JourneyDefinition; score: number }[] = [];
 
     for (const j of release.journeys) {
-      let matched = false;
+      let score = 0;
 
       // A. Match against explicit journeyId
       if (targetIntent && j.journeyId.toLowerCase() === targetIntent.toLowerCase()) {
-        matched = true;
+        score += 100;
       }
 
       // B. Match against explicit triggerIntents in pack routing policy or journey metadata
@@ -73,82 +112,92 @@ export class JourneyResolver {
         j.metadata?.routingPolicy?.intents ||
         [];
       if (targetIntent && triggerIntents.some((ti) => ti.toLowerCase() === targetIntent.toLowerCase())) {
-        matched = true;
+        score += 80;
       }
 
       // C. Match against journey goals
       if (targetIntent && j.goals.some((g) => g.toLowerCase().includes(targetIntent.toLowerCase()))) {
-        matched = true;
+        score += 40;
       }
 
-      // D. Direct phrase match against triggerIntents or goal keywords from message
-      if (!matched && rawMessage.length > 0) {
-        if (triggerIntents.some((ti) => rawMessage.includes(ti.toLowerCase()))) {
-          matched = true;
-        } else {
-          // Check keywords in goals, displayName, and journeyId
-          const journeyKeywords = new Set<string>();
-          for (const g of j.goals) {
-            for (const w of g.toLowerCase().split(/[^a-z0-9]+/)) {
-              if (w.length > 3) journeyKeywords.add(w);
-            }
+      // D. Direct phrase match against triggerIntents or goal phrases from customer message
+      if (rawMessage.length > 0) {
+        for (const ti of triggerIntents) {
+          const lowerTi = ti.toLowerCase();
+          if (rawMessage === lowerTi) {
+            score += 70;
+          } else if (rawMessage.includes(lowerTi)) {
+            score += 50;
           }
-          if (j.displayName) {
-            for (const w of j.displayName.toLowerCase().split(/[^a-z0-9]+/)) {
-              if (w.length > 3) journeyKeywords.add(w);
-            }
-          }
-          for (const w of j.journeyId.toLowerCase().split(/[^a-z0-9]+/)) {
-            if (w.length > 3) journeyKeywords.add(w);
-          }
-          for (const s of Object.values(j.stages || {})) {
-            for (const cap of s.allowedCapabilities || []) {
-              for (const w of cap.toLowerCase().split(/[^a-z0-9]+/)) {
-                if (w.length > 3) journeyKeywords.add(w);
-              }
-            }
-          }
+        }
 
-          const msgWords = rawMessage.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
-          let matchCount = 0;
-          for (const mw of msgWords) {
-            for (const jw of journeyKeywords) {
-              if (
-                mw === jw ||
-                (mw.length >= 4 && jw.startsWith(mw.slice(0, 4))) ||
-                (jw.length >= 4 && mw.startsWith(jw.slice(0, 4)))
-              ) {
-                matchCount++;
-                break;
-              }
-            }
+        for (const g of j.goals) {
+          const lowerG = g.toLowerCase();
+          if (rawMessage.includes(lowerG)) {
+            score += 40;
           }
-          if (matchCount >= 1) {
-            matched = true;
+        }
+
+        if (j.displayName && rawMessage.includes(j.displayName.toLowerCase())) {
+          score += 50;
+        }
+
+        // Token match on pack-declared goals, displayName, and journeyId (NO capability names! NO 4-char prefix fuzzing!)
+        const msgTokens = rawMessage.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+        const goalTokens = new Set<string>();
+        for (const g of j.goals) {
+          for (const t of g.toLowerCase().split(/[^a-z0-9]+/)) {
+            if (t.length > 2) goalTokens.add(t);
+          }
+        }
+        if (j.displayName) {
+          for (const t of j.displayName.toLowerCase().split(/[^a-z0-9]+/)) {
+            if (t.length > 2) goalTokens.add(t);
+          }
+        }
+        for (const t of j.journeyId.toLowerCase().split(/[^a-z0-9]+/)) {
+          if (t.length > 2) goalTokens.add(t);
+        }
+        for (const mt of msgTokens) {
+          for (const gt of goalTokens) {
+            if (mt === gt || (mt.length >= 4 && gt.startsWith(mt)) || (gt.length >= 4 && mt.startsWith(gt))) {
+              score += 10;
+              break;
+            }
           }
         }
       }
 
-      if (matched) {
-        matchingJourneys.push(j);
+      if (score > 0) {
+        scoredJourneys.push({ journey: j, score });
       }
     }
 
-    if (matchingJourneys.length === 1) {
-      return { status: 'resolved', journey: matchingJourneys[0] };
+    scoredJourneys.sort((a, b) => b.score - a.score);
+
+    if (scoredJourneys.length === 1 && scoredJourneys[0].score >= 10) {
+      return { status: 'resolved', journey: scoredJourneys[0].journey };
     }
 
-    if (matchingJourneys.length > 1) {
+    if (scoredJourneys.length > 1) {
+      const top = scoredJourneys[0];
+      const runnerUp = scoredJourneys[1];
+      // Resolve when top score beats runner-up by a clear margin
+      if (top.score >= runnerUp.score + 20 && top.score >= 30) {
+        return { status: 'resolved', journey: top.journey };
+      }
       return {
         status: 'ambiguous',
-        matches: matchingJourneys,
-        reason: `Ambiguous match: found ${matchingJourneys.length} matching journeys for intent '${targetIntent || rawMessage}'`,
+        matches: scoredJourneys.map((s) => s.journey),
+        reason: `Ambiguous match: multiple matching journeys for intent '${targetIntent || rawMessage}' (scores: ${scoredJourneys.map((s) => `${s.journey.journeyId}=${s.score}`).join(', ')})`,
       };
     }
 
+    // Check if greeting or empty:
+    const isGreeting = ['hi', 'hello', 'hey', 'kia ora', 'good morning', 'good afternoon', 'good evening', 'help'].includes(rawMessage);
     return {
       status: 'no_match',
-      reason: `No matching journey found in pack '${release.manifest.packId}' for intent '${targetIntent || rawMessage}'`,
+      reason: isGreeting ? 'greeting' : `No matching journey found in pack '${release.manifest.packId}' for intent '${targetIntent || rawMessage}'`,
     };
   }
 
@@ -168,9 +217,10 @@ export class JourneyResolver {
 
   /**
    * Evaluates the next canonical state decision:
-   * 1. Checks structured fact requirements, skips blocked dependencies, asks ONE highest-priority eligible question.
-   * 2. Checks stage exit conditions (optional facts do not block).
-   * 3. Validates capability inputs against schema with fail-closed checks, never passing unmapped facts.
+   * 1. Checks stage handoffPolicy and rule-first policy.
+   * 2. Checks structured fact requirements, skips blocked dependencies, asks ONE highest-priority eligible question.
+   * 3. Checks stage exit conditions (conditionRuleRef evaluated against release.rules).
+   * 4. Evaluates capability execution via capabilityPlan or allowedCapabilities, advancing when outputs are present.
    */
   decide(
     release: BusinessPackRelease,
@@ -198,6 +248,23 @@ export class JourneyResolver {
     }
 
     if (resolution.status === 'no_match') {
+      if (resolution.reason === 'greeting' || !command?.message) {
+        const welcomeMessage =
+          (release as any).experience?.welcomeMessage ||
+          (release.vocabulary as any)?.welcomeMessage ||
+          `Welcome to ${release.profile?.companyName || 'our services'}. How can we assist you with your project today?`;
+        return {
+          decisionId: `dec_${Date.now()}`,
+          type: 'ask_fact',
+          payload: {
+            targetFact: 'selected_journey',
+            question: welcomeMessage,
+            options: release.journeys.map((j) => j.displayName || j.journeyId),
+          },
+          reason: 'Greeting received; presenting welcome decision',
+          createdAt: new Date().toISOString(),
+        };
+      }
       return {
         decisionId: `dec_${Date.now()}`,
         type: 'handoff',
@@ -219,6 +286,43 @@ export class JourneyResolver {
         reason: `Stage '${currentStageId}' does not exist in journey '${journey.journeyId}'`,
         createdAt: new Date().toISOString(),
       };
+    }
+
+    // 0a. Check handoffPolicy if declared
+    if (currentStage.handoffPolicy?.allowed && currentStage.handoffPolicy.conditionRef) {
+      const handoffRule = release.rules?.find(
+        (r) => r.ruleId === currentStage.handoffPolicy?.conditionRef || r.name === currentStage.handoffPolicy?.conditionRef
+      );
+      if (handoffRule) {
+        const ruleExpr = handoffRule.condition?.ruleExpression || (handoffRule as any).expression;
+        if (ruleExpr && evaluateControlledExpression(ruleExpr, workspace.facts)) {
+          return {
+            decisionId: `dec_${Date.now()}`,
+            type: 'handoff',
+            payload: { targetRole: currentStage.handoffPolicy.targetRole },
+            reason: `Stage handoff triggered by condition rule '${currentStage.handoffPolicy.conditionRef}'`,
+            createdAt: new Date().toISOString(),
+          };
+        }
+      }
+    }
+
+    // 0b. NextDecisionPolicy === 'rule-first': evaluate stage exit conditions before checking missing facts
+    if (currentStage.nextDecisionPolicy === 'rule-first') {
+      const exitEvaluation = evaluateStageExit(currentStage, workspace.facts, release.rules);
+      if (exitEvaluation.shouldTransition && exitEvaluation.nextStage) {
+        return {
+          decisionId: `dec_${Date.now()}`,
+          type: 'transition_stage',
+          targetStage: exitEvaluation.nextStage,
+          payload: {
+            fromStage: currentStageId,
+            toStage: exitEvaluation.nextStage,
+          },
+          reason: exitEvaluation.reason || `Rule-first policy triggered transition to '${exitEvaluation.nextStage}'`,
+          createdAt: new Date().toISOString(),
+        };
+      }
     }
 
     // 1. Enforce Structured Fact Requirements with Priority, Dependencies, and Optional Facts
@@ -310,7 +414,7 @@ export class JourneyResolver {
 
     // 2. Evaluate stage exit transitions now that required facts are satisfied
     // (Optional facts do NOT block stage exit)
-    const exitEvaluation = evaluateStageExit(currentStage, workspace.facts);
+    const exitEvaluation = evaluateStageExit(currentStage, workspace.facts, release.rules);
     if (exitEvaluation.shouldTransition && exitEvaluation.nextStage) {
       return {
         decisionId: `dec_${Date.now()}`,
@@ -325,10 +429,74 @@ export class JourneyResolver {
       };
     }
 
-    // 3. Evaluate capability execution in the current stage with strict schema mapping & validation
-    if (currentStage.allowedCapabilities && currentStage.allowedCapabilities.length > 0) {
-      const targetCapability = currentStage.allowedCapabilities[0];
+    // 3. Evaluate capability execution in the current stage via capabilityPlan or allowedCapabilities
+    let targetCapability: string | null = null;
 
+    if (currentStage.capabilityPlan && currentStage.capabilityPlan.length > 0) {
+      for (const planItem of currentStage.capabilityPlan) {
+        const { toolId, when, producesFacts } = planItem;
+        // If all produced facts are already present in workspace.facts, this tool already ran successfully
+        if (Array.isArray(producesFacts) && producesFacts.length > 0) {
+          const allProducedPresent = producesFacts.every((fk) => {
+            const fact = workspace.facts[fk];
+            return fact !== undefined && fact.value !== undefined && fact.value !== null && fact.value !== '';
+          });
+          if (allProducedPresent) continue;
+        }
+
+        // Check when condition
+        if (when) {
+          if (typeof when === 'string') {
+            const passed = evaluateControlledExpression(when, workspace.facts);
+            if (!passed) continue;
+          } else if (typeof when === 'object') {
+            if (when.factsPresent && !areAllFactsPresent(workspace.facts, when.factsPresent)) {
+              continue;
+            }
+            if (when.factsMissing && areAnyFactsPresent(workspace.facts, when.factsMissing)) {
+              continue;
+            }
+            if (when.ruleExpression && !evaluateControlledExpression(when.ruleExpression, workspace.facts)) {
+              continue;
+            }
+          }
+        }
+
+        targetCapability = toolId;
+        break;
+      }
+    }
+
+    if (!targetCapability && currentStage.allowedCapabilities && currentStage.allowedCapabilities.length > 0) {
+      // Evaluate allowedCapabilities in order; find first tool whose mapped output facts are not all present
+      for (const capId of currentStage.allowedCapabilities) {
+        const stageBinding = release.capabilities?.stageBindings?.find(
+          (sb) => sb.journeyId === journey.journeyId && sb.stageId === currentStageId
+        );
+        const stageTool = stageBinding?.tools?.find((t) => t.toolId === capId);
+        const toolBinding = release.capabilities?.toolBindings?.find((tb) => tb.toolId === capId);
+        const outputMap: Record<string, string> =
+          (stageTool as any)?.outputFactMapping || (toolBinding as any)?.outputFactMapping || {};
+        const mappedKeys = Object.keys(outputMap);
+        if (mappedKeys.length > 0) {
+          const allOutputsPresent = mappedKeys.every((fk) => {
+            const f = workspace.facts[fk];
+            return f !== undefined && f.value !== undefined && f.value !== null && f.value !== '';
+          });
+          if (allOutputsPresent) {
+            // This capability's outputs are already present, check next capability
+            continue;
+          }
+        }
+        targetCapability = capId;
+        break;
+      }
+      if (!targetCapability) {
+        targetCapability = currentStage.allowedCapabilities[0];
+      }
+    }
+
+    if (targetCapability) {
       // Find tool definition
       const toolDef = release.capabilities?.toolDefinitions?.find((t) => t.toolId === targetCapability);
       if (!toolDef) {
@@ -446,7 +614,38 @@ export class JourneyResolver {
       };
     }
 
-    // 4. Default: Stage requirements satisfied, waiting for user input or goal completed
+    // 4. Optional Facts: if requirements and capabilities are satisfied, check optional facts
+    if (currentStage.optionalFacts && currentStage.optionalFacts.length > 0) {
+      const normalizedOptional = normalizeFactRequirements(currentStage.optionalFacts);
+      const missingOptional = normalizedOptional.filter((r) => {
+        const fact = workspace.facts[r.key];
+        return fact === undefined || fact.value === undefined || fact.value === null || fact.value === '';
+      });
+      if (missingOptional.length > 0) {
+        const targetReq = missingOptional[0];
+        const targetFact = targetReq.key;
+        const slotQuestions = (release.vocabulary as any)?.slotQuestions || {};
+        const slotDef = slotQuestions[targetFact] || (currentStage as any).questionDefinitions?.[targetFact];
+        const questionText = targetReq.question || slotDef?.text || `Could you please specify your ${targetFact.replace(/_/g, ' ')}?`;
+        const options = targetReq.options || slotDef?.options || [];
+        return {
+          decisionId: `dec_${Date.now()}`,
+          type: 'ask_fact',
+          payload: {
+            targetFact,
+            missingFacts: [targetFact],
+            stage: currentStageId,
+            question: questionText,
+            options,
+            optional: true,
+          },
+          reason: `Stage '${currentStageId}' asking optional fact '${targetFact}'`,
+          createdAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    // 5. Default: Stage requirements satisfied, waiting for user input or goal completed
     return {
       decisionId: `dec_${Date.now()}`,
       type: 'complete_goal',

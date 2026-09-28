@@ -5,7 +5,7 @@
  * decisions, and UI instructions.
  */
 
-export type FactSource = 'customer' | 'system' | 'inference' | 'tool' | 'external';
+export type FactSource = 'customer' | 'system' | 'inference' | 'tool' | 'external' | 'capability';
 
 export interface FactEntry<T = any> {
   value: T;
@@ -43,6 +43,16 @@ export interface FactRequirement {
   required?: boolean;
 }
 
+export interface CapabilityPlanItem {
+  toolId: string;
+  when?: string | {
+    factsPresent?: string[];
+    factsMissing?: string[];
+    ruleExpression?: string;
+  };
+  producesFacts?: string[];
+}
+
 export interface JourneyStage {
   stageId?: string;
   displayName?: string;
@@ -51,6 +61,7 @@ export interface JourneyStage {
   optionalFacts?: Array<string | FactRequirement>;
   allowedCapabilities: string[];
   blockedCapabilities?: string[];
+  capabilityPlan?: CapabilityPlanItem[];
   nextDecisionPolicy?: NextDecisionPolicy;
   exitConditions: StageExitCondition[];
   handoffPolicy?: {
@@ -197,6 +208,8 @@ export interface TurnResult {
       model: string;
       dataResidency: string;
     };
+    errors?: any[];
+    events?: any[];
   };
 }
 

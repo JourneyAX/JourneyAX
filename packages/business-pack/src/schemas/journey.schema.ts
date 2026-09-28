@@ -23,6 +23,18 @@ export const FactRequirementItemSchema = z.union([
   FactRequirementSchema,
 ]);
 
+export const CapabilityPlanConditionSchema = z.object({
+  factsPresent: z.array(z.string()).optional(),
+  factsMissing: z.array(z.string()).optional(),
+  ruleExpression: z.string().optional(),
+});
+
+export const CapabilityPlanItemSchema = z.object({
+  toolId: z.string(),
+  when: z.union([z.string(), CapabilityPlanConditionSchema]).optional(),
+  producesFacts: z.array(z.string()).optional(),
+});
+
 export const JourneyStageSchema = z.object({
   stageId: z.string().optional(),
   displayName: z.string().optional(),
@@ -31,6 +43,7 @@ export const JourneyStageSchema = z.object({
   optionalFacts: z.array(FactRequirementItemSchema).optional(),
   allowedCapabilities: z.array(z.string()).default([]),
   blockedCapabilities: z.array(z.string()).optional(),
+  capabilityPlan: z.array(CapabilityPlanItemSchema).optional(),
   nextDecisionPolicy: z.enum(['dependency-first', 'rule-first', 'agent-driven']).default('dependency-first'),
   exitConditions: z.array(StageExitConditionSchema).default([]),
   handoffPolicy: z.object({
@@ -59,3 +72,4 @@ export const JourneysCollectionSchema = z.object({
 export type JourneyDefinition = z.infer<typeof JourneyDefinitionSchema>;
 export type JourneyStage = z.infer<typeof JourneyStageSchema>;
 export type StageExitCondition = z.infer<typeof StageExitConditionSchema>;
+export type CapabilityPlanItem = z.infer<typeof CapabilityPlanItemSchema>;

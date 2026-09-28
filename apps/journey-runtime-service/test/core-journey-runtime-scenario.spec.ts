@@ -13,7 +13,6 @@ import { OutcomeValidator } from '../src/turn/validate-outcome';
 import { TurnInterpreter } from '../src/turn/interpret-event';
 import { RuntimeController } from '../src/runtime.controller';
 import { RuntimeService } from '../src/runtime.service';
-import { JourneyEngine } from '../src/turn/journey-engine';
 import { publishBusinessPack, computePackChecksum } from '@journeyax/business-pack';
 import { BusinessPackRelease } from '@journeyax/business-pack';
 import { TurnCommand, DuplicateTurnError } from '@journeyax/journey-core';
@@ -607,14 +606,11 @@ async function runCoreJourneyRuntimeScenario() {
   assert.equal((resolved as any).journey.journeyId, 'journey_cargo_flight_dispatch');
 
   // 1d. Negative Test: Missing / unknown workspace.journeyId fails closed and exposes NO capabilities
-  const journeyEngine = new JourneyEngine();
-  const missingJourneyDecision = journeyEngine.decide(loadedRelease, { journeyId: undefined } as any);
-  assert.equal(missingJourneyDecision.type, 'handoff');
-  assert.equal(missingJourneyDecision.payload.error, 'Missing journeyId');
+  const missingJourneyRes = journeyResolver.resolveJourneyResolution(loadedRelease, { journeyId: undefined } as any);
+  assert.equal(missingJourneyRes.status, 'no_match');
 
-  const unknownJourneyDecision = journeyEngine.decide(loadedRelease, { journeyId: 'nonexistent_journey_xyz' } as any);
-  assert.equal(unknownJourneyDecision.type, 'handoff');
-  assert.equal(unknownJourneyDecision.payload.error, 'Unknown journeyId');
+  const unknownJourneyRes = journeyResolver.resolveJourneyResolution(loadedRelease, { journeyId: 'nonexistent_journey_xyz' } as any);
+  assert.equal(unknownJourneyRes.status, 'no_match');
 
   const emptyCapsMissing = capabilityGateway.resolveCapabilitiesForStage(loadedRelease, { journeyId: undefined } as any);
   assert.deepEqual(emptyCapsMissing, [], 'Missing journeyId must expose NO capabilities');
