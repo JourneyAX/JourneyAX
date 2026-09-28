@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "entities": [
+    {
+      "entityId": "product_selection",
+      "displayName": "Product Selection",
+      "description": "Configured cart item specification",
+      "primaryKey": "selectionId",
+      "attributes": [
+        { "name": "category", "type": "string", "required": true },
+        { "name": "quantity", "type": "number", "required": false }
+      ],
+      "searchableAttributes": ["category"]
+    },
+    {
+      "entityId": "product",
+      "displayName": "Catalog Product",
+      "primaryKey": "sku",
+      "attributes": [
+        { "name": "sku", "type": "string", "required": true },
+        { "name": "title", "type": "string", "required": true },
+        { "name": "priceCents", "type": "currency", "required": true },
+        { "name": "category", "type": "string", "required": true }
+      ],
+      "searchableAttributes": ["title", "category"]
+    }
+  ]
+}

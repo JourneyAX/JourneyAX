@@ -1,6 +1,6 @@
 # JourneyAX Tenant Connector Migration Inventory & Truthful Audit
 
-**Audit Timestamp**: `2026-09-28T11:15:11.411Z`
+**Audit Timestamp**: `2026-09-28T12:09:30.085Z`
 **Portfolio Manifest Version**: `1.0.0`
 **Audit Mode**: Read-Only Architecture Enforcement & Evidence-Backed Verification
 
@@ -13,8 +13,8 @@
 | Metric | Value |
 | :--- | :--- |
 | Configured active portfolio tenants | 4 |
-| Discovered active tenants (on disk) | 2 / 4 |
-| Undiscovered active tenants (pending authoring) | 2 / 4 |
+| Discovered active tenants (on disk) | 4 / 4 |
+| Undiscovered active tenants (pending authoring) | 0 / 4 |
 | Immutable release ready (active) | 0 / 4 |
 | Configured parked tenants (excluded from readiness) | 5 |
 | Discovered parked tenants (on disk) | 1 / 5 |
@@ -27,10 +27,10 @@
 
 | Tenant ID | Display Name | Discovered | Schema | Semantics | Isolation | Status | Notes |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| `abercrombie` | Abercrombie & Fitch | ✅ | PASS | PASS | YES | `BLOCKED` | Business Pack discovered on filesystem. Remaining gates computed from evidence. |
+| `caroma` | Caroma Australia | ✅ | PASS | PASS | YES | `BLOCKED` | Business Pack discovered on filesystem. Remaining gates computed from evidence. |
 | `placemakers` | PlaceMakers New Zealand | ✅ | PASS | PASS | YES | `BLOCKED` | First canonical migration. LOCAL_CANARY_PASSED. Production cutover pending DurableCutoverRecord approval. |
 | `workweargroup` | Workwear Group | ✅ | PASS | PASS | YES | `BLOCKED` | Business Pack discovered on filesystem. Remaining gates computed from evidence. |
-| `abercrombie` | Abercrombie & Fitch | ❌ | FAIL | FAIL | NO | `BLOCKED` | Not yet discovered. Business Pack authoring pending. |
-| `caroma` | Caroma Australia | ❌ | FAIL | FAIL | NO | `BLOCKED` | Not yet discovered. Business Pack authoring pending. |
 
 ## 3. Parked Tenants (Not Counted in Active Readiness)
 

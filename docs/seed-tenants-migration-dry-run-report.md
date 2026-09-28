@@ -1,8 +1,8 @@
 # JourneyAX — Canonical Pack Dry-Run Evaluation Report
 
-**Generated At**: `2026-09-28T11:15:16.911Z`
+**Generated At**: `2026-09-28T12:09:35.813Z`
 
-**Branch / Commit**: `JourneyAX-dev-v4` / `d7ac843727e9a63d497b16aa523a62b52e77a8c6`
+**Branch / Commit**: `JourneyAX-dev-v4` / `27362a127e6df3e81516665707cdd9aa69e679fe`
 
 **Portfolio Manifest Version**: `1.0.0`
 
@@ -20,7 +20,7 @@
 
 | Category | Configured | Discovered on Disk | Status / Count |
 | :--- | :---: | :---: | :--- |
-| Active portfolio tenants | 4 | 2 | 2 passed, 2 pending authoring / blocked |
+| Active portfolio tenants | 4 | 4 | 4 passed, 0 pending authoring / blocked |
 | Parked tenants (excluded from readiness) | 5 | 1 | 1 discovered, 4 pending authoring |
 | Synthetic fixtures (excluded from readiness) | 5 | 0 | 5 configured |
 | Unregistered tenants (governance violations) | — | 0 | 0 violations |
@@ -29,18 +29,14 @@
 
 | Tenant ID | Version | Schema | Semantic | Checksum (SHA-256, first 16) | Status |
 | :--- | :---: | :---: | :---: | :--- | :---: |
+| `abercrombie` | `1.0.0` | ✅ PASS | ✅ PASS | `c1d621d36effcca1...` | 🟢 DRY_RUN_PASSED |
+| `caroma` | `1.0.0` | ✅ PASS | ✅ PASS | `3beed455d6b687a9...` | 🟢 DRY_RUN_PASSED |
 | `placemakers` | `1.0.0` | ✅ PASS | ✅ PASS | `3f66adbae9468d3d...` | 🟢 DRY_RUN_PASSED |
 | `workweargroup` | `1.0.0` | ✅ PASS | ✅ PASS | `fb5133ff8f2e7f93...` | 🟢 DRY_RUN_PASSED |
-| `abercrombie` | `` | ❌ FAIL | ❌ FAIL | — | 🔴 BLOCKED |
-| `caroma` | `` | ❌ FAIL | ❌ FAIL | — | 🔴 BLOCKED |
 
 ## 3. Validation Issues
 
-### `abercrombie`
-- Pack not found on filesystem
-
-### `caroma`
-- Pack not found on filesystem
+No validation issues found across all active-portfolio packs.
 
 ## 4. Parked Tenants (Excluded)
 

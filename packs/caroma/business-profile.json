@@ -1,0 +1,15 @@
+{
+  "companyName": "Caroma Australia",
+  "industry": "Commercial & Residential Fixtures",
+  "brandTone": "Architectural, technical, water-efficient, premium Australian engineering",
+  "mission": "Pioneering sustainable, water-saving sanitaryware and bathroom solutions.",
+  "primaryCurrency": "AUD",
+  "supportedCurrencies": ["AUD", "NZD", "USD"],
+  "primaryLocale": "en-AU",
+  "supportedLocales": ["en-AU", "en-NZ"],
+  "complianceCertifications": [
+    "AS 1172 (Water closet pans)",
+    "AS/NZS 3718 (Water supply - Tap ware)",
+    "WELS (Water Efficiency Labelling and Standards)"
+  ]
+}

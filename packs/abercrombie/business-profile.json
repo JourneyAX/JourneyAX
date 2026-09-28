@@ -1,0 +1,10 @@
+{
+  "companyName": "Abercrombie & Fitch",
+  "industry": "Retail Apparel & Fashion",
+  "brandTone": "Modern, casual, authentic, premium American lifestyle",
+  "mission": "Empowering confidence through contemporary lifestyle apparel and effortless customer shopping experiences.",
+  "primaryCurrency": "USD",
+  "supportedCurrencies": ["USD", "CAD", "EUR", "GBP"],
+  "primaryLocale": "en-US",
+  "supportedLocales": ["en-US", "en-GB", "fr-FR", "de-DE"]
+}

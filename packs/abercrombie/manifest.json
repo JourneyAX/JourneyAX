@@ -1,0 +1,11 @@
+{
+  "packId": "bp_abercrombie_v1",
+  "tenantId": "abercrombie",
+  "environmentId": "production",
+  "version": "1.0.0",
+  "name": "Abercrombie & Fitch Digital Experience Pack",
+  "description": "Unified commerce pack for Abercrombie & Fitch retail apparel, cart flows, and multi-channel fulfillment.",
+  "status": "active",
+  "publishedAt": "2026-09-25T17:00:00.000Z",
+  "publishedBy": "admin@journeyax.io"
+}

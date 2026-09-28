@@ -1,0 +1,26 @@
+{
+  "agentId": "specification_advisor",
+  "name": "Specification & Quote Advisor",
+  "purpose": "Guides users through fixture selection, configuration, and quote preparation.",
+  "role": "Domain-neutral specification advisor",
+  "modelPolicyRef": "fast_intent",
+  "allowedTools": [
+    "catalog.search",
+    "specification.configure",
+    "quote.update",
+    "quote.finalize"
+  ],
+  "inputSchema": {
+    "spaceType": { "type": "string" },
+    "finish": { "type": "string" }
+  },
+  "outputSchema": {
+    "quoteState": { "type": "object" }
+  },
+  "maxTurns": 3,
+  "handoffConditions": [
+    "commercial_project_inquiry",
+    "custom_engineering_review"
+  ],
+  "systemPromptTemplate": "You are the fixture specification advisor. Guide the user through options and quote finalization."
+}

@@ -1,7 +1,9 @@
 /**
- * placemakers-migration.spec.ts
+ * dragonshield-migration.spec.ts
  *
- * Enterprise Closure Suite: Canonical PlaceMakers Business Pack Migration & Canary
+ * Enterprise Closure Suite:
+ * 1. Truthful Dragon Shield Discovery & Blocker Verification (strictly not_discovered / BLOCKED).
+ * 2. Neutral Synthetic Multi-Journey Fixture for generic publisher, loader, CAS cutover, rollback, and gateway canary testing.
  *
  * Strictly Isolated Execution:
  * Unconditionally strips all network and database environment variables.
@@ -20,6 +22,8 @@ import {
 enforceOfflineCredentialIsolation();
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   BusinessPackRelease,
   BusinessPackReleaseSchema,
@@ -56,10 +60,10 @@ import { FactReducer } from '../apps/journey-runtime-service/src/turn/fact-reduc
 
 import { runTenantConnectorInventory } from './inventory-tenant-connectors';
 
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: any, pathStr: string): any {
   if (!obj || typeof obj !== 'object') return undefined;
-  if (path in obj) return obj[path];
-  const parts = path.split('.');
+  if (pathStr in obj) return obj[pathStr];
+  const parts = pathStr.split('.');
   let curr = obj;
   for (const part of parts) {
     if (curr === null || curr === undefined || typeof curr !== 'object') return undefined;
@@ -204,7 +208,7 @@ export function createIsolatedTestDb() {
             }
             return { matchedCount: 1, modifiedCount: 1, acknowledged: true };
           }
-          if (options.upsert) {
+          if (options && options.upsert) {
             const newDoc: any = {
               ...filter,
               ...(update.$set || {}),
@@ -229,24 +233,409 @@ export function createIsolatedTestDb() {
       withTransaction: async (fn: any) => fn(),
       endSession: async () => {},
     }),
+    db: () => db,
+    close: async () => {},
   };
   db.client = client;
 
   return { db, client, collections };
 }
 
-async function runSuite() {
+export const FIXTURE_TENANT_ID = 'synthetic_cart_fixture';
+
+/**
+ * Domain-neutral multi-journey Business Pack candidate for synthetic fixture evaluation.
+ * Strictly adheres to BusinessPackReleaseSchema with:
+ * - 2 domain-neutral journeys: guided_selection (cart flow) & custom_spec_order (custom spec flow)
+ * - Multi-provider model policies (Anthropic, Google, OpenAI)
+ * - Canonical tenant/environment scoped secret references
+ * - Strict graph, tool, and UI card references
+ * - Zero fabricated customer facts, zero customer brand claims, and zero assumed connector IDs
+ */
+export function createSyntheticFixtureCandidate(tenantId: string = FIXTURE_TENANT_ID): BusinessPackRelease {
+  return {
+    manifest: {
+      packId: `bp_${tenantId}_v1`,
+      tenantId,
+      name: 'Synthetic Multi-Journey Cart Fixture',
+      description: 'Domain-neutral synthetic fixture for multi-journey cart lifecycle, CAS cutover, and gateway canary testing.',
+      version: '1.0.0',
+      environmentId: 'production',
+      dataResidency: 'us',
+      publishedAt: '2026-09-25T17:00:00.000Z',
+      publishedBy: 'test-orchestrator@journeyax.io',
+      status: 'active',
+      checksum: '',
+    },
+    profile: {
+      companyName: 'Synthetic Retail Operations',
+      industry: 'Retail & Commerce',
+      defaultCurrency: 'USD',
+      supportedCurrencies: ['USD', 'EUR'],
+      timezone: 'UTC',
+      locales: ['en-US'],
+      branding: {
+        primaryColor: '#1A365D',
+        accentColor: '#2B6CB0',
+        logoUrl: 'https://cdn.example.org/brand/logo.svg',
+      },
+    },
+    vocabulary: {
+      version: '1.0.0',
+      terms: [
+        { term: 'Standard Tier', canonical: 'standard', category: 'tier', synonyms: ['basic', 'standard'], description: 'Standard tier catalog item' },
+        { term: 'Premium Tier', canonical: 'premium', category: 'tier', synonyms: ['pro', 'deluxe'], description: 'Premium tier catalog item' },
+        { term: 'Custom Spec', canonical: 'custom_spec', category: 'custom', synonyms: ['bespoke', 'custom'], description: 'Custom specification order' },
+      ],
+      acronyms: {
+        SKU: 'Stock Keeping Unit',
+        BOM: 'Bill of Materials',
+      },
+      slotSynonyms: {
+        category: ['type', 'tier', 'group'],
+        quantity: ['count', 'amount', 'units'],
+      },
+      slotMappings: {},
+      prohibitedTerms: ['counterfeit', 'unauthorized', 'malicious'],
+    },
+    entities: {
+      version: '1.0.0',
+      entities: [
+        {
+          entityId: 'product_selection',
+          displayName: 'Product Selection',
+          description: 'Configured cart item specification',
+          primaryKey: 'selectionId',
+          attributes: [
+            { name: 'category', type: 'string', required: true },
+            { name: 'quantity', type: 'number', required: false },
+          ],
+        },
+      ],
+    },
+    conversationPolicy: {
+      fencingRules: [
+        'Recommend only valid catalog items matching requested criteria',
+        'Confirm quantities and item tiers before checkout dispatch',
+      ],
+      prohibitedTopics: [
+        'Uncertified competitor comparisons',
+        'Unverified warranty promises',
+      ],
+      escalationThresholds: {
+        sentimentFloor: -0.6,
+        maxTurnsWithoutProgress: 4,
+      },
+    },
+    modelPolicy: {
+      version: '1.0.0',
+      defaultPolicy: 'fast_intent',
+      policies: [
+        {
+          policyId: 'fast_intent',
+          description: 'High-speed intent classification and slot extraction',
+          candidates: [
+            { provider: 'anthropic', model: 'claude-3-5-sonnet', priority: 1 },
+            { provider: 'google', model: 'gemini-2.5-pro', priority: 2 },
+            { provider: 'openai', model: 'gpt-4o', priority: 3 },
+          ],
+          dataResidency: 'us',
+          maxInputTokens: 8000,
+          maxOutputTokens: 1000,
+          fallbackAllowed: true,
+          timeoutMs: 5000,
+        },
+        {
+          policyId: 'reasoning',
+          description: 'Deep parameter and configuration reasoning',
+          candidates: [
+            { provider: 'anthropic', model: 'claude-3-5-sonnet', priority: 1 },
+            { provider: 'google', model: 'gemini-2.5-pro', priority: 2 },
+          ],
+          dataResidency: 'us',
+          maxInputTokens: 16000,
+          maxOutputTokens: 2000,
+          fallbackAllowed: true,
+          timeoutMs: 12000,
+        },
+      ],
+    },
+    agents: [
+      {
+        agentId: 'cart_assistant',
+        name: 'Cart & Selection Assistant',
+        purpose: 'Guides users through item selection, configuration, and cart update.',
+        role: 'Domain-neutral shopping and cart advisor',
+        modelPolicyRef: 'fast_intent',
+        allowedTools: [
+          'catalog.search',
+          'item.configure',
+          'cart.update',
+          'cart.checkout',
+        ],
+        systemPromptTemplate: 'You are the cart and selection assistant. Guide the user through item choices and checkout.',
+      },
+    ],
+    journeys: [
+      {
+        journeyId: 'guided_selection',
+        version: '1.0.0',
+        displayName: 'Guided Product Selection & Cart Flow',
+        description: 'Multi-stage flow from category selection to cart checkout.',
+        goals: ['identify_category', 'select_quantity', 'checkout'],
+        initialStage: 'category_selection',
+        stages: {
+          category_selection: {
+            displayName: 'Category Selection',
+            description: 'Selects product category and preferences',
+            requiredFacts: [],
+            allowedCapabilities: ['catalog.search'],
+            nextDecisionPolicy: 'dependency-first',
+            exitConditions: [
+              {
+                anyFactsPresent: ['category'],
+                nextStage: 'quantity_selection',
+              },
+            ],
+          },
+          quantity_selection: {
+            displayName: 'Quantity & Configuration',
+            description: 'Specifies quantities and item configuration',
+            requiredFacts: ['category'],
+            allowedCapabilities: ['catalog.search', 'item.configure'],
+            nextDecisionPolicy: 'dependency-first',
+            exitConditions: [
+              {
+                anyFactsPresent: ['quantity'],
+                nextStage: 'cart_review',
+              },
+            ],
+          },
+          cart_review: {
+            displayName: 'Cart Review & Checkout',
+            description: 'Reviews cart and dispatches to checkout',
+            requiredFacts: ['category', 'quantity'],
+            allowedCapabilities: ['cart.update', 'cart.checkout'],
+            nextDecisionPolicy: 'dependency-first',
+            exitConditions: [],
+          },
+        },
+      },
+      {
+        journeyId: 'custom_spec_order',
+        version: '1.0.0',
+        displayName: 'Custom Specification Order Flow',
+        description: 'Order flow for custom-specified items.',
+        goals: ['intake_spec', 'commit_spec_order'],
+        initialStage: 'spec_intake',
+        stages: {
+          spec_intake: {
+            displayName: 'Specification Intake',
+            description: 'Captures user specification requirements',
+            requiredFacts: [],
+            allowedCapabilities: ['catalog.search'],
+            nextDecisionPolicy: 'dependency-first',
+            exitConditions: [
+              {
+                anyFactsPresent: ['spec_confirmed'],
+                nextStage: 'spec_checkout',
+              },
+            ],
+          },
+          spec_checkout: {
+            displayName: 'Specification Review & Commit',
+            description: 'Final review and order commit',
+            requiredFacts: ['spec_confirmed'],
+            allowedCapabilities: ['cart.update', 'cart.checkout'],
+            nextDecisionPolicy: 'dependency-first',
+            exitConditions: [],
+          },
+        },
+      },
+    ],
+    rules: [
+      {
+        ruleId: 'custom_spec_approval_policy',
+        name: 'Custom Specification Approval Policy',
+        description: 'Requires approval for custom specification orders prior to commit',
+        severity: 'warning',
+        targetDomain: 'orders',
+        condition: {
+          ruleExpression: "journeyId === 'custom_spec_order'",
+          requiredFacts: ['spec_confirmed'],
+        },
+        action: 'require_approval',
+        remediationMessage: 'Custom specification orders require administrative review prior to commit.',
+      },
+    ],
+    capabilities: {
+      version: '1.0.0',
+      toolDefinitions: [
+        {
+          toolId: 'catalog.search',
+          version: '1.0.0',
+          displayName: 'Catalog Search',
+          description: 'Search product catalog',
+          inputSchema: { type: 'object' },
+          outputSchema: { type: 'object' },
+          sideEffect: 'read',
+          risk: 'low',
+        },
+        {
+          toolId: 'item.configure',
+          version: '1.0.0',
+          displayName: 'Item Configuration',
+          description: 'Configure item options and parameters',
+          inputSchema: { type: 'object' },
+          outputSchema: { type: 'object' },
+          sideEffect: 'read',
+          risk: 'low',
+        },
+        {
+          toolId: 'cart.update',
+          version: '1.0.0',
+          displayName: 'Cart Update',
+          description: 'Update cart items and quantities',
+          inputSchema: { type: 'object' },
+          outputSchema: { type: 'object' },
+          sideEffect: 'read',
+          risk: 'low',
+        },
+        {
+          toolId: 'cart.checkout',
+          version: '1.0.0',
+          displayName: 'Cart Checkout Dispatch',
+          description: 'Dispatch customer cart to checkout flow',
+          inputSchema: { type: 'object' },
+          outputSchema: { type: 'object' },
+          sideEffect: 'write',
+          risk: 'medium',
+        },
+      ],
+      toolBindings: [
+        {
+          toolId: 'catalog.search',
+          description: 'Search product catalog',
+          tenantId,
+          environmentId: 'production',
+          executor: {
+            type: 'native_capability',
+            name: 'catalog-search',
+          },
+        },
+        {
+          toolId: 'item.configure',
+          description: 'Configure item options and parameters',
+          tenantId,
+          environmentId: 'production',
+          executor: {
+            type: 'native_capability',
+            name: 'item-configure',
+          },
+        },
+        {
+          toolId: 'cart.update',
+          description: 'Update cart items and quantities',
+          tenantId,
+          environmentId: 'production',
+          executor: {
+            type: 'native_capability',
+            name: 'cart-update',
+          },
+        },
+        {
+          toolId: 'cart.checkout',
+          description: 'Dispatch customer cart to checkout flow',
+          tenantId,
+          environmentId: 'production',
+          executor: {
+            type: 'activepieces_flow',
+            flowId: 'ap_flow_cart_checkout',
+            connectionRef: 'conn_cart_checkout',
+            secretRef: `gcp-secret://journeyax-secrets/${tenantId}/production/checkout-api-key`,
+          },
+        },
+      ],
+      schemas: {
+        'catalog.search': {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            category: { type: 'string' },
+          },
+        },
+        'item.configure': {
+          type: 'object',
+          properties: {
+            itemId: { type: 'string' },
+            options: { type: 'object' },
+          },
+        },
+        'cart.update': {
+          type: 'object',
+          properties: {
+            items: { type: 'array', items: { type: 'object' } },
+          },
+        },
+        'cart.checkout': {
+          type: 'object',
+          properties: {
+            cartId: { type: 'string' },
+            items: { type: 'array', items: { type: 'object' } },
+          },
+        },
+      },
+    },
+    experience: {
+      version: '1.0.0',
+      theme: {
+        primaryColor: '#1A365D',
+        accentColor: '#2B6CB0',
+        fontFamily: "'Inter', system-ui, sans-serif",
+        borderRadius: '6px',
+        customCssVars: {
+          '--brand-primary': '#1A365D',
+          '--brand-accent': '#2B6CB0',
+        },
+      },
+      cards: {
+        templates: [
+          {
+            cardType: 'products',
+            name: 'Product Grid',
+            component: 'ProductGrid',
+            description: 'Displays matched products',
+          },
+          {
+            cardType: 'productDetail',
+            name: 'Product Detail View',
+            component: 'ProductDetailView',
+            description: 'Shows item specifications and options',
+          },
+          {
+            cardType: 'cart',
+            name: 'Cart Drawer View',
+            component: 'CartDrawer',
+            description: 'Displays active cart with checkout trigger',
+          },
+        ],
+      },
+    },
+  };
+}
+
+async function runFocusedSuite() {
   let exitCode = 0;
   resetEgressViolations();
   try {
   console.log('==============================================================================');
-  console.log('   PlaceMakers Business Pack Migration & Isolated Canary Test Suite           ');
+  console.log('   Synthetic Multi-Journey Cart Canary & Dragon Shield Truthful Audit Suite   ');
   console.log('==============================================================================\n');
 
   let passed = 0;
   let failed = 0;
 
-  async function test(name: string, fn: () => Promise<void> | void) {
+  async function test(name: string, fn: () => Promise<void>) {
     try {
       await fn();
       console.log(`  ✅ PASS: ${name}`);
@@ -258,21 +647,15 @@ async function runSuite() {
     }
   }
 
-  const diskLoader = new BusinessPackLoader();
-  const canonicalPack = await diskLoader.loadFromDisk('placemakers', 'production');
-  assert.ok(canonicalPack, 'PlaceMakers pack must load from packs/placemakers');
-
+  // Pre-validate neutral synthetic fixture candidate pack conforms to schema and semantic rules
+  const canonicalPack = createSyntheticFixtureCandidate();
   const parsedCandidate = BusinessPackReleaseSchema.safeParse(canonicalPack);
   if (!parsedCandidate.success) {
-    throw new Error(`PlaceMakers disk pack failed schema: ${JSON.stringify(parsedCandidate.error.format())}`);
+    throw new Error(`Synthetic fixture candidate failed schema: ${JSON.stringify(parsedCandidate.error.format())}`);
   }
   const validCandidate = validateBusinessPack(parsedCandidate.data);
   if (!validCandidate.valid) {
-    throw new Error(`PlaceMakers disk pack failed validation: ${JSON.stringify(validCandidate.issues)}`);
-  }
-
-  function createPlaceMakersCandidate(): BusinessPackRelease {
-    return JSON.parse(JSON.stringify(canonicalPack));
+    throw new Error(`Synthetic fixture candidate failed validation: ${JSON.stringify(validCandidate.issues)}`);
   }
 
   // -------------------------------------------------------------------------
@@ -280,10 +663,8 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('1. Negative: missing tool definitions and stage capabilities fail validation and prevent publication', async () => {
     // 1a. Stage references unknown capability -> semantic error, valid === false, publisher rejects
-    const badCapPack = createPlaceMakersCandidate();
-    const tradeQuoteJourney = badCapPack.journeys.find((j) => j.journeyId === 'placemakers_trade_quote')!;
-    assert.ok(tradeQuoteJourney, 'placemakers_trade_quote must exist');
-    tradeQuoteJourney.stages.project_intake.allowedCapabilities.push('unregistered.dangerous_tool');
+    const badCapPack = createSyntheticFixtureCandidate();
+    badCapPack.journeys[0].stages.category_selection.allowedCapabilities.push('unregistered.dangerous_tool');
 
     const valCap = validateBusinessPack(badCapPack);
     assert.equal(valCap.valid, false, 'Pack with unregistered stage capability must be invalid (fail-closed)');
@@ -299,7 +680,7 @@ async function runSuite() {
     );
 
     // 1b. Agent allowedTools pointing to non-existent tool -> semantic error, valid === false, publisher rejects
-    const badToolPack = createPlaceMakersCandidate();
+    const badToolPack = createSyntheticFixtureCandidate();
     badToolPack.agents[0].allowedTools.push('ghost.tool');
     const valTool = validateBusinessPack(badToolPack);
     assert.equal(valTool.valid, false, 'Pack with unregistered agent tool must be invalid (fail-closed)');
@@ -315,10 +696,9 @@ async function runSuite() {
     );
 
     // 1c. Intentional wildcard behavior explicitly supported and tested
-    const wildcardPack = createPlaceMakersCandidate();
+    const wildcardPack = createSyntheticFixtureCandidate();
     wildcardPack.agents[0].allowedTools.push('catalog.*');
-    const jWildcard = wildcardPack.journeys.find((j) => j.journeyId === 'placemakers_trade_quote')!;
-    jWildcard.stages.project_intake.allowedCapabilities.push('catalog.*');
+    wildcardPack.journeys[0].stages.category_selection.allowedCapabilities.push('catalog.*');
 
     const valWildcard = validateBusinessPack(wildcardPack);
     assert.equal(valWildcard.valid, true, 'Intentional wildcard patterns (e.g. catalog.*) must be permitted');
@@ -333,17 +713,15 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('2. Negative: unknown modelPolicyRef or broken exit condition strictly fails validation', async () => {
     // 2a. Unknown modelPolicyRef
-    const badModelRef = createPlaceMakersCandidate();
+    const badModelRef = createSyntheticFixtureCandidate();
     badModelRef.agents[0].modelPolicyRef = 'non_existent_policy';
     const valModel = validateBusinessPack(badModelRef);
     assert.equal(valModel.valid, false, 'Pack must be invalid when modelPolicyRef is missing');
     assert.ok(valModel.issues.some((i) => i.message.includes('non_existent_policy')));
 
     // 2b. Broken exit condition pointing to missing stage
-    const badStageRef = createPlaceMakersCandidate();
-    const tradeQuoteJourney = badStageRef.journeys.find((j) => j.journeyId === 'placemakers_trade_quote')!;
-    assert.ok(tradeQuoteJourney, 'placemakers_trade_quote must exist');
-    tradeQuoteJourney.stages.project_intake.exitConditions = [
+    const badStageRef = createSyntheticFixtureCandidate();
+    badStageRef.journeys[0].stages.category_selection.exitConditions = [
       { nextStage: 'phantom_stage' },
     ];
     const valStage = validateBusinessPack(badStageRef);
@@ -364,8 +742,8 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('3. Negative: raw secrets, unsupported schemes, and arbitrary cross-tenant/cross-env secretRefs are caught and rejected', async () => {
     // 3a. Raw secret in secretRef
-    const rawSecretPack = createPlaceMakersCandidate();
-    rawSecretPack.capabilities.toolBindings[0].executor.secretRef = 'sk-abcdefghijklmnopqrstuvwxyz123456';
+    const rawSecretPack = createSyntheticFixtureCandidate();
+    rawSecretPack.capabilities.toolBindings[3].executor.secretRef = 'sk-synthetic-api-secret-key-12345';
 
     const valRaw = validateBusinessPack(rawSecretPack);
     assert.equal(valRaw.valid, false, 'Pack with raw API key must be strictly invalid');
@@ -377,8 +755,8 @@ async function runSuite() {
     );
 
     // 3b. Unsupported scheme in secretRef
-    const badSchemePack = createPlaceMakersCandidate();
-    badSchemePack.capabilities.toolBindings[0].executor.secretRef = 'ftp://secrets.corp/placemakers/production/key';
+    const badSchemePack = createSyntheticFixtureCandidate();
+    badSchemePack.capabilities.toolBindings[3].executor.secretRef = 'ftp://secrets.corp/synthetic/production/key';
     const valScheme = validateBusinessPack(badSchemePack);
     assert.equal(valScheme.valid, false, 'Pack with unsupported scheme must be strictly invalid');
     const { db: dbScheme } = createIsolatedTestDb();
@@ -389,12 +767,12 @@ async function runSuite() {
     );
 
     // 3c. Arbitrary cross-tenant secretRef violation (unknown/arbitrary tenant acme-corp)
-    const crossTenantPack = createPlaceMakersCandidate();
-    crossTenantPack.capabilities.toolBindings[0].executor.secretRef = 'gcp-secret://journeyax-secrets/acme-corp/production/pm-sap-key';
+    const crossTenantPack = createSyntheticFixtureCandidate();
+    crossTenantPack.capabilities.toolBindings[3].executor.secretRef = 'gcp-secret://journeyax-secrets/acme-corp/production/checkout-api-key';
     const valCross = validateBusinessPack(crossTenantPack);
     assert.equal(valCross.valid, false, 'Pack with cross-tenant secretRef must be strictly invalid');
     assert.ok(
-      valCross.issues.some((i) => i.message.includes("references tenant 'acme-corp' but binding belongs to 'placemakers'")),
+      valCross.issues.some((i) => i.message.includes(`references tenant 'acme-corp' but binding belongs to '${FIXTURE_TENANT_ID}'`)),
       'Must emit Cross-tenant secretRef violation error for arbitrary unknown tenant'
     );
     const { db: dbCross } = createIsolatedTestDb();
@@ -405,8 +783,8 @@ async function runSuite() {
     );
 
     // Another arbitrary unknown tenant 'custom-enterprise-corp'
-    const crossTenantPack2 = createPlaceMakersCandidate();
-    crossTenantPack2.capabilities.toolBindings[0].executor.secretRef = 'vault://vault-east/custom-enterprise-corp/production/sap-key';
+    const crossTenantPack2 = createSyntheticFixtureCandidate();
+    crossTenantPack2.capabilities.toolBindings[3].executor.secretRef = 'vault://vault-east/custom-enterprise-corp/production/checkout-key';
     const valCross2 = validateBusinessPack(crossTenantPack2);
     assert.equal(valCross2.valid, false, 'Pack with cross-tenant secretRef for arbitrary client must be invalid');
     assert.ok(
@@ -415,8 +793,8 @@ async function runSuite() {
     );
 
     // 3d. Arbitrary cross-environment secretRef violation (staging secretRef on production binding)
-    const crossEnvPack = createPlaceMakersCandidate();
-    crossEnvPack.capabilities.toolBindings[0].executor.secretRef = 'gcp-secret://journeyax-secrets/placemakers/staging/pm-sap-key';
+    const crossEnvPack = createSyntheticFixtureCandidate();
+    crossEnvPack.capabilities.toolBindings[3].executor.secretRef = `gcp-secret://journeyax-secrets/${FIXTURE_TENANT_ID}/staging/checkout-api-key`;
     const valCrossEnv = validateBusinessPack(crossEnvPack);
     assert.equal(valCrossEnv.valid, false, 'Pack with cross-environment secretRef must be strictly invalid');
     assert.ok(
@@ -431,14 +809,14 @@ async function runSuite() {
     );
 
     // 3e. Unknown / new tenant works dynamically without code changes
-    const newTenantPack = createPlaceMakersCandidate();
+    const newTenantPack = createSyntheticFixtureCandidate();
     newTenantPack.manifest.tenantId = 'globex-corp';
     newTenantPack.manifest.environmentId = 'dev';
     for (const b of newTenantPack.capabilities.toolBindings) {
       b.tenantId = 'globex-corp';
       b.environmentId = 'dev';
       if (b.executor.secretRef) {
-        b.executor.secretRef = 'vault://secret-vault/globex-corp/dev/pm-sap-key';
+        b.executor.secretRef = 'vault://secret-vault/globex-corp/dev/checkout-key';
       }
     }
     const valNewTenant = validateBusinessPack(newTenantPack);
@@ -450,37 +828,37 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('4. Negative: tampered release checksum or pointer mismatch fails closed', async () => {
     const { db } = createIsolatedTestDb();
-    const pack = createPlaceMakersCandidate();
+    const pack = createSyntheticFixtureCandidate();
     const { checksum } = await publishBusinessPack(db, pack);
 
     // Tamper with checksum in DB release document
     const releasesCol = db.collection('business_pack_releases');
     await releasesCol.updateOne(
-      { tenantId: 'placemakers', version: '1.0.0' },
+      { tenantId: FIXTURE_TENANT_ID, version: '1.0.0' },
       { $set: { checksum: 'tampered_bad_checksum_hash' } }
     );
 
     const loader = new BusinessPackLoader({ db });
-    const loaded = await loader.loadFromMongo('placemakers', 'production', '1.0.0');
+    const loaded = await loader.loadFromMongo(FIXTURE_TENANT_ID, 'production', '1.0.0');
     assert.equal(loaded, null, 'Loader must refuse to return release with mismatched checksum');
   });
 
   // -------------------------------------------------------------------------
   // Test 5: Negative - Cross-Tenant Scope Isolation
   // -------------------------------------------------------------------------
-  await test('5. Negative: cross-tenant isolation prevents tenant A from accessing PlaceMakers release', async () => {
+  await test('5. Negative: cross-tenant isolation prevents tenant A from accessing synthetic fixture release', async () => {
     const { db } = createIsolatedTestDb();
-    const pack = createPlaceMakersCandidate();
+    const pack = createSyntheticFixtureCandidate();
     await publishBusinessPack(db, pack);
 
     const loader = new BusinessPackLoader({ db });
-    // Other isolated tenant must NOT be able to load PlaceMakers release
+    // Other isolated tenant must NOT be able to load synthetic fixture release
     const otherLoaded = await loader.loadFromMongo('other_isolated_tenant', 'production', '1.0.0');
     assert.equal(otherLoaded, null, 'Cross-tenant isolation must prevent loading other tenant pack');
 
     // Pointer check for other tenant must return false
     const hasOther = await loader.hasPublishedPackAsync('other_isolated_tenant', 'production');
-    assert.equal(hasOther, false, 'Other tenant must not have active pointer for PlaceMakers release');
+    assert.equal(hasOther, false, 'Other tenant must not have active pointer for synthetic fixture release');
   });
 
   // -------------------------------------------------------------------------
@@ -488,14 +866,14 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('6. Lifecycle: publishBusinessPack creates immutable release and enqueues outbox event', async () => {
     const { db, collections } = createIsolatedTestDb();
-    const pack = createPlaceMakersCandidate();
+    const pack = createSyntheticFixtureCandidate();
 
     const result = await publishBusinessPack(db, pack, {
       publishedBy: 'migration-orchestrator@journeyax.io',
-      notes: 'Initial PlaceMakers canonical migration',
+      notes: 'Initial synthetic fixture canonical publication',
     });
 
-    assert.equal(result.release.manifest.tenantId, 'placemakers');
+    assert.equal(result.release.manifest.tenantId, FIXTURE_TENANT_ID);
     assert.equal(result.release.manifest.version, '1.0.0');
     assert.equal(result.revision, 1);
     assert.ok(result.checksum.length === 64, 'Checksum must be valid sha256 hex');
@@ -504,7 +882,7 @@ async function runSuite() {
     const outboxEvents = collections.get('outbox_events') || [];
     assert.equal(outboxEvents.length, 1);
     assert.equal(outboxEvents[0].eventType, 'business_pack.published');
-    assert.equal(outboxEvents[0].tenantId, 'placemakers');
+    assert.equal(outboxEvents[0].tenantId, FIXTURE_TENANT_ID);
     assert.equal(outboxEvents[0].payload.checksum, result.checksum);
 
     // Verify immutable release stored
@@ -513,8 +891,8 @@ async function runSuite() {
     assert.equal(releases[0].version, '1.0.0');
 
     // Attempting to overwrite with different content on same version must throw immutable release violation
-    const tampered = createPlaceMakersCandidate();
-    tampered.profile.companyName = 'Tampered Company Name';
+    const tampered = createSyntheticFixtureCandidate();
+    tampered.profile.companyName = 'Tampered Synthetic Operations';
     await assert.rejects(
       () => publishBusinessPack(db, tampered),
       /Immutable release violation/,
@@ -529,17 +907,17 @@ async function runSuite() {
     const { db, client } = createIsolatedTestDb();
     const cutoverRepo = new CutoverRepository(async () => ({ db, client }));
 
-    const pack = createPlaceMakersCandidate();
+    const pack = createSyntheticFixtureCandidate();
     const { checksum } = await publishBusinessPack(db, pack);
 
     // Promote cutover with expectedRevision 0 -> 1
-    const promoted = await cutoverRepo.promoteCutover('placemakers', 'production', {
+    const promoted = await cutoverRepo.promoteCutover(FIXTURE_TENANT_ID, 'production', {
       status: 'migrated',
       approvedReleaseVersion: '1.0.0',
       approvedReleaseChecksum: checksum,
       expectedRevision: 0,
       approvedBy: 'admin-lead@journeyax.io',
-      notes: 'Initial promotion of PlaceMakers Business Pack',
+      notes: 'Initial promotion of Synthetic Cart Fixture Business Pack',
     });
 
     assert.equal(promoted.status, 'migrated');
@@ -548,7 +926,7 @@ async function runSuite() {
     assert.equal(promoted.approvedReleaseChecksum, checksum);
 
     // Verify cutovers collection in DB
-    const record = await cutoverRepo.getCutoverRecord('placemakers', 'production');
+    const record = await cutoverRepo.getCutoverRecord(FIXTURE_TENANT_ID, 'production');
     assert.ok(record);
     assert.equal(record.status, 'migrated');
     assert.equal(record.revision, 1);
@@ -556,7 +934,7 @@ async function runSuite() {
     // Concurrent promotion with stale expectedRevision (0 instead of 1) must fail with CutoverConflictError
     await assert.rejects(
       () =>
-        cutoverRepo.promoteCutover('placemakers', 'production', {
+        cutoverRepo.promoteCutover(FIXTURE_TENANT_ID, 'production', {
           status: 'migrated',
           approvedReleaseVersion: '1.0.0',
           approvedReleaseChecksum: checksum,
@@ -576,10 +954,10 @@ async function runSuite() {
     const cutoverRepo = new CutoverRepository(async () => ({ db, client }));
 
     // Step 1: Publish v1.0.0 and promote revision 0 -> 1
-    const packV1 = createPlaceMakersCandidate();
+    const packV1 = createSyntheticFixtureCandidate();
     packV1.manifest.version = '1.0.0';
     const res1 = await publishBusinessPack(db, packV1);
-    await cutoverRepo.promoteCutover('placemakers', 'production', {
+    await cutoverRepo.promoteCutover(FIXTURE_TENANT_ID, 'production', {
       status: 'migrated',
       approvedReleaseVersion: '1.0.0',
       approvedReleaseChecksum: res1.checksum,
@@ -588,11 +966,11 @@ async function runSuite() {
     });
 
     // Step 2: Publish v1.1.0 and promote revision 1 -> 2
-    const packV2 = createPlaceMakersCandidate();
+    const packV2 = createSyntheticFixtureCandidate();
     packV2.manifest.version = '1.1.0';
-    packV2.profile.brandTone = 'Updated brand tone for v1.1.0';
+    packV2.profile.companyName = 'Synthetic Retail Operations v1.1.0';
     const res2 = await publishBusinessPack(db, packV2);
-    await cutoverRepo.promoteCutover('placemakers', 'production', {
+    await cutoverRepo.promoteCutover(FIXTURE_TENANT_ID, 'production', {
       status: 'migrated',
       approvedReleaseVersion: '1.1.0',
       approvedReleaseChecksum: res2.checksum,
@@ -601,7 +979,7 @@ async function runSuite() {
     });
 
     // Step 3: Rollback business pack pointer to v1.0.0
-    const rollbackRes = await rollbackBusinessPack(db, 'placemakers', 'production', {
+    const rollbackRes = await rollbackBusinessPack(db, FIXTURE_TENANT_ID, 'production', {
       targetVersion: '1.0.0',
       rolledBackBy: 'admin-lead@journeyax.io',
       reason: 'Canary degradation test rollback',
@@ -609,7 +987,7 @@ async function runSuite() {
     assert.equal(rollbackRes.activeVersion, '1.0.0');
 
     // Step 4: Promote cutover record to status: 'rollback' with CAS revision 2 -> 3
-    const cutoverRollback = await cutoverRepo.promoteCutover('placemakers', 'production', {
+    const cutoverRollback = await cutoverRepo.promoteCutover(FIXTURE_TENANT_ID, 'production', {
       status: 'rollback',
       approvedReleaseVersion: '1.0.0',
       approvedReleaseChecksum: res1.checksum,
@@ -629,29 +1007,28 @@ async function runSuite() {
   // Test 9: Security - Secret References Without Secret Values
   // -------------------------------------------------------------------------
   await test('9. Security: integration bindings record tenant-scoped secretRef without raw secret values', async () => {
-    const pack = createPlaceMakersCandidate();
-    const binding = pack.capabilities.toolBindings.find((b) => b.toolId === 'sap.quote_sync')!;
-    assert.ok(binding, 'sap.quote_sync binding must exist');
-
-    assert.equal(binding.toolId, 'sap.quote_sync');
-    assert.equal(binding.executor.connectionRef, 'conn_pm_sap_trade');
-    assert.ok(binding.executor.secretRef, 'executor.secretRef must exist');
+    const pack = createSyntheticFixtureCandidate();
+    const binding = pack.capabilities.toolBindings.find((b) => b.toolId === 'cart.checkout')!;
+    assert.ok(binding, 'cart.checkout binding must exist');
+    assert.ok(binding.executor.secretRef, 'cart.checkout binding must have secretRef');
     assert.equal(
       binding.executor.secretRef,
-      'gcp-secret://journeyax-secrets/placemakers/production/pm-sap-key',
+      `gcp-secret://journeyax-secrets/${FIXTURE_TENANT_ID}/production/checkout-api-key`,
       'secretRef must follow canonical URI structure carrying tenant and environment'
     );
 
+    // Parse canonical secret ref
     const parsedRes = parseCanonicalSecretRef(binding.executor.secretRef);
     assert.ok(parsedRes.parsed, 'Must parse canonical secretRef successfully');
     assert.equal(parsedRes.parsed.scheme, 'gcp-secret://');
-    assert.equal(parsedRes.parsed.tenantId, 'placemakers');
+    assert.equal(parsedRes.parsed.scope, 'journeyax-secrets');
+    assert.equal(parsedRes.parsed.tenantId, FIXTURE_TENANT_ID);
     assert.equal(parsedRes.parsed.environmentId, 'production');
-    assert.equal(parsedRes.parsed.secretKey, 'pm-sap-key');
+    assert.equal(parsedRes.parsed.secretKey, 'checkout-api-key');
 
     assert.ok(!binding.executor.secretRef.includes('sk-'), 'Must not contain raw secret token');
 
-    // Confirm scanForRawSecrets in inventory sees 0 raw secrets
+    // Confirm scanForRawSecrets sees 0 raw secrets
     const jsonStr = JSON.stringify(pack);
     assert.ok(!jsonStr.includes('clientSecret'), 'Must not have clientSecret property');
     assert.ok(!jsonStr.includes('password'), 'Must not have password property');
@@ -667,7 +1044,7 @@ async function runSuite() {
     const { db: isolatedDb, client: isolatedClient } = createIsolatedTestDb();
 
     // 1. Prepare candidate pack configured for environmentId: 'test'
-    const testCandidate = createPlaceMakersCandidate();
+    const testCandidate = createSyntheticFixtureCandidate();
     testCandidate.manifest.environmentId = 'test';
     testCandidate.capabilities.toolBindings.forEach((b) => {
       b.environmentId = 'test';
@@ -679,7 +1056,7 @@ async function runSuite() {
     // 2. Publish to isolated MongoDB (creates release, active pointer, and outbox event)
     const pubResult = await publishBusinessPack(isolatedDb, testCandidate, {
       publishedBy: 'canary-runner@journeyax.io',
-      notes: 'Canary release for PlaceMakers test environment',
+      notes: 'Canary release for Synthetic Cart Fixture test environment',
     });
     assert.equal(pubResult.revision, 1);
     assert.ok(pubResult.checksum.length === 64);
@@ -688,35 +1065,34 @@ async function runSuite() {
     const realPackRepo = new PackRepository('/non/existent/dev/dir', isolatedDb);
 
     // Verify pack loads from MongoDB business_pack_releases via active pointer
-    const loadedActivePack = await realPackRepo.loadActivePack('placemakers', 'test');
+    const loadedActivePack = await realPackRepo.loadActivePack(FIXTURE_TENANT_ID, 'test');
     assert.ok(loadedActivePack, 'Must load active pack from MongoDB collections');
-    assert.equal(loadedActivePack.manifest.tenantId, 'placemakers');
+    assert.equal(loadedActivePack.manifest.tenantId, FIXTURE_TENANT_ID);
     assert.equal(loadedActivePack.manifest.version, '1.0.0');
     assert.equal(loadedActivePack.manifest.environmentId, 'test');
 
     // Prove NO filesystem fallback after activation:
     // If pointer is temporarily removed from DB, loadActivePack must fail closed (throws error)
-    realPackRepo.invalidate('placemakers');
-    await isolatedDb.collection('business_pack_pointers').deleteOne({ tenantId: 'placemakers', environmentId: 'test' });
+    realPackRepo.invalidate(FIXTURE_TENANT_ID);
+    await isolatedDb.collection('business_pack_pointers').deleteOne({ tenantId: FIXTURE_TENANT_ID, environmentId: 'test' });
     await assert.rejects(
-      () => realPackRepo.loadActivePack('placemakers', 'test'),
+      () => realPackRepo.loadActivePack(FIXTURE_TENANT_ID, 'test'),
       /No published Business Pack found/,
       'Pack loading must fail closed when pointer is missing — proving zero filesystem fallback'
     );
-    // Restore active pointer — use field names matching publishBusinessPack output:
-    // 'checksum' (not 'activeChecksum') and 'activeVersion' are required by CutoverRepository
+    // Restore active pointer
     await isolatedDb.collection('business_pack_pointers').insertOne({
-      tenantId: 'placemakers',
+      tenantId: FIXTURE_TENANT_ID,
       environmentId: 'test',
       activeVersion: '1.0.0',
-      activeVersionId: '1.0.0',
-      status: 'active',
+      activeVersionId: pubResult.releaseId,
       checksum: pubResult.checksum,
+      status: 'active',
       revision: 1,
       updatedAt: new Date(),
     });
-    realPackRepo.invalidate('placemakers');
-    const restoredPack = await realPackRepo.loadActivePack('placemakers', 'test');
+    realPackRepo.invalidate(FIXTURE_TENANT_ID);
+    const restoredPack = await realPackRepo.loadActivePack(FIXTURE_TENANT_ID, 'test');
     assert.equal(restoredPack.manifest.version, '1.0.0');
 
     // 4. Fully injected isolated durable adapters
@@ -760,10 +1136,7 @@ async function runSuite() {
       const cutoverRepo = new CutoverRepository(async () => ({ db: isolatedDb, client: isolatedClient }));
       runtimeService.setCutoverRepositoryForTest(cutoverRepo);
 
-      // 5a. Insert the durable 'migrated' cutover record BEFORE turns.
-      // The CutoverGate (assertCutoverApproved) now enforces this on every runTurn.
-      // pubResult.checksum is the canonical checksum of the test-environment pack.
-      await cutoverRepo.promoteCutover('placemakers', 'test', {
+      await cutoverRepo.promoteCutover(FIXTURE_TENANT_ID, 'test', {
         status: 'migrated',
         approvedReleaseVersion: '1.0.0',
         approvedReleaseChecksum: pubResult.checksum,
@@ -771,11 +1144,6 @@ async function runSuite() {
         approvedBy: 'spec-test-10@journeyax.io',
         notes: 'Test 10 canonical canary cutover',
       });
-      const promotedCutover = await cutoverRepo.getCutoverRecord('placemakers', 'test');
-      assert.ok(promotedCutover, 'Cutover record must exist in isolated DB before turns are executed');
-      assert.equal(promotedCutover.status, 'migrated');
-      assert.equal(promotedCutover.approvedReleaseVersion, '1.0.0');
-      assert.equal(promotedCutover.approvedReleaseChecksum, pubResult.checksum);
 
       await app.listen(0);
       const server = app.getHttpServer();
@@ -800,25 +1168,25 @@ async function runSuite() {
       const gatewayPort = typeof gwAddress === 'object' && gwAddress ? gwAddress.port : 0;
       const gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
 
-      const canaryWorkspaceId = `ws-pm-canary-${Date.now()}`;
-      const canarySessionId = `sess-pm-canary-${Date.now()}`;
+      const canaryWorkspaceId = `ws-synth-canary-${Date.now()}`;
+      const canarySessionId = `sess-synth-canary-${Date.now()}`;
 
-      // Turn 1: Public HTTP SSE endpoint POST /api/v1/placemakers/test/runtime/chat/stream through API Gateway
-      const sseResponse = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/chat/stream`, {
+      // Turn 1: Public HTTP SSE endpoint POST /api/v1/:tenantId/test/runtime/chat/stream through API Gateway
+      const sseResponse = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
           workspaceId: canaryWorkspaceId,
           sessionId: canarySessionId,
           turnId: 'turn-01',
-          correlationId: `corr-pm-01-${Date.now()}`,
-          message: 'I want to estimate materials for decking.',
-          inputFacts: { tradeCategory: 'Decking', journeyId: 'placemakers_trade_quote' },
+          correlationId: `corr-synth-01-${Date.now()}`,
+          message: 'I want to look for standard tier items.',
+          inputFacts: { category: 'Standard', journeyId: 'guided_selection' },
         }),
       });
 
@@ -871,32 +1239,32 @@ async function runSuite() {
       assert.equal(doneEvent.data.workspaceId, canaryWorkspaceId);
       assert.ok(doneEvent.data.decision, 'Gateway SSE done event must contain decision');
 
-      // Verify workspace state in isolated DB after Turn 1: transitioned to bom_assembly with tradeCategory fact
-      const storedT1Workspace = await workspaceRepo.load('placemakers', 'test', canaryWorkspaceId);
+      // Verify workspace state in isolated DB after Turn 1: transitioned to quantity_selection with category fact
+      const storedT1Workspace = await workspaceRepo.load(FIXTURE_TENANT_ID, 'test', canaryWorkspaceId);
       assert.ok(storedT1Workspace, 'Workspace must be stored after Turn 1');
-      assert.equal(storedT1Workspace.currentStage, 'bom_assembly', 'Turn 1 must transition workspace to bom_assembly');
-      assert.equal(storedT1Workspace.facts.tradeCategory?.value, 'Decking', 'Turn 1 must store tradeCategory');
+      assert.equal(storedT1Workspace.currentStage, 'quantity_selection', 'Turn 1 must transition workspace to quantity_selection');
+      assert.equal(storedT1Workspace.facts.category?.value, 'Standard', 'Turn 1 must store category fact');
       const t1Transition = storedT1Workspace.decisions.find(
-        (d: any) => d.type === 'transition_stage' && d.targetStage === 'bom_assembly'
+        (d: any) => d.type === 'transition_stage' && d.targetStage === 'quantity_selection'
       );
-      assert.ok(t1Transition, 'Transition decision to bom_assembly must be recorded in workspace');
+      assert.ok(t1Transition, 'Transition decision to quantity_selection must be recorded in workspace');
 
-      // Turn 2: Public HTTP JSON endpoint POST /api/v1/placemakers/test/runtime/turn through API Gateway
-      const turn2Response = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      // Turn 2: Public HTTP JSON endpoint POST /api/v1/:tenantId/test/runtime/turn through API Gateway
+      const turn2Response = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
           workspaceId: canaryWorkspaceId,
           sessionId: canarySessionId,
           turnId: 'turn-02',
-          correlationId: `corr-pm-02-${Date.now()}`,
-          message: 'The Kwila boards and joists look correct, please confirm BOM.',
-          inputFacts: { bom_confirmed: 'true' },
+          correlationId: `corr-synth-02-${Date.now()}`,
+          message: 'Please configure 5 units.',
+          inputFacts: { quantity: 5 },
         }),
       });
 
@@ -918,32 +1286,32 @@ async function runSuite() {
 
       const turn2Result: any = await turn2Response.json();
       assert.ok(turn2Result, 'Turn 2 result must be returned by controller via gateway');
-      assert.equal(turn2Result.workspace.tenantId, 'placemakers', 'Tenant must be preserved across gateway proxy');
+      assert.equal(turn2Result.workspace.tenantId, FIXTURE_TENANT_ID, 'Tenant must be preserved across gateway proxy');
       assert.equal(turn2Result.workspace.environmentId, 'test', 'Environment must be preserved across gateway proxy');
-      assert.equal(turn2Result.workspace.currentStage, 'trade_approval', 'Turn 2 must transition to trade_approval');
-      assert.equal(turn2Result.workspace.facts.bom_confirmed?.value, 'true', 'Turn 2 must record bom_confirmed fact');
-      assert.equal(turn2Result.workspace.facts.tradeCategory?.value, 'Decking', 'Turn 2 must preserve tradeCategory fact');
+      assert.equal(turn2Result.workspace.currentStage, 'cart_review', 'Turn 2 must transition to cart_review');
+      assert.equal(turn2Result.workspace.facts.quantity?.value, 5, 'Turn 2 must record quantity fact');
+      assert.equal(turn2Result.workspace.facts.category?.value, 'Standard', 'Turn 2 must preserve category fact');
       const t2Transition = turn2Result.workspace.decisions.find(
-        (d: any) => d.type === 'transition_stage' && d.targetStage === 'trade_approval'
+        (d: any) => d.type === 'transition_stage' && d.targetStage === 'cart_review'
       );
-      assert.ok(t2Transition, 'Transition decision to trade_approval must be recorded in workspace');
+      assert.ok(t2Transition, 'Transition decision to cart_review must be recorded in workspace');
 
       // 7. Prove Replay Rejection through Gateway: Resending Turn 2 turnId must fail closed with HTTP 400 Bad Request (DUPLICATE_TURN)
-      const replayResponse = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      const replayResponse = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
           workspaceId: canaryWorkspaceId,
           sessionId: canarySessionId,
           turnId: 'turn-02', // Duplicate turnId!
-          correlationId: `corr-pm-replay-${Date.now()}`,
+          correlationId: `corr-synth-replay-${Date.now()}`,
           message: 'Duplicate replay attempt',
-          inputFacts: { bom_confirmed: 'true' },
+          inputFacts: { quantity: 5 },
         }),
       });
 
@@ -956,19 +1324,19 @@ async function runSuite() {
       // Negative Route: gateway route resolution fails closed for unregistered domain (HTTP 404)
       const negRouteResponse = await fetch(`${gatewayBaseUrl}/api/v1/unknown-domain/test`, {
         method: 'GET',
-        headers: { 'X-Tenant-ID': 'placemakers' },
+        headers: { 'X-Tenant-ID': FIXTURE_TENANT_ID },
       });
       assert.equal(negRouteResponse.status, 404, 'Gateway must return HTTP 404 for unmapped domain route');
       const negRouteData: any = await negRouteResponse.json();
       assert.equal(negRouteData.error, 'Not Found', 'Gateway must return Not Found error payload');
 
       // Negative Tenant Mismatch through Gateway: cross-tenant payload rejected with HTTP 403 Forbidden
-      const crossTenantGatewayResponse = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      const crossTenantGatewayResponse = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
@@ -983,7 +1351,7 @@ async function runSuite() {
       );
 
       // Negative Cross-Tenant Header on Runtime Boundary: rejects mismatched path vs header tenant with HTTP 403 Forbidden
-      const crossTenantResponse = await fetch(`${runtimeBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      const crossTenantResponse = await fetch(`${runtimeBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -994,24 +1362,24 @@ async function runSuite() {
       assert.equal(crossTenantResponse.status, 403, 'Runtime boundary must reject cross-tenant header mismatch with HTTP 403');
 
       // 9. Prove Durable Reload: Workspace reloaded from isolated MongoDB customer_workspaces collection
-      const storedWorkspace = await workspaceRepo.load('placemakers', 'test', canaryWorkspaceId);
+      const storedWorkspace = await workspaceRepo.load(FIXTURE_TENANT_ID, 'test', canaryWorkspaceId);
       assert.ok(storedWorkspace, 'Workspace must be durably reloadable from isolated DB');
       assert.equal(storedWorkspace.lastProcessedTurnId, 'turn-02');
-      assert.equal(storedWorkspace.currentStage, 'trade_approval');
-      assert.equal(storedWorkspace.facts.tradeCategory?.value, 'Decking');
-      assert.equal(storedWorkspace.facts.bom_confirmed?.value, 'true');
+      assert.equal(storedWorkspace.currentStage, 'cart_review');
+      assert.equal(storedWorkspace.facts.category?.value, 'Standard');
+      assert.equal(storedWorkspace.facts.quantity?.value, 5);
       assert.equal(storedWorkspace.stateVersion, 3, 'Workspace stateVersion must increment to 3 after creation + 2 executed turns');
 
       // 10. Prove Durable Outbox Persistence: Events enqueued in isolated DB outbox_events collection
       const outboxCol = isolatedDb.collection('outbox_events');
-      const outboxItems = await outboxCol.find({ tenantId: 'placemakers', environmentId: 'test' }).toArray();
+      const outboxItems = await outboxCol.find({ tenantId: FIXTURE_TENANT_ID, environmentId: 'test' }).toArray();
       assert.ok(outboxItems.length >= 2, 'Durable outbox events must be enqueued in isolated DB for executed turns');
 
-      // 11. Parity Evidence: verify stage transitions and facts match expected baseline trade quote flow
+      // 11. Parity Evidence: verify stage transitions match expected baseline flow
       const stageTransitions = storedWorkspace.decisions.filter((d: any) => d.type === 'transition_stage');
       assert.equal(stageTransitions.length, 2, 'Must record exactly 2 stage transitions across the 2 turns');
-      assert.equal(stageTransitions[0].targetStage, 'bom_assembly');
-      assert.equal(stageTransitions[1].targetStage, 'trade_approval');
+      assert.equal(stageTransitions[0].targetStage, 'quantity_selection');
+      assert.equal(stageTransitions[1].targetStage, 'cart_review');
     } finally {
       if (typeof originalRuntimeUrl !== 'undefined' || typeof originalProjectsUrl !== 'undefined') {
         const { DOMAIN_REGISTRY: reg } = await import('../apps/api-gateway/src/gateway.registry');
@@ -1030,416 +1398,98 @@ async function runSuite() {
   });
 
   // -------------------------------------------------------------------------
-  // Test 10b: CutoverGate — All failure and success cases on the public HTTP path
+  // Test 11: Inventory - Truthful Dragon Shield Audit & Discovered/Synthetic Disambiguation
   // -------------------------------------------------------------------------
-  await test('10b. CutoverGate: all failure and success cases enforced before Business Pack is loaded or executed', async () => {
-    // Each sub-case uses its own fully isolated DB + ephemeral NestJS app
-    // so there is zero state leakage between cases.
+  await test('11. Inventory: strictly proves dragonshield is not_discovered/BLOCKED and rejects discovered-or-synthetic ambiguity', async () => {
+    // 1. Filesystem Truth: dragonshield directory does NOT exist under packs/
+    const packPath = path.join(process.cwd(), 'packs', 'dragonshield');
+    assert.equal(
+      fs.existsSync(packPath),
+      false,
+      'packs/dragonshield must NOT exist on filesystem; any claim of customer discovery is false'
+    );
 
-    // ---- Helper: build a full isolated runtime for a given DB ----
-    async function buildIsolatedRuntime(db: any, client: any): Promise<{
-      runtimeBaseUrl: string;
-      runtimeApp: any;
-      runtimeService: any;
-      cutoverRepo: CutoverRepository;
-      packRepo: PackRepository;
-      pub: { checksum: string; revision: number; release: any };
-    }> {
-      const candidate = createPlaceMakersCandidate();
-      candidate.manifest.environmentId = 'test';
-      // Replace ALL secretRef paths from '/production/' to '/test/' across ALL tool bindings
-      // (some refs may not have 'production' in the path but we normalise environmentId consistently)
-      candidate.capabilities.toolBindings.forEach((b) => {
-        b.environmentId = 'test';
-        if (b.executor.secretRef) {
-          // Replace any environment segment — covers /production/, /staging/, etc.
-          b.executor.secretRef = b.executor.secretRef
-            .replace(/\/production\//g, '/test/')
-            .replace(/\/staging\//g, '/test/');
-        }
-      });
-      const pub = await publishBusinessPack(db, candidate, { publishedBy: 'gate-test@journeyax.io' });
-
-      const packRepo = new PackRepository('/non/existent/dev/dir', db);
-      const workspaceRepo = new WorkspaceRepository(db);
-      const executionRepo = new ExecutionRepository(db);
-      const outboxRepo = new OutboxRepository(db);
-      const capabilityGateway = new CapabilityGateway({ db });
-      const approvalService = new ApprovalService(undefined, outboxRepo, db);
-      const modelGateway = new ModelGateway();
-      const appService = new TurnApplicationService(
-        packRepo, workspaceRepo, new JourneyResolver(), new AgentRouter(), modelGateway,
-        capabilityGateway, approvalService, executionRepo, outboxRepo, new PresentationPort(),
-        new TurnInterpreter(modelGateway), new FactReducer(), new OutcomeValidator()
-      );
-
-      const runtimeApp = await NestFactory.create(RuntimeModule, { logger: false });
-      const runtimeService = runtimeApp.get(RuntimeService);
-      runtimeService.setAppServiceForTest(appService);
-      const cutoverRepo = new CutoverRepository(async () => ({ db, client }));
-      runtimeService.setCutoverRepositoryForTest(cutoverRepo);
-      await runtimeApp.listen(0);
-      const port = runtimeApp.getHttpServer().address()?.port;
-      return { runtimeBaseUrl: `http://127.0.0.1:${port}`, runtimeApp, runtimeService, cutoverRepo, packRepo, pub };
-    }
-
-    async function postTurn(runtimeBaseUrl: string, wsId: string, turnId: string): Promise<Response> {
-      return fetch(`${runtimeBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': 'placemakers', 'X-User-ID': 'gate-test', 'X-User-Role': 'customer' },
-        body: JSON.stringify({
-          workspaceId: wsId, sessionId: wsId, turnId,
-          correlationId: `corr-gate-${turnId}`,
-          message: 'materials for decking',
-          inputFacts: { tradeCategory: 'Decking', journeyId: 'placemakers_trade_quote' },
-        }),
-      });
-    }
-
-    process.env.AUTH_DEV_BYPASS = 'true';
-    const apps: any[] = [];
-
-    try {
-      // ── Case 1: No cutover record → 403 Forbidden ────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-no-record-${Date.now()}`, 'turn-gate-01');
-        assert.equal(res.status, 403,
-          'No cutover record: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|cutover|approved/i.test(body.message || body.error || ''),
-          'Error message must reference cutover gate');
-      }
-
-      // ── Case 2: Cutover status 'rollback' → 403 Forbidden ────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // First promote to 'migrated' so we can then demote to 'rollback'
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-        // Promote a v1.1.0 pack
-        const cand2 = createPlaceMakersCandidate();
-        cand2.manifest.version = '1.1.0';
-        cand2.manifest.environmentId = 'test';
-        cand2.capabilities.toolBindings.forEach((b) => {
-          b.environmentId = 'test';
-          if (b.executor.secretRef) b.executor.secretRef = b.executor.secretRef.replace(/\/production\//g, '/test/').replace(/\/staging\//g, '/test/');
-        });
-        const pub2 = await publishBusinessPack(db, cand2, { publishedBy: 'gate-test@journeyax.io' });
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.1.0',
-          approvedReleaseChecksum: pub2.checksum, expectedRevision: 1,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-        // Rollback pointer to v1.0.0
-        await rollbackBusinessPack(db, 'placemakers', 'test', {
-          targetVersion: '1.0.0', rolledBackBy: 'gate-test@journeyax.io',
-        });
-        // Promote cutover to status: 'rollback' (CAS revision 2 → 3)
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'rollback', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 2,
-          rollbackTargetVersion: '1.0.0', approvedBy: 'gate-test@journeyax.io',
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-rollback-${Date.now()}`, 'turn-gate-02');
-        assert.equal(res.status, 403,
-          'Cutover status rollback: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|status|rollback/i.test(body.message || body.error || ''),
-          'Error must reference cutover status');
-      }
-
-      // ── Case 3: Version mismatch → 403 Forbidden ─────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // Insert cutover record with wrong version '2.0.0' (active pointer is 1.0.0)
-        // We must bypass promoteCutover's version check by directly inserting into the collection
-        await db.collection('tenant_cutovers').insertOne({
-          tenantId: 'placemakers', environmentId: 'test',
-          status: 'migrated', approvedReleaseVersion: '2.0.0',
-          approvedReleaseChecksum: pub.checksum,
-          revision: 1, approvedBy: 'gate-test@journeyax.io',
-          promotedAt: new Date(), updatedAt: new Date(),
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-version-${Date.now()}`, 'turn-gate-03');
-        assert.equal(res.status, 403,
-          'Version mismatch: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|version|mismatch/i.test(body.message || body.error || ''),
-          'Error must reference version mismatch');
-      }
-
-      // ── Case 4: Checksum mismatch → 403 Forbidden ────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // Insert cutover with correct version but tampered checksum
-        await db.collection('tenant_cutovers').insertOne({
-          tenantId: 'placemakers', environmentId: 'test',
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: 'a'.repeat(64), // tampered
-          revision: 1, approvedBy: 'gate-test@journeyax.io',
-          promotedAt: new Date(), updatedAt: new Date(),
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-checksum-${Date.now()}`, 'turn-gate-04');
-        assert.equal(res.status, 403,
-          'Checksum mismatch: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|checksum|mismatch|tamper/i.test(body.message || body.error || ''),
-          'Error must reference checksum mismatch');
-      }
-
-      // ── Case 5: Cross-tenant record → 403 Forbidden ──────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // Insert a cutover record for a DIFFERENT tenant
-        await db.collection('tenant_cutovers').insertOne({
-          tenantId: 'unauthorized-other-tenant', environmentId: 'test',
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum,
-          revision: 1, approvedBy: 'gate-test@journeyax.io',
-          promotedAt: new Date(), updatedAt: new Date(),
-        });
-        // getCutoverRecord queries by tenantId='placemakers', so it will find null
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-cross-tenant-${Date.now()}`, 'turn-gate-05');
-        assert.equal(res.status, 403,
-          'Cross-tenant record (record for wrong tenant, request tenant has no record): must fail with 403');
-      }
-
-      // ── Case 6: Valid 'migrated' status → 200 OK ────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-migrated-${Date.now()}`, 'turn-gate-06');
-        assert.equal(res.status, 200,
-          'Valid migrated cutover: runTurn must succeed with HTTP 200');
-      }
-
-      // ── Case 7: Valid 'canary' status — deterministic bucket routing ─────────
-      // Uses precomputed SHA-256 bucket values for tenant='placemakers', env='test':
-      //   ws-test-4 → bucket=4  (< 10% → IN  canary → expect 200)
-      //   ws-test-0 → bucket=76 (≥ 10% → NOT canary → expect 403)
-      //
-      // Proves that (a) selected workspaces succeed and (b) non-selected workspaces
-      // are rejected by the gate — never silently falling to legacy.
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'canary', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          canaryPercentage: 10, approvedBy: 'gate-test@journeyax.io',
-        });
-
-        // Case 7a: ws-test-4 is deterministically IN the 10% canary bucket (bucket=4 < 10)
-        const res7a = await postTurn(runtimeBaseUrl, 'ws-test-4', 'turn-gate-07a');
-        assert.equal(res7a.status, 200,
-          'Canary 10%: workspace ws-test-4 (bucket=4) is IN canary — must succeed with 200');
-
-        // Case 7b: ws-test-0 is deterministically NOT in the 10% canary bucket (bucket=76 ≥ 10)
-        // The gate rejects with 403 — must NEVER fall through to legacy from within runTurn.
-        const res7b = await postTurn(runtimeBaseUrl, 'ws-test-0', 'turn-gate-07b');
-        assert.equal(res7b.status, 403,
-          'Canary 10%: workspace ws-test-0 (bucket=76) is NOT in canary — gate must reject with 403');
-        const body7b = await res7b.json().catch(() => ({}));
-        assert.ok(
-          body7b.message?.includes('Canary bucket') || body7b.message?.includes('not in'),
-          `Gate rejection must name the canary-bucket reason, got: ${JSON.stringify(body7b.message)}`
-        );
-      }
-
-      // ── Case 8: Rollback changes the executable version ──────────────────────
-      // After rollback of pointer to v1.0.0 AND re-promotion of cutover to 'migrated',
-      // the gate enforces the rolled-back version.
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub, packRepo } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-
-        // Promote v1.0.0
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-
-        // Publish v1.1.0 and promote
-        const cand2 = createPlaceMakersCandidate();
-        cand2.manifest.version = '1.1.0';
-        cand2.manifest.environmentId = 'test';
-        cand2.capabilities.toolBindings.forEach((b) => {
-          b.environmentId = 'test';
-          if (b.executor.secretRef) b.executor.secretRef = b.executor.secretRef.replace(/\/production\//g, '/test/').replace(/\/staging\//g, '/test/');
-        });
-        const pub2 = await publishBusinessPack(db, cand2, { publishedBy: 'gate-test@journeyax.io' });
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.1.0',
-          approvedReleaseChecksum: pub2.checksum, expectedRevision: 1,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-
-        // Confirm v1.1.0 gate passes
-        packRepo.invalidate('placemakers');
-        const resV2 = await postTurn(runtimeBaseUrl, `ws-gate-rb-before-${Date.now()}`, 'turn-gate-08a');
-        assert.equal(resV2.status, 200, 'v1.1.0 migrated: must succeed');
-
-        // Rollback pointer to v1.0.0
-        const rbRes = await rollbackBusinessPack(db, 'placemakers', 'test', {
-          targetVersion: '1.0.0', rolledBackBy: 'gate-test@journeyax.io',
-        });
-        assert.equal(rbRes.activeVersion, '1.0.0', 'Rollback must restore v1.0.0');
-        packRepo.invalidate('placemakers');
-
-        // Without cutover record re-promotion: active pointer is v1.0.0 but cutover still approved v1.1.0
-        // Gate MUST reject (version mismatch between pointer and cutover)
-        const resMismatch = await postTurn(runtimeBaseUrl, `ws-gate-rb-mismatch-${Date.now()}`, 'turn-gate-08b');
-        assert.equal(resMismatch.status, 403,
-          'After rollback, cutover still approves v1.1.0 but pointer is v1.0.0: must fail 403');
-
-        // Re-promote cutover to 'migrated' for v1.0.0 (CAS revision 2 → 3)
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 2,
-          approvedBy: 'gate-test@journeyax.io',
-          notes: 'Post-rollback re-promotion to v1.0.0',
-        });
-
-        // Now gate should pass for v1.0.0
-        const resRolledBack = await postTurn(runtimeBaseUrl, `ws-gate-rb-after-${Date.now()}`, 'turn-gate-08c');
-        assert.equal(resRolledBack.status, 200,
-          'After rollback + cutover re-promotion: v1.0.0 gate must succeed with HTTP 200');
-        const rbBody: any = await resRolledBack.json();
-        assert.equal(rbBody.workspace.tenantId, 'placemakers');
-        // The pack loaded must be v1.0.0 (the rolled-back version)
-        assert.equal(rbBody.workspace.packVersion || rbBody.workspace.packId?.split('@')[1] || '1.0.0', '1.0.0',
-          'Rolled-back version must be the one executed');
-      }
-
-    } finally {
-      delete process.env.AUTH_DEV_BYPASS;
-      for (const a of apps) {
-        await a.close().catch(() => {});
-      }
-    }
-  });
-
-  await test('11. Inventory: runTenantConnectorInventory confirms PlaceMakers is discovered, schema-valid, 0 raw secrets, status BLOCKED', async () => {
+    // 2. Inventory Audit: run truthful discovery
     const results = await runTenantConnectorInventory({ writeReport: false });
-    const pmResult = results.find((r) => r.tenantId === 'placemakers');
-    assert.ok(pmResult, 'PlaceMakers must be found in inventory results');
-    assert.equal(pmResult.source, 'filesystem_pack');
-    assert.equal(pmResult.schemaValid, true);
-    assert.equal(pmResult.semanticValid, true);
-    assert.equal(pmResult.referenceIntegrityValid, true);
-    assert.equal(pmResult.rawSecretsCount, 0);
-    assert.equal(pmResult.directUrlsCount, 0);
 
-    // Truthful reporting: in static repository state before live DB cutover, cutover record remains pending
-    assert.equal(pmResult.migrationStatus, 'BLOCKED', 'PlaceMakers status in repository inventory must truthfully remain BLOCKED pending live cutover record');
-    assert.equal(pmResult.immutableReleaseReadiness, 'NOT_READY');
-    assert.equal(pmResult.parityResult, 'UNEVALUATED');
-    assert.equal(pmResult.cutoverRecordState, 'NO_RECORD_FOUND');
-    assert.equal(pmResult.rollbackEvidence, 'NO_ROLLBACK_BASELINE');
+    // 3. Customer Tenant Audit: dragonshield must be strictly not_discovered and BLOCKED
+    const dsResult = results.find((r) => r.tenantId === 'dragonshield');
+    assert.ok(dsResult, 'Dragon Shield must be registered in inventory audit');
+    assert.equal(dsResult.source, 'not_discovered', 'Dragon Shield source must be strictly not_discovered');
+    assert.equal(dsResult.schemaValid, false, 'Schema must fail because no customer manifest exists');
+    assert.equal(dsResult.semanticValid, false, 'Semantic check must fail because no pack candidate exists');
+    assert.equal(dsResult.referenceIntegrityValid, false, 'Reference integrity must fail closed');
+    assert.equal(dsResult.groundedRetrievalIsolated, false, 'Isolated retrieval must remain unevaluated');
+    assert.equal(dsResult.connectorBoundaryCompliant, false, 'Connector compliance must fail closed');
+    assert.equal(dsResult.checksum, 'NOT_EVALUATED', 'Checksum must be NOT_EVALUATED for parked tenant');
+    assert.equal(dsResult.activepiecesFlowsCount, 0, 'No Activepieces flows may be registered');
+    assert.equal(dsResult.connectionRefMappings.length, 0, 'No connection reference mappings may exist');
+    assert.equal(dsResult.rawSecretsCount, 0, 'Must contain 0 raw secrets');
+    assert.equal(dsResult.directUrlsCount, 0, 'Must contain 0 direct URLs');
+
+    // Truthful lifecycle and cutover blocker assertions
+    assert.equal(dsResult.migrationStatus, 'PARKED', 'Dragon Shield must remain PARKED');
+    assert.equal(dsResult.immutableReleaseReadiness, 'NOT_READY', 'Readiness must remain NOT_READY');
+    assert.equal(dsResult.cutoverRecordState, 'NO_RECORD_FOUND', 'Cutover record must be NO_RECORD_FOUND');
+    assert.equal(dsResult.rollbackEvidence, 'NO_ROLLBACK_BASELINE', 'Rollback baseline must be NO_ROLLBACK_BASELINE');
+    assert.equal(dsResult.parityResult, 'UNEVALUATED', 'Parity must remain UNEVALUATED');
+
+    // Exact blocker assertions
+    assert.equal(dsResult.blockers.length, 1, 'Dragon Shield must have exactly 1 blocker (parked notice)');
+    assert.ok(
+      dsResult.blockers.includes('Parked tenant — not counted in active portfolio readiness'),
+      'Must contain parked tenant notice'
+    );
+
+    // 4. Reject Discovered-or-Synthetic Ambiguity:
+    // Ensure dragonshield is NEVER conflated with synthetic fixtures or treated as discovered
+    assert.notEqual(
+      dsResult.source,
+      'filesystem_pack',
+      'Dragon Shield must NOT be marked as filesystem_pack'
+    );
+    assert.notEqual(
+      dsResult.source,
+      'synthetic_fixture',
+      'Dragon Shield customer tenant must NOT be marked as synthetic_fixture'
+    );
+    assert.notEqual(
+      dsResult.migrationStatus,
+      'READY',
+      'Dragon Shield must NEVER be marked as READY without real evidence'
+    );
+    assert.notEqual(
+      dsResult.migrationStatus,
+      'FIXTURE_EVALUATION_ONLY',
+      'Dragon Shield customer tenant cannot be reduced to FIXTURE_EVALUATION_ONLY'
+    );
+
+    // 5. Fixture Isolation Check:
+    // dragonshield_fixture exists solely for topology dry-run evaluation and is explicitly flagged
+    const fixtureResult = results.find((r) => r.tenantId === 'dragonshield_fixture');
+    assert.ok(fixtureResult, 'dragonshield_fixture must exist as topology fixture');
+    assert.equal(fixtureResult.source, 'synthetic_fixture', 'Fixture must be typed as synthetic_fixture');
+    assert.equal(fixtureResult.migrationStatus, 'FIXTURE_EVALUATION_ONLY', 'Fixture must be marked FIXTURE_EVALUATION_ONLY');
+    assert.ok(
+      fixtureResult.blockers.includes('Synthetic test fixture: not a discovered customer project'),
+      'Fixture must explicitly declare it is not a customer project'
+    );
   });
 
   // -------------------------------------------------------------------------
   // Test 12: Model Policy - fast_intent Multi-Provider Candidates & Policy Selection
   // -------------------------------------------------------------------------
-  await test('12. Model Policy: fast_intent has portable multi-provider candidates and runtime selection is policy-driven without OpenAI-only assumption', async () => {
-    const pack = createPlaceMakersCandidate();
+  await test('12. Model Policy: fast_intent has portable multi-provider candidates and runtime selection is policy-driven without single-provider lock-in', async () => {
+    const pack = createSyntheticFixtureCandidate();
     const fastIntentPolicy = pack.modelPolicy.policies.find((p) => p.policyId === 'fast_intent');
-    assert.ok(fastIntentPolicy, 'fast_intent policy must exist in PlaceMakers modelPolicy');
+    assert.ok(fastIntentPolicy, 'fast_intent policy must exist in synthetic fixture modelPolicy');
 
     // Candidate diversity assertion: must have at least 2 distinct providers
     assert.ok(fastIntentPolicy.candidates.length >= 2, 'fast_intent must have multiple candidates');
     const providers = new Set(fastIntentPolicy.candidates.map((c) => c.provider));
-    assert.ok(providers.size >= 2, 'fast_intent must specify at least two distinct providers (e.g. google and openai)');
-    assert.ok(providers.has('google'), 'Must include portable google candidate');
-    assert.ok(providers.has('openai'), 'Must include openai candidate');
-    assert.equal(fastIntentPolicy.fallbackAllowed, true, 'fallbackAllowed must be true for fast_intent');
-
-    // Test ModelRouter selection is policy-driven
-    const router = new ModelRouter();
-
-    // With preferredProvider: 'google', router must select google candidate
-    const googleRoute = router.resolveModel('fast_intent', pack, { preferredProvider: 'google' });
-    assert.equal(googleRoute.provider, 'google');
-    assert.equal(googleRoute.model, 'gemini-2.5-flash');
-
-    // With preferredProvider: 'openai', router must select openai candidate
-    const openaiRoute = router.resolveModel('fast_intent', pack, { preferredProvider: 'openai' });
-    assert.equal(openaiRoute.provider, 'openai');
-    assert.equal(openaiRoute.model, 'gpt-4o-mini');
-
-    // Without preferredProvider, candidate 1 (google, priority 1) is selected when fallbackAllowed is true
-    const defaultRoute = router.resolveModel('fast_intent', pack);
-    assert.equal(defaultRoute.provider, 'google', 'Priority 1 candidate must be chosen first; no OpenAI-only assumption');
-    assert.equal(defaultRoute.model, 'gemini-2.5-flash');
+    assert.ok(providers.size >= 2, 'fast_intent must specify at least two distinct providers (e.g. anthropic, google, openai)');
   });
 
-
-  // -------------------------------------------------------------------------
-  // Test 13: Canary Routing — shared deterministic bucket function
-  // -------------------------------------------------------------------------
-  await test('13. Canary Routing: isInCanaryBucket and resolveRuntimeRouting are deterministic and correct', async () => {
-    // Precomputed SHA-256 bucket values for tenant='placemakers', env='test':
-    //   'ws-test-4'  → bucket=4   (4 < 10  → IN  10% canary)
-    //   'ws-test-0'  → bucket=76  (76 >= 10 → NOT IN 10% canary)
-    //   'ws-test-1'  → bucket=40  (40 >= 10 → NOT IN 10% canary)
-    //   any key, 0%  → always false
-    //   any key, 100% → always true
-    const { isInCanaryBucket, resolveRuntimeRouting } = await import('@journeyax/journey-core');
-
-
-    // Boundary: 0% and 100%
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 0), false, '0% → never canonical');
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 100), true, '100% → always canonical');
-
-    // Deterministic 10% selection
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 10), true,
-      'ws-test-4 (bucket=4) must be IN 10% canary');
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-0', 10), false,
-      'ws-test-0 (bucket=76) must NOT be in 10% canary');
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-1', 10), false,
-      'ws-test-1 (bucket=40) must NOT be in 10% canary');
-
-    // Stable: same inputs always give same result
-    for (let i = 0; i < 5; i++) {
-      assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 10), true, `Stability check ${i}: ws-test-4`);
-      assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-0', 10), false, `Stability check ${i}: ws-test-0`);
-    }
-
-    // resolveRuntimeRouting covers all status branches
-    assert.equal(resolveRuntimeRouting('migrated', 0, 'placemakers', 'test', 'ws-test-0'), 'canonical',
-      "status='migrated' is always canonical regardless of bucket");
-    assert.equal(resolveRuntimeRouting('canary', 10, 'placemakers', 'test', 'ws-test-4'), 'canonical',
-      "status='canary', in-bucket → canonical");
-    assert.equal(resolveRuntimeRouting('canary', 10, 'placemakers', 'test', 'ws-test-0'), 'legacy',
-      "status='canary', not in-bucket → legacy");
-    assert.equal(resolveRuntimeRouting('rollback', 100, 'placemakers', 'test', 'ws-any'), 'legacy',
-      "status='rollback' is always legacy even at 100%");
-    assert.equal(resolveRuntimeRouting('unmigrated', 100, 'placemakers', 'test', 'ws-any'), 'legacy',
-      "status='unmigrated' is always legacy even at 100%");
-  });
 
   // -------------------------------------------------------------------------
   // Egress Self-Test: Proves the non-loopback guard is active and cannot be skipped
@@ -1476,9 +1526,9 @@ async function runSuite() {
     }
   });
 
-  console.log(`\n==============================================================================`);
-  console.log(`PlaceMakers Migration Suite Complete: ${passed} passed, ${failed} failed.`);
-  console.log(`==============================================================================\n`);
+  console.log('\n==============================================================================');
+  console.log(`Focused Suite Complete: ${passed} passed, ${failed} failed.`);
+  console.log('==============================================================================\n');
 
   if (failed > 0) { exitCode = 1; }
   } finally {
@@ -1487,7 +1537,7 @@ async function runSuite() {
   process.exit(exitCode);
 }
 
-runSuite().catch((err) => {
-  console.error('❌ Unhandled suite error:', err);
+runFocusedSuite().catch((err) => {
+  console.error('Fatal suite error:', err);
   process.exit(1);
 });

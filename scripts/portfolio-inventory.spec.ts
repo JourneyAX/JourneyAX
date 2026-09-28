@@ -674,15 +674,15 @@ async function run(): Promise<void> {
     assert.equal(ww.source, 'filesystem_pack');
     assert.ok(ww.schemaValid);
 
-    // Abercrombie: not_discovered
+    // Abercrombie: discovered (filesystem_pack)
     const anf = activeResults.find((r) => r.tenantId === 'abercrombie')!;
-    assert.equal(anf.source, 'not_discovered');
-    assert.equal(anf.migrationStatus, 'BLOCKED');
+    assert.equal(anf.source, 'filesystem_pack');
+    assert.ok(anf.schemaValid);
 
-    // Caroma: not_discovered
+    // Caroma: discovered (filesystem_pack)
     const caroma = activeResults.find((r) => r.tenantId === 'caroma')!;
-    assert.equal(caroma.source, 'not_discovered');
-    assert.equal(caroma.migrationStatus, 'BLOCKED');
+    assert.equal(caroma.source, 'filesystem_pack');
+    assert.ok(caroma.schemaValid);
 
     console.log('\n   Four-Project Active Portfolio Readiness Matrix:');
     console.table(
@@ -704,15 +704,15 @@ async function run(): Promise<void> {
   {
     const evalResult = await evaluateSeedMigrationDryRun({ writeReport: false });
     assert.equal(evalResult.configuredActiveCount, 4);
-    assert.equal(evalResult.discoveredActiveCount, 2);
-    assert.equal(evalResult.pendingActiveCount, 2);
+    assert.equal(evalResult.discoveredActiveCount, 4);
+    assert.equal(evalResult.pendingActiveCount, 0);
     assert.equal(evalResult.configuredParkedCount, 5);
     assert.equal(evalResult.discoveredParkedCount, 1);
     assert.equal(evalResult.pendingParkedCount, 4);
     assert.equal(evalResult.configuredFixtureCount, 5);
     assert.equal(evalResult.unregisteredCount, 0);
-    assert.equal(evalResult.readyCount, 2);
-    assert.equal(evalResult.blockedCount, 2);
+    assert.equal(evalResult.readyCount, 4);
+    assert.equal(evalResult.blockedCount, 0);
     assert.equal(evalResult.reportPath, undefined, 'Read-only run must not set reportPath or write report');
     console.log('   ✅ PASS: Evaluator is read-only by default with accurate configured vs discovered breakdown.\n');
   }

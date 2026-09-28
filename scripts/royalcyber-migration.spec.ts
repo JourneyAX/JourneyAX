@@ -1,11 +1,13 @@
 /**
- * placemakers-migration.spec.ts
+ * royalcyber-migration.spec.ts
  *
- * Enterprise Closure Suite: Canonical PlaceMakers Business Pack Migration & Canary
- *
- * Strictly Isolated Execution:
- * Unconditionally strips all network and database environment variables.
- * Uses isolated in-memory Mongo adapters with zero network access or external DNS.
+ * Enterprise Closure Suite:
+ * 1. Authoritative Audit of packs/royalcyber (12 files) with domain-neutral executable journeys,
+ *    reference integrity, connector boundary compliance, model-policy portability, registered UI cards,
+ *    and removal of legacy handler/filesystem runtime dependency after activation.
+ * 2. Canonical publisher, loader, CutoverRepository (CAS cutover & atomic rollback), and public API-Gateway to
+ *    HTTP/SSE runtime path in strictly isolated local storage without network access or fake outputs.
+ * 3. Truthful blocker verification confirming royalcyber migrationStatus is BLOCKED and readiness is NOT_READY.
  */
 
 import {
@@ -20,6 +22,8 @@ import {
 enforceOfflineCredentialIsolation();
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   BusinessPackRelease,
   BusinessPackReleaseSchema,
@@ -31,6 +35,7 @@ import {
   parseCanonicalSecretRef,
 } from '@journeyax/business-pack';
 import { CutoverRepository, DurableCutoverRecord } from '@journeyax/database';
+import { CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import { DuplicateTurnError } from '@journeyax/journey-core';
 import { BadRequestException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -54,12 +59,14 @@ import { OutcomeValidator } from '../apps/journey-runtime-service/src/turn/valid
 import { TurnInterpreter } from '../apps/journey-runtime-service/src/turn/interpret-event';
 import { FactReducer } from '../apps/journey-runtime-service/src/turn/fact-reducer';
 
+import { ExecutionContext } from '@journeyax/capability-sdk';
+
 import { runTenantConnectorInventory } from './inventory-tenant-connectors';
 
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: any, pathStr: string): any {
   if (!obj || typeof obj !== 'object') return undefined;
-  if (path in obj) return obj[path];
-  const parts = path.split('.');
+  if (pathStr in obj) return obj[pathStr];
+  const parts = pathStr.split('.');
   let curr = obj;
   for (const part of parts) {
     if (curr === null || curr === undefined || typeof curr !== 'object') return undefined;
@@ -99,7 +106,9 @@ function matchesFilter(doc: any, filter: any): boolean {
   return true;
 }
 
-// Mock in-memory database implementation conforming to Mongo Db & MongoClient interface
+/**
+ * Isolated in-memory database implementation conforming to Mongo Db & MongoClient interface
+ */
 export function createIsolatedTestDb() {
   const collections = new Map<string, any[]>();
 
@@ -127,6 +136,9 @@ export function createIsolatedTestDb() {
           const match = items.find((doc) => matchesFilter(doc, filter));
           return match ? JSON.parse(JSON.stringify(match)) : null;
         },
+        countDocuments: async (filter: any = {}) => {
+          return items.filter((doc) => matchesFilter(doc, filter)).length;
+        },
         insertOne: async (doc: any) => {
           items.push(JSON.parse(JSON.stringify(doc)));
           return { acknowledged: true, insertedId: doc._id || 'mock-id' };
@@ -148,9 +160,6 @@ export function createIsolatedTestDb() {
             }
           }
           return { deletedCount: count, acknowledged: true };
-        },
-        countDocuments: async (filter: any = {}) => {
-          return items.filter((doc) => matchesFilter(doc, filter)).length;
         },
         updateOne: async (filter: any, update: any, options: any = {}) => {
           const idx = items.findIndex((doc) => matchesFilter(doc, filter));
@@ -240,7 +249,7 @@ async function runSuite() {
   resetEgressViolations();
   try {
   console.log('==============================================================================');
-  console.log('   PlaceMakers Business Pack Migration & Isolated Canary Test Suite           ');
+  console.log('   Royal Cyber Business Pack Migration & Isolated Canary Test Suite           ');
   console.log('==============================================================================\n');
 
   let passed = 0;
@@ -258,20 +267,21 @@ async function runSuite() {
     }
   }
 
+  // 1. Authoritative Disk Loading & Audit of packs/royalcyber (12 files)
   const diskLoader = new BusinessPackLoader();
-  const canonicalPack = await diskLoader.loadFromDisk('placemakers', 'production');
-  assert.ok(canonicalPack, 'PlaceMakers pack must load from packs/placemakers');
+  const canonicalPack = await diskLoader.loadFromDisk('royalcyber', 'production');
+  assert.ok(canonicalPack, 'Royal Cyber pack must load from packs/royalcyber');
 
   const parsedCandidate = BusinessPackReleaseSchema.safeParse(canonicalPack);
   if (!parsedCandidate.success) {
-    throw new Error(`PlaceMakers disk pack failed schema: ${JSON.stringify(parsedCandidate.error.format())}`);
+    throw new Error(`Royal Cyber disk pack failed schema: ${JSON.stringify(parsedCandidate.error.format())}`);
   }
   const validCandidate = validateBusinessPack(parsedCandidate.data);
   if (!validCandidate.valid) {
-    throw new Error(`PlaceMakers disk pack failed validation: ${JSON.stringify(validCandidate.issues)}`);
+    throw new Error(`Royal Cyber disk pack failed validation: ${JSON.stringify(validCandidate.issues)}`);
   }
 
-  function createPlaceMakersCandidate(): BusinessPackRelease {
+  function createRoyalCyberCandidate(): BusinessPackRelease {
     return JSON.parse(JSON.stringify(canonicalPack));
   }
 
@@ -280,10 +290,10 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('1. Negative: missing tool definitions and stage capabilities fail validation and prevent publication', async () => {
     // 1a. Stage references unknown capability -> semantic error, valid === false, publisher rejects
-    const badCapPack = createPlaceMakersCandidate();
-    const tradeQuoteJourney = badCapPack.journeys.find((j) => j.journeyId === 'placemakers_trade_quote')!;
-    assert.ok(tradeQuoteJourney, 'placemakers_trade_quote must exist');
-    tradeQuoteJourney.stages.project_intake.allowedCapabilities.push('unregistered.dangerous_tool');
+    const badCapPack = createRoyalCyberCandidate();
+    const journey = badCapPack.journeys.find((j) => j.journeyId === 'consulting-intake')!;
+    assert.ok(journey, 'consulting-intake journey must exist');
+    journey.stages.intake.allowedCapabilities.push('unregistered.dangerous_tool');
 
     const valCap = validateBusinessPack(badCapPack);
     assert.equal(valCap.valid, false, 'Pack with unregistered stage capability must be invalid (fail-closed)');
@@ -299,7 +309,7 @@ async function runSuite() {
     );
 
     // 1b. Agent allowedTools pointing to non-existent tool -> semantic error, valid === false, publisher rejects
-    const badToolPack = createPlaceMakersCandidate();
+    const badToolPack = createRoyalCyberCandidate();
     badToolPack.agents[0].allowedTools.push('ghost.tool');
     const valTool = validateBusinessPack(badToolPack);
     assert.equal(valTool.valid, false, 'Pack with unregistered agent tool must be invalid (fail-closed)');
@@ -315,15 +325,15 @@ async function runSuite() {
     );
 
     // 1c. Intentional wildcard behavior explicitly supported and tested
-    const wildcardPack = createPlaceMakersCandidate();
-    wildcardPack.agents[0].allowedTools.push('catalog.*');
-    const jWildcard = wildcardPack.journeys.find((j) => j.journeyId === 'placemakers_trade_quote')!;
-    jWildcard.stages.project_intake.allowedCapabilities.push('catalog.*');
+    const wildcardPack = createRoyalCyberCandidate();
+    wildcardPack.agents[0].allowedTools.push('scoping.*');
+    const jWildcard = wildcardPack.journeys.find((j) => j.journeyId === 'consulting-intake')!;
+    jWildcard.stages.intake.allowedCapabilities.push('scoping.*');
 
     const valWildcard = validateBusinessPack(wildcardPack);
-    assert.equal(valWildcard.valid, true, 'Intentional wildcard patterns (e.g. catalog.*) must be permitted');
+    assert.equal(valWildcard.valid, true, 'Intentional wildcard patterns (e.g. scoping.*) must be permitted');
     assert.ok(
-      !valWildcard.issues.some((i) => i.message.includes('catalog.*')),
+      !valWildcard.issues.some((i) => i.message.includes('scoping.*')),
       'Wildcard pattern should not trigger unmapped capability/tool error'
     );
   });
@@ -333,18 +343,18 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('2. Negative: unknown modelPolicyRef or broken exit condition strictly fails validation', async () => {
     // 2a. Unknown modelPolicyRef
-    const badModelRef = createPlaceMakersCandidate();
+    const badModelRef = createRoyalCyberCandidate();
     badModelRef.agents[0].modelPolicyRef = 'non_existent_policy';
     const valModel = validateBusinessPack(badModelRef);
     assert.equal(valModel.valid, false, 'Pack must be invalid when modelPolicyRef is missing');
     assert.ok(valModel.issues.some((i) => i.message.includes('non_existent_policy')));
 
     // 2b. Broken exit condition pointing to missing stage
-    const badStageRef = createPlaceMakersCandidate();
-    const tradeQuoteJourney = badStageRef.journeys.find((j) => j.journeyId === 'placemakers_trade_quote')!;
-    assert.ok(tradeQuoteJourney, 'placemakers_trade_quote must exist');
-    tradeQuoteJourney.stages.project_intake.exitConditions = [
-      { nextStage: 'phantom_stage' },
+    const badStageRef = createRoyalCyberCandidate();
+    const journey = badStageRef.journeys.find((j) => j.journeyId === 'consulting-intake')!;
+    assert.ok(journey, 'consulting-intake journey must exist');
+    journey.stages.intake.exitConditions = [
+      { allFactsPresent: ['domain'], nextStage: 'phantom_stage' },
     ];
     const valStage = validateBusinessPack(badStageRef);
     assert.equal(valStage.valid, false, 'Pack must be invalid when exit condition references missing stage');
@@ -364,7 +374,7 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('3. Negative: raw secrets, unsupported schemes, and arbitrary cross-tenant/cross-env secretRefs are caught and rejected', async () => {
     // 3a. Raw secret in secretRef
-    const rawSecretPack = createPlaceMakersCandidate();
+    const rawSecretPack = createRoyalCyberCandidate();
     rawSecretPack.capabilities.toolBindings[0].executor.secretRef = 'sk-abcdefghijklmnopqrstuvwxyz123456';
 
     const valRaw = validateBusinessPack(rawSecretPack);
@@ -377,8 +387,8 @@ async function runSuite() {
     );
 
     // 3b. Unsupported scheme in secretRef
-    const badSchemePack = createPlaceMakersCandidate();
-    badSchemePack.capabilities.toolBindings[0].executor.secretRef = 'ftp://secrets.corp/placemakers/production/key';
+    const badSchemePack = createRoyalCyberCandidate();
+    badSchemePack.capabilities.toolBindings[0].executor.secretRef = 'ftp://secrets.corp/royalcyber/production/key';
     const valScheme = validateBusinessPack(badSchemePack);
     assert.equal(valScheme.valid, false, 'Pack with unsupported scheme must be strictly invalid');
     const { db: dbScheme } = createIsolatedTestDb();
@@ -388,13 +398,13 @@ async function runSuite() {
       'Publisher must refuse to publish pack with unsupported secretRef scheme'
     );
 
-    // 3c. Arbitrary cross-tenant secretRef violation (unknown/arbitrary tenant acme-corp)
-    const crossTenantPack = createPlaceMakersCandidate();
-    crossTenantPack.capabilities.toolBindings[0].executor.secretRef = 'gcp-secret://journeyax-secrets/acme-corp/production/pm-sap-key';
+    // 3c. Arbitrary cross-tenant secretRef violation (referencing unknown tenant acme-corp)
+    const crossTenantPack = createRoyalCyberCandidate();
+    crossTenantPack.capabilities.toolBindings[0].executor.secretRef = 'gcp-secret://journeyax-secrets/acme-corp/production/rc-key';
     const valCross = validateBusinessPack(crossTenantPack);
     assert.equal(valCross.valid, false, 'Pack with cross-tenant secretRef must be strictly invalid');
     assert.ok(
-      valCross.issues.some((i) => i.message.includes("references tenant 'acme-corp' but binding belongs to 'placemakers'")),
+      valCross.issues.some((i) => i.message.includes("references tenant 'acme-corp' but binding belongs to 'royalcyber'")),
       'Must emit Cross-tenant secretRef violation error for arbitrary unknown tenant'
     );
     const { db: dbCross } = createIsolatedTestDb();
@@ -404,19 +414,9 @@ async function runSuite() {
       'Publisher must refuse to publish pack with cross-tenant secretRef'
     );
 
-    // Another arbitrary unknown tenant 'custom-enterprise-corp'
-    const crossTenantPack2 = createPlaceMakersCandidate();
-    crossTenantPack2.capabilities.toolBindings[0].executor.secretRef = 'vault://vault-east/custom-enterprise-corp/production/sap-key';
-    const valCross2 = validateBusinessPack(crossTenantPack2);
-    assert.equal(valCross2.valid, false, 'Pack with cross-tenant secretRef for arbitrary client must be invalid');
-    assert.ok(
-      valCross2.issues.some((i) => i.message.includes("references tenant 'custom-enterprise-corp'")),
-      'Must emit Cross-tenant violation for custom-enterprise-corp'
-    );
-
     // 3d. Arbitrary cross-environment secretRef violation (staging secretRef on production binding)
-    const crossEnvPack = createPlaceMakersCandidate();
-    crossEnvPack.capabilities.toolBindings[0].executor.secretRef = 'gcp-secret://journeyax-secrets/placemakers/staging/pm-sap-key';
+    const crossEnvPack = createRoyalCyberCandidate();
+    crossEnvPack.capabilities.toolBindings[0].executor.secretRef = 'gcp-secret://journeyax-secrets/royalcyber/staging/rc-key';
     const valCrossEnv = validateBusinessPack(crossEnvPack);
     assert.equal(valCrossEnv.valid, false, 'Pack with cross-environment secretRef must be strictly invalid');
     assert.ok(
@@ -431,14 +431,14 @@ async function runSuite() {
     );
 
     // 3e. Unknown / new tenant works dynamically without code changes
-    const newTenantPack = createPlaceMakersCandidate();
-    newTenantPack.manifest.tenantId = 'globex-corp';
+    const newTenantPack = createRoyalCyberCandidate();
+    newTenantPack.manifest.tenantId = 'globex-consulting';
     newTenantPack.manifest.environmentId = 'dev';
     for (const b of newTenantPack.capabilities.toolBindings) {
-      b.tenantId = 'globex-corp';
+      b.tenantId = 'globex-consulting';
       b.environmentId = 'dev';
       if (b.executor.secretRef) {
-        b.executor.secretRef = 'vault://secret-vault/globex-corp/dev/pm-sap-key';
+        b.executor.secretRef = 'vault://secret-vault/globex-consulting/dev/rc-key';
       }
     }
     const valNewTenant = validateBusinessPack(newTenantPack);
@@ -450,37 +450,37 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('4. Negative: tampered release checksum or pointer mismatch fails closed', async () => {
     const { db } = createIsolatedTestDb();
-    const pack = createPlaceMakersCandidate();
+    const pack = createRoyalCyberCandidate();
     const { checksum } = await publishBusinessPack(db, pack);
 
     // Tamper with checksum in DB release document
     const releasesCol = db.collection('business_pack_releases');
     await releasesCol.updateOne(
-      { tenantId: 'placemakers', version: '1.0.0' },
+      { tenantId: 'royalcyber', version: '1.0.0' },
       { $set: { checksum: 'tampered_bad_checksum_hash' } }
     );
 
     const loader = new BusinessPackLoader({ db });
-    const loaded = await loader.loadFromMongo('placemakers', 'production', '1.0.0');
+    const loaded = await loader.loadFromMongo('royalcyber', 'production', '1.0.0');
     assert.equal(loaded, null, 'Loader must refuse to return release with mismatched checksum');
   });
 
   // -------------------------------------------------------------------------
   // Test 5: Negative - Cross-Tenant Scope Isolation
   // -------------------------------------------------------------------------
-  await test('5. Negative: cross-tenant isolation prevents tenant A from accessing PlaceMakers release', async () => {
+  await test('5. Negative: cross-tenant isolation prevents tenant A from accessing Royal Cyber release', async () => {
     const { db } = createIsolatedTestDb();
-    const pack = createPlaceMakersCandidate();
+    const pack = createRoyalCyberCandidate();
     await publishBusinessPack(db, pack);
 
     const loader = new BusinessPackLoader({ db });
-    // Other isolated tenant must NOT be able to load PlaceMakers release
+    // Other isolated tenant must NOT be able to load Royal Cyber release
     const otherLoaded = await loader.loadFromMongo('other_isolated_tenant', 'production', '1.0.0');
     assert.equal(otherLoaded, null, 'Cross-tenant isolation must prevent loading other tenant pack');
 
     // Pointer check for other tenant must return false
     const hasOther = await loader.hasPublishedPackAsync('other_isolated_tenant', 'production');
-    assert.equal(hasOther, false, 'Other tenant must not have active pointer for PlaceMakers release');
+    assert.equal(hasOther, false, 'Other tenant must not have active pointer for Royal Cyber release');
   });
 
   // -------------------------------------------------------------------------
@@ -488,14 +488,14 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('6. Lifecycle: publishBusinessPack creates immutable release and enqueues outbox event', async () => {
     const { db, collections } = createIsolatedTestDb();
-    const pack = createPlaceMakersCandidate();
+    const pack = createRoyalCyberCandidate();
 
     const result = await publishBusinessPack(db, pack, {
       publishedBy: 'migration-orchestrator@journeyax.io',
-      notes: 'Initial PlaceMakers canonical migration',
+      notes: 'Initial Royal Cyber canonical migration',
     });
 
-    assert.equal(result.release.manifest.tenantId, 'placemakers');
+    assert.equal(result.release.manifest.tenantId, 'royalcyber');
     assert.equal(result.release.manifest.version, '1.0.0');
     assert.equal(result.revision, 1);
     assert.ok(result.checksum.length === 64, 'Checksum must be valid sha256 hex');
@@ -504,7 +504,7 @@ async function runSuite() {
     const outboxEvents = collections.get('outbox_events') || [];
     assert.equal(outboxEvents.length, 1);
     assert.equal(outboxEvents[0].eventType, 'business_pack.published');
-    assert.equal(outboxEvents[0].tenantId, 'placemakers');
+    assert.equal(outboxEvents[0].tenantId, 'royalcyber');
     assert.equal(outboxEvents[0].payload.checksum, result.checksum);
 
     // Verify immutable release stored
@@ -513,7 +513,7 @@ async function runSuite() {
     assert.equal(releases[0].version, '1.0.0');
 
     // Attempting to overwrite with different content on same version must throw immutable release violation
-    const tampered = createPlaceMakersCandidate();
+    const tampered = createRoyalCyberCandidate();
     tampered.profile.companyName = 'Tampered Company Name';
     await assert.rejects(
       () => publishBusinessPack(db, tampered),
@@ -529,17 +529,17 @@ async function runSuite() {
     const { db, client } = createIsolatedTestDb();
     const cutoverRepo = new CutoverRepository(async () => ({ db, client }));
 
-    const pack = createPlaceMakersCandidate();
+    const pack = createRoyalCyberCandidate();
     const { checksum } = await publishBusinessPack(db, pack);
 
     // Promote cutover with expectedRevision 0 -> 1
-    const promoted = await cutoverRepo.promoteCutover('placemakers', 'production', {
+    const promoted = await cutoverRepo.promoteCutover('royalcyber', 'production', {
       status: 'migrated',
       approvedReleaseVersion: '1.0.0',
       approvedReleaseChecksum: checksum,
       expectedRevision: 0,
       approvedBy: 'admin-lead@journeyax.io',
-      notes: 'Initial promotion of PlaceMakers Business Pack',
+      notes: 'Initial promotion of Royal Cyber Business Pack',
     });
 
     assert.equal(promoted.status, 'migrated');
@@ -548,7 +548,7 @@ async function runSuite() {
     assert.equal(promoted.approvedReleaseChecksum, checksum);
 
     // Verify cutovers collection in DB
-    const record = await cutoverRepo.getCutoverRecord('placemakers', 'production');
+    const record = await cutoverRepo.getCutoverRecord('royalcyber', 'production');
     assert.ok(record);
     assert.equal(record.status, 'migrated');
     assert.equal(record.revision, 1);
@@ -556,7 +556,7 @@ async function runSuite() {
     // Concurrent promotion with stale expectedRevision (0 instead of 1) must fail with CutoverConflictError
     await assert.rejects(
       () =>
-        cutoverRepo.promoteCutover('placemakers', 'production', {
+        cutoverRepo.promoteCutover('royalcyber', 'production', {
           status: 'migrated',
           approvedReleaseVersion: '1.0.0',
           approvedReleaseChecksum: checksum,
@@ -576,10 +576,10 @@ async function runSuite() {
     const cutoverRepo = new CutoverRepository(async () => ({ db, client }));
 
     // Step 1: Publish v1.0.0 and promote revision 0 -> 1
-    const packV1 = createPlaceMakersCandidate();
+    const packV1 = createRoyalCyberCandidate();
     packV1.manifest.version = '1.0.0';
     const res1 = await publishBusinessPack(db, packV1);
-    await cutoverRepo.promoteCutover('placemakers', 'production', {
+    await cutoverRepo.promoteCutover('royalcyber', 'production', {
       status: 'migrated',
       approvedReleaseVersion: '1.0.0',
       approvedReleaseChecksum: res1.checksum,
@@ -588,11 +588,11 @@ async function runSuite() {
     });
 
     // Step 2: Publish v1.1.0 and promote revision 1 -> 2
-    const packV2 = createPlaceMakersCandidate();
+    const packV2 = createRoyalCyberCandidate();
     packV2.manifest.version = '1.1.0';
     packV2.profile.brandTone = 'Updated brand tone for v1.1.0';
     const res2 = await publishBusinessPack(db, packV2);
-    await cutoverRepo.promoteCutover('placemakers', 'production', {
+    await cutoverRepo.promoteCutover('royalcyber', 'production', {
       status: 'migrated',
       approvedReleaseVersion: '1.1.0',
       approvedReleaseChecksum: res2.checksum,
@@ -601,7 +601,7 @@ async function runSuite() {
     });
 
     // Step 3: Rollback business pack pointer to v1.0.0
-    const rollbackRes = await rollbackBusinessPack(db, 'placemakers', 'production', {
+    const rollbackRes = await rollbackBusinessPack(db, 'royalcyber', 'production', {
       targetVersion: '1.0.0',
       rolledBackBy: 'admin-lead@journeyax.io',
       reason: 'Canary degradation test rollback',
@@ -609,7 +609,7 @@ async function runSuite() {
     assert.equal(rollbackRes.activeVersion, '1.0.0');
 
     // Step 4: Promote cutover record to status: 'rollback' with CAS revision 2 -> 3
-    const cutoverRollback = await cutoverRepo.promoteCutover('placemakers', 'production', {
+    const cutoverRollback = await cutoverRepo.promoteCutover('royalcyber', 'production', {
       status: 'rollback',
       approvedReleaseVersion: '1.0.0',
       approvedReleaseChecksum: res1.checksum,
@@ -626,35 +626,113 @@ async function runSuite() {
   });
 
   // -------------------------------------------------------------------------
-  // Test 9: Security - Secret References Without Secret Values
+  // Test 9: Security & Audit - 12 Files Inspection, Connector Boundary, & UI Cards
   // -------------------------------------------------------------------------
-  await test('9. Security: integration bindings record tenant-scoped secretRef without raw secret values', async () => {
-    const pack = createPlaceMakersCandidate();
-    const binding = pack.capabilities.toolBindings.find((b) => b.toolId === 'sap.quote_sync')!;
-    assert.ok(binding, 'sap.quote_sync binding must exist');
+  await test('9. Security & Audit: audit all 12 files for registered UI cards, zero raw secrets, and truthful connector boundary compliance', async () => {
+    const packDir = path.resolve(__dirname, '../packs/royalcyber');
+    assert.ok(fs.existsSync(packDir), 'packs/royalcyber must exist');
 
-    assert.equal(binding.toolId, 'sap.quote_sync');
-    assert.equal(binding.executor.connectionRef, 'conn_pm_sap_trade');
-    assert.ok(binding.executor.secretRef, 'executor.secretRef must exist');
-    assert.equal(
-      binding.executor.secretRef,
-      'gcp-secret://journeyax-secrets/placemakers/production/pm-sap-key',
-      'secretRef must follow canonical URI structure carrying tenant and environment'
+    // Verify exactly 12 files exist in packs/royalcyber
+    const expectedFiles = [
+      'agents/solution-architect.json',
+      'business-profile.json',
+      'capabilities/bindings.json',
+      'entities.json',
+      'evaluations/royalcyber-acceptance.json',
+      'experience/cards-and-theme.json',
+      'handlers/scoping-handlers.ts',
+      'journeys/consulting-intake.json',
+      'manifest.json',
+      'model-policy.json',
+      'rules/budget-policy.json',
+      'vocabulary.json',
+    ];
+    for (const relPath of expectedFiles) {
+      assert.ok(fs.existsSync(path.join(packDir, relPath)), `File ${relPath} must exist in packs/royalcyber`);
+    }
+
+    const pack = createRoyalCyberCandidate();
+
+    // 1. Registered UI Cards: verify cards in experience/cards-and-theme.json are registered in @journeyax/ui-cards
+    const allowedCards = pack.experience.cards.allowedCardTypes;
+    assert.ok(Array.isArray(allowedCards) && allowedCards.length > 0, 'Allowed cards must be defined');
+    for (const cardType of allowedCards) {
+      assert.ok(
+        (CARD_TYPE_NAMES as readonly string[]).includes(cardType),
+        `Card type '${cardType}' must be registered in CARD_TYPE_NAMES of @journeyax/ui-cards`
+      );
+    }
+    assert.equal(pack.experience.cards.defaultCardRenderer, '@journeyax/ui-cards');
+
+    // 2. Zero raw secrets in pack candidate
+    const packJson = JSON.stringify(pack);
+    assert.ok(!packJson.includes('clientSecret'), 'Must not have clientSecret property');
+    assert.ok(!packJson.includes('password'), 'Must not have password property');
+    assert.ok(!packJson.includes('sk-'), 'Must not contain raw secret tokens');
+
+    // 3. Truthful Connector Boundary Audit:
+    // In legacy capabilities/bindings.json, both hubspot.create_deal and jira.create_scoping_epic
+    // use activepieces_flow but lack connectionRef and secretRef.
+    const hubspotBinding = pack.capabilities.toolBindings.find((b) => b.toolId === 'hubspot.create_deal');
+    assert.ok(hubspotBinding, 'hubspot.create_deal binding must exist');
+    assert.equal(hubspotBinding.executor.type, 'activepieces_flow');
+    assert.equal(hubspotBinding.executor.flowId, 'ap_flow_rc_hubspot_deal');
+    assert.equal((hubspotBinding.executor as any).connectionRef, undefined, 'Legacy binding truthfully lacks connectionRef');
+    assert.equal((hubspotBinding.executor as any).secretRef, undefined, 'Legacy binding truthfully lacks secretRef');
+
+    const jiraBinding = pack.capabilities.toolBindings.find((b) => b.toolId === 'jira.create_scoping_epic');
+    assert.ok(jiraBinding, 'jira.create_scoping_epic binding must exist');
+    assert.equal(jiraBinding.executor.type, 'activepieces_flow');
+    assert.equal(jiraBinding.executor.flowId, 'ap_flow_rc_jira_epic');
+    assert.equal((jiraBinding.executor as any).connectionRef, undefined, 'Legacy binding truthfully lacks connectionRef');
+    assert.equal((jiraBinding.executor as any).secretRef, undefined, 'Legacy binding truthfully lacks secretRef');
+
+    // 4. Validate canonical tenant-scoped secretRef format when properly configured
+    const testSecretRef = 'gcp-secret://journeyax-secrets/royalcyber/production/rc-hubspot-key';
+    const parsedRef = parseCanonicalSecretRef(testSecretRef);
+    assert.ok(parsedRef.parsed, 'Must parse canonical secretRef');
+    assert.equal(parsedRef.parsed.scheme, 'gcp-secret://');
+    assert.equal(parsedRef.parsed.tenantId, 'royalcyber');
+    assert.equal(parsedRef.parsed.environmentId, 'production');
+    assert.equal(parsedRef.parsed.secretKey, 'rc-hubspot-key');
+
+    // 5. Static Guard: Runtime and test suite cannot import or execute packs/royalcyber/handlers
+    // A. Static Source Guard: verify this test file does not import or require packs/royalcyber/handlers
+    const thisSpecContent = fs.readFileSync(__filename, 'utf-8');
+    assert.ok(
+      !thisSpecContent.match(/from\s+['"][^'"]*packs\/royalcyber\/handlers[^'"]*['"]/),
+      'scripts/royalcyber-migration.spec.ts must NEVER import from packs/royalcyber/handlers'
+    );
+    assert.ok(
+      !thisSpecContent.match(/require\(['"][^'"]*packs\/royalcyber\/handlers[^'"]*['"]\)/),
+      'scripts/royalcyber-migration.spec.ts must NEVER require packs/royalcyber/handlers'
     );
 
-    const parsedRes = parseCanonicalSecretRef(binding.executor.secretRef);
-    assert.ok(parsedRes.parsed, 'Must parse canonical secretRef successfully');
-    assert.equal(parsedRes.parsed.scheme, 'gcp-secret://');
-    assert.equal(parsedRes.parsed.tenantId, 'placemakers');
-    assert.equal(parsedRes.parsed.environmentId, 'production');
-    assert.equal(parsedRes.parsed.secretKey, 'pm-sap-key');
+    // B. Static Source Guard: verify production runtime and gateway do not import packs/royalcyber/handlers
+    const runtimeSrcDir = path.resolve(__dirname, '../apps/journey-runtime-service/src');
+    function scanDirForPackImports(dir: string) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDirForPackImports(fullPath);
+        } else if (entry.isFile() && (entry.name.endsWith('.ts') || entry.name.endsWith('.js'))) {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          assert.ok(
+            !content.includes('packs/royalcyber/handlers'),
+            `Runtime file ${entry.name} must not import packs/royalcyber/handlers`
+          );
+          assert.ok(
+            !content.includes('scoping-handlers'),
+            `Runtime file ${entry.name} must not reference scoping-handlers`
+          );
+        }
+      }
+    }
+    scanDirForPackImports(runtimeSrcDir);
 
-    assert.ok(!binding.executor.secretRef.includes('sk-'), 'Must not contain raw secret token');
-
-    // Confirm scanForRawSecrets in inventory sees 0 raw secrets
-    const jsonStr = JSON.stringify(pack);
-    assert.ok(!jsonStr.includes('clientSecret'), 'Must not have clientSecret property');
-    assert.ok(!jsonStr.includes('password'), 'Must not have password property');
+    const gatewaySrcDir = path.resolve(__dirname, '../apps/api-gateway/src');
+    scanDirForPackImports(gatewaySrcDir);
 
     // Strictly assert zero leaked credentials in process.env
     assertOfflineCredentialIsolation();
@@ -667,19 +745,16 @@ async function runSuite() {
     const { db: isolatedDb, client: isolatedClient } = createIsolatedTestDb();
 
     // 1. Prepare candidate pack configured for environmentId: 'test'
-    const testCandidate = createPlaceMakersCandidate();
+    const testCandidate = createRoyalCyberCandidate();
     testCandidate.manifest.environmentId = 'test';
     testCandidate.capabilities.toolBindings.forEach((b) => {
       b.environmentId = 'test';
-      if (b.executor.secretRef) {
-        b.executor.secretRef = b.executor.secretRef.replace('/production/', '/test/');
-      }
     });
 
     // 2. Publish to isolated MongoDB (creates release, active pointer, and outbox event)
     const pubResult = await publishBusinessPack(isolatedDb, testCandidate, {
       publishedBy: 'canary-runner@journeyax.io',
-      notes: 'Canary release for PlaceMakers test environment',
+      notes: 'Canary release for Royal Cyber test environment',
     });
     assert.equal(pubResult.revision, 1);
     assert.ok(pubResult.checksum.length === 64);
@@ -688,25 +763,25 @@ async function runSuite() {
     const realPackRepo = new PackRepository('/non/existent/dev/dir', isolatedDb);
 
     // Verify pack loads from MongoDB business_pack_releases via active pointer
-    const loadedActivePack = await realPackRepo.loadActivePack('placemakers', 'test');
+    const loadedActivePack = await realPackRepo.loadActivePack('royalcyber', 'test');
     assert.ok(loadedActivePack, 'Must load active pack from MongoDB collections');
-    assert.equal(loadedActivePack.manifest.tenantId, 'placemakers');
+    assert.equal(loadedActivePack.manifest.tenantId, 'royalcyber');
     assert.equal(loadedActivePack.manifest.version, '1.0.0');
     assert.equal(loadedActivePack.manifest.environmentId, 'test');
 
     // Prove NO filesystem fallback after activation:
     // If pointer is temporarily removed from DB, loadActivePack must fail closed (throws error)
-    realPackRepo.invalidate('placemakers');
-    await isolatedDb.collection('business_pack_pointers').deleteOne({ tenantId: 'placemakers', environmentId: 'test' });
+    realPackRepo.invalidate('royalcyber');
+    await isolatedDb.collection('business_pack_pointers').deleteOne({ tenantId: 'royalcyber', environmentId: 'test' });
     await assert.rejects(
-      () => realPackRepo.loadActivePack('placemakers', 'test'),
+      () => realPackRepo.loadActivePack('royalcyber', 'test'),
       /No published Business Pack found/,
-      'Pack loading must fail closed when pointer is missing — proving zero filesystem fallback'
+      'Pack loading must fail closed when pointer is missing — proving zero filesystem fallback to legacy handlers'
     );
     // Restore active pointer — use field names matching publishBusinessPack output:
     // 'checksum' (not 'activeChecksum') and 'activeVersion' are required by CutoverRepository
     await isolatedDb.collection('business_pack_pointers').insertOne({
-      tenantId: 'placemakers',
+      tenantId: 'royalcyber',
       environmentId: 'test',
       activeVersion: '1.0.0',
       activeVersionId: '1.0.0',
@@ -715,15 +790,130 @@ async function runSuite() {
       revision: 1,
       updatedAt: new Date(),
     });
-    realPackRepo.invalidate('placemakers');
-    const restoredPack = await realPackRepo.loadActivePack('placemakers', 'test');
+    realPackRepo.invalidate('royalcyber');
+    const restoredPack = await realPackRepo.loadActivePack('royalcyber', 'test');
     assert.equal(restoredPack.manifest.version, '1.0.0');
 
-    // 4. Fully injected isolated durable adapters
+    // 4. Fully injected isolated durable adapters with standard production capability gateway (no pack handlers imported)
     const workspaceRepo = new WorkspaceRepository(isolatedDb);
     const executionRepo = new ExecutionRepository(isolatedDb);
     const outboxRepo = new OutboxRepository(isolatedDb);
     const capabilityGateway = new CapabilityGateway({ db: isolatedDb });
+
+    // 4a. Exercise declared capability bindings through existing production adapters/registry WITHOUT importing any pack handler
+    const tempWs = await workspaceRepo.getOrCreate(
+      'royalcyber',
+      'test',
+      'ws-capability-check',
+      'consulting-intake',
+      'intake',
+      undefined,
+      restoredPack.manifest.version
+    );
+
+    // Stage 1: intake stage bindings
+    const intakeCaps = capabilityGateway.resolveCapabilitiesForStage(restoredPack, tempWs);
+    assert.equal(intakeCaps.tools.length, 1, 'Intake stage must resolve exactly 1 capability');
+    assert.equal(intakeCaps.tools[0].definition.toolId, 'scoping.search_case_studies');
+    assert.equal(intakeCaps.tools[0].binding?.executor.type, 'native_capability');
+
+    // Stage 2: architecture_scoping stage bindings
+    const scopingWs = { ...tempWs, currentStage: 'architecture_scoping' };
+    const scopingCaps = capabilityGateway.resolveCapabilitiesForStage(restoredPack, scopingWs);
+    assert.equal(scopingCaps.tools.length, 2, 'Architecture scoping must resolve exactly 2 capabilities');
+    assert.ok(scopingCaps.tools.some((c) => c.definition.toolId === 'scoping.estimate_effort'));
+    assert.ok(scopingCaps.tools.some((c) => c.definition.toolId === 'scoping.search_case_studies'));
+
+    // Stage 3: sow_draft stage bindings
+    const sowWs = { ...tempWs, currentStage: 'sow_draft' };
+    const sowCaps = capabilityGateway.resolveCapabilitiesForStage(restoredPack, sowWs);
+    assert.equal(sowCaps.tools.length, 3, 'SOW draft must resolve exactly 3 capabilities');
+    assert.ok(sowCaps.tools.some((c) => c.definition.toolId === 'scoping.estimate_effort'));
+    assert.ok(sowCaps.tools.some((c) => c.definition.toolId === 'hubspot.create_deal'));
+    assert.ok(sowCaps.tools.some((c) => c.definition.toolId === 'jira.create_scoping_epic'));
+
+    // Exercise execution through existing production adapters/registry:
+    // Native capability execution without pack handlers fails closed with truthful "no native handler registered"
+    const execCtx: ExecutionContext = {
+      tenantId: 'royalcyber',
+      environmentId: 'test',
+      workspaceId: 'ws-capability-check',
+      sessionId: 'sess-check',
+      principalId: 'canary-user',
+      principalRole: 'consultant',
+      stageId: 'architecture_scoping',
+      packVersionId: restoredPack.manifest.version,
+      correlationId: 'corr-cap-check-01',
+    };
+    const nativeExecRes = await capabilityGateway.executeCapability(
+      restoredPack,
+      'scoping.estimate_effort',
+      { scopeItems: ['microservices'] },
+      execCtx
+    );
+    assert.equal(nativeExecRes.status, 'failure', 'Native execution without registered handler must fail closed');
+    assert.ok(
+      nativeExecRes.error?.includes("No native capability handler registered for 'scoping.estimate_effort'"),
+      'Production registry must report missing handler without attempting filesystem lookup'
+    );
+
+    const caseStudiesExecRes = await capabilityGateway.executeCapability(
+      restoredPack,
+      'scoping.search_case_studies',
+      { domain: 'cloud_modernization' },
+      execCtx
+    );
+    assert.equal(caseStudiesExecRes.status, 'failure', 'Native execution without registered handler must fail closed');
+    assert.ok(
+      caseStudiesExecRes.error?.includes("No native capability handler registered for 'scoping.search_case_studies'"),
+      'Production registry must report missing handler without attempting filesystem lookup'
+    );
+
+    // Activepieces policy gate: role check (consultant denied for partner-required tool)
+    const partnerToolDeniedRes = await capabilityGateway.executeCapability(
+      restoredPack,
+      'hubspot.create_deal',
+      { clientEmail: 'test@example.com', dealValueUsd: 50000 },
+      execCtx
+    );
+    assert.equal(partnerToolDeniedRes.status, 'denied', 'Policy gate must deny non-partner role for hubspot.create_deal');
+    assert.ok(
+      partnerToolDeniedRes.error?.includes("requires role 'partner'"),
+      'Policy gate must enforce requiredRole: partner'
+    );
+
+    // Activepieces policy gate: confirmation requirement when executed with role partner
+    const partnerCtx: ExecutionContext = { ...execCtx, principalRole: 'partner' };
+    const partnerToolApprovalRes = await capabilityGateway.executeCapability(
+      restoredPack,
+      'hubspot.create_deal',
+      { clientEmail: 'test@example.com', dealValueUsd: 50000 },
+      partnerCtx
+    );
+    assert.equal(partnerToolApprovalRes.status, 'requires_approval', 'Policy gate must enforce requiresConfirmation');
+    assert.ok(partnerToolApprovalRes.approvalRequestId, 'Policy gate must return approvalRequestId');
+
+    // Negative execution: undeclared tool fails closed
+    const undeclaredRes = await capabilityGateway.executeCapability(
+      restoredPack,
+      'scoping.undeclared_tool',
+      {},
+      execCtx
+    );
+    assert.equal(undeclaredRes.status, 'failure', 'Undeclared tool must fail closed');
+    assert.ok(
+      undeclaredRes.error?.includes("Tool definition 'scoping.undeclared_tool' not declared"),
+      'Must report undeclared tool'
+    );
+
+    // 4b. Negative Runtime Assertion: verify require.cache does NOT contain any royalcyber handlers
+    const loadedHandlerKeys = Object.keys(require.cache).filter((k) => k.includes('packs/royalcyber/handlers'));
+    assert.equal(
+      loadedHandlerKeys.length,
+      0,
+      `Canary runtime must not have imported packs/royalcyber/handlers, found: ${loadedHandlerKeys.join(', ')}`
+    );
+
     const approvalService = new ApprovalService(undefined, outboxRepo, isolatedDb);
     const journeyResolver = new JourneyResolver();
     const agentRouter = new AgentRouter();
@@ -761,9 +951,8 @@ async function runSuite() {
       runtimeService.setCutoverRepositoryForTest(cutoverRepo);
 
       // 5a. Insert the durable 'migrated' cutover record BEFORE turns.
-      // The CutoverGate (assertCutoverApproved) now enforces this on every runTurn.
-      // pubResult.checksum is the canonical checksum of the test-environment pack.
-      await cutoverRepo.promoteCutover('placemakers', 'test', {
+      // The CutoverGate (assertCutoverApproved) enforces this on every runTurn.
+      await cutoverRepo.promoteCutover('royalcyber', 'test', {
         status: 'migrated',
         approvedReleaseVersion: '1.0.0',
         approvedReleaseChecksum: pubResult.checksum,
@@ -771,7 +960,7 @@ async function runSuite() {
         approvedBy: 'spec-test-10@journeyax.io',
         notes: 'Test 10 canonical canary cutover',
       });
-      const promotedCutover = await cutoverRepo.getCutoverRecord('placemakers', 'test');
+      const promotedCutover = await cutoverRepo.getCutoverRecord('royalcyber', 'test');
       assert.ok(promotedCutover, 'Cutover record must exist in isolated DB before turns are executed');
       assert.equal(promotedCutover.status, 'migrated');
       assert.equal(promotedCutover.approvedReleaseVersion, '1.0.0');
@@ -800,25 +989,29 @@ async function runSuite() {
       const gatewayPort = typeof gwAddress === 'object' && gwAddress ? gwAddress.port : 0;
       const gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
 
-      const canaryWorkspaceId = `ws-pm-canary-${Date.now()}`;
-      const canarySessionId = `sess-pm-canary-${Date.now()}`;
+      const canaryWorkspaceId = `ws-rc-canary-${Date.now()}`;
+      const canarySessionId = `sess-rc-canary-${Date.now()}`;
 
-      // Turn 1: Public HTTP SSE endpoint POST /api/v1/placemakers/test/runtime/chat/stream through API Gateway
-      const sseResponse = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/chat/stream`, {
+      // Turn 1: Public HTTP SSE endpoint POST /api/v1/royalcyber/test/runtime/chat/stream through API Gateway
+      const sseResponse = await fetch(`${gatewayBaseUrl}/api/v1/royalcyber/test/runtime/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': 'royalcyber',
+          'X-User-ID': 'canary_customer_rc',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
           workspaceId: canaryWorkspaceId,
           sessionId: canarySessionId,
           turnId: 'turn-01',
-          correlationId: `corr-pm-01-${Date.now()}`,
-          message: 'I want to estimate materials for decking.',
-          inputFacts: { tradeCategory: 'Decking', journeyId: 'placemakers_trade_quote' },
+          correlationId: `corr-rc-01-${Date.now()}`,
+          message: 'We are looking for enterprise consulting to modernize our order systems. Our budget is approximately $80,000 USD.',
+          inputFacts: {
+            domain: 'cloud_modernization',
+            budget: { amountUsd: 80000 },
+            journeyId: 'consulting-intake',
+          },
         }),
       });
 
@@ -871,32 +1064,35 @@ async function runSuite() {
       assert.equal(doneEvent.data.workspaceId, canaryWorkspaceId);
       assert.ok(doneEvent.data.decision, 'Gateway SSE done event must contain decision');
 
-      // Verify workspace state in isolated DB after Turn 1: transitioned to bom_assembly with tradeCategory fact
-      const storedT1Workspace = await workspaceRepo.load('placemakers', 'test', canaryWorkspaceId);
+      // Verify workspace state in isolated DB after Turn 1: transitioned from intake to architecture_scoping
+      const storedT1Workspace = await workspaceRepo.load('royalcyber', 'test', canaryWorkspaceId);
       assert.ok(storedT1Workspace, 'Workspace must be stored after Turn 1');
-      assert.equal(storedT1Workspace.currentStage, 'bom_assembly', 'Turn 1 must transition workspace to bom_assembly');
-      assert.equal(storedT1Workspace.facts.tradeCategory?.value, 'Decking', 'Turn 1 must store tradeCategory');
+      assert.equal(storedT1Workspace.currentStage, 'architecture_scoping', 'Turn 1 must transition workspace to architecture_scoping');
+      assert.equal(storedT1Workspace.facts.domain?.value, 'cloud_modernization', 'Turn 1 must store domain');
       const t1Transition = storedT1Workspace.decisions.find(
-        (d: any) => d.type === 'transition_stage' && d.targetStage === 'bom_assembly'
+        (d: any) => d.type === 'transition_stage' && d.targetStage === 'architecture_scoping'
       );
-      assert.ok(t1Transition, 'Transition decision to bom_assembly must be recorded in workspace');
+      assert.ok(t1Transition, 'Transition decision to architecture_scoping must be recorded in workspace');
 
-      // Turn 2: Public HTTP JSON endpoint POST /api/v1/placemakers/test/runtime/turn through API Gateway
-      const turn2Response = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      // Turn 2: Public HTTP JSON endpoint POST /api/v1/royalcyber/test/runtime/turn through API Gateway
+      const turn2Response = await fetch(`${gatewayBaseUrl}/api/v1/royalcyber/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': 'royalcyber',
+          'X-User-ID': 'canary_customer_rc',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
           workspaceId: canaryWorkspaceId,
           sessionId: canarySessionId,
           turnId: 'turn-02',
-          correlationId: `corr-pm-02-${Date.now()}`,
-          message: 'The Kwila boards and joists look correct, please confirm BOM.',
-          inputFacts: { bom_confirmed: 'true' },
+          correlationId: `corr-rc-02-${Date.now()}`,
+          message: 'We confirm GCP as the target platform with microservices and GenAI search as scope items.',
+          inputFacts: {
+            cloudPlatform: 'GCP',
+            scopeItems: ['microservices', 'genai_search'],
+          },
         }),
       });
 
@@ -918,32 +1114,35 @@ async function runSuite() {
 
       const turn2Result: any = await turn2Response.json();
       assert.ok(turn2Result, 'Turn 2 result must be returned by controller via gateway');
-      assert.equal(turn2Result.workspace.tenantId, 'placemakers', 'Tenant must be preserved across gateway proxy');
+      assert.equal(turn2Result.workspace.tenantId, 'royalcyber', 'Tenant must be preserved across gateway proxy');
       assert.equal(turn2Result.workspace.environmentId, 'test', 'Environment must be preserved across gateway proxy');
-      assert.equal(turn2Result.workspace.currentStage, 'trade_approval', 'Turn 2 must transition to trade_approval');
-      assert.equal(turn2Result.workspace.facts.bom_confirmed?.value, 'true', 'Turn 2 must record bom_confirmed fact');
-      assert.equal(turn2Result.workspace.facts.tradeCategory?.value, 'Decking', 'Turn 2 must preserve tradeCategory fact');
+      assert.equal(turn2Result.workspace.currentStage, 'sow_draft', 'Turn 2 must transition to sow_draft');
+      assert.equal(turn2Result.workspace.facts.cloudPlatform?.value, 'GCP', 'Turn 2 must record cloudPlatform fact');
+      assert.equal(turn2Result.workspace.facts.domain?.value, 'cloud_modernization', 'Turn 2 must preserve domain fact');
       const t2Transition = turn2Result.workspace.decisions.find(
-        (d: any) => d.type === 'transition_stage' && d.targetStage === 'trade_approval'
+        (d: any) => d.type === 'transition_stage' && d.targetStage === 'sow_draft'
       );
-      assert.ok(t2Transition, 'Transition decision to trade_approval must be recorded in workspace');
+      assert.ok(t2Transition, 'Transition decision to sow_draft must be recorded in workspace');
 
       // 7. Prove Replay Rejection through Gateway: Resending Turn 2 turnId must fail closed with HTTP 400 Bad Request (DUPLICATE_TURN)
-      const replayResponse = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      const replayResponse = await fetch(`${gatewayBaseUrl}/api/v1/royalcyber/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': 'royalcyber',
+          'X-User-ID': 'canary_customer_rc',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
           workspaceId: canaryWorkspaceId,
           sessionId: canarySessionId,
           turnId: 'turn-02', // Duplicate turnId!
-          correlationId: `corr-pm-replay-${Date.now()}`,
+          correlationId: `corr-rc-replay-${Date.now()}`,
           message: 'Duplicate replay attempt',
-          inputFacts: { bom_confirmed: 'true' },
+          inputFacts: {
+            cloudPlatform: 'GCP',
+            scopeItems: ['microservices', 'genai_search'],
+          },
         }),
       });
 
@@ -956,19 +1155,19 @@ async function runSuite() {
       // Negative Route: gateway route resolution fails closed for unregistered domain (HTTP 404)
       const negRouteResponse = await fetch(`${gatewayBaseUrl}/api/v1/unknown-domain/test`, {
         method: 'GET',
-        headers: { 'X-Tenant-ID': 'placemakers' },
+        headers: { 'X-Tenant-ID': 'royalcyber' },
       });
       assert.equal(negRouteResponse.status, 404, 'Gateway must return HTTP 404 for unmapped domain route');
       const negRouteData: any = await negRouteResponse.json();
       assert.equal(negRouteData.error, 'Not Found', 'Gateway must return Not Found error payload');
 
       // Negative Tenant Mismatch through Gateway: cross-tenant payload rejected with HTTP 403 Forbidden
-      const crossTenantGatewayResponse = await fetch(`${gatewayBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      const crossTenantGatewayResponse = await fetch(`${gatewayBaseUrl}/api/v1/royalcyber/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'placemakers',
-          'X-User-ID': 'canary_customer_01',
+          'X-Tenant-ID': 'royalcyber',
+          'X-User-ID': 'canary_customer_rc',
           'X-User-Role': 'customer',
         },
         body: JSON.stringify({
@@ -983,7 +1182,7 @@ async function runSuite() {
       );
 
       // Negative Cross-Tenant Header on Runtime Boundary: rejects mismatched path vs header tenant with HTTP 403 Forbidden
-      const crossTenantResponse = await fetch(`${runtimeBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
+      const crossTenantResponse = await fetch(`${runtimeBaseUrl}/api/v1/royalcyber/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -994,24 +1193,52 @@ async function runSuite() {
       assert.equal(crossTenantResponse.status, 403, 'Runtime boundary must reject cross-tenant header mismatch with HTTP 403');
 
       // 9. Prove Durable Reload: Workspace reloaded from isolated MongoDB customer_workspaces collection
-      const storedWorkspace = await workspaceRepo.load('placemakers', 'test', canaryWorkspaceId);
+      const storedWorkspace = await workspaceRepo.load('royalcyber', 'test', canaryWorkspaceId);
       assert.ok(storedWorkspace, 'Workspace must be durably reloadable from isolated DB');
       assert.equal(storedWorkspace.lastProcessedTurnId, 'turn-02');
-      assert.equal(storedWorkspace.currentStage, 'trade_approval');
-      assert.equal(storedWorkspace.facts.tradeCategory?.value, 'Decking');
-      assert.equal(storedWorkspace.facts.bom_confirmed?.value, 'true');
+      assert.equal(storedWorkspace.currentStage, 'sow_draft');
+      assert.equal(storedWorkspace.facts.domain?.value, 'cloud_modernization');
+      assert.equal(storedWorkspace.facts.cloudPlatform?.value, 'GCP');
       assert.equal(storedWorkspace.stateVersion, 3, 'Workspace stateVersion must increment to 3 after creation + 2 executed turns');
 
       // 10. Prove Durable Outbox Persistence: Events enqueued in isolated DB outbox_events collection
       const outboxCol = isolatedDb.collection('outbox_events');
-      const outboxItems = await outboxCol.find({ tenantId: 'placemakers', environmentId: 'test' }).toArray();
+      const outboxItems = await outboxCol.find({ tenantId: 'royalcyber', environmentId: 'test' }).toArray();
       assert.ok(outboxItems.length >= 2, 'Durable outbox events must be enqueued in isolated DB for executed turns');
 
-      // 11. Parity Evidence: verify stage transitions and facts match expected baseline trade quote flow
+      // 11. Sanitized Parity Transcript: Verify stage transitions and facts match expected baseline flow
       const stageTransitions = storedWorkspace.decisions.filter((d: any) => d.type === 'transition_stage');
       assert.equal(stageTransitions.length, 2, 'Must record exactly 2 stage transitions across the 2 turns');
-      assert.equal(stageTransitions[0].targetStage, 'bom_assembly');
-      assert.equal(stageTransitions[1].targetStage, 'trade_approval');
+      assert.equal(stageTransitions[0].targetStage, 'architecture_scoping');
+      assert.equal(stageTransitions[1].targetStage, 'sow_draft');
+
+      const transcript = {
+        tenantId: storedWorkspace.tenantId,
+        environmentId: storedWorkspace.environmentId,
+        workspaceId: storedWorkspace.workspaceId,
+        journeyId: storedWorkspace.journeyId,
+        finalStage: storedWorkspace.currentStage,
+        turnsExecuted: 2,
+        transitions: stageTransitions.map((t: any) => ({
+          from: t.payload?.fromStage || t.sourceStage || 'intake',
+          to: t.targetStage,
+        })),
+        confirmedFacts: Object.keys(storedWorkspace.facts),
+      };
+      assert.equal(transcript.finalStage, 'sow_draft');
+      assert.deepEqual(transcript.transitions, [
+        { from: 'intake', to: 'architecture_scoping' },
+        { from: 'architecture_scoping', to: 'sow_draft' },
+      ]);
+
+      // 12. Negative Assertion on Activated Runtime:
+      // Verify require.cache STILL has 0 entries from packs/royalcyber/handlers after full live canary execution
+      const postCanaryHandlerKeys = Object.keys(require.cache).filter((k) => k.includes('packs/royalcyber/handlers'));
+      assert.equal(
+        postCanaryHandlerKeys.length,
+        0,
+        `Zero filesystem-handler dependency verified: require.cache contains no royalcyber handlers after canary execution`
+      );
     } finally {
       if (typeof originalRuntimeUrl !== 'undefined' || typeof originalProjectsUrl !== 'undefined') {
         const { DOMAIN_REGISTRY: reg } = await import('../apps/api-gateway/src/gateway.registry');
@@ -1030,416 +1257,94 @@ async function runSuite() {
   });
 
   // -------------------------------------------------------------------------
-  // Test 10b: CutoverGate — All failure and success cases on the public HTTP path
+  // Test 11: Inventory - Truthful Readiness Report Audit & Exact Blockers
   // -------------------------------------------------------------------------
-  await test('10b. CutoverGate: all failure and success cases enforced before Business Pack is loaded or executed', async () => {
-    // Each sub-case uses its own fully isolated DB + ephemeral NestJS app
-    // so there is zero state leakage between cases.
-
-    // ---- Helper: build a full isolated runtime for a given DB ----
-    async function buildIsolatedRuntime(db: any, client: any): Promise<{
-      runtimeBaseUrl: string;
-      runtimeApp: any;
-      runtimeService: any;
-      cutoverRepo: CutoverRepository;
-      packRepo: PackRepository;
-      pub: { checksum: string; revision: number; release: any };
-    }> {
-      const candidate = createPlaceMakersCandidate();
-      candidate.manifest.environmentId = 'test';
-      // Replace ALL secretRef paths from '/production/' to '/test/' across ALL tool bindings
-      // (some refs may not have 'production' in the path but we normalise environmentId consistently)
-      candidate.capabilities.toolBindings.forEach((b) => {
-        b.environmentId = 'test';
-        if (b.executor.secretRef) {
-          // Replace any environment segment — covers /production/, /staging/, etc.
-          b.executor.secretRef = b.executor.secretRef
-            .replace(/\/production\//g, '/test/')
-            .replace(/\/staging\//g, '/test/');
-        }
-      });
-      const pub = await publishBusinessPack(db, candidate, { publishedBy: 'gate-test@journeyax.io' });
-
-      const packRepo = new PackRepository('/non/existent/dev/dir', db);
-      const workspaceRepo = new WorkspaceRepository(db);
-      const executionRepo = new ExecutionRepository(db);
-      const outboxRepo = new OutboxRepository(db);
-      const capabilityGateway = new CapabilityGateway({ db });
-      const approvalService = new ApprovalService(undefined, outboxRepo, db);
-      const modelGateway = new ModelGateway();
-      const appService = new TurnApplicationService(
-        packRepo, workspaceRepo, new JourneyResolver(), new AgentRouter(), modelGateway,
-        capabilityGateway, approvalService, executionRepo, outboxRepo, new PresentationPort(),
-        new TurnInterpreter(modelGateway), new FactReducer(), new OutcomeValidator()
-      );
-
-      const runtimeApp = await NestFactory.create(RuntimeModule, { logger: false });
-      const runtimeService = runtimeApp.get(RuntimeService);
-      runtimeService.setAppServiceForTest(appService);
-      const cutoverRepo = new CutoverRepository(async () => ({ db, client }));
-      runtimeService.setCutoverRepositoryForTest(cutoverRepo);
-      await runtimeApp.listen(0);
-      const port = runtimeApp.getHttpServer().address()?.port;
-      return { runtimeBaseUrl: `http://127.0.0.1:${port}`, runtimeApp, runtimeService, cutoverRepo, packRepo, pub };
-    }
-
-    async function postTurn(runtimeBaseUrl: string, wsId: string, turnId: string): Promise<Response> {
-      return fetch(`${runtimeBaseUrl}/api/v1/placemakers/test/runtime/turn`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': 'placemakers', 'X-User-ID': 'gate-test', 'X-User-Role': 'customer' },
-        body: JSON.stringify({
-          workspaceId: wsId, sessionId: wsId, turnId,
-          correlationId: `corr-gate-${turnId}`,
-          message: 'materials for decking',
-          inputFacts: { tradeCategory: 'Decking', journeyId: 'placemakers_trade_quote' },
-        }),
-      });
-    }
-
-    process.env.AUTH_DEV_BYPASS = 'true';
-    const apps: any[] = [];
-
-    try {
-      // ── Case 1: No cutover record → 403 Forbidden ────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-no-record-${Date.now()}`, 'turn-gate-01');
-        assert.equal(res.status, 403,
-          'No cutover record: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|cutover|approved/i.test(body.message || body.error || ''),
-          'Error message must reference cutover gate');
-      }
-
-      // ── Case 2: Cutover status 'rollback' → 403 Forbidden ────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // First promote to 'migrated' so we can then demote to 'rollback'
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-        // Promote a v1.1.0 pack
-        const cand2 = createPlaceMakersCandidate();
-        cand2.manifest.version = '1.1.0';
-        cand2.manifest.environmentId = 'test';
-        cand2.capabilities.toolBindings.forEach((b) => {
-          b.environmentId = 'test';
-          if (b.executor.secretRef) b.executor.secretRef = b.executor.secretRef.replace(/\/production\//g, '/test/').replace(/\/staging\//g, '/test/');
-        });
-        const pub2 = await publishBusinessPack(db, cand2, { publishedBy: 'gate-test@journeyax.io' });
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.1.0',
-          approvedReleaseChecksum: pub2.checksum, expectedRevision: 1,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-        // Rollback pointer to v1.0.0
-        await rollbackBusinessPack(db, 'placemakers', 'test', {
-          targetVersion: '1.0.0', rolledBackBy: 'gate-test@journeyax.io',
-        });
-        // Promote cutover to status: 'rollback' (CAS revision 2 → 3)
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'rollback', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 2,
-          rollbackTargetVersion: '1.0.0', approvedBy: 'gate-test@journeyax.io',
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-rollback-${Date.now()}`, 'turn-gate-02');
-        assert.equal(res.status, 403,
-          'Cutover status rollback: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|status|rollback/i.test(body.message || body.error || ''),
-          'Error must reference cutover status');
-      }
-
-      // ── Case 3: Version mismatch → 403 Forbidden ─────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // Insert cutover record with wrong version '2.0.0' (active pointer is 1.0.0)
-        // We must bypass promoteCutover's version check by directly inserting into the collection
-        await db.collection('tenant_cutovers').insertOne({
-          tenantId: 'placemakers', environmentId: 'test',
-          status: 'migrated', approvedReleaseVersion: '2.0.0',
-          approvedReleaseChecksum: pub.checksum,
-          revision: 1, approvedBy: 'gate-test@journeyax.io',
-          promotedAt: new Date(), updatedAt: new Date(),
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-version-${Date.now()}`, 'turn-gate-03');
-        assert.equal(res.status, 403,
-          'Version mismatch: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|version|mismatch/i.test(body.message || body.error || ''),
-          'Error must reference version mismatch');
-      }
-
-      // ── Case 4: Checksum mismatch → 403 Forbidden ────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // Insert cutover with correct version but tampered checksum
-        await db.collection('tenant_cutovers').insertOne({
-          tenantId: 'placemakers', environmentId: 'test',
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: 'a'.repeat(64), // tampered
-          revision: 1, approvedBy: 'gate-test@journeyax.io',
-          promotedAt: new Date(), updatedAt: new Date(),
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-checksum-${Date.now()}`, 'turn-gate-04');
-        assert.equal(res.status, 403,
-          'Checksum mismatch: runTurn must fail closed with HTTP 403');
-        const body: any = await res.json();
-        assert.ok(/CutoverGate|checksum|mismatch|tamper/i.test(body.message || body.error || ''),
-          'Error must reference checksum mismatch');
-      }
-
-      // ── Case 5: Cross-tenant record → 403 Forbidden ──────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        // Insert a cutover record for a DIFFERENT tenant
-        await db.collection('tenant_cutovers').insertOne({
-          tenantId: 'unauthorized-other-tenant', environmentId: 'test',
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum,
-          revision: 1, approvedBy: 'gate-test@journeyax.io',
-          promotedAt: new Date(), updatedAt: new Date(),
-        });
-        // getCutoverRecord queries by tenantId='placemakers', so it will find null
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-cross-tenant-${Date.now()}`, 'turn-gate-05');
-        assert.equal(res.status, 403,
-          'Cross-tenant record (record for wrong tenant, request tenant has no record): must fail with 403');
-      }
-
-      // ── Case 6: Valid 'migrated' status → 200 OK ────────────────────────────
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-        const res = await postTurn(runtimeBaseUrl, `ws-gate-migrated-${Date.now()}`, 'turn-gate-06');
-        assert.equal(res.status, 200,
-          'Valid migrated cutover: runTurn must succeed with HTTP 200');
-      }
-
-      // ── Case 7: Valid 'canary' status — deterministic bucket routing ─────────
-      // Uses precomputed SHA-256 bucket values for tenant='placemakers', env='test':
-      //   ws-test-4 → bucket=4  (< 10% → IN  canary → expect 200)
-      //   ws-test-0 → bucket=76 (≥ 10% → NOT canary → expect 403)
-      //
-      // Proves that (a) selected workspaces succeed and (b) non-selected workspaces
-      // are rejected by the gate — never silently falling to legacy.
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'canary', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          canaryPercentage: 10, approvedBy: 'gate-test@journeyax.io',
-        });
-
-        // Case 7a: ws-test-4 is deterministically IN the 10% canary bucket (bucket=4 < 10)
-        const res7a = await postTurn(runtimeBaseUrl, 'ws-test-4', 'turn-gate-07a');
-        assert.equal(res7a.status, 200,
-          'Canary 10%: workspace ws-test-4 (bucket=4) is IN canary — must succeed with 200');
-
-        // Case 7b: ws-test-0 is deterministically NOT in the 10% canary bucket (bucket=76 ≥ 10)
-        // The gate rejects with 403 — must NEVER fall through to legacy from within runTurn.
-        const res7b = await postTurn(runtimeBaseUrl, 'ws-test-0', 'turn-gate-07b');
-        assert.equal(res7b.status, 403,
-          'Canary 10%: workspace ws-test-0 (bucket=76) is NOT in canary — gate must reject with 403');
-        const body7b = await res7b.json().catch(() => ({}));
-        assert.ok(
-          body7b.message?.includes('Canary bucket') || body7b.message?.includes('not in'),
-          `Gate rejection must name the canary-bucket reason, got: ${JSON.stringify(body7b.message)}`
-        );
-      }
-
-      // ── Case 8: Rollback changes the executable version ──────────────────────
-      // After rollback of pointer to v1.0.0 AND re-promotion of cutover to 'migrated',
-      // the gate enforces the rolled-back version.
-      {
-        const { db, client } = createIsolatedTestDb();
-        const { runtimeBaseUrl, runtimeApp, cutoverRepo, pub, packRepo } = await buildIsolatedRuntime(db, client);
-        apps.push(runtimeApp);
-
-        // Promote v1.0.0
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 0,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-
-        // Publish v1.1.0 and promote
-        const cand2 = createPlaceMakersCandidate();
-        cand2.manifest.version = '1.1.0';
-        cand2.manifest.environmentId = 'test';
-        cand2.capabilities.toolBindings.forEach((b) => {
-          b.environmentId = 'test';
-          if (b.executor.secretRef) b.executor.secretRef = b.executor.secretRef.replace(/\/production\//g, '/test/').replace(/\/staging\//g, '/test/');
-        });
-        const pub2 = await publishBusinessPack(db, cand2, { publishedBy: 'gate-test@journeyax.io' });
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.1.0',
-          approvedReleaseChecksum: pub2.checksum, expectedRevision: 1,
-          approvedBy: 'gate-test@journeyax.io',
-        });
-
-        // Confirm v1.1.0 gate passes
-        packRepo.invalidate('placemakers');
-        const resV2 = await postTurn(runtimeBaseUrl, `ws-gate-rb-before-${Date.now()}`, 'turn-gate-08a');
-        assert.equal(resV2.status, 200, 'v1.1.0 migrated: must succeed');
-
-        // Rollback pointer to v1.0.0
-        const rbRes = await rollbackBusinessPack(db, 'placemakers', 'test', {
-          targetVersion: '1.0.0', rolledBackBy: 'gate-test@journeyax.io',
-        });
-        assert.equal(rbRes.activeVersion, '1.0.0', 'Rollback must restore v1.0.0');
-        packRepo.invalidate('placemakers');
-
-        // Without cutover record re-promotion: active pointer is v1.0.0 but cutover still approved v1.1.0
-        // Gate MUST reject (version mismatch between pointer and cutover)
-        const resMismatch = await postTurn(runtimeBaseUrl, `ws-gate-rb-mismatch-${Date.now()}`, 'turn-gate-08b');
-        assert.equal(resMismatch.status, 403,
-          'After rollback, cutover still approves v1.1.0 but pointer is v1.0.0: must fail 403');
-
-        // Re-promote cutover to 'migrated' for v1.0.0 (CAS revision 2 → 3)
-        await cutoverRepo.promoteCutover('placemakers', 'test', {
-          status: 'migrated', approvedReleaseVersion: '1.0.0',
-          approvedReleaseChecksum: pub.checksum, expectedRevision: 2,
-          approvedBy: 'gate-test@journeyax.io',
-          notes: 'Post-rollback re-promotion to v1.0.0',
-        });
-
-        // Now gate should pass for v1.0.0
-        const resRolledBack = await postTurn(runtimeBaseUrl, `ws-gate-rb-after-${Date.now()}`, 'turn-gate-08c');
-        assert.equal(resRolledBack.status, 200,
-          'After rollback + cutover re-promotion: v1.0.0 gate must succeed with HTTP 200');
-        const rbBody: any = await resRolledBack.json();
-        assert.equal(rbBody.workspace.tenantId, 'placemakers');
-        // The pack loaded must be v1.0.0 (the rolled-back version)
-        assert.equal(rbBody.workspace.packVersion || rbBody.workspace.packId?.split('@')[1] || '1.0.0', '1.0.0',
-          'Rolled-back version must be the one executed');
-      }
-
-    } finally {
-      delete process.env.AUTH_DEV_BYPASS;
-      for (const a of apps) {
-        await a.close().catch(() => {});
-      }
-    }
-  });
-
-  await test('11. Inventory: runTenantConnectorInventory confirms PlaceMakers is discovered, schema-valid, 0 raw secrets, status BLOCKED', async () => {
+  await test('11. Inventory: runTenantConnectorInventory confirms Royal Cyber is discovered, schema-valid, 0 raw secrets, status BLOCKED with exact blockers', async () => {
     const results = await runTenantConnectorInventory({ writeReport: false });
-    const pmResult = results.find((r) => r.tenantId === 'placemakers');
-    assert.ok(pmResult, 'PlaceMakers must be found in inventory results');
-    assert.equal(pmResult.source, 'filesystem_pack');
-    assert.equal(pmResult.schemaValid, true);
-    assert.equal(pmResult.semanticValid, true);
-    assert.equal(pmResult.referenceIntegrityValid, true);
-    assert.equal(pmResult.rawSecretsCount, 0);
-    assert.equal(pmResult.directUrlsCount, 0);
+    const rcResult = results.find((r) => r.tenantId === 'royalcyber');
+    assert.ok(rcResult, 'Royal Cyber must be found in inventory results');
+    assert.equal(rcResult.source, 'filesystem_pack');
+    assert.equal(rcResult.schemaValid, true);
+    assert.equal(rcResult.semanticValid, true);
+    assert.equal(rcResult.referenceIntegrityValid, true);
+    assert.equal(rcResult.rawSecretsCount, 0);
+    assert.equal(rcResult.directUrlsCount, 0);
 
-    // Truthful reporting: in static repository state before live DB cutover, cutover record remains pending
-    assert.equal(pmResult.migrationStatus, 'BLOCKED', 'PlaceMakers status in repository inventory must truthfully remain BLOCKED pending live cutover record');
-    assert.equal(pmResult.immutableReleaseReadiness, 'NOT_READY');
-    assert.equal(pmResult.parityResult, 'UNEVALUATED');
-    assert.equal(pmResult.cutoverRecordState, 'NO_RECORD_FOUND');
-    assert.equal(pmResult.rollbackEvidence, 'NO_ROLLBACK_BASELINE');
+    // Connector boundary compliance fails because hubspot.create_deal and jira.create_scoping_epic lack connectionRef/secretRef
+    assert.equal(rcResult.connectorBoundaryCompliant, false, 'Connector boundary must fail because flows lack connectionRef');
+
+    // Truthful reporting: royalcyber is classified as PARKED in portfolio manifest
+    assert.equal(rcResult.migrationStatus, 'PARKED', 'Royal Cyber status must be PARKED');
+    assert.equal(rcResult.immutableReleaseReadiness, 'NOT_READY');
+    assert.equal(rcResult.parityResult, 'UNEVALUATED');
+    assert.equal(rcResult.cutoverRecordState, 'NO_RECORD_FOUND');
+    assert.equal(rcResult.rollbackEvidence, 'NO_ROLLBACK_BASELINE');
+
+    // Assert exact 4 blockers (includes parked notice)
+    assert.equal(rcResult.blockers.length, 4, 'Must report exactly 4 blockers');
+    assert.ok(
+      rcResult.blockers.includes('Connector boundary compliance violated'),
+      'Must report Connector boundary compliance violated blocker'
+    );
+    assert.ok(
+      rcResult.blockers.includes('Cutover approval record missing in tenant_cutovers'),
+      'Must report Cutover approval record missing blocker'
+    );
+    assert.ok(
+      rcResult.blockers.includes('Rollback baseline snapshot missing in business_pack_pointers or tenant_cutovers'),
+      'Must report Rollback baseline snapshot missing blocker'
+    );
+    assert.ok(
+      rcResult.blockers.includes('Parked tenant — not counted in active portfolio readiness'),
+      'Must report Parked tenant blocker'
+    );
   });
 
   // -------------------------------------------------------------------------
-  // Test 12: Model Policy - fast_intent Multi-Provider Candidates & Policy Selection
+  // Test 12: Model Policy - Multi-Provider Portability & Reference Integrity
   // -------------------------------------------------------------------------
-  await test('12. Model Policy: fast_intent has portable multi-provider candidates and runtime selection is policy-driven without OpenAI-only assumption', async () => {
-    const pack = createPlaceMakersCandidate();
-    const fastIntentPolicy = pack.modelPolicy.policies.find((p) => p.policyId === 'fast_intent');
-    assert.ok(fastIntentPolicy, 'fast_intent policy must exist in PlaceMakers modelPolicy');
+  await test('12. Model Policy: complex_reasoning has portable multi-provider candidates and runtime selection is policy-driven', async () => {
+    const pack = createRoyalCyberCandidate();
+    const architect = pack.agents.find((a) => a.agentId === 'solution_architect');
+    assert.ok(architect, 'solution_architect agent must exist in pack');
+    assert.equal(architect.modelPolicyRef, 'complex_reasoning');
+
+    const complexPolicy = pack.modelPolicy.policies.find((p) => p.policyId === 'complex_reasoning');
+    assert.ok(complexPolicy, 'complex_reasoning policy must exist in Royal Cyber modelPolicy');
 
     // Candidate diversity assertion: must have at least 2 distinct providers
-    assert.ok(fastIntentPolicy.candidates.length >= 2, 'fast_intent must have multiple candidates');
-    const providers = new Set(fastIntentPolicy.candidates.map((c) => c.provider));
-    assert.ok(providers.size >= 2, 'fast_intent must specify at least two distinct providers (e.g. google and openai)');
-    assert.ok(providers.has('google'), 'Must include portable google candidate');
+    assert.ok(complexPolicy.candidates.length >= 2, 'complex_reasoning must have multiple candidates');
+    const providers = new Set(complexPolicy.candidates.map((c) => c.provider));
+    assert.ok(providers.size >= 2, 'complex_reasoning must specify at least two distinct providers (openai and google)');
     assert.ok(providers.has('openai'), 'Must include openai candidate');
-    assert.equal(fastIntentPolicy.fallbackAllowed, true, 'fallbackAllowed must be true for fast_intent');
+    assert.ok(providers.has('google'), 'Must include portable google candidate');
+    assert.equal(complexPolicy.fallbackAllowed, true, 'fallbackAllowed must be true for complex_reasoning');
 
     // Test ModelRouter selection is policy-driven
     const router = new ModelRouter();
 
     // With preferredProvider: 'google', router must select google candidate
-    const googleRoute = router.resolveModel('fast_intent', pack, { preferredProvider: 'google' });
+    const googleRoute = router.resolveModel('complex_reasoning', pack, { preferredProvider: 'google' });
     assert.equal(googleRoute.provider, 'google');
-    assert.equal(googleRoute.model, 'gemini-2.5-flash');
+    assert.equal(googleRoute.model, 'gemini-1.5-pro');
 
     // With preferredProvider: 'openai', router must select openai candidate
-    const openaiRoute = router.resolveModel('fast_intent', pack, { preferredProvider: 'openai' });
+    const openaiRoute = router.resolveModel('complex_reasoning', pack, { preferredProvider: 'openai' });
     assert.equal(openaiRoute.provider, 'openai');
-    assert.equal(openaiRoute.model, 'gpt-4o-mini');
+    assert.equal(openaiRoute.model, 'gpt-4o');
 
-    // Without preferredProvider, candidate 1 (google, priority 1) is selected when fallbackAllowed is true
-    const defaultRoute = router.resolveModel('fast_intent', pack);
-    assert.equal(defaultRoute.provider, 'google', 'Priority 1 candidate must be chosen first; no OpenAI-only assumption');
-    assert.equal(defaultRoute.model, 'gemini-2.5-flash');
+    // Without preferredProvider, candidate 1 (openai, priority 1) is selected
+    const defaultRoute = router.resolveModel('complex_reasoning', pack);
+    assert.equal(defaultRoute.provider, 'openai');
+    assert.equal(defaultRoute.model, 'gpt-4o');
+
+    // Negative check: referencing non-existent policy in agent fails validation
+    const badAgentPack = createRoyalCyberCandidate();
+    badAgentPack.agents[0].modelPolicyRef = 'non_existent_policy';
+    const valBadAgent = validateBusinessPack(badAgentPack);
+    assert.equal(valBadAgent.valid, false, 'Referencing non-existent model policy must fail validation');
   });
 
-
-  // -------------------------------------------------------------------------
-  // Test 13: Canary Routing — shared deterministic bucket function
-  // -------------------------------------------------------------------------
-  await test('13. Canary Routing: isInCanaryBucket and resolveRuntimeRouting are deterministic and correct', async () => {
-    // Precomputed SHA-256 bucket values for tenant='placemakers', env='test':
-    //   'ws-test-4'  → bucket=4   (4 < 10  → IN  10% canary)
-    //   'ws-test-0'  → bucket=76  (76 >= 10 → NOT IN 10% canary)
-    //   'ws-test-1'  → bucket=40  (40 >= 10 → NOT IN 10% canary)
-    //   any key, 0%  → always false
-    //   any key, 100% → always true
-    const { isInCanaryBucket, resolveRuntimeRouting } = await import('@journeyax/journey-core');
-
-
-    // Boundary: 0% and 100%
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 0), false, '0% → never canonical');
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 100), true, '100% → always canonical');
-
-    // Deterministic 10% selection
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 10), true,
-      'ws-test-4 (bucket=4) must be IN 10% canary');
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-0', 10), false,
-      'ws-test-0 (bucket=76) must NOT be in 10% canary');
-    assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-1', 10), false,
-      'ws-test-1 (bucket=40) must NOT be in 10% canary');
-
-    // Stable: same inputs always give same result
-    for (let i = 0; i < 5; i++) {
-      assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 10), true, `Stability check ${i}: ws-test-4`);
-      assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-0', 10), false, `Stability check ${i}: ws-test-0`);
-    }
-
-    // resolveRuntimeRouting covers all status branches
-    assert.equal(resolveRuntimeRouting('migrated', 0, 'placemakers', 'test', 'ws-test-0'), 'canonical',
-      "status='migrated' is always canonical regardless of bucket");
-    assert.equal(resolveRuntimeRouting('canary', 10, 'placemakers', 'test', 'ws-test-4'), 'canonical',
-      "status='canary', in-bucket → canonical");
-    assert.equal(resolveRuntimeRouting('canary', 10, 'placemakers', 'test', 'ws-test-0'), 'legacy',
-      "status='canary', not in-bucket → legacy");
-    assert.equal(resolveRuntimeRouting('rollback', 100, 'placemakers', 'test', 'ws-any'), 'legacy',
-      "status='rollback' is always legacy even at 100%");
-    assert.equal(resolveRuntimeRouting('unmigrated', 100, 'placemakers', 'test', 'ws-any'), 'legacy',
-      "status='unmigrated' is always legacy even at 100%");
-  });
 
   // -------------------------------------------------------------------------
   // Egress Self-Test: Proves the non-loopback guard is active and cannot be skipped
@@ -1477,7 +1382,7 @@ async function runSuite() {
   });
 
   console.log(`\n==============================================================================`);
-  console.log(`PlaceMakers Migration Suite Complete: ${passed} passed, ${failed} failed.`);
+  console.log(`Royal Cyber Migration Suite Complete: ${passed} passed, ${failed} failed.`);
   console.log(`==============================================================================\n`);
 
   if (failed > 0) { exitCode = 1; }

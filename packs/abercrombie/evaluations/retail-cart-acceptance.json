@@ -1,0 +1,44 @@
+{
+  "suiteId": "retail_cart_acceptance_suite",
+  "name": "Abercrombie & Fitch Retail Cart Acceptance Suite",
+  "tenantId": "abercrombie",
+  "version": "1.0.0",
+  "blockingOnPublish": true,
+  "scenarios": [
+    {
+      "scenarioId": "apparel_category_and_quantity_selection",
+      "name": "Apparel Selection and Cart Addition",
+      "description": "User selects product category and quantity, transitions to cart review, and verifies readiness for checkout.",
+      "prompt": "I'm looking for Standard tier apparel, need 2 units.",
+      "expectedTargetStage": "cart_review",
+      "expectedFacts": [
+        "category",
+        "quantity"
+      ],
+      "budgetCurrency": "USD",
+      "requiredCapabilities": [
+        "catalog.search",
+        "item.configure",
+        "cart.update"
+      ],
+      "assertions": [
+        {
+          "type": "fact_present",
+          "field": "category",
+          "description": "Category fact must be extracted"
+        },
+        {
+          "type": "fact_present",
+          "field": "quantity",
+          "description": "Quantity fact must be extracted"
+        },
+        {
+          "type": "stage_reached",
+          "field": "cart_review",
+          "description": "Cart review stage must be reached after facts are present"
+        }
+      ],
+      "timeoutMs": 15000
+    }
+  ]
+}

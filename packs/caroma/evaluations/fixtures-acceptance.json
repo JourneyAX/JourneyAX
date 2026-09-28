@@ -1,0 +1,44 @@
+{
+  "suiteId": "fixtures_acceptance_suite",
+  "name": "Caroma Smart Commercial Fixtures Acceptance Suite",
+  "tenantId": "caroma",
+  "version": "1.0.0",
+  "blockingOnPublish": true,
+  "scenarios": [
+    {
+      "scenarioId": "ensuite_specification_and_quote",
+      "name": "Ensuite Space Specification and Quote Generation",
+      "description": "User selects spaceType (ensuite) and finish (matte black), transitions to quote review, and verifies readiness for trade quote commit.",
+      "prompt": "I need tapware and fixtures for a commercial ensuite in matte black.",
+      "expectedTargetStage": "quote_review",
+      "expectedFacts": [
+        "spaceType",
+        "finish"
+      ],
+      "budgetCurrency": "AUD",
+      "requiredCapabilities": [
+        "catalog.search",
+        "specification.configure",
+        "quote.update"
+      ],
+      "assertions": [
+        {
+          "type": "fact_present",
+          "field": "spaceType",
+          "description": "spaceType fact must be extracted"
+        },
+        {
+          "type": "fact_present",
+          "field": "finish",
+          "description": "finish fact must be extracted"
+        },
+        {
+          "type": "stage_reached",
+          "field": "quote_review",
+          "description": "Quote review stage must be reached after facts are present"
+        }
+      ],
+      "timeoutMs": 15000
+    }
+  ]
+}

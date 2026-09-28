@@ -1,0 +1,187 @@
+{
+  "version": "1.0.0",
+  "toolDefinitions": [
+    {
+      "toolId": "catalog.search",
+      "version": "1.0.0",
+      "displayName": "Catalog Search",
+      "description": "Searches Caroma fixture catalog with space, finish, and WELS ratings.",
+      "inputSchema": { "query": { "type": "string" }, "spaceType": { "type": "string" } },
+      "outputSchema": { "items": { "type": "array" } },
+      "sideEffect": "read",
+      "risk": "low"
+    },
+    {
+      "toolId": "specification.configure",
+      "version": "1.0.0",
+      "displayName": "Specification Configuration",
+      "description": "Configures fixture parameters, tapware finish, and rough-in compatibility.",
+      "inputSchema": { "fixtureId": { "type": "string" }, "finish": { "type": "string" } },
+      "outputSchema": { "configuredSpec": { "type": "object" } },
+      "sideEffect": "read",
+      "risk": "low"
+    },
+    {
+      "toolId": "quote.update",
+      "version": "1.0.0",
+      "displayName": "Specification Quote Update",
+      "description": "Updates bill of materials and recalculates trade quote totals.",
+      "inputSchema": { "specs": { "type": "array" } },
+      "outputSchema": { "quote": { "type": "object" } },
+      "sideEffect": "read",
+      "risk": "low"
+    },
+    {
+      "toolId": "quote.finalize",
+      "version": "1.0.0",
+      "displayName": "Quote Finalization & Dispatch",
+      "description": "Commits specification bill of materials and dispatches formal PDF quote.",
+      "inputSchema": { "quoteId": { "type": "string" } },
+      "outputSchema": { "quoteUrl": { "type": "string" } },
+      "sideEffect": "write",
+      "risk": "medium"
+    },
+    {
+      "toolId": "salesforce.lead_create",
+      "version": "1.0.0",
+      "displayName": "Salesforce Commercial Lead Create",
+      "description": "Enqueues trade project lead in Salesforce via Activepieces.",
+      "inputSchema": { "lead": { "type": "object" } },
+      "outputSchema": { "leadId": { "type": "string" } },
+      "sideEffect": "transactional",
+      "risk": "high"
+    }
+  ],
+  "toolBindings": [
+    {
+      "tenantId": "caroma",
+      "environmentId": "production",
+      "toolId": "catalog.search",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "catalog.search"
+      },
+      "policy": {
+        "requiredRole": "customer",
+        "requiresConfirmation": false,
+        "idempotencyRequired": false,
+        "timeoutMs": 5000,
+        "retryAttempts": 0
+      }
+    },
+    {
+      "tenantId": "caroma",
+      "environmentId": "production",
+      "toolId": "specification.configure",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "specification.configure"
+      },
+      "policy": {
+        "requiredRole": "customer",
+        "requiresConfirmation": false,
+        "idempotencyRequired": false,
+        "timeoutMs": 5000,
+        "retryAttempts": 0
+      }
+    },
+    {
+      "tenantId": "caroma",
+      "environmentId": "production",
+      "toolId": "quote.update",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "quote.update"
+      },
+      "policy": {
+        "requiredRole": "customer",
+        "requiresConfirmation": false,
+        "idempotencyRequired": false,
+        "timeoutMs": 5000,
+        "retryAttempts": 0
+      }
+    },
+    {
+      "tenantId": "caroma",
+      "environmentId": "production",
+      "toolId": "quote.finalize",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "activepieces_flow",
+        "flowId": "ap_flow_quote_finalize",
+        "connectionRef": "conn_quote_finalize",
+        "secretRef": "gcp-secret://journeyax-secrets/caroma/production/quote-api-key"
+      },
+      "policy": {
+        "requiredRole": "customer",
+        "requiresConfirmation": true,
+        "idempotencyRequired": true,
+        "timeoutMs": 10000,
+        "retryAttempts": 0
+      }
+    },
+    {
+      "tenantId": "caroma",
+      "environmentId": "production",
+      "toolId": "salesforce.lead_create",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "activepieces_flow",
+        "flowId": "ap_flow_caroma_salesforce_lead",
+        "connectionRef": "conn_caroma_salesforce_secret",
+        "secretRef": "gcp-secret://journeyax-secrets/caroma/production/salesforce-crm-token"
+      },
+      "policy": {
+        "requiredRole": "customer",
+        "requiresConfirmation": true,
+        "idempotencyRequired": true,
+        "timeoutMs": 8000,
+        "retryAttempts": 1
+      }
+    }
+  ],
+  "stageBindings": [
+    {
+      "journeyId": "guided_specification",
+      "stageId": "space_intake",
+      "tools": [
+        { "toolId": "catalog.search" }
+      ]
+    },
+    {
+      "journeyId": "guided_specification",
+      "stageId": "finish_selection",
+      "tools": [
+        { "toolId": "catalog.search" },
+        { "toolId": "specification.configure" }
+      ]
+    },
+    {
+      "journeyId": "guided_specification",
+      "stageId": "quote_review",
+      "tools": [
+        { "toolId": "quote.update" },
+        { "toolId": "quote.finalize" },
+        { "toolId": "salesforce.lead_create" }
+      ]
+    },
+    {
+      "journeyId": "custom_project_quote",
+      "stageId": "project_intake",
+      "tools": [
+        { "toolId": "catalog.search" }
+      ]
+    },
+    {
+      "journeyId": "custom_project_quote",
+      "stageId": "project_quote",
+      "tools": [
+        { "toolId": "quote.update" },
+        { "toolId": "quote.finalize" }
+      ]
+    }
+  ]
+}

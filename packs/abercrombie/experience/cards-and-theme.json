@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "theme": {
+    "primaryColor": "#1A365D",
+    "accentColor": "#2B6CB0",
+    "fontFamily": "Inter, system-ui, -apple-system, sans-serif",
+    "borderRadius": "6px",
+    "customCssVars": {
+      "--anf-navy": "#1A365D",
+      "--anf-blue": "#2B6CB0"
+    }
+  },
+  "cards": {
+    "allowedCardTypes": [
+      "products",
+      "productDetail",
+      "cart",
+      "comparison",
+      "orderStatus"
+    ],
+    "defaultCardRenderer": "@journeyax/ui-cards"
+  }
+}

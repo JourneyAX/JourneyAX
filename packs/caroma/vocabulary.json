@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "terms": [
+    {
+      "term": "Standard Spec",
+      "canonical": "standard",
+      "category": "specification",
+      "synonyms": ["basic", "standard", "commercial"],
+      "description": "Standard fixture specification"
+    },
+    {
+      "term": "Architectural Spec",
+      "canonical": "architectural",
+      "category": "specification",
+      "synonyms": ["premium", "architectural", "luxe", "designer"],
+      "description": "Architectural grade fixture specification"
+    },
+    {
+      "term": "Custom Rough-in",
+      "canonical": "custom_roughin",
+      "category": "plumbing",
+      "synonyms": ["roughin", "custom", "in-wall cistern"],
+      "description": "Custom rough-in specification"
+    }
+  ],
+  "acronyms": {
+    "BOM": "Bill of Materials",
+    "WELS": "Water Efficiency Labelling and Standards",
+    "CAROMA": "Caroma Industries Limited"
+  },
+  "slotSynonyms": {
+    "spaceType": ["room", "space", "area", "commercial_restroom", "ensuite"],
+    "finish": ["colour", "finish_type", "surface", "matte black", "brushed brass", "chrome"]
+  },
+  "slotMappings": {},
+  "prohibitedTerms": ["counterfeit", "unauthorized", "substandard", "fake"]
+}

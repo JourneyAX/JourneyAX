@@ -1,0 +1,11 @@
+{
+  "packId": "bp_caroma_v1",
+  "tenantId": "caroma",
+  "environmentId": "production",
+  "version": "1.0.0",
+  "name": "Caroma Smart Commercial Fixtures Pack",
+  "description": "Unified specification and quoting pack for Caroma commercial and residential bathroom fixtures.",
+  "status": "active",
+  "publishedAt": "2026-09-25T17:00:00.000Z",
+  "publishedBy": "admin@journeyax.io"
+}

@@ -1,0 +1,44 @@
+{
+  "journeyId": "guided_specification",
+  "version": "1.0.0",
+  "displayName": "Guided Fixture Specification & Quote Flow",
+  "description": "Multi-stage flow from space intake to quote finalization.",
+  "goals": ["identify_space", "select_finish", "finalize_quote"],
+  "initialStage": "space_intake",
+  "stages": {
+    "space_intake": {
+      "displayName": "Space & Scope Intake",
+      "description": "Identifies space type and requirements",
+      "requiredFacts": [],
+      "allowedCapabilities": ["catalog.search"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "anyFactsPresent": ["spaceType"],
+          "nextStage": "finish_selection"
+        }
+      ]
+    },
+    "finish_selection": {
+      "displayName": "Finish & Fixture Selection",
+      "description": "Selects tapware finish and fixture parameters",
+      "requiredFacts": ["spaceType"],
+      "allowedCapabilities": ["catalog.search", "specification.configure"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "anyFactsPresent": ["finish"],
+          "nextStage": "quote_review"
+        }
+      ]
+    },
+    "quote_review": {
+      "displayName": "Quote Review & Finalization",
+      "description": "Reviews specification bill of materials and commits quote",
+      "requiredFacts": ["spaceType", "finish"],
+      "allowedCapabilities": ["quote.update", "quote.finalize", "salesforce.lead_create"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": []
+    }
+  }
+}

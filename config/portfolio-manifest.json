@@ -30,7 +30,7 @@
       "commerceMode": "cart",
       "dataResidency": "us",
       "migrationPriority": 3,
-      "notes": "Not yet discovered. Business Pack authoring pending."
+      "notes": "Business Pack discovered on filesystem. Remaining gates computed from evidence."
     },
     {
       "tenantId": "caroma",
@@ -39,7 +39,7 @@
       "commerceMode": "quote",
       "dataResidency": "au",
       "migrationPriority": 4,
-      "notes": "Not yet discovered. Business Pack authoring pending."
+      "notes": "Business Pack discovered on filesystem. Remaining gates computed from evidence."
     }
   ],
 

@@ -1,0 +1,44 @@
+{
+  "journeyId": "guided_selection",
+  "version": "1.0.0",
+  "displayName": "Guided Product Selection & Cart Flow",
+  "description": "Multi-stage flow from category selection to cart checkout.",
+  "goals": ["identify_category", "select_quantity", "checkout"],
+  "initialStage": "category_selection",
+  "stages": {
+    "category_selection": {
+      "displayName": "Category Selection",
+      "description": "Selects product category and preferences",
+      "requiredFacts": [],
+      "allowedCapabilities": ["catalog.search"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "anyFactsPresent": ["category"],
+          "nextStage": "quantity_selection"
+        }
+      ]
+    },
+    "quantity_selection": {
+      "displayName": "Quantity & Configuration",
+      "description": "Specifies quantities and item configuration",
+      "requiredFacts": ["category"],
+      "allowedCapabilities": ["catalog.search", "item.configure"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        {
+          "anyFactsPresent": ["quantity"],
+          "nextStage": "cart_review"
+        }
+      ]
+    },
+    "cart_review": {
+      "displayName": "Cart Review & Checkout",
+      "description": "Reviews cart and dispatches to checkout",
+      "requiredFacts": ["category", "quantity"],
+      "allowedCapabilities": ["cart.update", "cart.checkout", "shopify.order_create"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": []
+    }
+  }
+}
