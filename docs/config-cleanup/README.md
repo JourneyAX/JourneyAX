@@ -4,6 +4,8 @@ This folder records the staged migration of the commerce agent toward Back Offic
 
 ## Phase documents
 
+Detailed shareable implementation reference: [Implementation detail — schema, tools, executors, and runtime flow](implementation-detail.md)
+
 1. [Phase 1 — Runtime configuration](phase-1-runtime-config.md)
 2. [Phase 2 — Configuration safety](phase-2-config-safety.md)
 3. [Phase 3 — Tool architecture](phase-3-tool-architecture.md)
