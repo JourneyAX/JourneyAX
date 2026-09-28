@@ -1,10 +1,10 @@
 # JourneyAX Tenant Connector Migration Inventory & Truthful Audit
 
-**Audit Timestamp**: `2026-09-28T03:48:57.516Z`
+**Audit Timestamp**: `2026-09-28T11:15:11.411Z`
 **Portfolio Manifest Version**: `1.0.0`
 **Audit Mode**: Read-Only Architecture Enforcement & Evidence-Backed Verification
 
-> **MIGRATION STATUS NOTICE**: Parked tenants do not affect active-portfolio readiness. Synthetic fixtures are excluded from readiness counts. Undiscovered active-portfolio tenants fail closed as `NOT_DISCOVERED` / `BLOCKED`.
+> **MIGRATION STATUS NOTICE**: Parked tenants do not affect active-portfolio readiness. Synthetic fixtures are excluded from readiness counts. Undiscovered active-portfolio tenants fail closed as `NOT_DISCOVERED` / `BLOCKED`. Any discovered tenant absent from the portfolio manifest is classified as `UNREGISTERED` and `BLOCKED`.
 
 ---
 
@@ -12,12 +12,16 @@
 
 | Metric | Value |
 | :--- | :--- |
-| Active portfolio tenants | 4 |
-| Discovered active tenants | 2 / 4 |
-| Undiscovered active tenants | 2 / 4 |
+| Configured active portfolio tenants | 4 |
+| Discovered active tenants (on disk) | 2 / 4 |
+| Undiscovered active tenants (pending authoring) | 2 / 4 |
 | Immutable release ready (active) | 0 / 4 |
-| Parked tenants (not counted) | 5 |
-| Synthetic test fixtures (excluded) | 5 |
+| Configured parked tenants (excluded from readiness) | 5 |
+| Discovered parked tenants (on disk) | 1 / 5 |
+| Undiscovered parked tenants | 4 / 5 |
+| Configured synthetic fixtures (excluded from readiness) | 5 |
+| Discovered synthetic fixtures (on disk) | 0 / 5 |
+| Discovered unregistered tenants (governance violations) | 0 |
 
 ## 2. Active Portfolio Readiness Matrix
 

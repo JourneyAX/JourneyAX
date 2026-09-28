@@ -1,8 +1,8 @@
 # JourneyAX — Canonical Pack Dry-Run Evaluation Report
 
-**Generated At**: `2026-09-28T03:48:58.091Z`
+**Generated At**: `2026-09-28T11:15:16.911Z`
 
-**Branch / Commit**: `JourneyAX-dev-v4` / `0101e1311764e4c2e8c4ff6a79a3a5fa8299e599`
+**Branch / Commit**: `JourneyAX-dev-v4` / `d7ac843727e9a63d497b16aa523a62b52e77a8c6`
 
 **Portfolio Manifest Version**: `1.0.0`
 
@@ -12,19 +12,18 @@
 
 **Parked (excluded)**: royalcyber, caroma-nz, momentec, garts, dragonshield
 
-> **GOVERNANCE NOTICE**: Dry-run evaluation validates candidate Business Pack schema compilation and semantic integrity. It does **not** grant cutover approval. Production routing strictly requires an approved, signed `DurableCutoverRecord` in `tenant_cutovers`.
+> **GOVERNANCE NOTICE**: Dry-run evaluation validates candidate Business Pack schema compilation and semantic integrity. It does **not** grant cutover approval. Production routing strictly requires an approved, signed `DurableCutoverRecord` in `tenant_cutovers`. Any discovered tenant absent from the portfolio manifest is classified as `UNREGISTERED` and `BLOCKED`.
 
 ---
 
 ## 1. Executive Summary
 
-| Category | Count |
-| :--- | :---: |
-| Active portfolio tenants | 4 |
-| Dry-run passed (schema + semantic valid) | 2 |
-| Requires remediation | 2 |
-| Parked tenants (excluded) | 1 |
-| Synthetic fixtures (excluded) | 0 |
+| Category | Configured | Discovered on Disk | Status / Count |
+| :--- | :---: | :---: | :--- |
+| Active portfolio tenants | 4 | 2 | 2 passed, 2 pending authoring / blocked |
+| Parked tenants (excluded from readiness) | 5 | 1 | 1 discovered, 4 pending authoring |
+| Synthetic fixtures (excluded from readiness) | 5 | 0 | 5 configured |
+| Unregistered tenants (governance violations) | — | 0 | 0 violations |
 
 ## 2. Active Portfolio Dry-Run Results
 
@@ -45,13 +44,23 @@
 
 ## 4. Parked Tenants (Excluded)
 
-| Tenant ID | Reason |
-| :--- | :--- |
-| `royalcyber` | Parked pending business prioritisation. Do not count as active blocker. |
+| Tenant ID | Source | Reason |
+| :--- | :---: | :--- |
+| `royalcyber` | `filesystem_pack` | Parked pending business prioritisation. Do not count as active blocker. |
+| `caroma-nz` | `not_discovered` | Parked — will follow caroma (AU) once AU is migrated. |
+| `momentec` | `not_discovered` | Parked pending stakeholder sign-off. |
+| `garts` | `not_discovered` | Parked pending stakeholder sign-off. |
+| `dragonshield` | `not_discovered` | Parked pending stakeholder sign-off. |
 
 ## 5. Synthetic Fixtures (Excluded from Readiness)
 
-No synthetic fixtures found.
+| Fixture ID | Source | Schema | Checksum | Note |
+| :--- | :---: | :---: | :--- | :--- |
+| `placemakers_fixture` | `not_discovered` | ❌ FAIL | — | FIXTURE_EVALUATION_ONLY — not counted |
+| `abercrombie_fixture` | `not_discovered` | ❌ FAIL | — | FIXTURE_EVALUATION_ONLY — not counted |
+| `caroma_fixture` | `not_discovered` | ❌ FAIL | — | FIXTURE_EVALUATION_ONLY — not counted |
+| `momentec_fixture` | `not_discovered` | ❌ FAIL | — | FIXTURE_EVALUATION_ONLY — not counted |
+| `dragonshield_fixture` | `not_discovered` | ❌ FAIL | — | FIXTURE_EVALUATION_ONLY — not counted |
 
 ---
 

@@ -30,7 +30,10 @@ import * as path from 'path';
 import * as dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 
-if (process.env.JOURNEYAX_OFFLINE_HARNESS !== 'true') {
+if (
+  process.env.JOURNEYAX_OFFLINE_HARNESS !== 'true' &&
+  process.env.NODE_ENV !== 'test'
+) {
   dotenv.config({ path: path.resolve(__dirname, '../.env') });
 }
 
@@ -77,6 +80,134 @@ export const DEFAULT_PORTFOLIO_MANIFEST_PATH = path.resolve(
 );
 
 /**
+ * Programmatically validates a portfolio manifest against the governance rules:
+ * 1. Required fields: version, activePortfolio, parked.
+ * 2. TenantEntry required fields: tenantId, displayName, industry, commerceMode, dataResidency.
+ * 3. Allowed commerce modes: exactly 'quote' or 'cart'.
+ * 4. Unique tenant IDs within activePortfolio, parked, and syntheticFixtures.
+ * 5. Zero overlap between activePortfolio, parked, and syntheticFixtures.
+ */
+export function validatePortfolioManifest(
+  raw: unknown,
+  sourceDesc = 'portfolio-manifest'
+): PortfolioManifest {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(
+      `Portfolio manifest from '${sourceDesc}' must be a non-null object`
+    );
+  }
+
+  const manifest = raw as Record<string, any>;
+
+  if (typeof manifest.version !== 'string' || !manifest.version.trim()) {
+    throw new Error(
+      `Portfolio manifest from '${sourceDesc}' is missing required string property 'version'`
+    );
+  }
+
+  if (!Array.isArray(manifest.activePortfolio)) {
+    throw new Error(
+      `Portfolio manifest from '${sourceDesc}' must have an 'activePortfolio' array`
+    );
+  }
+
+  if (!Array.isArray(manifest.parked)) {
+    throw new Error(
+      `Portfolio manifest from '${sourceDesc}' must have a 'parked' array`
+    );
+  }
+
+  if (manifest.syntheticFixtures !== undefined && !Array.isArray(manifest.syntheticFixtures)) {
+    throw new Error(
+      `Portfolio manifest from '${sourceDesc}' property 'syntheticFixtures' must be an array if provided`
+    );
+  }
+
+  const validateEntry = (entry: any, section: string, index: number): PortfolioTenantEntry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(
+        `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' must be an object`
+      );
+    }
+    const requiredProps = ['tenantId', 'displayName', 'industry', 'commerceMode', 'dataResidency'];
+    for (const prop of requiredProps) {
+      if (typeof entry[prop] !== 'string' || !entry[prop].trim()) {
+        throw new Error(
+          `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' is missing required non-empty string '${prop}'`
+        );
+      }
+    }
+
+    if (!/^[a-z0-9_-]+$/.test(entry.tenantId)) {
+      throw new Error(
+        `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' has invalid tenantId '${entry.tenantId}' (must match ^[a-z0-9_-]+$)`
+      );
+    }
+
+    const ALLOWED_COMMERCE_MODES = ['quote', 'cart'];
+    if (!ALLOWED_COMMERCE_MODES.includes(entry.commerceMode)) {
+      throw new Error(
+        `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' has disallowed commerceMode '${entry.commerceMode}' for tenant '${entry.tenantId}'. Allowed modes are: ${ALLOWED_COMMERCE_MODES.map((m) => `'${m}'`).join(', ')}`
+      );
+    }
+
+    return entry as PortfolioTenantEntry;
+  };
+
+  const activeEntries = manifest.activePortfolio.map((e: any, i: number) =>
+    validateEntry(e, 'activePortfolio', i)
+  );
+  const parkedEntries = manifest.parked.map((e: any, i: number) =>
+    validateEntry(e, 'parked', i)
+  );
+  const fixtureEntries = ((manifest.syntheticFixtures as any[]) || []).map((e: any, i: number) =>
+    validateEntry(e, 'syntheticFixtures', i)
+  );
+
+  // Check unique tenant IDs within sections
+  const checkUniqueWithin = (entries: PortfolioTenantEntry[], section: string) => {
+    const seen = new Set<string>();
+    for (const e of entries) {
+      if (seen.has(e.tenantId)) {
+        throw new Error(
+          `Duplicate tenantId '${e.tenantId}' found in '${section}' of '${sourceDesc}'`
+        );
+      }
+      seen.add(e.tenantId);
+    }
+    return seen;
+  };
+
+  const activeIds = checkUniqueWithin(activeEntries, 'activePortfolio');
+  const parkedIds = checkUniqueWithin(parkedEntries, 'parked');
+  const fixtureIds = checkUniqueWithin(fixtureEntries, 'syntheticFixtures');
+
+  // Check no overlap between active, parked, and fixtures
+  for (const id of activeIds) {
+    if (parkedIds.has(id)) {
+      throw new Error(
+        `Portfolio manifest overlap violation in '${sourceDesc}': tenantId '${id}' is defined in both 'activePortfolio' and 'parked'`
+      );
+    }
+    if (fixtureIds.has(id)) {
+      throw new Error(
+        `Portfolio manifest overlap violation in '${sourceDesc}': tenantId '${id}' is defined in both 'activePortfolio' and 'syntheticFixtures'`
+      );
+    }
+  }
+
+  for (const id of parkedIds) {
+    if (fixtureIds.has(id)) {
+      throw new Error(
+        `Portfolio manifest overlap violation in '${sourceDesc}': tenantId '${id}' is defined in both 'parked' and 'syntheticFixtures'`
+      );
+    }
+  }
+
+  return manifest as PortfolioManifest;
+}
+
+/**
  * Loads and validates the portfolio manifest from a JSON file.
  * Throws if the file is missing or malformed.
  */
@@ -85,20 +216,20 @@ export function loadPortfolioManifest(manifestPath = DEFAULT_PORTFOLIO_MANIFEST_
     throw new Error(`Portfolio manifest not found at: ${manifestPath}`);
   }
   const raw = fs.readFileSync(manifestPath, 'utf8');
-  const parsed = JSON.parse(raw) as PortfolioManifest;
-  if (!Array.isArray(parsed.activePortfolio) || !Array.isArray(parsed.parked)) {
-    throw new Error(
-      `Portfolio manifest at '${manifestPath}' must have 'activePortfolio' and 'parked' arrays`
-    );
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err: any) {
+    throw new Error(`Invalid JSON in portfolio manifest at '${manifestPath}': ${err.message}`);
   }
-  return parsed;
+  return validatePortfolioManifest(parsed, manifestPath);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Discovery classification
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type PackClassification = 'ACTIVE_PORTFOLIO' | 'PARKED' | 'SYNTHETIC_FIXTURE';
+export type PackClassification = 'ACTIVE_PORTFOLIO' | 'PARKED' | 'SYNTHETIC_FIXTURE' | 'UNREGISTERED';
 
 export type ProjectSource = 'filesystem_pack' | 'non_prod_db' | 'not_discovered' | 'synthetic_fixture';
 
@@ -384,18 +515,30 @@ function scanForDirectUrls(obj: any, currentPath = ''): string[] {
 
 /**
  * Classifies a tenantId given the portfolio manifest.
+ * Rules:
+ * 1. SYNTHETIC_FIXTURE if matches syntheticFixtureSuffix or declared in syntheticFixtures.
+ * 2. ACTIVE_PORTFOLIO if declared in activePortfolio.
+ * 3. PARKED if declared in parked.
+ * 4. UNREGISTERED if absent from the manifest (governance violation, fails closed as BLOCKED).
  */
 export function classifyTenant(
   tenantId: string,
   manifest: PortfolioManifest
 ): PackClassification {
   const fixtureSuffix = manifest.syntheticFixtureSuffix ?? '_fixture';
-  if (tenantId.endsWith(fixtureSuffix)) return 'SYNTHETIC_FIXTURE';
-  if (manifest.activePortfolio.some((e) => e.tenantId === tenantId)) return 'ACTIVE_PORTFOLIO';
-  if (manifest.parked.some((e) => e.tenantId === tenantId)) return 'PARKED';
-  // Unknown tenants discovered from the filesystem are classified PARKED by default
-  // (they do not become active blockers without an explicit portfolio entry).
-  return 'PARKED';
+  if (
+    tenantId.endsWith(fixtureSuffix) ||
+    manifest.syntheticFixtures?.some((e) => e.tenantId === tenantId)
+  ) {
+    return 'SYNTHETIC_FIXTURE';
+  }
+  if (manifest.activePortfolio.some((e) => e.tenantId === tenantId)) {
+    return 'ACTIVE_PORTFOLIO';
+  }
+  if (manifest.parked.some((e) => e.tenantId === tenantId)) {
+    return 'PARKED';
+  }
+  return 'UNREGISTERED';
 }
 
 /**
@@ -731,9 +874,13 @@ export async function auditProject(
     };
   }
 
-  // ACTIVE_PORTFOLIO or SYNTHETIC_FIXTURE — not_discovered
+  // ACTIVE_PORTFOLIO, SYNTHETIC_FIXTURE, or UNREGISTERED — not_discovered
   if (project.source === 'not_discovered') {
-    blockers.push('Required active-portfolio tenant not discovered on filesystem or database');
+    if (project.classification === 'UNREGISTERED') {
+      blockers.push(`UNREGISTERED_TENANT: Tenant '${project.tenantId}' is absent from portfolio manifest — governance violation (fail closed)`);
+    } else {
+      blockers.push('Required active-portfolio tenant not discovered on filesystem or database');
+    }
     blockers.push('Cutover approval record missing in tenant_cutovers');
     blockers.push('Rollback baseline snapshot missing in business_pack_pointers');
 
@@ -891,6 +1038,9 @@ export async function auditProject(
 
   if (rollbackEvidence === 'NO_ROLLBACK_BASELINE') blockers.push('Rollback baseline snapshot missing in business_pack_pointers or tenant_cutovers');
   if (project.classification === 'SYNTHETIC_FIXTURE' || project.source === 'synthetic_fixture') blockers.push('Synthetic test fixture: not a discovered customer project');
+  if (project.classification === 'UNREGISTERED') {
+    blockers.push(`UNREGISTERED_TENANT: Tenant '${project.tenantId}' is absent from portfolio manifest — governance violation (fail closed)`);
+  }
 
   let parityResult: 'VERIFIED' | 'PARTIAL' | 'UNEVALUATED' = 'UNEVALUATED';
   const parityDoc = dbEvidence.parityEvidence.get(envKey);
@@ -910,6 +1060,8 @@ export async function auditProject(
   } else if (project.classification === 'PARKED') {
     migrationStatus = 'PARKED';
     blockers.push('Parked tenant — not counted in active portfolio readiness');
+  } else if (project.classification === 'UNREGISTERED') {
+    migrationStatus = 'BLOCKED';
   } else if (immutableReleaseReadiness === 'READY') {
     migrationStatus = 'CANDIDATE_PACK_VALIDATED';
   } else {
@@ -935,7 +1087,9 @@ export interface InventoryOptions {
 export async function runTenantConnectorInventory(
   options: InventoryOptions = {}
 ): Promise<ComputedAuditResult[]> {
-  const manifest = options.manifest ?? loadPortfolioManifest(options.manifestPath);
+  const manifest = options.manifest
+    ? validatePortfolioManifest(options.manifest, 'inline manifest')
+    : loadPortfolioManifest(options.manifestPath);
 
   const dbEnv = resolveSafeDatabaseEnvironment();
   if (dbEnv.warning) console.warn(`🔒 ${dbEnv.warning}`);
@@ -976,6 +1130,11 @@ export async function runTenantConnectorInventory(
     }))
   );
 
+  const unregisteredResults = results.filter((r) => r.classification === 'UNREGISTERED');
+  if (unregisteredResults.length > 0) {
+    console.warn(`\n⚠️  WARNING: ${unregisteredResults.length} UNREGISTERED tenant(s) discovered! Governance violations detected.`);
+  }
+
   const writeFlag = options.writeReport ?? process.argv.includes('--write');
   if (writeFlag) {
     const reportPath = path.resolve(__dirname, '../docs/tenant-connector-migration-inventory.md');
@@ -985,24 +1144,36 @@ export async function runTenantConnectorInventory(
     const parkedResults = results.filter((r) => r.classification === 'PARKED');
     const fixtureResults = results.filter((r) => r.classification === 'SYNTHETIC_FIXTURE');
 
-    const discoveredActiveCount = activeResults.filter((r) => r.source !== 'not_discovered').length;
-    const blockedUndiscoveredCount = activeResults.filter((r) => r.source === 'not_discovered').length;
+    const configuredActiveCount = manifest.activePortfolio.length;
+    const discoveredActiveCount = activeResults.filter((r) => r.source === 'filesystem_pack').length;
+    const pendingActiveCount = activeResults.filter((r) => r.source === 'not_discovered').length;
     const readyActiveCount = activeResults.filter((r) => r.immutableReleaseReadiness === 'READY').length;
+
+    const configuredParkedCount = manifest.parked.length;
+    const discoveredParkedCount = parkedResults.filter((r) => r.source === 'filesystem_pack').length;
+    const pendingParkedCount = parkedResults.filter((r) => r.source === 'not_discovered').length;
+
+    const configuredFixtureCount = (manifest.syntheticFixtures || []).length;
+    const discoveredFixtureCount = fixtureResults.filter((r) => r.source === 'filesystem_pack').length;
 
     let md = `# JourneyAX Tenant Connector Migration Inventory & Truthful Audit\n\n`;
     md += `**Audit Timestamp**: \`${timestamp}\`\n`;
     md += `**Portfolio Manifest Version**: \`${manifest.version}\`\n`;
     md += `**Audit Mode**: Read-Only Architecture Enforcement & Evidence-Backed Verification\n\n`;
-    md += `> **MIGRATION STATUS NOTICE**: Parked tenants do not affect active-portfolio readiness. Synthetic fixtures are excluded from readiness counts. Undiscovered active-portfolio tenants fail closed as \`NOT_DISCOVERED\` / \`BLOCKED\`.\n\n---\n\n`;
+    md += `> **MIGRATION STATUS NOTICE**: Parked tenants do not affect active-portfolio readiness. Synthetic fixtures are excluded from readiness counts. Undiscovered active-portfolio tenants fail closed as \`NOT_DISCOVERED\` / \`BLOCKED\`. Any discovered tenant absent from the portfolio manifest is classified as \`UNREGISTERED\` and \`BLOCKED\`.\n\n---\n\n`;
 
     md += `## 1. Executive Summary\n\n`;
     md += `| Metric | Value |\n| :--- | :--- |\n`;
-    md += `| Active portfolio tenants | ${activeResults.length} |\n`;
-    md += `| Discovered active tenants | ${discoveredActiveCount} / ${activeResults.length} |\n`;
-    md += `| Undiscovered active tenants | ${blockedUndiscoveredCount} / ${activeResults.length} |\n`;
-    md += `| Immutable release ready (active) | ${readyActiveCount} / ${activeResults.length} |\n`;
-    md += `| Parked tenants (not counted) | ${parkedResults.length} |\n`;
-    md += `| Synthetic test fixtures (excluded) | ${fixtureResults.length} |\n\n`;
+    md += `| Configured active portfolio tenants | ${configuredActiveCount} |\n`;
+    md += `| Discovered active tenants (on disk) | ${discoveredActiveCount} / ${configuredActiveCount} |\n`;
+    md += `| Undiscovered active tenants (pending authoring) | ${pendingActiveCount} / ${configuredActiveCount} |\n`;
+    md += `| Immutable release ready (active) | ${readyActiveCount} / ${configuredActiveCount} |\n`;
+    md += `| Configured parked tenants (excluded from readiness) | ${configuredParkedCount} |\n`;
+    md += `| Discovered parked tenants (on disk) | ${discoveredParkedCount} / ${configuredParkedCount} |\n`;
+    md += `| Undiscovered parked tenants | ${pendingParkedCount} / ${configuredParkedCount} |\n`;
+    md += `| Configured synthetic fixtures (excluded from readiness) | ${configuredFixtureCount} |\n`;
+    md += `| Discovered synthetic fixtures (on disk) | ${discoveredFixtureCount} / ${configuredFixtureCount} |\n`;
+    md += `| Discovered unregistered tenants (governance violations) | ${unregisteredResults.length} |\n\n`;
 
     md += `## 2. Active Portfolio Readiness Matrix\n\n`;
     md += `| Tenant ID | Display Name | Discovered | Schema | Semantics | Isolation | Status | Notes |\n`;
@@ -1030,6 +1201,15 @@ export async function runTenantConnectorInventory(
       md += `\n`;
     }
 
+    if (unregisteredResults.length > 0) {
+      md += `## 5. Unregistered Tenants (Governance Violations — BLOCKED)\n\n`;
+      md += `| Tenant ID | Source | Status | Violations |\n| :--- | :---: | :---: | :--- |\n`;
+      for (const r of unregisteredResults) {
+        md += `| \`${r.tenantId}\` | \`${r.source}\` | \`${r.migrationStatus}\` | ${r.blockers.join('; ')} |\n`;
+      }
+      md += `\n`;
+    }
+
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, md.trimEnd() + '\n', 'utf8');
     console.log(`\n📄 Truthful migration inventory written to:\n   ${reportPath}\n`);
@@ -1040,7 +1220,7 @@ export async function runTenantConnectorInventory(
   return results;
 }
 
-if (require.main === module) {
+if (require.main === module || (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename))) {
   runTenantConnectorInventory().catch((err) => {
     console.error('Fatal error during tenant connector inventory:', err);
     process.exit(1);

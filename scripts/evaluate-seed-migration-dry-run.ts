@@ -12,12 +12,14 @@
  * 4. Classifies discovered packs using the same portfolio manifest:
  *      ACTIVE_PORTFOLIO  — in activePortfolio list
  *      PARKED            — in parked list (excluded from active readiness)
- *      SYNTHETIC_FIXTURE — tenantId ends with the manifest's syntheticFixtureSuffix
+ *      SYNTHETIC_FIXTURE — tenantId ends with the manifest's syntheticFixtureSuffix or declared in syntheticFixtures
+ *      UNREGISTERED      — discovered on disk but absent from manifest (fails closed as BLOCKED)
  * 5. Parked tenants do not affect active-portfolio readiness counts.
  * 6. Resolves branch and commit dynamically via child_process.execSync.
  * 7. Generates checksum from computePackChecksum on the loader's validated output
  *    (same path as publication and inventory).
- * 8. No self-attestation. Report is labelled a dry-run evaluation — not a signed approval.
+ * 8. Read-only by default; writes docs/seed-tenants-migration-dry-run-report.md only with --write.
+ * 9. Exported as an importable function accepting manifest path or manifest object.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -33,6 +35,7 @@ import {
 
 import {
   loadPortfolioManifest,
+  validatePortfolioManifest,
   classifyTenant,
   PackClassification,
   DEFAULT_PORTFOLIO_MANIFEST_PATH,
@@ -59,7 +62,7 @@ function resolveGitContext(): { branch: string; commit: string } {
 // ---------------------------------------------------------------------------
 // Per-pack evaluation record
 // ---------------------------------------------------------------------------
-interface EvaluatedPack {
+export interface EvaluatedPack {
   tenantId: string;
   classification: PackClassification;
   source: 'filesystem_pack' | 'not_discovered';
@@ -72,10 +75,40 @@ interface EvaluatedPack {
   validatedPack: BusinessPackRelease | null;
 }
 
+export interface EvaluatorOptions {
+  writeReport?: boolean;
+  manifestPath?: string;
+  manifest?: PortfolioManifest;
+}
+
+export interface EvaluatorResult {
+  manifest: PortfolioManifest;
+  branch: string;
+  commit: string;
+  timestamp: string;
+  allPacks: EvaluatedPack[];
+  activePacks: EvaluatedPack[];
+  parkedPacks: EvaluatedPack[];
+  fixturePacks: EvaluatedPack[];
+  unregisteredPacks: EvaluatedPack[];
+  configuredActiveCount: number;
+  discoveredActiveCount: number;
+  pendingActiveCount: number;
+  configuredParkedCount: number;
+  discoveredParkedCount: number;
+  pendingParkedCount: number;
+  configuredFixtureCount: number;
+  discoveredFixtureCount: number;
+  readyCount: number;
+  blockedCount: number;
+  unregisteredCount: number;
+  reportPath?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Pack discovery — aligned with portfolio manifest
 // ---------------------------------------------------------------------------
-async function discoverAndEvaluatePacks(manifest: PortfolioManifest): Promise<EvaluatedPack[]> {
+export async function discoverAndEvaluatePacks(manifest: PortfolioManifest): Promise<EvaluatedPack[]> {
   const packsRelPath = manifest.packsRoot ?? 'packs';
   const PACKS_ROOT = path.resolve(__dirname, '..', packsRelPath);
   const loader = new BusinessPackLoader({ localPacksRoot: PACKS_ROOT });
@@ -94,6 +127,10 @@ async function discoverAndEvaluatePacks(manifest: PortfolioManifest): Promise<Ev
       const classification = classifyTenant(tenantId, manifest);
       const issues: string[] = [];
 
+      if (classification === 'UNREGISTERED') {
+        issues.push(`UNREGISTERED_TENANT: Pack '${tenantId}' exists on filesystem but is absent from portfolio manifest`);
+      }
+
       let rawPack: BusinessPackRelease | null = null;
       try {
         rawPack = await loader.loadFromDisk(tenantId, 'production');
@@ -103,7 +140,18 @@ async function discoverAndEvaluatePacks(manifest: PortfolioManifest): Promise<Ev
       }
 
       if (!rawPack) {
-        results.push({ tenantId, classification, source: 'not_discovered', schemaValid: false, semanticValid: false, checksum: '', packVersion: '', issues: [...issues, 'Pack could not be loaded from filesystem'], rawPack: null, validatedPack: null });
+        results.push({
+          tenantId,
+          classification,
+          source: 'not_discovered',
+          schemaValid: false,
+          semanticValid: false,
+          checksum: '',
+          packVersion: '',
+          issues: [...issues, 'Pack could not be loaded from filesystem'],
+          rawPack: null,
+          validatedPack: null,
+        });
         continue;
       }
 
@@ -126,7 +174,18 @@ async function discoverAndEvaluatePacks(manifest: PortfolioManifest): Promise<Ev
         checksum = computePackChecksum(validatedPack);
       }
 
-      results.push({ tenantId, classification, source: 'filesystem_pack', schemaValid, semanticValid, checksum, packVersion: rawPack.manifest?.version ?? '(unknown)', issues, rawPack, validatedPack });
+      results.push({
+        tenantId,
+        classification,
+        source: 'filesystem_pack',
+        schemaValid,
+        semanticValid,
+        checksum,
+        packVersion: rawPack.manifest?.version ?? '(unknown)',
+        issues,
+        rawPack,
+        validatedPack,
+      });
     }
   } else {
     console.warn(`[evaluator] packs/ directory not found at ${PACKS_ROOT}. No packs to evaluate.`);
@@ -135,7 +194,54 @@ async function discoverAndEvaluatePacks(manifest: PortfolioManifest): Promise<Ev
   // 2. Active-portfolio tenants not found on disk → not_discovered
   for (const entry of manifest.activePortfolio) {
     if (!discovered.has(entry.tenantId)) {
-      results.push({ tenantId: entry.tenantId, classification: 'ACTIVE_PORTFOLIO', source: 'not_discovered', schemaValid: false, semanticValid: false, checksum: '', packVersion: '', issues: ['Pack not found on filesystem'], rawPack: null, validatedPack: null });
+      results.push({
+        tenantId: entry.tenantId,
+        classification: 'ACTIVE_PORTFOLIO',
+        source: 'not_discovered',
+        schemaValid: false,
+        semanticValid: false,
+        checksum: '',
+        packVersion: '',
+        issues: ['Pack not found on filesystem'],
+        rawPack: null,
+        validatedPack: null,
+      });
+    }
+  }
+
+  // 3. Parked tenants not found on disk → not_discovered
+  for (const entry of manifest.parked) {
+    if (!discovered.has(entry.tenantId)) {
+      results.push({
+        tenantId: entry.tenantId,
+        classification: 'PARKED',
+        source: 'not_discovered',
+        schemaValid: false,
+        semanticValid: false,
+        checksum: '',
+        packVersion: '',
+        issues: ['Parked — pack authoring pending'],
+        rawPack: null,
+        validatedPack: null,
+      });
+    }
+  }
+
+  // 4. Synthetic fixtures declared in manifest not on disk
+  for (const entry of manifest.syntheticFixtures || []) {
+    if (!discovered.has(entry.tenantId)) {
+      results.push({
+        tenantId: entry.tenantId,
+        classification: 'SYNTHETIC_FIXTURE',
+        source: 'not_discovered',
+        schemaValid: false,
+        semanticValid: false,
+        checksum: '',
+        packVersion: '',
+        issues: ['Synthetic fixture — topology matrix entry'],
+        rawPack: null,
+        validatedPack: null,
+      });
     }
   }
 
@@ -143,12 +249,17 @@ async function discoverAndEvaluatePacks(manifest: PortfolioManifest): Promise<Ev
 }
 
 // ---------------------------------------------------------------------------
-// Main evaluation runner
+// Main evaluation function
 // ---------------------------------------------------------------------------
-async function runEvaluation(): Promise<void> {
+export async function evaluateSeedMigrationDryRun(
+  options: EvaluatorOptions = {}
+): Promise<EvaluatorResult> {
   console.log('🔍 Starting Canonical Pack Dry-Run Evaluation (offline, no DB)...\n');
 
-  const manifest = loadPortfolioManifest(DEFAULT_PORTFOLIO_MANIFEST_PATH);
+  const manifest = options.manifest
+    ? validatePortfolioManifest(options.manifest, 'inline manifest')
+    : loadPortfolioManifest(options.manifestPath ?? DEFAULT_PORTFOLIO_MANIFEST_PATH);
+
   const { branch, commit } = resolveGitContext();
   const timestamp = new Date().toISOString();
   const allPacks = await discoverAndEvaluatePacks(manifest);
@@ -157,12 +268,26 @@ async function runEvaluation(): Promise<void> {
   const activePacks = allPacks.filter((p) => p.classification === 'ACTIVE_PORTFOLIO');
   const parkedPacks = allPacks.filter((p) => p.classification === 'PARKED');
   const fixturePacks = allPacks.filter((p) => p.classification === 'SYNTHETIC_FIXTURE');
+  const unregisteredPacks = allPacks.filter((p) => p.classification === 'UNREGISTERED');
 
+  const configuredActiveCount = manifest.activePortfolio.length;
+  const discoveredActiveCount = activePacks.filter((p) => p.source === 'filesystem_pack').length;
+  const pendingActiveCount = activePacks.filter((p) => p.source === 'not_discovered').length;
+
+  const configuredParkedCount = manifest.parked.length;
+  const discoveredParkedCount = parkedPacks.filter((p) => p.source === 'filesystem_pack').length;
+  const pendingParkedCount = parkedPacks.filter((p) => p.source === 'not_discovered').length;
+
+  const configuredFixtureCount = (manifest.syntheticFixtures || []).length;
+  const discoveredFixtureCount = fixturePacks.filter((p) => p.source === 'filesystem_pack').length;
+
+  const unregisteredCount = unregisteredPacks.length;
   const readyCount = activePacks.filter((p) => p.schemaValid && p.semanticValid).length;
-  const blockedCount = activePacks.filter((p) => !p.schemaValid || !p.semanticValid).length;
+  const blockedCount =
+    activePacks.filter((p) => !p.schemaValid || !p.semanticValid).length + unregisteredCount;
 
   // Active portfolio table
-  console.log(`Active Portfolio (${activePacks.length} tenants):`);
+  console.log(`Active Portfolio (Configured: ${configuredActiveCount}, Discovered: ${discoveredActiveCount}, Pending: ${pendingActiveCount}):`);
   console.table(
     activePacks.map((p) => ({
       Tenant: p.tenantId,
@@ -177,105 +302,181 @@ async function runEvaluation(): Promise<void> {
   );
 
   if (parkedPacks.length > 0) {
-    console.log(`\n[Parked Tenants — EXCLUDED from active readiness] (${parkedPacks.length}):`);
-    console.table(parkedPacks.map((p) => ({ Tenant: p.tenantId, Class: p.classification, Note: 'PARKED — not counted in readiness' })));
+    console.log(`\n[Parked Tenants — EXCLUDED from active readiness] (Configured: ${configuredParkedCount}, Discovered: ${discoveredParkedCount}, Pending: ${pendingParkedCount}):`);
+    console.table(
+      parkedPacks.map((p) => ({
+        Tenant: p.tenantId,
+        Class: p.classification,
+        Source: p.source,
+        Note: 'PARKED — not counted in readiness',
+      }))
+    );
   }
 
   if (fixturePacks.length > 0) {
-    console.log(`\n[Synthetic Fixtures — EXCLUDED from readiness] (${fixturePacks.length} fixture(s)):`);
-    console.table(fixturePacks.map((p) => ({ Tenant: p.tenantId, Schema: p.schemaValid ? 'PASS' : 'FAIL', Checksum: p.checksum ? p.checksum.slice(0, 16) + '...' : '—', Note: 'FIXTURE_ONLY — not counted in readiness' })));
+    console.log(`\n[Synthetic Fixtures — EXCLUDED from readiness] (Configured: ${configuredFixtureCount}, Discovered: ${discoveredFixtureCount}):`);
+    console.table(
+      fixturePacks.map((p) => ({
+        Tenant: p.tenantId,
+        Source: p.source,
+        Schema: p.schemaValid ? 'PASS' : 'FAIL',
+        Checksum: p.checksum ? p.checksum.slice(0, 16) + '...' : '—',
+        Note: 'FIXTURE_ONLY — not counted in readiness',
+      }))
+    );
   }
 
-  // ---------------------------------------------------------------------------
-  // Markdown report
-  // ---------------------------------------------------------------------------
-  const reportPath = path.resolve(__dirname, '../docs/seed-tenants-migration-dry-run-report.md');
-  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-
-  let md = `# JourneyAX — Canonical Pack Dry-Run Evaluation Report\n\n`;
-  md += `**Generated At**: \`${timestamp}\`\n\n`;
-  md += `**Branch / Commit**: \`${branch}\` / \`${commit}\`\n\n`;
-  md += `**Portfolio Manifest Version**: \`${manifest.version}\`\n\n`;
-  md += `**Evaluation Mode**: Offline Filesystem Dry-Run — schema compilation and canonical conformance.\n\n`;
-  md += `**Active Portfolio**: ${manifest.activePortfolio.map((e) => e.tenantId).join(', ')}\n\n`;
-  md += `**Parked (excluded)**: ${manifest.parked.map((e) => e.tenantId).join(', ')}\n\n`;
-  md += `> **GOVERNANCE NOTICE**: Dry-run evaluation validates candidate Business Pack schema compilation and semantic integrity. `;
-  md += `It does **not** grant cutover approval. Production routing strictly requires an approved, signed \`DurableCutoverRecord\` in \`tenant_cutovers\`.\n\n---\n\n`;
-
-  md += `## 1. Executive Summary\n\n`;
-  md += `| Category | Count |\n| :--- | :---: |\n`;
-  md += `| Active portfolio tenants | ${activePacks.length} |\n`;
-  md += `| Dry-run passed (schema + semantic valid) | ${readyCount} |\n`;
-  md += `| Requires remediation | ${blockedCount} |\n`;
-  md += `| Parked tenants (excluded) | ${parkedPacks.length} |\n`;
-  md += `| Synthetic fixtures (excluded) | ${fixturePacks.length} |\n\n`;
-
-  md += `## 2. Active Portfolio Dry-Run Results\n\n`;
-  md += `| Tenant ID | Version | Schema | Semantic | Checksum (SHA-256, first 16) | Status |\n`;
-  md += `| :--- | :---: | :---: | :---: | :--- | :---: |\n`;
-  for (const p of activePacks) {
-    const schema = p.schemaValid ? '✅ PASS' : '❌ FAIL';
-    const sem = p.semanticValid ? '✅ PASS' : '❌ FAIL';
-    const cs = p.checksum ? `\`${p.checksum.slice(0, 16)}...\`` : '—';
-    const status = p.schemaValid && p.semanticValid ? '🟢 DRY_RUN_PASSED' : '🔴 BLOCKED';
-    md += `| \`${p.tenantId}\` | \`${p.packVersion}\` | ${schema} | ${sem} | ${cs} | ${status} |\n`;
+  if (unregisteredPacks.length > 0) {
+    console.warn(`\n⚠️  [Unregistered Tenants — GOVERNANCE VIOLATIONS] (${unregisteredCount}):`);
+    console.table(
+      unregisteredPacks.map((p) => ({
+        Tenant: p.tenantId,
+        Class: p.classification,
+        Source: p.source,
+        Status: 'BLOCKED (GOVERNANCE VIOLATION)',
+        Issues: p.issues.join('; '),
+      }))
+    );
   }
-  md += `\n`;
 
-  md += `## 3. Validation Issues\n\n`;
-  const withIssues = activePacks.filter((p) => p.issues.length > 0);
-  if (withIssues.length === 0) {
-    md += `No validation issues found across all active-portfolio packs.\n\n`;
-  } else {
-    for (const p of withIssues) {
-      md += `### \`${p.tenantId}\`\n`;
-      for (const iss of p.issues) md += `- ${iss}\n`;
+  let reportPath: string | undefined;
+  const shouldWrite = options.writeReport === true || process.argv.includes('--write');
+
+  if (shouldWrite) {
+    reportPath = path.resolve(__dirname, '../docs/seed-tenants-migration-dry-run-report.md');
+    fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+
+    let md = `# JourneyAX — Canonical Pack Dry-Run Evaluation Report\n\n`;
+    md += `**Generated At**: \`${timestamp}\`\n\n`;
+    md += `**Branch / Commit**: \`${branch}\` / \`${commit}\`\n\n`;
+    md += `**Portfolio Manifest Version**: \`${manifest.version}\`\n\n`;
+    md += `**Evaluation Mode**: Offline Filesystem Dry-Run — schema compilation and canonical conformance.\n\n`;
+    md += `**Active Portfolio**: ${manifest.activePortfolio.map((e) => e.tenantId).join(', ')}\n\n`;
+    md += `**Parked (excluded)**: ${manifest.parked.map((e) => e.tenantId).join(', ')}\n\n`;
+    md += `> **GOVERNANCE NOTICE**: Dry-run evaluation validates candidate Business Pack schema compilation and semantic integrity. `;
+    md += `It does **not** grant cutover approval. Production routing strictly requires an approved, signed \`DurableCutoverRecord\` in \`tenant_cutovers\`. `;
+    md += `Any discovered tenant absent from the portfolio manifest is classified as \`UNREGISTERED\` and \`BLOCKED\`.\n\n---\n\n`;
+
+    md += `## 1. Executive Summary\n\n`;
+    md += `| Category | Configured | Discovered on Disk | Status / Count |\n`;
+    md += `| :--- | :---: | :---: | :--- |\n`;
+    md += `| Active portfolio tenants | ${configuredActiveCount} | ${discoveredActiveCount} | ${readyCount} passed, ${activePacks.filter((p) => !p.schemaValid || !p.semanticValid).length} pending authoring / blocked |\n`;
+    md += `| Parked tenants (excluded from readiness) | ${configuredParkedCount} | ${discoveredParkedCount} | ${discoveredParkedCount} discovered, ${pendingParkedCount} pending authoring |\n`;
+    md += `| Synthetic fixtures (excluded from readiness) | ${configuredFixtureCount} | ${discoveredFixtureCount} | ${configuredFixtureCount} configured |\n`;
+    md += `| Unregistered tenants (governance violations) | — | ${unregisteredCount} | ${unregisteredCount} violations |\n\n`;
+
+    md += `## 2. Active Portfolio Dry-Run Results\n\n`;
+    md += `| Tenant ID | Version | Schema | Semantic | Checksum (SHA-256, first 16) | Status |\n`;
+    md += `| :--- | :---: | :---: | :---: | :--- | :---: |\n`;
+    for (const p of activePacks) {
+      const schema = p.schemaValid ? '✅ PASS' : '❌ FAIL';
+      const sem = p.semanticValid ? '✅ PASS' : '❌ FAIL';
+      const cs = p.checksum ? `\`${p.checksum.slice(0, 16)}...\`` : '—';
+      const status = p.schemaValid && p.semanticValid ? '🟢 DRY_RUN_PASSED' : '🔴 BLOCKED';
+      md += `| \`${p.tenantId}\` | \`${p.packVersion}\` | ${schema} | ${sem} | ${cs} | ${status} |\n`;
+    }
+    md += `\n`;
+
+    md += `## 3. Validation Issues\n\n`;
+    const withIssues = activePacks.filter((p) => p.issues.length > 0);
+    if (withIssues.length === 0) {
+      md += `No validation issues found across all active-portfolio packs.\n\n`;
+    } else {
+      for (const p of withIssues) {
+        md += `### \`${p.tenantId}\`\n`;
+        for (const iss of p.issues) md += `- ${iss}\n`;
+        md += `\n`;
+      }
+    }
+
+    md += `## 4. Parked Tenants (Excluded)\n\n`;
+    if (parkedPacks.length === 0) {
+      md += `No parked tenants encountered in this scan.\n\n`;
+    } else {
+      md += `| Tenant ID | Source | Reason |\n| :--- | :---: | :--- |\n`;
+      for (const p of parkedPacks) {
+        const entry = manifest.parked.find((e) => e.tenantId === p.tenantId);
+        md += `| \`${p.tenantId}\` | \`${p.source}\` | ${entry?.reason ?? 'Parked'} |\n`;
+      }
       md += `\n`;
     }
-  }
 
-  md += `## 4. Parked Tenants (Excluded)\n\n`;
-  if (parkedPacks.length === 0) { md += `No parked tenants encountered in this scan.\n\n`; }
-  else {
-    md += `| Tenant ID | Reason |\n| :--- | :--- |\n`;
-    for (const p of parkedPacks) {
-      const entry = manifest.parked.find((e) => e.tenantId === p.tenantId);
-      md += `| \`${p.tenantId}\` | ${entry?.reason ?? 'Parked'} |\n`;
+    md += `## 5. Synthetic Fixtures (Excluded from Readiness)\n\n`;
+    if (fixturePacks.length === 0) {
+      md += `No synthetic fixtures found.\n\n`;
+    } else {
+      md += `| Fixture ID | Source | Schema | Checksum | Note |\n| :--- | :---: | :---: | :--- | :--- |\n`;
+      for (const p of fixturePacks) {
+        const schema = p.schemaValid ? '✅ PASS' : '❌ FAIL';
+        const cs = p.checksum ? `\`${p.checksum.slice(0, 16)}...\`` : '—';
+        md += `| \`${p.tenantId}\` | \`${p.source}\` | ${schema} | ${cs} | FIXTURE_EVALUATION_ONLY — not counted |\n`;
+      }
+      md += `\n`;
     }
-    md += `\n`;
-  }
 
-  md += `## 5. Synthetic Fixtures (Excluded from Readiness)\n\n`;
-  if (fixturePacks.length === 0) { md += `No synthetic fixtures found.\n\n`; }
-  else {
-    md += `| Fixture ID | Schema | Checksum | Note |\n| :--- | :---: | :--- | :--- |\n`;
-    for (const p of fixturePacks) {
-      const schema = p.schemaValid ? '✅ PASS' : '❌ FAIL';
-      const cs = p.checksum ? `\`${p.checksum.slice(0, 16)}...\`` : '—';
-      md += `| \`${p.tenantId}\` | ${schema} | ${cs} | FIXTURE_EVALUATION_ONLY — not counted |\n`;
+    if (unregisteredPacks.length > 0) {
+      md += `## 6. Unregistered Tenants (Governance Violations — BLOCKED)\n\n`;
+      md += `| Tenant ID | Source | Status | Issues |\n| :--- | :---: | :---: | :--- |\n`;
+      for (const p of unregisteredPacks) {
+        md += `| \`${p.tenantId}\` | \`${p.source}\` | \`BLOCKED\` | ${p.issues.join('; ')} |\n`;
+      }
+      md += `\n`;
     }
-    md += `\n`;
-  }
 
-  md += `---\n\n`;
-  md += `*This report was generated automatically from the canonical filesystem packs. It is a dry-run evaluation only — not a production cutover approval.*\n`;
+    md += `---\n\n`;
+    md += `*This report was generated automatically from the canonical filesystem packs. It is a dry-run evaluation only — not a production cutover approval.*\n`;
 
-  fs.writeFileSync(reportPath, md.trimEnd() + '\n', 'utf8');
-  console.log(`\n📄 Dry-run report written to:\n   ${reportPath}\n`);
-
-  if (blockedCount > 0) {
-    console.error(`❌ ${blockedCount} active-portfolio pack(s) failed dry-run validation. Review issues above.`);
-    process.exit(1);
-  } else if (activePacks.length === 0) {
-    console.warn('⚠️  No active-portfolio packs discovered. Ensure packs/ directory is populated.');
-    process.exit(0);
+    fs.writeFileSync(reportPath, md.trimEnd() + '\n', 'utf8');
+    console.log(`\n📄 Dry-run report written to:\n   ${reportPath}\n`);
   } else {
-    console.log(`✅ All ${readyCount} active-portfolio pack(s) passed dry-run schema + semantic validation.`);
-    process.exit(0);
+    console.log('\nℹ️ Read-only run complete. Use --write flag to regenerate docs/seed-tenants-migration-dry-run-report.md\n');
   }
+
+  return {
+    manifest,
+    branch,
+    commit,
+    timestamp,
+    allPacks,
+    activePacks,
+    parkedPacks,
+    fixturePacks,
+    unregisteredPacks,
+    configuredActiveCount,
+    discoveredActiveCount,
+    pendingActiveCount,
+    configuredParkedCount,
+    discoveredParkedCount,
+    pendingParkedCount,
+    configuredFixtureCount,
+    discoveredFixtureCount,
+    readyCount,
+    blockedCount,
+    unregisteredCount,
+    reportPath,
+  };
 }
 
-runEvaluation().catch((err) => {
-  console.error('Fatal error during dry-run evaluation:', err);
-  process.exit(1);
-});
+// ---------------------------------------------------------------------------
+// CLI Execution
+// ---------------------------------------------------------------------------
+if (require.main === module || (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename))) {
+  const writeReport = process.argv.includes('--write');
+  evaluateSeedMigrationDryRun({ writeReport })
+    .then((res) => {
+      if (res.blockedCount > 0) {
+        console.error(`\n❌ ${res.blockedCount} active-portfolio pack(s) or unregistered tenant(s) failed dry-run validation. Review issues above.`);
+        process.exit(1);
+      } else if (res.activePacks.length === 0) {
+        console.warn('\n⚠️  No active-portfolio packs discovered. Ensure packs/ directory is populated.');
+        process.exit(0);
+      } else {
+        console.log(`\n✅ All ${res.readyCount} active-portfolio pack(s) passed dry-run schema + semantic validation.`);
+        process.exit(0);
+      }
+    })
+    .catch((err) => {
+      console.error('Fatal error during dry-run evaluation:', err);
+      process.exit(1);
+    });
+}
