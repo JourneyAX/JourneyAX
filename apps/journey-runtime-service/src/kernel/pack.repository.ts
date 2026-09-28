@@ -5,9 +5,10 @@ import { EnvironmentId } from '@journeyax/journey-core';
 export class PackRepository {
   private loader: BusinessPackLoader;
 
-  constructor(packsRoot?: string) {
+  constructor(packsRoot?: string, db?: any) {
     this.loader = new BusinessPackLoader({
       localPacksRoot: packsRoot || path.resolve(__dirname, '../../../../packs'),
+      db,
     });
   }
 

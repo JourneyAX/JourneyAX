@@ -70,15 +70,24 @@ export class CapabilityGateway {
     release: BusinessPackRelease,
     workspace: WorkspaceState
   ) {
-    const journey = release.journeys.find((j) => j.journeyId === workspace.journeyId) || release.journeys[0];
-    const stageId = workspace.currentStage || journey?.initialStage || 'entry';
+    if (!workspace || !workspace.journeyId) {
+      return [];
+    }
+    const journey = release.journeys.find((j) => j.journeyId === workspace.journeyId);
+    if (!journey) {
+      return [];
+    }
+    const stageId = workspace.currentStage || journey.initialStage;
+    if (!stageId) {
+      return [];
+    }
 
     const toolDefs = release.capabilities?.toolDefinitions || [];
     const toolBindings = release.capabilities?.toolBindings || [];
     const stageBindings = release.capabilities?.stageBindings || [];
 
     return this.resolver.resolveForStage(
-      journey?.journeyId || 'default',
+      journey.journeyId,
       stageId,
       toolDefs,
       toolBindings,

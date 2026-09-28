@@ -22,6 +22,12 @@ export class ExecutionRepository {
   private col: Collection<ExecutionRecord> | null = null;
   private inMemoryAudit: ExecutionRecord[] = [];
 
+  constructor(private readonly customDb?: any) {
+    if (customDb) {
+      this.col = customDb.collection(COLLECTION_TOOL_EXECUTIONS);
+    }
+  }
+
   private async getCol(): Promise<Collection<ExecutionRecord> | null> {
     if (this.col) return this.col;
     const uri = process.env.MONGODB_URI;
@@ -69,6 +75,39 @@ export class ExecutionRepository {
       ) || null
     );
   }
+
+  async findByIdempotencyKey(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    workspaceId: string,
+    idempotencyKey: string
+  ): Promise<ExecutionRecord | null> {
+    const col = await this.getCol();
+    if (col) {
+      try {
+        const found = await col.findOne({
+          tenantId,
+          environmentId,
+          workspaceId,
+          idempotencyKey,
+        });
+        if (found) return found;
+      } catch (err: any) {
+        console.warn('[ExecutionRepository] findByIdempotencyKey failed in Mongo:', err.message);
+      }
+    }
+
+    return (
+      this.inMemoryAudit.find(
+        (e) =>
+          e.tenantId === tenantId &&
+          e.environmentId === environmentId &&
+          e.workspaceId === workspaceId &&
+          e.idempotencyKey === idempotencyKey
+      ) || null
+    );
+  }
+
 
   async recordExecution(record: ExecutionRecord): Promise<void> {
     const col = await this.getCol();

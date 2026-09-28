@@ -33,6 +33,8 @@ import {
 import { verifyComparisonProvenance, lookupSkuFacts } from './presentation/provenance';
 import { sanitizeChips, fenceSearchResultText } from './presentation/fencing';
 import { skillIndexBlock, loadSkillBody } from './skills/loader';
+import { CutoverProxyService } from './cutover/cutover-proxy.service';
+
 
 /** Keep transcripts bounded (context editing) — recent turns are enough; the
  *  journey-memory block carries the durable facts. */
@@ -2938,42 +2940,156 @@ function deriveRetrievalContext(messages: Array<{ role: string; content: unknown
  * One catalogue search per turn, started early. Every retrieval in a turn —
  * the prefetch fired at turn start (while the model is still thinking), the
  * model's own searchKnowledge calls, the show-first / after-answers guarantee
- * — goes through this memo: a query whose words overlap an in-flight one by
- * 60%+ reuses that promise instead of hitting Atlas again. A PlaceMakers turn
- * used to run three near-identical searches (8–33s each on the current
- * cluster); now the first is already running when the model asks for it.
+ * — goes through this memo.
+ *
+ * Reuse is strictly restricted to true normalized equivalence (exact string match
+ * or identical token-set equivalence within the exact same tenant, type, category,
+ * gender, and limit filter signature). Independent searches run concurrently via
+ * Promise.all without blocking.
  */
-class TurnSearchMemo {
-  private entries: { key: string; tokens: Set<string>; sig: string; limit: number; p: Promise<any> }[] = [];
+export interface TurnRetrievalRecord {
+  reason: string;
+  query: string;
+  type?: string;
+  category?: string;
+  gender?: string;
+  reused: boolean;
+  durationMs: number;
+}
+
+export class TurnSearchMemo {
+  private entries: {
+    key: string;
+    normKey: string;
+    tokens: Set<string>;
+    sig: string;
+    limit: number;
+    tenantId: string;
+    p: Promise<any>;
+  }[] = [];
+  private records: TurnRetrievalRecord[] = [];
+
   constructor(private readonly tenantId: string) {}
-  private static tokens(q: string): Set<string> {
-    return new Set(String(q || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2));
+
+  public static tokens(q: string): Set<string> {
+    return new Set(
+      String(q || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]+/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length > 2)
+    );
   }
-  search(opts: { query: string; type?: string; category?: string; limit?: number; gender?: string }): Promise<any> {
+
+  public static normalize(q: string): string {
+    return String(q || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  getTenantId(): string {
+    return this.tenantId;
+  }
+
+  getRecords(): TurnRetrievalRecord[] {
+    return [...this.records];
+  }
+
+  getRetrievalsDuration(): number {
+    return this.records.reduce((acc, r) => acc + r.durationMs, 0);
+  }
+
+  search(opts: {
+    query: string;
+    type?: string;
+    category?: string;
+    limit?: number;
+    gender?: string;
+    reason?: string;
+  }): Promise<any> {
+    const reason = opts.reason || 'model_tool';
+    const normKey = TurnSearchMemo.normalize(opts.query);
     const tokens = TurnSearchMemo.tokens(opts.query);
-    const sig = `${opts.type || ''}|${opts.category || ''}|${opts.gender || ''}`;
-    const limit = opts.limit || 8;
-    if (tokens.size) {
-      for (const e of this.entries) {
-        if (e.sig !== sig || limit > e.limit) continue;
-        const inter = [...tokens].filter((t) => e.tokens.has(t)).length;
-        const union = new Set([...tokens, ...e.tokens]).size;
-        if (union && inter / union >= 0.6) {
-          console.log(`[agent] search memo: "${opts.query}" reuses the in-flight search "${e.key}"`);
-          return e.p;
-        }
+    const limit = opts.limit ?? 8;
+    // Explicit tenant and filter signature ensuring 100% tenant safety and filter separation:
+    // Incompatible type, category, gender, limit, or tenant NEVER share results
+    const sig = `${this.tenantId}|${opts.type || ''}|${opts.category || ''}|${opts.gender || ''}|limit:${limit}`;
+
+    for (const e of this.entries) {
+      if (e.sig !== sig || e.tenantId !== this.tenantId || e.limit !== limit) {
+        continue;
+      }
+
+      // True normalized equivalence: exact normalized string or token-set equivalence
+      const isExactMatch = e.normKey === normKey;
+      const isTokenEquiv = tokens.size > 0 && e.tokens.size === tokens.size && [...tokens].every((t) => e.tokens.has(t));
+
+      if (isExactMatch || isTokenEquiv) {
+        return e.p.then((res) => {
+          console.log(`[agent:timing] ⏱️ Retrieval [${reason}] type="${opts.type || 'product'}" REUSED exact in-flight search "${e.key}" (0ms) | tenant="${this.tenantId}"`);
+          this.records.push({
+            reason,
+            query: opts.query,
+            type: opts.type,
+            category: opts.category,
+            gender: opts.gender,
+            reused: true,
+            durationMs: 0,
+          });
+          return res;
+        });
       }
     }
-    const p = (async () => (await adapterRegistry.getKnowledge(this.tenantId)).search({ tenantId: this.tenantId }, opts))();
-    p.catch(() => { /* handled where awaited */ });
-    this.entries.push({ key: opts.query, tokens, sig, limit, p });
+
+    const tStart = Date.now();
+    const recordIndex = this.records.length;
+    this.records.push({
+      reason,
+      query: opts.query,
+      type: opts.type,
+      category: opts.category,
+      gender: opts.gender,
+      reused: false,
+      durationMs: 0,
+    });
+
+    const p = (async () => {
+      try {
+        const port = await adapterRegistry.getKnowledge(this.tenantId);
+        const res = await port.search({ tenantId: this.tenantId }, opts);
+        const dur = Date.now() - tStart;
+        console.log(`[agent:timing] ⏱️ Retrieval [${reason}] type="${opts.type || 'product'}" completed in ${dur}ms | query="${opts.query}" | tenant="${this.tenantId}"`);
+        this.records[recordIndex].durationMs = dur;
+        return res;
+      } catch (err) {
+        const dur = Date.now() - tStart;
+        this.records[recordIndex].durationMs = dur;
+        // Evict from active entries so subsequent searches do not reuse a failed promise
+        const idx = this.entries.findIndex((entry) => entry.p === p);
+        if (idx !== -1) this.entries.splice(idx, 1);
+        throw err;
+      }
+    })();
+
+    p.catch(() => {
+      /* handled where awaited */
+    });
+
+    this.entries.push({
+      key: opts.query,
+      normKey,
+      tokens,
+      sig,
+      limit,
+      tenantId: this.tenantId,
+      p,
+    });
     return p;
   }
+
   /** Fire the turn's likely search now; whoever needs it later awaits the same promise. */
   prefetch(query: string): void {
     if (TurnSearchMemo.tokens(query).size < 2) return;
-    console.log(`[agent] search prefetch: "${query}"`);
-    this.search({ query, type: 'product', limit: 8 });
+    console.log(`[agent:prefetch] 🚀 Firing prefetch: "${query}" for tenant="${this.tenantId}"`);
+    this.search({ query, type: 'product', limit: 8, reason: 'prefetch' });
   }
 }
 
@@ -3446,104 +3562,44 @@ export class AgentService {
   // (never the tenant's reasoning model). This is internal plumbing, so it is a
   // platform ENV concern, not per-tenant config.
   private readonly intentModel = process.env.INTENT_MODEL || 'gpt-4o-mini';
+  private readonly cutoverProxy = new CutoverProxyService();
+
 
   /**
-   * Authority check: queries the canonical journey-runtime-service cutover registry
-   * to determine if this tenant is authoritatively cut over.
+   * Resolves the cutover routing decision for a tenant+environment.
+   *
+   * FAIL-CLOSED POLICY
+   * ------------------
+   * - Returns false  : only when the tenant has no record (unmigrated) or status='unmigrated'.
+   * - Returns true   : when status='migrated' or 'canary' and stableKey is in-bucket.
+   * - Throws         : on timeout, network error, malformed record, cross-tenant binding,
+   *                    or any other error condition. NEVER falls back to legacy on error.
+   *
+   * @param tenantId     - tenant to look up
+   * @param environmentId - environment (defaults to 'production')
+   * @param stableKey    - workspace/session ID for canary-bucket assignment
    */
-  private async isTenantCutoverToRuntime(tenantId: string): Promise<boolean> {
-    const runtimeUrl =
-      process.env.JOURNEY_RUNTIME_SERVICE_URL ||
-      process.env.RUNTIME_SERVICE_URL ||
-      'http://localhost:3009';
-    try {
-      const res = await fetch(
-        `${runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/production/runtime/cutover`,
-        {
-          method: 'GET',
-          headers: {
-            'X-Tenant-ID': tenantId,
-            ...(process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {}),
-          },
-          signal: AbortSignal.timeout(2000),
-        }
-      );
-      if (res.ok) {
-        const record: any = await res.json();
-        return record && record.status === 'migrated';
-      }
-    } catch {
-      // Fail closed to legacy commerce service
-    }
-    return false;
+  private async isTenantCutoverToRuntime(
+    tenantId: string,
+    environmentId = 'production',
+    stableKey = tenantId
+  ): Promise<boolean> {
+    // resolveCutover throws on errors — only 404/no-record returns 'legacy'.
+    const route = await this.cutoverProxy.resolveCutover(tenantId, environmentId, stableKey);
+    return route === 'canonical';
   }
 
   /**
-   * Legacy compatibility hop: proxies turn request directly to canonical journey-runtime-service.
+   * Legacy compatibility hop: proxies a turn request to canonical journey-runtime-service.
+   * Delegates to CutoverProxyService.proxyTurn which throws on non-2×× responses.
    */
-  private async proxyTurnToRuntimeService(tenantId: string, request: any, sessionId: string): Promise<any> {
-    const runtimeUrl =
-      process.env.JOURNEY_RUNTIME_SERVICE_URL ||
-      process.env.RUNTIME_SERVICE_URL ||
-      'http://localhost:3009';
-    const userMsg =
-      request.message ||
-      (request.messages && request.messages.length > 0
-        ? request.messages[request.messages.length - 1]?.content
-        : '');
-    const res = await fetch(
-      `${runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/production/runtime/turn`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': tenantId,
-          ...(process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {}),
-        },
-        body: JSON.stringify({
-          workspaceId: sessionId,
-          sessionId,
-          principalId: request.customerId || request.demoPrincipalId || 'anonymous',
-          correlationId: (request as any).correlationId || randomUUID(),
-          message: userMsg,
-        }),
-      }
-    );
-    if (!res.ok) {
-      throw new Error(`Runtime service proxy error: ${res.status} ${res.statusText}`);
-    }
-    const turnResult = await res.json();
-    return {
-      sessionId,
-      message: {
-        role: 'assistant',
-        content: turnResult.assistantMessage || '',
-      },
-      conversation: [
-        ...(request.messages || []),
-        { role: 'assistant', content: turnResult.assistantMessage || '' },
-      ],
-      uiActions: (turnResult.uiInstructions || []).map((inst: any) => ({
-        name: 'presentCard',
-        arguments: {
-          card: {
-            id: inst.actionId || `${inst.component}-${Date.now()}`,
-            cardType: inst.component,
-            state: inst.props,
-          },
-        },
-        card: {
-          cardType: inst.component,
-          state: inst.props,
-        },
-      })),
-      trace: [
-        {
-          step: 'runtime_service_proxy',
-          detail: `stage=${turnResult.trace?.stage} · decision=${turnResult.decision?.type}`,
-        },
-      ],
-    };
+  private async proxyTurnToRuntimeService(
+    tenantId: string,
+    request: any,
+    sessionId: string,
+    environmentId = 'production'
+  ): Promise<any> {
+    return this.cutoverProxy.proxyTurn(tenantId, environmentId, request, sessionId);
   }
 
 
@@ -3837,32 +3893,37 @@ export class AgentService {
     uiToolCalls: any[],
     emit?: (event: string, data: any) => void,
     memo?: TurnSearchMemo,
+    opts?: { type?: string; category?: string; reason?: string },
   ): Promise<boolean> {
     try {
+      const searchType = opts?.type || 'product';
+      const searchCat = opts?.category;
       const res: any = memo
-        ? await memo.search({ query, type: 'product', limit: 6 })
-        : await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query, type: 'product', limit: 6 });
+        ? await memo.search({ query, type: searchType, category: searchCat, limit: 6, reason: opts?.reason || 'open_model_search' })
+        : await (await adapterRegistry.getKnowledge(tenantId)).search({ tenantId }, { query, type: searchType, category: searchCat, limit: 6 });
       const prods = res?.results || res?.products || res?.items || [];
-      console.log(`[JourneyAX:ToolResult] 📦 searchKnowledge("${query}") returned ${prods.length} product(s)`);
+      console.log(`[JourneyAX:ToolResult] 📦 searchKnowledge("${query}") [type=${searchType}] returned ${prods.length} item(s)`);
       if (!prods.length) return false;
-      // Retrieval can return the same SKU twice (variant rows) — one tile each.
-      const seen = new Set<string>();
-      const unique = prods.filter((p: any) => { const k = String(p?.sku || '').toUpperCase(); if (!k) return true; if (seen.has(k)) return false; seen.add(k); return true; });
-      const itemsToRender = unique.slice(0, 6).map(normalizeTradeProduct);
-      const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
-      uiToolCalls.push({
-        id: `model_tool_search_${Date.now()}`,
-        type: 'function',
-        function: { name: 'showItems', arguments: JSON.stringify(showItemsAction.arguments) },
-      });
-      if (emit) emit('uiAction', showItemsAction);
-      const setPhaseAction = { name: 'setPhase', arguments: { phase: 'products' } };
-      uiToolCalls.push({
-        id: `model_tool_phase_${Date.now()}`,
-        type: 'function',
-        function: { name: 'setPhase', arguments: JSON.stringify(setPhaseAction.arguments) },
-      });
-      if (emit) emit('uiAction', setPhaseAction);
+      if (searchType === 'product') {
+        // Retrieval can return the same SKU twice (variant rows) — one tile each.
+        const seen = new Set<string>();
+        const unique = prods.filter((p: any) => { const k = String(p?.sku || '').toUpperCase(); if (!k) return true; if (seen.has(k)) return false; seen.add(k); return true; });
+        const itemsToRender = unique.slice(0, 6).map(normalizeTradeProduct);
+        const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
+        uiToolCalls.push({
+          id: `model_tool_search_${Date.now()}`,
+          type: 'function',
+          function: { name: 'showItems', arguments: JSON.stringify(showItemsAction.arguments) },
+        });
+        if (emit) emit('uiAction', showItemsAction);
+        const setPhaseAction = { name: 'setPhase', arguments: { phase: 'products' } };
+        uiToolCalls.push({
+          id: `model_tool_phase_${Date.now()}`,
+          type: 'function',
+          function: { name: 'setPhase', arguments: JSON.stringify(setPhaseAction.arguments) },
+        });
+        if (emit) emit('uiAction', setPhaseAction);
+      }
       return true;
     } catch (err) {
       console.warn('[agent] searchKnowledge tool execution failed:', err);
@@ -3961,7 +4022,7 @@ export class AgentService {
     if (!query) return false;
     console.log(`[agent] ${answered ? 'after-answers' : 'show-first'} retrieval guarantee: searchKnowledge("${query}")`);
     if (pushTrace) pushTrace({ step: 'tool-call', detail: `searchKnowledge(${JSON.stringify({ query, forced: true })})`, data: { query, forced: true } });
-    const shown = await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit, memo);
+    const shown = await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit, memo, { type: 'product', reason: answered ? 'after_answers' : 'show_first' });
     if (shown) stats.searched = true;
     return shown;
   }
@@ -4162,6 +4223,7 @@ export class AgentService {
     let executedAny = false;
     let searchStr = rawModelText || '';
 
+    const parsedTools: { toolName: string; rawArgs: string; args: any }[] = [];
     while (true) {
       const tool = findBalancedToolCall(searchStr);
       if (!tool) break;
@@ -4178,7 +4240,28 @@ export class AgentService {
           console.warn('[agent] Failed to parse tool call args:', rawArgs);
         }
       }
+      parsedTools.push({ toolName, rawArgs, args });
+    }
 
+    // Pre-launch all independent search calls in parallel across the turn
+    if (memo) {
+      for (const t of parsedTools) {
+        if (t.toolName === 'searchKnowledge') {
+          const q = effectiveSearchQuery(t.args.query || t.args.q || '', retrieval);
+          if (q) {
+            memo.search({
+              query: q,
+              type: t.args.type,
+              category: t.args.category,
+              limit: 6,
+              reason: 'open_model_tool',
+            });
+          }
+        }
+      }
+    }
+
+    for (const { toolName, args } of parsedTools) {
       console.log(`[JourneyAX:ToolDecision] 🛠️ Model decided to invoke tool: ${toolName}(${JSON.stringify(args)})`);
       if (pushTrace) {
         pushTrace({ step: 'tool-call', detail: `${toolName}(${JSON.stringify(args)})`, data: args });
@@ -4186,7 +4269,7 @@ export class AgentService {
 
       if (toolName === 'searchKnowledge') {
         const query = effectiveSearchQuery(args.query || args.q || '', retrieval);
-        if (query && await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit, memo)) {
+        if (query && await this.runOpenModelSearch(tenantId, query, uiToolCalls, emit, memo, { type: args.type, category: args.category, reason: 'open_model_tool' })) {
           executedAny = true;
           if (stats) stats.searched = true;
         }
@@ -5289,6 +5372,7 @@ export class AgentService {
    * One visible agent, controlled internally (see docs/ARCHITECTURE.md §5).
    */
   async processChat(request: ChatRequest): Promise<ChatResponse> {
+    const tTurnEntry = Date.now();
     const tenantId = request.tenantId?.trim() || '';
     if (!tenantId) {
       throw new Error('[JourneyAX] tenantId is required to process chat turn');
@@ -5303,10 +5387,13 @@ export class AgentService {
     // conversation and typed journey state it persisted last turn.
     const sessionId = request.sessionId || randomUUID();
 
-    // Compatibility hop: if tenant is authoritatively cut over, proxy directly to canonical journey-runtime-service
-    if (await this.isTenantCutoverToRuntime(tenantId)) {
+    // Compatibility hop: if tenant is authoritatively cut over, proxy to canonical journey-runtime-service.
+    // Uses the fail-closed CutoverProxyService: only 404/no-record may fall back to legacy.
+    // Any timeout, DB error, malformed record, or runtime failure throws — never falls to legacy.
+    const proxied = await this.cutoverProxy.routeOrLegacy(tenantId, 'production', sessionId, request, sessionId);
+    if (proxied !== null) {
       console.log(`[JourneyAX:Proxy] Authoritative cutover active: proxying turn to journey-runtime-service for tenant="${tenantId}"`);
-      return this.proxyTurnToRuntimeService(tenantId, request, sessionId);
+      return proxied;
     }
 
     const stored = await this.sessionStore.load(sessionId, tenantId);
@@ -5389,9 +5476,12 @@ export class AgentService {
       step: 'retrieval-policy',
       detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)',
     });
+    const tPrefetchStart = Date.now();
+    let prefetchDurationMs = 0;
     const searchMemo = new TurnSearchMemo(tenantId);
     if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !isDetailAsk(lastUserText) && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
       searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
+      prefetchDurationMs = Date.now() - tPrefetchStart;
     }
 
     // ENFORCEMENT (not advice): when retrieval is disallowed this turn, remove
@@ -5528,16 +5618,27 @@ export class AgentService {
     const cartCommandApplied = await this.applyStorefrontCartCommand(tenantId, sessionId, lastUserText, journeyState, projectConfig, uiToolCalls, conversation);
     await this.applyOrderPlacedContext(tenantId, lastUserText, conversation, journeyState);
 
+    let totalLlmMs = 0;
+    let toolPlanningLlmMs = 0;
+    let finalResponseLlmMs = 0;
+    const llmRounds: { round: number; phase: string; durationMs: number }[] = [];
+
     // ── Step 5: Generation — controlled tool-calling loop ───────────
     while (loops < maxLoops) {
       loops++;
       if (isOpenModel) {
+        const tLlmStart = Date.now();
         const response = await llm.chat.completions.create({
           model,
           messages: conversation,
           max_tokens: openModelMaxTokens(projectConfig),
           ...genParams(model, projectConfig.temperature),
         });
+        const llmMs = Date.now() - tLlmStart;
+        totalLlmMs += llmMs;
+        finalResponseLlmMs += llmMs;
+        llmRounds.push({ round: loops, phase: 'open_model_generation', durationMs: llmMs });
+        console.log(`[agent:timing] ⏱️ LLM completion (${model}) [Round ${loops} - Open Model Generation] took ${llmMs}ms | tenant="${tenantId}"`);
         finalMessage = response.choices[0].message;
         const rawContent = finalMessage?.content || '';
         console.log(`[JourneyAX:ModelResponse] 💬 Model output for tenant="${tenantId}" [model=${model}]:\n${rawContent}`);
@@ -5571,6 +5672,7 @@ export class AgentService {
         conversation.push(finalMessage);
         break;
       }
+      const tLlmStart = Date.now();
       const response = await llm.chat.completions.create({
         model,
         messages: conversation,
@@ -5581,10 +5683,25 @@ export class AgentService {
         tool_choice: forceText ? 'none' : 'auto',
         ...genParams(model, projectConfig.temperature),
       });
+      const llmMs = Date.now() - tLlmStart;
+      totalLlmMs += llmMs;
 
       const msg = response.choices[0].message;
       finalMessage = msg;
       conversation.push(msg);
+
+      const isFinalResponse = forceText || !msg.tool_calls || msg.tool_calls.length === 0;
+      if (isFinalResponse) {
+        finalResponseLlmMs += llmMs;
+      } else {
+        toolPlanningLlmMs += llmMs;
+      }
+      llmRounds.push({
+        round: loops,
+        phase: isFinalResponse ? 'final_response' : 'tool_planning',
+        durationMs: llmMs,
+      });
+      console.log(`[agent:timing] ⏱️ LLM completion (${model}) [Round ${loops} - ${isFinalResponse ? 'Final Response' : 'Tool Planning'}] took ${llmMs}ms | tenant="${tenantId}"`);
 
       // Terminal: a forced-text pass, or a normal answer with no tool calls.
       if (forceText || !msg.tool_calls || msg.tool_calls.length === 0) {
@@ -5609,6 +5726,25 @@ export class AgentService {
       }
 
       let didSearch = false;
+      // Pre-launch all independent search calls in msg.tool_calls concurrently
+      for (const call of msg.tool_calls) {
+        if (call.type === 'function' && call.function.name === 'searchKnowledge') {
+          try {
+            const args = JSON.parse(call.function.arguments);
+            const query = `${effectiveSearchQuery(args.query, retrievalCtx)} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim();
+            searchMemo.search({
+              query,
+              type: args.type,
+              category: args.category,
+              limit: 8,
+              gender: intent?.dimensions?.gender,
+              reason: 'model_tool',
+            });
+          } catch {
+            /* Handled in main loop */
+          }
+        }
+      }
       for (const call of msg.tool_calls) {
         if (call.type !== 'function') continue;
 
@@ -5774,7 +5910,7 @@ export class AgentService {
             // Gender is injected SERVER-SIDE from the resolved intent (not the model) so
             // a "men's" journey never surfaces women's products — hard filter, not a hint.
             const toolResult = await searchMemo.search(
-              { query: `${effectiveSearchQuery(args.query, retrievalCtx)} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender },
+              { query: `${effectiveSearchQuery(args.query, retrievalCtx)} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender, reason: 'model_tool' },
             );
             const markedResult = await markDesignable(tenantId, toolResult);
             conversation.push({
@@ -6144,6 +6280,20 @@ export class AgentService {
       lastIntent: { intent: intent.intent, stage: intent.stage, mode: intent.mode },
     });
 
+    const totalWallClockMs = Date.now() - tTurnEntry;
+    const records = searchMemo.getRecords();
+    console.log(`[agent:timing] ──────────────────────────────────────────────────────────`);
+    console.log(`[agent:timing] 🏁 End-to-End Turn Timing for tenant="${tenantId}" [model=${model}]:`);
+    console.log(`[agent:timing]    Total Turn Wall-Clock:  ${totalWallClockMs}ms (from public turn entry)`);
+    console.log(`[agent:timing]    Prefetch Launch:        ${prefetchDurationMs}ms`);
+    console.log(`[agent:timing]    Model Tool Rounds:      ${toolPlanningLlmMs}ms (${llmRounds.filter((r) => r.phase === 'tool_planning').length} round(s))`);
+    console.log(`[agent:timing]    Final Response:         ${finalResponseLlmMs}ms`);
+    console.log(`[agent:timing]    Retrievals (${records.length} dispatched, executed concurrently where independent):`);
+    for (const r of records) {
+      console.log(`[agent:timing]      • [${r.reason}] type="${r.type || 'product'}" query="${r.query}" -> ${r.reused ? 'REUSED (0ms)' : `${r.durationMs}ms`}`);
+    }
+    console.log(`[agent:timing] ──────────────────────────────────────────────────────────`);
+
     return {
       message: finalMessage,
       sessionId,
@@ -6169,6 +6319,7 @@ export class AgentService {
     request: ChatRequest,
     emit: (event: string, data: any) => void,
   ): Promise<void> {
+    const tTurnEntry = Date.now();
     const tenantId = request.tenantId?.trim() || '';
     if (!tenantId) {
       emit('error', { message: 'tenantId is required to process chat turn' });
@@ -6193,15 +6344,17 @@ export class AgentService {
     pushTrace({ step: 'session', detail: stored ? `resumed ${sessionId.slice(0, 8)} (turn ${(stored.turnCount || 0) + 1}, ${messages.length} msg, ledger v${journeyState.version})` : `new ${sessionId.slice(0, 8)}` });
     emit('session', { sessionId });
 
-    // Compatibility hop: if tenant is authoritatively cut over, proxy directly to canonical journey-runtime-service
-    if (await this.isTenantCutoverToRuntime(tenantId)) {
+    // Compatibility hop: if tenant is authoritatively cut over, proxy to canonical journey-runtime-service.
+    // Uses the fail-closed CutoverProxyService: only 404/no-record may fall back to legacy.
+    // Any timeout, DB error, malformed record, or runtime failure throws — never falls to legacy.
+    const proxied = await this.cutoverProxy.routeOrLegacy(tenantId, 'production', sessionId, request, sessionId);
+    if (proxied !== null) {
       console.log(`[JourneyAX:Proxy:Stream] Authoritative cutover active: proxying stream to journey-runtime-service for tenant="${tenantId}"`);
-      const turnResult = await this.proxyTurnToRuntimeService(tenantId, request, sessionId);
       emit('session', { sessionId });
-      for (const action of turnResult.uiActions) {
+      for (const action of proxied.uiActions) {
         emit('uiAction', action);
       }
-      const text = turnResult.message?.content || '';
+      const text = proxied.message?.content || '';
       const words = text.split(' ');
       for (let i = 0; i < words.length; i++) {
         emit('token', words[i] + (i < words.length - 1 ? ' ' : ''));
@@ -6264,9 +6417,12 @@ export class AgentService {
     pushTrace({ step: 'retrieval-policy', detail: policy.allowRetrieval ? `allow [${policy.allowedTypes.join(', ')}]` : 'no retrieval (discovery — ask first)' });
     // The turn's likely search starts NOW, while the model is still thinking —
     // when it asks questions, the cards beside them cost no extra wait.
+    const tPrefetchStart = Date.now();
+    let prefetchDurationMs = 0;
     const searchMemo = new TurnSearchMemo(tenantId);
     if (policy.allowRetrieval && (projectConfig.capabilities || []).includes('products') && intent.intent !== 'general_question' && intent.retrievalType !== 'faq' && !isDetailAsk(lastUserText) && !/^(Add |Remove SKU|Change the quantity|Payment received)/i.test(lastUserText)) {
       searchMemo.prefetch(effectiveSearchQuery('', retrievalCtx));
+      prefetchDurationMs = Date.now() - tPrefetchStart;
     }
     const projectTools = buildToolset(projectConfig.capabilities, brandHubProfile?.entityModel, projectConfig.commerceMode === 'cart' ? 'bag' : 'quote');
     const activeTools = policy.allowRetrieval
@@ -6346,6 +6502,9 @@ export class AgentService {
         ];
 
     // ── Tool rounds (non-streamed) — resolve searches + UI actions ──
+    let totalLlmMs = 0;
+    let toolPlanningLlmMs = 0;
+    let finalResponseLlmMs = 0;
     const maxLoops = 6;
     const MAX_SEARCHES = 6;          // collection + core fixtures need multiple searches
     let loops = 0;
@@ -6381,6 +6540,7 @@ export class AgentService {
 
     while (loops < maxLoops && !readyToSpeak) {
       loops++;
+      const tLlmStart = Date.now();
       const response = await llm.chat.completions.create({
         model,
         messages: conversation,
@@ -6390,6 +6550,10 @@ export class AgentService {
         tool_choice: 'auto',
         ...genParams(model, projectConfig.temperature),
       });
+      const llmMs = Date.now() - tLlmStart;
+      totalLlmMs += llmMs;
+      toolPlanningLlmMs += llmMs;
+      console.log(`[agent:timing] ⏱️ Stream tool loop LLM completion (${model}) [Round ${loops} - Tool Planning] took ${llmMs}ms | tenant="${tenantId}"`);
       const msg = response.choices[0].message;
 
       if (!msg.tool_calls || msg.tool_calls.length === 0) {
@@ -6449,6 +6613,41 @@ export class AgentService {
       const DATA_TOOLS = new Set([...DEMO_CUSTOMER_TOOLS, 'recommendStorage', 'findRelated', 'getProductOptions', 'findEntity', 'registerEntity', 'requestArtwork', 'checkArtworkApproval', 'analyzeDesign', 'generateDesign', 'generateTeamDesign', 'submitTeamOrder', 'submitForReview', 'checkReviewStatus', 'recommendSize', 'uploadPhotosFor3D', 'buildProjectPlan', 'checkBranchStock']);
       const dataCalls = fnCalls.filter((c) => DATA_TOOLS.has(c.function.name));
       const otherCalls = fnCalls.filter((c) => c.function.name !== 'searchKnowledge' && !DATA_TOOLS.has(c.function.name));
+
+      // Pre-launch search calls in parallel so dataCalls and searchCalls run concurrently
+      let searchExecutionPromise: Promise<{ results: any[]; capped: any[] }> | null = null;
+      if (searchCalls.length) {
+        didSearch = true;
+        hadRetrieval = true;
+        const room = Math.max(0, MAX_SEARCHES - searchCount);
+        const run = searchCalls.slice(0, room);
+        const capped = searchCalls.slice(run.length);
+        searchCount += run.length;
+        searchExecutionPromise = Promise.all(
+          run.map(async (call) => {
+            try {
+              const args = JSON.parse(call.function.arguments);
+              const query = `${effectiveSearchQuery(args.query, retrievalCtx)} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim();
+              const r = await searchMemo.search({
+                query,
+                type: args.type,
+                category: args.category,
+                limit: 8,
+                gender: intent?.dimensions?.gender,
+                reason: 'stream_tool',
+              });
+              // Same annotation as the non-streaming path — this is the one the
+              // storefront actually uses, so an omission here is invisible in
+              // tests and total in production (the AUG-38 failure, repeated).
+              const marked = await markDesignable(tenantId, r);
+              // Fencing — see the buffered path's identical comment.
+              return { id: call.id, content: JSON.stringify(fenceSearchResultText(marked)), args, result: marked };
+            } catch {
+              return { id: call.id, content: JSON.stringify({ found: false, message: 'Knowledge search failed.' }), args: safeParseArgs(call.function.arguments), result: { found: false } };
+            }
+          }),
+        ).then((results) => ({ results, capped }));
+      }
 
       if (dataCalls.length) {
         hadRetrieval = true;
@@ -6586,32 +6785,8 @@ export class AgentService {
         }
       }
 
-      // Searches run in PARALLEL (the big latency win for multi-fixture builds:
-      // toilet + basin + shower no longer wait on each other). Respect the per-turn
-      // cap and preserve tool_call_id ↔ result pairing.
-      if (searchCalls.length) {
-        didSearch = true;
-        hadRetrieval = true;
-        const room = Math.max(0, MAX_SEARCHES - searchCount);
-        const run = searchCalls.slice(0, room);
-        const capped = searchCalls.slice(run.length);
-        searchCount += run.length;
-        const results = await Promise.all(
-          run.map(async (call) => {
-            try {
-              const args = JSON.parse(call.function.arguments);
-              const r = await searchMemo.search({ query: `${args.query || ''} ${dimensionQuerySuffix(projectConfig.contextDimensions, knownDims)}`.trim(), type: args.type, category: args.category, limit: 8, gender: intent?.dimensions?.gender });
-              // Same annotation as the non-streaming path — this is the one the
-              // storefront actually uses, so an omission here is invisible in
-              // tests and total in production (the AUG-38 failure, repeated).
-              const marked = await markDesignable(tenantId, r);
-              // Fencing — see the buffered path's identical comment.
-              return { id: call.id, content: JSON.stringify(fenceSearchResultText(marked)), args, result: marked };
-            } catch {
-              return { id: call.id, content: JSON.stringify({ found: false, message: 'Knowledge search failed.' }), args: safeParseArgs(call.function.arguments), result: { found: false } };
-            }
-          }),
-        );
+      if (searchExecutionPromise) {
+        const { results, capped } = await searchExecutionPromise;
         for (const r of results) {
           conversation.push({ role: 'tool', tool_call_id: r.id, content: r.content });
           const _s = summarizeToolCall('searchKnowledge', (r as any).args, (r as any).result);
@@ -6916,6 +7091,7 @@ export class AgentService {
     const shownNames = isOpenModel ? [] : shownItemNames(uiToolCalls);
     const holdForCard = shownNames.length >= 2;
 
+    const tFinalStart = Date.now();
     try {
       // No tools/tool_choice here → the model can only produce text (OpenAI rejects
       // tool_choice when tools are absent). This IS the final spoken answer.
@@ -6988,6 +7164,9 @@ export class AgentService {
       }
     } catch (err) {
       emit('error', { message: `generation failed: ${(err as Error).message}` });
+    } finally {
+      finalResponseLlmMs = Date.now() - tFinalStart;
+      console.log(`[agent:timing] ⏱️ Stream final response LLM synthesis (${model}) took ${finalResponseLlmMs}ms | tenant="${tenantId}"`);
     }
 
     if (isOpenModel) {
@@ -7106,6 +7285,20 @@ export class AgentService {
       state,
       lastIntent: { intent: intent.intent, stage: intent.stage, mode: intent.mode },
     });
+
+    const totalWallClockMs = Date.now() - tTurnEntry;
+    const records = searchMemo.getRecords();
+    console.log(`[agent:timing] ──────────────────────────────────────────────────────────`);
+    console.log(`[agent:timing] 🏁 Stream End-to-End Turn Timing for tenant="${tenantId}" [model=${model}]:`);
+    console.log(`[agent:timing]    Total Turn Wall-Clock:  ${totalWallClockMs}ms (from public turn entry)`);
+    console.log(`[agent:timing]    Prefetch Launch:        ${prefetchDurationMs}ms`);
+    console.log(`[agent:timing]    Model Tool Rounds:      ${toolPlanningLlmMs}ms (${loops} tool round(s))`);
+    console.log(`[agent:timing]    Final Response:         ${finalResponseLlmMs}ms (streamed)`);
+    console.log(`[agent:timing]    Retrievals (${records.length} dispatched, executed concurrently where independent):`);
+    for (const r of records) {
+      console.log(`[agent:timing]      • [${r.reason}] type="${r.type || 'product'}" query="${r.query}" -> ${r.reused ? 'REUSED (0ms)' : `${r.durationMs}ms`}`);
+    }
+    console.log(`[agent:timing] ──────────────────────────────────────────────────────────`);
 
     emit('done', {
       sessionId,

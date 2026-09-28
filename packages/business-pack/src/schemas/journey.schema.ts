@@ -8,12 +8,27 @@ export const StageExitConditionSchema = z.object({
   nextStage: z.string(),
 });
 
+export const FactRequirementSchema = z.object({
+  key: z.string(),
+  priority: z.number().int().default(100),
+  reason: z.string().optional(),
+  question: z.string().optional(),
+  options: z.array(z.string()).optional(),
+  dependencies: z.array(z.string()).default([]),
+  required: z.boolean().default(true),
+});
+
+export const FactRequirementItemSchema = z.union([
+  z.string(),
+  FactRequirementSchema,
+]);
+
 export const JourneyStageSchema = z.object({
   stageId: z.string().optional(),
   displayName: z.string().optional(),
   description: z.string().optional(),
-  requiredFacts: z.array(z.string()).default([]),
-  optionalFacts: z.array(z.string()).optional(),
+  requiredFacts: z.array(FactRequirementItemSchema).default([]),
+  optionalFacts: z.array(FactRequirementItemSchema).optional(),
   allowedCapabilities: z.array(z.string()).default([]),
   blockedCapabilities: z.array(z.string()).optional(),
   nextDecisionPolicy: z.enum(['dependency-first', 'rule-first', 'agent-driven']).default('dependency-first'),

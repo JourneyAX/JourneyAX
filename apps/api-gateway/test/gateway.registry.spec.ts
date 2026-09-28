@@ -78,9 +78,9 @@ async function runTests() {
     console.log('✓ RUNTIME_SERVICE_URL fallback verified\n');
   }
 
-  // Test 4: Default localhost:3009 when none set
+  // Test 4: Default localhost:3012 when none set
   {
-    console.log('Test 4: Default localhost:3009 when unconfigured');
+    console.log('Test 4: Default localhost:3012 when unconfigured');
     delete process.env.JOURNEY_RUNTIME_SERVICE_URL;
     delete process.env.JOURNEY_RUNTIME_URL;
     delete process.env.RUNTIME_SERVICE_URL;
@@ -90,10 +90,10 @@ async function runTests() {
 
     assert.equal(
       DOMAIN_REGISTRY.runtime,
-      'http://localhost:3009',
-      'Should default to http://localhost:3009'
+      'http://localhost:3012',
+      'Should default to http://localhost:3012'
     );
-    console.log('✓ Default localhost:3009 verified\n');
+    console.log('✓ Default localhost:3012 verified\n');
   }
 
   // Test 5: Route parsing for tenant + environment runtime routes

@@ -33,12 +33,22 @@ export interface StageExitCondition {
 
 export type NextDecisionPolicy = 'dependency-first' | 'rule-first' | 'agent-driven';
 
+export interface FactRequirement {
+  key: string;
+  priority?: number;
+  reason?: string;
+  question?: string;
+  options?: string[];
+  dependencies?: string[];
+  required?: boolean;
+}
+
 export interface JourneyStage {
   stageId?: string;
   displayName?: string;
   description?: string;
-  requiredFacts: string[];
-  optionalFacts?: string[];
+  requiredFacts: Array<string | FactRequirement>;
+  optionalFacts?: Array<string | FactRequirement>;
   allowedCapabilities: string[];
   blockedCapabilities?: string[];
   nextDecisionPolicy?: NextDecisionPolicy;
@@ -152,6 +162,7 @@ export interface TurnCommand {
   workspaceId: string;
   sessionId: string;
 
+  turnId?: string;
   principalId?: string;
   principalRole?: string;
   correlationId: string;
@@ -187,4 +198,25 @@ export interface TurnResult {
       dataResidency: string;
     };
   };
+}
+
+/**
+ * Base Domain Error for JourneyAX core runtime primitives.
+ */
+export class DomainError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = this.constructor.name;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * Thrown when an identical turnId is replayed on a workspace whose lastProcessedTurnId matches.
+ */
+export class DuplicateTurnError extends DomainError {
+  public readonly code = 'DUPLICATE_TURN';
+  constructor(public readonly turnId: string, public readonly details?: string) {
+    super(details || `Duplicate turn rejected: turnId='${turnId}' has already been processed`);
+  }
 }

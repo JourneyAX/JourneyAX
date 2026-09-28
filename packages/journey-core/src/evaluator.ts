@@ -5,13 +5,39 @@
  * deterministically without arbitrary JS eval or LLM hallucinations.
  */
 
-import { JourneyStage, StageExitCondition, FactsMap, FactEntry } from './types';
+import { JourneyStage, StageExitCondition, FactsMap, FactEntry, FactRequirement } from './types';
 
 export interface TransitionEvaluationResult {
   shouldTransition: boolean;
   nextStage?: string;
   matchedCondition?: StageExitCondition;
   reason?: string;
+}
+
+/**
+ * Normalizes an array of string or FactRequirement objects to a typed FactRequirement array.
+ */
+export function normalizeFactRequirements(requirements?: Array<string | FactRequirement>): FactRequirement[] {
+  if (!requirements || requirements.length === 0) return [];
+  return requirements.map((item) => {
+    if (typeof item === 'string') {
+      return {
+        key: item,
+        priority: 100,
+        required: true,
+        dependencies: [],
+      };
+    }
+    return {
+      key: item.key,
+      priority: item.priority ?? 100,
+      reason: item.reason,
+      question: item.question,
+      options: item.options,
+      dependencies: item.dependencies ?? [],
+      required: item.required !== false,
+    };
+  });
 }
 
 /**
@@ -48,18 +74,22 @@ export function areAnyFactsPresent(facts: FactsMap, candidateKeys: string[]): bo
 
 /**
  * Returns a list of required fact keys that are missing or empty in the current facts map.
+ * Optional facts (required: false) are excluded so they do not block exit conditions.
  */
 export function findMissingRequiredFacts(stage: JourneyStage, facts: FactsMap): string[] {
-  if (!stage.requiredFacts || stage.requiredFacts.length === 0) return [];
-  return stage.requiredFacts.filter((key) => {
-    const entry = facts[key];
-    if (!entry) return true;
-    const v = entry.value;
-    if (v === null || v === undefined) return true;
-    if (typeof v === 'string' && v.trim() === '') return true;
-    if (Array.isArray(v) && v.length === 0) return true;
-    return false;
-  });
+  const normalized = normalizeFactRequirements(stage.requiredFacts);
+  return normalized
+    .filter((req) => req.required !== false)
+    .map((req) => req.key)
+    .filter((key) => {
+      const entry = facts[key];
+      if (!entry) return true;
+      const v = entry.value;
+      if (v === null || v === undefined) return true;
+      if (typeof v === 'string' && v.trim() === '') return true;
+      if (Array.isArray(v) && v.length === 0) return true;
+      return false;
+    });
 }
 
 /**

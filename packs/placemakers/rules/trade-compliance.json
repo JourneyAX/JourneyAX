@@ -1,0 +1,13 @@
+{
+  "ruleId": "nzbc_moisture_compliance",
+  "name": "NZBC E3/AS1 Moisture Barrier Verification",
+  "description": "Enforces certified waterproof membrane in wet areas.",
+  "severity": "blocking",
+  "targetDomain": "compliance",
+  "condition": {
+    "ruleExpression": "wetAreaLiningsSpecified === true",
+    "requiredFacts": ["tradeCategory"]
+  },
+  "action": "require_approval",
+  "remediationMessage": "NZBC E3/AS1 mandates wet area waterproof membrane before lining."
+}

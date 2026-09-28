@@ -5,8 +5,14 @@ import { WorkspaceStore } from '../workspace/workspace.store';
 export class WorkspaceRepository {
   private store: WorkspaceStore;
 
-  constructor(store?: WorkspaceStore) {
-    this.store = store || new WorkspaceStore();
+  constructor(storeOrDb?: WorkspaceStore | any) {
+    if (storeOrDb instanceof WorkspaceStore) {
+      this.store = storeOrDb;
+    } else if (storeOrDb && typeof storeOrDb.collection === 'function') {
+      this.store = new WorkspaceStore(storeOrDb);
+    } else {
+      this.store = new WorkspaceStore();
+    }
   }
 
   async load(

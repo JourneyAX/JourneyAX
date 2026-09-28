@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
@@ -23,16 +24,23 @@ import {
 } from '@journeyax/database';
 import { hashToolInput } from './approval/approval.store';
 import * as crypto from 'crypto';
+import { computePackChecksum } from '@journeyax/business-pack';
+import { isInCanaryBucket } from './cutover/canary-routing';
+
 
 @Injectable()
 export class RuntimeService {
-  public readonly appService: TurnApplicationService;
+  public appService: TurnApplicationService;
   private inMemoryClaimedNonces = new Set<string>();
   private inMemoryCutoverRecords = new Map<string, DurableCutoverRecord>();
   private cutoverRepo: CutoverRepository | null = null;
 
-  constructor() {
-    this.appService = new TurnApplicationService();
+  constructor(appService?: TurnApplicationService) {
+    this.appService = appService || new TurnApplicationService();
+  }
+
+  public setAppServiceForTest(appService: TurnApplicationService): void {
+    this.appService = appService;
   }
 
   public getCutoverRepository(): CutoverRepository {
@@ -194,10 +202,131 @@ export class RuntimeService {
   }
 
   /**
+   * Enforces the durable tenant_cutovers record before any Business Pack is loaded or executed.
+   *
+   * Rules (all must hold — any failure throws ForbiddenException):
+   *   1. A durable cutover record must exist in tenant_cutovers for the tenant+environment.
+   *   2. The record's tenantId must match the request tenant (cross-tenant binding).
+   *   3. The record's status must be 'migrated', or 'canary' with this workspace in-bucket.
+   *   4. A pack must be loadable from the active pointer.
+   *   5. The record's approvedReleaseVersion must equal the active pack's version.
+   *   6. The record's approvedReleaseChecksum must equal computePackChecksum(activePack).
+   *
+   * Missing record, wrong status (including 'rollback'), version/checksum mismatch,
+   * stale pointer, or cross-tenant records are all rejected with HTTP 403 Forbidden.
+   *
+   * Returns the validated pack so the caller can pass it directly to executeTurn,
+   * eliminating the double pack lookup.
+   */
+  async assertCutoverApproved(
+    tenantId: string,
+    environmentId: string,
+    stableKey?: string
+  ): Promise<any> {
+    const normTenant = (tenantId || '').trim().toLowerCase();
+    const normEnv = (environmentId || 'production').trim().toLowerCase();
+
+    // 1. Load the durable cutover record.
+    // Always use the repository directly — do NOT go through getCutoverRecord()'s MONGODB_URI
+    // environment guard, which can silently return null when the test repo is injected.
+    let cutover: DurableCutoverRecord | null;
+    try {
+      cutover = await this.getCutoverRepository().getCutoverRecord(normTenant, normEnv);
+    } catch (repoErr: any) {
+      // Fail closed with 503 if the repository itself throws (e.g. connection error in prod)
+      throw new ServiceUnavailableException(
+        `[CutoverGate] Cutover record lookup failed for tenant='${normTenant}' env='${normEnv}': ${repoErr.message}`
+      );
+    }
+
+    if (!cutover) {
+      throw new ForbiddenException(
+        `[CutoverGate] No approved cutover record found for tenant='${normTenant}' env='${normEnv}'. ` +
+        `Execution requires a durable tenant_cutovers entry with status 'migrated' or 'canary'.`
+      );
+    }
+
+    // 2. Cross-tenant binding: the record must belong to this tenant
+    if (cutover.tenantId !== normTenant) {
+      throw new ForbiddenException(
+        `[CutoverGate] Cutover record tenant mismatch: record.tenantId='${cutover.tenantId}' ` +
+        `does not match request tenant='${normTenant}'.`
+      );
+    }
+
+    // 3. Status must be 'migrated' or 'canary' (with in-bucket routing for canary)
+    if (cutover.status === 'canary') {
+      const canaryPct = cutover.canaryPercentage ?? 0;
+      const routingKey = stableKey || normTenant;
+      if (!isInCanaryBucket(normTenant, normEnv, routingKey, canaryPct)) {
+        throw new ForbiddenException(
+          `[CutoverGate] Canary bucket assignment: tenant='${normTenant}' env='${normEnv}' ` +
+          `key='${routingKey}' is NOT in the ${canaryPct}% canary bucket. ` +
+          `Request must be served by legacy path for this workspace.`
+        );
+      }
+    } else if (cutover.status !== 'migrated') {
+      const ALLOWED_STATUSES = ['migrated', 'canary'];
+      throw new ForbiddenException(
+        `[CutoverGate] Cutover status '${cutover.status}' is not executable for tenant='${normTenant}' env='${normEnv}'. ` +
+        `Allowed statuses: ${ALLOWED_STATUSES.join(', ')}.`
+      );
+    }
+
+    // 4. Load the active pack — must exist
+    let activePack: any;
+    try {
+      activePack = await this.appService.packRepo.loadActivePack(normTenant, normEnv as EnvironmentId);
+    } catch (err: any) {
+      throw new ForbiddenException(
+        `[CutoverGate] Active Business Pack unavailable for tenant='${normTenant}' env='${normEnv}': ${err.message}`
+      );
+    }
+
+    if (!activePack) {
+      throw new ForbiddenException(
+        `[CutoverGate] No active Business Pack found for tenant='${normTenant}' env='${normEnv}'.`
+      );
+    }
+
+    // 5. Version agreement
+    const activeVersion = activePack.manifest?.version;
+    if (cutover.approvedReleaseVersion !== activeVersion) {
+      throw new ForbiddenException(
+        `[CutoverGate] Version mismatch for tenant='${normTenant}' env='${normEnv}': ` +
+        `cutover approves v'${cutover.approvedReleaseVersion}' but active pointer is v'${activeVersion}'. ` +
+        `Pointer and cutover record must be in agreement.`
+      );
+    }
+
+    // 6. Checksum agreement — compute from the live pack, compare to approved
+    const liveChecksum = computePackChecksum(activePack);
+    if (cutover.approvedReleaseChecksum !== liveChecksum) {
+      throw new ForbiddenException(
+        `[CutoverGate] Checksum mismatch for tenant='${normTenant}' env='${normEnv}' v'${activeVersion}': ` +
+        `cutover approved checksum '${cutover.approvedReleaseChecksum}' does not match ` +
+        `computed live checksum '${liveChecksum}'. Pack may have been tampered or pointer is stale.`
+      );
+    }
+
+    // Return the validated pack so runTurn can pass it directly to executeTurn
+    // without a second loadActivePack call.
+    return activePack;
+  }
+
+  /**
    * Executes a turn in the canonical runtime engine.
+   * Enforces the durable cutover gate, then passes the already-validated pack
+   * directly to executeTurn — eliminating the double loadActivePack call.
    */
   async runTurn(command: TurnCommand): Promise<TurnResult> {
-    return this.appService.executeTurn(command);
+    const stableKey = command.workspaceId || command.sessionId || command.tenantId;
+    const validatedPack = await this.assertCutoverApproved(
+      command.tenantId,
+      command.environmentId || 'production',
+      stableKey
+    );
+    return this.appService.executeTurn(command, validatedPack);
   }
 
   /**

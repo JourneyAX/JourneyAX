@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const TurnCommandRequestSchema = z.object({
   sessionId: z.string().min(1, 'sessionId is required'),
   workspaceId: z.string().optional(),
+  turnId: z.string().min(1, 'turnId is required'),
   correlationId: z.string().min(1, 'correlationId is required'),
   message: z.string().max(10000).optional(),
   event: z

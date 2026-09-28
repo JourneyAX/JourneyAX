@@ -11,13 +11,15 @@ import {
   UseGuards,
   NotFoundException,
   BadRequestException,
+  Inject,
   UsePipes,
   PipeTransform,
   ArgumentMetadata,
+  HttpCode,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { RuntimeService } from './runtime.service';
-import { TurnCommand, TurnResult, WorkspaceState, FactSource } from '@journeyax/journey-core';
+import { TurnCommand, TurnResult, WorkspaceState, FactSource, DuplicateTurnError, ChannelEvent } from '@journeyax/journey-core';
 import { DurableCutoverRecord } from '@journeyax/database';
 import { RuntimeAuthGuard, InternalOnly, Public } from './auth/auth.guard';
 import {
@@ -31,9 +33,10 @@ import {
 @Controller(['api/v1/:tenantId/:environmentId/runtime', 'api/v1/:tenantId/runtime'])
 @UseGuards(RuntimeAuthGuard)
 export class RuntimeController {
-  constructor(private readonly runtimeService: RuntimeService) {}
+  constructor(@Inject(RuntimeService) private readonly runtimeService: RuntimeService) {}
 
   @Post('turn')
+  @HttpCode(200)
   async runTurn(
     @Param('tenantId') tenantId: string,
     @Param('environmentId') environmentId: string | undefined,
@@ -58,17 +61,31 @@ export class RuntimeController {
       environmentId: env,
       workspaceId: dto.workspaceId || dto.sessionId,
       sessionId: dto.sessionId,
+      turnId: dto.turnId,
       principalId: authContext.principalId,
       principalRole: authContext.principalRole,
       correlationId: dto.correlationId,
       message: dto.message,
-      event: dto.event,
+      event: dto.event as ChannelEvent | undefined,
       inputFacts: dto.inputFacts,
       approvalRequestId: dto.approvalRequestId,
       idempotencyKey: dto.idempotencyKey,
     };
 
-    return this.runtimeService.runTurn(command);
+    try {
+      return await this.runtimeService.runTurn(command);
+    } catch (err: any) {
+      if (err instanceof DuplicateTurnError) {
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'Bad Request',
+          code: err.code,
+          message: err.message,
+          turnId: err.turnId,
+        });
+      }
+      throw err;
+    }
   }
 
   @Post('chat/stream')
@@ -96,17 +113,21 @@ export class RuntimeController {
       environmentId: env,
       workspaceId: dto.workspaceId || dto.sessionId,
       sessionId: dto.sessionId,
+      turnId: dto.turnId,
       principalId: authContext.principalId,
       principalRole: authContext.principalRole,
       correlationId: dto.correlationId,
       message: dto.message,
-      event: dto.event,
+      event: dto.event as ChannelEvent | undefined,
       inputFacts: dto.inputFacts,
       approvalRequestId: dto.approvalRequestId,
       idempotencyKey: dto.idempotencyKey,
     };
 
     // Set SSE headers
+    if (typeof res.status === 'function') {
+      res.status(200);
+    }
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -154,7 +175,15 @@ export class RuntimeController {
         trace: turnResult.trace,
       });
     } catch (err: any) {
-      emit('error', { message: err.message || 'Error executing turn stream' });
+      if (err instanceof DuplicateTurnError) {
+        emit('error', {
+          code: err.code,
+          turnId: err.turnId,
+          message: err.message,
+        });
+      } else {
+        emit('error', { message: err.message || 'Error executing turn stream' });
+      }
     } finally {
       res.end();
     }

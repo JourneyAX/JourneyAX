@@ -6,6 +6,7 @@
  */
 
 import { BusinessPackRelease } from './schemas/business-pack.schema';
+import { validateSecretReference } from './schemas/capability-binding.schema';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning';
@@ -51,7 +52,7 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     for (const toolId of agent.allowedTools) {
       if (!registeredToolIds.has(toolId) && !toolId.includes('*')) {
         issues.push({
-          severity: 'warning',
+          severity: 'error',
           path: `agents[${agent.agentId}].allowedTools`,
           message: `Agent '${agent.agentId}' allows tool '${toolId}' which is not explicitly defined in toolDefinitions`,
         });
@@ -92,7 +93,7 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
         for (const capId of stage.allowedCapabilities) {
           if (!registeredToolIds.has(capId) && !capId.includes('*')) {
             issues.push({
-              severity: 'warning',
+              severity: 'error',
               path: `journeys[${journey.journeyId}].stages[${stageId}].allowedCapabilities`,
               message: `Stage '${stageId}' allows capability '${capId}' which is not declared in toolDefinitions.`,
             });
@@ -102,7 +103,7 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     }
   }
 
-  // 6. Validate Tool Bindings
+  // 6. Validate Tool Bindings and Executor Secret References
   for (const binding of pack.capabilities.toolBindings) {
     if (!registeredToolIds.has(binding.toolId)) {
       issues.push({
@@ -110,6 +111,18 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
         path: `capabilities.toolBindings[${binding.toolId}]`,
         message: `Tool binding references unknown toolId '${binding.toolId}'`,
       });
+    }
+
+    const secretRef = binding.executor?.secretRef;
+    if (secretRef) {
+      const refIssues = validateSecretReference(secretRef, binding.tenantId, binding.environmentId);
+      for (const refIssue of refIssues) {
+        issues.push({
+          severity: 'error',
+          path: `capabilities.toolBindings[${binding.toolId}].executor.secretRef`,
+          message: refIssue.message,
+        });
+      }
     }
   }
 

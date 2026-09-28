@@ -8,12 +8,13 @@
   ],
   "scripts": {
     "clean": "rm -rf node_modules .turbo apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist apps/*/.venv packages/*/.venv",
-    "dev:all": "npm run clean && npm install && npm run build && turbo run dev --concurrency=20",
-    "dev": "turbo run dev --concurrency=20",
+    "dev:all": "npm run clean && npm install && npm run build && turbo run dev --concurrency=30",
+    "dev": "turbo run dev --concurrency=30",
     "build": "turbo run build",
-    "start": "turbo run start --concurrency=20",
+    "start": "turbo run start --concurrency=30",
     "lint": "turbo run lint",
-    "inventory:connectors": "tsx scripts/inventory-tenant-connectors.ts"
+    "inventory:connectors": "tsx scripts/inventory-tenant-connectors.ts",
+    "demo:e2e": "tsx scripts/demo-local-e2e.ts"
   },
   "packageManager": "npm@10.9.2",
   "devDependencies": {

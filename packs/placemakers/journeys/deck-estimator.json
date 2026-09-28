@@ -1,0 +1,38 @@
+{
+  "journeyId": "placemakers_deck_estimator",
+  "version": "1.0.0",
+  "displayName": "PlaceMakers Hardwood Decking Estimator",
+  "description": "Estimates Kwila decking boards, SG8 subfloor framing, and stainless marine fasteners.",
+  "goals": ["deck_sizing", "materials_spec", "quote_delivery"],
+  "initialStage": "sizing",
+  "stages": {
+    "sizing": {
+      "displayName": "Deck Sizing & Height",
+      "description": "Capture deck length, width, and ground clearance.",
+      "requiredFacts": ["deck_dimensions"],
+      "allowedCapabilities": ["catalog.search"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        { "allFactsPresent": ["deck_dimensions"], "nextStage": "materials_spec" }
+      ]
+    },
+    "materials_spec": {
+      "displayName": "Materials Specification",
+      "description": "Calculate Kwila m2, SG8 joist spacing, and 316 marine screw count with wastage.",
+      "requiredFacts": [],
+      "allowedCapabilities": ["catalog.search", "trade.quote_create"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        { "allFactsPresent": ["quote_generated"], "nextStage": "quote_delivery" }
+      ]
+    },
+    "quote_delivery": {
+      "displayName": "Quote Delivery & Branch Pickup",
+      "description": "Deliver final trade estimate and check branch inventory.",
+      "requiredFacts": ["quote_generated"],
+      "allowedCapabilities": ["branch.stock_check", "order.commit"],
+      "nextDecisionPolicy": "rule-first",
+      "exitConditions": []
+    }
+  }
+}

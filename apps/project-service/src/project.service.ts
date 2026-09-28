@@ -16,7 +16,7 @@ import {
   compileGraphToJourneyDefinition,
 } from '@journeyax/business-pack';
 
-const DB_NAME   = 'journeyax';
+const DB_NAME   = process.env.PROJECT_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'journeyax';
 const PROJECTS  = 'tenant_configs';    // existing collection — backwards compat
 const MEMBERS   = 'project_members';
 const TEAMS     = 'project_teams';

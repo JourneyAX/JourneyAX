@@ -286,14 +286,23 @@ async function runSecurityTests() {
   });
 
   // ── TEST 8: DTO Runtime Schema Validation ───────────────────────────────
-  await test('DTO Runtime Validation: TurnCommandRequest rejects missing sessionId/correlationId', () => {
+  await test('DTO Runtime Validation: TurnCommandRequest rejects missing sessionId/correlationId/turnId', () => {
     const invalid = { message: 'hello' };
     const parseResult = TurnCommandRequestSchema.safeParse(invalid);
     assert.equal(parseResult.success, false);
 
+    const missingTurnId = {
+      sessionId: 'sess-1',
+      correlationId: 'corr-1',
+      message: 'hello',
+    };
+    const missingTurnResult = TurnCommandRequestSchema.safeParse(missingTurnId);
+    assert.equal(missingTurnResult.success, false, 'Missing turnId must fail schema validation');
+
     const valid = {
       sessionId: 'sess-1',
       correlationId: 'corr-1',
+      turnId: 'turn-1',
       message: 'hello',
     };
     const validResult = TurnCommandRequestSchema.safeParse(valid);

@@ -4,6 +4,7 @@ import {
   WorkspaceState,
   Decision,
   EnvironmentId,
+  DuplicateTurnError,
 } from '@journeyax/journey-core';
 import { ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase } from '@journeyax/database';
@@ -19,6 +20,7 @@ import { OutboxRepository } from './outbox.repository';
 import { PresentationPort } from './presentation.port';
 import { TurnInterpreter } from '../turn/interpret-event';
 import { FactReducer } from '../turn/fact-reducer';
+import { OutcomeValidator } from '../turn/validate-outcome';
 
 export class TurnApplicationService {
   constructor(
@@ -32,59 +34,164 @@ export class TurnApplicationService {
     public readonly executionRepo: ExecutionRepository = new ExecutionRepository(),
     public readonly outboxRepo: OutboxRepository = new OutboxRepository(),
     public readonly presentationPort: PresentationPort = new PresentationPort(),
-    private readonly interpreter: TurnInterpreter = new TurnInterpreter(),
-    private readonly factReducer: FactReducer = new FactReducer()
+    private readonly interpreter: TurnInterpreter = new TurnInterpreter(modelGateway),
+    private readonly factReducer: FactReducer = new FactReducer(),
+    public readonly outcomeValidator: OutcomeValidator = new OutcomeValidator()
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
     }
   }
 
-  async executeTurn(command: TurnCommand): Promise<TurnResult> {
+  /**
+   * Executes a single turn.
+   *
+   * @param command         - the TurnCommand from the controller
+   * @param preloadedRelease - when provided by RuntimeService.runTurn, this is the pack
+   *                           that was ALREADY loaded and checksum-validated by assertCutoverApproved.
+   *                           Using it here avoids a redundant second loadActivePack call and
+   *                           guarantees the exact validated version/checksum is what executes.
+   */
+  async executeTurn(command: TurnCommand, preloadedRelease?: any): Promise<TurnResult> {
     const tenantId = command.tenantId;
     const envId: EnvironmentId = command.environmentId || 'production';
     const workspaceId = command.workspaceId || command.sessionId;
+    const turnId = command.turnId;
 
     // 1. Authoritative Business Pack resolution
-    const release = await this.packRepo.loadActivePack(tenantId, envId);
-    const primaryJourney = release.journeys[0];
-    const initialStage = primaryJourney?.initialStage || 'entry';
+    // If a pre-validated release was passed by the cutover gate, use it directly.
+    // This eliminates the double loadActivePack call and guarantees the exact
+    // version and checksum that was validated is what executes — no TOCTOU window.
+    const release = preloadedRelease ?? await this.packRepo.loadActivePack(tenantId, envId);
 
-    // 2. Load or initialize Workspace State
-    let workspace = await this.workspaceRepo.getOrCreate(
-      tenantId,
-      envId,
-      workspaceId,
-      primaryJourney?.journeyId || 'default',
-      initialStage,
-      undefined,
-      release.manifest.version || release.manifest.packId
+
+    // 2. Load existing Workspace State (if present)
+    let workspace =
+      typeof this.workspaceRepo?.load === 'function'
+        ? await this.workspaceRepo.load(tenantId, envId, workspaceId)
+        : null;
+
+    // 2a. Turn Replay Rejection — Duplicate turnId is rejected unconditionally regardless of tool execution!
+    if (turnId && workspace && workspace.lastProcessedTurnId === turnId) {
+      throw new DuplicateTurnError(turnId);
+    }
+
+    // 3. Extract and reduce conversational facts through model-gateway & schema validation
+    const interpretation = await this.interpreter.interpret(command, release, workspace || ({} as any));
+
+    // 2b. Goal/Policy-based Journey Selection (strictly typed, zero positional fallback)
+    if (!this.journeyResolver || typeof this.journeyResolver.resolveJourneyResolution !== 'function') {
+      const decision: Decision = {
+        decisionId: `dec_${Date.now()}`,
+        type: 'handoff',
+        payload: { error: 'JourneyResolver unavailable' },
+        reason: 'Journey resolution component is unavailable',
+        createdAt: new Date().toISOString(),
+      };
+      return this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
+    }
+
+    const resolution = this.journeyResolver.resolveJourneyResolution(
+      release,
+      workspace || ({} as any),
+      command,
+      interpretation
     );
 
-    // 3. Extract and reduce conversational facts
-    const interpretation = await this.interpreter.interpret(command, release, workspace);
-    workspace = this.factReducer.apply(workspace, interpretation);
+    if (resolution.status === 'ambiguous') {
+      const decision = this.journeyResolver.decide(release, workspace || ({} as any), command, interpretation);
+      return this.presentationPort.compose({ valid: true }, decision, workspace || ({} as any), release);
+    }
 
-    // 4. Resolve Stage Decision
-    let decision = this.journeyResolver.decide(release, workspace);
+    if (resolution.status !== 'resolved') {
+      const decision: Decision = {
+        decisionId: `dec_${Date.now()}`,
+        type: 'handoff',
+        payload: { error: 'No active journey matched' },
+        reason: (resolution as any).reason || `No matching journey found for tenant='${tenantId}' goal/intent`,
+        createdAt: new Date().toISOString(),
+      };
+      return this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
+    }
+
+    const activeJourney = resolution.journey;
+    if (!activeJourney) {
+      throw new Error(`[TurnApplicationService] No matching journey found for tenant='${tenantId}' goal/intent`);
+    }
+
+    if (!workspace) {
+      workspace = await this.workspaceRepo.getOrCreate(
+        tenantId,
+        envId,
+        workspaceId,
+        activeJourney.journeyId,
+        activeJourney.initialStage,
+        undefined,
+        release.manifest.version || release.manifest.packId
+      );
+    }
+
+    // Ensure journey, goal, openQuestions, decisions initialized
+    workspace.journeyId = activeJourney.journeyId;
+    if (activeJourney.goals && activeJourney.goals.length > 0 && !workspace.goal) {
+      workspace.goal = activeJourney.goals[0];
+    }
+    if (!workspace.currentStage) {
+      workspace.currentStage = activeJourney.initialStage;
+    }
+    if (!workspace.openQuestions) {
+      workspace.openQuestions = [];
+    }
+    if (!workspace.decisions) {
+      workspace.decisions = [];
+    }
+
+    // Apply interpreted candidate facts
+    workspace = this.factReducer.apply(workspace, interpretation.candidateFacts);
+
+    // Durable answers: remove answered questions from openQuestions
+    if (workspace.openQuestions.length > 0) {
+      workspace.openQuestions = workspace.openQuestions.filter((q) => {
+        return workspace.facts[q]?.value === undefined;
+      });
+    }
+
+    // 4. Resolve Stage Decision & Handle Stage Transitions
+    let decision = this.journeyResolver.decide(release, workspace, command, interpretation);
     let outcome: any = null;
     let pendingApproval: any = null;
     let execResponse: any = null;
     let executedToolId: string | null = null;
 
-    // 5. If stage demands capability execution
+    // Check if decision is a stage transition
+    if (decision.type === 'transition_stage' && decision.targetStage) {
+      workspace.decisions.push({
+        ...decision,
+        executedAt: new Date().toISOString(),
+        outcomeStatus: 'success',
+      });
+      workspace = {
+        ...workspace,
+        currentStage: decision.targetStage,
+        updatedAt: new Date(),
+      };
+      // Re-evaluate newly entered stage in the SAME turn!
+      decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+    }
+
+    // 5. Capability Execution (including in newly entered stage in the same turn)
     if (decision.type === 'invoke_capability' && decision.targetCapability) {
       executedToolId = decision.targetCapability;
       const toolId = executedToolId;
-      const idempotencyKey = command.idempotencyKey || `${command.correlationId}:${toolId}`;
+      const toolIdempotencyKey = command.idempotencyKey || `${command.correlationId}:${toolId}`;
 
-      // Pre-dispatch idempotency check
+      // Pre-dispatch tool idempotency check
       const existingExec = await this.executionRepo.findExecution(
         tenantId,
         envId,
         workspaceId,
         toolId,
-        idempotencyKey
+        toolIdempotencyKey
       );
 
       if (existingExec && existingExec.status === 'completed') {
@@ -124,7 +231,7 @@ export class TurnApplicationService {
           workspaceId,
           correlationId: command.correlationId,
           toolId,
-          idempotencyKey,
+          idempotencyKey: toolIdempotencyKey,
           status: 'started' as const,
           inputPayload: decision.payload,
           executedBy: command.principalId,
@@ -186,18 +293,33 @@ export class TurnApplicationService {
       }
     }
 
-    // 6. Handle explicit stage transitions
-    if (decision.type === 'transition_stage' && decision.targetStage) {
-      workspace = {
-        ...workspace,
-        currentStage: decision.targetStage,
-        updatedAt: new Date(),
+    // 6. OutcomeValidator before transition/presentation (validates capability execution output)
+    const validatedOutcome =
+      executedToolId || outcome !== null
+        ? this.outcomeValidator.validate(decision, outcome, release, workspace)
+        : { valid: true, outcome: null, appliedRules: [] };
+
+    if (!validatedOutcome.valid && decision.type !== 'ask_fact' && decision.type !== 'requires_approval') {
+      decision = {
+        decisionId: `dec_${Date.now()}`,
+        type: 'fail',
+        payload: { error: validatedOutcome.notes, violations: validatedOutcome.appliedRules },
+        reason: validatedOutcome.notes || 'Outcome failed business validation rules',
+        createdAt: new Date().toISOString(),
       };
-      // Re-evaluate newly entered stage
-      decision = this.journeyResolver.decide(release, workspace);
     }
 
-    // 7. Compose presentation & card envelope
+    // 7. Update OpenQuestions and Decision Records
+    if (decision.type === 'ask_fact' && decision.payload.targetFact) {
+      workspace.openQuestions = [decision.payload.targetFact];
+    }
+    workspace.decisions.push({
+      ...decision,
+      executedAt: new Date().toISOString(),
+      outcomeStatus: validatedOutcome.valid ? 'success' : 'failure',
+    });
+
+    // 8. Compose presentation & card envelope
     let resolvedAgentInfo: any = null;
     if (release.agents && release.agents.length > 0) {
       try {
@@ -211,7 +333,7 @@ export class TurnApplicationService {
     }
 
     const turnResult = this.presentationPort.compose(
-      { valid: true, outcome },
+      validatedOutcome,
       decision,
       workspace,
       release
@@ -245,8 +367,8 @@ export class TurnApplicationService {
       ];
     }
 
-    // 8. Commit updated workspace state and outbox events atomically
-    workspace.lastProcessedTurnId = command.idempotencyKey || command.correlationId;
+    // 9. Commit updated workspace state and outbox events atomically
+    workspace.lastProcessedTurnId = turnId;
 
     const isProdOrStaging =
       envId === 'production' ||
@@ -273,7 +395,6 @@ export class TurnApplicationService {
             `[TurnApplicationService] Standalone MongoDB does not support transactions; multi-document transactions are required in ${envId}`
           );
         }
-        // Positively identified local standalone-Mongo before work starts in dev/test only
         await this.workspaceRepo.save(workspace);
         await this.outboxRepo.enqueueEvent(
           tenantId,
@@ -289,7 +410,7 @@ export class TurnApplicationService {
         return turnResult;
       }
 
-      // Transactions are supported (Replica Set / Sharded / session capable)
+      // Transactions are supported
       const session = client.startSession();
       try {
         await session.withTransaction(async () => {
@@ -309,8 +430,6 @@ export class TurnApplicationService {
         });
         return turnResult;
       } catch (txErr: any) {
-        // NEVER retry sequentially after arbitrary transaction / commit error
-        // Re-throw to prevent duplicating workspace state or outbox events
         throw txErr;
       } finally {
         await session.endSession();

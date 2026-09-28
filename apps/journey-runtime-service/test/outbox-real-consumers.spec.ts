@@ -2514,6 +2514,11 @@ async function runOutboxRealConsumersSuite() {
       },
     };
     const mockJourneyResolver: any = {
+      resolveJourneyResolution: () => ({
+        status: 'resolved',
+        journeyId: 'journey_test',
+        journey: { journeyId: 'journey_test', initialStage: 'stage_sync' },
+      }),
       decide: () => ({ type: 'complete' }),
     };
     const mockInterpreter: any = {

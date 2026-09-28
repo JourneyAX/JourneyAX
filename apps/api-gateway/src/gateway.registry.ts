@@ -8,7 +8,7 @@ import { Request, Response, NextFunction } from 'express';
 // domain → backend service base URL
 export const DOMAIN_REGISTRY: Record<string, string> = {
   commerce:      process.env.AGENT_SERVICE_URL              || 'http://localhost:3004',
-  runtime:       process.env.JOURNEY_RUNTIME_SERVICE_URL    || process.env.JOURNEY_RUNTIME_URL || process.env.RUNTIME_SERVICE_URL || 'http://localhost:3009',
+  runtime:       process.env.JOURNEY_RUNTIME_SERVICE_URL    || process.env.JOURNEY_RUNTIME_URL || process.env.RUNTIME_SERVICE_URL || 'http://localhost:3012',
   products:      process.env.PRODUCT_SERVICE_URL            || 'http://localhost:8083',
   cdl:           process.env.PRODUCT_SERVICE_URL    || 'http://localhost:8083',  // CDL lives in product-service
   projects:      process.env.PROJECT_SERVICE_URL    || 'http://localhost:8082',

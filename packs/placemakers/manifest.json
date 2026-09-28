@@ -1,0 +1,11 @@
+{
+  "packId": "bp_placemakers_v1",
+  "tenantId": "placemakers",
+  "environmentId": "production",
+  "version": "1.0.0",
+  "name": "PlaceMakers NZ Unified Business Pack",
+  "description": "Domain-neutral Business Pack for PlaceMakers NZ building materials, trade estimation, and multi-trade solutions.",
+  "status": "active",
+  "publishedAt": "2026-09-25T17:00:00.000Z",
+  "publishedBy": "migration-orchestrator@journeyax.io"
+}

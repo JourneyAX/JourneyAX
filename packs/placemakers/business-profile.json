@@ -1,0 +1,16 @@
+{
+  "companyName": "PlaceMakers (Fletcher Building)",
+  "industry": "Building Materials & Trade Supplies",
+  "brandTone": "Professional, trade-grade, NZBC compliant, authoritative",
+  "mission": "Empowering Kiwi trades and DIY builders with trade-grade building materials and compliant estimating.",
+  "primaryCurrency": "NZD",
+  "supportedCurrencies": ["NZD"],
+  "primaryLocale": "en-NZ",
+  "supportedLocales": ["en-NZ"],
+  "complianceCertifications": [
+    "NZBC E3/AS1 (Internal Moisture)",
+    "NZS 3604 (Timber-Framed Buildings)",
+    "BRANZ Appraised",
+    "WELS 4-Star"
+  ]
+}

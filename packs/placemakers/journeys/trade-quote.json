@@ -1,0 +1,38 @@
+{
+  "journeyId": "placemakers_trade_quote",
+  "version": "1.0.0",
+  "displayName": "PlaceMakers Trade BOM & Estimation Flow",
+  "description": "Guides trade customers from trade scope identification to a fully compliant bill of materials and quote.",
+  "goals": ["understand_project", "assemble_bom", "deliver_quote"],
+  "initialStage": "project_intake",
+  "stages": {
+    "project_intake": {
+      "displayName": "Project Intake & Sizing",
+      "description": "Capture building trade category and dimensions.",
+      "requiredFacts": ["tradeCategory"],
+      "allowedCapabilities": ["catalog.search", "knowledge.search"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        { "allFactsPresent": ["tradeCategory"], "nextStage": "bom_assembly" }
+      ]
+    },
+    "bom_assembly": {
+      "displayName": "Bill of Materials Assembly",
+      "description": "Search catalogue, verify NZBC compliance, and assemble trade BOM.",
+      "requiredFacts": [],
+      "allowedCapabilities": ["catalog.search", "knowledge.search", "trade.quote_create"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        { "allFactsPresent": ["bom_confirmed"], "nextStage": "trade_approval" }
+      ]
+    },
+    "trade_approval": {
+      "displayName": "Trade Account Approval & Sync",
+      "description": "Sync quote to SAP ERP and place trade order.",
+      "requiredFacts": ["bom_confirmed"],
+      "allowedCapabilities": ["sap.quote_sync", "order.commit"],
+      "nextDecisionPolicy": "rule-first",
+      "exitConditions": []
+    }
+  }
+}

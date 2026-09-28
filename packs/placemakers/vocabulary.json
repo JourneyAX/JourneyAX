@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "terms": [
+    {
+      "term": "GIB Aqualine",
+      "canonical": "gib_aqualine",
+      "category": "tradeCategory",
+      "synonyms": ["aqualine", "green board", "moisture board", "moisture-resistant linings", "wet area linings"],
+      "description": "Moisture-resistant lining for wet areas"
+    },
+    {
+      "term": "Kwila",
+      "canonical": "Decking",
+      "category": "tradeCategory",
+      "synonyms": ["kwila decking", "hardwood decking", "decking"],
+      "description": "Hardwood decking timber"
+    },
+    {
+      "term": "SuperTub",
+      "canonical": "Laundry",
+      "category": "tradeCategory",
+      "synonyms": ["supertub", "laundry tub", "wash tub"],
+      "description": "Sanitary laundry tub solution"
+    },
+    {
+      "term": "Kordura",
+      "canonical": "kordura",
+      "category": "material",
+      "synonyms": ["solid surface", "kordura top"],
+      "description": "Seamless non-porous solid surface benchtop"
+    },
+    {
+      "term": "Sika Showerbond",
+      "canonical": "sika_showerbond",
+      "category": "adhesive",
+      "synonyms": ["showerbond", "wet area sealant"],
+      "description": "Adhesive sealant for wet area wall linings"
+    }
+  ],
+  "acronyms": {
+    "NZBC": "New Zealand Building Code",
+    "HMR": "High Moisture Resistance",
+    "BOM": "Bill of Materials",
+    "DIY": "Do It Yourself"
+  },
+  "slotSynonyms": {
+    "tradeCategory": ["category", "trade", "project type", "materials needed"]
+  },
+  "slotMappings": {},
+  "prohibitedTerms": []
+}

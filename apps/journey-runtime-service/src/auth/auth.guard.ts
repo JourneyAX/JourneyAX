@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   UnauthorizedException,
   SetMetadata,
+  Inject,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import {
@@ -33,7 +34,7 @@ export interface AuthContext {
 export class RuntimeAuthGuard implements CanActivate {
   private replayStore: ReplayStore | null = null;
 
-  constructor(private reflector: Reflector) {}
+  constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
 
   public getReplayStore(): ReplayStore {
     if (!this.replayStore) {

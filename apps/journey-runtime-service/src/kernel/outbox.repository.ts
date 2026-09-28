@@ -4,7 +4,12 @@ import { ClientSession } from 'mongodb';
 export class OutboxRepository {
   private inMemoryQueue: OutboxEventRecord[] = [];
 
+  constructor(private readonly customDb?: any) {}
+
   private isMemoryPermitted(environmentId?: string): boolean {
+    if (this.customDb) {
+      return false; // Durable DB is active
+    }
     if (
       process.env.NODE_ENV === 'production' ||
       process.env.APP_ENV === 'production' ||
@@ -23,6 +28,9 @@ export class OutboxRepository {
   }
 
   private isProductionOrStaging(environmentId?: string): boolean {
+    if (this.customDb) {
+      return false;
+    }
     if (this.isMemoryPermitted(environmentId)) {
       return false;
     }
@@ -41,6 +49,13 @@ export class OutboxRepository {
     inMemoryCount: number;
     warning?: string;
   } {
+    if (this.customDb) {
+      return {
+        status: 'healthy',
+        mode: 'mongodb',
+        inMemoryCount: 0,
+      };
+    }
     if (this.inMemoryQueue.length > 0) {
       return {
         status: 'degraded',
@@ -57,6 +72,9 @@ export class OutboxRepository {
   }
 
   private async getDbRepo(): Promise<DbOutboxRepository | null> {
+    if (this.customDb) {
+      return new DbOutboxRepository(this.customDb);
+    }
     const uri = process.env.MONGODB_URI;
     if (!uri) return null;
     try {

@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test": "tsx test/journey-engine.spec.ts && tsx test/turn-search-memo.spec.ts"
   },
   "dependencies": {
     "@journeyax/cache": "*",

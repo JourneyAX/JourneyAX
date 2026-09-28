@@ -1,0 +1,135 @@
+{
+  "version": "1.0.0",
+  "toolDefinitions": [
+    {
+      "toolId": "catalog.search",
+      "version": "1.0.0",
+      "displayName": "PlaceMakers Catalog Search",
+      "description": "Search trade building materials and hardware.",
+      "inputSchema": { "query": { "type": "string" } },
+      "outputSchema": { "items": { "type": "array" } },
+      "sideEffect": "read",
+      "risk": "low"
+    },
+    {
+      "toolId": "knowledge.search",
+      "version": "1.0.0",
+      "displayName": "Technical Documentation & Compliance Search",
+      "description": "Search BRANZ and NZBC installation guides.",
+      "inputSchema": { "query": { "type": "string" } },
+      "outputSchema": { "documents": { "type": "array" } },
+      "sideEffect": "read",
+      "risk": "low"
+    },
+    {
+      "toolId": "branch.stock_check",
+      "version": "1.0.0",
+      "displayName": "Check 60-Minute Branch Stock",
+      "description": "Checks real-time inventory at Mt Wellington, Cook St, and national branches.",
+      "inputSchema": { "sku": { "type": "string" }, "branch": { "type": "string" } },
+      "outputSchema": { "inStock": { "type": "boolean" }, "quantity": { "type": "number" } },
+      "sideEffect": "read",
+      "risk": "low"
+    },
+    {
+      "toolId": "trade.quote_create",
+      "version": "1.0.0",
+      "displayName": "Create Trade BOM Quote",
+      "description": "Generates structured trade quote with trade discount pricing.",
+      "inputSchema": { "items": { "type": "array" } },
+      "outputSchema": { "quoteId": { "type": "string" } },
+      "sideEffect": "write",
+      "risk": "medium"
+    },
+    {
+      "toolId": "sap.quote_sync",
+      "version": "1.0.0",
+      "displayName": "Sync Quote to SAP ERP",
+      "description": "Syncs trade quote to PlaceMakers SAP ERP via Activepieces flow.",
+      "inputSchema": { "quoteId": { "type": "string" } },
+      "outputSchema": { "erpReference": { "type": "string" } },
+      "sideEffect": "write",
+      "risk": "medium"
+    },
+    {
+      "toolId": "order.commit",
+      "version": "1.0.0",
+      "displayName": "Commit Trade Order",
+      "description": "Places binding trade order against trade credit account.",
+      "inputSchema": { "quoteId": { "type": "string" } },
+      "outputSchema": { "orderId": { "type": "string" } },
+      "sideEffect": "transactional",
+      "risk": "high"
+    }
+  ],
+  "toolBindings": [
+    {
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "toolId": "catalog.search",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "catalog.search"
+      },
+      "timeoutMs": 10000
+    },
+    {
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "toolId": "knowledge.search",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "catalog.search"
+      },
+      "timeoutMs": 10000
+    },
+    {
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "toolId": "branch.stock_check",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "catalog.search"
+      },
+      "timeoutMs": 10000
+    },
+    {
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "toolId": "trade.quote_create",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "pricing.validate"
+      },
+      "timeoutMs": 10000
+    },
+    {
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "toolId": "sap.quote_sync",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "activepieces_flow",
+        "flowId": "ap_flow_pm_sap_quote",
+        "connectionRef": "conn_pm_sap_trade",
+        "secretRef": "gcp-secret://journeyax-secrets/placemakers/production/pm-sap-key"
+      },
+      "timeoutMs": 15000
+    },
+    {
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "toolId": "order.commit",
+      "bindingVersion": "1.0.0",
+      "executor": {
+        "type": "native_capability",
+        "nativeHandler": "order.commit"
+      },
+      "timeoutMs": 10000
+    }
+  ]
+}

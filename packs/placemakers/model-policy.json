@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "defaultPolicy": "complex_reasoning",
+  "policies": [
+    {
+      "policyId": "complex_reasoning",
+      "description": "Multi-trade BOM estimation and compliance reasoning",
+      "candidates": [
+        { "provider": "google", "model": "gemini-2.5-pro", "priority": 1 },
+        { "provider": "openai", "model": "gpt-4o", "priority": 2 }
+      ],
+      "dataResidency": "nz",
+      "maxInputTokens": 20000,
+      "maxOutputTokens": 2500,
+      "fallbackAllowed": true,
+      "timeoutMs": 15000
+    },
+    {
+      "policyId": "fast_intent",
+      "description": "Fast trade slot and intent extraction",
+      "candidates": [
+        { "provider": "google", "model": "gemini-2.5-flash", "priority": 1 },
+        { "provider": "openai", "model": "gpt-4o-mini", "priority": 2 }
+      ],
+      "dataResidency": "nz",
+      "maxInputTokens": 8000,
+      "maxOutputTokens": 1000,
+      "fallbackAllowed": true,
+      "timeoutMs": 5000
+    }
+  ]
+}

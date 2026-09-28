@@ -1,0 +1,26 @@
+{
+  "suiteId": "placemakers_acceptance",
+  "name": "PlaceMakers Acceptance Test Suite",
+  "tenantId": "placemakers",
+  "version": "1.0.0",
+  "blockingOnPublish": true,
+  "scenarios": [
+    {
+      "scenarioId": "wet_area_specification",
+      "name": "Wet Area Specification & Compliance",
+      "description": "Customer asks for wet area moisture-resistant linings and waterproofing. Engine extracts facts and guides customer through compliant BOM.",
+      "prompt": "What moisture-resistant linings and waterproofing do I need for my wet area?",
+      "expectedTargetStage": "bom_assembly",
+      "expectedFacts": ["tradeCategory"],
+      "requiredCapabilities": ["knowledge.search"],
+      "assertions": [
+        {
+          "type": "fact_present",
+          "field": "tradeCategory",
+          "description": "Trade category fact must be extracted"
+        }
+      ],
+      "timeoutMs": 15000
+    }
+  ]
+}

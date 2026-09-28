@@ -15,18 +15,38 @@ export class JourneyEngine {
    * and the current Workspace State.
    */
   decide(release: BusinessPackRelease, workspace: WorkspaceState): Decision {
-    const journey = release.journeys.find((j) => j.journeyId === workspace.journeyId) || release.journeys[0];
+    if (!workspace || !workspace.journeyId) {
+      return {
+        decisionId: `dec_${Date.now()}`,
+        type: 'handoff',
+        payload: { error: 'Missing journeyId' },
+        reason: 'Workspace has no active journeyId',
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    const journey = release.journeys.find((j) => j.journeyId === workspace.journeyId);
     if (!journey) {
       return {
         decisionId: `dec_${Date.now()}`,
         type: 'handoff',
-        payload: { error: 'Journey not found in release' },
+        payload: { error: 'Unknown journeyId' },
         reason: `Journey '${workspace.journeyId}' is not defined in Business Pack '${release.manifest.packId}'`,
         createdAt: new Date().toISOString(),
       };
     }
 
     const currentStageId = workspace.currentStage || journey.initialStage;
+    if (!currentStageId) {
+      return {
+        decisionId: `dec_${Date.now()}`,
+        type: 'handoff',
+        payload: { error: 'Unknown stage' },
+        reason: `Journey '${journey.journeyId}' has no initialStage and workspace has no currentStage`,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
     const currentStage: JourneyStage | undefined = journey.stages[currentStageId];
 
     if (!currentStage) {

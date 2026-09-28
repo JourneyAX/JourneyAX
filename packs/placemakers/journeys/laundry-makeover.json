@@ -1,0 +1,38 @@
+{
+  "journeyId": "placemakers_laundry_makeover",
+  "version": "1.0.0",
+  "displayName": "Complete 5-Trade Laundry Solution",
+  "description": "Multi-trade laundry room solution covering cabinetry, tub, tapware, and wet-wall waterproofing.",
+  "goals": ["room_discovery", "trade_specification", "solution_bundle"],
+  "initialStage": "discovery",
+  "stages": {
+    "discovery": {
+      "displayName": "Room Discovery",
+      "description": "Capture room dimensions and style preference.",
+      "requiredFacts": ["room_dimensions"],
+      "allowedCapabilities": ["catalog.search"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        { "allFactsPresent": ["room_dimensions"], "nextStage": "specification" }
+      ]
+    },
+    "specification": {
+      "displayName": "Multi-Trade Specification",
+      "description": "Specify compliant cabinetry, tub, and GIB Aqualine wet-wall linings.",
+      "requiredFacts": [],
+      "allowedCapabilities": ["catalog.search", "knowledge.search", "trade.quote_create"],
+      "nextDecisionPolicy": "dependency-first",
+      "exitConditions": [
+        { "allFactsPresent": ["package_selected"], "nextStage": "bundle_review" }
+      ]
+    },
+    "bundle_review": {
+      "displayName": "Package Review & Pickup",
+      "description": "Confirm 60-minute branch pickup or trade dispatch.",
+      "requiredFacts": ["package_selected"],
+      "allowedCapabilities": ["branch.stock_check", "order.commit"],
+      "nextDecisionPolicy": "rule-first",
+      "exitConditions": []
+    }
+  }
+}

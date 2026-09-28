@@ -21,7 +21,9 @@ import * as path from 'path';
 import * as dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+if (process.env.JOURNEYAX_OFFLINE_HARNESS !== 'true') {
+  dotenv.config({ path: path.resolve(__dirname, '../.env') });
+}
 
 import {
   BusinessPackReleaseSchema,
@@ -562,6 +564,24 @@ async function discoverProjects(dbEvidence: DatabaseEvidence): Promise<Discovere
       ],
       model: { provider: 'anthropic', model: 'claude-3-5-sonnet' },
       dataResidency: 'us',
+    },
+    {
+      tenantId: 'caroma_fixture',
+      name: 'Caroma Topology Fixture',
+      industry: 'Commercial & Residential Fixtures',
+      commerceMode: 'quote',
+      externalConnectors: ['Activepieces Flows'],
+      activepiecesFlows: [
+        {
+          toolId: 'quote.create',
+          flowId: 'ap_flow_caroma_quote',
+          connectionRef: 'conn_caroma_quote_secret',
+          sideEffect: 'write',
+          risk: 'medium',
+        },
+      ],
+      model: { provider: 'google', model: 'gemini-2.5-pro' },
+      dataResidency: 'au',
     },
     {
       tenantId: 'momentec_fixture',

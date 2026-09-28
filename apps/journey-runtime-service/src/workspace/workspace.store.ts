@@ -7,6 +7,13 @@ export class WorkspaceStore {
   private tried = false;
   private memoryStore = new Map<string, WorkspaceState>();
 
+  constructor(customDb?: any) {
+    if (customDb) {
+      this.col = customDb.collection(COLLECTION_CUSTOMER_WORKSPACES);
+      this.tried = true;
+    }
+  }
+
   private get allowMemoryFallback(): boolean {
     return process.env.NODE_ENV !== 'production' && process.env.ALLOW_IN_MEMORY_WORKSPACES !== 'false';
   }
