@@ -1407,7 +1407,8 @@ async function runSuite() {
     //   'ws-test-1'  → bucket=40  (40 >= 10 → NOT IN 10% canary)
     //   any key, 0%  → always false
     //   any key, 100% → always true
-    const { isInCanaryBucket, resolveRuntimeRouting } = await import('../apps/journey-runtime-service/src/cutover/canary-routing');
+    const { isInCanaryBucket, resolveRuntimeRouting } = await import('@journeyax/journey-core');
+
 
     // Boundary: 0% and 100%
     assert.equal(isInCanaryBucket('placemakers', 'test', 'ws-test-4', 0), false, '0% → never canonical');

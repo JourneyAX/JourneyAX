@@ -25,7 +25,8 @@ import {
 import { hashToolInput } from './approval/approval.store';
 import * as crypto from 'crypto';
 import { computePackChecksum } from '@journeyax/business-pack';
-import { isInCanaryBucket } from './cutover/canary-routing';
+import { isInCanaryBucket } from '@journeyax/journey-core';
+
 
 
 @Injectable()

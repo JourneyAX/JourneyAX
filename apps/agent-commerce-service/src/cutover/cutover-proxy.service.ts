@@ -39,7 +39,8 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { resolveRuntimeRouting } from './canary-routing';
+import { resolveRuntimeRouting } from '@journeyax/journey-core';
+
 
 export interface CutoverDecision {
   /** Whether this request must be proxied to the canonical runtime. */

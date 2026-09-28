@@ -6334,19 +6334,13 @@ export class AgentService {
     const trace: TraceEntry[] = [];
     const pushTrace = (t: TraceEntry) => { trace.push(t); emit('trace', t); };
 
-    // Server-owned memory — reconstruct transcript + journey state (client sends
-    // only { sessionId, message }).
+    // Derive session ID first — needed as the stable canary-bucket key.
     const sessionId = request.sessionId || randomUUID();
-    const stored = await this.sessionStore.load(sessionId, tenantId);
-    const { messages, journeyState } = this.hydrate(request, stored);
-    const state = stored?.state ?? request.state;
-    const turnIndex = (stored?.turnCount || 0) + 1; // used to key per-tool-call trace entries (steps[])
-    pushTrace({ step: 'session', detail: stored ? `resumed ${sessionId.slice(0, 8)} (turn ${(stored.turnCount || 0) + 1}, ${messages.length} msg, ledger v${journeyState.version})` : `new ${sessionId.slice(0, 8)}` });
-    emit('session', { sessionId });
 
-    // Compatibility hop: if tenant is authoritatively cut over, proxy to canonical journey-runtime-service.
-    // Uses the fail-closed CutoverProxyService: only 404/no-record may fall back to legacy.
-    // Any timeout, DB error, malformed record, or runtime failure throws — never falls to legacy.
+    // ── Cutover decision BEFORE legacy session state ──────────────────────────
+    // Check before loading any legacy session data so migrated traffic does not
+    // touch the legacy pipeline at all. Fail-closed: only 404/no-record returns
+    // null (legacy path). Any DB error, timeout, or mismatch throws immediately.
     const proxied = await this.cutoverProxy.routeOrLegacy(tenantId, 'production', sessionId, request, sessionId);
     if (proxied !== null) {
       console.log(`[JourneyAX:Proxy:Stream] Authoritative cutover active: proxying stream to journey-runtime-service for tenant="${tenantId}"`);
@@ -6363,6 +6357,14 @@ export class AgentService {
       emit('done', {});
       return;
     }
+
+    // Legacy path: load session state only for unmigrated tenants.
+    const stored = await this.sessionStore.load(sessionId, tenantId);
+    const { messages, journeyState } = this.hydrate(request, stored);
+    const state = stored?.state ?? request.state;
+    const turnIndex = (stored?.turnCount || 0) + 1; // used to key per-tool-call trace entries (steps[])
+    pushTrace({ step: 'session', detail: stored ? `resumed ${sessionId.slice(0, 8)} (turn ${(stored.turnCount || 0) + 1}, ${messages.length} msg, ledger v${journeyState.version})` : `new ${sessionId.slice(0, 8)}` });
+    emit('session', { sessionId });
 
     // Published project config (model + persona + journey guidance)
     const projectConfig = await this.configLoader.loadProjectConfig(tenantId);

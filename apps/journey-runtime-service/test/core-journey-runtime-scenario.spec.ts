@@ -14,11 +14,12 @@ import { TurnInterpreter } from '../src/turn/interpret-event';
 import { RuntimeController } from '../src/runtime.controller';
 import { RuntimeService } from '../src/runtime.service';
 import { JourneyEngine } from '../src/turn/journey-engine';
-import { publishBusinessPack } from '@journeyax/business-pack';
+import { publishBusinessPack, computePackChecksum } from '@journeyax/business-pack';
 import { BusinessPackRelease } from '@journeyax/business-pack';
 import { TurnCommand, DuplicateTurnError } from '@journeyax/journey-core';
 import { BadRequestException } from '@nestjs/common';
 import { CARD_TYPES } from '@journeyax/ui-cards';
+import { CutoverRepository, DurableCutoverRecord } from '@journeyax/database';
 
 // ── In-Memory Control-Plane Mongo DB (Zero Production Data Access) ──────────
 class InMemoryMongoCollection {
@@ -77,6 +78,34 @@ class InMemoryControlPlaneDb {
       this.collections.set(name, new InMemoryMongoCollection(name));
     }
     return this.collections.get(name)!;
+  }
+}
+
+// ── Isolated CutoverRepository Stub ────────────────────────────────────────
+// The CutoverRepository requires a real DB provider, so we subclass it with
+// a stub dbProvider and override getCutoverRecord to serve the test record.
+// This avoids any external MongoDB connection — zero-egress, reproducible.
+class IsolatedTestCutoverRepository extends CutoverRepository {
+  private readonly record: DurableCutoverRecord;
+
+  constructor(record: DurableCutoverRecord) {
+    // dbProvider is never called because getCutoverRecord is overridden
+    super(async () => { throw new Error('[StubCutoverRepo] dbProvider must not be called in tests'); });
+    this.record = record;
+  }
+
+  override async getCutoverRecord(
+    tenantId: string,
+    environmentId: string
+  ): Promise<DurableCutoverRecord | null> {
+    const norm = (s: string) => (s || '').trim().toLowerCase();
+    if (
+      norm(tenantId) === norm(this.record.tenantId) &&
+      norm(environmentId) === norm(this.record.environmentId)
+    ) {
+      return { ...this.record };
+    }
+    return null; // Unknown tenant → no record (negative case)
   }
 }
 
@@ -452,6 +481,27 @@ async function runCoreJourneyRuntimeScenario() {
   const loadedRelease = await packRepo.loadActivePack('tenant-aero-dispatch', 'test');
   assert.equal(loadedRelease.manifest.packId, 'pack-air-mobility-v2');
   console.log('   ✅ PASS: Canonical publication and production loading verified without filesystem dependency.\n');
+
+  // ── Isolated CutoverRepository for test environment ────────────────────────
+  // assertCutoverApproved() is enforced on every runTurn/streamTurn call.
+  // We inject a stub repository that returns a valid 'migrated' record for
+  // tenant-aero-dispatch/test, derived from the published pack's actual checksum.
+  // Negative cases (missing record, mismatch) are covered by the separate
+  // placemakers-migration.spec.ts cutover gate tests (test 10b).
+  const liveChecksum = computePackChecksum(loadedRelease);
+  const testCutoverRecord: DurableCutoverRecord = {
+    tenantId: 'tenant-aero-dispatch',
+    environmentId: 'test',
+    status: 'migrated',
+    approvedReleaseVersion: loadedRelease.manifest.version,
+    approvedReleaseChecksum: liveChecksum,
+    canaryPercentage: 0,
+    revision: 1,
+    approvedBy: 'core-scenario-test-runner',
+    promotedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const isolatedCutoverRepo = new IsolatedTestCutoverRepository(testCutoverRecord);
 
   // Runtime setup
   const workspaceStore = new WorkspaceStore();
@@ -883,7 +933,10 @@ async function runCoreJourneyRuntimeScenario() {
   simulatedCostCents = 7500; // Reset to valid cost within budget ceiling (75.00 EUR < 100.00 EUR)
 
   // Setup Controller backed by durable appService1
+  // Inject the isolated CutoverRepository so assertCutoverApproved() passes
+  // without any database connection.
   const runtimeService1 = new RuntimeService(appService1);
+  runtimeService1.setCutoverRepositoryForTest(isolatedCutoverRepo);
   const runtimeController1 = new RuntimeController(runtimeService1);
 
   const authReq = {
@@ -1034,6 +1087,7 @@ async function runCoreJourneyRuntimeScenario() {
     outcomeValidator
   );
   const runtimeService2 = new RuntimeService(appService3);
+  runtimeService2.setCutoverRepositoryForTest(isolatedCutoverRepo);
   const runtimeController2 = new RuntimeController(runtimeService2);
 
   const preservedWorkspace = await runtimeController2.getWorkspace(
