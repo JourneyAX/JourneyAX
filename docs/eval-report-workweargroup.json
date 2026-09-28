@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "tenantId": "workweargroup",
+    "environmentId": "production",
+    "executionMode": "in_process",
+    "generatedAt": "2026-09-28T18:26:02.213Z",
+    "evaluationSuiteId": "workwear_acceptance_suite",
+    "allPassed": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "apprentice_electrician_under_250",
+      "name": "Apprentice Electrician Summer Gear Under $250",
+      "passed": true,
+      "finalStage": "build_solution",
+      "executedCapabilities": [
+        "catalog.search",
+        "solution.optimize"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "I’m an apprentice electrician. I need lightweight summer pants and composite-toe boots under $250.",
+          "assistantMessage": "Verified options: 2 item(s) matching criteria. Total: **230.00 AUD**.",
+          "stage": "build_solution",
+          "decision": "invoke_capability",
+          "cards": []
+        }
+      ]
+    }
+  ]
+}

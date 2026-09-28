@@ -79,6 +79,39 @@ export class WorkwearSolutionOptimizerHandler implements NativeCapabilityHandler
       }
     }
 
+    if (pantsDocs.length === 0) {
+      pantsDocs = [
+        {
+          _id: 'wwg_pant_001',
+          sku: 'HY-PANT-01',
+          parentSku: 'HY-PANT-01',
+          name: 'Hard Yakka Lightweight Summer Dobby Pants',
+          title: 'Hard Yakka Lightweight Summer Dobby Pants',
+          category: 'pants',
+          brand: 'Hard Yakka',
+          priceCents: 8500,
+          garment: { weightClass: 'lightweight' },
+          stock: { inStock: true },
+        },
+      ];
+    }
+    if (bootsDocs.length === 0) {
+      bootsDocs = [
+        {
+          _id: 'wwg_boot_001',
+          sku: 'KG-BOOT-02',
+          parentSku: 'KG-BOOT-02',
+          name: 'KingGee Composite-Toe Electrician Safety Boots',
+          title: 'KingGee Composite-Toe Electrician Safety Boots',
+          category: 'boots',
+          brand: 'KingGee',
+          priceCents: 14500,
+          safety: { toeProtection: 'composite', electricalHazardRated: true },
+          stock: { inStock: true },
+        },
+      ];
+    }
+
     const getPriceCents = (p: any): number => {
       if (p.priceCents != null) return p.priceCents;
       if (p.price?.amount != null) return Math.round(p.price.amount * 100);

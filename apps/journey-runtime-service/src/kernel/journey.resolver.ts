@@ -56,7 +56,7 @@ export class JourneyResolver {
 
     // 1. Check for intentional journey switch if workspace already has a pinned journey
     // (a pack-declared switch policy allows customer to explicitly switch journeys)
-    if (workspace && workspace.journeyId) {
+    if (workspace && workspace.journeyId && workspace.journeyId !== 'unassigned') {
       const allowSwitch =
         (release.conversationPolicy as any)?.allowJourneySwitch !== false;
 
@@ -465,9 +465,7 @@ export class JourneyResolver {
         targetCapability = toolId;
         break;
       }
-    }
-
-    if (!targetCapability && currentStage.allowedCapabilities && currentStage.allowedCapabilities.length > 0) {
+    } else if (currentStage.allowedCapabilities && currentStage.allowedCapabilities.length > 0) {
       // Evaluate allowedCapabilities in order; find first tool whose mapped output facts are not all present
       for (const capId of currentStage.allowedCapabilities) {
         const stageBinding = release.capabilities?.stageBindings?.find(
@@ -490,9 +488,6 @@ export class JourneyResolver {
         }
         targetCapability = capId;
         break;
-      }
-      if (!targetCapability) {
-        targetCapability = currentStage.allowedCapabilities[0];
       }
     }
 
@@ -554,7 +549,7 @@ export class JourneyResolver {
       }
 
       // 3. Validate types and enums — FAIL CLOSED!
-      for (const [field, val] of Object.entries(mappedInputs)) {
+      for (let [field, val] of Object.entries(mappedInputs)) {
         const fieldDef = (schemaProperties as any)[field];
         if (!fieldDef) continue;
 
@@ -570,13 +565,22 @@ export class JourneyResolver {
             };
           }
           if (expectedType === 'number' && typeof val !== 'number') {
-            return {
-              decisionId: `dec_${Date.now()}`,
-              type: 'fail',
-              payload: { error: `Invalid type for input '${field}': expected number, got ${typeof val}` },
-              reason: `Input type validation failed for '${field}'`,
-              createdAt: new Date().toISOString(),
-            };
+            if (typeof val === 'object' && val !== null && ((val as any).amountCents !== undefined || (val as any).amount !== undefined || (val as any).value !== undefined)) {
+              const num = Number((val as any).amountCents ?? (val as any).amount ?? (val as any).value);
+              if (!isNaN(num)) {
+                mappedInputs[field] = num;
+                val = num;
+              }
+            }
+            if (typeof val !== 'number') {
+              return {
+                decisionId: `dec_${Date.now()}`,
+                type: 'fail',
+                payload: { error: `Invalid type for input '${field}': expected number, got ${typeof val}` },
+                reason: `Input type validation failed for '${field}'`,
+                createdAt: new Date().toISOString(),
+              };
+            }
           }
           if (expectedType === 'boolean' && typeof val !== 'boolean') {
             return {

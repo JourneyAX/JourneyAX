@@ -33,6 +33,9 @@ export const CapabilityPlanItemSchema = z.object({
   toolId: z.string(),
   when: z.union([z.string(), CapabilityPlanConditionSchema]).optional(),
   producesFacts: z.array(z.string()).optional(),
+  sameTurnContinuation: z.boolean().optional(),
+  autoContinue: z.boolean().optional(),
+  continueTurn: z.boolean().optional(),
 });
 
 export const JourneyStageSchema = z.object({
@@ -44,6 +47,9 @@ export const JourneyStageSchema = z.object({
   allowedCapabilities: z.array(z.string()).default([]),
   blockedCapabilities: z.array(z.string()).optional(),
   capabilityPlan: z.array(CapabilityPlanItemSchema).optional(),
+  sameTurnContinuation: z.boolean().optional(),
+  autoContinue: z.boolean().optional(),
+  continueTurn: z.boolean().optional(),
   nextDecisionPolicy: z.enum(['dependency-first', 'rule-first', 'agent-driven']).default('dependency-first'),
   exitConditions: z.array(StageExitConditionSchema).default([]),
   handoffPolicy: z.object({

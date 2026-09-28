@@ -5,6 +5,10 @@ import { WorkspaceStore } from '../workspace/workspace.store';
 export class WorkspaceRepository {
   private store: WorkspaceStore;
 
+  public get isExplicitMemory(): boolean {
+    return Boolean((this.store as any)?.explicitMemory);
+  }
+
   constructor(storeOrDb?: WorkspaceStore | any) {
     if (storeOrDb instanceof WorkspaceStore) {
       this.store = storeOrDb;

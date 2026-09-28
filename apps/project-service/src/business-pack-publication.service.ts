@@ -5,9 +5,10 @@ import {
   publishBusinessPack,
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
+  computePackChecksum,
 } from '@journeyax/business-pack';
 import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
-import { EvaluationRunner } from '@journeyax/pack-eval';
+import { ReleaseValidationPort } from './release-validation.port';
 
 @Injectable()
 export class BusinessPackPublicationService {
@@ -17,7 +18,8 @@ export class BusinessPackPublicationService {
     private getVersionsCol: () => Collection<ConfigVersion>,
     private isConnected: () => boolean,
     private bustCache: (projectId: string) => void,
-    private getProjectFn: (projectId: string) => Promise<ProjectConfig | null>
+    private getProjectFn: (projectId: string) => Promise<ProjectConfig | null>,
+    private releaseValidator?: ReleaseValidationPort
   ) {}
 
   async publishConfig(
@@ -434,37 +436,17 @@ export class BusinessPackPublicationService {
       };
     }
 
-    // Evaluation Gate (EVAL-001): Run blocking evaluation suites before release publication
+    // Publication Gate (PUB-001): Run through injected release-validation port if configured
     let latestEvalSuiteResult: any = null;
-    if (businessPack.evaluations && businessPack.evaluations.length > 0) {
-      const blockingSuites = businessPack.evaluations.filter(
-        (suite: any) => suite.blockingOnPublish !== false
-      );
-      if (blockingSuites.length > 0) {
-        const evalRunner = new EvaluationRunner();
-        for (const suite of blockingSuites) {
-          try {
-            const evalResult = await evalRunner.runSuite({
-              tenantId: pid,
-              environmentId: 'production',
-              release: businessPack as any,
-              suitePath: undefined,
-            });
-            latestEvalSuiteResult = evalResult;
-            if (!evalResult.passed) {
-              return {
-                success: false,
-                message: `Publish blocked by evaluation gate: ${evalResult.failedScenarios} scenario(s) failed in evaluation suite '${evalResult.suiteId}'.`,
-              };
-            }
-          } catch (evalErr: any) {
-            return {
-              success: false,
-              message: `Publish blocked by evaluation gate execution failure: ${evalErr.message}`,
-            };
-          }
-        }
+    if (this.releaseValidator) {
+      const gateResult = await this.releaseValidator.validateRelease(pid, businessPack, version);
+      if (!gateResult.passed) {
+        return {
+          success: false,
+          message: `Publish blocked by publication gate: ${gateResult.error}`,
+        };
       }
+      latestEvalSuiteResult = gateResult.latestEvalSuiteResult || null;
     }
 
     const client = (this.getDb() as any).client;
@@ -656,3 +638,4 @@ export class BusinessPackPublicationService {
     return { success: true };
   }
 }
+

@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "tenantId": "abercrombie",
+    "environmentId": "production",
+    "executionMode": "in_process",
+    "generatedAt": "2026-09-28T18:26:04.587Z",
+    "evaluationSuiteId": "retail_cart_acceptance_suite",
+    "allPassed": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "apparel_category_and_quantity_selection",
+      "name": "Apparel Selection and Cart Addition",
+      "passed": true,
+      "finalStage": "cart_review",
+      "executedCapabilities": [
+        "catalog.search",
+        "item.configure",
+        "cart.update"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "I'm looking for Standard tier apparel, need 2 units.",
+          "assistantMessage": "Specifications and items have been updated for Cart Review & Checkout.",
+          "stage": "cart_review",
+          "decision": "invoke_capability",
+          "cards": []
+        }
+      ]
+    }
+  ]
+}

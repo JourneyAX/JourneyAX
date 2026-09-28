@@ -40,7 +40,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { resolveRuntimeRouting } from '@journeyax/journey-core';
-
+import type { CutoverRepository, DurableCutoverRecord } from '@journeyax/database';
 
 export interface CutoverDecision {
   /** Whether this request must be proxied to the canonical runtime. */
@@ -72,13 +72,21 @@ export class CutoverProxyService {
   private readonly lastKnownStatus = new Map<string, string>();
   private cacheTtlMs: number = 30_000;
 
-  constructor(overrideUrl?: string) {
+  private cutoverRepo?: CutoverRepository | null;
+
+  constructor(overrideUrl?: string, cutoverRepo?: CutoverRepository) {
     this.runtimeUrl =
       overrideUrl ||
       process.env.JOURNEY_RUNTIME_SERVICE_URL ||
       process.env.JOURNEY_RUNTIME_URL ||
       process.env.RUNTIME_SERVICE_URL ||
       DEFAULT_RUNTIME_SERVICE_URL;
+    this.cutoverRepo = cutoverRepo;
+  }
+
+  /** Injects a CutoverRepository for durable cutover resolution. */
+  setCutoverRepository(repo: CutoverRepository): void {
+    this.cutoverRepo = repo;
   }
 
   /** Clears the in-memory cache and last-known status (for testing). */
@@ -93,11 +101,37 @@ export class CutoverProxyService {
   }
 
   /**
+   * Retrieves the authoritative durable cutover record from CutoverRepository if configured.
+   */
+  async getDurableActivationRecord(
+    tenantId: string,
+    environmentId: string
+  ): Promise<DurableCutoverRecord | null> {
+    if (this.cutoverRepo) {
+      return await this.cutoverRepo.getCutoverRecord(tenantId, environmentId);
+    }
+    const uri = process.env.MONGODB_URI;
+    if (uri) {
+      try {
+        const { connectToDatabase, CutoverRepository: RepoClass } = await import('@journeyax/database');
+        const dbName = process.env.MONGODB_DB_NAME || 'journeyx';
+        this.cutoverRepo = new RepoClass(async () => {
+          const { client, db } = await connectToDatabase(uri, dbName);
+          return { client, db };
+        });
+        return await this.cutoverRepo.getCutoverRecord(tenantId, environmentId);
+      } catch (err: any) {
+        throw new Error(`Durable cutover lookup failed: ${err.message}`);
+      }
+    }
+    return null;
+  }
+
+  /**
    * Resolves the cutover decision for a tenant + environment + workspace.
    *
-   * Returns `legacy` only when the tenant has a verified runtime 404 / no record or
-   * is unmigrated, or when registry is unreachable and tenant has NEVER been seen migrated.
-   * Tenants known to be migrated/canary fail closed when registry is unreachable.
+   * Invariant: Never routes an activated tenant back to legacy after restart or registry failure;
+   * uses durable authoritative activation state and fails closed.
    */
   async resolveCutover(
     tenantId: string,
@@ -133,15 +167,44 @@ export class CutoverProxyService {
         }
       );
     } catch (networkErr: any) {
+      // 1. Check in-memory status
       const lastStatus = this.lastKnownStatus.get(cacheKey);
-      if (lastStatus === 'migrated' || lastStatus === 'canary') {
-        // Known migrated/canary tenants must FAIL CLOSED to prevent legacy data corruption
+
+      // 2. Check durable authoritative activation state (survives restarts)
+      let durableStatus: string | undefined;
+      try {
+        const durableRecord = await this.getDurableActivationRecord(normTenant, normEnv);
+        if (durableRecord?.status) {
+          durableStatus = durableRecord.status;
+        }
+      } catch (durableErr: any) {
+        // If durable store lookup errors, fail closed immediately
         throw new Error(
-          `[CutoverProxy] Cutover registry unreachable for tenant='${tenantId}' env='${environmentId}' (status='${lastStatus}'): failing closed: ${networkErr.message}`
+          `[CutoverProxy] Cutover registry unreachable and durable lookup failed for tenant='${tenantId}' env='${environmentId}': failing closed: ${durableErr.message}`
         );
       }
 
-      // Tenant has NEVER been seen migrated: continue on legacy and log loudly
+      const effectiveStatus = durableStatus || lastStatus;
+      if (effectiveStatus === 'migrated' || effectiveStatus === 'canary') {
+        // Known or durable migrated/canary tenants must FAIL CLOSED to prevent legacy data corruption
+        throw new Error(
+          `[CutoverProxy] Cutover registry unreachable for activated tenant='${tenantId}' env='${environmentId}' (authoritative status='${effectiveStatus}'): failing closed: ${networkErr.message}`
+        );
+      }
+
+      // In production, when the runtime registry is unavailable and no durable activation repository is configured, fail closed
+      const hasDurableRepo = Boolean(this.cutoverRepo || process.env.MONGODB_URI);
+      const isProduction =
+        process.env.NODE_ENV === 'production' ||
+        process.env.APP_ENV === 'production';
+
+      if (isProduction && !hasDurableRepo) {
+        throw new Error(
+          `[CutoverProxy] Cutover registry unreachable and no durable activation repository is configured for tenant='${tenantId}' env='${environmentId}': production must fail closed: ${networkErr.message}`
+        );
+      }
+
+      // Tenant has NEVER been seen migrated and has no durable record: continue on legacy in non-prod and log loudly
       console.error(
         `[CutoverProxy] ⚠️ CUTOVER REGISTRY UNREACHABLE for tenant='${tenantId}' env='${environmentId}'. ` +
         `Tenant has never been seen migrated; continuing on legacy commerce engine. Network error: ${networkErr.message}`

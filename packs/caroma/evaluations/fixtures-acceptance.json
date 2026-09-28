@@ -4,6 +4,8 @@
   "tenantId": "caroma",
   "version": "1.0.0",
   "blockingOnPublish": true,
+  "deterministicOffline": true,
+  "executionMode": "deterministic_offline",
   "scenarios": [
     {
       "scenarioId": "ensuite_specification_and_quote",

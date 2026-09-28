@@ -37,6 +37,8 @@ export const EvaluationSuiteSchema = z.object({
   tenantId: z.string(),
   version: z.string().default('1.0.0'),
   blockingOnPublish: z.boolean().default(true),
+  deterministicOffline: z.boolean().optional(),
+  executionMode: z.string().optional(),
   scenarios: z.array(ScenarioSchema).min(1),
 });
 

@@ -3,7 +3,28 @@
   "version": "1.0.0",
   "displayName": "Workwear Solution Builder",
   "description": "Guides trade customers from trade role identification to a fully budget-compliant pants and boots bundle.",
-  "goals": ["discover", "build_solution", "purchase"],
+  "goals": [
+    "discover",
+    "build_solution",
+    "purchase",
+    "workwear",
+    "apprentice electrician",
+    "electrician",
+    "summer pants",
+    "boots",
+    "work boots",
+    "pants and boots"
+  ],
+  "metadata": {
+    "triggerIntents": [
+      "workwear_solution",
+      "workwear",
+      "electrician",
+      "apprentice_electrician",
+      "boots_and_pants",
+      "trade_gear"
+    ]
+  },
   "initialStage": "understand_need",
   "stages": {
     "understand_need": {
@@ -15,12 +36,21 @@
         "budget"
       ],
       "allowedCapabilities": ["catalog.search"],
+      "capabilityPlan": [
+        {
+          "toolId": "catalog.search",
+          "when": { "factsPresent": ["occupation", "required_item_types"] },
+          "producesFacts": ["catalog_results"],
+          "sameTurnContinuation": true
+        }
+      ],
       "nextDecisionPolicy": "dependency-first",
       "exitConditions": [
         {
           "allFactsPresent": [
             "occupation",
-            "required_item_types"
+            "required_item_types",
+            "catalog_results"
           ],
           "nextStage": "build_solution"
         }
@@ -34,6 +64,13 @@
         "solution.optimize",
         "catalog.search",
         "pricing.validate"
+      ],
+      "capabilityPlan": [
+        {
+          "toolId": "solution.optimize",
+          "when": { "factsPresent": ["occupation", "required_item_types", "budget"] },
+          "producesFacts": ["bundle_recommended"]
+        }
       ],
       "blockedCapabilities": ["order.commit"],
       "nextDecisionPolicy": "dependency-first",

@@ -30,6 +30,25 @@ async function runSuite() {
     console.log('   ✅ PASS: Unmigrated tenant continues on legacy when registry is down.\n');
   }
 
+  // Test 1b: Production fail closed: NODE_ENV=production + registry down + no durable repo -> throws fail-closed
+  console.log('1b. Testing NODE_ENV=production + registry down + no durable repo -> throws fail-closed...');
+  {
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const proxy = new CutoverProxyService('http://127.0.0.1:59991');
+      proxy.clearCache();
+      await assert.rejects(
+        () => proxy.resolveCutover('unmigrated_brand', 'production', 'session_01', 500),
+        /production must fail closed/,
+        'When runtime registry is down and no durable activation repository is configured, production must fail closed'
+      );
+      console.log('   ✅ PASS: Production strictly fails closed when registry is down without durable repo.\n');
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+    }
+  }
+
   // Test 2: Registry down + tenant cached as migrated -> throws fail-closed
   console.log('2. Testing registry down + tenant cached as migrated -> throws fail-closed...');
   {
@@ -171,6 +190,54 @@ async function runSuite() {
 
     await new Promise<void>((resolve) => runtimeServer.close(() => resolve()));
     console.log('   ✅ PASS: Genuine runtime 404 resolves to legacy and caches answer.\n');
+  }
+
+  // Test 5: Registry down + simulated restart (zero in-memory state) + durable record is 'migrated' -> throws fail-closed
+  console.log('5. Testing registry down + restart + durable record is migrated -> throws fail-closed...');
+  {
+    const mockRepo: any = {
+      getCutoverRecord: async (t: string, e: string) => {
+        if (t === 'placemakers') {
+          return {
+            tenantId: 'placemakers',
+            environmentId: 'production',
+            status: 'migrated',
+            approvedReleaseChecksum: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6',
+            approvedReleaseVersion: '1.0.0',
+            revision: 1,
+            approvedBy: 'security-admin',
+            promotedAt: new Date().toISOString(),
+          };
+        }
+        return null;
+      },
+    };
+
+    // Fresh instance pointing to unreachable port (simulates service restart)
+    const restartedProxy = new CutoverProxyService('http://127.0.0.1:59992', mockRepo);
+
+    // Turn for activated tenant must fail closed: never route to legacy!
+    await assert.rejects(
+      () => restartedProxy.resolveCutover('placemakers', 'production', 'sess_post_restart', 500),
+      (err: any) => {
+        assert.ok(
+          err.message.includes('failing closed'),
+          `Must fail closed: got "${err.message}"`
+        );
+        assert.ok(
+          err.message.includes('authoritative status=\'migrated\''),
+          `Must report authoritative status: got "${err.message}"`
+        );
+        return true;
+      },
+      'Activated tenant must fail closed after restart when registry is unreachable'
+    );
+
+    // Turn for unmigrated tenant on same restarted proxy can continue to legacy
+    const unmigratedDecision = await restartedProxy.resolveCutover('brand_unmigrated', 'production', 'sess_02', 500);
+    assert.equal(unmigratedDecision, 'legacy', 'Unmigrated tenant without durable record continues on legacy');
+
+    console.log('   ✅ PASS: Post-restart activated tenant fails closed from durable authoritative state.\n');
   }
 
   console.log('🎉 ALL CUTOVER PROXY TESTS PASSED.\n');

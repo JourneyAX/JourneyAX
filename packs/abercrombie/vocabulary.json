@@ -4,22 +4,22 @@
     {
       "term": "Standard Tier",
       "canonical": "standard",
-      "category": "tier",
-      "synonyms": ["basic", "standard", "core"],
+      "category": "category",
+      "synonyms": ["basic", "standard", "core", "standard tier"],
       "description": "Standard tier catalog item"
     },
     {
       "term": "Premium Tier",
       "canonical": "premium",
-      "category": "tier",
-      "synonyms": ["pro", "deluxe", "luxe", "curve love"],
+      "category": "category",
+      "synonyms": ["pro", "deluxe", "luxe", "curve love", "premium tier"],
       "description": "Premium tier catalog item"
     },
     {
       "term": "Custom Spec",
       "canonical": "custom_spec",
-      "category": "custom",
-      "synonyms": ["bespoke", "monogram", "custom"],
+      "category": "category",
+      "synonyms": ["bespoke", "monogram", "custom", "custom spec"],
       "description": "Custom specification order"
     }
   ],
@@ -31,7 +31,7 @@
   "slotQuestions": {
     "category": {
       "text": "What apparel category or tier are you shopping for today?",
-      "options": ["Standard Tier", "Premium Tier", "Custom Spec"]
+      "options": ["standard", "premium", "custom_spec", "Standard Tier", "Premium Tier", "Custom Spec"]
     },
     "quantity": {
       "text": "How many units would you like to configure?",
@@ -43,7 +43,7 @@
     }
   },
   "slotSynonyms": {
-    "category": ["type", "tier", "group", "apparel_category", "clothing_type"],
+    "category": ["type", "tier", "group", "apparel_category", "clothing_type", "standard tier", "premium tier", "apparel"],
     "quantity": ["count", "amount", "units", "quantity_needed"]
   },
   "slotMappings": {},

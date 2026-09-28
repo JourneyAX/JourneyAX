@@ -68,7 +68,7 @@
     },
     "tradeCategory": {
       "text": "What trade or project category are you planning today?",
-      "options": ["GIB Aqualine", "Kwila Decking", "SuperTub Laundry", "Wet Area Linings", "gib_aqualine", "moisture-resistant linings", "linings", "waterproofing", "wet area"]
+      "options": ["Decking", "Kwila Decking", "Kwila", "Laundry", "SuperTub Laundry", "GIB Aqualine", "Wet Area Linings", "gib_aqualine", "moisture-resistant linings", "linings", "waterproofing", "wet area"]
     },
     "quote_generated": {
       "text": "Would you like to review and proceed with your generated quote?",
@@ -80,13 +80,14 @@
     },
     "bom_confirmed": {
       "text": "Would you like to review and submit your trade bill of materials?",
-      "options": ["Approve BOM", "Modify BOM"]
+      "options": ["true", "false", "yes", "no", "Approve BOM", "Modify BOM", "Confirm the bill of materials", "confirm the bill of materials and create trade quote"]
     }
   },
   "slotSynonyms": {
     "tradeCategory": ["category", "trade", "project type", "materials needed", "moisture-resistant linings", "linings", "waterproofing", "wet area", "decking", "laundry"],
     "deck_dimensions": ["5x3 meters", "5x3m", "5x3", "4x3", "3x2", "6x4", "deck dimensions", "deck size"],
-    "room_dimensions": ["3x2 meters", "3x2m", "3x2", "2x2", "3x3", "room dimensions", "laundry size"]
+    "room_dimensions": ["3x2 meters", "3x2m", "3x2", "2x2", "3x3", "room dimensions", "laundry size"],
+    "bom_confirmed": ["confirm the bill of materials", "confirm bom", "approve bom", "create trade quote", "confirm the bill of materials and create trade quote"]
   },
   "slotMappings": {},
   "prohibitedTerms": []

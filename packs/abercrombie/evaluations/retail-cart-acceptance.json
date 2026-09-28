@@ -4,6 +4,8 @@
   "tenantId": "abercrombie",
   "version": "1.0.0",
   "blockingOnPublish": true,
+  "deterministicOffline": true,
+  "executionMode": "deterministic_offline",
   "scenarios": [
     {
       "scenarioId": "apparel_category_and_quantity_selection",

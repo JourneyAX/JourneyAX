@@ -4,6 +4,8 @@
   "tenantId": "placemakers",
   "version": "1.0.0",
   "blockingOnPublish": true,
+  "deterministicOffline": true,
+  "executionMode": "deterministic_offline",
   "scenarios": [
     {
       "scenarioId": "hardwood_deck_estimator",

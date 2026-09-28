@@ -3,10 +3,25 @@ import { ClientSession } from 'mongodb';
 
 export class OutboxRepository {
   private inMemoryQueue: OutboxEventRecord[] = [];
+  private readonly customDb?: any;
+  private readonly explicitMemory: boolean = false;
 
-  constructor(private readonly customDb?: any) {}
+  public get isExplicitMemory(): boolean {
+    return this.explicitMemory;
+  }
+
+  constructor(customDbOrOptions?: any) {
+    if (customDbOrOptions && typeof customDbOrOptions.collection === 'function') {
+      this.customDb = customDbOrOptions;
+    } else if (customDbOrOptions?.forceInMemory || customDbOrOptions?.explicitMemory) {
+      this.explicitMemory = true;
+    }
+  }
 
   private isMemoryPermitted(environmentId?: string): boolean {
+    if (this.explicitMemory) {
+      return true;
+    }
     if (this.customDb) {
       return false; // Durable DB is active
     }
@@ -28,7 +43,7 @@ export class OutboxRepository {
   }
 
   private isProductionOrStaging(environmentId?: string): boolean {
-    if (this.customDb) {
+    if (this.customDb || this.explicitMemory) {
       return false;
     }
     if (this.isMemoryPermitted(environmentId)) {

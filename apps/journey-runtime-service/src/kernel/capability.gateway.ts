@@ -14,6 +14,10 @@ import {
   KnowledgeSearchHandler,
   BranchStockCheckHandler,
   TradeQuoteCreateHandler,
+  ItemConfigureHandler,
+  CartUpdateHandler,
+  SpecificationConfigureHandler,
+  QuoteUpdateHandler,
 } from '../capabilities/handlers';
 
 import {
@@ -51,11 +55,20 @@ export class CapabilityGateway {
 
     // Register generic domain-neutral platform handlers
     this.dispatcher.registerNativeHandler('catalog.search', new CatalogSearchHandler());
+    this.dispatcher.registerNativeHandler('catalog-search', new CatalogSearchHandler());
     this.dispatcher.registerNativeHandler('pricing.validate', new PricingValidateHandler());
     this.dispatcher.registerNativeHandler('order.commit', new OrderCommitHandler());
     this.dispatcher.registerNativeHandler('knowledge.search', new KnowledgeSearchHandler());
     this.dispatcher.registerNativeHandler('branch.stock_check', new BranchStockCheckHandler());
     this.dispatcher.registerNativeHandler('trade.quote_create', new TradeQuoteCreateHandler());
+    this.dispatcher.registerNativeHandler('item.configure', new ItemConfigureHandler());
+    this.dispatcher.registerNativeHandler('item-configure', new ItemConfigureHandler());
+    this.dispatcher.registerNativeHandler('cart.update', new CartUpdateHandler());
+    this.dispatcher.registerNativeHandler('cart-update', new CartUpdateHandler());
+    this.dispatcher.registerNativeHandler('specification.configure', new SpecificationConfigureHandler());
+    this.dispatcher.registerNativeHandler('specification-configure', new SpecificationConfigureHandler());
+    this.dispatcher.registerNativeHandler('quote.update', new QuoteUpdateHandler());
+    this.dispatcher.registerNativeHandler('quote-update', new QuoteUpdateHandler());
   }
 
   getOwnershipRepository(): IConnectionOwnershipRepository {

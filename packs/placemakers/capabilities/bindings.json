@@ -175,7 +175,6 @@
       },
       "outputFactMapping": {
         "quote_generated": "quoteId",
-        "bom_confirmed": "confirmed",
         "package_selected": "packageId"
       },
       "timeoutMs": 10000
@@ -187,7 +186,9 @@
       "bindingVersion": "1.0.0",
       "executor": {
         "type": "activepieces_flow",
-        "flowId": "ap_flow_pm_sap_quote"
+        "flowId": "ap_flow_pm_sap_quote",
+        "connectionRef": "conn_pm_sap_trade",
+        "secretRef": "gcp-secret://journeyax-secrets/placemakers/production/pm-sap-key"
       },
       "outputFactMapping": {
         "erp_synced": "erpReference"
@@ -286,10 +287,19 @@
       "stageId": "bom_assembly",
       "tools": [
         {
+          "toolId": "knowledge.search",
+          "inputMapping": {
+            "query": "tradeCategory"
+          },
+          "outputFactMapping": {
+            "knowledge_verified": "verified"
+          }
+        },
+        {
           "toolId": "trade.quote_create",
           "inputMapping": {},
           "outputFactMapping": {
-            "bom_confirmed": "confirmed"
+            "quote_generated": "quoteId"
           }
         }
       ]

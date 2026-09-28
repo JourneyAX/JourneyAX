@@ -8,6 +8,8 @@ async function main() {
   let environmentId: 'dev' | 'test' | 'staging' | 'production' = 'production';
   let suitePath: string | undefined;
 
+  let mode: 'http' | 'in_process' = 'in_process';
+
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--tenant' && args[i + 1]) {
       tenantId = args[i + 1];
@@ -18,10 +20,13 @@ async function main() {
     } else if (args[i] === '--suite' && args[i + 1]) {
       suitePath = args[i + 1];
       i++;
+    } else if (args[i] === '--mode' && args[i + 1]) {
+      mode = args[i + 1] as any;
+      i++;
     }
   }
 
-  console.log(`\n🧪 Running Evaluation Gate for Tenant: '${tenantId}' (${environmentId})...\n`);
+  console.log(`\n🧪 Running Evaluation Gate for Tenant: '${tenantId}' (${environmentId}) [mode=${mode}]...\n`);
 
   const runner = new EvaluationRunner();
   try {
@@ -29,9 +34,10 @@ async function main() {
       tenantId,
       environmentId,
       suitePath,
+      mode,
     });
 
-    console.log(`Suite: ${result.suiteId} (${result.durationMs}ms)`);
+    console.log(`Suite: ${result.suiteId} (${result.durationMs}ms) [mode=${mode}]`);
     console.log(`Total Scenarios: ${result.totalScenarios}, Passed: ${result.passedScenarios}, Failed: ${result.failedScenarios}\n`);
 
     for (const s of result.scenarios) {
@@ -58,36 +64,36 @@ async function main() {
       console.log('');
     }
 
-    // Save sanitized SSE transcript artifact if placemakers
-    if (tenantId === 'placemakers') {
-      const transcriptFile = path.resolve(process.cwd(), 'docs', 'placemakers-sse-transcript-sanitized.json');
-      const transcriptData = {
-        metadata: {
-          tenantId: 'placemakers',
-          generatedAt: new Date().toISOString(),
-          evaluationSuiteId: result.suiteId,
-          allPassed: result.passed,
-        },
-        scenarios: result.scenarios.map((s) => ({
-          scenarioId: s.scenarioId,
-          name: s.name,
-          passed: s.passed,
-          finalStage: s.finalStage,
-          executedCapabilities: s.executedCapabilities,
-          turns: s.turns.map((t) => ({
-            turn: t.turnIndex,
-            userMessage: t.customerMessage,
-            assistantMessage: t.assistantMessage,
-            stage: t.stage,
-            decision: t.decisionType,
-            cards: t.cardTypes,
-          })),
+    // Truthful evaluation report saving (NEVER labeled as SSE transcript for in-process runs)
+    const reportFile = path.resolve(process.cwd(), 'docs', `eval-report-${tenantId}.json`);
+    const reportData = {
+      metadata: {
+        tenantId,
+        environmentId,
+        executionMode: mode,
+        generatedAt: new Date().toISOString(),
+        evaluationSuiteId: result.suiteId,
+        allPassed: result.passed,
+      },
+      scenarios: result.scenarios.map((s) => ({
+        scenarioId: s.scenarioId,
+        name: s.name,
+        passed: s.passed,
+        finalStage: s.finalStage,
+        executedCapabilities: s.executedCapabilities,
+        turns: s.turns.map((t) => ({
+          turn: t.turnIndex,
+          userMessage: t.customerMessage,
+          assistantMessage: t.assistantMessage,
+          stage: t.stage,
+          decision: t.decisionType,
+          cards: t.cardTypes,
         })),
-      };
-      fs.mkdirSync(path.dirname(transcriptFile), { recursive: true });
-      fs.writeFileSync(transcriptFile, JSON.stringify(transcriptData, null, 2), 'utf8');
-      console.log(`📝 Updated evidence transcript saved to ${transcriptFile}\n`);
-    }
+      })),
+    };
+    fs.mkdirSync(path.dirname(reportFile), { recursive: true });
+    fs.writeFileSync(reportFile, JSON.stringify(reportData, null, 2), 'utf8');
+    console.log(`📝 Evaluation report saved to ${reportFile}\n`);
 
     if (!result.passed) {
       console.error(`\n❌ EVALUATION SUITE FAILED: ${result.failedScenarios} scenarios did not pass.\n`);

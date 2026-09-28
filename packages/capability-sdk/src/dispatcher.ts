@@ -84,7 +84,11 @@ export class CapabilityDispatcher {
       switch (executor.type) {
         case 'native_capability': {
           const handlerKey = executor.nativeHandler || tool.toolId;
-          const handler = this.nativeHandlers.get(handlerKey);
+          const handler =
+            this.nativeHandlers.get(handlerKey) ||
+            this.nativeHandlers.get(tool.toolId) ||
+            this.nativeHandlers.get(handlerKey.replace(/-/g, '.')) ||
+            this.nativeHandlers.get(handlerKey.replace(/\./g, '-'));
           if (!handler) {
             throw new Error(`No native capability handler registered for '${handlerKey}'`);
           }

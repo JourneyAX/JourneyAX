@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "tenantId": "placemakers",
+    "environmentId": "production",
+    "executionMode": "in_process",
+    "generatedAt": "2026-09-28T18:25:59.799Z",
+    "evaluationSuiteId": "placemakers_acceptance",
+    "allPassed": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "hardwood_deck_estimator",
+      "name": "Hardwood Deck Estimator to Quote Delivery",
+      "passed": true,
+      "finalStage": "quote_delivery",
+      "executedCapabilities": [
+        "catalog.search",
+        "trade.quote_create"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "Hi, I'm planning to build a hardwood deck of 5x3 meters",
+          "assistantMessage": "I found 1 product(s) matching your criteria.",
+          "stage": "materials_spec",
+          "decision": "invoke_capability",
+          "cards": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "Generate the quote for this deck project",
+          "assistantMessage": "I found 2 product(s) matching your criteria.",
+          "stage": "quote_delivery",
+          "decision": "invoke_capability",
+          "cards": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "laundry_room_solution",
+      "name": "Complete Laundry Solution to Bundle Review",
+      "passed": true,
+      "finalStage": "bundle_review",
+      "executedCapabilities": [
+        "catalog.search",
+        "trade.quote_create"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "I want to do a complete laundry makeover for room size 3x2",
+          "assistantMessage": "I found 1 product(s) matching your criteria.",
+          "stage": "specification",
+          "decision": "invoke_capability",
+          "cards": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "Select the standard laundry package and prepare my quote",
+          "assistantMessage": "I found 2 product(s) matching your criteria.",
+          "stage": "bundle_review",
+          "decision": "invoke_capability",
+          "cards": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "wet_area_trade_specification",
+      "name": "Wet Area Specification & Compliance to Trade Approval",
+      "passed": true,
+      "finalStage": "trade_approval",
+      "executedCapabilities": [
+        "knowledge.search",
+        "trade.quote_create"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "What moisture-resistant linings and waterproofing do I need for my wet area?",
+          "assistantMessage": "Specifications and items have been updated for Bill of Materials Assembly.",
+          "stage": "bom_assembly",
+          "decision": "invoke_capability",
+          "cards": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "Confirm the bill of materials and create trade quote",
+          "assistantMessage": "I found 2 product(s) matching your criteria.",
+          "stage": "trade_approval",
+          "decision": "invoke_capability",
+          "cards": []
+        }
+      ]
+    }
+  ]
+}

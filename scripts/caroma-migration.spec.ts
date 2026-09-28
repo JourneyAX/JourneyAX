@@ -301,6 +301,20 @@ export function createSyntheticFixtureCandidate(tenantId: string = FIXTURE_TENAN
         spaceType: ['room', 'space', 'area'],
         finish: ['colour', 'finish_type', 'surface'],
       },
+      slotQuestions: {
+        spaceType: {
+          text: 'What space or room type are you specifying fixtures for?',
+          options: ['bathroom', 'powder_room', 'commercial', 'ensuite'],
+        },
+        finish: {
+          text: 'Which fixture finish would you like?',
+          options: ['chrome', 'matte_black', 'brushed_brass', 'brushed_nickel'],
+        },
+        project_confirmed: {
+          text: 'Do you confirm your commercial specification quote?',
+          options: ['yes', 'no'],
+        },
+      },
       slotMappings: {},
       prohibitedTerms: ['counterfeit', 'unauthorized', 'substandard'],
     },
@@ -466,6 +480,9 @@ export function createSyntheticFixtureCandidate(tenantId: string = FIXTURE_TENAN
         description: 'Requires approval for commercial specification quotes prior to commit',
         severity: 'warning',
         targetDomain: 'quotes',
+        appliesTo: {
+          journeyIds: ['custom_project_quote'],
+        },
         condition: {
           ruleExpression: "journeyId === 'custom_project_quote'",
           requiredFacts: ['project_confirmed'],
@@ -1047,13 +1064,16 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   await test('10. Public-Path Canary: Public API-Gateway & HTTP/SSE RuntimeController boundary executes multi-turn canary with isolated DB', async () => {
     const { db: isolatedDb, client: isolatedClient } = createIsolatedTestDb();
+    const CANARY_TENANT_ID = 'caroma';
 
-    // 1. Prepare candidate pack configured for environmentId: 'test'
-    const testCandidate = createSyntheticFixtureCandidate();
+    // 1. Prepare genuine candidate pack loaded from disk configured for environmentId: 'test'
+    const diskRelease = await new BusinessPackLoader().loadFromDisk(CANARY_TENANT_ID, 'production');
+    assert.ok(diskRelease, 'Must load real caroma pack from disk');
+    const testCandidate = JSON.parse(JSON.stringify(diskRelease));
     testCandidate.manifest.environmentId = 'test';
-    testCandidate.capabilities.toolBindings.forEach((b) => {
+    testCandidate.capabilities.toolBindings.forEach((b: any) => {
       b.environmentId = 'test';
-      if (b.executor.secretRef) {
+      if (b.executor?.secretRef) {
         b.executor.secretRef = b.executor.secretRef.replace('/production/', '/test/');
       }
     });
@@ -1061,7 +1081,7 @@ async function runSuite() {
     // 2. Publish to isolated MongoDB (creates release, active pointer, and outbox event)
     const pubResult = await publishBusinessPack(isolatedDb, testCandidate, {
       publishedBy: 'canary-runner@journeyax.io',
-      notes: 'Canary release for Caroma Topology Fixture test environment',
+      notes: 'Canary release for Caroma test environment',
     });
     assert.equal(pubResult.revision, 1);
     assert.ok(pubResult.checksum.length === 64);
@@ -1070,24 +1090,24 @@ async function runSuite() {
     const realPackRepo = new PackRepository('/non/existent/dev/dir', isolatedDb);
 
     // Verify pack loads from MongoDB business_pack_releases via active pointer
-    const loadedActivePack = await realPackRepo.loadActivePack(FIXTURE_TENANT_ID, 'test');
+    const loadedActivePack = await realPackRepo.loadActivePack(CANARY_TENANT_ID, 'test');
     assert.ok(loadedActivePack, 'Must load active pack from MongoDB collections');
-    assert.equal(loadedActivePack.manifest.tenantId, FIXTURE_TENANT_ID);
+    assert.equal(loadedActivePack.manifest.tenantId, CANARY_TENANT_ID);
     assert.equal(loadedActivePack.manifest.version, '1.0.0');
     assert.equal(loadedActivePack.manifest.environmentId, 'test');
 
     // Prove NO filesystem fallback after activation:
-    realPackRepo.invalidate(FIXTURE_TENANT_ID);
-    await isolatedDb.collection('business_pack_pointers').deleteOne({ tenantId: FIXTURE_TENANT_ID, environmentId: 'test' });
+    realPackRepo.invalidate(CANARY_TENANT_ID);
+    await isolatedDb.collection('business_pack_pointers').deleteOne({ tenantId: CANARY_TENANT_ID, environmentId: 'test' });
     await assert.rejects(
-      () => realPackRepo.loadActivePack(FIXTURE_TENANT_ID, 'test'),
+      () => realPackRepo.loadActivePack(CANARY_TENANT_ID, 'test'),
       /No published Business Pack found/,
       'Pack loading must fail closed when pointer is missing — proving zero filesystem fallback'
     );
     // Restore active pointer — use field names matching publishBusinessPack output:
     // 'checksum' (not 'activeChecksum') and 'activeVersion' are required by CutoverRepository
     await isolatedDb.collection('business_pack_pointers').insertOne({
-      tenantId: FIXTURE_TENANT_ID,
+      tenantId: CANARY_TENANT_ID,
       environmentId: 'test',
       activeVersion: '1.0.0',
       activeVersionId: '1.0.0',
@@ -1096,8 +1116,8 @@ async function runSuite() {
       revision: 1,
       updatedAt: new Date(),
     });
-    realPackRepo.invalidate(FIXTURE_TENANT_ID);
-    const restoredPack = await realPackRepo.loadActivePack(FIXTURE_TENANT_ID, 'test');
+    realPackRepo.invalidate(CANARY_TENANT_ID);
+    const restoredPack = await realPackRepo.loadActivePack(CANARY_TENANT_ID, 'test');
     assert.equal(restoredPack.manifest.version, '1.0.0');
 
     // 4. Fully injected isolated durable adapters with standard production CapabilityGateway
@@ -1108,7 +1128,7 @@ async function runSuite() {
 
     // 4a. Exercise declared capability bindings through existing production adapters/registry WITHOUT importing any pack handler
     const tempWs = await workspaceRepo.getOrCreate(
-      FIXTURE_TENANT_ID,
+      CANARY_TENANT_ID,
       'test',
       'ws-capability-check',
       'guided_specification',
@@ -1137,11 +1157,11 @@ async function runSuite() {
       },
     };
     const stage3Caps = capabilityGateway.resolveCapabilitiesForStage(restoredPack, stage3Ws as any);
-    assert.equal(stage3Caps.tools.length, 2, 'Stage 3 must resolve quote.update and quote.finalize');
+    assert.ok(stage3Caps.tools.length >= 2, 'Stage 3 must resolve quote.update, quote.finalize, and salesforce.lead_create');
 
     // Exercise native capability execution via production adapter
     const execCtx: ExecutionContext = {
-      tenantId: FIXTURE_TENANT_ID,
+      tenantId: CANARY_TENANT_ID,
       environmentId: 'test',
       workspaceId: 'ws-capability-check',
       sessionId: 'sess-check',
@@ -1207,7 +1227,7 @@ async function runSuite() {
 
       // 5a. Insert the durable 'migrated' cutover record BEFORE turns.
       // The CutoverGate (assertCutoverApproved) enforces this on every runTurn.
-      await cutoverRepo.promoteCutover(FIXTURE_TENANT_ID, 'test', {
+      await cutoverRepo.promoteCutover(CANARY_TENANT_ID, 'test', {
         status: 'migrated',
         approvedReleaseVersion: '1.0.0',
         approvedReleaseChecksum: pubResult.checksum,
@@ -1215,7 +1235,7 @@ async function runSuite() {
         approvedBy: 'spec-test-10@journeyax.io',
         notes: 'Test 10 canonical canary cutover',
       });
-      const promotedCutover = await cutoverRepo.getCutoverRecord(FIXTURE_TENANT_ID, 'test');
+      const promotedCutover = await cutoverRepo.getCutoverRecord(CANARY_TENANT_ID, 'test');
       assert.ok(promotedCutover, 'Cutover record must exist in isolated DB before turns are executed');
       assert.equal(promotedCutover.status, 'migrated');
       assert.equal(promotedCutover.approvedReleaseVersion, '1.0.0');
@@ -1251,11 +1271,11 @@ async function runSuite() {
       const canarySessionId = `sess-caroma-canary-${Date.now()}`;
 
       // Turn 1: Public HTTP SSE endpoint POST /api/v1/:tenantId/test/runtime/chat/stream through API Gateway
-      const sseResponse = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/chat/stream`, {
+      const sseResponse = await fetch(`${gatewayBaseUrl}/api/v1/${CANARY_TENANT_ID}/test/runtime/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-Tenant-ID': CANARY_TENANT_ID,
           'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
@@ -1319,7 +1339,7 @@ async function runSuite() {
       assert.ok(doneEvent.data.decision, 'Gateway SSE done event must contain decision');
 
       // Verify workspace state in isolated DB after Turn 1: transitioned to finish_selection with spaceType fact
-      const storedT1Workspace = await workspaceRepo.load(FIXTURE_TENANT_ID, 'test', canaryWorkspaceId);
+      const storedT1Workspace = await workspaceRepo.load(CANARY_TENANT_ID, 'test', canaryWorkspaceId);
       assert.ok(storedT1Workspace, 'Workspace must be stored after Turn 1');
       assert.equal(storedT1Workspace.currentStage, 'finish_selection', 'Turn 1 must transition workspace to finish_selection');
       assert.equal(storedT1Workspace.facts.spaceType?.value, 'Bathroom', 'Turn 1 must store spaceType fact');
@@ -1329,11 +1349,11 @@ async function runSuite() {
       assert.ok(t1Transition, 'Transition decision to finish_selection must be recorded in workspace');
 
       // Turn 2: Public HTTP JSON endpoint POST /api/v1/:tenantId/test/runtime/turn through API Gateway
-      const turn2Response = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
+      const turn2Response = await fetch(`${gatewayBaseUrl}/api/v1/${CANARY_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-Tenant-ID': CANARY_TENANT_ID,
           'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
@@ -1365,7 +1385,7 @@ async function runSuite() {
 
       const turn2Result: any = await turn2Response.json();
       assert.ok(turn2Result, 'Turn 2 result must be returned by controller via gateway');
-      assert.equal(turn2Result.workspace.tenantId, FIXTURE_TENANT_ID, 'Tenant must be preserved across gateway proxy');
+      assert.equal(turn2Result.workspace.tenantId, CANARY_TENANT_ID, 'Tenant must be preserved across gateway proxy');
       assert.equal(turn2Result.workspace.environmentId, 'test', 'Environment must be preserved across gateway proxy');
       assert.equal(turn2Result.workspace.currentStage, 'quote_review', 'Turn 2 must transition to quote_review');
       assert.equal(turn2Result.workspace.facts.finish?.value, 'Matte Black', 'Turn 2 must record finish fact');
@@ -1376,11 +1396,11 @@ async function runSuite() {
       assert.ok(t2Transition, 'Transition decision to quote_review must be recorded in workspace');
 
       // 7. Prove Replay Rejection through Gateway: Resending Turn 2 turnId must fail closed with HTTP 400 Bad Request (DUPLICATE_TURN)
-      const replayResponse = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
+      const replayResponse = await fetch(`${gatewayBaseUrl}/api/v1/${CANARY_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-Tenant-ID': CANARY_TENANT_ID,
           'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
@@ -1402,18 +1422,18 @@ async function runSuite() {
       // 8. Negative Route & Tenant Assertions on Public Gateway & Runtime Boundary
       const negRouteResponse = await fetch(`${gatewayBaseUrl}/api/v1/unknown-domain/test`, {
         method: 'GET',
-        headers: { 'X-Tenant-ID': FIXTURE_TENANT_ID },
+        headers: { 'X-Tenant-ID': CANARY_TENANT_ID },
       });
       assert.equal(negRouteResponse.status, 404, 'Gateway must return HTTP 404 for unmapped domain route');
       const negRouteData: any = await negRouteResponse.json();
       assert.equal(negRouteData.error, 'Not Found', 'Gateway must return Not Found error payload');
 
       // Negative Tenant Mismatch through Gateway: cross-tenant payload rejected with HTTP 403 Forbidden
-      const crossTenantGatewayResponse = await fetch(`${gatewayBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
+      const crossTenantGatewayResponse = await fetch(`${gatewayBaseUrl}/api/v1/${CANARY_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': FIXTURE_TENANT_ID,
+          'X-Tenant-ID': CANARY_TENANT_ID,
           'X-User-ID': 'canary_fixture_user_01',
           'X-User-Role': 'customer',
         },
@@ -1429,7 +1449,7 @@ async function runSuite() {
       );
 
       // Negative Cross-Tenant Header on Runtime Boundary: rejects mismatched path vs header tenant with HTTP 403 Forbidden
-      const crossTenantResponse = await fetch(`${runtimeBaseUrl}/api/v1/${FIXTURE_TENANT_ID}/test/runtime/turn`, {
+      const crossTenantResponse = await fetch(`${runtimeBaseUrl}/api/v1/${CANARY_TENANT_ID}/test/runtime/turn`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1440,7 +1460,7 @@ async function runSuite() {
       assert.equal(crossTenantResponse.status, 403, 'Runtime boundary must reject cross-tenant header mismatch with HTTP 403');
 
       // 9. Prove Durable Reload: Workspace reloaded from isolated MongoDB customer_workspaces collection
-      const storedWorkspace = await workspaceRepo.load(FIXTURE_TENANT_ID, 'test', canaryWorkspaceId);
+      const storedWorkspace = await workspaceRepo.load(CANARY_TENANT_ID, 'test', canaryWorkspaceId);
       assert.ok(storedWorkspace, 'Workspace must be durably reloadable from isolated DB');
       assert.equal(storedWorkspace.lastProcessedTurnId, 'turn-02');
       assert.equal(storedWorkspace.currentStage, 'quote_review');
@@ -1450,7 +1470,7 @@ async function runSuite() {
 
       // 10. Prove Durable Outbox Persistence: Events enqueued in isolated DB outbox_events collection
       const outboxCol = isolatedDb.collection('outbox_events');
-      const outboxItems = await outboxCol.find({ tenantId: FIXTURE_TENANT_ID, environmentId: 'test' }).toArray();
+      const outboxItems = await outboxCol.find({ tenantId: CANARY_TENANT_ID, environmentId: 'test' }).toArray();
       assert.ok(outboxItems.length >= 2, 'Durable outbox events must be enqueued in isolated DB for executed turns');
 
       // 11. Parity Evidence: verify stage transitions match expected baseline flow

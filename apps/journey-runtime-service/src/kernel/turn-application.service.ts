@@ -266,8 +266,13 @@ export class TurnApplicationService {
     let execResponse: any = null;
     let executedToolId: string | null = null;
 
+    const executedCapabilities: any[] = [];
+    let capabilityCount = 0;
+    const MAX_CAPABILITIES = 5;
+
     // 5. Capability Execution (including in newly entered stage in the same turn)
-    if (decision.type === 'invoke_capability' && decision.targetCapability) {
+    while (decision.type === 'invoke_capability' && decision.targetCapability && capabilityCount < MAX_CAPABILITIES) {
+      capabilityCount++;
       executedToolId = decision.targetCapability;
       const toolId = executedToolId;
 
@@ -413,6 +418,29 @@ export class TurnApplicationService {
               workspace = this.factReducer.apply(workspace, mappedFacts);
             }
           }
+
+          // 3. Stage capabilityPlan producesFacts
+          const stagesObj = activeJourney.stages as any;
+          const currentStageDef = Array.isArray(stagesObj)
+            ? stagesObj.find((s: any) => s.stageId === workspace.currentStage || s.id === workspace.currentStage)
+            : stagesObj?.[workspace.currentStage];
+          const planItem = currentStageDef?.capabilityPlan?.find((p: any) => p.toolId === toolId);
+          if (planItem && Array.isArray(planItem.producesFacts)) {
+            const planFacts: FactsMap = {};
+            for (const pf of planItem.producesFacts) {
+              if (!workspace.facts[pf]) {
+                planFacts[pf] = {
+                  value: outcome || true,
+                  source: 'capability',
+                  confidence: 1.0,
+                  extractedAt: new Date().toISOString(),
+                };
+              }
+            }
+            if (Object.keys(planFacts).length > 0) {
+              workspace = this.factReducer.apply(workspace, planFacts);
+            }
+          }
         } else {
           await this.executionRepo.recordExecution({
             ...execRecord,
@@ -423,22 +451,38 @@ export class TurnApplicationService {
         }
       }
 
+      executedCapabilities.push({
+        toolId,
+        status: execResponse.status,
+        output: execResponse.output,
+        error: execResponse.error,
+        approvalRequestId: pendingApproval?.approvalRequestId || execResponse.approvalRequestId,
+      });
+
       // After capability execution and fact reduction, check if new facts trigger stage transitions!
       if (execResponse?.status === 'success') {
-        decision = this.journeyResolver.decide(release, workspace, command, interpretation);
-        while (decision.type === 'transition_stage' && decision.targetStage && transitionCount < MAX_TRANSITIONS) {
+        const stagesObj = activeJourney.stages as any;
+        const currentStageDef = Array.isArray(stagesObj)
+          ? stagesObj.find((s: any) => s.stageId === workspace.currentStage || s.id === workspace.currentStage)
+          : stagesObj?.[workspace.currentStage];
+        const planItem = currentStageDef?.capabilityPlan?.find((p: any) => p.toolId === toolId);
+
+        let didTransition = false;
+        let postCapDecision = this.journeyResolver.decide(release, workspace, command, interpretation);
+        while (postCapDecision.type === 'transition_stage' && postCapDecision.targetStage && transitionCount < MAX_TRANSITIONS) {
+          didTransition = true;
           transitionCount++;
           const fromStage = workspace.currentStage;
-          const toStage = decision.targetStage;
+          const toStage = postCapDecision.targetStage;
           transitions.push({
             fromStage,
             toStage,
             trigger: 'capability_produced_facts',
-            reason: decision.reason,
+            reason: postCapDecision.reason,
             evaluatedAt: new Date().toISOString(),
           });
           workspace.decisions.push({
-            ...decision,
+            ...postCapDecision,
             executedAt: new Date().toISOString(),
             outcomeStatus: 'success',
           });
@@ -447,8 +491,28 @@ export class TurnApplicationService {
             currentStage: toStage,
             updatedAt: new Date(),
           };
-          decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+          postCapDecision = this.journeyResolver.decide(release, workspace, command, interpretation);
+          decision = postCapDecision;
         }
+
+        // Same-turn continuation must be declarative per stage/plan, bounded,
+        // and must not skip a stage merely because another capability can run.
+        const allowsContinuation = Boolean(
+          planItem?.autoContinue ||
+          planItem?.sameTurnContinuation ||
+          planItem?.continueTurn ||
+          currentStageDef?.sameTurnContinuation ||
+          currentStageDef?.autoContinue
+        );
+
+        // If continuation was not explicitly declared on the stage/plan, stop executing capabilities in this turn
+        if (!allowsContinuation) {
+          break;
+        }
+
+        decision = postCapDecision;
+      } else {
+        break;
       }
     }
 
@@ -524,16 +588,8 @@ export class TurnApplicationService {
       }
     }
 
-    if (executedToolId && execResponse) {
-      turnResult.executedCapabilities = [
-        {
-          toolId: executedToolId,
-          status: execResponse.status,
-          output: execResponse.output,
-          error: execResponse.error,
-          approvalRequestId: pendingApproval?.approvalRequestId || execResponse.approvalRequestId,
-        },
-      ];
+    if (executedCapabilities.length > 0) {
+      turnResult.executedCapabilities = executedCapabilities;
     }
 
     // 9. Commit updated workspace state and outbox events atomically
@@ -548,7 +604,13 @@ export class TurnApplicationService {
       process.env.APP_ENV === 'staging';
 
     const uri = process.env.MONGODB_URI;
-    if (isProdOrStaging && !uri && process.env.ALLOW_IN_MEMORY_WORKSPACES !== 'true') {
+    const isExplicitMemoryConfigured = Boolean(
+      (this.workspaceRepo as any)?.isExplicitMemory ||
+      (this.workspaceRepo as any)?.store?.explicitMemory ||
+      (this.outboxRepo as any)?.isExplicitMemory ||
+      (this.outboxRepo as any)?.explicitMemory
+    );
+    if (isProdOrStaging && !uri && !isExplicitMemoryConfigured && process.env.ALLOW_IN_MEMORY_WORKSPACES !== 'true') {
       throw new Error(`[TurnApplicationService] MONGODB_URI is required for atomic transactions in ${envId}`);
     }
 

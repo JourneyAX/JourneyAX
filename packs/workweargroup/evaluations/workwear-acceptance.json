@@ -4,6 +4,8 @@
   "tenantId": "workweargroup",
   "version": "1.0.0",
   "blockingOnPublish": true,
+  "deterministicOffline": true,
+  "executionMode": "deterministic_offline",
   "scenarios": [
     {
       "scenarioId": "apprentice_electrician_under_250",

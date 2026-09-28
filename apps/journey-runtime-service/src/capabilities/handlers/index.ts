@@ -4,4 +4,7 @@ export * from './order-commit.handler';
 export * from './knowledge-search.handler';
 export * from './branch-stock-check.handler';
 export * from './trade-quote-create.handler';
-
+export * from './item-configure.handler';
+export * from './cart-update.handler';
+export * from './specification-configure.handler';
+export * from './quote-update.handler';

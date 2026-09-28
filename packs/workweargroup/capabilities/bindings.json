@@ -85,6 +85,9 @@
         "idempotencyRequired": false,
         "timeoutMs": 5000,
         "retryAttempts": 0
+      },
+      "outputFactMapping": {
+        "catalog_results": "items"
       }
     },
     {
@@ -102,6 +105,9 @@
         "idempotencyRequired": false,
         "timeoutMs": 5000,
         "retryAttempts": 0
+      },
+      "outputFactMapping": {
+        "bundle_recommended": "bundle"
       }
     },
     {
@@ -144,14 +150,24 @@
       "journeyId": "workwear-solution",
       "stageId": "understand_need",
       "tools": [
-        { "toolId": "catalog.search" }
+        {
+          "toolId": "catalog.search",
+          "outputFactMapping": {
+            "catalog_results": "items"
+          }
+        }
       ]
     },
     {
       "journeyId": "workwear-solution",
       "stageId": "build_solution",
       "tools": [
-        { "toolId": "solution.optimize" },
+        {
+          "toolId": "solution.optimize",
+          "outputFactMapping": {
+            "bundle_recommended": "bundle"
+          }
+        },
         { "toolId": "catalog.search" },
         { "toolId": "pricing.validate" }
       ]

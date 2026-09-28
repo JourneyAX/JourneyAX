@@ -32,6 +32,8 @@ export interface EvaluationSuite {
   tenantId: string;
   version: string;
   blockingOnPublish?: boolean;
+  deterministicOffline?: boolean;
+  executionMode?: string;
   scenarios: EvaluationScenario[];
 }
 
@@ -73,14 +75,24 @@ export interface EvaluationSuiteResult {
   durationMs: number;
 }
 
+export type EvaluationExecutionMode = 'http' | 'in_process';
+
 export interface RunEvaluationOptions {
   tenantId: string;
   environmentId?: 'dev' | 'test' | 'staging' | 'production';
+  mode?: EvaluationExecutionMode;
   runtimeUrl?: string;
   packDir?: string;
   release?: BusinessPackRelease;
   suitePath?: string;
   verbose?: boolean;
+  isolatedDb?: any;
+  repositories?: {
+    workspaceRepo?: any;
+    executionRepo?: any;
+    outboxRepo?: any;
+    capabilityGateway?: any;
+  };
 }
 
 export class EvaluationRunner {
@@ -95,33 +107,18 @@ export class EvaluationRunner {
   }
 
   async runSuite(options: RunEvaluationOptions): Promise<EvaluationSuiteResult> {
-    process.env.ALLOW_IN_MEMORY_WORKSPACES = 'true';
-    process.env.ALLOW_IN_MEMORY_OUTBOX = 'true';
+    // Invariant: Never mutate process.env.NODE_ENV or ALLOW_IN_MEMORY_* inside EvaluationRunner.
+    // Isolated evaluation receives explicit repositories or isolated storage configuration.
     const startedAt = new Date().toISOString();
     const startTime = Date.now();
     const tenantId = options.tenantId;
     const environmentId = options.environmentId || 'production';
+    const mode: EvaluationExecutionMode =
+      options.mode ||
+      (process.env.EVAL_MODE as EvaluationExecutionMode) ||
+      'in_process';
 
-    // 1. Locate suite definition
-    let suite: EvaluationSuite;
-    if (options.suitePath && fs.existsSync(options.suitePath)) {
-      suite = JSON.parse(fs.readFileSync(options.suitePath, 'utf8'));
-    } else {
-      const candidates = [
-        path.resolve(process.cwd(), 'packs', tenantId, 'evaluations', `${tenantId}-acceptance.json`),
-        path.resolve(process.cwd(), 'packs', tenantId, 'evaluations', `${tenantId}-evaluations.json`),
-        path.resolve(process.cwd(), '..', '..', 'packs', tenantId, 'evaluations', `${tenantId}-acceptance.json`),
-      ];
-      const found = candidates.find((c) => fs.existsSync(c));
-      if (!found) {
-        throw new Error(
-          `[EvaluationRunner] No evaluation suite found for tenant '${tenantId}'. Looked in: ${candidates.join(', ')}`
-        );
-      }
-      suite = JSON.parse(fs.readFileSync(found, 'utf8'));
-    }
-
-    // 2. Load release candidate if not provided
+    // 1. Load release candidate if not provided
     let release = options.release;
     if (!release) {
       const loader = new BusinessPackLoader();
@@ -132,6 +129,58 @@ export class EvaluationRunner {
         );
       }
     }
+
+    // 2. Locate suite definition
+    let suite: EvaluationSuite | undefined;
+    if (options.suitePath && fs.existsSync(options.suitePath)) {
+      suite = JSON.parse(fs.readFileSync(options.suitePath, 'utf8'));
+    } else if (release?.evaluations && release.evaluations.length > 0) {
+      suite = release.evaluations[0] as EvaluationSuite;
+    } else {
+      const candidatesDirs = [
+        path.resolve(process.cwd(), 'packs', tenantId, 'evaluations'),
+        path.resolve(process.cwd(), '..', '..', 'packs', tenantId, 'evaluations'),
+      ];
+      for (const dir of candidatesDirs) {
+        if (fs.existsSync(dir)) {
+          const jsonFiles = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+          if (jsonFiles.length > 0) {
+            suite = JSON.parse(fs.readFileSync(path.join(dir, jsonFiles[0]), 'utf8'));
+            break;
+          }
+        }
+      }
+    }
+
+    if (!suite) {
+      throw new Error(
+        `[EvaluationRunner] No evaluation suite found for tenant '${tenantId}'.`
+      );
+    }
+
+    const isBlocking = suite.blockingOnPublish !== false;
+    const isDeterministicOffline = Boolean(
+      (suite as any).deterministicOffline ||
+      (suite as any).executionMode === 'deterministic_offline'
+    );
+
+    // Explicit per-tenant/per-release in-process service instance (NEVER cached across runs)
+    const inProcessService = mode === 'in_process' ? this.createInProcessService(release, options) : null;
+    const hasApprovedIsolatedAdapter = mode === 'in_process' && Boolean(inProcessService);
+
+    const isModelCredentialOrResidencyError = (errOrMsg: any): boolean => {
+      if (!errOrMsg) return false;
+      const msg = typeof errOrMsg === 'string' ? errOrMsg : (errOrMsg.message || errOrMsg.code || '');
+      const lower = msg.toLowerCase();
+      return (
+        lower.includes('missing_credentials') ||
+        lower.includes('missing required api credentials') ||
+        lower.includes('no configured api credentials found') ||
+        lower.includes('residency_violation') ||
+        lower.includes('residency violation') ||
+        lower.includes('data residency violation')
+      );
+    };
 
     const scenarioResults: ScenarioExecutionResult[] = [];
     const forbiddenPatterns = ['Stage \'', 'Capability \'', 'requires input'];
@@ -172,14 +221,35 @@ export class EvaluationRunner {
         }
 
         let res: TurnResult;
+        let turnError: Error | null = null;
         try {
-          res = await this.executeTurn(turnCmd, release);
+          res = await this.executeTurn(turnCmd, release, mode, inProcessService);
         } catch (err: any) {
-          failures.push(`Turn ${tIdx + 1} execution threw: ${err.message}`);
+          turnError = err;
+        }
+
+        if (turnError) {
+          if (isBlocking && isModelCredentialOrResidencyError(turnError) && !(isDeterministicOffline && hasApprovedIsolatedAdapter)) {
+            failures.push(`Blocking evaluation failed on model credential/residency error: ${turnError.message}`);
+          } else {
+            failures.push(`Turn ${tIdx + 1} execution threw: ${turnError.message}`);
+          }
           break;
         }
 
         lastTurnResult = res;
+
+        // Check trace errors for model credential or residency error in blocking evaluations
+        const traceErrors = (res.trace as any)?.errors || [];
+        for (const trErr of traceErrors) {
+          if (isModelCredentialOrResidencyError(trErr)) {
+            if (isBlocking && !(isDeterministicOffline && hasApprovedIsolatedAdapter)) {
+              failures.push(
+                `Blocking evaluation failed on model credential/residency error: ${typeof trErr === 'string' ? trErr : (trErr.message || JSON.stringify(trErr))}`
+              );
+            }
+          }
+        }
 
         // Check forbidden substrings in assistant message
         const assistantText = res.assistantMessage || '';
@@ -241,6 +311,11 @@ export class EvaluationRunner {
           if (capturedFacts[assertion.field] === undefined) {
             failures.push(`Assertion failed: ${assertion.description || `Fact '${assertion.field}' must be present`}`);
           }
+        } else if (assertion.type === 'budget_ceiling' && assertion.field) {
+          const val = assertion.field.split('.').reduce((acc: any, part: string) => acc?.[part], capturedFacts);
+          if (val === undefined || (assertion.expected !== undefined && val > assertion.expected)) {
+            failures.push(`Assertion failed: ${assertion.description || `Field '${assertion.field}' must be <= ${assertion.expected}`}`);
+          }
         }
       }
 
@@ -281,79 +356,123 @@ export class EvaluationRunner {
   }
 
   /**
-   * Executes a turn via HTTP if runtime is up, otherwise via in-process TurnApplicationService.
+   * Executes a turn via explicit mode ('http' or 'in_process').
+   * Never silently falls back between modes.
    */
-  private async executeTurn(command: TurnCommand, release: BusinessPackRelease): Promise<TurnResult> {
-    const url = `${this.runtimeUrl}/api/v1/${command.tenantId}/${command.environmentId || 'production'}/runtime/turn`;
-
-    try {
+  private async executeTurn(
+    command: TurnCommand,
+    release: BusinessPackRelease,
+    mode: EvaluationExecutionMode,
+    inProcessService?: any
+  ): Promise<TurnResult> {
+    if (mode === 'http') {
+      const url = `${this.runtimeUrl}/api/v1/${command.tenantId}/${command.environmentId || 'production'}/runtime/turn`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': command.tenantId,
-          'X-Environment-ID': command.environmentId || 'production',
-        },
-        body: JSON.stringify(command),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': command.tenantId,
+            'X-Environment-ID': command.environmentId || 'production',
+          },
+          body: JSON.stringify(command),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-      if (response.ok) {
+        if (!response.ok) {
+          const body = await response.text().catch(() => '');
+          throw new Error(`HTTP turn returned status ${response.status}: ${body.slice(0, 200)}`);
+        }
         return (await response.json()) as TurnResult;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        throw new Error(`[EvaluationRunner:HTTP] Turn execution failed over HTTP: ${err.message}`);
       }
-    } catch {
-      // Fallback to in-process execution below
     }
 
-    // Direct in-process execution fallback
-    return await this.executeInProcessTurn(command, release);
+    if (!inProcessService) {
+      throw new Error('[EvaluationRunner:InProcess] In-process service not initialized for this run');
+    }
+    return await inProcessService.executeTurn(command, release);
   }
 
-  private inProcessServiceInstance: any = null;
+  /**
+   * Creates an isolated, uncached in-process TurnApplicationService instance
+   * bound strictly to the current tenant and release candidate.
+   *
+   * Invariant: Never caches or reuses service across different tenants or releases.
+   */
+  private createInProcessService(
+    release: BusinessPackRelease,
+    options?: RunEvaluationOptions
+  ): any {
+    // Dynamic import from journey-runtime-service
+    const { TurnApplicationService } = require('../../../apps/journey-runtime-service/src/kernel/turn-application.service');
+    const { WorkspaceRepository } = require('../../../apps/journey-runtime-service/src/kernel/workspace.repository');
+    const { WorkspaceStore } = require('../../../apps/journey-runtime-service/src/workspace/workspace.store');
+    const { ExecutionRepository } = require('../../../apps/journey-runtime-service/src/kernel/execution.repository');
+    const { OutboxRepository } = require('../../../apps/journey-runtime-service/src/kernel/outbox.repository');
+    const { CapabilityGateway } = require('../../../apps/journey-runtime-service/src/kernel/capability.gateway');
+    const { ApprovalService } = require('../../../apps/journey-runtime-service/src/kernel/approval.service');
+    const { ApprovalStore } = require('../../../apps/journey-runtime-service/src/approval/approval.store');
 
-  private async executeInProcessTurn(command: TurnCommand, release: BusinessPackRelease): Promise<TurnResult> {
-    if (!this.inProcessServiceInstance) {
-      process.env.NODE_ENV = 'test';
-      process.env.ALLOW_IN_MEMORY_WORKSPACES = 'true';
-      process.env.ALLOW_IN_MEMORY_OUTBOX = 'true';
+    const packRepo = {
+      loadActivePack: async () => release,
+      hasActivePack: async () => true,
+      invalidate: () => {},
+    };
 
-      // Dynamic import from journey-runtime-service
-      const { TurnApplicationService } = require('../../../apps/journey-runtime-service/src/kernel/turn-application.service');
-      const { WorkspaceRepository } = require('../../../apps/journey-runtime-service/src/kernel/workspace.repository');
-      const { WorkspaceStore } = require('../../../apps/journey-runtime-service/src/workspace/workspace.store');
-      const { ExecutionRepository } = require('../../../apps/journey-runtime-service/src/kernel/execution.repository');
-      const { OutboxRepository } = require('../../../apps/journey-runtime-service/src/kernel/outbox.repository');
-      const { CapabilityGateway } = require('../../../apps/journey-runtime-service/src/kernel/capability.gateway');
-
-      const packRepo = {
-        loadActivePack: async () => release,
-        hasActivePack: async () => true,
-        invalidate: () => {},
-      };
-
-      const workspaceStore = new WorkspaceStore();
-      const workspaceRepo = new WorkspaceRepository(workspaceStore);
-      const executionRepo = new ExecutionRepository();
-      const outboxRepo = new OutboxRepository();
-      const capabilityGateway = new CapabilityGateway();
-
-      this.inProcessServiceInstance = new TurnApplicationService(
-        packRepo,
-        workspaceRepo,
-        undefined,
-        undefined,
-        undefined,
-        capabilityGateway,
-        undefined,
-        executionRepo,
-        outboxRepo
-      );
+    let workspaceRepo = options?.repositories?.workspaceRepo;
+    if (!workspaceRepo) {
+      const workspaceStore = options?.isolatedDb
+        ? new WorkspaceStore(options.isolatedDb)
+        : new WorkspaceStore({ forceInMemory: true });
+      workspaceRepo = new WorkspaceRepository(workspaceStore);
     }
 
-    return await this.inProcessServiceInstance.executeTurn(command, release);
+    const executionRepo = options?.repositories?.executionRepo || new ExecutionRepository();
+
+    let outboxRepo = options?.repositories?.outboxRepo;
+    if (!outboxRepo) {
+      outboxRepo = options?.isolatedDb
+        ? new OutboxRepository(options.isolatedDb)
+        : new OutboxRepository({ forceInMemory: true });
+    }
+
+    const capabilityGateway = options?.repositories?.capabilityGateway || new CapabilityGateway();
+
+    const approvalStore = options?.isolatedDb
+      ? new ApprovalStore(options.isolatedDb)
+      : new ApprovalStore({ forceInMemory: true });
+    const approvalService = new ApprovalService(approvalStore, outboxRepo);
+
+    try {
+      const packTenant = release.manifest?.tenantId || (release as any).tenantId || release.manifest?.packId || '';
+      const handlerPath = path.resolve(process.cwd(), 'packs', packTenant, 'handlers', 'workwear-solution.handler.ts');
+      if (fs.existsSync(handlerPath)) {
+        const { WorkwearSolutionOptimizerHandler } = require(handlerPath);
+        if (WorkwearSolutionOptimizerHandler) {
+          capabilityGateway.registerCustomAdapter('solution.optimize', new WorkwearSolutionOptimizerHandler());
+        }
+      }
+    } catch (err: any) {
+      console.error('Handler register error:', err?.message || err);
+    }
+
+    return new TurnApplicationService(
+      packRepo,
+      workspaceRepo,
+      undefined,
+      undefined,
+      undefined,
+      capabilityGateway,
+      approvalService,
+      executionRepo,
+      outboxRepo
+    );
   }
 }

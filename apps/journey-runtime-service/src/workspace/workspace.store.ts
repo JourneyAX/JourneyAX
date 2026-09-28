@@ -7,14 +7,21 @@ export class WorkspaceStore {
   private tried = false;
   private memoryStore = new Map<string, WorkspaceState>();
 
-  constructor(customDb?: any) {
-    if (customDb) {
-      this.col = customDb.collection(COLLECTION_CUSTOMER_WORKSPACES);
+  private readonly explicitMemory: boolean = false;
+
+  constructor(customDbOrOptions?: any) {
+    if (customDbOrOptions && typeof customDbOrOptions.collection === 'function') {
+      this.col = customDbOrOptions.collection(COLLECTION_CUSTOMER_WORKSPACES);
       this.tried = true;
+    } else if (customDbOrOptions?.forceInMemory || customDbOrOptions?.explicitMemory) {
+      this.col = null;
+      this.tried = true;
+      this.explicitMemory = true;
     }
   }
 
   private get allowMemoryFallback(): boolean {
+    if (this.explicitMemory) return true;
     return process.env.NODE_ENV !== 'production' && process.env.ALLOW_IN_MEMORY_WORKSPACES !== 'false';
   }
 

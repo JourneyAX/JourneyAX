@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "tenantId": "caroma",
+    "environmentId": "production",
+    "executionMode": "in_process",
+    "generatedAt": "2026-09-28T18:26:06.966Z",
+    "evaluationSuiteId": "fixtures_acceptance_suite",
+    "allPassed": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "ensuite_specification_and_quote",
+      "name": "Ensuite Space Specification and Quote Generation",
+      "passed": true,
+      "finalStage": "quote_review",
+      "executedCapabilities": [
+        "catalog.search",
+        "specification.configure",
+        "quote.update"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "I need tapware and fixtures for a commercial ensuite in matte black.",
+          "assistantMessage": "Specifications and items have been updated for Quote Review & Finalization.",
+          "stage": "quote_review",
+          "decision": "invoke_capability",
+          "cards": []
+        }
+      ]
+    }
+  ]
+}

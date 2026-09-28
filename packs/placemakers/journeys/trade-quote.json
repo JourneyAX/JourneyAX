@@ -23,7 +23,7 @@
       ],
       "nextDecisionPolicy": "dependency-first",
       "exitConditions": [
-        { "allFactsPresent": ["tradeCategory", "knowledge_verified"], "nextStage": "bom_assembly" }
+        { "anyFactsPresent": ["tradeCategory"], "nextStage": "bom_assembly" }
       ]
     },
     "bom_assembly": {
@@ -33,14 +33,19 @@
       "allowedCapabilities": ["catalog.search", "knowledge.search", "trade.quote_create"],
       "capabilityPlan": [
         {
+          "toolId": "knowledge.search",
+          "when": { "factsMissing": ["knowledge_verified"] },
+          "producesFacts": ["knowledge_verified"]
+        },
+        {
           "toolId": "trade.quote_create",
-          "when": { "factsMissing": ["bom_confirmed"] },
-          "producesFacts": ["bom_confirmed"]
+          "when": { "factsMissing": ["quote_generated"] },
+          "producesFacts": ["quote_generated"]
         }
       ],
       "nextDecisionPolicy": "dependency-first",
       "exitConditions": [
-        { "allFactsPresent": ["bom_confirmed"], "nextStage": "trade_approval" }
+        { "allFactsPresent": ["quote_generated"], "nextStage": "trade_approval" }
       ]
     },
     "trade_approval": {

@@ -140,12 +140,16 @@ export class OutcomeValidator {
     }
 
     // 2. Safe Declarative Rule Evaluation across release.rules
+    const factValues = Object.fromEntries(
+      Object.entries(workspace.facts || {}).map(([k, v]) => [k, v?.value])
+    );
     const evalContext = {
+      ...factValues,
       outcome,
+      journeyId: workspace.journeyId,
+      currentStage: workspace.currentStage,
       workspace: {
-        facts: Object.fromEntries(
-          Object.entries(workspace.facts || {}).map(([k, v]) => [k, v?.value])
-        ),
+        facts: factValues,
         currentStage: workspace.currentStage,
         journeyId: workspace.journeyId,
       },
@@ -167,6 +171,16 @@ export class OutcomeValidator {
         if (Array.isArray(appliesTo.journeyIds) && appliesTo.journeyIds.length > 0) {
           if (!workspace.journeyId || !appliesTo.journeyIds.includes(workspace.journeyId)) continue;
         }
+      }
+
+      // Check condition.requiredFacts (all required facts must be present for rule to apply)
+      const reqFacts = rule.condition?.requiredFacts;
+      if (Array.isArray(reqFacts) && reqFacts.length > 0) {
+        const hasAllReq = reqFacts.every((rf: string) => {
+          const f = workspace.facts?.[rf];
+          return f && f.value !== null && f.value !== undefined && f.value !== '';
+        });
+        if (!hasAllReq) continue;
       }
 
       const expr = rule.condition?.ruleExpression || (rule as any).expression;

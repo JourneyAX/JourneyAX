@@ -22,13 +22,20 @@ export class ApprovalStore {
   private col: Collection<ToolApprovalRecord> | null = null;
   private memory = new Map<string, ToolApprovalRecord>();
 
-  constructor(db?: any) {
-    if (db && typeof db.collection === 'function') {
-      this.col = db.collection(COLLECTION_TOOL_APPROVALS);
+  private readonly explicitMemory: boolean = false;
+
+  constructor(dbOrOptions?: any) {
+    if (dbOrOptions && typeof dbOrOptions.collection === 'function') {
+      this.col = dbOrOptions.collection(COLLECTION_TOOL_APPROVALS);
+    } else if (dbOrOptions?.forceInMemory || dbOrOptions?.explicitMemory) {
+      this.explicitMemory = true;
     }
   }
 
   private isMemoryPermitted(environmentId?: string): boolean {
+    if (this.explicitMemory) {
+      return true;
+    }
     if (
       process.env.NODE_ENV === 'production' ||
       process.env.NODE_ENV === 'staging' ||

@@ -109,12 +109,66 @@ export class TurnInterpreter {
 
       if (matched.length > 0 && !rawCandidateFacts[slotKey]) {
         const isListSlot = slotKey.includes('items') || slotKey.includes('types') || slotKey.includes('list');
+        let factVal: any = isListSlot ? matched : matched[0];
+        if (slotKey === 'budget') {
+          const num = Number(String(matched[0]).replace(/[^0-9.]/g, ''));
+          if (!isNaN(num) && num > 0) {
+            factVal = { amountCents: Math.round(num * 100), currency: 'AUD' };
+          }
+        }
+        if (slotKey === 'quantity') {
+          const explicitNum =
+            lowerMsg.match(/(\d+)\s*(?:units?|pieces?|items?|pairs?)/i) ||
+            lowerMsg.match(/(?:need|order|buy|qty|quantity)\s*(\d+)/i);
+          if (explicitNum) {
+            const num = Number(explicitNum[1]);
+            if (!isNaN(num) && num > 0) {
+              factVal = num;
+            }
+          }
+        }
         rawCandidateFacts[slotKey] = {
-          value: isListSlot ? matched : matched[0],
+          value: factVal,
           source: 'customer',
           confidence: 0.95,
           extractedAt: new Date().toISOString(),
         };
+      }
+    }
+
+    // 2b. Dynamic currency / budget expression fallback extraction
+    if (!rawCandidateFacts['budget']) {
+      const budgetMatch =
+        lowerMsg.match(/(?:under|budget(?:\s+of)?|max)?\s*\$(\d+(?:\.\d{2})?)/i) ||
+        lowerMsg.match(/under\s+(\d+(?:\.\d{2})?)/i);
+      if (budgetMatch) {
+        const dollars = Number(budgetMatch[1]);
+        if (!isNaN(dollars) && dollars > 0) {
+          rawCandidateFacts['budget'] = {
+            value: { amountCents: Math.round(dollars * 100), currency: 'AUD' },
+            source: 'customer',
+            confidence: 0.95,
+            extractedAt: new Date().toISOString(),
+          };
+        }
+      }
+    }
+
+    // 2c. Dynamic quantity expression fallback extraction
+    if (!rawCandidateFacts['quantity']) {
+      const qtyMatch =
+        lowerMsg.match(/(\d+)\s*(?:units?|pieces?|items?|pairs?)/i) ||
+        lowerMsg.match(/(?:need|order|buy|qty|quantity)\s*(\d+)/i);
+      if (qtyMatch) {
+        const num = Number(qtyMatch[1]);
+        if (!isNaN(num) && num > 0) {
+          rawCandidateFacts['quantity'] = {
+            value: num,
+            source: 'customer',
+            confidence: 0.95,
+            extractedAt: new Date().toISOString(),
+          };
+        }
       }
     }
 
@@ -158,7 +212,6 @@ export class TurnInterpreter {
     // ── IDENTIFY DECLARED FACT KEYS AND CAPABILITY-SOURCED / CONFIRMATION FACTS ──
     const declaredFactKeys = new Set<string>();
     const capabilitySourcedFacts = new Set<string>([
-      'bom_confirmed',
       'quote_generated',
       'package_selected',
       'order_submitted',
@@ -201,7 +254,12 @@ export class TurnInterpreter {
     }
 
     // Journey and current stage declarations
-    const currentJourneyId = workspace?.journeyId;
+    // Journey and current stage declarations
+    const targetJourneyId =
+      workspace?.journeyId ||
+      command.inputFacts?.journeyId ||
+      (command as any).journeyId;
+    const currentJourneyId = targetJourneyId;
     const currentStageId = workspace?.currentStage;
     const journeysRaw: any = release.journeys;
     const journeys: any[] = Array.isArray(journeysRaw)
@@ -211,9 +269,11 @@ export class TurnInterpreter {
       : typeof journeysRaw === 'object' && journeysRaw
       ? Object.values(journeysRaw)
       : [];
-    const activeJourney = journeys.find((j: any) => j.journeyId === currentJourneyId) || journeys[0];
+    const activeJourneys = currentJourneyId
+      ? journeys.filter((j: any) => j.journeyId === currentJourneyId)
+      : journeys;
 
-    if (activeJourney) {
+    for (const activeJourney of activeJourneys) {
       if (Array.isArray((activeJourney as any).requiredFacts)) {
         for (const f of (activeJourney as any).requiredFacts) {
           const key = typeof f === 'string' ? f : (f.factKey || f.key || f.name);
@@ -229,11 +289,11 @@ export class TurnInterpreter {
       const stages: any[] = Array.isArray(activeJourney.stages)
         ? activeJourney.stages
         : typeof activeJourney.stages === 'object' && activeJourney.stages
-        ? Object.values(activeJourney.stages)
+        ? Object.entries(activeJourney.stages).map(([stageId, s]: [string, any]) => ({ stageId, ...(s || {}) }))
         : [];
 
       for (const s of stages) {
-        const isCurrentOrRelevant = !currentStageId || s.stageId === currentStageId;
+        const isCurrentOrRelevant = !currentStageId || s.stageId === currentStageId || s.id === currentStageId;
         if (Array.isArray(s.requiredFacts)) {
           for (const f of s.requiredFacts) {
             const key = typeof f === 'string' ? f : (f.factKey || f.key || f.name);
@@ -296,9 +356,13 @@ export class TurnInterpreter {
       } else if (
         entityDef?.type === 'number' ||
         entityDef?.type === 'integer' ||
-        attrDef?.type === 'number'
+        attrDef?.type === 'number' ||
+        attrDef?.type === 'currency'
       ) {
-        const num = Number(val);
+        const rawNum = typeof val === 'object' && val !== null
+          ? ((val as any).amountCents ?? (val as any).amount ?? (val as any).value)
+          : val;
+        const num = Number(rawNum);
         if (isNaN(num)) isValid = false;
         if (entityDef?.minimum !== undefined && num < entityDef.minimum) isValid = false;
         if (entityDef?.maximum !== undefined && num > entityDef.maximum) isValid = false;
@@ -306,11 +370,45 @@ export class TurnInterpreter {
 
       // 4. Check slot question options if entity wasn't explicit
       const slotDef = slotQuestions[factKey];
+      const slotSynonyms = (release.vocabulary as any)?.slotSynonyms?.[factKey] || [];
       if (isValid && slotDef && Array.isArray(slotDef.options) && slotDef.options.length > 0) {
+        const norm = (s: any) => String(s).toLowerCase().replace(/[_\s-]+/g, '');
+        const validOptions = [...slotDef.options, ...slotSynonyms];
+
+        const matchValue = (v: any): boolean => {
+          if (typeof v === 'object' && v !== null) {
+            if ((v as any).amountCents !== undefined || (v as any).amount !== undefined) {
+              const cents = (v as any).amountCents !== undefined ? Number((v as any).amountCents) : Number((v as any).amount) * 100;
+              const dollars = cents / 100;
+              const matchedOption = validOptions.some((opt: any) => {
+                const optNum = Number(String(opt).replace(/[^0-9.]/g, ''));
+                return !isNaN(optNum) && (optNum === dollars || optNum === cents);
+              });
+              return matchedOption || (!isNaN(dollars) && dollars > 0);
+            }
+            if ((v as any).value !== undefined) {
+              v = (v as any).value;
+            }
+          }
+          const strV = String(v).toLowerCase().trim();
+          if (strV === 'true' || strV === 'yes') {
+            const hasAffirmative = validOptions.some((opt: any) => {
+              const nOpt = norm(opt);
+              return nOpt === 'true' || nOpt === 'yes' || nOpt.includes('accept') || nOpt.includes('approve') || nOpt.includes('proceed');
+            });
+            if (hasAffirmative) return true;
+          }
+          const normV = norm(v);
+          return validOptions.some((opt: any) => {
+            const normOpt = norm(opt);
+            return normOpt === normV || normOpt.includes(normV) || normV.includes(normOpt);
+          });
+        };
+
         if (Array.isArray(val)) {
-          isValid = val.length > 0 && val.every((item) => slotDef.options.includes(item));
+          isValid = val.length > 0 && val.every((item) => matchValue(item));
         } else {
-          isValid = slotDef.options.includes(val);
+          isValid = matchValue(val);
         }
       }
 
