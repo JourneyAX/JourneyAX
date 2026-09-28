@@ -104,7 +104,9 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
   }
 
   // 6. Validate Tool Bindings and Executor Secret References
+  const boundToolIds = new Set<string>();
   for (const binding of pack.capabilities.toolBindings) {
+    boundToolIds.add(binding.toolId);
     if (!registeredToolIds.has(binding.toolId)) {
       issues.push({
         severity: 'error',
@@ -121,6 +123,163 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
           severity: 'error',
           path: `capabilities.toolBindings[${binding.toolId}].executor.secretRef`,
           message: refIssue.message,
+        });
+      }
+    }
+  }
+
+  // 7. Enforce Capability Binding: Reject capabilities with no binding
+  for (const toolDef of pack.capabilities.toolDefinitions) {
+    if (!boundToolIds.has(toolDef.toolId)) {
+      issues.push({
+        severity: 'error',
+        path: `capabilities.toolDefinitions[${toolDef.toolId}]`,
+        message: `Capability '${toolDef.toolId}' is defined in toolDefinitions but has no binding in toolBindings`,
+      });
+    }
+  }
+  for (const journey of pack.journeys) {
+    for (const [stageId, rawStage] of Object.entries(journey.stages)) {
+      const stage = rawStage as any;
+      if (Array.isArray(stage.allowedCapabilities)) {
+        for (const capId of stage.allowedCapabilities) {
+          if (!boundToolIds.has(capId) && !capId.includes('*')) {
+            issues.push({
+              severity: 'error',
+              path: `journeys[${journey.journeyId}].stages[${stageId}].allowedCapabilities`,
+              message: `Stage '${stageId}' allows capability '${capId}' which has no binding in toolBindings`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 8. Collect all declared fact keys across the entire pack
+  const declaredFactKeys = new Set<string>();
+  if (pack.vocabulary?.terms) {
+    for (const term of pack.vocabulary.terms) {
+      if (term.category) declaredFactKeys.add(term.category);
+    }
+  }
+  if (pack.vocabulary?.slotSynonyms) {
+    for (const key of Object.keys(pack.vocabulary.slotSynonyms)) {
+      declaredFactKeys.add(key);
+    }
+  }
+  if ((pack.vocabulary as any)?.slotQuestions) {
+    for (const key of Object.keys((pack.vocabulary as any).slotQuestions)) {
+      declaredFactKeys.add(key);
+    }
+  }
+  if (pack.entities?.entities) {
+    for (const ent of pack.entities.entities) {
+      if ((ent as any).entityName) declaredFactKeys.add((ent as any).entityName);
+      if (ent.entityId) declaredFactKeys.add(ent.entityId);
+      if (ent.attributes) {
+        for (const attr of ent.attributes) {
+          if (attr.name) declaredFactKeys.add(attr.name);
+        }
+      }
+    }
+  }
+  for (const tb of pack.capabilities.toolBindings) {
+    if ((tb as any).outputFactMapping) {
+      for (const k of Object.keys((tb as any).outputFactMapping)) {
+        declaredFactKeys.add(k);
+      }
+    }
+  }
+  for (const sb of pack.capabilities.stageBindings || []) {
+    for (const t of sb.tools || []) {
+      if ((t as any).outputFactMapping) {
+        for (const k of Object.keys((t as any).outputFactMapping)) {
+          declaredFactKeys.add(k);
+        }
+      }
+    }
+  }
+  for (const journey of pack.journeys) {
+    for (const stage of Object.values(journey.stages || {})) {
+      const s = stage as any;
+      for (const f of s.requiredFacts || []) {
+        const k = typeof f === 'string' ? f : (f?.key || f?.factKey);
+        if (k) declaredFactKeys.add(k);
+      }
+      for (const f of s.optionalFacts || []) {
+        const k = typeof f === 'string' ? f : (f?.key || f?.factKey);
+        if (k) declaredFactKeys.add(k);
+      }
+      for (const cp of s.capabilityPlan || []) {
+        for (const pf of cp.producesFacts || []) declaredFactKeys.add(pf);
+      }
+    }
+  }
+
+  // 9. Enforce Exit Condition Fact Integrity: Reject unknown fact keys in exits
+  for (const journey of pack.journeys) {
+    for (const [stageId, rawStage] of Object.entries(journey.stages)) {
+      const stage = rawStage as any;
+      if (Array.isArray(stage.exitConditions)) {
+        for (let i = 0; i < stage.exitConditions.length; i++) {
+          const cond = stage.exitConditions[i];
+          const exitFacts = [...(cond.allFactsPresent || []), ...(cond.anyFactsPresent || [])];
+          for (const f of exitFacts) {
+            if (!declaredFactKeys.has(f)) {
+              issues.push({
+                severity: 'error',
+                path: `journeys[${journey.journeyId}].stages[${stageId}].exitConditions[${i}]`,
+                message: `Exit condition references unknown fact key '${f}' (not declared in stage facts, vocabulary, entities, or capability outputs)`,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 10. Enforce Required Fact Questionnaire Coverage: Reject required facts with no slotQuestion
+  const slotQuestions = (pack.vocabulary as any)?.slotQuestions || {};
+  for (const journey of pack.journeys) {
+    for (const [stageId, rawStage] of Object.entries(journey.stages)) {
+      const stage = rawStage as any;
+      if (Array.isArray(stage.requiredFacts)) {
+        for (const rawFact of stage.requiredFacts) {
+          const factKey = typeof rawFact === 'string' ? rawFact : (rawFact?.key || rawFact?.factKey);
+          if (!factKey) continue;
+          const hasQuestion =
+            slotQuestions[factKey] ||
+            stage.questionDefinitions?.[factKey] ||
+            (typeof rawFact === 'object' && rawFact?.question) ||
+            (stage.factRequirements || []).some(
+              (r: any) => (r.key === factKey || r.factKey === factKey) && r.question
+            );
+          if (!hasQuestion) {
+            issues.push({
+              severity: 'error',
+              path: `journeys[${journey.journeyId}].stages[${stageId}].requiredFacts`,
+              message: `Required fact '${factKey}' in stage '${stageId}' has no declared slotQuestion in vocabulary.json`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 11. Enforce Rule Expression Parseability: Reject rule expressions that don't parse
+  for (const rule of pack.rules || []) {
+    const expr = rule.condition?.ruleExpression;
+    if (expr && typeof expr === 'string' && expr.trim()) {
+      const trimmed = expr.trim();
+      const binaryMatch = trimmed.match(
+        /^\s*([a-zA-Z0-9_$.]+)\s*(===|!==|==|!=|>=|<=|>|<)\s*(.+)$/
+      );
+      const singleIdentMatch = trimmed.match(/^\s*!?([a-zA-Z0-9_$.]+)\s*$/);
+      if (!binaryMatch && !singleIdentMatch) {
+        issues.push({
+          severity: 'error',
+          path: `rules[${rule.ruleId}].condition.ruleExpression`,
+          message: `Rule expression '${expr}' in rule '${rule.ruleId}' could not be parsed by runtime evaluator`,
         });
       }
     }

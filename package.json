@@ -14,7 +14,8 @@
     "start": "turbo run start --concurrency=30",
     "lint": "turbo run lint",
     "inventory:connectors": "tsx scripts/inventory-tenant-connectors.ts",
-    "demo:e2e": "tsx scripts/demo-local-e2e.ts"
+    "demo:e2e": "tsx scripts/demo-local-e2e.ts",
+    "eval": "tsx scripts/eval.ts"
   },
   "packageManager": "npm@10.9.2",
   "devDependencies": {

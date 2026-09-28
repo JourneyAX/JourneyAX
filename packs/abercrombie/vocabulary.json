@@ -28,6 +28,20 @@
     "BOM": "Bill of Materials",
     "UPC": "Universal Product Code"
   },
+  "slotQuestions": {
+    "category": {
+      "text": "What apparel category or tier are you shopping for today?",
+      "options": ["Standard Tier", "Premium Tier", "Custom Spec"]
+    },
+    "quantity": {
+      "text": "How many units would you like to configure?",
+      "options": ["1", "2", "5", "10"]
+    },
+    "spec_confirmed": {
+      "text": "Would you like to confirm your custom specification details?",
+      "options": ["Confirm Specification", "Modify Specification"]
+    }
+  },
   "slotSynonyms": {
     "category": ["type", "tier", "group", "apparel_category", "clothing_type"],
     "quantity": ["count", "amount", "units", "quantity_needed"]

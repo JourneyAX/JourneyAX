@@ -19,6 +19,7 @@
     "@journeyax/ui-cards": "*",
     "@journeyax/business-pack": "*",
     "@journeyax/journey-core": "*",
+    "@journeyax/pack-eval": "*",
     "mongodb": "^7.4.0",
     "dotenv": "^17.4.2"
   },

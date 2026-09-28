@@ -579,6 +579,7 @@ export interface ConfigVersion {
   publishedAt: string;         // ISO timestamp
   publishedBy?: string;        // who published (email/id when auth context available)
   note?: string;               // release note shown in the versions panel
+  evaluationResult?: any;      // test suite execution results at publish time
 }
 
 // ── DTOs ──────────────────────────────────────────────────────

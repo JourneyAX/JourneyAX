@@ -31,6 +31,7 @@ export const BusinessPackReleaseSchema = z.object({
     terms: [],
     acronyms: {},
     slotSynonyms: {},
+    slotQuestions: {},
     slotMappings: {},
     prohibitedTerms: [],
   }),

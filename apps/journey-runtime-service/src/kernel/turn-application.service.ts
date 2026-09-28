@@ -425,20 +425,20 @@ export class TurnApplicationService {
 
       // After capability execution and fact reduction, check if new facts trigger stage transitions!
       if (execResponse?.status === 'success') {
-        let postCapDecision = this.journeyResolver.decide(release, workspace, command, interpretation);
-        while (postCapDecision.type === 'transition_stage' && postCapDecision.targetStage && transitionCount < MAX_TRANSITIONS) {
+        decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+        while (decision.type === 'transition_stage' && decision.targetStage && transitionCount < MAX_TRANSITIONS) {
           transitionCount++;
           const fromStage = workspace.currentStage;
-          const toStage = postCapDecision.targetStage;
+          const toStage = decision.targetStage;
           transitions.push({
             fromStage,
             toStage,
             trigger: 'capability_produced_facts',
-            reason: postCapDecision.reason,
+            reason: decision.reason,
             evaluatedAt: new Date().toISOString(),
           });
           workspace.decisions.push({
-            ...postCapDecision,
+            ...decision,
             executedAt: new Date().toISOString(),
             outcomeStatus: 'success',
           });
@@ -447,8 +447,7 @@ export class TurnApplicationService {
             currentStage: toStage,
             updatedAt: new Date(),
           };
-          postCapDecision = this.journeyResolver.decide(release, workspace, command, interpretation);
-          decision = postCapDecision;
+          decision = this.journeyResolver.decide(release, workspace, command, interpretation);
         }
       }
     }
@@ -549,7 +548,7 @@ export class TurnApplicationService {
       process.env.APP_ENV === 'staging';
 
     const uri = process.env.MONGODB_URI;
-    if (isProdOrStaging && !uri) {
+    if (isProdOrStaging && !uri && process.env.ALLOW_IN_MEMORY_WORKSPACES !== 'true') {
       throw new Error(`[TurnApplicationService] MONGODB_URI is required for atomic transactions in ${envId}`);
     }
 

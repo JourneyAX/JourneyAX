@@ -7,6 +7,7 @@ import {
   compileGraphToJourneyDefinition,
 } from '@journeyax/business-pack';
 import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
+import { EvaluationRunner } from '@journeyax/pack-eval';
 
 @Injectable()
 export class BusinessPackPublicationService {
@@ -334,6 +335,37 @@ export class BusinessPackPublicationService {
           },
         ];
 
+    // Compile SlotQuestions from vocabulary and dimensions and stage questionDefinitions
+    const compiledSlotQuestions: Record<string, any> = {
+      ...(doc.vocabulary?.slotQuestions || {}),
+    };
+    for (const d of dimensions) {
+      if (!compiledSlotQuestions[d.name]) {
+        compiledSlotQuestions[d.name] = {
+          text: d.promptOnMissing || `What ${d.name.replace(/_/g, ' ')} are you looking for?`,
+          options: d.allowedValues || [],
+        };
+      }
+    }
+    for (const j of validatedJourneys) {
+      if (j.stages && typeof j.stages === 'object') {
+        for (const stage of Object.values<any>(j.stages)) {
+          if (Array.isArray(stage.requiredFacts)) {
+            for (const f of stage.requiredFacts) {
+              const factKey = typeof f === 'string' ? f : (f.factKey || f.key || f.name);
+              if (factKey && !compiledSlotQuestions[factKey]) {
+                const qDef = stage.questionDefinitions?.[factKey];
+                compiledSlotQuestions[factKey] = {
+                  text: qDef?.text || (typeof f === 'object' && f.question) || `What ${factKey.replace(/_/g, ' ')} do you require?`,
+                  options: qDef?.options || (typeof f === 'object' && f.options) || [],
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+
     const businessPack = {
       manifest: {
         packId: `pack_${pid}`,
@@ -357,6 +389,7 @@ export class BusinessPackPublicationService {
         terms: doc.vocabulary?.terms || [],
         acronyms: doc.vocabulary?.acronyms || {},
         slotSynonyms: doc.vocabulary?.slotSynonyms || {},
+        slotQuestions: compiledSlotQuestions,
         slotMappings: doc.vocabulary?.slotMappings || {},
         prohibitedTerms: doc.vocabulary?.prohibitedTerms || [],
       },
@@ -401,6 +434,39 @@ export class BusinessPackPublicationService {
       };
     }
 
+    // Evaluation Gate (EVAL-001): Run blocking evaluation suites before release publication
+    let latestEvalSuiteResult: any = null;
+    if (businessPack.evaluations && businessPack.evaluations.length > 0) {
+      const blockingSuites = businessPack.evaluations.filter(
+        (suite: any) => suite.blockingOnPublish !== false
+      );
+      if (blockingSuites.length > 0) {
+        const evalRunner = new EvaluationRunner();
+        for (const suite of blockingSuites) {
+          try {
+            const evalResult = await evalRunner.runSuite({
+              tenantId: pid,
+              environmentId: 'production',
+              release: businessPack as any,
+              suitePath: undefined,
+            });
+            latestEvalSuiteResult = evalResult;
+            if (!evalResult.passed) {
+              return {
+                success: false,
+                message: `Publish blocked by evaluation gate: ${evalResult.failedScenarios} scenario(s) failed in evaluation suite '${evalResult.suiteId}'.`,
+              };
+            }
+          } catch (evalErr: any) {
+            return {
+              success: false,
+              message: `Publish blocked by evaluation gate execution failure: ${evalErr.message}`,
+            };
+          }
+        }
+      }
+    }
+
     const client = (this.getDb() as any).client;
     const isProduction = process.env.NODE_ENV === 'production';
     const now = new Date().toISOString();
@@ -409,7 +475,10 @@ export class BusinessPackPublicationService {
       const sessionOpts = session ? { session } : undefined;
 
       // 1. Publish immutable Business Pack release
-      await publishBusinessPack(this.getDb(), businessPack as any, {
+      await publishBusinessPack(this.getDb(), {
+        ...businessPack,
+        evaluationResult: latestEvalSuiteResult,
+      } as any, {
         publishedBy: opts.publishedBy || 'studio',
         notes: opts.note || `Studio published version ${version}`,
         session,
@@ -422,7 +491,13 @@ export class BusinessPackPublicationService {
         publishedAt: now,
         publishedBy: opts.publishedBy || 'system',
         note: opts.note,
-        config: { ...doc, version, activeVersion: version, updatedAt: now },
+        evaluationResult: latestEvalSuiteResult,
+        config: {
+          ...doc,
+          version,
+          activeVersion: version,
+          updatedAt: now,
+        },
       };
       await this.getVersionsCol().insertOne(snap as any, sessionOpts);
 

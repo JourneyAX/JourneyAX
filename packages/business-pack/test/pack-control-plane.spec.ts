@@ -163,6 +163,12 @@ async function runPackControlPlaneTests() {
         terms: [],
         acronyms: {},
         slotSynonyms: {},
+        slotQuestions: {
+          cloud_provider: {
+            text: 'Which cloud provider do you plan to use?',
+            options: ['AWS', 'GCP', 'Azure'],
+          },
+        },
         slotMappings: {},
         prohibitedTerms: [],
       },

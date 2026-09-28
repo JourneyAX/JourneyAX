@@ -6,8 +6,16 @@
       "version": "1.0.0",
       "displayName": "PlaceMakers Catalog Search",
       "description": "Search trade building materials and hardware.",
-      "inputSchema": { "query": { "type": "string" } },
-      "outputSchema": { "items": { "type": "array" } },
+      "inputSchema": {
+        "properties": {
+          "query": { "type": "string" }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "items": { "type": "array" }
+        }
+      },
       "sideEffect": "read",
       "risk": "low"
     },
@@ -16,8 +24,16 @@
       "version": "1.0.0",
       "displayName": "Technical Documentation & Compliance Search",
       "description": "Search BRANZ and NZBC installation guides.",
-      "inputSchema": { "query": { "type": "string" } },
-      "outputSchema": { "documents": { "type": "array" } },
+      "inputSchema": {
+        "properties": {
+          "query": { "type": "string" }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "documents": { "type": "array" }
+        }
+      },
       "sideEffect": "read",
       "risk": "low"
     },
@@ -26,8 +42,18 @@
       "version": "1.0.0",
       "displayName": "Check 60-Minute Branch Stock",
       "description": "Checks real-time inventory at Mt Wellington, Cook St, and national branches.",
-      "inputSchema": { "sku": { "type": "string" }, "branch": { "type": "string" } },
-      "outputSchema": { "inStock": { "type": "boolean" }, "quantity": { "type": "number" } },
+      "inputSchema": {
+        "properties": {
+          "sku": { "type": "string" },
+          "branch": { "type": "string" }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "inStock": { "type": "boolean" },
+          "quantity": { "type": "number" }
+        }
+      },
       "sideEffect": "read",
       "risk": "low"
     },
@@ -36,18 +62,34 @@
       "version": "1.0.0",
       "displayName": "Create Trade BOM Quote",
       "description": "Generates structured trade quote with trade discount pricing.",
-      "inputSchema": { "items": { "type": "array" } },
-      "outputSchema": { "quoteId": { "type": "string" } },
-      "sideEffect": "write",
-      "risk": "medium"
+      "inputSchema": {
+        "properties": {
+          "items": { "type": "array" }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "quoteId": { "type": "string" }
+        }
+      },
+      "sideEffect": "read",
+      "risk": "low"
     },
     {
       "toolId": "sap.quote_sync",
       "version": "1.0.0",
       "displayName": "Sync Quote to SAP ERP",
       "description": "Syncs trade quote to PlaceMakers SAP ERP via Activepieces flow.",
-      "inputSchema": { "quoteId": { "type": "string" } },
-      "outputSchema": { "erpReference": { "type": "string" } },
+      "inputSchema": {
+        "properties": {
+          "quoteId": { "type": "string" }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "erpReference": { "type": "string" }
+        }
+      },
       "sideEffect": "write",
       "risk": "medium"
     },
@@ -56,8 +98,16 @@
       "version": "1.0.0",
       "displayName": "Commit Trade Order",
       "description": "Places binding trade order against trade credit account.",
-      "inputSchema": { "quoteId": { "type": "string" } },
-      "outputSchema": { "orderId": { "type": "string" } },
+      "inputSchema": {
+        "properties": {
+          "quoteId": { "type": "string" }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "orderId": { "type": "string" }
+        }
+      },
       "sideEffect": "transactional",
       "risk": "high"
     }
@@ -72,6 +122,12 @@
         "type": "native_capability",
         "nativeHandler": "catalog.search"
       },
+      "inputMapping": {
+        "query": "tradeCategory"
+      },
+      "outputFactMapping": {
+        "catalog_results": "items"
+      },
       "timeoutMs": 10000
     },
     {
@@ -81,7 +137,13 @@
       "bindingVersion": "1.0.0",
       "executor": {
         "type": "native_capability",
-        "nativeHandler": "catalog.search"
+        "nativeHandler": "knowledge.search"
+      },
+      "inputMapping": {
+        "query": "tradeCategory"
+      },
+      "outputFactMapping": {
+        "knowledge_verified": "verified"
       },
       "timeoutMs": 10000
     },
@@ -92,7 +154,13 @@
       "bindingVersion": "1.0.0",
       "executor": {
         "type": "native_capability",
-        "nativeHandler": "catalog.search"
+        "nativeHandler": "branch.stock_check"
+      },
+      "inputMapping": {
+        "branch": "branch"
+      },
+      "outputFactMapping": {
+        "stock_confirmed": "inStock"
       },
       "timeoutMs": 10000
     },
@@ -103,7 +171,12 @@
       "bindingVersion": "1.0.0",
       "executor": {
         "type": "native_capability",
-        "nativeHandler": "pricing.validate"
+        "nativeHandler": "trade.quote_create"
+      },
+      "outputFactMapping": {
+        "quote_generated": "quoteId",
+        "bom_confirmed": "confirmed",
+        "package_selected": "packageId"
       },
       "timeoutMs": 10000
     },
@@ -114,9 +187,10 @@
       "bindingVersion": "1.0.0",
       "executor": {
         "type": "activepieces_flow",
-        "flowId": "ap_flow_pm_sap_quote",
-        "connectionRef": "conn_pm_sap_trade",
-        "secretRef": "gcp-secret://journeyax-secrets/placemakers/production/pm-sap-key"
+        "flowId": "ap_flow_pm_sap_quote"
+      },
+      "outputFactMapping": {
+        "erp_synced": "erpReference"
       },
       "timeoutMs": 15000
     },
@@ -129,7 +203,96 @@
         "type": "native_capability",
         "nativeHandler": "order.commit"
       },
+      "outputFactMapping": {
+        "order_submitted": "orderId"
+      },
       "timeoutMs": 10000
+    }
+  ],
+  "stageBindings": [
+    {
+      "journeyId": "placemakers_deck_estimator",
+      "stageId": "sizing",
+      "tools": [
+        {
+          "toolId": "catalog.search",
+          "inputMapping": {
+            "query": "deck_dimensions"
+          },
+          "outputFactMapping": {
+            "catalog_results": "items"
+          }
+        }
+      ]
+    },
+    {
+      "journeyId": "placemakers_deck_estimator",
+      "stageId": "materials_spec",
+      "tools": [
+        {
+          "toolId": "trade.quote_create",
+          "inputMapping": {},
+          "outputFactMapping": {
+            "quote_generated": "quoteId"
+          }
+        }
+      ]
+    },
+    {
+      "journeyId": "placemakers_laundry_makeover",
+      "stageId": "discovery",
+      "tools": [
+        {
+          "toolId": "catalog.search",
+          "inputMapping": {
+            "query": "room_dimensions"
+          },
+          "outputFactMapping": {
+            "catalog_results": "items"
+          }
+        }
+      ]
+    },
+    {
+      "journeyId": "placemakers_laundry_makeover",
+      "stageId": "specification",
+      "tools": [
+        {
+          "toolId": "trade.quote_create",
+          "inputMapping": {},
+          "outputFactMapping": {
+            "package_selected": "packageId"
+          }
+        }
+      ]
+    },
+    {
+      "journeyId": "placemakers_trade_quote",
+      "stageId": "project_intake",
+      "tools": [
+        {
+          "toolId": "knowledge.search",
+          "inputMapping": {
+            "query": "tradeCategory"
+          },
+          "outputFactMapping": {
+            "knowledge_verified": "verified"
+          }
+        }
+      ]
+    },
+    {
+      "journeyId": "placemakers_trade_quote",
+      "stageId": "bom_assembly",
+      "tools": [
+        {
+          "toolId": "trade.quote_create",
+          "inputMapping": {},
+          "outputFactMapping": {
+            "bom_confirmed": "confirmed"
+          }
+        }
+      ]
     }
   ]
 }

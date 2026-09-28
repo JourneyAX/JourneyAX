@@ -25,6 +25,20 @@
     "GCP": "Google Cloud Platform",
     "GKE": "Google Kubernetes Engine"
   },
+  "slotQuestions": {
+    "domain": {
+      "text": "What business domain or technical modernization focus is your enterprise targeting?",
+      "options": ["GCP Modernization", "GenAI Agent Integration", "Microservices Architecture"]
+    },
+    "budget": {
+      "text": "What is your target budget range for this consulting phase?",
+      "options": ["$25,000 - $50,000", "$50,000 - $100,000", "$100,000+"]
+    },
+    "clientEmail": {
+      "text": "Please provide your corporate email address to receive the preliminary Statement of Work (SOW) blueprint.",
+      "options": []
+    }
+  },
   "slotSynonyms": {
     "cloudPlatform": ["gcp", "aws", "azure", "google cloud"],
     "domain": ["modernization", "migration", "microservices", "genai", "ai", "search"],

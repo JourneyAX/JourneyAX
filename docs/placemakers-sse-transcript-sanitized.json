@@ -1,137 +1,94 @@
 {
-  "generatedAt": "2026-09-28T03:02:09.227Z",
-  "branch": "JourneyAX-dev-v4",
-  "commit": "9bd49ee5ad45d62d77ae6f1ba7e3438163093bdc",
-  "tenantId": "placemakers",
-  "environmentId": "production",
-  "canonicalEnvironmentId": "production",
-  "canaryEnvironmentId": "test",
-  "gates": {
-    "filesystemPack": "PASS",
-    "schemaValidation": "PASS",
-    "semanticValidation": "PASS",
-    "publish": {
-      "revision": 1,
-      "checksum": "3f66adbae9468d3d89169aa934eb3f41273c0763ca95625ba455f632eca1c928",
-      "checksumMatchesCanonical": true
-    },
-    "promoteCutover": {
-      "revision": 1,
-      "status": "migrated",
-      "checksum": "3f66adbae9468d3d89169aa934eb3f41273c0763ca95625ba455f632eca1c928",
-      "checksumMatchesCanonical": true
-    },
-    "casConflictRejected": true,
-    "rollback": {
-      "activeVersion": "1.0.0",
-      "postRollbackChecksumMatchesCanonical": true
-    },
-    "sseCutoverRecord": {
-      "status": "migrated",
-      "approvedVersion": "1.0.0",
-      "checksumLength": 64
-    },
-    "sseCanary": {
-      "turns": 2,
-      "turn1Status": 200,
-      "turn2Status": 200,
-      "turn1Stage": "bom_assembly",
-      "turn2Stage": "bom_assembly",
-      "workspaceLastTurn": "closure-t2",
-      "cutoverGateEnforced": true
-    },
-    "inlineDryRun": {
-      "checksum": "3f66adbae9468d3d89169aa934eb3f41273c0763ca95625ba455f632eca1c928",
-      "checksumMatchesCanonical": true,
-      "schemaValid": true,
-      "semanticValid": true
-    },
-    "inventory": {
-      "tenantId": "placemakers",
-      "source": "filesystem_pack",
-      "schemaValid": true,
-      "semanticValid": true,
-      "migrationStatus": "BLOCKED",
-      "immutableReleaseReadiness": "NOT_READY",
-      "cutoverRecordState": "NO_RECORD_FOUND",
-      "blockers": [
-        "Cutover approval record missing in tenant_cutovers",
-        "Rollback baseline snapshot missing in business_pack_pointers or tenant_cutovers"
+  "metadata": {
+    "tenantId": "placemakers",
+    "generatedAt": "2026-09-28T14:57:13.129Z",
+    "evaluationSuiteId": "placemakers_acceptance",
+    "allPassed": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "hardwood_deck_estimator",
+      "name": "Hardwood Deck Estimator to Quote Delivery",
+      "passed": true,
+      "finalStage": "quote_delivery",
+      "executedCapabilities": [
+        "catalog.search",
+        "trade.quote_create"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "Hi, I'm planning to build a hardwood deck of 5x3 meters",
+          "assistantMessage": "Specifications and items have been updated for Materials Specification.",
+          "stage": "materials_spec",
+          "decision": "invoke_capability",
+          "cards": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "Generate the quote for this deck project",
+          "assistantMessage": "Specifications and items have been updated for Quote Delivery & Branch Pickup.",
+          "stage": "quote_delivery",
+          "decision": "invoke_capability",
+          "cards": []
+        }
       ]
     },
-    "egressViolations": 0
-  },
-  "canonicalChecksum": "3f66adbae9468d3d89169aa934eb3f41273c0763ca95625ba455f632eca1c928",
-  "checksumConsistentAcrossProductionGates": true,
-  "canonaryResult": "LOCAL_CANARY_PASSED",
-  "canaryResult": "LOCAL_CANARY_PASSED",
-  "inventoryReadiness": "NOT_READY",
-  "inventoryMigrationStatus": "BLOCKED",
-  "transcript": [
     {
-      "turn": 1,
-      "endpoint": "POST /api/v1/placemakers/test/runtime/chat/stream",
-      "environmentId": "test",
-      "requestSummary": {
-        "message": "I need to estimate materials for a deck project.",
-        "inputFacts": {
-          "tradeCategory": "Decking",
-          "journeyId": "placemakers_trade_quote"
-        }
-      },
-      "responseStatus": 200,
-      "sseEvents": [
-        "session",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "token",
-        "done"
+      "scenarioId": "laundry_room_solution",
+      "name": "Complete Laundry Solution to Bundle Review",
+      "passed": true,
+      "finalStage": "bundle_review",
+      "executedCapabilities": [
+        "catalog.search",
+        "trade.quote_create"
       ],
-      "stage": "bom_assembly",
-      "facts": {
-        "tradeCategory": "Decking",
-        "journeyId": "placemakers_trade_quote"
-      }
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "I want to do a complete laundry makeover for room size 3x2",
+          "assistantMessage": "Specifications and items have been updated for Multi-Trade Specification.",
+          "stage": "specification",
+          "decision": "invoke_capability",
+          "cards": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "Select the standard laundry package and prepare my quote",
+          "assistantMessage": "Specifications and items have been updated for Package Review & Pickup.",
+          "stage": "bundle_review",
+          "decision": "invoke_capability",
+          "cards": []
+        }
+      ]
     },
     {
-      "turn": 2,
-      "endpoint": "POST /api/v1/placemakers/test/runtime/turn",
-      "environmentId": "test",
-      "requestSummary": {
-        "message": "The deck is 30 square meters.",
-        "inputFacts": {
-          "area_sqm": "30",
-          "complianceStandard": "NZBC_B1"
+      "scenarioId": "wet_area_trade_specification",
+      "name": "Wet Area Specification & Compliance to Trade Approval",
+      "passed": true,
+      "finalStage": "trade_approval",
+      "executedCapabilities": [
+        "knowledge.search",
+        "trade.quote_create"
+      ],
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "What moisture-resistant linings and waterproofing do I need for my wet area?",
+          "assistantMessage": "Specifications and items have been updated for Bill of Materials Assembly.",
+          "stage": "bom_assembly",
+          "decision": "invoke_capability",
+          "cards": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "Confirm the bill of materials and create trade quote",
+          "assistantMessage": "Specifications and items have been updated for Trade Account Approval & Sync.",
+          "stage": "trade_approval",
+          "decision": "invoke_capability",
+          "cards": []
         }
-      },
-      "responseStatus": 200,
-      "stage": "bom_assembly",
-      "stateVersion": 3,
-      "facts": {
-        "tradeCategory": "Decking",
-        "journeyId": "placemakers_trade_quote",
-        "area_sqm": "30",
-        "complianceStandard": "NZBC_B1"
-      }
+      ]
     }
-  ],
-  "egressViolations": 0,
-  "governanceNote": "LOCAL_CANARY_PASSED confirms the isolated test-env canary executed correctly with the cutover gate enforced. Production READY status is determined exclusively by the inventory (docs/tenant-connector-migration-inventory.md) after a live database cutover record is promoted."
+  ]
 }

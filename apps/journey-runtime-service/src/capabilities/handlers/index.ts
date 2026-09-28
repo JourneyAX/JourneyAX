@@ -1,3 +1,7 @@
 export * from './catalog-search.handler';
 export * from './pricing-validate.handler';
 export * from './order-commit.handler';
+export * from './knowledge-search.handler';
+export * from './branch-stock-check.handler';
+export * from './trade-quote-create.handler';
+

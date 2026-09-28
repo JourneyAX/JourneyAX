@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "displayName": "PlaceMakers Hardwood Decking Estimator",
   "description": "Estimates Kwila decking boards, SG8 subfloor framing, and stainless marine fasteners.",
-  "goals": ["deck_sizing", "materials_spec", "quote_delivery"],
+  "goals": ["deck_sizing", "materials_spec", "quote_delivery", "hardwood decking", "deck estimator", "build a deck"],
+  "metadata": {
+    "triggerIntents": ["deck_estimator", "decking", "build_deck", "deck"]
+  },
   "initialStage": "sizing",
   "stages": {
     "sizing": {
@@ -11,9 +14,16 @@
       "description": "Capture deck length, width, and ground clearance.",
       "requiredFacts": ["deck_dimensions"],
       "allowedCapabilities": ["catalog.search"],
+      "capabilityPlan": [
+        {
+          "toolId": "catalog.search",
+          "when": { "factsPresent": ["deck_dimensions"] },
+          "producesFacts": ["catalog_results"]
+        }
+      ],
       "nextDecisionPolicy": "dependency-first",
       "exitConditions": [
-        { "allFactsPresent": ["deck_dimensions"], "nextStage": "materials_spec" }
+        { "allFactsPresent": ["deck_dimensions", "catalog_results"], "nextStage": "materials_spec" }
       ]
     },
     "materials_spec": {
@@ -21,6 +31,13 @@
       "description": "Calculate Kwila m2, SG8 joist spacing, and 316 marine screw count with wastage.",
       "requiredFacts": [],
       "allowedCapabilities": ["catalog.search", "trade.quote_create"],
+      "capabilityPlan": [
+        {
+          "toolId": "trade.quote_create",
+          "when": { "factsMissing": ["quote_generated"] },
+          "producesFacts": ["quote_generated"]
+        }
+      ],
       "nextDecisionPolicy": "dependency-first",
       "exitConditions": [
         { "allFactsPresent": ["quote_generated"], "nextStage": "quote_delivery" }
@@ -31,6 +48,13 @@
       "description": "Deliver final trade estimate and check branch inventory.",
       "requiredFacts": ["quote_generated"],
       "allowedCapabilities": ["branch.stock_check", "order.commit"],
+      "capabilityPlan": [
+        {
+          "toolId": "branch.stock_check",
+          "when": { "factsPresent": ["quote_generated"] },
+          "producesFacts": ["stock_confirmed"]
+        }
+      ],
       "nextDecisionPolicy": "rule-first",
       "exitConditions": []
     }

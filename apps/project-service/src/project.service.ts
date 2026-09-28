@@ -1173,6 +1173,37 @@ export class ProjectService {
           },
         ];
 
+    // Compile SlotQuestions from vocabulary, dimensions, and stage requirements
+    const compiledSlotQuestions: Record<string, any> = {
+      ...(doc.vocabulary?.slotQuestions || {}),
+    };
+    for (const d of dimensions) {
+      if (!compiledSlotQuestions[d.name]) {
+        compiledSlotQuestions[d.name] = {
+          text: d.promptOnMissing || `What ${d.name.replace(/_/g, ' ')} are you looking for?`,
+          options: d.allowedValues || [],
+        };
+      }
+    }
+    for (const j of journeyList) {
+      if (j.stages && typeof j.stages === 'object') {
+        for (const stage of Object.values<any>(j.stages)) {
+          if (Array.isArray(stage.requiredFacts)) {
+            for (const f of stage.requiredFacts) {
+              const factKey = typeof f === 'string' ? f : (f.factKey || f.key || f.name);
+              if (factKey && !compiledSlotQuestions[factKey]) {
+                const qDef = stage.questionDefinitions?.[factKey];
+                compiledSlotQuestions[factKey] = {
+                  text: qDef?.text || (typeof f === 'object' && f.question) || `What ${factKey.replace(/_/g, ' ')} do you require?`,
+                  options: qDef?.options || (typeof f === 'object' && f.options) || [],
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+
     const packData = {
       manifest: {
         packId: `pack_${pid}`,
@@ -1196,6 +1227,7 @@ export class ProjectService {
         terms: doc.vocabulary?.terms || [],
         acronyms: doc.vocabulary?.acronyms || {},
         slotSynonyms: doc.vocabulary?.slotSynonyms || {},
+        slotQuestions: compiledSlotQuestions,
         slotMappings: doc.vocabulary?.slotMappings || {},
         prohibitedTerms: doc.vocabulary?.prohibitedTerms || [],
       },

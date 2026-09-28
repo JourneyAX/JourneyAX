@@ -6,20 +6,84 @@
   "blockingOnPublish": true,
   "scenarios": [
     {
-      "scenarioId": "wet_area_specification",
-      "name": "Wet Area Specification & Compliance",
-      "description": "Customer asks for wet area moisture-resistant linings and waterproofing. Engine extracts facts and guides customer through compliant BOM.",
+      "scenarioId": "hardwood_deck_estimator",
+      "name": "Hardwood Deck Estimator to Quote Delivery",
+      "description": "Customer plans a 5x3 meter hardwood deck, receives catalog specification, and advances to quote delivery.",
+      "prompt": "Hi, I'm planning to build a hardwood deck of 5x3 meters",
+      "messages": [
+        "Hi, I'm planning to build a hardwood deck of 5x3 meters",
+        "Generate the quote for this deck project"
+      ],
+      "expectedTargetStage": "quote_delivery",
+      "expectedFacts": ["deck_dimensions", "quote_generated"],
+      "requiredCapabilities": ["catalog.search", "trade.quote_create"],
+      "assertions": [
+        {
+          "type": "fact_present",
+          "field": "deck_dimensions",
+          "description": "Deck dimensions fact must be extracted"
+        },
+        {
+          "type": "fact_present",
+          "field": "quote_generated",
+          "description": "Quote generated fact must be produced by trade.quote_create"
+        }
+      ],
+      "forbiddenSubstrings": ["Stage '", "Capability '", "requires input"],
+      "timeoutMs": 15000
+    },
+    {
+      "scenarioId": "laundry_room_solution",
+      "name": "Complete Laundry Solution to Bundle Review",
+      "description": "Customer specifies 3x2 laundry makeover, searches fixtures, and advances to bundle review.",
+      "prompt": "I want to do a complete laundry makeover for room size 3x2",
+      "messages": [
+        "I want to do a complete laundry makeover for room size 3x2",
+        "Select the standard laundry package and prepare my quote"
+      ],
+      "expectedTargetStage": "bundle_review",
+      "expectedFacts": ["room_dimensions", "package_selected"],
+      "requiredCapabilities": ["catalog.search", "trade.quote_create"],
+      "assertions": [
+        {
+          "type": "fact_present",
+          "field": "room_dimensions",
+          "description": "Room dimensions fact must be extracted"
+        },
+        {
+          "type": "fact_present",
+          "field": "package_selected",
+          "description": "Package selected fact must be produced by capability"
+        }
+      ],
+      "forbiddenSubstrings": ["Stage '", "Capability '", "requires input"],
+      "timeoutMs": 15000
+    },
+    {
+      "scenarioId": "wet_area_trade_specification",
+      "name": "Wet Area Specification & Compliance to Trade Approval",
+      "description": "Customer asks for wet area moisture-resistant linings and waterproofing, verifies compliance, and advances to trade approval.",
       "prompt": "What moisture-resistant linings and waterproofing do I need for my wet area?",
-      "expectedTargetStage": "bom_assembly",
-      "expectedFacts": ["tradeCategory"],
-      "requiredCapabilities": ["knowledge.search"],
+      "messages": [
+        "What moisture-resistant linings and waterproofing do I need for my wet area?",
+        "Confirm the bill of materials and create trade quote"
+      ],
+      "expectedTargetStage": "trade_approval",
+      "expectedFacts": ["tradeCategory", "bom_confirmed"],
+      "requiredCapabilities": ["knowledge.search", "trade.quote_create"],
       "assertions": [
         {
           "type": "fact_present",
           "field": "tradeCategory",
           "description": "Trade category fact must be extracted"
+        },
+        {
+          "type": "fact_present",
+          "field": "bom_confirmed",
+          "description": "BOM confirmed fact must be produced by capability"
         }
       ],
+      "forbiddenSubstrings": ["Stage '", "Capability '", "requires input"],
       "timeoutMs": 15000
     }
   ]

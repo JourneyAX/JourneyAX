@@ -11,6 +11,9 @@ import {
   CatalogSearchHandler,
   PricingValidateHandler,
   OrderCommitHandler,
+  KnowledgeSearchHandler,
+  BranchStockCheckHandler,
+  TradeQuoteCreateHandler,
 } from '../capabilities/handlers';
 
 import {
@@ -50,6 +53,9 @@ export class CapabilityGateway {
     this.dispatcher.registerNativeHandler('catalog.search', new CatalogSearchHandler());
     this.dispatcher.registerNativeHandler('pricing.validate', new PricingValidateHandler());
     this.dispatcher.registerNativeHandler('order.commit', new OrderCommitHandler());
+    this.dispatcher.registerNativeHandler('knowledge.search', new KnowledgeSearchHandler());
+    this.dispatcher.registerNativeHandler('branch.stock_check', new BranchStockCheckHandler());
+    this.dispatcher.registerNativeHandler('trade.quote_create', new TradeQuoteCreateHandler());
   }
 
   getOwnershipRepository(): IConnectionOwnershipRepository {

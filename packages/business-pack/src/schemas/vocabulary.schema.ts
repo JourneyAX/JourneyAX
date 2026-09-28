@@ -16,11 +16,18 @@ export const SlotMappingSchema = z.object({
   })).default([]),
 });
 
+export const SlotQuestionSchema = z.object({
+  text: z.string(),
+  options: z.array(z.string()).optional(),
+  multi: z.boolean().optional(),
+});
+
 export const VocabularySchema = z.object({
   version: z.string().default('1.0.0'),
   terms: z.array(VocabularyTermSchema).default([]),
   acronyms: z.record(z.string(), z.string()).default({}),
   slotSynonyms: z.record(z.string(), z.array(z.string())).default({}),
+  slotQuestions: z.record(z.string(), SlotQuestionSchema).default({}),
   /** Canonical, domain-defined fact extraction mappings. */
   slotMappings: z.record(z.string(), SlotMappingSchema).default({}),
   prohibitedTerms: z.array(z.string()).default([]),

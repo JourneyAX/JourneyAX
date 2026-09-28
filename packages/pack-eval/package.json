@@ -1,0 +1,22 @@
+{
+  "name": "@journeyax/pack-eval",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "eval": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@journeyax/business-pack": "*",
+    "@journeyax/journey-core": "*",
+    "@journeyax/capability-sdk": "*",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

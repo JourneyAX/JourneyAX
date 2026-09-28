@@ -33,6 +33,8 @@ export const ToolDefinitionSchema = z.object({
   description: z.string(),
   inputSchema: z.record(z.string(), z.any()).default({}),
   outputSchema: z.record(z.string(), z.any()).default({}),
+  inputMapping: z.record(z.string(), z.string()).optional(),
+  outputFactMapping: z.record(z.string(), z.string()).optional(),
   sideEffect: z.enum(['read', 'write', 'transactional']).default('read'),
   risk: z.enum(['low', 'medium', 'high', 'critical']).default('low'),
   timeoutPolicy: TimeoutPolicySchema,
@@ -204,6 +206,8 @@ export const ToolBindingSchema = z
     bindingVersion: z.string().default('1.0.0'),
     executor: ExecutorSchema,
     enabled: z.boolean().default(true),
+    inputMapping: z.record(z.string(), z.string()).optional(),
+    outputFactMapping: z.record(z.string(), z.string()).optional(),
     policyOverrides: z.record(z.string(), z.any()).optional(),
     policy: ToolPolicySchema.default({
       requiredRole: 'customer',
@@ -229,6 +233,8 @@ export const ToolBindingSchema = z
 
 export const StageToolBindingSchema = z.object({
   toolId: z.string(),
+  inputMapping: z.record(z.string(), z.string()).optional(),
+  outputFactMapping: z.record(z.string(), z.string()).optional(),
   condition: z.object({
     factsPresent: z.array(z.string()).optional(),
     ruleExpression: z.string().optional(),

@@ -25,6 +25,24 @@
     "EH": "Electrical Hazard Resistance",
     "WWG": "Workwear Group"
   },
+  "slotQuestions": {
+    "occupation": {
+      "text": "What is your trade or occupation (e.g. apprentice electrician, plumber, carpenter)?",
+      "options": ["Apprentice Electrician", "Electrician", "Plumber", "Carpenter", "Builder"]
+    },
+    "required_item_types": {
+      "text": "What workwear gear or items do you need (e.g. pants, boots)?",
+      "options": ["dobby pants and boots", "pants and footwear", "work boots and cargo pants"]
+    },
+    "budget": {
+      "text": "What is your target budget for this workwear bundle?",
+      "options": ["$150", "$200", "$250", "$300"]
+    },
+    "solution_bundle_accepted": {
+      "text": "Would you like to accept this recommended workwear bundle and proceed to purchase?",
+      "options": ["Accept Bundle", "Modify Bundle"]
+    }
+  },
   "slotSynonyms": {
     "occupation": ["apprentice electrician", "electrician", "plumber", "carpenter", "builder", "tradie", "tradesperson"],
     "required_item_types": ["pants", "trousers", "cargos", "dobby pants", "shorts", "boots", "footwear", "shoes", "work boots", "safety boots"],

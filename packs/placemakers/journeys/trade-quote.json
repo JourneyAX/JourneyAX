@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "displayName": "PlaceMakers Trade BOM & Estimation Flow",
   "description": "Guides trade customers from trade scope identification to a fully compliant bill of materials and quote.",
-  "goals": ["understand_project", "assemble_bom", "deliver_quote"],
+  "goals": ["understand_project", "assemble_bom", "deliver_quote", "trade quote", "moisture-resistant linings", "waterproofing", "wet area"],
+  "metadata": {
+    "triggerIntents": ["trade_quote", "wet_area", "linings", "moisture_resistant_linings", "gib_aqualine"]
+  },
   "initialStage": "project_intake",
   "stages": {
     "project_intake": {
@@ -11,9 +14,16 @@
       "description": "Capture building trade category and dimensions.",
       "requiredFacts": ["tradeCategory"],
       "allowedCapabilities": ["catalog.search", "knowledge.search"],
+      "capabilityPlan": [
+        {
+          "toolId": "knowledge.search",
+          "when": { "factsPresent": ["tradeCategory"] },
+          "producesFacts": ["knowledge_verified"]
+        }
+      ],
       "nextDecisionPolicy": "dependency-first",
       "exitConditions": [
-        { "allFactsPresent": ["tradeCategory"], "nextStage": "bom_assembly" }
+        { "allFactsPresent": ["tradeCategory", "knowledge_verified"], "nextStage": "bom_assembly" }
       ]
     },
     "bom_assembly": {
@@ -21,6 +31,13 @@
       "description": "Search catalogue, verify NZBC compliance, and assemble trade BOM.",
       "requiredFacts": [],
       "allowedCapabilities": ["catalog.search", "knowledge.search", "trade.quote_create"],
+      "capabilityPlan": [
+        {
+          "toolId": "trade.quote_create",
+          "when": { "factsMissing": ["bom_confirmed"] },
+          "producesFacts": ["bom_confirmed"]
+        }
+      ],
       "nextDecisionPolicy": "dependency-first",
       "exitConditions": [
         { "allFactsPresent": ["bom_confirmed"], "nextStage": "trade_approval" }
@@ -31,6 +48,13 @@
       "description": "Sync quote to SAP ERP and place trade order.",
       "requiredFacts": ["bom_confirmed"],
       "allowedCapabilities": ["sap.quote_sync", "order.commit"],
+      "capabilityPlan": [
+        {
+          "toolId": "order.commit",
+          "when": { "factsPresent": ["bom_confirmed"] },
+          "producesFacts": ["order_submitted"]
+        }
+      ],
       "nextDecisionPolicy": "rule-first",
       "exitConditions": []
     }

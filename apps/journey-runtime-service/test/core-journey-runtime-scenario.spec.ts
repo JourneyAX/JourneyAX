@@ -122,11 +122,11 @@ export class DeterministicModelGatewayAdapter extends ModelGateway {
   }
 
   async execute(release: BusinessPackRelease, req: ModelExecutionRequest): Promise<ModelExecutionResponse> {
-    this.promptHistory.push(req);
-    const lowerPrompt = req.prompt.toLowerCase();
+    const customerMsgMatch = req.prompt.match(/<customer_message>([\s\S]*?)<\/customer_message>/i);
+    const target = customerMsgMatch ? customerMsgMatch[1].toLowerCase() : req.prompt.toLowerCase();
 
     for (const [key, resp] of this.mockedResponses.entries()) {
-      if (lowerPrompt.includes(key)) {
+      if (target.includes(key)) {
         return {
           content: resp,
           route: {
@@ -198,6 +198,21 @@ const canonicalPublishedPackData = {
       payload_weight: {
         text: 'What is the certified payload weight category for this flight?',
         options: ['Light (< 5kg)', 'Standard (5-15kg)', 'Heavy (> 15kg)'],
+        multi: false,
+      },
+      airframe_id: {
+        text: 'What is the airframe ID requiring maintenance?',
+        options: ['AF-001', 'AF-002'],
+        multi: false,
+      },
+      service_type: {
+        text: 'What service type is scheduled?',
+        options: ['Routine Check', 'Engine Overhaul'],
+        multi: false,
+      },
+      route_accepted: {
+        text: 'Do you accept the proposed airway route?',
+        options: ['Accept', 'Decline'],
         multi: false,
       },
     },
@@ -816,7 +831,6 @@ async function runCoreJourneyRuntimeScenario() {
   };
 
   const turn3Result = await appService2.executeTurn(turn3Command);
-
   // Durable answers and openQuestions cleared
   assert.deepEqual(turn3Result.workspace.openQuestions, []);
   assert.equal(turn3Result.workspace.currentStage, 'stage_airway_calculation');

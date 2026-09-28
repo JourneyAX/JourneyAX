@@ -5,22 +5,36 @@
       "term": "GIB Aqualine",
       "canonical": "gib_aqualine",
       "category": "tradeCategory",
-      "synonyms": ["aqualine", "green board", "moisture board", "moisture-resistant linings", "wet area linings"],
+      "synonyms": ["aqualine", "green board", "moisture board", "moisture-resistant linings", "wet area linings", "linings", "waterproofing"],
       "description": "Moisture-resistant lining for wet areas"
     },
     {
       "term": "Kwila",
       "canonical": "Decking",
       "category": "tradeCategory",
-      "synonyms": ["kwila decking", "hardwood decking", "decking"],
+      "synonyms": ["kwila decking", "hardwood decking", "decking", "timber deck", "hardwood deck"],
       "description": "Hardwood decking timber"
     },
     {
       "term": "SuperTub",
       "canonical": "Laundry",
       "category": "tradeCategory",
-      "synonyms": ["supertub", "laundry tub", "wash tub"],
+      "synonyms": ["supertub", "laundry tub", "wash tub", "laundry makeover", "laundry room", "laundry solution"],
       "description": "Sanitary laundry tub solution"
+    },
+    {
+      "term": "5x3 meters",
+      "canonical": "5x3",
+      "category": "deck_dimensions",
+      "synonyms": ["5x3m", "5x3 meters", "5x3", "5 by 3", "5m x 3m", "5 by 3 meters"],
+      "description": "5x3 meter project sizing"
+    },
+    {
+      "term": "3x2 meters",
+      "canonical": "3x2",
+      "category": "room_dimensions",
+      "synonyms": ["3x2m", "3x2 meters", "3x2", "3 by 2", "3m x 2m", "3 by 2 meters"],
+      "description": "3x2 meter room sizing"
     },
     {
       "term": "Kordura",
@@ -43,8 +57,36 @@
     "BOM": "Bill of Materials",
     "DIY": "Do It Yourself"
   },
+  "slotQuestions": {
+    "deck_dimensions": {
+      "text": "What are the dimensions (length and width in meters) of your deck project?",
+      "options": ["3x2", "4x3", "5x3", "6x4", "5x3 meters", "3x2 meters", "4x3 meters", "6x4 meters"]
+    },
+    "room_dimensions": {
+      "text": "What are the dimensions of your laundry room (e.g. 3x2)?",
+      "options": ["2x2", "3x2", "3x3", "4x2", "3x2 meters", "2x2 meters", "3x3 meters", "4x2 meters"]
+    },
+    "tradeCategory": {
+      "text": "What trade or project category are you planning today?",
+      "options": ["GIB Aqualine", "Kwila Decking", "SuperTub Laundry", "Wet Area Linings", "gib_aqualine", "moisture-resistant linings", "linings", "waterproofing", "wet area"]
+    },
+    "quote_generated": {
+      "text": "Would you like to review and proceed with your generated quote?",
+      "options": ["Proceed to Delivery", "Cancel"]
+    },
+    "package_selected": {
+      "text": "Would you like to review and proceed with your selected package?",
+      "options": ["Proceed to Bundle Review", "Modify Package"]
+    },
+    "bom_confirmed": {
+      "text": "Would you like to review and submit your trade bill of materials?",
+      "options": ["Approve BOM", "Modify BOM"]
+    }
+  },
   "slotSynonyms": {
-    "tradeCategory": ["category", "trade", "project type", "materials needed"]
+    "tradeCategory": ["category", "trade", "project type", "materials needed", "moisture-resistant linings", "linings", "waterproofing", "wet area", "decking", "laundry"],
+    "deck_dimensions": ["5x3 meters", "5x3m", "5x3", "4x3", "3x2", "6x4", "deck dimensions", "deck size"],
+    "room_dimensions": ["3x2 meters", "3x2m", "3x2", "2x2", "3x3", "room dimensions", "laundry size"]
   },
   "slotMappings": {},
   "prohibitedTerms": []

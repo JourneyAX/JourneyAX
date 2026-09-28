@@ -28,6 +28,20 @@
     "WELS": "Water Efficiency Labelling and Standards",
     "CAROMA": "Caroma Industries Limited"
   },
+  "slotQuestions": {
+    "spaceType": {
+      "text": "What type of space or bathroom are you designing?",
+      "options": ["Commercial Restroom", "Residential Ensuite", "Main Bathroom", "Powder Room"]
+    },
+    "finish": {
+      "text": "Which fixture finish would you prefer?",
+      "options": ["Chrome", "Matte Black", "Brushed Brass", "Brushed Nickel"]
+    },
+    "project_confirmed": {
+      "text": "Would you like to confirm and generate your Caroma project specification quote?",
+      "options": ["Confirm Quote", "Modify Specification"]
+    }
+  },
   "slotSynonyms": {
     "spaceType": ["room", "space", "area", "commercial_restroom", "ensuite"],
     "finish": ["colour", "finish_type", "surface", "matte black", "brushed brass", "chrome"]

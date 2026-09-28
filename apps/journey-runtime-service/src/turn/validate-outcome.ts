@@ -120,14 +120,20 @@ export class OutcomeValidator {
           const val = outcome[field];
           if (val === undefined || val === null) continue;
           const expectedType = (def as any)?.type;
-          if (expectedType && typeof val !== expectedType) {
-            return {
-              valid: false,
-              status: 'failed',
-              outcome: null,
-              appliedRules,
-              notes: `Capability outcome for '${toolId}' field '${field}' type mismatch: expected ${expectedType}, got ${typeof val}.`,
-            };
+          if (expectedType) {
+            const isMatch =
+              expectedType === 'array'
+                ? Array.isArray(val)
+                : typeof val === expectedType;
+            if (!isMatch) {
+              return {
+                valid: false,
+                status: 'failed',
+                outcome: null,
+                appliedRules,
+                notes: `Capability outcome for '${toolId}' field '${field}' type mismatch: expected ${expectedType}, got ${Array.isArray(val) ? 'array' : typeof val}.`,
+              };
+            }
           }
         }
       }
