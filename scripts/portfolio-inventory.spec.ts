@@ -21,6 +21,7 @@ delete process.env.MONGODB_URI;
  * 9. Truthful four-project readiness matrix produced with correct statuses.
  */
 import assert from 'node:assert/strict';
+import * as child_process from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -350,19 +351,19 @@ async function run(): Promise<void> {
     }
   }
 
-  // ── Test 6: Strict Schema Enforcement (Finding 1) ────────────────────────
-  console.log('6. Testing portfolio manifest schema enforcement (Finding 1)...');
+  // ── Test 6: Strict Authoritative Schema Enforcement ─────────────────────
+  console.log('6. Testing portfolio manifest authoritative schema enforcement...');
   {
     // 6a: Missing required field in manifest
     assert.throws(
       () => validatePortfolioManifest({ version: '1.0.0', activePortfolio: [] } as any),
-      /missing.*parked|must have a 'parked' array/i,
+      /should have required property 'parked'/i,
       'Must throw when parked array is missing'
     );
 
     assert.throws(
       () => validatePortfolioManifest({ version: '1.0.0', parked: [] } as any),
-      /missing.*activePortfolio|must have an 'activePortfolio' array/i,
+      /should have required property 'activePortfolio'/i,
       'Must throw when activePortfolio array is missing'
     );
 
@@ -376,7 +377,7 @@ async function run(): Promise<void> {
           ],
           parked: [],
         }),
-      /missing required non-empty string 'commerceMode'/i,
+      /should have required property 'commerceMode'/i,
       'Must throw when commerceMode is missing in TenantEntry'
     );
 
@@ -390,11 +391,123 @@ async function run(): Promise<void> {
           ],
           parked: [],
         }),
-      /disallowed commerceMode 'subscription'.*Allowed modes are: 'quote', 'cart'/i,
+      /should be equal to one of the allowed values/i,
       'Must throw when commerceMode is not quote or cart'
     );
 
-    // 6d: Duplicate tenant ID within activePortfolio
+    // 6d: Additional properties on root
+    assert.throws(
+      () =>
+        validatePortfolioManifest({
+          version: '1.0.0',
+          activePortfolio: [],
+          parked: [],
+          unexpectedRootProperty: 'disallowed',
+        } as any),
+      /should NOT have additional properties/i,
+      'Must throw on additional properties on manifest root'
+    );
+
+    // 6e: Additional properties on TenantEntry
+    assert.throws(
+      () =>
+        validatePortfolioManifest({
+          version: '1.0.0',
+          activePortfolio: [
+            { tenantId: 't1', displayName: 'T1', industry: 'Ind', commerceMode: 'quote', dataResidency: 'us', extraField: 'bad' } as any,
+          ],
+          parked: [],
+        }),
+      /should NOT have additional properties/i,
+      'Must throw on additional properties on TenantEntry'
+    );
+
+    // 6f: Invalid version formats
+    const invalidVersions = ['v1.0.0', 'beta', '1', '1.0', 'release-1.0.0'];
+    for (const badVer of invalidVersions) {
+      assert.throws(
+        () =>
+          validatePortfolioManifest({
+            version: badVer,
+            activePortfolio: [],
+            parked: [],
+          }),
+        /should match pattern/i,
+        `Must throw on invalid version format '${badVer}'`
+      );
+    }
+
+    // 6g: Invalid dataResidency formats
+    const invalidResidencies = ['USA', '12', '123', 'au-123456789-toolong', 'AU', 'australia'];
+    for (const badRes of invalidResidencies) {
+      assert.throws(
+        () =>
+          validatePortfolioManifest({
+            version: '1.0.0',
+            activePortfolio: [
+              { tenantId: 't1', displayName: 'T1', industry: 'Ind', commerceMode: 'quote', dataResidency: badRes },
+            ],
+            parked: [],
+          }),
+        /should match pattern/i,
+        `Must throw on invalid dataResidency format '${badRes}'`
+      );
+    }
+
+    // 6h: Invalid migrationPriority (negative, zero, non-integer)
+    assert.throws(
+      () =>
+        validatePortfolioManifest({
+          version: '1.0.0',
+          activePortfolio: [
+            { tenantId: 't1', displayName: 'T1', industry: 'Ind', commerceMode: 'quote', dataResidency: 'au', migrationPriority: 0 },
+          ],
+          parked: [],
+        }),
+      /should be >= 1/i,
+      'Must throw when migrationPriority is 0'
+    );
+
+    assert.throws(
+      () =>
+        validatePortfolioManifest({
+          version: '1.0.0',
+          activePortfolio: [
+            { tenantId: 't1', displayName: 'T1', industry: 'Ind', commerceMode: 'quote', dataResidency: 'au', migrationPriority: -5 },
+          ],
+          parked: [],
+        }),
+      /should be >= 1/i,
+      'Must throw when migrationPriority is negative'
+    );
+
+    assert.throws(
+      () =>
+        validatePortfolioManifest({
+          version: '1.0.0',
+          activePortfolio: [
+            { tenantId: 't1', displayName: 'T1', industry: 'Ind', commerceMode: 'quote', dataResidency: 'au', migrationPriority: 1.5 as any },
+          ],
+          parked: [],
+        }),
+      /should be integer/i,
+      'Must throw when migrationPriority is a non-integer float'
+    );
+
+    assert.throws(
+      () =>
+        validatePortfolioManifest({
+          version: '1.0.0',
+          activePortfolio: [
+            { tenantId: 't1', displayName: 'T1', industry: 'Ind', commerceMode: 'quote', dataResidency: 'au', migrationPriority: 'high' as any },
+          ],
+          parked: [],
+        }),
+      /should be integer/i,
+      'Must throw when migrationPriority is a string'
+    );
+
+    // 6i: Duplicate tenant ID within activePortfolio
     assert.throws(
       () =>
         validatePortfolioManifest({
@@ -409,7 +522,7 @@ async function run(): Promise<void> {
       'Must throw when duplicate tenantId exists within activePortfolio'
     );
 
-    // 6e: Overlap between activePortfolio and parked
+    // 6j: Overlap between activePortfolio and parked
     assert.throws(
       () =>
         validatePortfolioManifest({
@@ -425,7 +538,7 @@ async function run(): Promise<void> {
       'Must throw on overlap between activePortfolio and parked'
     );
 
-    // 6f: Overlap between activePortfolio and syntheticFixtures
+    // 6k: Overlap between activePortfolio and syntheticFixtures
     assert.throws(
       () =>
         validatePortfolioManifest({
@@ -442,7 +555,7 @@ async function run(): Promise<void> {
       'Must throw on overlap between activePortfolio and syntheticFixtures'
     );
 
-    // 6g: Overlap between parked and syntheticFixtures
+    // 6l: Overlap between parked and syntheticFixtures
     assert.throws(
       () =>
         validatePortfolioManifest({
@@ -459,7 +572,7 @@ async function run(): Promise<void> {
       'Must throw on overlap between parked and syntheticFixtures'
     );
 
-    console.log('   ✅ PASS: Schema enforcement strictly validates required fields, commerce modes, unique tenant IDs, and zero overlap.\n');
+    console.log('   ✅ PASS: Authoritative schema validation strictly enforces required fields, types, enum, additional properties, patterns, priorities, and zero overlap.\n');
   }
 
   // ── Test 7: No tenant name required inside runtime implementation code ───
@@ -604,14 +717,59 @@ async function run(): Promise<void> {
     console.log('   ✅ PASS: Evaluator is read-only by default with accurate configured vs discovered breakdown.\n');
   }
 
-  // ── Test 11: Offline isolation verification (Finding 5) ───────────────────
-  console.log('11. Verifying offline mode prevented .env loading...');
+  // ── Test 11: Clean Subprocess Offline Isolation Verification ────────────────
+  console.log('11. Verifying offline mode in clean subprocess with database variables cleared...');
   {
-    assert.equal(process.env.JOURNEYAX_OFFLINE_HARNESS, 'true');
-    assert.equal(process.env.NODE_ENV, 'test');
-    assert.equal(process.env.TEST_MONGODB_URI, undefined);
-    assert.equal(process.env.MONGODB_URI, undefined);
-    console.log('   ✅ PASS: Offline isolation verified; database URIs were not loaded.\n');
+    // Clean environment with MONGODB_URI, TEST_MONGODB_URI, and canary variables stripped
+    const cleanEnv: Record<string, string> = {
+      PATH: process.env.PATH || '',
+      HOME: process.env.HOME || '',
+      NODE_ENV: 'test',
+      JOURNEYAX_OFFLINE_HARNESS: 'true',
+    };
+
+    const subprocessCode = `
+      import assert from 'node:assert/strict';
+      import { runTenantConnectorInventory } from './scripts/inventory-tenant-connectors';
+      import { evaluateSeedMigrationDryRun } from './scripts/evaluate-seed-migration-dry-run';
+
+      // 1. Assert database URIs and production/canary variables from .env were NOT loaded
+      assert.equal(process.env.MONGODB_URI, undefined, 'MONGODB_URI must remain undefined');
+      assert.equal(process.env.TEST_MONGODB_URI, undefined, 'TEST_MONGODB_URI must remain undefined');
+      assert.equal(process.env.DATABASE_URL, undefined, 'DATABASE_URL must remain undefined');
+      assert.equal(process.env.FABRIC_DIFFUSION_DEPLOYMENT, undefined, 'FABRIC_DIFFUSION_DEPLOYMENT from .env must remain undefined');
+      assert.equal(process.env.JAX_PLACEMAKERS_MODEL_URL, undefined, 'JAX_PLACEMAKERS_MODEL_URL from .env must remain undefined');
+      assert.equal(process.env.REPLICATE_API_TOKEN, undefined, 'REPLICATE_API_TOKEN from .env must remain undefined');
+
+      // 2. Run inventory and dry-run evaluator in offline safe mode
+      async function main() {
+        const inv = await runTenantConnectorInventory({ writeReport: false });
+        assert.ok(Array.isArray(inv), 'Inventory must return results offline');
+        assert.equal(inv.filter(r => r.classification === 'ACTIVE_PORTFOLIO').length, 4, 'Must have 4 active portfolio items');
+        const ev = await evaluateSeedMigrationDryRun({ writeReport: false });
+        assert.equal(ev.configuredActiveCount, 4, 'Evaluator must discover 4 configured active tenants offline');
+        console.log('SUBPROCESS_OFFLINE_ISOLATION_OK');
+      }
+      main().catch((err) => {
+        console.error('Subprocess execution error:', err);
+        process.exit(1);
+      });
+    `;
+
+    const sub = child_process.spawnSync('npx', ['tsx', '-e', subprocessCode], {
+      cwd: path.resolve(__dirname, '..'),
+      env: cleanEnv,
+      encoding: 'utf8',
+    });
+
+    if (sub.status !== 0) {
+      console.error('Subprocess stdout:', sub.stdout);
+      console.error('Subprocess stderr:', sub.stderr);
+      assert.fail(`Subprocess offline harness failed with exit code ${sub.status}: ${sub.stderr || sub.stdout}`);
+    }
+
+    assert.ok(sub.stdout.includes('SUBPROCESS_OFFLINE_ISOLATION_OK'), 'Subprocess must output confirmation token');
+    console.log('   ✅ PASS: Clean subprocess executed with cleared database variables and verified no transitive import loaded .env.\n');
   }
 
   console.log('🎉 ALL PORTFOLIO INVENTORY & GOVERNANCE TESTS PASSED.\n');

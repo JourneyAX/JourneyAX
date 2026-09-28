@@ -47,6 +47,8 @@ import {
 import { CapabilityRegistryService } from '../apps/project-service/src/capability-registry.service';
 import { CatalogSearchHandler } from '../apps/journey-runtime-service/src/capabilities/handlers/catalog-search.handler';
 
+import Ajv from 'ajv';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Portfolio Manifest types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +65,7 @@ export interface PortfolioTenantEntry {
 }
 
 export interface PortfolioManifest {
+  $schema?: string;
   version: string;
   description?: string;
   updatedAt?: string;
@@ -79,92 +82,53 @@ export const DEFAULT_PORTFOLIO_MANIFEST_PATH = path.resolve(
   '../config/portfolio-manifest.json'
 );
 
+/** Authoritative manifest JSON schema path relative to the repo root. */
+export const PORTFOLIO_MANIFEST_SCHEMA_PATH = path.resolve(
+  __dirname,
+  '../config/portfolio-manifest.schema.json'
+);
+
+let compiledManifestValidator: any = null;
+
+export function getPortfolioManifestSchemaValidator() {
+  if (!compiledManifestValidator) {
+    if (!fs.existsSync(PORTFOLIO_MANIFEST_SCHEMA_PATH)) {
+      throw new Error(`Portfolio manifest schema not found at: ${PORTFOLIO_MANIFEST_SCHEMA_PATH}`);
+    }
+    const schemaRaw = fs.readFileSync(PORTFOLIO_MANIFEST_SCHEMA_PATH, 'utf8');
+    const schemaObj = JSON.parse(schemaRaw);
+    const ajv = new Ajv({ allErrors: true });
+    compiledManifestValidator = ajv.compile(schemaObj);
+  }
+  return compiledManifestValidator;
+}
+
 /**
- * Programmatically validates a portfolio manifest against the governance rules:
- * 1. Required fields: version, activePortfolio, parked.
- * 2. TenantEntry required fields: tenantId, displayName, industry, commerceMode, dataResidency.
- * 3. Allowed commerce modes: exactly 'quote' or 'cart'.
- * 4. Unique tenant IDs within activePortfolio, parked, and syntheticFixtures.
- * 5. Zero overlap between activePortfolio, parked, and syntheticFixtures.
+ * Validates a portfolio manifest authoritatively against config/portfolio-manifest.schema.json:
+ * 1. Schema enforcement via Ajv (required fields, types, enum, regex patterns, no additionalProperties, priority >= 1).
+ * 2. Cross-array governance rules:
+ *    - Unique tenant IDs within activePortfolio, parked, and syntheticFixtures.
+ *    - Zero overlap between activePortfolio, parked, and syntheticFixtures.
  */
 export function validatePortfolioManifest(
   raw: unknown,
   sourceDesc = 'portfolio-manifest'
 ): PortfolioManifest {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  const validator = getPortfolioManifestSchemaValidator();
+  const valid = validator(raw);
+
+  if (!valid) {
+    const errorDetails = (validator.errors || [])
+      .map((err: any) => `${err.dataPath ? err.dataPath + ' ' : ''}${err.message}`)
+      .join('; ');
     throw new Error(
-      `Portfolio manifest from '${sourceDesc}' must be a non-null object`
+      `Portfolio manifest from '${sourceDesc}' failed schema validation against '${PORTFOLIO_MANIFEST_SCHEMA_PATH}': ${errorDetails}`
     );
   }
 
-  const manifest = raw as Record<string, any>;
+  const manifest = raw as PortfolioManifest;
 
-  if (typeof manifest.version !== 'string' || !manifest.version.trim()) {
-    throw new Error(
-      `Portfolio manifest from '${sourceDesc}' is missing required string property 'version'`
-    );
-  }
-
-  if (!Array.isArray(manifest.activePortfolio)) {
-    throw new Error(
-      `Portfolio manifest from '${sourceDesc}' must have an 'activePortfolio' array`
-    );
-  }
-
-  if (!Array.isArray(manifest.parked)) {
-    throw new Error(
-      `Portfolio manifest from '${sourceDesc}' must have a 'parked' array`
-    );
-  }
-
-  if (manifest.syntheticFixtures !== undefined && !Array.isArray(manifest.syntheticFixtures)) {
-    throw new Error(
-      `Portfolio manifest from '${sourceDesc}' property 'syntheticFixtures' must be an array if provided`
-    );
-  }
-
-  const validateEntry = (entry: any, section: string, index: number): PortfolioTenantEntry => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      throw new Error(
-        `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' must be an object`
-      );
-    }
-    const requiredProps = ['tenantId', 'displayName', 'industry', 'commerceMode', 'dataResidency'];
-    for (const prop of requiredProps) {
-      if (typeof entry[prop] !== 'string' || !entry[prop].trim()) {
-        throw new Error(
-          `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' is missing required non-empty string '${prop}'`
-        );
-      }
-    }
-
-    if (!/^[a-z0-9_-]+$/.test(entry.tenantId)) {
-      throw new Error(
-        `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' has invalid tenantId '${entry.tenantId}' (must match ^[a-z0-9_-]+$)`
-      );
-    }
-
-    const ALLOWED_COMMERCE_MODES = ['quote', 'cart'];
-    if (!ALLOWED_COMMERCE_MODES.includes(entry.commerceMode)) {
-      throw new Error(
-        `Portfolio manifest '${section}[${index}]' in '${sourceDesc}' has disallowed commerceMode '${entry.commerceMode}' for tenant '${entry.tenantId}'. Allowed modes are: ${ALLOWED_COMMERCE_MODES.map((m) => `'${m}'`).join(', ')}`
-      );
-    }
-
-    return entry as PortfolioTenantEntry;
-  };
-
-  const activeEntries = manifest.activePortfolio.map((e: any, i: number) =>
-    validateEntry(e, 'activePortfolio', i)
-  );
-  const parkedEntries = manifest.parked.map((e: any, i: number) =>
-    validateEntry(e, 'parked', i)
-  );
-  const fixtureEntries = ((manifest.syntheticFixtures as any[]) || []).map((e: any, i: number) =>
-    validateEntry(e, 'syntheticFixtures', i)
-  );
-
-  // Check unique tenant IDs within sections
+  // Cross-record governance rules not expressible in static JSON Schema
   const checkUniqueWithin = (entries: PortfolioTenantEntry[], section: string) => {
     const seen = new Set<string>();
     for (const e of entries) {
@@ -178,11 +142,11 @@ export function validatePortfolioManifest(
     return seen;
   };
 
-  const activeIds = checkUniqueWithin(activeEntries, 'activePortfolio');
-  const parkedIds = checkUniqueWithin(parkedEntries, 'parked');
-  const fixtureIds = checkUniqueWithin(fixtureEntries, 'syntheticFixtures');
+  const activeIds = checkUniqueWithin(manifest.activePortfolio || [], 'activePortfolio');
+  const parkedIds = checkUniqueWithin(manifest.parked || [], 'parked');
+  const fixtureIds = checkUniqueWithin(manifest.syntheticFixtures || [], 'syntheticFixtures');
 
-  // Check no overlap between active, parked, and fixtures
+  // Check zero overlap between active, parked, and fixtures
   for (const id of activeIds) {
     if (parkedIds.has(id)) {
       throw new Error(
@@ -204,7 +168,7 @@ export function validatePortfolioManifest(
     }
   }
 
-  return manifest as PortfolioManifest;
+  return manifest;
 }
 
 /**

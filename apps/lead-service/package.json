@@ -13,7 +13,9 @@
     "@nestjs/platform-express": "^10.4.15",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "@journeyax/shared-types": "*"
+    "@journeyax/shared-types": "*",
+    "@journeyax/business-pack": "*",
+    "@journeyax/database": "*"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

@@ -6,6 +6,7 @@
  * ?project= param → X-Tenant-ID header → Host domain → env fallback.
  */
 import { resolveTenant } from '../../../lib/tenant';
+import { resolveTenantRouting } from '../../../lib/routing/cutover';
 
 const PROJECT_API = process.env.PROJECT_API || 'http://localhost:8082';
 
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
       if (res.status === 404 || res.status === 403) {
         return json({ error: 'ProjectNotFound', message: 'This project is currently disabled or does not exist.' });
       }
-      return json(fallback(PROJECT_ID));
+      return await handleConfigFailure(PROJECT_ID);
     }
     const p: any = await res.json();
     return json({
@@ -84,8 +85,30 @@ export async function GET(req: Request) {
       } : null,
     });
   } catch {
-    return json(fallback(PROJECT_ID));
+    return await handleConfigFailure(PROJECT_ID);
   }
+}
+
+/**
+ * Handles configuration load failure by checking cutover state.
+ * A tenant with an active canonical pack/config must fail closed when loading it fails.
+ * Legacy fallback is permitted ONLY when the cutover repository explicitly says that tenant is not activated.
+ */
+export async function handleConfigFailure(projectId: string): Promise<Response> {
+  const routing = await resolveTenantRouting(projectId, 'production');
+  if (routing.cutoverState === 'migrated') {
+    return json(
+      {
+        error: 'CanonicalConfigurationUnavailable',
+        message: `Canonical storefront configuration failed to load for activated tenant '${projectId}'. Legacy fallback is prohibited after canonical activation.`,
+        tenantId: projectId,
+        cutoverState: routing.cutoverState,
+      },
+      { status: 503 }
+    );
+  }
+
+  return json(fallback(projectId));
 }
 
 function fallback(projectId: string) {
