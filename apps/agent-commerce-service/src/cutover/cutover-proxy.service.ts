@@ -57,23 +57,47 @@ export type CutoverRoutingResult = CutoverDecision | CutoverProxy;
 /** Sentinel returned when a tenant has no cutover record (unmigrated). */
 export const NOT_MIGRATED: CutoverDecision = { proxied: false };
 
+export const DEFAULT_RUNTIME_SERVICE_URL = 'http://localhost:3012';
+
+interface CutoverCacheEntry {
+  decision: 'canonical' | 'legacy';
+  status?: string;
+  cachedAt: number;
+}
+
 @Injectable()
 export class CutoverProxyService {
   private readonly runtimeUrl: string;
+  private readonly cutoverCache = new Map<string, CutoverCacheEntry>();
+  private readonly lastKnownStatus = new Map<string, string>();
+  private cacheTtlMs: number = 30_000;
 
-  constructor() {
+  constructor(overrideUrl?: string) {
     this.runtimeUrl =
+      overrideUrl ||
       process.env.JOURNEY_RUNTIME_SERVICE_URL ||
+      process.env.JOURNEY_RUNTIME_URL ||
       process.env.RUNTIME_SERVICE_URL ||
-      'http://localhost:3009';
+      DEFAULT_RUNTIME_SERVICE_URL;
+  }
+
+  /** Clears the in-memory cache and last-known status (for testing). */
+  clearCache(): void {
+    this.cutoverCache.clear();
+    this.lastKnownStatus.clear();
+  }
+
+  /** Sets the cache TTL (for testing). */
+  setCacheTtl(ms: number): void {
+    this.cacheTtlMs = ms;
   }
 
   /**
    * Resolves the cutover decision for a tenant + environment + workspace.
    *
-   * Returns `NOT_MIGRATED` only when the tenant has no cutover record or is
-   * explicitly `unmigrated`. All other failures throw — they MUST NOT fall
-   * back to legacy logic.
+   * Returns `legacy` only when the tenant has a verified runtime 404 / no record or
+   * is unmigrated, or when registry is unreachable and tenant has NEVER been seen migrated.
+   * Tenants known to be migrated/canary fail closed when registry is unreachable.
    */
   async resolveCutover(
     tenantId: string,
@@ -81,9 +105,19 @@ export class CutoverProxyService {
     stableKey: string,
     timeoutMs = 3000
   ): Promise<'canonical' | 'legacy'> {
+    const normTenant = tenantId.trim().toLowerCase();
+    const normEnv = environmentId.trim().toLowerCase();
+    const cacheKey = `${normTenant}:${normEnv}`;
+    const now = Date.now();
+
+    // 1. Check in-memory cache with TTL
+    const cached = this.cutoverCache.get(cacheKey);
+    if (cached && now - cached.cachedAt < this.cacheTtlMs) {
+      return cached.decision;
+    }
+
     let res: Response;
 
-    // All errors except 404 propagate — never silently fall to legacy.
     try {
       res = await fetch(
         `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/cutover`,
@@ -99,14 +133,53 @@ export class CutoverProxyService {
         }
       );
     } catch (networkErr: any) {
-      // Timeout, ECONNREFUSED, ECONNRESET, DNS failure — all fatal.
-      throw new Error(
-        `[CutoverProxy] Cutover registry unreachable for tenant='${tenantId}' env='${environmentId}': ${networkErr.message}`
+      const lastStatus = this.lastKnownStatus.get(cacheKey);
+      if (lastStatus === 'migrated' || lastStatus === 'canary') {
+        // Known migrated/canary tenants must FAIL CLOSED to prevent legacy data corruption
+        throw new Error(
+          `[CutoverProxy] Cutover registry unreachable for tenant='${tenantId}' env='${environmentId}' (status='${lastStatus}'): failing closed: ${networkErr.message}`
+        );
+      }
+
+      // Tenant has NEVER been seen migrated: continue on legacy and log loudly
+      console.error(
+        `[CutoverProxy] ⚠️ CUTOVER REGISTRY UNREACHABLE for tenant='${tenantId}' env='${environmentId}'. ` +
+        `Tenant has never been seen migrated; continuing on legacy commerce engine. Network error: ${networkErr.message}`
       );
+      return 'legacy';
     }
 
-    // 404 → no record → unmigrated tenant, safe to continue legacy.
+    // 2. Strict 404 handling: only treat 404 as "no record" when it comes from the runtime's own response shape
     if (res.status === 404) {
+      let notFoundBody: any = null;
+      try {
+        notFoundBody = await res.json();
+      } catch {
+        // Non-JSON response (e.g. Next.js HTML error page from wrong port)
+        throw new Error(
+          `[CutoverProxy] Malformed 404 response from non-runtime service for tenant='${tenantId}' env='${environmentId}': expected JSON error payload`
+        );
+      }
+
+      const isRuntimeNotFound =
+        notFoundBody &&
+        notFoundBody.statusCode === 404 &&
+        typeof notFoundBody.message === 'string' &&
+        notFoundBody.message.includes('No durable cutover record found');
+
+      if (!isRuntimeNotFound) {
+        throw new Error(
+          `[CutoverProxy] Rejected 404 from unexpected service for tenant='${tenantId}' env='${environmentId}': missing runtime cutover marker in payload`
+        );
+      }
+
+      // Verified runtime 404: cache "no cutover record" answer with short TTL
+      this.lastKnownStatus.set(cacheKey, 'unmigrated');
+      this.cutoverCache.set(cacheKey, {
+        decision: 'legacy',
+        status: 'unmigrated',
+        cachedAt: now,
+      });
       return 'legacy';
     }
 
@@ -140,7 +213,6 @@ export class CutoverProxyService {
     }
 
     // Cross-tenant binding — reject cross-tenant records.
-    const normTenant = tenantId.trim().toLowerCase();
     if (record.tenantId.trim().toLowerCase() !== normTenant) {
       throw new Error(
         `[CutoverProxy] Cross-tenant binding violation: record.tenantId='${record.tenantId}' ≠ request tenant='${tenantId}'`
@@ -148,13 +220,23 @@ export class CutoverProxyService {
     }
 
     const canaryPercentage = Number(record.canaryPercentage ?? 0);
-    return resolveRuntimeRouting(
+    const decision = resolveRuntimeRouting(
       record.status,
       canaryPercentage,
       normTenant,
-      environmentId.trim().toLowerCase(),
+      normEnv,
       stableKey
     );
+
+    // Update cache and last-known status
+    this.lastKnownStatus.set(cacheKey, record.status);
+    this.cutoverCache.set(cacheKey, {
+      decision,
+      status: record.status,
+      cachedAt: now,
+    });
+
+    return decision;
   }
 
   /**

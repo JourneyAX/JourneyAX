@@ -5390,9 +5390,10 @@ export class AgentService {
     // Compatibility hop: if tenant is authoritatively cut over, proxy to canonical journey-runtime-service.
     // Uses the fail-closed CutoverProxyService: only 404/no-record may fall back to legacy.
     // Any timeout, DB error, malformed record, or runtime failure throws — never falls to legacy.
-    const proxied = await this.cutoverProxy.routeOrLegacy(tenantId, 'production', sessionId, request, sessionId);
+    const cutoverEnv = (request as any).environmentId || (request as any).env || 'production';
+    const proxied = await this.cutoverProxy.routeOrLegacy(tenantId, cutoverEnv, sessionId, request, sessionId);
     if (proxied !== null) {
-      console.log(`[JourneyAX:Proxy] Authoritative cutover active: proxying turn to journey-runtime-service for tenant="${tenantId}"`);
+      console.log(`[JourneyAX:Proxy] Authoritative cutover active: proxying turn to journey-runtime-service for tenant="${tenantId}" env="${cutoverEnv}"`);
       return proxied;
     }
 
@@ -6341,9 +6342,10 @@ export class AgentService {
     // Check before loading any legacy session data so migrated traffic does not
     // touch the legacy pipeline at all. Fail-closed: only 404/no-record returns
     // null (legacy path). Any DB error, timeout, or mismatch throws immediately.
-    const proxied = await this.cutoverProxy.routeOrLegacy(tenantId, 'production', sessionId, request, sessionId);
+    const cutoverEnv = (request as any).environmentId || (request as any).env || 'production';
+    const proxied = await this.cutoverProxy.routeOrLegacy(tenantId, cutoverEnv, sessionId, request, sessionId);
     if (proxied !== null) {
-      console.log(`[JourneyAX:Proxy:Stream] Authoritative cutover active: proxying stream to journey-runtime-service for tenant="${tenantId}"`);
+      console.log(`[JourneyAX:Proxy:Stream] Authoritative cutover active: proxying stream to journey-runtime-service for tenant="${tenantId}" env="${cutoverEnv}"`);
       emit('session', { sessionId });
       for (const action of proxied.uiActions) {
         emit('uiAction', action);

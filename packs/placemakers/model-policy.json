@@ -10,6 +10,12 @@
         { "provider": "openai", "model": "gpt-4o", "priority": 2 }
       ],
       "dataResidency": "nz",
+      "acceptedResidencies": ["nz", "au", "us"],
+      "residencyAttestation": {
+        "source": "fletcher_building_cloud_agreement",
+        "attestedResidency": "au",
+        "notes": "Google Cloud & OpenAI processing in Australasia (ap-southeast-2) or global US accepted under Fletcher Building cross-border data processing terms"
+      },
       "maxInputTokens": 20000,
       "maxOutputTokens": 2500,
       "fallbackAllowed": true,
@@ -23,6 +29,12 @@
         { "provider": "openai", "model": "gpt-4o-mini", "priority": 2 }
       ],
       "dataResidency": "nz",
+      "acceptedResidencies": ["nz", "au", "us"],
+      "residencyAttestation": {
+        "source": "fletcher_building_cloud_agreement",
+        "attestedResidency": "au",
+        "notes": "Google Cloud & OpenAI processing in Australasia (ap-southeast-2) or global US accepted under Fletcher Building cross-border data processing terms"
+      },
       "maxInputTokens": 8000,
       "maxOutputTokens": 1000,
       "fallbackAllowed": true,

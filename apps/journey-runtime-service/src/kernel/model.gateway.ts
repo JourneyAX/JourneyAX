@@ -205,8 +205,42 @@ export class ModelGateway {
     const evidenced = this.determineEndpointResidency(route.provider, endpoint);
     const requiredResidency = (req.targetDataResidency || route.dataResidency).trim().toLowerCase();
 
-    if (evidenced.residency.toLowerCase() !== requiredResidency) {
-      throw new ModelResidencyViolationError(requiredResidency, evidenced.residency, evidenced.evidence);
+    // Find the active policy item for residency allow-lists & attestations
+    const policy =
+      release.modelPolicy?.policies?.find((p: any) => p.policyId === route.policyId) ||
+      release.modelPolicy?.policies?.find((p: any) => p.policyId === req.policyRef);
+
+    const allowedResidencies = new Set<string>([requiredResidency]);
+
+    // Add accepted residencies from pack policy
+    if (policy && Array.isArray((policy as any).acceptedResidencies)) {
+      for (const r of (policy as any).acceptedResidencies) {
+        if (typeof r === 'string' && r.trim()) {
+          allowedResidencies.add(r.trim().toLowerCase());
+        }
+      }
+    }
+
+    // Add attested residency from pack policy
+    if (policy && (policy as any).residencyAttestation?.attestedResidency) {
+      allowedResidencies.add(String((policy as any).residencyAttestation.attestedResidency).trim().toLowerCase());
+    }
+
+    // Add platform config allowlist from environment if specified
+    const platformAllowed = process.env.ACCEPTED_DATA_RESIDENCIES;
+    if (platformAllowed) {
+      for (const r of platformAllowed.split(',')) {
+        if (r.trim()) allowedResidencies.add(r.trim().toLowerCase());
+      }
+    }
+
+    const evidencedResidencyNorm = evidenced.residency.toLowerCase();
+    if (!allowedResidencies.has(evidencedResidencyNorm)) {
+      throw new ModelResidencyViolationError(
+        requiredResidency,
+        evidenced.residency,
+        `${evidenced.evidence}; allowed=[${Array.from(allowedResidencies).join(', ')}]`
+      );
     }
 
     // 3. Credential Verification
