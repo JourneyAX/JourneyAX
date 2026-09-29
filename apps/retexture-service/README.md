@@ -37,8 +37,11 @@ py/             vendored geometry core (unchanged from the reference repo)
 
 ```bash
 cd apps/retexture-service
-npm run setup                 # python3.12 venv + deps (scipy/onnxruntime/rembg — a few min)
-GEMINI_API_KEY=... npm run dev # uvicorn on :8091 (--reload)
+npm run setup                 # Python 3.12 venv + deps (scipy/onnxruntime/rembg — a few min)
+# Unix:    GEMINI_API_KEY=... npm run dev
+# Windows: $env:GEMINI_API_KEY="..."; npm run dev
+# To use another port: `PORT=9000 npm run dev` (Unix) or
+# `$env:PORT="9000"; npm run dev` (Windows).
 ```
 
 Env: `PORT` (default 8091), `GEMINI_API_KEY` (required for /retexture),

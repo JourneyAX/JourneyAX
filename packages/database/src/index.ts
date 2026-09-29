@@ -1,4 +1,5 @@
 import { MongoClient, Db } from 'mongodb';
+import { setServers } from 'node:dns';
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
@@ -12,6 +13,14 @@ export async function connectToDatabase(
 ): Promise<{ client: MongoClient; db: Db }> {
   if (client && db) {
     return { client, db };
+  }
+
+  const dnsServers = process.env.MONGODB_DNS_SERVERS
+    ?.split(',')
+    .map((server) => server.trim())
+    .filter(Boolean);
+  if (dnsServers?.length) {
+    setServers(dnsServers);
   }
 
   client = new MongoClient(uri);
