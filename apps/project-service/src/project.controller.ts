@@ -2,10 +2,11 @@ import {
   Controller, Get, Post, Put, Patch, Delete,
   Body, Param, Query, Headers,
   NotFoundException, BadRequestException,
-  Inject, UseGuards,
+  Inject, Optional, UseGuards,
 } from '@nestjs/common';
 import { PermissionGuard, RequirePermission } from './permission.guard';
 import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
+import { BusinessPackPublicationService } from './business-pack-publication.service';
 import {
   CreateProjectDto, UpdateProjectDto, MemberRole,
   CreateBusinessRuleDto, UpdateBusinessRuleDto,
@@ -53,6 +54,7 @@ function isInternal(key?: string): boolean {
 export class ProjectController {
   constructor(
     @Inject(ProjectService) private readonly projectService: ProjectService,
+    @Optional() @Inject(BusinessPackPublicationService) private readonly publicationService?: BusinessPackPublicationService,
   ) {}
 
   // ── Health ────────────────────────────────────────────────────
@@ -158,7 +160,8 @@ export class ProjectController {
     @Param('projectId') projectId: string,
     @Body() body?: { note?: string; publishedBy?: string },
   ) {
-    const result = await this.projectService.publishConfig(projectId, body || {});
+    const pubService = this.publicationService || this.projectService.getPublicationService();
+    const result = await pubService.publishConfig(projectId, body || {});
     if (!result.success) throw new NotFoundException(result.message);
     return { ...result, status: 'active', projectId };
   }

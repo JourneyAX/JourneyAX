@@ -1,0 +1,285 @@
+{
+  "version": "1.0.0",
+  "enabled": true,
+  "roomTypes": [
+    {
+      "id": "bathroom",
+      "label": "Bathroom",
+      "description": "Moisture-resistant vanities, tall linen storage, shaving cabinets and wet-wall lining",
+      "defaultDimensions": {
+        "widthMm": 1800,
+        "depthMm": 2400,
+        "heightMm": 2400
+      },
+      "allowedComponentCategories": ["base", "overhead", "tall", "lining"],
+      "forbiddenComponentCategories": ["laundry_tub", "washer_cavity", "laundry_kit", "tub", "appliance"],
+      "defaultComponents": [
+        {
+          "componentId": "vanity-900",
+          "sku": "3601297",
+          "x": 0,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 1
+        },
+        {
+          "componentId": "shaving-cabinet-900",
+          "sku": "7834220",
+          "x": 0,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 1
+        },
+        {
+          "componentId": "tall-tower-400",
+          "sku": "7834330",
+          "x": 1000,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 1
+        },
+        {
+          "componentId": "lining-gib-aqualine",
+          "sku": "2801884",
+          "x": 0,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 3
+        }
+      ]
+    },
+    {
+      "id": "laundry",
+      "label": "Laundry & Utility",
+      "description": "Modular laundry cabinetry, appliance cavities, SuperTub packages, and wet area lining",
+      "defaultDimensions": {
+        "widthMm": 2400,
+        "depthMm": 2400,
+        "heightMm": 2400
+      },
+      "allowedComponentCategories": ["base", "overhead", "tall", "appliance", "tub", "lining"],
+      "forbiddenComponentCategories": [],
+      "defaultComponents": [
+        {
+          "componentId": "base-drawer-600",
+          "sku": "3601297",
+          "x": 0,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 1
+        },
+        {
+          "componentId": "appliance-cavity-650",
+          "sku": "PM-CAV-650",
+          "x": 650,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 1
+        },
+        {
+          "componentId": "supertub-standard",
+          "sku": "7001402",
+          "x": 1350,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "label": "Kitchen",
+      "description": "Base drawer units, pantries, and moisture-resistant splashback linings",
+      "defaultDimensions": {
+        "widthMm": 3000,
+        "depthMm": 2400,
+        "heightMm": 2400
+      },
+      "allowedComponentCategories": ["base", "overhead", "tall", "appliance", "lining"],
+      "forbiddenComponentCategories": ["tub", "laundry_tub"],
+      "defaultComponents": [
+        {
+          "componentId": "base-drawer-600",
+          "sku": "3601297",
+          "x": 0,
+          "z": 0,
+          "rotation": 0,
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "id": "utility",
+      "label": "Utility Room",
+      "description": "Heavy-duty multi-purpose utility space with washbasin and storage",
+      "defaultDimensions": {
+        "widthMm": 2000,
+        "depthMm": 2000,
+        "heightMm": 2400
+      },
+      "allowedComponentCategories": ["base", "overhead", "tall", "appliance", "tub", "lining"],
+      "forbiddenComponentCategories": [],
+      "defaultComponents": []
+    }
+  ],
+  "plannerLabels": {
+    "title": "PlaceMakers Modular Space & Trade Planner",
+    "subtitle": "Interactive 3D / 2D modular layout with server-authoritative trade pricing and NZ Building Code verification",
+    "roomType": "Room Type",
+    "wallWidth": "Wall Width / Room Run",
+    "finish": "Style & Finish",
+    "installType": "Installation Method",
+    "quoteButton": "Generate PlaceMakers Trade Quote",
+    "tradeInstallationBadge": "PlaceMakers Certified Trade Installation Available",
+    "safetyWarning": "Bathroom wet areas require NZBC E3 compliant impervious linings and licensed plumbing",
+    "unsupportedWarning": "Space Planner configuration is unavailable for this business"
+  },
+  "componentReferences": [
+    {
+      "componentId": "vanity-900",
+      "sku": "3601297",
+      "category": "base",
+      "compatibleRoomTypes": ["bathroom"],
+      "dimensionsMm": { "width": 900, "depth": 460, "height": 850 }
+    },
+    {
+      "componentId": "vanity-1200",
+      "sku": "3601299",
+      "category": "base",
+      "compatibleRoomTypes": ["bathroom"],
+      "dimensionsMm": { "width": 1200, "depth": 460, "height": 850 }
+    },
+    {
+      "componentId": "vanity-750",
+      "sku": "3601296",
+      "category": "base",
+      "compatibleRoomTypes": ["bathroom"],
+      "dimensionsMm": { "width": 750, "depth": 460, "height": 850 }
+    },
+    {
+      "componentId": "shaving-cabinet-900",
+      "sku": "7834220",
+      "category": "overhead",
+      "compatibleRoomTypes": ["bathroom"],
+      "dimensionsMm": { "width": 900, "depth": 150, "height": 750 }
+    },
+    {
+      "componentId": "tall-tower-400",
+      "sku": "7834330",
+      "category": "tall",
+      "compatibleRoomTypes": ["bathroom", "laundry"],
+      "dimensionsMm": { "width": 400, "depth": 350, "height": 1900 }
+    },
+    {
+      "componentId": "lining-gib-aqualine",
+      "sku": "2801884",
+      "category": "lining",
+      "compatibleRoomTypes": ["bathroom", "laundry", "kitchen", "utility"],
+      "dimensionsMm": { "width": 1200, "depth": 10, "height": 2400 },
+      "coverageM2": 2.88,
+      "unitOfMeasure": "sheet"
+    },
+    {
+      "componentId": "supertub-standard",
+      "sku": "7001402",
+      "category": "tub",
+      "compatibleRoomTypes": ["laundry", "utility"],
+      "dimensionsMm": { "width": 560, "depth": 560, "height": 900 }
+    },
+    {
+      "componentId": "supertub-slim",
+      "sku": "7001405",
+      "category": "tub",
+      "compatibleRoomTypes": ["laundry", "utility"],
+      "dimensionsMm": { "width": 350, "depth": 560, "height": 900 }
+    },
+    {
+      "componentId": "appliance-cavity-650",
+      "sku": "PM-CAV-650",
+      "category": "appliance",
+      "compatibleRoomTypes": ["laundry", "utility"],
+      "dimensionsMm": { "width": 650, "depth": 600, "height": 870 }
+    },
+    {
+      "componentId": "laundry-kit-600",
+      "sku": "PM-CAB-L600",
+      "category": "base",
+      "compatibleRoomTypes": ["laundry", "utility"],
+      "dimensionsMm": { "width": 600, "depth": 600, "height": 870 }
+    }
+  ],
+  "layoutRules": {
+    "isolationRules": [
+      {
+        "ruleId": "no_laundry_in_bathroom",
+        "targetRoomType": "bathroom",
+        "forbiddenCategories": ["tub", "appliance", "laundry_tub", "washer_cavity"],
+        "errorMessage": "Laundry SuperTubs, washer cavities, and laundry kits cannot be placed in a bathroom layout under NZBC room isolation rules"
+      }
+    ],
+    "wallWidthConstraints": {
+      "minMm": 1200,
+      "maxMm": 4800,
+      "stepMm": 100
+    }
+  },
+  "compatibilityClassifications": [
+    {
+      "classificationId": "exterior_weathertight_barrier",
+      "systemType": "exterior_barrier",
+      "compatibleRoomTypes": ["decking", "exterior_cladding"],
+      "forbiddenRoomTypes": ["bathroom", "laundry", "kitchen", "utility"],
+      "skuPatternsOrIds": ["2800871", "2800873", "3410067"],
+      "requiresExplicitMapping": true,
+      "rejectionMessage": "Exterior weathertight flashing/barrier tape (e.g. Weatherline, Barrier Sill, 40 Below) is strictly prohibited in interior wet areas under NZBC E3/AS1"
+    },
+    {
+      "classificationId": "interior_wet_area_jointing",
+      "systemType": "interior_lining",
+      "compatibleRoomTypes": ["bathroom", "laundry", "kitchen", "utility"],
+      "forbiddenRoomTypes": [],
+      "skuPatternsOrIds": ["2801181", "2801182", "2801884"],
+      "requiresExplicitMapping": false,
+      "rejectionMessage": ""
+    },
+    {
+      "classificationId": "sanitary_plumbing_consumables",
+      "systemType": "sanitary_plumbing",
+      "compatibleRoomTypes": ["bathroom", "laundry", "utility", "kitchen"],
+      "forbiddenRoomTypes": [],
+      "skuPatternsOrIds": ["7712045", "3649999", "2800100"],
+      "requiresExplicitMapping": false,
+      "rejectionMessage": ""
+    }
+  ],
+  "calculationFormulas": [
+    {
+      "formulaId": "wall_lining_coverage",
+      "targetCategory": "lining",
+      "unitCoverageM2": 2.88,
+      "rounding": "ceil",
+      "formulaExpression": "ceil(areaM2 / 2.88)"
+    }
+  ],
+  "defaults": {
+    "defaultRoomType": "laundry",
+    "defaultFinish": "white-gloss",
+    "defaultInstallType": "diy",
+    "finishes": [
+      { "id": "white-gloss", "name": "White Gloss", "hex": "#FFFFFF", "desc": "Ultra-modern high gloss reflective finish" },
+      { "id": "anthracite", "name": "Matte Anthracite", "hex": "#262626", "desc": "Contemporary deep architectural charcoal" },
+      { "id": "natural-oak", "name": "Natural Warm Oak", "hex": "#C2A378", "desc": "Textured natural woodgrain timber veneer" },
+      { "id": "coastal-elm", "name": "Coastal Elm", "hex": "#9E9484", "desc": "Subtle light grey-washed timber grain" }
+    ],
+    "benchtops": [
+      { "id": "kordura-white", "name": "White Kordura Solid Surface (20mm)", "priceNzd": 420 },
+      { "id": "engineered-stone", "name": "Calacatta Engineered Stone (30mm)", "priceNzd": 780 },
+      { "id": "laminate-ash", "name": "White Ash Postformed Laminate (38mm)", "priceNzd": 260 }
+    ],
+    "handles": [
+      { "id": "black-pull", "name": "Matte Black Bar Pulls" },
+      { "id": "brass-lip", "name": "Brushed Brass Edge Lip" },
+      { "id": "push-open", "name": "Seamless Touch Push-to-Open" }
+    ]
+  }
+}

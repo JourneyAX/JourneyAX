@@ -337,6 +337,14 @@ export class BusinessPackLoader {
           }),
           experience: readJson('experience/cards-and-theme.json', {}),
           evaluations: readJsonArray('evaluations'),
+          extensions: {
+            ...(readJson('extensions/space-planner.json', null)
+              ? { spacePlanner: readJson('extensions/space-planner.json', null) }
+              : readJson('experience/space-planner.json', null)
+              ? { spacePlanner: readJson('experience/space-planner.json', null) }
+              : {}),
+            ...readJson('extensions.json', {}),
+          },
         };
 
         const parsed = BusinessPackReleaseSchema.safeParse(packCandidate);

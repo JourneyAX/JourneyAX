@@ -28,10 +28,15 @@ export class PublicationGateValidator implements ReleaseValidationPort {
       return await this.storageFactory();
     }
 
-    const uri = process.env.TEST_MONGODB_URI || process.env.MONGODB_URI;
-    if (uri) {
+    const testUri = process.env.TEST_MONGODB_URI;
+    if (testUri) {
+      if (process.env.MONGODB_URI && testUri === process.env.MONGODB_URI) {
+        throw new Error(
+          '[PublicationGateValidator] TEST_MONGODB_URI matches production MONGODB_URI. Destructive publication validation requires an isolated test database.'
+        );
+      }
       const dbName = `journeyx_gate_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const { client, db } = await connectToDatabase(uri, dbName);
+      const { client, db } = await connectToDatabase(testUri, dbName);
       return {
         db,
         client,
@@ -46,7 +51,7 @@ export class PublicationGateValidator implements ReleaseValidationPort {
     }
 
     throw new Error(
-      '[PublicationGateValidator] No isolated test Mongo configured. Provide storageFactory or set TEST_MONGODB_URI/MONGODB_URI.'
+      '[PublicationGateValidator] Isolated test storage required for publication validation. Provide storageFactory or set TEST_MONGODB_URI. Never fall back to production MONGODB_URI.'
     );
   }
 

@@ -797,17 +797,19 @@ export default function ChatPanel() {
     await sendToAI(newMessages);
   }, [messages, sendToAI, isLoading, state.isThinking]);
 
-  // Called when user submits clarify answers from the right panel
-  const handleClarifySubmit = useCallback(async () => {
-    if (isLoading || state.isThinking) return;
-    // Format answers as a readable message
-    const answers = state.dynamicAnswers;
-    const questions = state.dynamicQuestions;
-    const answerSummary = questions
-      .map(q => `${q.title} → ${answers[q.id] || 'Not answered'}`)
-      .join('\n');
+  // Clarify submission state machine:
+  // Completing every chip reliably sends one continuation request,
+  // survives streaming-state transitions (isLoading / isThinking),
+  // and is replay / idempotency safe.
+  const submittedClarificationsRef = useRef<Set<string>>(new Set());
+  const pendingClarificationRef = useRef<{ fingerprint: string; message: string } | null>(null);
 
-    const userMsg = { role: 'user', content: `My answers:\n${answerSummary}` };
+  const executeClarificationSubmit = useCallback(async (clarificationText: string, fingerprint: string) => {
+    if (submittedClarificationsRef.current.has(fingerprint)) return;
+    submittedClarificationsRef.current.add(fingerprint);
+    pendingClarificationRef.current = null;
+
+    const userMsg = { role: 'user', content: clarificationText };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
 
@@ -817,7 +819,29 @@ export default function ChatPanel() {
     await sendToAI(newMessages);
 
     dispatch({ type: 'SET_THINKING', thinking: false });
-  }, [messages, state.dynamicAnswers, state.dynamicQuestions, sendToAI, dispatch, isLoading, state.isThinking]);
+  }, [messages, sendToAI, dispatch]);
+
+  // Called when user submits clarify answers from the right panel
+  const handleClarifySubmit = useCallback(async () => {
+    const qs = state.dynamicQuestions;
+    const answers = state.dynamicAnswers;
+    if (qs.length === 0) return;
+
+    const fingerprint = qs.map((q) => `${q.id}:${answers[q.id] || ''}`).join('|');
+    if (submittedClarificationsRef.current.has(fingerprint)) return;
+
+    const answerSummary = qs
+      .map((q) => `${q.title} → ${answers[q.id] || 'Not answered'}`)
+      .join('\n');
+    const clarificationText = `My answers:\n${answerSummary}`;
+
+    if (isLoading || state.isThinking) {
+      pendingClarificationRef.current = { fingerprint, message: clarificationText };
+      return;
+    }
+
+    await executeClarificationSubmit(clarificationText, fingerprint);
+  }, [state.dynamicQuestions, state.dynamicAnswers, isLoading, state.isThinking, executeClarificationSubmit]);
 
   // Expose handleClarifySubmit globally so ClarifyPanel can call it
   // Generic bridge so the capability panels (accessories / choice / install /
@@ -833,26 +857,40 @@ export default function ChatPanel() {
   }, [handleClarifySubmit]);
 
   // Clarify card: send once EVERY question has an answer — read from the
-  // committed reducer state, never from inside the chip's click handler
-  // (which is where the "→ Not answered" bug lived: a one-question card
-  // submitted on the first tap, before that tap's answer had landed). One
-  // send per question set: a new SET_DYNAMIC_QUESTIONS from the agent resets
-  // the answers and is a fresh set.
-  const clarifySentForRef = useRef<unknown>(null);
+  // committed reducer state, never from inside the chip's click handler.
+  // One send per question set + answers fingerprint.
   useEffect(() => {
     const qs = state.dynamicQuestions;
     if (state.phase !== 'clarify' || qs.length === 0) return;
-    if (clarifySentForRef.current === qs) return;
     if (!qs.every((q) => !!state.dynamicAnswers[q.id])) return;
-    // The questions arrive before the agent's reply has finished streaming
-    // (a reasoning model thinks for 10s+ after emitting them). A customer who
-    // answers all three in that window used to lose them: the submit handler
-    // refuses to send mid-turn, and this effect had already stamped the set as
-    // sent. Wait for the turn to end instead — this re-runs when it does.
+
+    const fingerprint = qs.map((q) => `${q.id}:${state.dynamicAnswers[q.id] || ''}`).join('|');
+    if (submittedClarificationsRef.current.has(fingerprint)) return;
+
+    const answerSummary = qs
+      .map((q) => `${q.title} → ${state.dynamicAnswers[q.id] || 'Not answered'}`)
+      .join('\n');
+    const clarificationText = `My answers:\n${answerSummary}`;
+
+    if (isLoading || state.isThinking) {
+      pendingClarificationRef.current = { fingerprint, message: clarificationText };
+      return;
+    }
+
+    void executeClarificationSubmit(clarificationText, fingerprint);
+  }, [state.dynamicQuestions, state.dynamicAnswers, state.phase, isLoading, state.isThinking, executeClarificationSubmit]);
+
+  // Flush pending clarification as soon as the streaming turn settles (survives streaming transitions)
+  useEffect(() => {
     if (isLoading || state.isThinking) return;
-    clarifySentForRef.current = qs;
-    void handleClarifySubmit();
-  }, [state.dynamicQuestions, state.dynamicAnswers, state.phase, handleClarifySubmit, isLoading, state.isThinking]);
+    const pending = pendingClarificationRef.current;
+    if (!pending) return;
+    if (submittedClarificationsRef.current.has(pending.fingerprint)) {
+      pendingClarificationRef.current = null;
+      return;
+    }
+    void executeClarificationSubmit(pending.message, pending.fingerprint);
+  }, [isLoading, state.isThinking, executeClarificationSubmit]);
 
   // Called when user clicks "Build Quote" on ProductsPanel
   const handleBuildQuote = useCallback(async (summary?: string) => {

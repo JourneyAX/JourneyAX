@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { connectToDatabase } from '@journeyax/database';
 import { Db, Collection } from 'mongodb';
@@ -15,6 +15,9 @@ import {
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
 } from '@journeyax/business-pack';
+import { BusinessPackPublicationService } from './business-pack-publication.service';
+import { PublicationGateValidator } from './publication-gate-validator';
+import { ReleaseValidationPort } from './release-validation.port';
 
 const DB_NAME   = process.env.PROJECT_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'journeyax';
 const PROJECTS  = 'tenant_configs';    // existing collection — backwards compat
@@ -230,6 +233,47 @@ export class ProjectService {
     }
   }
 
+  private publicationService?: BusinessPackPublicationService;
+  private releaseValidator?: ReleaseValidationPort;
+
+  constructor(
+    @Optional() private readonly publicationGateValidator?: PublicationGateValidator,
+  ) {
+    if (publicationGateValidator) {
+      this.releaseValidator = publicationGateValidator;
+    }
+  }
+
+  getDb(): Db { return this.db; }
+  getProjectsCol(): Collection<ProjectConfig> { return this.projectsCol; }
+  getVersionsCol(): Collection<ConfigVersion> { return this.versionsCol; }
+  getIsConnected(): boolean { return this.isConnected; }
+  bustCache(projectId: string): void { this.bust(projectId); }
+
+  setReleaseValidator(validator?: ReleaseValidationPort): void {
+    this.releaseValidator = validator;
+    this.publicationService = undefined;
+  }
+
+  getPublicationService(validator?: ReleaseValidationPort): BusinessPackPublicationService {
+    if (!this.publicationService || validator) {
+      this.publicationService = new BusinessPackPublicationService(
+        () => this.db,
+        () => this.projectsCol,
+        () => this.versionsCol,
+        () => this.isConnected,
+        (pid) => this.bust(pid),
+        (pid) => this.getProject(pid),
+        validator || this.releaseValidator
+      );
+    }
+    return this.publicationService;
+  }
+
+  setPublicationService(svc: BusinessPackPublicationService): void {
+    this.publicationService = svc;
+  }
+
   setDbForTesting(db: any): void {
     this.db          = db;
     this.projectsCol = db.collection(PROJECTS);
@@ -238,6 +282,7 @@ export class ProjectService {
     this.rulesCol    = db.collection(RULES);
     this.versionsCol = db.collection(VERSIONS);
     this.isConnected = true;
+    this.publicationService = undefined;
   }
 
   async ensureIndexes() {
@@ -800,567 +845,7 @@ export class ProjectService {
     projectId: string,
     opts: { note?: string; publishedBy?: string } = {},
   ): Promise<{ success: boolean; version?: number; message?: string }> {
-    if (!this.isConnected) return { success: false, message: 'Database not available.' };
-    const pid = projectId.toLowerCase();
-
-    const doc = await this.projectsCol.findOne({ projectId: pid });
-    if (!doc) return { success: false, message: `Project '${pid}' not found.` };
-
-    // Evaluation Gate (EVAL-001): ensure journey graph has valid entrypoint & compile
-    let compiledJourney: any = null;
-    const journeyGraph = doc.persona?.journeyGraph;
-    if (journeyGraph && Array.isArray(journeyGraph.nodes) && journeyGraph.nodes.length > 0) {
-      const hasTrigger = journeyGraph.nodes.some((n: any) => n.data?.kind?.startsWith('trigger.'));
-      if (!hasTrigger) {
-        return {
-          success: false,
-          message: 'Publish blocked by evaluation gate: Journey graph must contain at least one Trigger node.',
-        };
-      }
-
-      const compileRes = compileGraphToJourneyDefinition(
-        journeyGraph.nodes,
-        journeyGraph.edges || [],
-        {
-          journeyId: pid,
-          displayName: doc.companyName || pid,
-        }
-      );
-
-      if (!compileRes.success) {
-        return {
-          success: false,
-          message: `Publish blocked by evaluation gate: Journey graph compilation failed: ${(compileRes.errors || []).join('; ')}`,
-        };
-      }
-      compiledJourney = compileRes.journeyDefinition;
-    }
-
-    if ((doc as any).evaluationGate?.required && (doc as any).evaluationGate?.passed === false) {
-      return {
-        success: false,
-        message: 'Publish blocked by evaluation gate: Required regression evaluation suite has not passed.',
-      };
-    }
-
-    const last = await this.versionsCol
-      .find({ projectId: pid }).sort({ version: -1 }).limit(1).toArray();
-    const version = (last[0]?.version ?? 0) + 1;
-
-    // ── Assemble and publish Immutable Business Pack release into business_pack_releases ──
-    const journeyList = compiledJourney
-      ? [compiledJourney]
-      : Array.isArray(doc.journeys) && doc.journeys.length > 0
-      ? doc.journeys
-      : doc.persona?.journeyDefinition
-      ? (Array.isArray(doc.persona.journeyDefinition) ? doc.persona.journeyDefinition : [doc.persona.journeyDefinition])
-      : [];
-
-    if (journeyList.length === 0) {
-      return {
-        success: false,
-        message: 'Publish blocked: Project must define at least one valid journey or compile a journey graph.',
-      };
-    }
-
-    const industry = doc.business?.type || 'general';
-    const dimensions = (doc.contextDimensions || []).map((d: any) => ({
-      name: d.key || d.name,
-      required: Boolean(d.scoping),
-      promptOnMissing: d.question || `What ${d.label || d.key} are you looking for?`,
-      allowedValues: d.values || [],
-    }));
-
-    // Compile Model Policy strictly from doc.modelPolicy or doc.ai (fail-closed, no hardcoded OpenAI/Anthropic fallback)
-    let compiledModelPolicy: any = null;
-    if (doc.modelPolicy?.policies && Array.isArray(doc.modelPolicy.policies) && doc.modelPolicy.policies.length > 0) {
-      compiledModelPolicy = {
-        version: doc.modelPolicy.version || '1.0.0',
-        defaultPolicy: doc.modelPolicy.defaultPolicy || doc.modelPolicy.policies[0].policyId,
-        policies: doc.modelPolicy.policies,
-      };
-    } else if (doc.ai?.model) {
-      const rawProvider = (doc.ai.provider || 'openai').toLowerCase();
-      const provider = rawProvider === 'gemini'
-        ? 'google'
-        : rawProvider === 'ollama'
-        ? 'open-model'
-        : ['openai', 'anthropic', 'google', 'open-model', 'custom'].includes(rawProvider)
-        ? rawProvider
-        : 'custom';
-
-      const candidates = [
-        {
-          provider: provider as any,
-          model: doc.ai.model,
-          priority: 1,
-          temperature: typeof doc.ai.temperature === 'number' ? doc.ai.temperature : undefined,
-        },
-      ];
-
-      compiledModelPolicy = {
-        version: '1.0.0',
-        defaultPolicy: 'standard_turn',
-        policies: [
-          {
-            policyId: 'standard_turn',
-            candidates,
-            dataResidency: (doc as any).dataResidency || 'au',
-            maxInputTokens: 20000,
-            maxOutputTokens: doc.ai.maxTokens || 2000,
-            fallbackAllowed: false,
-            timeoutMs: 10000,
-          },
-        ],
-      };
-    }
-
-    if (!compiledModelPolicy) {
-      return {
-        success: false,
-        message: 'Publish blocked: Project must define AI model policy or AI model configuration.',
-      };
-    }
-
-    // Compile Specialist Agents directly from project document fields
-    const compiledAgents = Array.isArray(doc.agents) && doc.agents.length > 0
-      ? doc.agents
-      : [
-          {
-            agentId: `${pid}_primary_assistant`,
-            name: doc.persona?.systemName || doc.name || 'Assistant',
-            purpose: doc.persona?.journeyGuidance || 'Primary conversational agent',
-            description: doc.persona?.systemName || 'Primary conversational agent',
-            modelPolicyRef: compiledModelPolicy.defaultPolicy,
-            systemPromptTemplate: doc.persona?.systemPromptOverrides || 'Assist customer with product discovery.',
-            allowedTools: Array.isArray(doc.capabilities) ? doc.capabilities : [],
-            maxTurns: 5,
-            handoffConditions: [],
-          },
-        ];
-
-    if (Array.isArray((doc as any).specialistAgents)) {
-      for (const sa of (doc as any).specialistAgents) {
-        if (!sa.agentId || !sa.name) {
-          return {
-            success: false,
-            message: 'Publish blocked: Specialist agent missing required agentId or name.',
-          };
-        }
-        if (!compiledAgents.some((a: any) => a.agentId === sa.agentId)) {
-          compiledAgents.push(sa);
-        }
-      }
-    }
-
-    const declaredAgentIds = new Set(compiledAgents.map((a: any) => a.agentId));
-    for (const j of journeyList) {
-      if (j.stages && typeof j.stages === 'object') {
-        for (const [sId, stage] of Object.entries<any>(j.stages)) {
-          if (stage.specialistAgentId && !declaredAgentIds.has(stage.specialistAgentId)) {
-            return {
-              success: false,
-              message: `Publish blocked: Stage '${sId}' references undeclared specialist agent '${stage.specialistAgentId}'.`,
-            };
-          }
-        }
-      }
-    }
-
-    // Compile Stage-Scoped Tools and Capabilities directly from project document fields
-    let compiledCapabilities: any = {
-      version: '1.0.0',
-      toolDefinitions: [],
-      toolBindings: [],
-      stageBindings: [],
-    };
-
-    if (doc.capabilities && typeof doc.capabilities === 'object' && !Array.isArray(doc.capabilities)) {
-      const caps = doc.capabilities as any;
-      compiledCapabilities = {
-        version: caps.version || '1.0.0',
-        toolDefinitions: caps.toolDefinitions || [],
-        toolBindings: caps.toolBindings || [],
-        stageBindings: caps.stageBindings || [],
-      };
-    } else {
-      const stageTools = new Set<string>();
-      for (const j of journeyList) {
-        if (j.stages && typeof j.stages === 'object') {
-          for (const stage of Object.values<any>(j.stages)) {
-            if (Array.isArray(stage.allowedCapabilities)) {
-              for (const t of stage.allowedCapabilities) stageTools.add(t);
-            }
-          }
-        }
-      }
-
-      const toolNames: string[] = Array.from(new Set([
-        ...(Array.isArray(doc.capabilities) ? doc.capabilities : []),
-        ...(Array.isArray((doc as any).tools) ? (doc as any).tools : []),
-        ...Array.from(stageTools),
-      ]));
-
-      const stageBindings: any[] = [];
-      for (const j of journeyList) {
-        if (j.stages && typeof j.stages === 'object') {
-          for (const [sId, stage] of Object.entries<any>(j.stages)) {
-            const allowed = Array.isArray(stage.allowedCapabilities) && stage.allowedCapabilities.length > 0
-              ? stage.allowedCapabilities
-              : toolNames;
-            if (allowed && allowed.length > 0) {
-              stageBindings.push({
-                journeyId: j.journeyId,
-                stageId: sId,
-                tools: allowed.map((t: string) => ({ toolId: t })),
-              });
-            }
-          }
-        }
-      }
-
-      compiledCapabilities = {
-        version: '1.0.0',
-        toolDefinitions: ((doc as any).toolDefinitions || toolNames.map((toolId: string) => {
-          const std = STANDARD_TOOL_SCHEMAS[toolId] || {
-            inputSchema: { type: 'object', properties: {} },
-            outputSchema: { type: 'object', properties: {} },
-            sideEffect: (['order_commit', 'quote_create', 'orderCommit', 'createQuote'].includes(toolId) ? 'transactional' : 'read') as any,
-            risk: (['order_commit', 'quote_create'].includes(toolId) ? 'high' : 'low') as any,
-            requiresApproval: ['order_commit', 'orderCommit'].includes(toolId),
-            idempotencyRequired: ['order_commit', 'orderCommit'].includes(toolId),
-          };
-          return {
-            toolId,
-            version: '1.0.0',
-            displayName: toolId,
-            description: `Capability ${toolId}`,
-            inputSchema: std.inputSchema,
-            outputSchema: std.outputSchema,
-            sideEffect: std.sideEffect,
-            risk: std.risk,
-            timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
-            idempotencyPolicy: { required: std.idempotencyRequired, ttlSeconds: 86400 },
-            approvalPolicy: { requiresApproval: std.requiresApproval, ttlMinutes: 60 },
-            dataClassification: 'internal' as const,
-          };
-        })),
-        toolBindings: ((doc as any).toolBindings || toolNames.map((toolId: string) => {
-          const std = STANDARD_TOOL_SCHEMAS[toolId];
-          return {
-            tenantId: pid,
-            environmentId: 'production' as const,
-            toolId,
-            bindingVersion: '1.0.0',
-            executor: {
-              type: 'native_capability' as const,
-              nativeHandler: toolId,
-            },
-            enabled: true,
-            policy: {
-              requiredRole: 'customer',
-              requiresConfirmation: std ? std.requiresApproval : ['order_commit', 'orderCommit'].includes(toolId),
-              idempotencyRequired: std ? std.idempotencyRequired : ['order_commit', 'orderCommit'].includes(toolId),
-              timeoutMs: 10000,
-              retryAttempts: 0,
-            },
-          };
-        })),
-        stageBindings: (doc as any).stageBindings || stageBindings,
-      };
-    }
-
-    const declaredToolIds = new Set(compiledCapabilities.toolDefinitions.map((t: any) => t.toolId));
-    for (const j of journeyList) {
-      if (j.stages && typeof j.stages === 'object') {
-        for (const [sId, stage] of Object.entries<any>(j.stages)) {
-          if (Array.isArray(stage.allowedCapabilities)) {
-            for (const toolId of stage.allowedCapabilities) {
-              if (!declaredToolIds.has(toolId)) {
-                return {
-                  success: false,
-                  message: `Publish blocked: Stage '${sId}' references undeclared tool '${toolId}'. Tool must be declared in project capabilities or toolDefinitions.`,
-                };
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Compile Rules directly from project document fields
-    const compiledRules = Array.isArray(doc.rules) ? doc.rules : [];
-
-    // Compile Experience (Cards & Themes) directly from project document fields
-    const themeFromDoc = (doc.uiTheme as any)?.theme || doc.theme;
-    const tokens = doc.uiTheme?.tokens;
-    const allowedCardTypes = doc.experience?.cards?.allowedCardTypes
-      || (doc.cardTemplates ? Object.keys(doc.cardTemplates) : undefined)
-      || [
-        'bundle',
-        'products',
-        'productDetail',
-        'quote',
-        'comparison',
-        'plan',
-        'cart',
-        'orderStatus',
-        'guide',
-      ];
-
-    const compiledExperience = {
-      version: '1.0.0',
-      theme: {
-        primaryColor: tokens?.colors?.brand || themeFromDoc?.primaryColor || '#0F172A',
-        accentColor: tokens?.colors?.accent || themeFromDoc?.accentColor || '#3B82F6',
-        fontFamily: tokens?.font?.body || tokens?.font?.display || themeFromDoc?.fontFamily || 'Inter, sans-serif',
-        borderRadius: tokens?.radius?.md || themeFromDoc?.borderRadius || '8px',
-        customCssVars: (doc.uiTheme as any)?.theme?.customCssVars || {},
-      },
-      cards: {
-        allowedCardTypes,
-        defaultCardRenderer: doc.experience?.cards?.defaultCardRenderer || '@journeyax/ui-cards',
-        ...(doc.cardTemplates ? { templates: doc.cardTemplates } : {}),
-      },
-    };
-
-    // Compile Evaluations directly from project document fields
-    const compiledEvaluations = Array.isArray(doc.evaluations) && doc.evaluations.length > 0
-      ? doc.evaluations
-      : Array.isArray((doc as any).scenarios) && (doc as any).scenarios.length > 0
-      ? [
-          {
-            suiteId: `${pid}_acceptance_suite`,
-            name: `${doc.companyName || pid} Acceptance Suite`,
-            tenantId: pid,
-            version: '1.0.0',
-            blockingOnPublish: false,
-            scenarios: (doc as any).scenarios.map((s: any, idx: number) => ({
-              scenarioId: s.id || `scenario_${idx + 1}`,
-              name: s.id || `Scenario ${idx + 1}`,
-              description: s.say,
-              prompt: s.say,
-              expectedTargetStage: s.stage,
-              assertions: [],
-              timeoutMs: 15000,
-            })),
-          },
-        ]
-      : [];
-
-    const defaultEntities = doc.business?.entityModel
-      ? [
-          {
-            entityId: doc.business.entityModel.key,
-            displayName: doc.business.entityModel.label,
-            description: doc.business.entityModel.labelPlural || doc.business.entityModel.label,
-            attributes: (doc.business.entityModel.captureFields || []).map((f: any) => ({
-              name: f.key,
-              type: 'string' as const,
-              required: Boolean(f.required),
-            })),
-          },
-        ]
-      : [
-          {
-            entityId: 'customer_context',
-            displayName: 'Customer Context',
-            description: 'Customer context and preferences',
-            attributes: [
-              { name: 'budget', type: 'number' as const, required: false },
-              { name: 'timeline', type: 'string' as const, required: false },
-            ],
-          },
-        ];
-
-    // Compile SlotQuestions from vocabulary, dimensions, and stage requirements
-    const compiledSlotQuestions: Record<string, any> = {
-      ...(doc.vocabulary?.slotQuestions || {}),
-    };
-    for (const d of dimensions) {
-      if (!compiledSlotQuestions[d.name]) {
-        compiledSlotQuestions[d.name] = {
-          text: d.promptOnMissing || `What ${d.name.replace(/_/g, ' ')} are you looking for?`,
-          options: d.allowedValues || [],
-        };
-      }
-    }
-    for (const j of journeyList) {
-      if (j.stages && typeof j.stages === 'object') {
-        for (const stage of Object.values<any>(j.stages)) {
-          if (Array.isArray(stage.requiredFacts)) {
-            for (const f of stage.requiredFacts) {
-              const factKey = typeof f === 'string' ? f : (f.factKey || f.key || f.name);
-              if (factKey && !compiledSlotQuestions[factKey]) {
-                const qDef = stage.questionDefinitions?.[factKey];
-                compiledSlotQuestions[factKey] = {
-                  text: qDef?.text || (typeof f === 'object' && f.question) || `What ${factKey.replace(/_/g, ' ')} do you require?`,
-                  options: qDef?.options || (typeof f === 'object' && f.options) || [],
-                };
-              }
-            }
-          }
-        }
-      }
-    }
-
-    const packData = {
-      manifest: {
-        packId: `pack_${pid}`,
-        tenantId: pid,
-        name: doc.companyName || doc.name || pid,
-        version: `1.0.${version}`,
-        description: `${industry} Business Pack`,
-        schemaVersion: '1.0.0',
-        environmentId: 'production',
-        author: opts.publishedBy || 'studio',
-      },
-      profile: {
-        companyName: doc.companyName || doc.name || pid,
-        industry,
-        primaryGoals: doc.scope?.categories || ['customer_service'],
-        locales: ['en-AU', 'en-US'],
-      },
-      vocabulary: {
-        version: '1.0.0',
-        dimensions: dimensions.length > 0 ? dimensions : (doc.vocabulary?.dimensions || []),
-        terms: doc.vocabulary?.terms || [],
-        acronyms: doc.vocabulary?.acronyms || {},
-        slotSynonyms: doc.vocabulary?.slotSynonyms || {},
-        slotQuestions: compiledSlotQuestions,
-        slotMappings: doc.vocabulary?.slotMappings || {},
-        prohibitedTerms: doc.vocabulary?.prohibitedTerms || [],
-      },
-      entities: doc.entities || {
-        version: '1.0.0',
-        entities: defaultEntities,
-      },
-      conversationPolicy: doc.conversationPolicy || {
-        fencingRules: [],
-        prohibitedTopics: [],
-        escalationThresholds: {
-          sentimentFloor: -0.6,
-          maxTurnsWithoutProgress: 4,
-        },
-      },
-      modelPolicy: compiledModelPolicy,
-      agents: compiledAgents,
-      journeys: journeyList,
-      rules: compiledRules,
-      capabilities: compiledCapabilities,
-      experience: compiledExperience,
-      evaluations: compiledEvaluations,
-    };
-
-    // Validate Business Pack reference integrity fail-closed
-    let availableSecrets: string[] = [];
-    try {
-      const secretDocs = await this.db.collection('tenant_secrets').find({ tenantId: pid }).toArray();
-      availableSecrets = secretDocs.map((s: any) => s.secretRef || s.secretKey || s.key || s.name || s.id).filter(Boolean);
-    } catch {
-      availableSecrets = [];
-    }
-
-    const integrity = this.capabilityService.validateBusinessPackReferenceIntegrity(packData as any, {
-      availableSecrets,
-    });
-    if (!integrity.valid) {
-      return {
-        success: false,
-        message: `Publish blocked by reference integrity: ${integrity.errors.join('; ')}`,
-      };
-    }
-
-    const snapshot = this.clean(doc);
-    // The snapshot itself records which published version it is.
-    (snapshot as any).activeVersion = version;
-    if (compiledJourney) {
-      (snapshot as any).persona = {
-        ...snapshot.persona,
-        journeyDefinition: compiledJourney,
-      };
-    }
-    // ONE timestamp for all writes
-    const now = new Date().toISOString();
-
-    const updateFields: any = {
-      activeVersion: version,
-      status: 'active' as ProjectStatus,
-      updatedAt: now,
-    };
-    if (compiledJourney) {
-      updateFields['persona.journeyDefinition'] = compiledJourney;
-    }
-
-    const client = (this.db as any).client;
-    const isProduction = process.env.NODE_ENV === 'production';
-
-    const executeTransactionalPublish = async (session?: any) => {
-      const sessionOpts = session ? { session } : undefined;
-
-      // 1. Publish Business Pack release & update pointer inside the transaction
-      await publishBusinessPack(this.db, packData, {
-        publishedBy: opts.publishedBy,
-        notes: opts.note,
-        session,
-      });
-
-      // 2. Insert immutable snapshot into config_versions inside the transaction
-      await this.versionsCol.insertOne({
-        projectId: pid,
-        version,
-        config: snapshot,
-        publishedAt: now,
-        publishedBy: opts.publishedBy,
-        note: opts.note,
-      }, sessionOpts);
-
-      // 3. Update project activeVersion and status inside the transaction
-      await this.projectsCol.updateOne(
-        { projectId: pid },
-        { $set: updateFields },
-        sessionOpts
-      );
-    };
-
-    try {
-      if (isProduction) {
-        if (!client || typeof client.startSession !== 'function') {
-          throw new Error('MongoDB client session required for transactional studio publication in production');
-        }
-        const session = client.startSession();
-        try {
-          await session.withTransaction(async () => {
-            await executeTransactionalPublish(session);
-          });
-        } finally {
-          await session.endSession();
-        }
-      } else {
-        if (client && typeof client.startSession === 'function') {
-          const session = client.startSession();
-          try {
-            await session.withTransaction(async () => {
-              await executeTransactionalPublish(session);
-            });
-          } catch {
-            await executeTransactionalPublish();
-          } finally {
-            await session.endSession();
-          }
-        } else {
-          await executeTransactionalPublish();
-        }
-      }
-    } catch (publishErr: any) {
-      return {
-        success: false,
-        message: `Publish blocked: ${publishErr.message}`,
-      };
-    }
-
-    this.bust(pid);
-    return { success: true, version };
+    return this.getPublicationService().publishConfig(projectId, opts);
   }
 
   /**

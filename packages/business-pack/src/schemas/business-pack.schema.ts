@@ -10,6 +10,7 @@ import { RuleDefinitionSchema } from './rule.schema';
 import { CapabilityBindingsCollectionSchema } from './capability-binding.schema';
 import { ExperienceSchema } from './experience.schema';
 import { EvaluationSuiteSchema } from './evaluation.schema';
+import { SpacePlannerExtensionSchema } from './space-planner.schema';
 
 export const ConversationPolicySchema = z.object({
   fencingRules: z.array(z.string()).default([]),
@@ -74,6 +75,12 @@ export const BusinessPackReleaseSchema = z.object({
     },
   }),
   evaluations: z.array(EvaluationSuiteSchema).default([]),
+  extensions: z
+    .object({
+      spacePlanner: SpacePlannerExtensionSchema.optional(),
+    })
+    .catchall(z.any())
+    .default({}),
 });
 
 export type BusinessPackRelease = z.infer<typeof BusinessPackReleaseSchema>;

@@ -71,6 +71,18 @@ export class AuthGuard implements NestMiddleware {
     }
 
     const { projectId, domain } = parseRoute(path);
+
+    // ── Cross-Tenant Scope Isolation: URL target vs header mismatch ──
+    if (projectId && req.headers['x-tenant-id']) {
+      const headerTenant = String(req.headers['x-tenant-id']).toLowerCase().trim();
+      if (headerTenant && headerTenant !== projectId.toLowerCase().trim()) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: `Cross-tenant access forbidden: Target project '${projectId}' does not match X-Tenant-ID header '${headerTenant}'.`,
+        });
+      }
+    }
+
     const authHeader = req.headers['authorization'];
     const hasToken = !!authHeader && authHeader.startsWith('Bearer ');
 

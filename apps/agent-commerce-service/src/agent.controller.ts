@@ -193,9 +193,11 @@ export class JourneyAXController {
 
     const items = (body?.items || [])
       .filter((i) => i && typeof i.sku === 'string' && i.sku.trim())
-      .map((i) => ({
+      .map((i: any) => ({
         sku: i.sku.trim(),
         quantity: Number(i.quantity) > 0 ? Number(i.quantity) : teamSize || 1,
+        reason: typeof i.reason === 'string' ? i.reason : undefined,
+        required: typeof i.required === 'boolean' ? i.required : undefined,
       }));
     if (!items.length) return { error: 'Nothing on the rack to price yet.' };
 
@@ -205,6 +207,8 @@ export class JourneyAXController {
       sessionId: body?.sessionId,
       title: body?.title || 'Team kit',
       items,
+      roomType: (body as any)?.roomType,
+      plannerContext: (body as any)?.plannerContext,
       pricing: project?.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
     });
     return { quote, lines: items.length };
@@ -339,7 +343,16 @@ export class JourneyAXController {
     const tenantId = (projectId || '').toLowerCase().trim();
     if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
     const quote = await this.quoteService.get(quoteId, tenantId);
-    if (!quote) return { found: false };
+    if (!quote) {
+      const quoteAnyTenant = await this.quoteService.get(quoteId);
+      if (quoteAnyTenant && quoteAnyTenant.tenantId !== tenantId) {
+        throw new HttpException(
+          `Cross-tenant access forbidden: Quote '${quoteId}' belongs to '${quoteAnyTenant.tenantId}', not '${tenantId}'`,
+          HttpStatus.FORBIDDEN
+        );
+      }
+      return { found: false };
+    }
     return { found: true, quote };
   }
 

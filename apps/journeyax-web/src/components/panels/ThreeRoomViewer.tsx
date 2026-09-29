@@ -17,6 +17,7 @@ export interface RoomPlacedItem {
     sku: string;
     imageUrl?: string;
   };
+  quantity?: number;
 }
 
 interface ThreeRoomViewerProps {

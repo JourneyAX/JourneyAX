@@ -34,6 +34,7 @@ import { verifyComparisonProvenance, lookupSkuFacts } from './presentation/prove
 import { sanitizeChips, fenceSearchResultText } from './presentation/fencing';
 import { skillIndexBlock, loadSkillBody } from './skills/loader';
 import { CutoverProxyService } from './cutover/cutover-proxy.service';
+import { TradeOrchestrator } from './orchestration/trade-orchestrator';
 
 
 /** Keep transcripts bounded (context editing) — recent turns are enough; the
@@ -927,8 +928,8 @@ const tools: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'checkBranchStock',
       description:
-        "Check real-time stock availability, inventory counts, and Click & Collect pickup readiness across PlaceMakers NZ branches (Mount Wellington, Cook Street, Albany, Riccarton, Te Rapa, Petone). " +
-        "Use when a customer asks about stock at a branch or where they can collect materials today (e.g. 'Can I collect this from Mt Wellington?', 'Do you have stock in Cook St?').",
+        "Check real-time stock availability, inventory counts, and Click & Collect pickup readiness across merchant branches. " +
+        "Use when a customer asks about stock at a branch or where they can collect materials today (e.g. 'Can I collect this from a local branch?', 'Do you have stock in store?').",
       parameters: {
         type: 'object',
         properties: {
@@ -945,8 +946,8 @@ const tools: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'openSpacePlanner',
       description:
-        "LAUNCH the interactive 3D and 2D PlaceMakers Space & Modular Cabinet Planner in the conversation. " +
-        "Call this whenever the customer wants to build or plan a laundry cabinet, kitchen modular units, bathroom vanity & tower, or modular cabinetry space (e.g. 'I want to build a laundry cabinet', 'plan kitchen cabinets', 'space planner for laundry'). " +
+        "LAUNCH the interactive 3D and 2D Space & Modular Cabinet Planner in the conversation. " +
+        "Call this whenever the customer wants to build or plan a laundry cabinet, kitchen modular units, bathroom vanity & tower, or modular cabinetry space (e.g. 'I want to build a laundry cabinet', 'plan kitchen cabinets', 'space planner for bathroom'). " +
         "It provides a live 3D visual canvas where customers can configure and place modular cabinets, choose finishes, and generate a live bill of materials.",
       parameters: {
         type: 'object',
@@ -2692,23 +2693,15 @@ async function maybeForceSizeRecommendation(
 }
 
 function handleBuildProjectPlan(rawArgs: string): any {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
-  const projectType = String(args.projectType || 'decking').toLowerCase();
-  if (projectType === 'fencing') {
-    return ProjectCalculatorService.calculateFencing(args.lengthM || 15, args.heightM || 1.8, args.material || 'Timber Palings');
-  }
-  if (projectType === 'lining') {
-    return ProjectCalculatorService.calculateWallLining(args.areaM2 || 35, args.material || 'GIB Standard 10mm');
-  }
-  // Default to decking
-  return ProjectCalculatorService.calculateDecking(args.lengthM || 4, args.widthM || 3, args.material || 'Kwila', args.heightM || 0.4);
+  return TradeOrchestrator.handleBuildProjectPlan(rawArgs);
 }
 
 function handleCheckBranchStock(rawArgs: string): any {
-  let args: any = {};
-  try { args = JSON.parse(rawArgs || '{}'); } catch { /* fall through */ }
-  return BranchStockService.getStockForSku(args.sku || 'PM-TIMBER-100', args.productTitle || 'Building Material / Tool', args.branch);
+  return TradeOrchestrator.handleCheckBranchStock(rawArgs);
+}
+
+function handleOpenSpacePlanner(tenantId: string, rawArgs: string | Record<string, any>): any {
+  return TradeOrchestrator.handleOpenSpacePlanner(tenantId, rawArgs);
 }
 
 async function lookupOptions(tenantId: string, rawArgs: string): Promise<unknown> {
@@ -3813,6 +3806,19 @@ export class AgentService {
       }
     }
 
+    // Enforce room-type isolation: bathrooms must never show laundry or exterior weathertight barrier products
+    const isBathroom = /bathroom|vanity|ensuite/i.test(userText) || (intent && intent.intent === 'bathroom_makeover');
+    if (isBathroom && itemsToRender.length > 0) {
+      itemsToRender = itemsToRender.filter((it) => {
+        const title = (it.name || it.title || '').toLowerCase();
+        const sku = String(it.sku || it.id || '');
+        if (title.includes('supertub') || title.includes('laundry') || title.includes('washer cavity')) return false;
+        if (['2800871', '2800873', '3410067'].includes(sku)) return false;
+        if (title.includes('barrier sill') || title.includes('weatherline') || title.includes('40 below')) return false;
+        return true;
+      });
+    }
+
     // 4. If items found, emit showItems and setPhase: 'products'
     if (itemsToRender.length > 0) {
       const showItemsAction = { name: 'showItems', arguments: { items: itemsToRender, products: itemsToRender } };
@@ -4774,7 +4780,7 @@ export class AgentService {
           },
         ],
         chatLead:
-          'PlaceMakers is New Zealand’s leading timber merchant — we have all your framing sorted under NZS 3604! I’ve popped three quick questions below so I can pinpoint the exact SG8 grade, treatment, and sizes for your build.\n\nCan you tap the options that best match your framing job?',
+          'We have all your structural framing sorted under compliant trade standards! I’ve popped three quick questions below so I can pinpoint the exact grade, treatment, and sizes for your build.\n\nCan you tap the options that best match your framing job?',
       };
     }
 
@@ -5558,12 +5564,7 @@ export class AgentService {
             'When the customer asks to plan, size, estimate, or get materials for one of those (e.g. "plan a 4m by 3m low deck in Kwila with complete timber framing, boards, and screws", "estimate an 18m fence", "how much GIB board for 30m2 wall"), you MUST CALL buildProjectPlan immediately in this turn with their project parameters (projectType: "decking" | "fencing" | "lining" | "retaining" | "cladding" — never "laundry"/"bathroom"/"kitchen", those are rooms, see below). ' +
             'CRITICAL RULE FOR ROOM MAKEOVERS: on the first turn of a room makeover or cabinet build, clarify requirements FIRST — do NOT jump straight into 3D openSpacePlanner or product cards before asking the customer! Call setPhase("clarify") to present the interactive question cards in the conversation. Once the customer answers the clarifying questions (e.g. "My answers: ..."), THEN advance to products or openSpacePlanner with their chosen setup.' }] : []),
           ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
-            '[CONSULTATIVE SALES REP PARTNERSHIP & ROOM DISCOVERY] You are an experienced PlaceMakers Project Consultant & Sales Rep partnering with the customer to design their space. ' +
-            'When the customer asks to build or plan a laundry cabinet, room makeover, or kitchen space (e.g. "I want to build a laundry cabinet", "plan my laundry space", "laundry room makeover"): ' +
-            '1. Engage warmly as a pair-planning sales rep: congratulate their project, explain that you will build it together step-by-step. ' +
-            '2. Check what they already told you in THIS message before asking anything else, then ask ONLY about whichever of these 4 is still missing — never re-ask one they already answered: (a) Wall Width / Room Run (e.g., 1.8m compact, 2.4m standard, 3.0m spacious), (b) Style & Finish (Modern Gloss White, Natural Warm Oak Timber Veneer, or Architectural Charcoal), (c) Appliance & Tub Cavity (front-loader washer/dryer overhang + Robinhood SuperTub), and (d) Installation preference (DIY with tool checklist vs. PlaceMakers Certified Trade Installation). ' +
-            '3. On discovery, call setPhase("clarify") to render the question cards in the conversation with selectable options. Do NOT call openSpacePlanner or showItems yet. ' +
-            '4. Once the customer answers the clarifying questions, then openSpacePlanner or product recommendations can be launched with their chosen configuration.' }] : []),
+            TradeOrchestrator.getPackDrivenConsultativePrompt(projectConfig) }] : []),
           ...((projectConfig.capabilities || []).includes('checkBranchStock') ? [{ role: 'system', content:
             '[BRANCH STOCK & PICKUP] When the customer asks about stock availability, pickup today, or Click & Collect at a branch (e.g. Mt Wellington, Cook St, Albany, Riccarton), CALL checkBranchStock immediately to give authoritative branch inventory counts and collection timeframes.' }] : []),
           ...((projectConfig.capabilities || []).includes('buildProjectPlan') ? [{ role: 'system', content:
@@ -5768,7 +5769,7 @@ export class AgentService {
             : call.function.name === 'recommendStorage'
             ? recommendStorage(projectConfig, call.function.arguments)
             : call.function.name === 'openSpacePlanner'
-            ? { ok: true, roomType: 'laundry', message: 'PlaceMakers Space Planner launched' }
+            ? await handleOpenSpacePlanner(tenantId, call.function.arguments)
             : call.function.name === 'buildProjectPlan'
             ? handleBuildProjectPlan(call.function.arguments)
             : call.function.name === 'checkBranchStock'
@@ -5831,7 +5832,7 @@ export class AgentService {
           // PlaceMakers Space Planner: launches 3D/2D space planner UI
           if (call.function.name === 'openSpacePlanner'
               && !uiToolCalls.some((c) => c.function?.name === 'openSpacePlanner')) {
-            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'openSpacePlanner', arguments: call.function.arguments || '{}' } } as any);
+            uiToolCalls.push({ id: call.id, type: 'function', function: { name: 'openSpacePlanner', arguments: JSON.stringify(result) } } as any);
           }
           // Coach team-order journey: a successful generateTeamDesign must land
           // the coach on the teamDesign panel with the four views — mirrors the
@@ -6693,7 +6694,9 @@ export class AgentService {
                         ? handleBuildProjectPlan(call.function.arguments)
                         : call.function.name === 'checkBranchStock'
                           ? handleCheckBranchStock(call.function.arguments)
-                          : await lookupOptions(tenantId, call.function.arguments),
+                          : call.function.name === 'openSpacePlanner'
+                            ? await handleOpenSpacePlanner(tenantId, call.function.arguments)
+                            : await lookupOptions(tenantId, call.function.arguments),
           })),
         );
         for (const r of results) {
@@ -6750,7 +6753,7 @@ export class AgentService {
           // bare `{success:true}` is all it was ever told. Same double-write as
           // generateTeamDesign/recommendSize above, now with the REAL computed
           // result (materials list, totals; branch stock counts).
-          if ((r.name === 'buildProjectPlan' || r.name === 'checkBranchStock') && (r.value as any)?.ok) {
+          if ((r.name === 'buildProjectPlan' || r.name === 'checkBranchStock' || r.name === 'openSpacePlanner') && (r.value as any)?.ok) {
             emit('uiAction', { name: r.name, arguments: r.value });
             if (!uiToolCalls.some((c) => c.function?.name === r.name)) {
               uiToolCalls.push({ id: r.id, type: 'function', function: { name: r.name, arguments: JSON.stringify(r.value) } } as any);

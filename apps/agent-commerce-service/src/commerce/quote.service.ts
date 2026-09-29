@@ -12,6 +12,14 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Collection, Db } from 'mongodb';
 import { connectToDatabase } from '@journeyax/database';
+import {
+  BusinessPackRelease,
+  BusinessPackLoader,
+  getSpacePlannerExtension,
+  validateRoomLayoutAgainstPack,
+  validateAccessoryCompatibilityAgainstPack,
+  calculateMaterialQuantityFromPack,
+} from '@journeyax/business-pack';
 import { Quote, QuoteLine, QuoteLineInput } from './quote.types';
 
 const DB_NAME = 'journeyx';
@@ -23,6 +31,10 @@ export interface BuildQuoteArgs {
   sessionId?: string;
   title?: string;
   items: QuoteLineInput[];
+  roomType?: string;
+  plannerContext?: { roomType?: string; areaM2?: number; [key: string]: any };
+  pack?: BusinessPackRelease;
+  packLoader?: BusinessPackLoader;
   installationSummary?: string;
   warrantySummary?: string;
   pricing: { currency: string; symbol: string; taxRate: number; discountRate: number };
@@ -77,6 +89,56 @@ export class QuoteService {
 
     const errors: string[] = [];
     const warnings: string[] = [];
+
+    // Load active Business Pack space-planner extension for server-side rule enforcement
+    let pack: BusinessPackRelease | null | undefined = args.pack;
+    if (!pack) {
+      try {
+        const loader = args.packLoader || new BusinessPackLoader();
+        pack =
+          (await loader.loadPublished(tenantId, 'production').catch(() => null)) ||
+          (await loader.loadPublished(tenantId, 'test').catch(() => null)) ||
+          null;
+      } catch {
+        pack = null;
+      }
+    }
+    const plannerExt = pack ? getSpacePlannerExtension(pack) : null;
+    const effectiveRoomType = (args.roomType || args.plannerContext?.roomType || '').toLowerCase().trim();
+
+    if (plannerExt) {
+      // 1. Enforce Room Layout Isolation server-side
+      if (effectiveRoomType) {
+        const layoutErrs = validateRoomLayoutAgainstPack(rawItems, effectiveRoomType, plannerExt);
+        errors.push(...layoutErrs);
+      }
+
+      // 2. Enforce Accessory System Compatibility server-side
+      const accCheck = validateAccessoryCompatibilityAgainstPack(
+        rawItems,
+        effectiveRoomType || 'bathroom',
+        plannerExt
+      );
+      if (!accCheck.valid) {
+        errors.push(...accCheck.errors);
+      }
+
+      // 3. Enforce Calculation Formulas (e.g. wall lining area calculation)
+      const areaM2 = args.plannerContext?.areaM2;
+      if (typeof areaM2 === 'number' && areaM2 > 0) {
+        const calculatedQty = calculateMaterialQuantityFromPack(areaM2, 'lining', plannerExt);
+        for (const it of rawItems) {
+          const itemCat = String((it as any).category || bySku.get(String(it.sku).trim())?.category || '').toLowerCase();
+          if (itemCat === 'lining' || String(it.sku).trim() === '2801884') {
+            const currentQty = Number(it.quantity) || 1;
+            if (currentQty < calculatedQty) {
+              it.quantity = calculatedQty;
+            }
+          }
+        }
+      }
+    }
+
     const lines: QuoteLine[] = rawItems.map((it) => {
       const sku = String(it.sku).trim();
       const p = bySku.get(sku);
@@ -155,7 +217,7 @@ export class QuoteService {
     const col = await this.getCol();
     if (!col) return null;
     const filter: any = { quoteId };
-    if (tenantId) filter.tenantId = tenantId; // tenant-scoped read (isolation)
+    if (tenantId) filter.tenantId = tenantId.toLowerCase().trim();
     return col.findOne(filter);
   }
 

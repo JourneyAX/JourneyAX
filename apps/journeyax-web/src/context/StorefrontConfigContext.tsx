@@ -63,6 +63,7 @@ export interface StorefrontConfig {
   commerceMode: 'quote' | 'cart';
   /** CMS-driven dynamic components configuration */
   components?: DynamicComponentConfig | null;
+  spacePlanner?: any | null;
   /** Multi-trade solution bundle templates */
   multiTradeBundles?: any[] | null;
 
@@ -107,6 +108,7 @@ const DEFAULT: StorefrontConfig = {
   configurator: null,
   commerceMode: 'quote',
   components: null,
+  spacePlanner: null,
   multiTradeBundles: null,
   uiTheme: null,
   cardTemplates: null,

@@ -125,22 +125,23 @@ export class BusinessPackPublicationService {
 
       compiledModelPolicy = {
         version: '1.0.0',
-        defaultPolicy: 'default',
+        defaultPolicy: 'standard_turn',
         policies: [
           {
-            policyId: 'default',
+            policyId: 'standard_turn',
             description: `Default model policy for ${pid}`,
             allowedTaskTypes: ['all'],
             candidates,
             timeoutMs: 15000,
             maxRetries: 2,
+            maxOutputTokens: typeof doc.ai.maxTokens === 'number' ? doc.ai.maxTokens : undefined,
           },
         ],
       };
     } else {
       return {
         success: false,
-        message: 'Publish blocked: Project must define an explicit model policy or AI model configuration.',
+        message: 'Publish blocked: Project must define AI model policy or AI model configuration.',
       };
     }
 
@@ -413,7 +414,7 @@ export class BusinessPackPublicationService {
       rules: Array.isArray(doc.rules) ? doc.rules : [],
       capabilities: compiledCapabilities,
       experience: compiledExperience,
-      evaluations: compiledEvaluations,
+      extensions: (doc as any).extensions || ((doc as any).spacePlanner ? { spacePlanner: (doc as any).spacePlanner } : {}),
     };
 
     // Validate Business Pack reference integrity fail-closed

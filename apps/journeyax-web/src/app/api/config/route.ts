@@ -5,10 +5,27 @@
  * vocabulary. The tenant is resolved PER REQUEST (multi-storefront routing):
  * ?project= param → X-Tenant-ID header → Host domain → env fallback.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { resolveTenant } from '../../../lib/tenant';
 import { resolveTenantRouting } from '../../../lib/routing/cutover';
 
 const PROJECT_API = process.env.PROJECT_API || 'http://localhost:8082';
+
+function loadFallbackSpacePlanner(projectId: string) {
+  try {
+    const candidates = [
+      path.resolve(process.cwd(), 'packs', projectId, 'extensions', 'space-planner.json'),
+      path.resolve(process.cwd(), '..', '..', 'packs', projectId, 'extensions', 'space-planner.json'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        return JSON.parse(fs.readFileSync(c, 'utf8'));
+      }
+    }
+  } catch {}
+  return null;
+}
 
 export async function GET(req: Request) {
   const PROJECT_ID = await resolveTenant(req);
@@ -53,6 +70,7 @@ export async function GET(req: Request) {
         heroSubtitle: typeof p.intro.heroSubtitle === 'string' ? p.intro.heroSubtitle : undefined,
       } : null,
       components: p?.components || null,
+      spacePlanner: p?.extensions?.spacePlanner || p?.experience?.spacePlanner || p?.spacePlanner || null,
       multiTradeBundles: p?.multiTradeBundles || null,
       // Card CMS (v3 — docs/v3-card-cms-architecture.md): the three theme layers
       // pass straight through from the published snapshot. `uiTheme` → --jx-* vars
@@ -166,6 +184,7 @@ function fallback(projectId: string) {
       // `isPlaceMakers` text inside QuotePanel.tsx; now config, same as fulfilment above.
       quoteIntro: 'Review your PlaceMakers materials list below. Select branch fulfillment or site delivery before placing your order.',
       complianceBadge: 'NZ Building Code Verified',
+      spacePlanner: loadFallbackSpacePlanner('placemakers'),
     };
   }
 
@@ -178,6 +197,7 @@ function fallback(projectId: string) {
     systemName: '',
     commerceMode: 'quote',
     components: null,
+    spacePlanner: null,
     multiTradeBundles: null,
     uiTheme: null,
     cardTemplates: null,
