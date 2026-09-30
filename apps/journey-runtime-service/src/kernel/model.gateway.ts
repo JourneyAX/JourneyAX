@@ -193,12 +193,35 @@ export class ModelGateway {
   ): Promise<ModelExecutionResponse> {
     const startTime = Date.now();
 
-    // 1. Resolve compliant model route
-    const route = this.router.resolveModel(req.taskType, release, {
+    const routes = this.router.resolveCandidates(req.taskType, release, {
       targetDataResidency: req.targetDataResidency,
       policyRef: req.policyRef,
     });
 
+    let lastError: any = null;
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
+      try {
+        return await this.executeRoute(route, release, req, startTime);
+      } catch (err: any) {
+        lastError = err;
+        if (i < routes.length - 1) {
+          const next = routes[i + 1];
+          console.warn(
+            `[ModelGateway] Candidate ${route.provider}/${route.model} failed (${err.name || err.message}). Attempting fallback to ${next.provider}/${next.model}...`
+          );
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  private async executeRoute(
+    route: ModelRouteResult,
+    release: BusinessPackRelease,
+    req: ModelExecutionRequest,
+    startTime: number
+  ): Promise<ModelExecutionResponse> {
     const endpoint = this.getEndpointForProvider(route.provider, route.model);
 
     // 2. Evidenced Data Residency Verification (Must be proven by endpoint/config, not just label)
@@ -263,6 +286,30 @@ export class ModelGateway {
     let resp: Response;
     try {
       if (route.provider === 'openai') {
+        const isReasoningOrGpt5 =
+          route.model.startsWith('o1') ||
+          route.model.startsWith('o3') ||
+          route.model.startsWith('gpt-5') ||
+          route.model.includes('preview');
+
+        const payload: Record<string, any> = {
+          model: route.model,
+          messages: [
+            ...(req.systemPrompt
+              ? [{ role: isReasoningOrGpt5 ? 'developer' : 'system', content: req.systemPrompt }]
+              : []),
+            { role: 'user', content: req.prompt },
+          ],
+        };
+
+        if (isReasoningOrGpt5) {
+          if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
+        } else {
+          if (route.temperature !== undefined) payload.temperature = route.temperature;
+          else payload.temperature = 0.2;
+          if (route.maxOutputTokens) payload.max_tokens = route.maxOutputTokens;
+        }
+
         resp = await fetch(endpoint, {
           method: 'POST',
           signal,
@@ -270,15 +317,7 @@ export class ModelGateway {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
           },
-          body: JSON.stringify({
-            model: route.model,
-            messages: [
-              ...(req.systemPrompt ? [{ role: 'system', content: req.systemPrompt }] : []),
-              { role: 'user', content: req.prompt },
-            ],
-            temperature: route.temperature ?? 0.2,
-            max_tokens: route.maxOutputTokens,
-          }),
+          body: JSON.stringify(payload),
         });
       } else if (route.provider === 'anthropic') {
         resp = await fetch(endpoint, {

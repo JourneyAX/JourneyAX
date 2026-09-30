@@ -21,7 +21,7 @@ import { PublicationGateValidator } from './publication-gate-validator';
       provide: BusinessPackPublicationService,
       useFactory: (projectService: ProjectService, gateValidator: PublicationGateValidator) => {
         return new BusinessPackPublicationService(
-          () => projectService.getDb(),
+          () => projectService.getRuntimeDb(),
           () => projectService.getProjectsCol(),
           () => projectService.getVersionsCol(),
           () => projectService.getIsConnected(),

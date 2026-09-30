@@ -168,6 +168,23 @@ export class JourneyResolver {
         }
       }
 
+      // E. Match against candidateFacts extracted from model interpretation
+      if (interpretation?.candidateFacts && typeof interpretation.candidateFacts === 'object') {
+        for (const [k, v] of Object.entries(interpretation.candidateFacts)) {
+          const rawVal = (v as any)?.value !== undefined ? (v as any).value : v;
+          if (rawVal != null) {
+            const factStr = String(rawVal).toLowerCase();
+            for (const g of j.goals) {
+              const lowerG = g.toLowerCase();
+              if (factStr.includes(lowerG) || (lowerG.length >= 4 && factStr.startsWith(lowerG))) {
+                score += 35;
+                break;
+              }
+            }
+          }
+        }
+      }
+
       if (score > 0) {
         scoredJourneys.push({ journey: j, score });
       }
@@ -183,7 +200,7 @@ export class JourneyResolver {
       const top = scoredJourneys[0];
       const runnerUp = scoredJourneys[1];
       // Resolve when top score beats runner-up by a clear margin
-      if (top.score >= runnerUp.score + 20 && top.score >= 30) {
+      if (top.score >= runnerUp.score + 10 && top.score >= 20) {
         return { status: 'resolved', journey: top.journey };
       }
       return {

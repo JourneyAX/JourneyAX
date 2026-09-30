@@ -8,3 +8,5 @@ export * from './item-configure.handler';
 export * from './cart-update.handler';
 export * from './specification-configure.handler';
 export * from './quote-update.handler';
+export * from './space-planner.handler';
+export * from './project-plan.handler';

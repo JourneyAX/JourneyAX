@@ -7,6 +7,7 @@ import { BusinessPackLoader } from './loader';
 const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
 const COLLECTION_OUTBOX_EVENTS = 'outbox_events';
+const COLLECTION_TENANT_CUTOVERS = 'tenant_cutovers';
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
@@ -266,6 +267,26 @@ export async function publishBusinessPack(
       );
     }
 
+    // 5b. Synchronize durable release activation record (tenant_cutovers) if present
+    const cutoversCol = db.collection(COLLECTION_TENANT_CUTOVERS);
+    const existingCutover = await cutoversCol.findOne({ tenantId, environmentId }, sessionOpts);
+    if (existingCutover) {
+      await cutoversCol.updateOne(
+        { tenantId, environmentId },
+        {
+          $set: {
+            approvedReleaseVersion: version,
+            approvedReleaseChecksum: checksum,
+            status: existingCutover.status === 'canary' ? 'canary' : 'migrated',
+            promotedAt: now,
+            promotedBy: publishedBy,
+            updatedAt: now,
+          },
+        },
+        sessionOpts
+      );
+    }
+
     // 6. Enqueue outbox event for audit and subscribers
     const outboxCol = db.collection(COLLECTION_OUTBOX_EVENTS);
     await outboxCol.insertOne(
@@ -400,6 +421,26 @@ export async function rollbackBusinessPack(
     if (casResult.matchedCount === 0) {
       throw new Error(
         `[BusinessPackPublisher] CAS rollback conflict: pointer for tenant '${tenantId}' was concurrently modified`
+      );
+    }
+
+    // Synchronize durable release activation record (tenant_cutovers) on rollback if present
+    const cutoversCol = db.collection(COLLECTION_TENANT_CUTOVERS);
+    const existingCutover = await cutoversCol.findOne({ tenantId, environmentId }, sessionOpts);
+    if (existingCutover) {
+      await cutoversCol.updateOne(
+        { tenantId, environmentId },
+        {
+          $set: {
+            approvedReleaseVersion: targetVersion,
+            approvedReleaseChecksum: targetRelease.checksum,
+            status: existingCutover.status === 'canary' ? 'canary' : 'migrated',
+            promotedAt: now,
+            promotedBy: rolledBackBy,
+            updatedAt: now,
+          },
+        },
+        sessionOpts
       );
     }
 

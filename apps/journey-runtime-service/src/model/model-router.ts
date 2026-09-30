@@ -22,6 +22,12 @@ export interface ModelRouteResult {
   releaseVersion?: string;
 }
 
+export interface ModelResolutionOptions {
+  targetDataResidency?: string;
+  preferredProvider?: string;
+  policyRef?: string;
+}
+
 export class ModelRouter {
   /**
    * Resolves the authoritative model candidate for a given task and Business Pack release.
@@ -31,11 +37,7 @@ export class ModelRouter {
   resolveModel(
     taskType: TaskType,
     release: BusinessPackRelease,
-    options?: {
-      targetDataResidency?: string;
-      preferredProvider?: string;
-      policyRef?: string;
-    }
+    options?: ModelResolutionOptions
   ): ModelRouteResult {
     const modelPolicy = release.modelPolicy;
     if (!modelPolicy || !Array.isArray(modelPolicy.policies) || modelPolicy.policies.length === 0) {
@@ -88,61 +90,43 @@ export class ModelRouter {
     // 4. Sort candidates by priority ascending (1 = highest priority)
     const sortedCandidates = [...policy.candidates].sort((a, b) => a.priority - b.priority);
 
-    // 5. Select best available candidate
-    let selected: (typeof sortedCandidates)[0] | null = null;
+    const tenantId = release.manifest?.tenantId || 'unknown';
+    const environmentId = release.manifest?.environmentId || 'unknown';
+    const releaseVersion = release.manifest?.version || (release.modelPolicy as any)?.version || '1.0.0';
 
-    if (options?.preferredProvider) {
-      selected = sortedCandidates.find((c) => c.provider === options.preferredProvider) || null;
-    }
-
-    if (!selected) {
-      if (policy.fallbackAllowed === false) {
-        // Fallback is strictly disallowed: only priority 1 candidate is permitted
-        const primaryCandidates = sortedCandidates.filter((c) => c.priority === 1);
-        const configuredPrimary = primaryCandidates.find((c) => this.isProviderConfigured(c.provider));
-        if (configuredPrimary) {
-          selected = configuredPrimary;
-        } else {
-          throw new Error(
-            `[ModelRouter] No configured API credentials found for primary candidate in policy '${policy.policyId}' (primary: ${primaryCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}), and fallback is not allowed.`
-          );
-        }
-      } else {
-        // Fallback is allowed: iterate sorted candidates and select first configured candidate
-        for (const candidate of sortedCandidates) {
-          if (this.isProviderConfigured(candidate.provider)) {
-            selected = candidate;
-            break;
-          }
-        }
-      }
-    }
-
-    // If still none found, check if fallback is permitted among listed candidates
-    if (!selected && sortedCandidates.length > 0) {
-      if (policy.fallbackAllowed) {
-        const topPriority = Math.min(...sortedCandidates.map((c) => c.priority));
-        const topCandidates = sortedCandidates.filter((c) => c.priority === topPriority);
-        if (topCandidates.length > 1) {
-          throw new Error(
-            `[ModelRouter] Ambiguous top-priority candidates (${topCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}) in policy '${policy.policyId}' with no credentials configured - failing closed.`
-          );
-        }
-        selected = topCandidates[0];
-      } else {
+    if (policy.fallbackAllowed === false) {
+      // Fallback is strictly disallowed: only priority 1 candidate is permitted
+      const primaryCandidates = sortedCandidates.filter((c) => c.priority === 1);
+      const configuredPrimary = primaryCandidates.find((c) => this.isProviderConfigured(c.provider));
+      if (!configuredPrimary) {
         throw new Error(
-          `[ModelRouter] No configured API credentials found for policy '${policy.policyId}' (candidates: ${sortedCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}), and fallback is not allowed.`
+          `[ModelRouter] No configured API credentials found for primary candidate in policy '${policy.policyId}' (primary: ${primaryCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}), and fallback is not allowed.`
         );
       }
+      return {
+        policyId: policy.policyId,
+        provider: configuredPrimary.provider as ModelRouteResult['provider'],
+        model: configuredPrimary.model,
+        temperature: configuredPrimary.temperature,
+        dataResidency: policy.dataResidency,
+        maxInputTokens: policy.maxInputTokens,
+        maxOutputTokens: policy.maxOutputTokens,
+        timeoutMs: policy.timeoutMs,
+        tenantId,
+        environmentId,
+        releaseVersion,
+      };
+    }
+
+    // Fallback is allowed: select first configured candidate
+    let selected = sortedCandidates.find((c) => this.isProviderConfigured(c.provider));
+    if (!selected && sortedCandidates.length > 0) {
+      selected = sortedCandidates[0];
     }
 
     if (!selected) {
       throw new Error(`[ModelRouter] No compliant candidate models found in policy '${policy.policyId}'. Never falling back to unlisted model.`);
     }
-
-    const tenantId = release.manifest?.tenantId || 'unknown';
-    const environmentId = release.manifest?.environmentId || 'unknown';
-    const releaseVersion = release.manifest?.version || (release.modelPolicy as any)?.version || '1.0.0';
 
     return {
       policyId: policy.policyId,
@@ -157,6 +141,100 @@ export class ModelRouter {
       environmentId,
       releaseVersion,
     };
+  }
+
+  /**
+   * Resolves all compliant candidates for a policy in priority order.
+   * If fallback is disallowed, returns only the primary candidate.
+   * If fallback is allowed, returns all configured candidates in priority order.
+   */
+  resolveCandidates(
+    taskType: TaskType,
+    release: BusinessPackRelease,
+    options?: ModelResolutionOptions
+  ): ModelRouteResult[] {
+    const modelPolicy = release.modelPolicy;
+    if (!modelPolicy || !Array.isArray(modelPolicy.policies) || modelPolicy.policies.length === 0) {
+      throw new Error(`[ModelRouter] Release '${release.manifest?.name || 'unknown'}' has no valid modelPolicy defined.`);
+    }
+
+    let targetPolicyId = options?.policyRef || modelPolicy.defaultPolicy;
+    if (!options?.policyRef) {
+      if (taskType === 'fact_extraction' || taskType === 'fast_intent') {
+        const fastPolicy = modelPolicy.policies.find((p) => p.policyId === 'fast_intent');
+        if (fastPolicy) targetPolicyId = 'fast_intent';
+      } else if (taskType === 'planning' || taskType === 'complex_reasoning') {
+        const complexPolicy = modelPolicy.policies.find((p) => p.policyId === 'complex_reasoning');
+        if (complexPolicy) targetPolicyId = 'complex_reasoning';
+      } else if (taskType === 'tool_selection') {
+        const toolPolicy = modelPolicy.policies.find((p) => p.policyId === 'tool_selection' || p.policyId === 'complex_reasoning');
+        if (toolPolicy) targetPolicyId = toolPolicy.policyId;
+      } else if (taskType === 'response_generation') {
+        const respPolicy = modelPolicy.policies.find((p) => p.policyId === 'response_generation');
+        if (respPolicy) {
+          targetPolicyId = 'response_generation';
+        } else {
+          const complexPolicy = modelPolicy.policies.find((p) => p.policyId === 'complex_reasoning');
+          if (complexPolicy) targetPolicyId = 'complex_reasoning';
+        }
+      }
+    }
+
+    const policy =
+      modelPolicy.policies.find((p) => p.policyId === targetPolicyId) ||
+      modelPolicy.policies.find((p) => p.policyId === modelPolicy.defaultPolicy);
+
+    if (!policy) {
+      throw new Error(
+        `[ModelRouter] No matching policy found for targetPolicyId='${targetPolicyId}' or defaultPolicy='${modelPolicy.defaultPolicy}'. Available policies: ${modelPolicy.policies.map((p) => p.policyId).join(', ')} - failing closed.`
+      );
+    }
+
+    const tenantId = release.manifest?.tenantId || 'unknown';
+    const environmentId = release.manifest?.environmentId || 'unknown';
+    const releaseVersion = release.manifest?.version || (release.modelPolicy as any)?.version || '1.0.0';
+
+    const sortedCandidates = [...policy.candidates].sort((a, b) => a.priority - b.priority);
+
+    if (policy.fallbackAllowed === false) {
+      const primaryCandidates = sortedCandidates.filter((c) => c.priority === 1);
+      const configuredPrimary = primaryCandidates.find((c) => this.isProviderConfigured(c.provider));
+      if (!configuredPrimary) {
+        throw new Error(
+          `[ModelRouter] No configured API credentials found for primary candidate in policy '${policy.policyId}' (primary: ${primaryCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}), and fallback is not allowed.`
+        );
+      }
+      return [{
+        policyId: policy.policyId,
+        provider: configuredPrimary.provider as ModelRouteResult['provider'],
+        model: configuredPrimary.model,
+        temperature: configuredPrimary.temperature,
+        dataResidency: policy.dataResidency,
+        maxInputTokens: policy.maxInputTokens,
+        maxOutputTokens: policy.maxOutputTokens,
+        timeoutMs: policy.timeoutMs,
+        tenantId,
+        environmentId,
+        releaseVersion,
+      }];
+    }
+
+    const configured = sortedCandidates.filter((c) => this.isProviderConfigured(c.provider));
+    const effective = configured.length > 0 ? configured : sortedCandidates;
+
+    return effective.map((candidate) => ({
+      policyId: policy.policyId,
+      provider: candidate.provider as ModelRouteResult['provider'],
+      model: candidate.model,
+      temperature: candidate.temperature,
+      dataResidency: policy.dataResidency,
+      maxInputTokens: policy.maxInputTokens,
+      maxOutputTokens: policy.maxOutputTokens,
+      timeoutMs: policy.timeoutMs,
+      tenantId,
+      environmentId,
+      releaseVersion,
+    }));
   }
 
   private isProviderConfigured(provider: string): boolean {

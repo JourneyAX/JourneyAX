@@ -5,6 +5,7 @@ import {
   publishBusinessPack,
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
+  compileGraphToJourneys,
   computePackChecksum,
   BusinessPackLoader,
   ModelPolicySchema,
@@ -178,7 +179,7 @@ export class BusinessPackPublicationService {
     if (!doc) return { success: false, message: `Project '${pid}' not found.` };
 
     // Evaluation Gate (EVAL-001): ensure journey graph has valid entrypoint & compile
-    let compiledJourney: any = null;
+    let compiledJourneys: any[] | null = null;
     const journeyGraph = doc.persona?.journeyGraph;
     if (journeyGraph && Array.isArray(journeyGraph.nodes) && journeyGraph.nodes.length > 0) {
       const hasTrigger = journeyGraph.nodes.some((n: any) => n.data?.kind?.startsWith('trigger.'));
@@ -189,7 +190,7 @@ export class BusinessPackPublicationService {
         };
       }
 
-      const compileRes = compileGraphToJourneyDefinition(
+      const compileRes = compileGraphToJourneys(
         journeyGraph.nodes,
         journeyGraph.edges || [],
         {
@@ -204,7 +205,7 @@ export class BusinessPackPublicationService {
           message: `Publish blocked by evaluation gate: Journey graph compilation failed: ${(compileRes.errors || []).join('; ')}`,
         };
       }
-      compiledJourney = compileRes.journeyDefinition;
+      compiledJourneys = compileRes.journeys || null;
     }
 
     if ((doc as any).evaluationGate?.required && (doc as any).evaluationGate?.passed === false) {
@@ -219,8 +220,8 @@ export class BusinessPackPublicationService {
     const version = (last[0]?.version ?? 0) + 1;
 
     // ── Assemble and publish Immutable Business Pack release into business_pack_releases ──
-    const journeyList = compiledJourney
-      ? [compiledJourney]
+    const journeyList = (compiledJourneys && compiledJourneys.length > 0)
+      ? compiledJourneys
       : Array.isArray(doc.journeys) && doc.journeys.length > 0
       ? doc.journeys
       : doc.persona?.journeyDefinition

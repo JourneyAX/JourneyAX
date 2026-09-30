@@ -18,6 +18,8 @@ import {
   CartUpdateHandler,
   SpecificationConfigureHandler,
   QuoteUpdateHandler,
+  SpacePlannerHandler,
+  ProjectPlanHandler,
 } from '../capabilities/handlers';
 
 import {
@@ -56,17 +58,27 @@ export class CapabilityGateway {
     // Register generic domain-neutral platform handlers
     this.dispatcher.registerNativeHandler('catalog.search', new CatalogSearchHandler());
     this.dispatcher.registerNativeHandler('catalog-search', new CatalogSearchHandler());
+    this.dispatcher.registerNativeHandler('products', new CatalogSearchHandler());
     this.dispatcher.registerNativeHandler('pricing.validate', new PricingValidateHandler());
     this.dispatcher.registerNativeHandler('order.commit', new OrderCommitHandler());
     this.dispatcher.registerNativeHandler('knowledge.search', new KnowledgeSearchHandler());
+    this.dispatcher.registerNativeHandler('installGuide', new KnowledgeSearchHandler());
     this.dispatcher.registerNativeHandler('branch.stock_check', new BranchStockCheckHandler());
+    this.dispatcher.registerNativeHandler('checkBranchStock', new BranchStockCheckHandler());
     this.dispatcher.registerNativeHandler('trade.quote_create', new TradeQuoteCreateHandler());
+    this.dispatcher.registerNativeHandler('quote', new TradeQuoteCreateHandler());
     this.dispatcher.registerNativeHandler('item.configure', new ItemConfigureHandler());
     this.dispatcher.registerNativeHandler('item-configure', new ItemConfigureHandler());
+    this.dispatcher.registerNativeHandler('openSpacePlanner', new SpacePlannerHandler());
+    this.dispatcher.registerNativeHandler('spacePlanner.open', new SpacePlannerHandler());
+    this.dispatcher.registerNativeHandler('space-planner', new SpacePlannerHandler());
     this.dispatcher.registerNativeHandler('cart.update', new CartUpdateHandler());
     this.dispatcher.registerNativeHandler('cart-update', new CartUpdateHandler());
     this.dispatcher.registerNativeHandler('specification.configure', new SpecificationConfigureHandler());
     this.dispatcher.registerNativeHandler('specification-configure', new SpecificationConfigureHandler());
+    this.dispatcher.registerNativeHandler('buildProjectPlan', new ProjectPlanHandler());
+    this.dispatcher.registerNativeHandler('projectPlan.build', new ProjectPlanHandler());
+    this.dispatcher.registerNativeHandler('project-plan', new ProjectPlanHandler());
     this.dispatcher.registerNativeHandler('quote.update', new QuoteUpdateHandler());
     this.dispatcher.registerNativeHandler('quote-update', new QuoteUpdateHandler());
   }

@@ -21,6 +21,7 @@ import { PublicationGateValidator } from './publication-gate-validator';
 import { ReleaseValidationPort } from './release-validation.port';
 
 const DB_NAME   = process.env.PROJECT_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'journeyax';
+const RUNTIME_DB_NAME = process.env.RUNTIME_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'journeyx';
 const PROJECTS  = 'tenant_configs';    // existing collection — backwards compat
 const MEMBERS   = 'project_members';
 const TEAMS     = 'project_teams';
@@ -48,6 +49,7 @@ export { STANDARD_TOOL_SCHEMAS, PLATFORM_TOOL_CONTRACTS };
 @Injectable()
 export class ProjectService {
   private db!: Db;
+  private runtimeDb?: Db;
   private projectsCol!: Collection<ProjectConfig>;
   private membersCol!: Collection<ProjectMember & { projectId: string; orgId: string }>;
   private teamsCol!: Collection<ProjectTeam & { projectId: string; orgId: string }>;
@@ -211,6 +213,12 @@ export class ProjectService {
     try {
       const { db } = await connectToDatabase(uri, DB_NAME);
       this.db          = db;
+      try {
+        const { db: rDb } = await connectToDatabase(uri, RUNTIME_DB_NAME);
+        this.runtimeDb = rDb;
+      } catch {
+        this.runtimeDb = db;
+      }
       this.projectsCol = db.collection<ProjectConfig>(PROJECTS);
       this.membersCol  = db.collection(MEMBERS);
       this.teamsCol    = db.collection(TEAMS);
@@ -246,6 +254,7 @@ export class ProjectService {
   }
 
   getDb(): Db { return this.db; }
+  getRuntimeDb(): Db { return this.runtimeDb || this.db; }
   getProjectsCol(): Collection<ProjectConfig> { return this.projectsCol; }
   getVersionsCol(): Collection<ConfigVersion> { return this.versionsCol; }
   getIsConnected(): boolean { return this.isConnected; }
@@ -259,7 +268,7 @@ export class ProjectService {
   getPublicationService(validator?: ReleaseValidationPort): BusinessPackPublicationService {
     if (!this.publicationService || validator) {
       this.publicationService = new BusinessPackPublicationService(
-        () => this.db,
+        () => this.getRuntimeDb(),
         () => this.projectsCol,
         () => this.versionsCol,
         () => this.isConnected,

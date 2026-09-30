@@ -566,8 +566,83 @@ async function runTests() {
     console.log('✓ TurnApplicationService trace accurately records model route and residency\n');
   }
 
+  // Test 12: Multi-candidate fallback when candidate 1 fails/times out
+  {
+    console.log('Test 12: Multi-candidate fallback when primary candidate times out');
+    const multiCandidatePack: BusinessPackRelease = {
+      ...mockModelEnginePack,
+      modelPolicy: {
+        version: '1.0.0',
+        defaultPolicy: 'fast_intent',
+        policies: [
+          {
+            policyId: 'fast_intent',
+            dataResidency: 'au',
+            acceptedResidencies: ['au'],
+            candidates: [
+              { provider: 'google', model: 'gemini-2.5-flash', priority: 1 },
+              { provider: 'openai', model: 'gpt-4o-mini', priority: 2 },
+            ],
+            fallbackAllowed: true,
+            timeoutMs: 1000,
+            maxInputTokens: 8000,
+            maxOutputTokens: 1000,
+          },
+        ],
+      },
+    };
+
+    process.env.OPENAI_API_KEY = 'mock-openai-key';
+    process.env.OPENAI_DATA_RESIDENCY = 'au';
+    process.env.GEMINI_API_KEY = 'mock-gemini-key';
+    process.env.GOOGLE_DATA_RESIDENCY = 'au';
+
+    const originalFetch = globalThis.fetch;
+    let googleCalled = false;
+    let openaiCalled = false;
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.includes('generativelanguage.googleapis.com')) {
+        googleCalled = true;
+        // Simulate Google timing out / failing
+        const error = new Error('The operation was aborted due to timeout');
+        error.name = 'TimeoutError';
+        throw error;
+      }
+      if (urlStr.includes('api.openai.com')) {
+        openaiCalled = true;
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: '{"intent":"fallback_success"}' } }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return originalFetch(input, init);
+    };
+
+    try {
+      const response = await gateway.execute(multiCandidatePack, {
+        taskType: 'fast_intent',
+        prompt: 'test prompt',
+      });
+      assert.equal(googleCalled, true, 'Primary candidate (Google) must be attempted first');
+      assert.equal(openaiCalled, true, 'Secondary candidate (OpenAI) must be called upon primary failure');
+      assert.equal(response.content, '{"intent":"fallback_success"}');
+      assert.equal(response.route.provider, 'openai');
+      console.log('✓ Seamless fallback to Candidate 2 when Candidate 1 times out\n');
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_DATA_RESIDENCY;
+      delete process.env.GEMINI_API_KEY;
+      delete process.env.GOOGLE_DATA_RESIDENCY;
+    }
+  }
+
   console.log('====================================================');
-  console.log('✓ All 11 Model Gateway Negative & Fail-Closed Tests PASSED!');
+  console.log('✓ All 12 Model Gateway Tests PASSED!');
   console.log('====================================================\n');
 }
 

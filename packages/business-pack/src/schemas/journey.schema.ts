@@ -3,8 +3,8 @@ import { z } from 'zod';
 export const StageExitConditionSchema = z.object({
   allFactsPresent: z.array(z.string()).optional(),
   anyFactsPresent: z.array(z.string()).optional(),
-  ruleExpression: z.string().optional(),
-  conditionRuleRef: z.string().optional(),
+  ruleExpression: z.string().nullish(),
+  conditionRuleRef: z.string().nullish(),
   nextStage: z.string(),
 });
 
@@ -40,8 +40,8 @@ export const CapabilityPlanItemSchema = z.object({
 
 export const JourneyStageSchema = z.object({
   stageId: z.string().optional(),
-  displayName: z.string().optional(),
-  description: z.string().optional(),
+  displayName: z.string().nullish(),
+  description: z.string().nullish(),
   requiredFacts: z.array(FactRequirementItemSchema).default([]),
   optionalFacts: z.array(FactRequirementItemSchema).optional(),
   allowedCapabilities: z.array(z.string()).default([]),
