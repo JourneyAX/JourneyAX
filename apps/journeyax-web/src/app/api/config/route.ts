@@ -5,27 +5,10 @@
  * vocabulary. The tenant is resolved PER REQUEST (multi-storefront routing):
  * ?project= param → X-Tenant-ID header → Host domain → env fallback.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import { resolveTenant } from '../../../lib/tenant';
 import { resolveTenantRouting } from '../../../lib/routing/cutover';
 
 const PROJECT_API = process.env.PROJECT_API || 'http://localhost:8082';
-
-function loadFallbackSpacePlanner(projectId: string) {
-  try {
-    const candidates = [
-      path.resolve(process.cwd(), 'packs', projectId, 'extensions', 'space-planner.json'),
-      path.resolve(process.cwd(), '..', '..', 'packs', projectId, 'extensions', 'space-planner.json'),
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) {
-        return JSON.parse(fs.readFileSync(c, 'utf8'));
-      }
-    }
-  } catch {}
-  return null;
-}
 
 export async function GET(req: Request) {
   const PROJECT_ID = await resolveTenant(req);
@@ -184,7 +167,7 @@ function fallback(projectId: string) {
       // `isPlaceMakers` text inside QuotePanel.tsx; now config, same as fulfilment above.
       quoteIntro: 'Review your PlaceMakers materials list below. Select branch fulfillment or site delivery before placing your order.',
       complianceBadge: 'NZ Building Code Verified',
-      spacePlanner: loadFallbackSpacePlanner('placemakers'),
+      spacePlanner: null,
     };
   }
 

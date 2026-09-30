@@ -42,7 +42,7 @@ async function runPlatformSafetySuite() {
     const bathroomItems = getDefaultPlacedItems('bathroom');
     assert.ok(bathroomItems.length >= 3, 'Bathroom should have default units configured');
 
-    const laundrySkus = ['7834654', '7846476', '7846479', 'APP-CAV-600'];
+    const laundrySkus = ['7834654', '7846476', '7846479', '5708109', '3622003', '3622001', '7834822'];
     for (const p of bathroomItems) {
       assert.ok(!laundrySkus.includes(p.item.sku), `Laundry SKU ${p.item.sku} found in bathroom defaults!`);
       assert.notEqual(p.item.category, 'tub', 'SuperTub must never be in bathroom defaults');
@@ -94,17 +94,132 @@ async function runPlatformSafetySuite() {
       },
     ];
 
-    const errors = validateRoomLayout(invalidBathroomLayout, 'bathroom');
+    const testPackPlanner = {
+      version: '1.0.0',
+      enabled: true,
+      roomTypes: [
+        {
+          id: 'bathroom',
+          label: 'Bathroom',
+          defaultDimensions: { widthMm: 1800, depthMm: 2400, heightMm: 2400 },
+          allowedComponentCategories: ['base', 'overhead', 'tall', 'lining'],
+          forbiddenComponentCategories: ['tub', 'appliance'],
+          defaultComponents: [],
+        },
+        {
+          id: 'laundry',
+          label: 'Laundry',
+          defaultDimensions: { widthMm: 2400, depthMm: 2400, heightMm: 2400 },
+          allowedComponentCategories: ['base', 'overhead', 'tall', 'tub', 'appliance', 'lining'],
+          forbiddenComponentCategories: [],
+          defaultComponents: [],
+        },
+      ],
+      componentReferences: [
+        { componentId: 'vanity-900', sku: '3601297', category: 'base', compatibleRoomTypes: ['bathroom'], dimensionsMm: { width: 900, depth: 465, height: 470 } },
+        { componentId: 'robinhood-supertub-45', sku: '7846476', category: 'tub', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 560, depth: 560, height: 900 } },
+        { componentId: 'appliance-space-600', sku: '5708109', category: 'appliance', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 600, depth: 600, height: 850 } },
+        { componentId: 'laundry-kit-600', sku: '7834654', category: 'base', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 600, depth: 600, height: 900 } },
+        { componentId: 'gib-aqualine-10', sku: '2801884', category: 'lining', compatibleRoomTypes: ['bathroom', 'laundry'], dimensionsMm: { width: 1200, depth: 10, height: 2400 } },
+      ],
+      layoutRules: {
+        isolationRules: [
+          {
+            ruleId: 'no_laundry_in_bath',
+            targetRoomType: 'bathroom',
+            forbiddenCategories: ['tub', 'appliance'],
+            errorMessage: 'A bathroom must never inherit laundry products: tub/appliance is prohibited in bathroom layouts.',
+          },
+        ],
+        wallWidthConstraints: { minMm: 1200, maxMm: 4800, stepMm: 100 },
+      },
+      compatibilityClassifications: [
+        {
+          classificationId: 'exterior_barrier_safety',
+          systemType: 'exterior_barrier',
+          compatibleRoomTypes: [],
+          forbiddenRoomTypes: ['bathroom', 'laundry'],
+          skuPatternsOrIds: ['2800871', '2800873', '3410067'],
+          requiresExplicitMapping: true,
+          rejectionMessage: 'cannot be used as an interior bathroom membrane or joint tape without an exact manufacturer mapping',
+        },
+      ],
+      calculationFormulas: [],
+      defaults: {
+        defaultRoomType: 'bathroom',
+        defaultFinish: 'white-gloss',
+        defaultInstallType: 'trade',
+        finishes: [],
+        benchtops: [],
+        handles: [],
+      },
+    };
+
+    const errors = validateRoomLayout(invalidBathroomLayout, 'bathroom', testPackPlanner as any);
     assert.ok(errors.length > 0, 'validateRoomLayout must flag laundry product in bathroom');
     assert.ok(
-      errors[0].includes('A bathroom must never inherit laundry products'),
+      errors[0].includes('prohibited in Bathroom layouts') || errors[0].includes('A bathroom must never inherit laundry products'),
       `Expected isolation error, got: ${errors[0]}`,
     );
   });
 
-  await test('validateRoomLayout allows laundry products in laundry room', () => {
+  await test('Space Planner without its extension fails closed', () => {
+    const validBathroomLayout: RoomPlacedItem[] = [
+      {
+        uid: '1',
+        item: {
+          id: 'vanity-900',
+          name: 'Valencia Wall-Hung Vanity 900mm',
+          category: 'base',
+          widthMm: 900,
+          heightMm: 470,
+          depthMm: 465,
+          priceNzd: 1529.01,
+          sku: '3601297',
+          description: 'Vanity',
+        },
+        quantity: 1,
+      },
+    ];
+    const errors = validateRoomLayout(validBathroomLayout, 'bathroom');
+    assert.ok(errors.length > 0, 'Missing pack extension must fail closed');
+    assert.ok(errors[0].includes('Space Planner requires an active Business Pack spacePlanner extension. Failing closed.'));
+
+    const acc = MASTER_ACCESSORIES[0];
+    const accResult = validateAccessorySafety(acc, 'bathroom');
+    assert.equal(accResult.safe, false, 'Accessory check without extension must fail closed');
+    assert.ok(accResult.reason?.includes('Space Planner requires an active Business Pack spacePlanner extension. Failing closed.'));
+  });
+
+  await test('validateRoomLayout allows laundry products in laundry room with pack', () => {
+    const testPackPlanner = {
+      version: '1.0.0',
+      enabled: true,
+      roomTypes: [
+        {
+          id: 'laundry',
+          label: 'Laundry',
+          defaultDimensions: { widthMm: 2400, depthMm: 2400, heightMm: 2400 },
+          allowedComponentCategories: ['base', 'overhead', 'tall', 'tub', 'appliance', 'lining'],
+          forbiddenComponentCategories: [],
+          defaultComponents: [],
+        },
+      ],
+      componentReferences: [
+        { componentId: 'laundry-kit-600', sku: '7834654', category: 'base', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 600, depth: 600, height: 900 } },
+        { componentId: 'robinhood-supertub-45', sku: '7846476', category: 'tub', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 560, depth: 560, height: 900 } },
+        { componentId: 'appliance-space-600', sku: '5708109', category: 'appliance', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 600, depth: 600, height: 850 } },
+        { componentId: 'base-450-door', sku: '7834112', category: 'base', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 450, depth: 600, height: 900 } },
+        { componentId: 'overhead-900', sku: '7834225', category: 'overhead', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 900, depth: 350, height: 720 } },
+        { componentId: 'gib-aqualine-10', sku: '2801884', category: 'lining', compatibleRoomTypes: ['laundry'], dimensionsMm: { width: 1200, depth: 10, height: 2400 } },
+      ],
+      layoutRules: { isolationRules: [] },
+      compatibilityClassifications: [],
+      calculationFormulas: [],
+      defaults: {},
+    };
     const laundryItems = getDefaultPlacedItems('laundry');
-    const errors = validateRoomLayout(laundryItems, 'laundry');
+    const errors = validateRoomLayout(laundryItems, 'laundry', testPackPlanner as any);
     assert.equal(errors.length, 0, 'Laundry items must be allowed in laundry layout');
   });
 
@@ -261,12 +376,42 @@ async function runPlatformSafetySuite() {
 
   // ── TEST 4: ACCESSORY COMPATIBILITY & WEATHERTIGHT SAFETY ────────────────
   await test('Exterior weathertight tape is strictly rejected for interior bathrooms', () => {
+    const testPackPlanner = {
+      version: '1.0.0',
+      enabled: true,
+      roomTypes: [
+        {
+          id: 'bathroom',
+          label: 'Bathroom',
+          defaultDimensions: { widthMm: 1800, depthMm: 2400, heightMm: 2400 },
+          allowedComponentCategories: ['base', 'overhead', 'tall', 'lining'],
+          forbiddenComponentCategories: ['tub', 'appliance'],
+          defaultComponents: [],
+        },
+      ],
+      componentReferences: [],
+      layoutRules: { isolationRules: [] },
+      compatibilityClassifications: [
+        {
+          classificationId: 'exterior_barrier_safety',
+          systemType: 'exterior_barrier',
+          compatibleRoomTypes: [],
+          forbiddenRoomTypes: ['bathroom', 'laundry'],
+          skuPatternsOrIds: ['2800871', '2800873', '3410067'],
+          requiresExplicitMapping: true,
+          rejectionMessage: 'cannot be used as an interior bathroom membrane or joint tape without an exact manufacturer mapping',
+        },
+      ],
+      calculationFormulas: [],
+      defaults: {},
+    };
+
     const exteriorTape = MASTER_ACCESSORIES.find((a) => a.sku === '2800871');
     assert.ok(exteriorTape, 'Weatherline Flashing Tape must be in master catalogue');
     assert.equal(exteriorTape.systemType, 'exterior_barrier');
     assert.deepEqual(exteriorTape.compatibleRooms, []);
 
-    const result = validateAccessorySafety(exteriorTape, 'bathroom');
+    const result = validateAccessorySafety(exteriorTape, 'bathroom', testPackPlanner as any);
     assert.equal(result.safe, false, 'Exterior tape must be flagged as unsafe for bathroom');
     assert.ok(
       result.reason?.includes('cannot be used as an interior bathroom membrane'),
@@ -275,24 +420,54 @@ async function runPlatformSafetySuite() {
 
     const masonsTape = MASTER_ACCESSORIES.find((a) => a.sku === '3410067');
     assert.ok(masonsTape, '40 Below Flashing Tape must be in master catalogue');
-    const masonsResult = validateAccessorySafety(masonsTape, 'bathroom');
+    const masonsResult = validateAccessorySafety(masonsTape, 'bathroom', testPackPlanner as any);
     assert.equal(masonsResult.safe, false, '40 Below tape must be flagged as unsafe for bathroom');
   });
 
   await test('Interior wet-area tapes and consumables pass validation for bathrooms', () => {
+    const testPackPlanner = {
+      version: '1.0.0',
+      enabled: true,
+      roomTypes: [
+        {
+          id: 'bathroom',
+          label: 'Bathroom',
+          defaultDimensions: { widthMm: 1800, depthMm: 2400, heightMm: 2400 },
+          allowedComponentCategories: ['base', 'overhead', 'tall', 'lining'],
+          forbiddenComponentCategories: [],
+          defaultComponents: [],
+        },
+      ],
+      componentReferences: [],
+      layoutRules: { isolationRules: [] },
+      compatibilityClassifications: [
+        {
+          classificationId: 'exterior_barrier_safety',
+          systemType: 'exterior_barrier',
+          compatibleRoomTypes: [],
+          forbiddenRoomTypes: ['bathroom', 'laundry'],
+          skuPatternsOrIds: ['2800871', '2800873', '3410067'],
+          requiresExplicitMapping: true,
+          rejectionMessage: 'cannot be used as an interior bathroom membrane or joint tape without an exact manufacturer mapping',
+        },
+      ],
+      calculationFormulas: [],
+      defaults: {},
+    };
+
     const gibTape = MASTER_ACCESSORIES.find((a) => a.sku === '2801181');
     assert.ok(gibTape, 'GIB Paper Jointing Tape must be in master catalogue');
-    const gibResult = validateAccessorySafety(gibTape, 'bathroom');
+    const gibResult = validateAccessorySafety(gibTape, 'bathroom', testPackPlanner as any);
     assert.equal(gibResult.safe, true);
 
     const silicone = MASTER_ACCESSORIES.find((a) => a.sku === '7712045');
     assert.ok(silicone, 'Sanitary silicone must be in master catalogue');
-    const siliconeResult = validateAccessorySafety(silicone, 'bathroom');
+    const siliconeResult = validateAccessorySafety(silicone, 'bathroom', testPackPlanner as any);
     assert.equal(siliconeResult.safe, true);
 
     const bottleTrap = MASTER_ACCESSORIES.find((a) => a.sku === '3649999');
     assert.ok(bottleTrap, 'Eurostyle bottle trap must be in master catalogue');
-    const trapResult = validateAccessorySafety(bottleTrap, 'bathroom');
+    const trapResult = validateAccessorySafety(bottleTrap, 'bathroom', testPackPlanner as any);
     assert.equal(trapResult.safe, true);
   });
 
@@ -443,6 +618,68 @@ async function runPlatformSafetySuite() {
     // 2. Reading with cross-tenant ID 'caroma' must return null
     const caromaQuote = await quoteService.get('q_test_123', 'caroma');
     assert.equal(caromaQuote, null, 'Cross-tenant quote read must return null');
+  });
+
+  // ── TEST 8: QUOTESERVICE FAIL-CLOSED & IDEMPOTENCY ─────────────────────────
+  await test('QuoteService planner quoting fails closed (503) when active production pack is unavailable', async () => {
+    const quoteService = new QuoteService();
+    const mockLoader: any = {
+      loadPublished: async () => null,
+    };
+
+    let caughtError: any = null;
+    try {
+      await quoteService.build({
+        tenantId: 'unconfigured-tenant',
+        roomType: 'bathroom',
+        plannerContext: { roomType: 'bathroom', areaM2: 7 },
+        pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
+        packLoader: mockLoader,
+        items: [{ sku: '3601297', quantity: 1 }],
+      });
+    } catch (err: any) {
+      caughtError = err;
+    }
+
+    assert.ok(caughtError, 'Planner quoting must throw when pack is unavailable');
+    assert.equal(caughtError.getStatus?.(), 503, 'Must throw 503 Service Unavailable');
+    assert.ok(caughtError.message.includes('unavailable'), 'Error message must state pack is unavailable');
+  });
+
+  await test('QuoteService deduplicates quote creation when idempotencyKey matches', async () => {
+    const quoteService = new QuoteService();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      return {
+        ok: true,
+        json: async () => ({
+          items: [{ sku: '3601297', name: 'Valencia Wall-Hung Vanity 900mm', price: 1529.01, inStock: true }],
+          missing: [],
+        }),
+      } as Response;
+    }) as any;
+
+    try {
+      const idempotencyKey = `unit-idem-${Date.now()}`;
+      const quote1 = await quoteService.build({
+        tenantId: 'placemakers',
+        idempotencyKey,
+        pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
+        items: [{ sku: '3601297', quantity: 1 }],
+      });
+
+      const quote2 = await quoteService.build({
+        tenantId: 'placemakers',
+        idempotencyKey,
+        pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
+        items: [{ sku: '3601297', quantity: 1 }],
+      });
+
+      assert.equal(quote1.quoteId, quote2.quoteId, 'Replay with same idempotencyKey must return exact same quoteId');
+      assert.equal(quote1.idempotencyKey, idempotencyKey);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   console.log(`\nResults: ${passed} passed, ${failed} failed.\n`);

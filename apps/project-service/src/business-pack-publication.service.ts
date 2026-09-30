@@ -10,6 +10,148 @@ import {
 import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
 import { ReleaseValidationPort } from './release-validation.port';
 
+export class MissingCatalogueSkuError extends Error {
+  constructor(public readonly missingSkus: string[], public readonly tenantId: string) {
+    super(`Missing catalogue SKUs in business pack for tenant '${tenantId}': ${missingSkus.join(', ')}`);
+    this.name = 'MissingCatalogueSkuError';
+  }
+}
+
+export class SemanticCategoryMismatchError extends Error {
+  constructor(
+    public readonly sku: string,
+    public readonly componentCategory: string,
+    public readonly catalogueCategory: string
+  ) {
+    super(
+      `Semantic category mismatch for SKU '${sku}': component category is '${componentCategory}' but catalogue category is '${catalogueCategory}'`
+    );
+    this.name = 'SemanticCategoryMismatchError';
+  }
+}
+
+export function isCategorySemanticallyCompatible(
+  componentCategory: string,
+  catalogueCategory: string
+): boolean {
+  const comp = (componentCategory || '').toLowerCase().trim();
+  const cat = (catalogueCategory || '').toLowerCase().trim();
+  if (!cat) return true;
+
+  switch (comp) {
+    case 'lining':
+      return (
+        cat.includes('plasterboard') ||
+        cat.includes('specialist board') ||
+        cat.includes('lining') ||
+        cat.includes('drywall') ||
+        cat.includes('board') ||
+        cat.includes('wallboard')
+      );
+
+    case 'tub':
+    case 'laundry_tub':
+      if (cat.includes('specialist board') || cat.includes('plasterboard') || cat.includes('flashing')) {
+        return false;
+      }
+      return (
+        cat.includes('tub') ||
+        cat.includes('basin') ||
+        cat.includes('sink') ||
+        cat.includes('laundry cabinetry')
+      );
+
+    case 'base':
+      if (
+        cat.includes('specialist board') ||
+        cat.includes('plasterboard') ||
+        cat.includes('flashing') ||
+        cat.includes('traps & wastes')
+      ) {
+        return false;
+      }
+      return (
+        cat.includes('vanit') ||
+        cat.includes('cabinet') ||
+        cat.includes('modular') ||
+        cat.includes('base') ||
+        cat.includes('drawer') ||
+        cat.includes('hardware') ||
+        cat.includes('furniture')
+      );
+
+    case 'overhead':
+      if (
+        cat.includes('tapware') ||
+        cat.includes('specialist board') ||
+        cat.includes('plasterboard') ||
+        cat.includes('traps') ||
+        cat.includes('tub')
+      ) {
+        return false;
+      }
+      return (
+        cat.includes('mirror') ||
+        cat.includes('vanit') ||
+        cat.includes('overhead') ||
+        cat.includes('cabinet') ||
+        cat.includes('cupboard')
+      );
+
+    case 'tall':
+      if (
+        cat.includes('tapware') ||
+        cat.includes('specialist board') ||
+        cat.includes('plasterboard') ||
+        cat.includes('traps') ||
+        cat.includes('scaffold')
+      ) {
+        return false;
+      }
+      return (
+        cat.includes('tall') ||
+        cat.includes('tower') ||
+        cat.includes('cupboard') ||
+        cat.includes('vanit') ||
+        cat.includes('cabinet') ||
+        cat.includes('storage') ||
+        cat.includes('pantry')
+      );
+
+    case 'appliance':
+    case 'washer_cavity':
+      if (
+        cat.includes('specialist board') ||
+        cat.includes('plasterboard') ||
+        cat.includes('vanit') ||
+        cat.includes('traps')
+      ) {
+        return false;
+      }
+      return (
+        cat.includes('appliance') ||
+        cat.includes('washer') ||
+        cat.includes('dryer') ||
+        cat.includes('dishwasher')
+      );
+
+    case 'exterior_barrier':
+      if (cat.includes('drywall') || cat.includes('specialist board') || cat.includes('plasterboard')) {
+        return false;
+      }
+      return cat.includes('flashing') || cat.includes('tape') || cat.includes('barrier') || cat.includes('wrap');
+
+    case 'sanitary_plumbing':
+      if (cat.includes('specialist board') || cat.includes('plasterboard') || cat.includes('flashing')) {
+        return false;
+      }
+      return cat.includes('trap') || cat.includes('waste') || cat.includes('plumbing') || cat.includes('valve');
+
+    default:
+      return true;
+  }
+}
+
 @Injectable()
 export class BusinessPackPublicationService {
   constructor(
@@ -99,9 +241,17 @@ export class BusinessPackPublicationService {
 
     let compiledModelPolicy: any = null;
     if (doc.modelPolicy?.policies && Array.isArray(doc.modelPolicy.policies) && doc.modelPolicy.policies.length > 0) {
+      const resolvedDefaultPolicy =
+        doc.modelPolicy.defaultPolicy ||
+        (doc.modelPolicy.policies.length === 1 ? doc.modelPolicy.policies[0].policyId : undefined);
+      if (!resolvedDefaultPolicy) {
+        throw new Error(
+          `[BusinessPackPublication] modelPolicy has ${doc.modelPolicy.policies.length} policies but no explicit 'defaultPolicy' specified - failing closed.`
+        );
+      }
       compiledModelPolicy = {
         version: doc.modelPolicy.version || '1.0.0',
-        defaultPolicy: doc.modelPolicy.defaultPolicy || doc.modelPolicy.policies[0].policyId,
+        defaultPolicy: resolvedDefaultPolicy,
         policies: doc.modelPolicy.policies,
       };
     } else if (doc.ai?.model) {
@@ -437,6 +587,21 @@ export class BusinessPackPublicationService {
       };
     }
 
+    // Validate Space Planner catalogue mappings (verified SKUs and semantic category matching)
+    const spacePlannerExt = businessPack.extensions?.spacePlanner;
+    if (spacePlannerExt) {
+      const plannerIntegrity = await this.validateSpacePlannerCatalogueIntegrity(
+        pid,
+        spacePlannerExt
+      );
+      if (!plannerIntegrity.valid) {
+        return {
+          success: false,
+          message: `Publish blocked by space planner catalogue integrity: ${plannerIntegrity.error}`,
+        };
+      }
+    }
+
     // Publication Gate (PUB-001): Run through injected release-validation port if configured
     let latestEvalSuiteResult: any = null;
     if (this.releaseValidator) {
@@ -637,6 +802,193 @@ export class BusinessPackPublicationService {
 
     this.bustCache(pid);
     return { success: true };
+  }
+
+  /**
+   * Validates that all SKUs in a space-planner extension exist in the tenant catalogue
+   * and that component categories match the catalogue products semantically.
+   */
+  async validateSpacePlannerCatalogueIntegrity(
+    projectId: string,
+    spacePlanner: any
+  ): Promise<{ valid: boolean; error?: string }> {
+    if (!spacePlanner || typeof spacePlanner !== 'object') {
+      return { valid: true };
+    }
+
+    const pid = projectId.toLowerCase();
+
+    // 1. Gather all SKUs and their required component categories
+    const skuCategories = new Map<string, { componentCategory: string; componentId?: string }>();
+
+    if (Array.isArray(spacePlanner.componentReferences)) {
+      for (const ref of spacePlanner.componentReferences) {
+        if (ref?.sku) {
+          skuCategories.set(String(ref.sku).trim(), {
+            componentCategory: ref.category || 'base',
+            componentId: ref.componentId,
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(spacePlanner.roomTypes)) {
+      for (const rt of spacePlanner.roomTypes) {
+        if (Array.isArray(rt?.defaultComponents)) {
+          for (const dc of rt.defaultComponents) {
+            if (dc?.sku) {
+              const s = String(dc.sku).trim();
+              if (!skuCategories.has(s)) {
+                skuCategories.set(s, {
+                  componentCategory: dc.category || 'base',
+                  componentId: dc.componentId,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(spacePlanner.compatibilityClassifications)) {
+      for (const cc of spacePlanner.compatibilityClassifications) {
+        if (Array.isArray(cc?.skuPatternsOrIds)) {
+          for (const rawSku of cc.skuPatternsOrIds) {
+            const s = String(rawSku).trim();
+            // Validate explicit SKU strings (e.g. numeric IDs)
+            if (/^\d{5,10}$/.test(s) && !skuCategories.has(s)) {
+              skuCategories.set(s, {
+                componentCategory: cc.systemType || 'classification',
+                componentId: cc.classificationId,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const skus = Array.from(skuCategories.keys());
+    if (skus.length === 0) {
+      return { valid: true };
+    }
+
+    // 2. Query tenant product catalogue
+    const catalogueMap = new Map<string, { sku: string; category?: string; name?: string }>();
+
+    // Try MongoDB documents/products collections first
+    let db: any = null;
+    try {
+      db = this.getDb ? this.getDb() : null;
+    } catch {
+      db = null;
+    }
+
+    if (db && typeof db.collection === 'function') {
+      try {
+        const docCol = db.collection('documents');
+        if (docCol && typeof docCol.find === 'function') {
+          const docs = await docCol
+            .find({
+              brand: pid,
+              'metadata.sku': { $in: skus },
+            })
+            .toArray();
+
+          for (const d of docs) {
+            const sku = String(d.metadata?.sku).trim();
+            if (sku && !catalogueMap.has(sku)) {
+              catalogueMap.set(sku, {
+                sku,
+                category: d.metadata?.category || d.category,
+                name: d.title || d.name,
+              });
+            }
+          }
+        }
+      } catch {}
+
+      if (catalogueMap.size < skus.length) {
+        try {
+          const prodCol = db.collection('products');
+          if (prodCol && typeof prodCol.find === 'function') {
+            const prods = await prodCol
+              .find({
+                $or: [
+                  { tenantId: pid, sku: { $in: skus } },
+                  { brand: pid, sku: { $in: skus } },
+                ],
+              })
+              .toArray();
+
+            for (const p of prods) {
+              const sku = String(p.sku).trim();
+              if (sku && !catalogueMap.has(sku)) {
+                catalogueMap.set(sku, {
+                  sku,
+                  category: p.category,
+                  name: p.name || p.title,
+                });
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // If still missing SKUs, try product-service pricebook via HTTP if internal key available
+    const missingFromDb = skus.filter((s) => !catalogueMap.has(s));
+    if (missingFromDb.length > 0) {
+      const prodServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+      const internalKey = process.env.INTERNAL_API_KEY;
+      if (internalKey) {
+        try {
+          const res = await fetch(`${prodServiceUrl}/api/v1/${encodeURIComponent(pid)}/products/pricebook`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Internal-Key': internalKey,
+              'X-Tenant-ID': pid,
+            },
+            body: JSON.stringify({ skus: missingFromDb }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.ok) {
+            const data: any = await res.json();
+            for (const it of data.items || []) {
+              const sku = String(it.sku).trim();
+              if (sku) {
+                catalogueMap.set(sku, {
+                  sku,
+                  category: it.category,
+                  name: it.name,
+                });
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // 3. Check for missing SKUs
+    const missingSkus = skus.filter((s) => !catalogueMap.has(s));
+    if (missingSkus.length > 0) {
+      const err = new MissingCatalogueSkuError(missingSkus, pid);
+      return { valid: false, error: err.message };
+    }
+
+    // 4. Check for semantic category mismatches
+    for (const [sku, meta] of skuCategories.entries()) {
+      const catProduct = catalogueMap.get(sku);
+      if (!catProduct || !catProduct.category) continue;
+
+      const compatible = isCategorySemanticallyCompatible(meta.componentCategory, catProduct.category);
+      if (!compatible) {
+        const err = new SemanticCategoryMismatchError(sku, meta.componentCategory, catProduct.category);
+        return { valid: false, error: err.message };
+      }
+    }
+
+    return { valid: true };
   }
 }
 

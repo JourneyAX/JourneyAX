@@ -377,6 +377,7 @@ export async function POST(req: Request) {
       capabilities: activeRelease.capabilities,
       experience: activeRelease.experience,
       evaluations: activeRelease.evaluations,
+      extensions: activeRelease.extensions || {},
     };
     const packToHash = activeRelease.manifest
       ? packPayload

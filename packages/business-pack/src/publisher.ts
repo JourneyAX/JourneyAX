@@ -164,6 +164,7 @@ export async function publishBusinessPack(
         capabilities: pack.capabilities,
         experience: pack.experience,
         evaluations: pack.evaluations,
+        extensions: pack.extensions || {},
         publishedAt: now,
         publishedBy,
       };

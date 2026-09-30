@@ -95,14 +95,14 @@ export const ROOM_CATALOGS: Record<RoomType, CabinetItem[]> = {
     },
     {
       id: 'appliance-space-600',
-      name: 'Under-bench Washer / Dryer Cavity (600mm)',
+      name: 'Washing Machine 10kg White Front Load',
       category: 'appliance',
       widthMm: 600,
-      heightMm: 900,
+      heightMm: 850,
       depthMm: 600,
-      priceNzd: 0,
-      sku: 'APP-CAV-600',
-      description: 'Dedicated under-bench opening for front loader washing machine or condenser dryer.',
+      priceNzd: 1499,
+      sku: '5708109',
+      description: 'Front loader washing machine with 10kg capacity and 1400rpm spin speed.',
       imageUrl: IMG_APPLIANCE_SPACE,
       roomTypes: ['laundry'],
     },
@@ -134,14 +134,14 @@ export const ROOM_CATALOGS: Record<RoomType, CabinetItem[]> = {
     },
     {
       id: 'overhead-600',
-      name: 'Overhead Wall Cabinet 600mm (Double Doors)',
+      name: 'Boston Mirror Cabinet 3 Door 900mm White',
       category: 'overhead',
-      widthMm: 600,
-      heightMm: 720,
-      depthMm: 350,
-      priceNzd: 380,
-      sku: '7834220',
-      description: 'Wall-mounted storage unit with 2 adjustable shelves and concealed mounting brackets.',
+      widthMm: 900,
+      heightMm: 750,
+      depthMm: 150,
+      priceNzd: 650,
+      sku: '7615114',
+      description: 'Wall-mounted mirror cabinet with 3 doors and adjustable glass shelves.',
       imageUrl: IMG_OVERHEAD_600,
       roomTypes: ['laundry', 'kitchen', 'utility'],
     },
@@ -160,14 +160,14 @@ export const ROOM_CATALOGS: Record<RoomType, CabinetItem[]> = {
     },
     {
       id: 'tall-tower-600',
-      name: 'Tall Broom & Linen Tower 600mm (2100mm Height)',
+      name: 'Boston Wall Tower 1 Door 2 Drawer 1700mm White',
       category: 'tall',
-      widthMm: 600,
-      heightMm: 2100,
-      depthMm: 600,
+      widthMm: 400,
+      heightMm: 1700,
+      depthMm: 350,
       priceNzd: 890,
-      sku: '7834330',
-      description: 'Full-height cabinet with broom divider, ironing board slot, and top linen shelving.',
+      sku: '7615110',
+      description: 'Full-height wall tower with soft-close door, 2 drawers, and adjustable shelves.',
       imageUrl: IMG_TALL_TOWER,
       roomTypes: ['laundry', 'utility'],
     },
@@ -240,14 +240,14 @@ export const ROOM_CATALOGS: Record<RoomType, CabinetItem[]> = {
     },
     {
       id: 'tall-linen-450',
-      name: 'Tall Bathroom Linen Tower 450mm (2100mm Height)',
+      name: 'Boston Wall Tower 1 Door 2 Drawer 1700mm White',
       category: 'tall',
-      widthMm: 450,
-      heightMm: 2100,
-      depthMm: 450,
+      widthMm: 400,
+      heightMm: 1700,
+      depthMm: 350,
       priceNzd: 890,
-      sku: '7834330',
-      description: 'Full-height slimline linen tower with adjustable shelving for towel and toiletry storage.',
+      sku: '7615110',
+      description: 'Slimline wall tower with soft-close door, 2 drawers, and adjustable shelves.',
       imageUrl: IMG_TALL_TOWER,
       roomTypes: ['bathroom'],
     },
@@ -490,58 +490,22 @@ export function validateRoomLayout(
   currentRoom: RoomType,
   packExtension?: SpacePlannerExtension
 ): string[] {
-  const errors: string[] = [];
-
-  if (packExtension) {
-    const packErrors = validateRoomLayoutAgainstPack(
-      items.map((p) => ({
-        sku: p.item.sku,
-        category: p.item.category,
-        componentId: p.item.id,
-        quantity: p.quantity,
-      })),
-      currentRoom,
-      packExtension
-    );
-    if (packErrors.length > 0) {
-      if (currentRoom === 'bathroom') {
-        const laundry = items.find(
-          (p) =>
-            p.item.category === 'tub' ||
-            p.item.sku === '7846476' ||
-            p.item.sku === '7834654' ||
-            p.item.id === 'appliance-space-600' ||
-            p.item.id === 'robinhood-supertub-45'
-        );
-        if (laundry) {
-          errors.push(
-            `A bathroom must never inherit laundry products: "${laundry.item.name}" (${laundry.item.sku}) is prohibited in bathroom layouts.`
-          );
-        }
-      }
-      errors.push(...packErrors);
-      return errors;
-    }
+  if (!packExtension) {
+    return [
+      '[Configuration Required] Space Planner requires an active Business Pack spacePlanner extension. Failing closed.',
+    ];
   }
 
-  const laundrySkus = new Set(['7834654', '7846476', '7846479', 'APP-CAV-600', '7001402', 'PM-CAV-650']);
-  
-  if (currentRoom === 'bathroom') {
-    for (const p of items) {
-      if (
-        laundrySkus.has(p.item.sku) ||
-        p.item.category === 'tub' ||
-        p.item.id === 'appliance-space-600' ||
-        p.item.id === 'laundry-kit-600' ||
-        p.item.id === 'robinhood-supertub-45'
-      ) {
-        errors.push(
-          `A bathroom must never inherit laundry products: "${p.item.name}" (${p.item.sku}) is prohibited in bathroom layouts.`,
-        );
-      }
-    }
-  }
-  return errors;
+  return validateRoomLayoutAgainstPack(
+    items.map((p) => ({
+      sku: p.item.sku,
+      category: p.item.category,
+      componentId: p.item.id,
+      quantity: p.quantity,
+    })),
+    currentRoom,
+    packExtension
+  );
 }
 
 export interface AccessoryItem {
@@ -690,30 +654,25 @@ export function validateAccessorySafety(
   room: RoomType,
   packExtension?: SpacePlannerExtension
 ): { safe: boolean; reason?: string } {
-  if (packExtension) {
-    const packResult = validateAccessoryCompatibilityAgainstPack(
-      [{ sku: acc.sku, systemType: acc.systemType, category: acc.category }],
-      room,
-      packExtension
-    );
-    if (!packResult.valid) {
-      return {
-        safe: false,
-        reason: packResult.errors[0] || `Exterior weathertight tape (${acc.name} - SKU ${acc.sku}) cannot be used as an interior ${room} membrane or joint tape without an exact manufacturer mapping.`,
-      };
-    }
-  }
-
-  if (acc.systemType === 'exterior_barrier') {
+  if (!packExtension) {
     return {
       safe: false,
-      reason: `Exterior weathertight tape (${acc.name} - SKU ${acc.sku}) cannot be used as an interior ${room} membrane or joint tape without an exact manufacturer mapping.`,
+      reason:
+        '[Configuration Required] Space Planner requires an active Business Pack spacePlanner extension. Failing closed.',
     };
   }
-  if (!acc.compatibleRooms.includes(room)) {
+
+  const packResult = validateAccessoryCompatibilityAgainstPack(
+    [{ sku: acc.sku, systemType: acc.systemType, category: acc.category }],
+    room,
+    packExtension
+  );
+  if (!packResult.valid) {
     return {
       safe: false,
-      reason: `Accessory ${acc.name} (${acc.sku}) is not compatible with room type ${room}.`,
+      reason:
+        packResult.errors[0] ||
+        `Accessory (${acc.name} - SKU ${acc.sku}) is incompatible with ${room} in active Business Pack.`,
     };
   }
   return { safe: true };

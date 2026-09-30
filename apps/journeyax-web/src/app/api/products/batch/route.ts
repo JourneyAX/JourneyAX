@@ -45,15 +45,10 @@ export async function POST(req: NextRequest) {
     console.warn(`[products/batch] Catalogue resolution failed for tenant '${tenantId}':`, err.message);
   }
 
-  // Graceful fallback for offline test harness: synthesize catalogue ref for known catalogued items if service is offline
+  // Fail closed when catalogue connector is unavailable or returns error — do not fabricate synthetic mock products
   return NextResponse.json({
-    items: skus.map((sku) => ({
-      sku,
-      name: `Product ${sku}`,
-      price: null,
-      inStock: true,
-    })),
-    found: skus,
-    missing: [],
+    items: [],
+    found: [],
+    missing: skus,
   });
 }

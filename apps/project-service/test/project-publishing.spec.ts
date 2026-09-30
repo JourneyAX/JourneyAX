@@ -621,6 +621,558 @@ async function runProjectPublishingSuite() {
     assert.equal(result.success, false, 'Publish must fail closed when schema/integrity is invalid');
   });
 
+  // ── TEST 7: Rejection of missing SKUs in space-planner extension ────────
+  await test('Publication validation strictly rejects space-planner pack referencing missing catalogue SKUs', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'pm-test-missing-sku',
+        {
+          projectId: 'pm-test-missing-sku',
+          name: 'PlaceMakers Test',
+          companyName: 'PlaceMakers NZ',
+          ai: { provider: 'openai', model: 'gpt-4o' },
+          persona: {
+            systemName: 'PM Assistant',
+            journeyDefinition: {
+              journeyId: 'j_pm',
+              version: '1.0.0',
+              goals: ['renovation'],
+              initialStage: 'plan',
+              stages: {
+                plan: { stageId: 'plan', displayName: 'Plan', allowedCapabilities: [] },
+              },
+            },
+          },
+          extensions: {
+            spacePlanner: {
+              version: '1.0.0',
+              enabled: true,
+              roomTypes: [
+                {
+                  id: 'bathroom',
+                  label: 'Bathroom',
+                  defaultDimensions: { widthMm: 1800, depthMm: 2400, heightMm: 2400 },
+                  allowedComponentCategories: ['base'],
+                  forbiddenComponentCategories: [],
+                  defaultComponents: [{ componentId: 'vanity-900', sku: '3601297', quantity: 1 }],
+                },
+              ],
+              componentReferences: [
+                {
+                  componentId: 'vanity-900',
+                  sku: '3601297',
+                  category: 'base',
+                  compatibleRoomTypes: ['bathroom'],
+                  dimensionsMm: { width: 900, depth: 460, height: 850 },
+                },
+                {
+                  componentId: 'fake-cavity',
+                  sku: 'PM-CAV-650-NONEXISTENT',
+                  category: 'appliance',
+                  compatibleRoomTypes: ['laundry'],
+                  dimensionsMm: { width: 650, depth: 600, height: 870 },
+                },
+              ],
+              layoutRules: { isolationRules: [], wallWidthConstraints: { minMm: 1200, maxMm: 4800, stepMm: 100 } },
+              compatibilityClassifications: [],
+              calculationFormulas: [],
+              defaults: {},
+            },
+          },
+        },
+      ],
+    ]);
+
+    const memoryProducts = [
+      { tenantId: 'pm-test-missing-sku', sku: '3601297', category: 'Vanities', name: 'Valencia Vanity 900' },
+    ];
+
+    const mockDb: any = {
+      collection: (name: string) => {
+        if (name === 'tenant_configs') return { findOne: async (q: any) => memoryProjects.get(q.projectId) || null };
+        if (name === 'config_versions') return { find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) };
+        if (name === 'products') {
+          return {
+            find: (q: any) => ({
+              toArray: async () => memoryProducts.filter((p) => q.$or?.some((cond: any) => cond.tenantId === p.tenantId && cond.sku?.$in?.includes(p.sku))),
+            }),
+          };
+        }
+        if (name === 'documents') return { find: () => ({ toArray: async () => [] }) };
+        return { find: () => ({ toArray: async () => [] }) };
+      },
+    };
+
+    const pubService = new BusinessPackPublicationService(
+      () => mockDb,
+      () => mockDb.collection('tenant_configs'),
+      () => mockDb.collection('config_versions'),
+      () => true,
+      () => {},
+      async (pid) => memoryProjects.get(pid) || null
+    );
+
+    const result = await pubService.publishConfig('pm-test-missing-sku');
+    assert.equal(result.success, false, 'Publication must be rejected when SKU is missing from catalogue');
+    assert.ok(
+      result.message?.includes('Missing catalogue SKUs') || result.message?.includes('PM-CAV-650-NONEXISTENT'),
+      `Expected missing SKU error, got: ${result.message}`
+    );
+  });
+
+  // ── TEST 8: Rejection of semantic category mismatches ───────────────────
+  await test('Publication validation strictly rejects semantic category mismatches in space-planner pack', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'pm-test-category-mismatch',
+        {
+          projectId: 'pm-test-category-mismatch',
+          name: 'PlaceMakers Test',
+          companyName: 'PlaceMakers NZ',
+          ai: { provider: 'openai', model: 'gpt-4o' },
+          persona: {
+            systemName: 'PM Assistant',
+            journeyDefinition: {
+              journeyId: 'j_pm_cat',
+              version: '1.0.0',
+              goals: ['renovation'],
+              initialStage: 'plan',
+              stages: {
+                plan: { stageId: 'plan', displayName: 'Plan', allowedCapabilities: [] },
+              },
+            },
+          },
+          extensions: {
+            spacePlanner: {
+              version: '1.0.0',
+              enabled: true,
+              roomTypes: [
+                {
+                  id: 'bathroom',
+                  label: 'Bathroom',
+                  defaultDimensions: { widthMm: 1800, depthMm: 2400, heightMm: 2400 },
+                  allowedComponentCategories: ['overhead'],
+                  forbiddenComponentCategories: [],
+                  defaultComponents: [],
+                },
+              ],
+              componentReferences: [
+                {
+                  componentId: 'shaving-cabinet-900',
+                  sku: '7834220', // Bianca Fixed Bath Spout (Tapware & Showering) declared as overhead shaving cabinet!
+                  category: 'overhead',
+                  compatibleRoomTypes: ['bathroom'],
+                  dimensionsMm: { width: 900, depth: 150, height: 750 },
+                },
+              ],
+              layoutRules: { isolationRules: [], wallWidthConstraints: { minMm: 1200, maxMm: 4800, stepMm: 100 } },
+              compatibilityClassifications: [],
+              calculationFormulas: [],
+              defaults: {},
+            },
+          },
+        },
+      ],
+    ]);
+
+    const memoryProducts = [
+      { tenantId: 'pm-test-category-mismatch', sku: '7834220', category: 'Tapware & Showering', name: 'Bianca Fixed Bath Spout Only 240mm' },
+    ];
+
+    const mockDb: any = {
+      collection: (name: string) => {
+        if (name === 'tenant_configs') return { findOne: async (q: any) => memoryProjects.get(q.projectId) || null };
+        if (name === 'config_versions') return { find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) };
+        if (name === 'products') {
+          return {
+            find: (q: any) => ({
+              toArray: async () => memoryProducts.filter((p) => q.$or?.some((cond: any) => cond.tenantId === p.tenantId && cond.sku?.$in?.includes(p.sku))),
+            }),
+          };
+        }
+        if (name === 'documents') return { find: () => ({ toArray: async () => [] }) };
+        return { find: () => ({ toArray: async () => [] }) };
+      },
+    };
+
+    const pubService = new BusinessPackPublicationService(
+      () => mockDb,
+      () => mockDb.collection('tenant_configs'),
+      () => mockDb.collection('config_versions'),
+      () => true,
+      () => {},
+      async (pid) => memoryProjects.get(pid) || null
+    );
+
+    const result = await pubService.publishConfig('pm-test-category-mismatch');
+    assert.equal(result.success, false, 'Publication must be rejected when category is semantically mismatched');
+    assert.ok(
+      result.message?.includes('Semantic category mismatch') && result.message?.includes('7834220'),
+      `Expected semantic mismatch error, got: ${result.message}`
+    );
+  });
+
+  // ── TEST 9: Success when space-planner has verified SKUs and matching categories ───
+  await test('Publication validation succeeds when space-planner has verified SKUs and matching categories', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'pm-test-valid-pack',
+        {
+          projectId: 'pm-test-valid-pack',
+          name: 'PlaceMakers Test',
+          companyName: 'PlaceMakers NZ',
+          ai: { provider: 'openai', model: 'gpt-4o' },
+          persona: {
+            systemName: 'PM Assistant',
+            journeyDefinition: {
+              journeyId: 'j_pm_valid',
+              version: '1.0.0',
+              goals: ['renovation'],
+              initialStage: 'plan',
+              stages: {
+                plan: { stageId: 'plan', displayName: 'Plan', allowedCapabilities: [] },
+              },
+            },
+          },
+          extensions: {
+            spacePlanner: {
+              version: '1.0.0',
+              enabled: true,
+              roomTypes: [
+                {
+                  id: 'bathroom',
+                  label: 'Bathroom',
+                  defaultDimensions: { widthMm: 1800, depthMm: 2400, heightMm: 2400 },
+                  allowedComponentCategories: ['base', 'overhead', 'tall', 'lining'],
+                  forbiddenComponentCategories: ['tub'],
+                  defaultComponents: [
+                    { componentId: 'vanity-900', sku: '3601297', x: 0, z: 0, rotation: 0, quantity: 1 },
+                    { componentId: 'shaving-cabinet-900', sku: '7615114', x: 0, z: 0, rotation: 0, quantity: 1 },
+                  ],
+                },
+              ],
+              componentReferences: [
+                {
+                  componentId: 'vanity-900',
+                  sku: '3601297',
+                  category: 'base',
+                  compatibleRoomTypes: ['bathroom'],
+                  dimensionsMm: { width: 900, depth: 460, height: 850 },
+                },
+                {
+                  componentId: 'shaving-cabinet-900',
+                  sku: '7615114',
+                  category: 'overhead',
+                  compatibleRoomTypes: ['bathroom'],
+                  dimensionsMm: { width: 900, depth: 150, height: 750 },
+                },
+              ],
+              layoutRules: { isolationRules: [], wallWidthConstraints: { minMm: 1200, maxMm: 4800, stepMm: 100 } },
+              compatibilityClassifications: [],
+              calculationFormulas: [],
+              defaults: {},
+            },
+          },
+        },
+      ],
+    ]);
+
+    const memoryProducts = [
+      { tenantId: 'pm-test-valid-pack', sku: '3601297', category: 'Vanities', name: 'Valencia Wall Hung Vanity 900mm' },
+      { tenantId: 'pm-test-valid-pack', sku: '7615114', category: 'Vanities', name: 'Boston Mirror Cabinet 3 Door 900mm' },
+    ];
+    const memoryVersions: any[] = [];
+    const memoryReleases = new Map<string, any>();
+    const memoryPointers = new Map<string, any>();
+
+    const mockDb: any = {
+      collection: (name: string) => {
+        if (name === 'tenant_configs') {
+          return {
+            findOne: async (q: any) => memoryProjects.get(q.projectId) || null,
+            updateOne: async (q: any, u: any) => {
+              const doc = memoryProjects.get(q.projectId);
+              if (!doc) return { matchedCount: 0 };
+              memoryProjects.set(q.projectId, { ...doc, ...(u.$set || {}) });
+              return { matchedCount: 1, modifiedCount: 1 };
+            },
+          };
+        }
+        if (name === 'config_versions') {
+          return {
+            find: (q: any) => ({
+              sort: () => ({
+                limit: () => ({
+                  toArray: async () => memoryVersions.filter((v) => v.projectId === q.projectId),
+                }),
+              }),
+            }),
+            insertOne: async (doc: any) => {
+              memoryVersions.push(doc);
+              return { acknowledged: true };
+            },
+          };
+        }
+        if (name === 'products') {
+          return {
+            find: (q: any) => ({
+              toArray: async () => memoryProducts.filter((p) => q.$or?.some((cond: any) => cond.tenantId === p.tenantId && cond.sku?.$in?.includes(p.sku))),
+            }),
+          };
+        }
+        if (name === 'documents') return { find: () => ({ toArray: async () => [] }) };
+        if (name === 'business_pack_releases') {
+          return {
+            insertOne: async (doc: any) => {
+              memoryReleases.set(`${doc.tenantId}:${doc.environmentId}:${doc.version}`, doc);
+              return { acknowledged: true };
+            },
+            findOne: async (q: any) => memoryReleases.get(`${q.tenantId}:${q.environmentId}:${q.version}`) || null,
+          };
+        }
+        if (name === 'business_pack_pointers') {
+          return {
+            findOne: async (q: any) => memoryPointers.get(`${q.tenantId}:${q.environmentId}`) || null,
+            insertOne: async (doc: any) => {
+              memoryPointers.set(`${doc.tenantId}:${doc.environmentId}`, doc);
+              return { acknowledged: true };
+            },
+            updateOne: async (q: any, u: any) => {
+              const key = `${q.tenantId}:${q.environmentId}`;
+              memoryPointers.set(key, { ...(memoryPointers.get(key) || {}), ...u.$set });
+              return { matchedCount: 1 };
+            },
+          };
+        }
+        if (name === 'outbox_events') {
+          return {
+            insertOne: async () => ({ acknowledged: true }),
+          };
+        }
+        if (name === 'tenant_secrets') {
+          return {
+            find: () => ({ toArray: async () => [] }),
+          };
+        }
+        return { find: () => ({ toArray: async () => [] }) };
+      },
+    };
+
+    const pubService = new BusinessPackPublicationService(
+      () => mockDb,
+      () => mockDb.collection('tenant_configs'),
+      () => mockDb.collection('config_versions'),
+      () => true,
+      () => {},
+      async (pid) => memoryProjects.get(pid) || null
+    );
+
+    const result = await pubService.publishConfig('pm-test-valid-pack');
+    assert.equal(result.success, true, `Publication must succeed for valid pack: ${result.message}`);
+    assert.equal(result.version, 1);
+  });
+
+  await test('Publication validation strictly rejects invalid card action or malformed state binding', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'card-invalid-test',
+        {
+          projectId: 'card-invalid-test',
+          companyName: 'Card Invalid Test',
+          ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
+          journeys: [
+            {
+              journeyId: 'j1',
+              title: 'Journey 1',
+              initialStage: 's1',
+              stages: [{ stageId: 's1', name: 'Stage 1', exitConditions: [] }],
+            },
+          ],
+          cardTemplates: {
+            bad_action_card: {
+              root: 'main',
+              elements: {
+                main: {
+                  type: 'Card',
+                  on: { press: { action: 'malicious_system_exec' } },
+                },
+              },
+            },
+          },
+        },
+      ],
+    ]);
+
+    const memoryVersions: any[] = [];
+    const mockDb: any = {
+      collection: (name: string) => {
+        if (name === 'config_versions') {
+          return {
+            find: () => ({
+              sort: () => ({
+                limit: () => ({
+                  toArray: async () => memoryVersions,
+                }),
+              }),
+            }),
+            insertOne: async (doc: any) => {
+              memoryVersions.push(doc);
+              return { acknowledged: true };
+            },
+          };
+        }
+        return {
+          findOne: async (q: any) => memoryProjects.get(q.projectId) || null,
+          updateOne: async () => ({ matchedCount: 1 }),
+          insertOne: async () => ({ acknowledged: true }),
+          find: () => ({ toArray: async () => [] }),
+        };
+      },
+    };
+
+    const pubService = new BusinessPackPublicationService(
+      () => mockDb,
+      () => mockDb.collection('tenant_configs'),
+      () => mockDb.collection('config_versions'),
+      () => true,
+      () => {},
+      async (pid) => memoryProjects.get(pid) || null
+    );
+
+    // 1. Rejects invalid action
+    const res1 = await pubService.publishConfig('card-invalid-test');
+    assert.equal(res1.success, false, 'Must fail publication on invalid card action');
+    assert.match(res1.message, /invalid\/unpermitted action 'malicious_system_exec'/);
+
+    // 2. Rejects invalid state binding
+    memoryProjects.set('card-invalid-test', {
+      projectId: 'card-invalid-test',
+      companyName: 'Card Invalid Test',
+      ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
+      journeys: [
+        {
+          journeyId: 'j1',
+          title: 'Journey 1',
+          initialStage: 's1',
+          stages: [{ stageId: 's1', name: 'Stage 1', exitConditions: [] }],
+        },
+      ],
+      cardTemplates: {
+        bad_binding_card: {
+          root: 'main',
+          elements: {
+            main: {
+              type: 'Text',
+              props: { text: { $state: 'relative_path_without_slash' } },
+            },
+          },
+        },
+      },
+    });
+
+    const res2 = await pubService.publishConfig('card-invalid-test');
+    assert.equal(res2.success, false, 'Must fail publication on invalid state binding');
+    assert.match(res2.message, /invalid state binding 'relative_path_without_slash'/);
+  });
+
+  await test('New card definition publishes without application code change and can be rendered', async () => {
+    const memoryProjects = new Map<string, any>([
+      [
+        'card-valid-test',
+        {
+          projectId: 'card-valid-test',
+          companyName: 'Card Valid Test',
+          ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
+          persona: {
+            systemName: 'Card Assistant',
+            journeyDefinition: {
+              journeyId: 'j1',
+              version: '1.0.0',
+              goals: ['explore'],
+              initialStage: 's1',
+              stages: {
+                s1: { stageId: 's1', displayName: 'Stage 1', allowedCapabilities: [] },
+              },
+            },
+          },
+          cardTemplates: {
+            promo_banner: {
+              root: 'box',
+              elements: {
+                box: {
+                  type: 'Box',
+                  props: { pad: 'md', bg: 'surface' },
+                  children: ['title', 'btn'],
+                },
+                title: {
+                  type: 'Text',
+                  props: { text: { $state: '/promo/heading' }, variant: 'subheading' },
+                },
+                btn: {
+                  type: 'Button',
+                  props: { label: 'Claim Offer' },
+                  on: { press: { action: 'addToCart', params: { sku: 'SKU-PROMO-1' } } },
+                },
+              },
+            },
+          },
+        },
+      ],
+    ]);
+
+    let publishedPack: any = null;
+    const memoryVersions: any[] = [];
+    const mockDb: any = {
+      collection: (name: string) => {
+        if (name === 'config_versions') {
+          return {
+            find: () => ({
+              sort: () => ({
+                limit: () => ({
+                  toArray: async () => memoryVersions,
+                }),
+              }),
+            }),
+            insertOne: async (doc: any) => {
+              memoryVersions.push(doc);
+              return { acknowledged: true };
+            },
+          };
+        }
+        if (name === 'business_pack_releases') {
+          return {
+            insertOne: async (doc: any) => {
+              publishedPack = doc;
+              return { acknowledged: true };
+            },
+            findOne: async () => publishedPack,
+          };
+        }
+        return {
+          findOne: async (q: any) => memoryProjects.get(q.projectId) || null,
+          updateOne: async () => ({ matchedCount: 1 }),
+          insertOne: async () => ({ acknowledged: true }),
+          find: () => ({ toArray: async () => [] }),
+        };
+      },
+    };
+
+    const pubService = new BusinessPackPublicationService(
+      () => mockDb,
+      () => mockDb.collection('tenant_configs'),
+      () => mockDb.collection('config_versions'),
+      () => true,
+      () => {},
+      async (pid) => memoryProjects.get(pid) || null
+    );
+
+    const res = await pubService.publishConfig('card-valid-test');
+    assert.equal(res.success, true, `Must succeed publishing new card template: ${res.message}`);
+    assert.ok(publishedPack, 'Release doc must be persisted');
+    assert.ok(publishedPack.experience?.cards?.templates?.promo_banner, 'Release must contain published card template');
+    assert.equal(publishedPack.experience.cards.templates.promo_banner.root, 'box');
+  });
+
   console.log(`\nProject Service Tests Complete: ${passed} passed, ${failed} failed.`);
   if (failed > 0) process.exit(1);
 }

@@ -23,6 +23,8 @@ export const ExperienceCardsSchema = z.object({
     'guide',
   ]),
   defaultCardRenderer: z.string().default('@journeyax/ui-cards'),
+  allowedActions: z.array(z.string()).optional(),
+  templates: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 });
 
 export const ExperienceSchema = z.object({

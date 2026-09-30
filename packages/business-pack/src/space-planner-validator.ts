@@ -161,7 +161,7 @@ export function calculateMaterialQuantityFromPack(
       (f) =>
         f.targetCategory.toLowerCase() === targetCategoryOrSku.toLowerCase() ||
         f.formulaId.toLowerCase() === targetCategoryOrSku.toLowerCase()
-    ) || formulas[0];
+    );
 
   if (!formula || !formula.unitCoverageM2) {
     return Math.max(1, Math.ceil(metricValue));

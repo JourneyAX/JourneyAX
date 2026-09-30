@@ -315,18 +315,13 @@ export class BusinessPackLoader {
           vocabulary: readJson('vocabulary.json', { terms: [], acronyms: {}, slotSynonyms: {} }),
           entities: readJson('entities.json', { entities: [] }),
           conversationPolicy: readJson('conversation-policy.json', {}),
-          modelPolicy: readJson('model-policy.json', {
-            policies: [
-              {
-                policyId: 'standard_turn',
-                candidates: [{ provider: 'openai', model: 'gpt-4o-mini', priority: 1 }],
-                dataResidency: 'au',
-                maxInputTokens: 20000,
-                maxOutputTokens: 2000,
-                fallbackAllowed: true,
-              },
-            ],
-          }),
+          modelPolicy: (() => {
+            const mp = readJson('model-policy.json', null);
+            if (!mp) {
+              throw new Error(`[BusinessPackLoader] Mandatory 'model-policy.json' is missing for pack '${tenantId}' - failing closed`);
+            }
+            return mp;
+          })(),
           agents: readJsonArray('agents'),
           journeys: readJsonArray('journeys'),
           rules: readJsonArray('rules'),

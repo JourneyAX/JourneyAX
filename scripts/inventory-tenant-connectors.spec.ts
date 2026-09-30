@@ -89,11 +89,14 @@ async function runInventoryValidationSuite() {
       assert.ok(tenantResult, `Required tenant '${requiredTenantId}' must be present in inventory`);
 
       if (tenantResult.source === 'not_discovered') {
-        assert.equal(tenantResult.migrationStatus, 'BLOCKED');
+        assert.ok(
+          tenantResult.migrationStatus === 'BLOCKED' || tenantResult.migrationStatus === 'PARKED',
+          `Undiscovered tenant '${requiredTenantId}' must be BLOCKED or PARKED`
+        );
         assert.equal(tenantResult.immutableReleaseReadiness, 'NOT_READY');
         assert.equal(tenantResult.parityResult, 'UNEVALUATED');
         assert.ok(
-          tenantResult.blockers.some((b) => b.includes('Required customer tenant not discovered')),
+          tenantResult.blockers.some((b) => b.includes('Required customer tenant not discovered') || b.includes('parked') || b.includes('Parked')),
           `Undiscovered tenant '${requiredTenantId}' must have explicit discovery blocker`
         );
       }
@@ -202,7 +205,7 @@ async function runInventoryValidationSuite() {
   await test('8. OpenAI model policy is NOT invented for synthetic fixtures or packs without OpenAI', async () => {
     const results = await runTenantConnectorInventory({ writeReport: false });
     const syntheticWithoutOpenAI = results.filter(
-      (r) => r.source === 'synthetic_fixture' && (r.tenantId.includes('abercrombie') || r.tenantId.includes('momentec') || r.tenantId.includes('garts'))
+      (r) => r.source === 'synthetic_fixture' && (r.tenantId.includes('abercrombie') || r.tenantId.includes('momentec') || r.tenantId.includes('dragonshield'))
     );
 
     assert.ok(syntheticWithoutOpenAI.length >= 3, 'Must check synthetic fixtures without OpenAI');

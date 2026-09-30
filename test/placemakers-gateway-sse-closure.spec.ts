@@ -101,10 +101,24 @@ async function runGatewayClosureSuite() {
     const events1 = await readSseStream(res1);
     assert.ok(events1.length > 0, 'Must stream events');
 
-    // Collect UI actions
+    // Confirm the response uses the intended active Business Pack rather than legacy configV=draft
+    const rawEvents1Str = JSON.stringify(events1);
+    assert.equal(
+      rawEvents1Str.includes('configV=draft'),
+      false,
+      'Turn 1 must use the active Business Pack rather than legacy configV=draft'
+    );
+
+    // Collect UI actions (supports both legacy setPhase/openSpacePlanner and canonical presentCard)
     const uiActions1 = events1.filter((e) => e.event === 'uiAction').map((e) => e.data);
-    const hasClarify = uiActions1.some((a) => a.name === 'setPhase' && a.arguments?.phase === 'clarify');
-    const hasPlanner = uiActions1.some((a) => a.name === 'openSpacePlanner');
+    const hasClarify = uiActions1.some((a) =>
+      (a.name === 'setPhase' && a.arguments?.phase === 'clarify') ||
+      (a.name === 'presentCard' && (a.arguments?.card?.cardType === 'clarify' || a.card?.cardType === 'clarify'))
+    );
+    const hasPlanner = uiActions1.some((a) =>
+      a.name === 'openSpacePlanner' ||
+      (a.name === 'presentCard' && (a.arguments?.card?.cardType === 'space-planner' || a.card?.cardType === 'space-planner'))
+    );
 
     // Either the turn clarifies or opens planner immediately
     assert.ok(hasClarify || hasPlanner, 'Turn 1 must trigger clarification questions or openSpacePlanner');
@@ -118,7 +132,7 @@ async function runGatewayClosureSuite() {
       },
       body: JSON.stringify({
         sessionId: testSessionId,
-        message: 'My answers: Wall run: 1.8m wall, Finish: White Gloss, Fixtures: Vanity and Shaving Cabinet',
+        message: 'PlaceMakers Trade BOM & Estimation Flow: Wall run: 1.8m wall, Finish: White Gloss, Fixtures: Vanity and Shaving Cabinet',
       }),
     });
 
@@ -128,7 +142,12 @@ async function runGatewayClosureSuite() {
 
     // Questions complete once: Turn 2 should NOT ask the same questions again!
     const reAskedQuestions = uiActions2.filter(
-      (a) => a.name === 'setPhase' && a.arguments?.phase === 'clarify' && a.arguments?.questions?.length > 0
+      (a) =>
+        (a.name === 'setPhase' && a.arguments?.phase === 'clarify' && a.arguments?.questions?.length > 0) ||
+        (a.name === 'presentCard' &&
+          (a.arguments?.card?.cardType === 'clarify' || a.card?.cardType === 'clarify') &&
+          (a.arguments?.card?.state?.questions?.some((q: any) => q.id === 'selected_journey') ||
+            a.card?.state?.questions?.some((q: any) => q.id === 'selected_journey')))
     );
     assert.equal(
       reAskedQuestions.length,
@@ -150,8 +169,8 @@ async function runGatewayClosureSuite() {
 
     // Validate that layout validator rejects laundry items
     const invalidItems = [
-      { sku: '7846476', category: 'tub', componentId: 'robinhood-supertub' },
-      { sku: 'PM-CAV-650', category: 'appliance', componentId: 'washer-cavity' },
+      { sku: '3622003', category: 'tub', componentId: 'supertub-standard' },
+      { sku: '5708109', category: 'appliance', componentId: 'laundry-appliance-washer' },
     ];
     const errors = validateRoomLayoutAgainstPack(invalidItems, 'bathroom', pack);
     assert.ok(errors.length >= 2, 'Layout validator must reject laundry products in bathroom');
@@ -180,6 +199,8 @@ async function runGatewayClosureSuite() {
     assert.equal(liningComp.quantity, 3, 'Default lining quantity for demonstrated wet area must be 3');
   });
 
+  const quoteIdempotencyKey = `pm-idem-${testSessionId}`;
+
   // ── TEST 4: QUOTE SERVICE PRESERVES QUANTITY 3 ───────────────────────────
   await test('4. Public Gateway quote creation preserves quantity 3 for lining material', async () => {
     const res = await fetch(`${GATEWAY_URL}/api/v1/placemakers/commerce/kit/quote`, {
@@ -187,9 +208,11 @@ async function runGatewayClosureSuite() {
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-ID': 'placemakers',
+        'X-Idempotency-Key': quoteIdempotencyKey,
       },
       body: JSON.stringify({
         sessionId: testSessionId,
+        idempotencyKey: quoteIdempotencyKey,
         title: 'Bathroom Materials Package (7m² Wet Area)',
         roomType: 'bathroom',
         plannerContext: {
@@ -220,15 +243,17 @@ async function runGatewayClosureSuite() {
   await test('5. Replaying quote request is idempotent and returns consistent results', async () => {
     assert.ok(createdQuoteId, 'Previous test must have created a quote');
 
-    // Replay with identical payload
+    // Replay with identical payload and idempotency key
     const res = await fetch(`${GATEWAY_URL}/api/v1/placemakers/commerce/kit/quote`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-ID': 'placemakers',
+        'X-Idempotency-Key': quoteIdempotencyKey,
       },
       body: JSON.stringify({
         sessionId: testSessionId,
+        idempotencyKey: quoteIdempotencyKey,
         title: 'Bathroom Materials Package (7m² Wet Area)',
         roomType: 'bathroom',
         plannerContext: {
@@ -246,6 +271,7 @@ async function runGatewayClosureSuite() {
     assert.ok(res.status === 200 || res.status === 201);
     const data = await res.json();
     assert.ok(data.quote);
+    assert.equal(data.quote.quoteId, createdQuoteId, 'Replay with identical idempotencyKey must return exact same quoteId');
     assert.equal(data.quote.lines.length, 2, 'Line count must be identical on replay');
     const liningLine = data.quote.lines.find((l: any) => l.sku === '2801884');
     assert.equal(liningLine.quantity, 3, 'Quantity 3 must remain constant on replay');

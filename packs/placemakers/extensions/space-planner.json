@@ -24,7 +24,7 @@
         },
         {
           "componentId": "shaving-cabinet-900",
-          "sku": "7834220",
+          "sku": "7615114",
           "x": 0,
           "z": 0,
           "rotation": 0,
@@ -32,7 +32,7 @@
         },
         {
           "componentId": "tall-tower-400",
-          "sku": "7834330",
+          "sku": "7615110",
           "x": 1000,
           "z": 0,
           "rotation": 0,
@@ -62,7 +62,7 @@
       "defaultComponents": [
         {
           "componentId": "base-drawer-600",
-          "sku": "3601297",
+          "sku": "7834822",
           "x": 0,
           "z": 0,
           "rotation": 0,
@@ -70,7 +70,7 @@
         },
         {
           "componentId": "appliance-cavity-650",
-          "sku": "PM-CAV-650",
+          "sku": "5708109",
           "x": 650,
           "z": 0,
           "rotation": 0,
@@ -78,7 +78,7 @@
         },
         {
           "componentId": "supertub-standard",
-          "sku": "7001402",
+          "sku": "3622003",
           "x": 1350,
           "z": 0,
           "rotation": 0,
@@ -100,7 +100,7 @@
       "defaultComponents": [
         {
           "componentId": "base-drawer-600",
-          "sku": "3601297",
+          "sku": "7834822",
           "x": 0,
           "z": 0,
           "rotation": 0,
@@ -144,31 +144,31 @@
     },
     {
       "componentId": "vanity-1200",
-      "sku": "3601299",
+      "sku": "3601296",
       "category": "base",
       "compatibleRoomTypes": ["bathroom"],
       "dimensionsMm": { "width": 1200, "depth": 460, "height": 850 }
     },
     {
-      "componentId": "vanity-750",
-      "sku": "3601296",
+      "componentId": "vanity-600",
+      "sku": "3601299",
       "category": "base",
       "compatibleRoomTypes": ["bathroom"],
-      "dimensionsMm": { "width": 750, "depth": 460, "height": 850 }
+      "dimensionsMm": { "width": 600, "depth": 460, "height": 850 }
     },
     {
       "componentId": "shaving-cabinet-900",
-      "sku": "7834220",
+      "sku": "7615114",
       "category": "overhead",
       "compatibleRoomTypes": ["bathroom"],
       "dimensionsMm": { "width": 900, "depth": 150, "height": 750 }
     },
     {
       "componentId": "tall-tower-400",
-      "sku": "7834330",
+      "sku": "7615110",
       "category": "tall",
       "compatibleRoomTypes": ["bathroom", "laundry"],
-      "dimensionsMm": { "width": 400, "depth": 350, "height": 1900 }
+      "dimensionsMm": { "width": 400, "depth": 350, "height": 1700 }
     },
     {
       "componentId": "lining-gib-aqualine",
@@ -181,31 +181,52 @@
     },
     {
       "componentId": "supertub-standard",
-      "sku": "7001402",
+      "sku": "3622003",
       "category": "tub",
       "compatibleRoomTypes": ["laundry", "utility"],
       "dimensionsMm": { "width": 560, "depth": 560, "height": 900 }
     },
     {
       "componentId": "supertub-slim",
-      "sku": "7001405",
+      "sku": "3622001",
       "category": "tub",
       "compatibleRoomTypes": ["laundry", "utility"],
       "dimensionsMm": { "width": 350, "depth": 560, "height": 900 }
     },
     {
       "componentId": "appliance-cavity-650",
-      "sku": "PM-CAV-650",
+      "sku": "5708109",
       "category": "appliance",
       "compatibleRoomTypes": ["laundry", "utility"],
-      "dimensionsMm": { "width": 650, "depth": 600, "height": 870 }
+      "dimensionsMm": { "width": 600, "depth": 600, "height": 850 }
     },
     {
       "componentId": "laundry-kit-600",
-      "sku": "PM-CAB-L600",
+      "sku": "7834822",
       "category": "base",
       "compatibleRoomTypes": ["laundry", "utility"],
-      "dimensionsMm": { "width": 600, "depth": 600, "height": 870 }
+      "dimensionsMm": { "width": 600, "depth": 600, "height": 900 }
+    },
+    {
+      "componentId": "laundry-kit-1200",
+      "sku": "7834810",
+      "category": "base",
+      "compatibleRoomTypes": ["laundry", "utility"],
+      "dimensionsMm": { "width": 1200, "depth": 600, "height": 900 }
+    },
+    {
+      "componentId": "laundry-cabinet-450",
+      "sku": "7781192",
+      "category": "base",
+      "compatibleRoomTypes": ["laundry", "utility"],
+      "dimensionsMm": { "width": 450, "depth": 600, "height": 900 }
+    },
+    {
+      "componentId": "base-drawer-600",
+      "sku": "7834822",
+      "category": "base",
+      "compatibleRoomTypes": ["laundry", "kitchen", "utility"],
+      "dimensionsMm": { "width": 600, "depth": 600, "height": 900 }
     }
   ],
   "layoutRules": {
@@ -247,7 +268,7 @@
       "systemType": "sanitary_plumbing",
       "compatibleRoomTypes": ["bathroom", "laundry", "utility", "kitchen"],
       "forbiddenRoomTypes": [],
-      "skuPatternsOrIds": ["7712045", "3649999", "2800100"],
+      "skuPatternsOrIds": ["3649999", "3649996", "3611233"],
       "requiresExplicitMapping": false,
       "rejectionMessage": ""
     }

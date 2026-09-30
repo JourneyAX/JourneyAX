@@ -266,7 +266,7 @@ export default function ProductsPanel() {
     const pDesc = getProductDescription(p);
     const pFeatures = getProductFeatures(p);
     const pSpecs = getProductSpecs(p);
-    const priceFormatted = formatPrice(p.price, (cfg as any)?.pricing?.currency || 'NZD', (cfg as any)?.pricing?.symbol || '$');
+    const priceFormatted = formatPrice(p.price, (cfg as any)?.pricing?.currency || '', (cfg as any)?.pricing?.symbol || '$');
 
     const addThis = () => {
       // Server-authoritative path for every tenant — see handleBuildQuote above.
@@ -464,7 +464,7 @@ export default function ProductsPanel() {
             const category = getProductCategory(product);
             const desc = getProductDescription(product);
             const features = getProductFeatures(product);
-            const priceFormatted = formatPrice(product.price, (cfg as any)?.pricing?.currency || 'NZD', (cfg as any)?.pricing?.symbol || '$');
+            const priceFormatted = formatPrice(product.price, (cfg as any)?.pricing?.currency || '', (cfg as any)?.pricing?.symbol || '$');
 
             return (
               <div

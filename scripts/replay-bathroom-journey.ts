@@ -68,7 +68,7 @@ async function replayBathroomJourney() {
   // Verify zero laundry/exterior items
   const t1Items = t1UiActions.filter((a) => a.name === 'showItems').flatMap((a) => a.arguments?.items || []);
   const laundryFound = t1Items.some((i: any) =>
-    ['7834654', '7846476', '7846479', 'APP-CAV-600', '7001402', 'PM-CAV-650'].includes(i.sku) ||
+    ['7834654', '7846476', '7846479', '5708109', '7001402', '3622003', '3622001', '7834822'].includes(i.sku) ||
     i.category === 'tub' ||
     ['2800871', '2800873', '3410067'].includes(i.sku)
   );

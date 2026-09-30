@@ -7,7 +7,7 @@ import {
   computePackChecksum,
 } from '@journeyax/business-pack';
 import { connectToDatabase, COLLECTION_BUSINESS_PACK_RELEASES, COLLECTION_BUSINESS_PACK_POINTERS } from '@journeyax/database';
-import { CARD_TYPE_NAMES, CardType } from '@journeyax/ui-cards';
+import { CARD_TYPE_NAMES, CardType, actions as CARD_ACTIONS, primitives as CARD_PRIMITIVES } from '@journeyax/ui-cards';
 import { createHash, randomUUID } from 'crypto';
 
 export function isCardType(x: unknown): x is CardType {
@@ -511,7 +511,7 @@ export class CapabilityRegistryService {
       }
     }
 
-    // ── 6. Validate Cards and Themes ──────────────────────────────────────
+    // ── 6. Validate Cards, Templates, Actions, and Themes ──────────────
     if (pack.experience) {
       if (pack.experience.theme) {
         const theme = pack.experience.theme;
@@ -520,20 +520,114 @@ export class CapabilityRegistryService {
         }
       }
 
-      if (pack.experience.cards) {
-        const cardEntries = Array.isArray(pack.experience.cards)
-          ? pack.experience.cards
-          : Object.entries(pack.experience.cards).map(([id, val]: [string, any]) => ({
-              id,
-              ...val,
-            }));
+      const permittedActions = new Set([
+        ...Object.keys(CARD_ACTIONS),
+        ...((pack.experience?.cards as any)?.allowedActions || []),
+      ]);
+      const allowedPrimitives = new Set(Object.keys(CARD_PRIMITIVES));
 
-        for (const card of cardEntries) {
-          const cardType = card.cardType || card.type;
-          if (cardType && !isCardType(cardType)) {
+      const validateTemplateSpec = (templateId: string, spec: any) => {
+        if (!spec || typeof spec !== 'object') return;
+        const elements = spec.elements || spec;
+        if (typeof elements !== 'object') return;
+
+        for (const [elId, el] of Object.entries(elements)) {
+          if (!el || typeof el !== 'object') continue;
+          const elType = (el as any).type;
+          if (elType && !allowedPrimitives.has(elType)) {
             errors.push(
-              `experience.cards contains invalid cardType '${cardType}' for card '${card.id || card.cardId}' (allowed: ${CARD_TYPE_NAMES.join(', ')})`
+              `Card template '${templateId}' element '${elId}' uses unknown primitive '${elType}'`
             );
+          }
+
+          // Validate actions on element
+          const onEvents = (el as any).on;
+          if (onEvents && typeof onEvents === 'object') {
+            for (const [event, actObj] of Object.entries(onEvents)) {
+              const actName = (actObj as any)?.action;
+              if (actName && !permittedActions.has(actName)) {
+                errors.push(
+                  `Card template '${templateId}' element '${elId}' event '${event}' uses invalid/unpermitted action '${actName}'`
+                );
+              }
+            }
+          }
+
+          // Direct action prop (e.g. on Button/Select/Quantity)
+          const directAction = (el as any).props?.action || (el as any).action;
+          if (directAction && typeof directAction === 'string' && !permittedActions.has(directAction)) {
+            errors.push(
+              `Card template '${templateId}' element '${elId}' uses invalid/unpermitted action '${directAction}'`
+            );
+          }
+
+          // Validate state bindings ($state)
+          const checkBindings = (val: any, path: string) => {
+            if (!val || typeof val !== 'object') return;
+            if (val.$state !== undefined) {
+              if (typeof val.$state !== 'string' || !val.$state.startsWith('/')) {
+                errors.push(
+                  `Card template '${templateId}' element '${elId}' has invalid state binding '${val.$state}' at '${path}' (must start with '/')`
+                );
+              }
+            }
+            if (val.repeat && typeof val.repeat === 'object') {
+              if (val.repeat.statePath && (!val.repeat.statePath.startsWith('/') || typeof val.repeat.statePath !== 'string')) {
+                errors.push(
+                  `Card template '${templateId}' element '${elId}' has invalid repeat statePath '${val.repeat.statePath}' (must start with '/')`
+                );
+              }
+            }
+            for (const [k, v] of Object.entries(val)) {
+              if (typeof v === 'object' && v !== null && k !== '$state') {
+                checkBindings(v, `${path}.${k}`);
+              }
+            }
+          };
+          checkBindings(el, elId);
+        }
+      };
+
+      const templates = (pack.experience?.cards as any)?.templates || (pack as any).cardTemplates;
+      if (templates && typeof templates === 'object') {
+        for (const [tplId, tpl] of Object.entries(templates)) {
+          validateTemplateSpec(tplId, tpl);
+        }
+      }
+
+      if (pack.experience.cards) {
+        const cardsObj = pack.experience.cards;
+        if (Array.isArray(cardsObj)) {
+          for (const card of cardsObj) {
+            const cardType = card.cardType || card.type;
+            if (cardType && !isCardType(cardType)) {
+              errors.push(
+                `experience.cards contains invalid cardType '${cardType}' for card '${card.id || card.cardId}' (allowed: ${CARD_TYPE_NAMES.join(', ')})`
+              );
+            }
+            if (card.actions && Array.isArray(card.actions)) {
+              for (const act of card.actions) {
+                const actName = typeof act === 'string' ? act : act.name || act.action;
+                if (actName && !permittedActions.has(actName)) {
+                  errors.push(
+                    `Card '${card.id || card.cardId}' defines invalid/unpermitted action '${actName}'`
+                  );
+                }
+              }
+            }
+          }
+        } else if (typeof cardsObj === 'object') {
+          for (const [id, val] of Object.entries(cardsObj)) {
+            if (['allowedCardTypes', 'defaultCardRenderer', 'templates', 'allowedActions'].includes(id)) {
+              continue;
+            }
+            const card = val as any;
+            const cardType = card?.cardType || card?.type;
+            if (cardType && !isCardType(cardType)) {
+              errors.push(
+                `experience.cards contains invalid cardType '${cardType}' for card '${card?.id || id}' (allowed: ${CARD_TYPE_NAMES.join(', ')})`
+              );
+            }
           }
         }
       }

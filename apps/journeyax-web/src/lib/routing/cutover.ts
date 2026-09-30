@@ -128,12 +128,21 @@ export async function resolveTenantRouting(
     };
     if (internalKey) headers['X-Internal-Key'] = internalKey;
 
-    const cutoverUrl = `${gatewayUrl}/api/v1/${normTenant}/${environmentId}/runtime/cutover`;
-    const resp = await fetch(cutoverUrl, {
+    const releaseActivationUrl = `${gatewayUrl}/api/v1/${normTenant}/${environmentId}/runtime/release-activation`;
+    const fallbackCutoverUrl = `${gatewayUrl}/api/v1/${normTenant}/${environmentId}/runtime/cutover`;
+    let resp = await fetch(releaseActivationUrl, {
       method: 'GET',
       headers,
       signal: controller.signal,
-    }).finally(() => clearTimeout(timeout));
+    });
+    if (resp.status === 404) {
+      resp = await fetch(fallbackCutoverUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+    }
+    clearTimeout(timeout);
 
     if (resp.ok) {
       const record: DurableCutoverRecord = await resp.json();

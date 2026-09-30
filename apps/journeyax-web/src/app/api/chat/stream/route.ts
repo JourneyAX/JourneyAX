@@ -1,15 +1,13 @@
 /**
- * Streaming Chat proxy — forwards the browser's request to the gateway's SSE endpoint
- * with server-owned cutover routing from the active tenant/environment release/cutover state.
+ * Streaming Chat Proxy — forwards the browser's request to Agent Commerce via the gateway
  *
- * Rules:
- * - 'migrated': Routed exclusively to canonical journey-runtime-service stream.
- *   Any runtime failure fails closed with a typed observable error (never falls back to legacy).
- * - 'unmigrated' / 'rollback': Routed to legacy commerce stream.
+ * ALL streaming chat traffic routes to Agent Commerce /commerce/chat/stream.
+ * JourneyCoordinator & TenantRuntimeActivationRouter serve as the single
+ * routing authority to select legacy vs canonical runtime streaming.
  */
+
 import { resolveTenant } from '../../../../lib/tenant';
 import { upstreamAuthHeaders, unauthorized } from '../../../../lib/bff-auth';
-import { resolveTenantRouting } from '../../../../lib/routing/cutover';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,121 +16,74 @@ export const maxDuration = 60;
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: Request) {
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const tenantId = await resolveTenant(req);
   const auth = upstreamAuthHeaders(req);
   if (!auth) return unauthorized();
 
+  const correlationId =
+    body.correlationId ||
+    req.headers.get('x-correlation-id') ||
+    `corr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  const turnId =
+    body.turnId ||
+    `turn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  const sessionId = body.sessionId || body.workspaceId || `ws_${Date.now()}`;
+  const workspaceId = body.workspaceId || body.sessionId || sessionId;
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Tenant-ID': tenantId,
+    'X-Correlation-ID': correlationId,
     ...auth,
   };
 
-  const sessionId = body.sessionId || body.workspaceId || 'default';
-  const workspaceId = body.workspaceId || body.sessionId || sessionId;
-  const routing = await resolveTenantRouting(tenantId, 'production', {
+  const payload = {
+    ...body,
+    tenantId,
+    turnId,
+    correlationId,
+    sessionId,
     workspaceId,
-  });
+    idempotencyKey: body.idempotencyKey,
+  };
 
-  // 1. Migrated Tenant Path: Exclusively executes on JourneyAX Runtime Service Stream (Fails Closed)
-  if (routing.cutoverState === 'migrated') {
-    let upstream: Response | null = null;
-    try {
-      const runtimePayload = {
-        sessionId,
-        workspaceId: body.workspaceId || sessionId,
-        correlationId: body.correlationId || `corr_${Date.now()}`,
-        message: body.message || (Array.isArray(body.messages) ? body.messages[body.messages.length - 1]?.content : undefined),
-        inputFacts: body.inputFacts,
-      };
-
-      upstream = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/runtime/chat/stream`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(runtimePayload),
-      });
-
-      if (upstream.ok && upstream.body) {
-        return new Response(upstream.body, {
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-            'X-Accel-Buffering': 'no',
-            'X-Cutover-State': 'migrated',
-          },
-        });
-      }
-    } catch (err: any) {
-      console.error(`[Chat Stream Proxy] Migrated tenant '${tenantId}' runtime connection error:`, err.message);
-    }
-
-    // Fail closed for migrated tenant: NEVER silently fall back to legacy commerce stream
-    const status = upstream && upstream.status >= 400 ? upstream.status : 502;
-    return new Response(
-      JSON.stringify({
-        error: 'MIGRATED_TENANT_RUNTIME_STREAM_FAILURE',
-        status,
-        message: `🚨 Runtime Engine Stream Error: The verified JourneyAX runtime engine failed to establish a stream (HTTP ${status}). Execution blocked to prevent state divergence with unverified legacy commerce.`,
-        tenantId,
-        cutoverState: 'migrated',
-        routingReason: routing.reason,
-      }),
-      {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
-  }
-
-  // 2. Unmigrated / Deliberate Rollback Path: Legacy commerce stream execution
   try {
     const upstream = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/chat/stream`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ ...body, tenantId }),
+      body: JSON.stringify(payload),
     });
 
     if (!upstream.ok || !upstream.body) {
-      if (upstream.status === 429 || upstream.status === 413) {
-        return new Response(await upstream.text(), {
-          status: upstream.status,
-          headers: { 'Content-Type': 'application/json', 'Retry-After': upstream.headers.get('retry-after') || '5' },
-        });
-      }
-      return new Response(
-        JSON.stringify({
-          error: `Gateway returned ${upstream.status}`,
-          cutoverState: routing.cutoverState,
-        }),
-        {
-          status: 502,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+      const errorText = await upstream.text().catch(() => 'Upstream stream error');
+      return new Response(errorText, {
+        status: upstream.status,
+        headers: {
+          'Content-Type': upstream.headers.get('content-type') || 'application/json',
+        },
+      });
     }
 
     return new Response(upstream.body, {
+      status: upstream.status,
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
-        'X-Cutover-State': routing.cutoverState,
       },
     });
-  } catch (error: any) {
-    console.error('[Chat Stream Proxy] Gateway legacy connection error:', error.message);
+  } catch (err: any) {
     return new Response(
       JSON.stringify({
-        error: error.message,
-        cutoverState: routing.cutoverState,
+        error: 'COMMERCE_STREAM_UNAVAILABLE',
+        message: err.message || 'Commerce stream service unreachable',
+        status: 503,
       }),
-      {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      }
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }

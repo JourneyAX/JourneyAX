@@ -88,6 +88,18 @@ export const PORTFOLIO_MANIFEST_SCHEMA_PATH = path.resolve(
   '../config/portfolio-manifest.schema.json'
 );
 
+export const REQUIRED_CUSTOMER_TENANTS = [
+  'workweargroup',
+  'royalcyber',
+  'abercrombie',
+  'caroma',
+  'caroma-nz',
+  'placemakers',
+  'momentec',
+  'garts',
+  'dragonshield',
+];
+
 let compiledManifestValidator: any = null;
 
 export function getPortfolioManifestSchemaValidator() {

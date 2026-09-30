@@ -85,6 +85,7 @@ function CabinetThumb({ item }: { item: CabinetItem }) {
 interface SpacePlannerPanelProps {
   initialRoomType?: string;
   initialWallWidthMm?: number;
+  initialAreaM2?: number;
   initialInstallType?: 'diy' | 'trade';
   initialFinishId?: string;
 }
@@ -92,6 +93,7 @@ interface SpacePlannerPanelProps {
 export default function SpacePlannerPanel({
   initialRoomType,
   initialWallWidthMm,
+  initialAreaM2,
   initialInstallType,
   initialFinishId,
 }: SpacePlannerPanelProps) {
@@ -212,7 +214,7 @@ export default function SpacePlannerPanel({
           for (const item of data.items || []) {
             map[item.sku] = {
               sku: item.sku,
-              name: item.name || `Product ${item.sku}`,
+              name: item.name || item.sku,
               priceNzd: typeof item.price === 'number' ? item.price : 0,
               imageUrl: item.imageUrl,
               inStock: item.inStock !== false,
@@ -248,15 +250,20 @@ export default function SpacePlannerPanel({
         );
         const catItem = catalogMap[dc.sku];
         let qty = dc.quantity || 1;
-        // Formula calculation: e.g. 7m2 wet-wall area calculation
+        // Formula calculation: e.g. dynamic wet-wall area calculation
         if (ref?.category === 'lining' && rType === 'bathroom') {
-          qty = calculateMaterialQuantityFromPack(7, 'lining', packPlanner);
+          const rH = rDef.defaultDimensions?.heightMm || 2400;
+          const rW = rDef.defaultDimensions?.widthMm || 1800;
+          const area = typeof initialAreaM2 === 'number' && initialAreaM2 > 0
+            ? initialAreaM2
+            : Number(((rW / 1000) * (rH / 1000)).toFixed(2));
+          qty = calculateMaterialQuantityFromPack(area, 'lining', packPlanner);
         }
         return {
           uid: `${rType}-${dc.componentId || dc.sku}-${idx}-${Date.now()}`,
           item: {
             id: dc.componentId || dc.sku,
-            name: catItem?.name || (ref?.category === 'lining' ? 'GIB Aqualine 10mm Plasterboard 2400 x 1200mm' : `Unit ${dc.sku}`),
+            name: catItem?.name || ref?.componentId || dc.sku,
             category: (ref?.category || 'base') as any,
             widthMm: ref?.dimensionsMm?.width || 600,
             heightMm: ref?.dimensionsMm?.height || 900,
@@ -323,14 +330,14 @@ export default function SpacePlannerPanel({
         const catItem = catalogMap[ref.sku];
         return {
           id: ref.componentId,
-          name: catItem?.name || `Product ${ref.sku}`,
+          name: catItem?.name || ref.componentId || ref.sku,
           category: ref.category as any,
           widthMm: ref.dimensionsMm.width,
           heightMm: ref.dimensionsMm.height,
           depthMm: ref.dimensionsMm.depth,
           priceNzd: catItem?.priceNzd ?? 0,
           sku: ref.sku,
-          description: catItem?.name || '',
+          description: catItem?.name || ref.componentId || '',
           imageUrl: catItem?.imageUrl || '',
           roomTypes: ref.compatibleRoomTypes as any,
         };
@@ -436,11 +443,18 @@ export default function SpacePlannerPanel({
   const gstNzd = subtotalNzd * 0.15;
   const totalNzd = subtotalNzd + gstNzd;
 
+  const effectiveAreaM2 = useMemo(() => {
+    if (typeof initialAreaM2 === 'number' && initialAreaM2 > 0) return initialAreaM2;
+    const rDef = packPlanner?.roomTypes?.find((r) => r.id === roomType);
+    const heightMm = rDef?.defaultDimensions?.heightMm || 2400;
+    return Number(((wallWidthMm / 1000) * (heightMm / 1000)).toFixed(2));
+  }, [initialAreaM2, packPlanner, roomType, wallWidthMm]);
+
   // Add Item
   const addItem = (item: CabinetItem) => {
     const initialQty =
       item.category === 'lining'
-        ? calculateMaterialQuantityFromPack(7, 'lining', packPlanner!)
+        ? calculateMaterialQuantityFromPack(effectiveAreaM2, 'lining', packPlanner!)
         : 1;
     setPlacedItems((prev) => [
       ...prev,
@@ -541,7 +555,7 @@ export default function SpacePlannerPanel({
           plannerContext: {
             roomType,
             wallWidthMm,
-            areaM2: 7,
+            areaM2: effectiveAreaM2,
           },
         }),
       });
