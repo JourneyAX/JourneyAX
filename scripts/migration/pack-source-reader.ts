@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { BusinessPackRelease, BusinessPackReleaseSchema } from '../schemas/business-pack.schema';
-import { validateBusinessPack } from '../validator';
+import { BusinessPackRelease, BusinessPackReleaseSchema, validateBusinessPack } from '@journeyax/business-pack';
 
 export interface MigrationReaderOptions {
   sourceDir: string;
@@ -13,7 +12,7 @@ export interface MigrationReaderOptions {
  * MigrationPackSourceReader
  *
  * Dedicated CLI-only migration tooling reader for ingesting legacy filesystem pack directories.
- * Strictly isolated from runtime request paths.
+ * Strictly isolated from runtime request paths and runtime packages.
  *
  * Enforces:
  * 1. Explicit sourceDir parameter must be supplied (no implicit defaults, no process.env discovery).
