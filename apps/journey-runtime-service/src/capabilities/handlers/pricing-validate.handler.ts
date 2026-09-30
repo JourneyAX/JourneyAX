@@ -12,13 +12,14 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
   async execute(input: PricingValidateInput, ctx: ExecutionContext): Promise<any> {
     const tenantId = ctx.tenantId;
     const skus = Array.isArray(input.skus) ? input.skus : [];
-    const requestedCurrency = input.currency || 'USD';
+    const packCurrency = (ctx as any)?.pricing?.currency || (ctx as any)?.currency;
+    const authoritativePackCurrency = packCurrency ? String(packCurrency).toUpperCase() : undefined;
 
     if (skus.length === 0) {
       return {
         valid: false,
         totalCents: 0,
-        currency: requestedCurrency,
+        currency: authoritativePackCurrency,
         items: [],
         reason: 'No SKUs provided for validation',
       };
@@ -37,7 +38,7 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
         return {
           valid: false,
           totalCents: 0,
-          currency: requestedCurrency,
+          currency: authoritativePackCurrency,
           items: [],
           error: 'Database connection required for pricing validation',
         };
@@ -59,7 +60,7 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
         return {
           valid: false,
           totalCents: 0,
-          currency: requestedCurrency,
+          currency: authoritativePackCurrency,
           error: err.message,
         };
       }
@@ -71,7 +72,7 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
         return {
           sku,
           priceCents: 0,
-          currency: requestedCurrency,
+          currency: authoritativePackCurrency,
           inStock: false,
           found: false,
         };
@@ -87,17 +88,37 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
           ? found.inventory.availableUnits > 0
           : false;
 
+      const rawItemCurr = found.price?.currency || found.currency;
+      const itemCurr = rawItemCurr ? String(rawItemCurr).toUpperCase() : authoritativePackCurrency;
+
       return {
         sku,
         name: found.name || found.title || sku,
         priceCents,
-        currency: (found.price?.currency || found.currency || requestedCurrency).toUpperCase(),
+        currency: itemCurr,
         inStock,
         found: true,
       };
     });
 
-    const distinctCurrencies = Array.from(new Set(items.filter((i) => i.found).map((i) => i.currency)));
+    const distinctCurrencies = Array.from(
+      new Set(items.filter((i) => i.found && i.currency).map((i) => i.currency))
+    );
+
+    // Authoritative currency comes ONLY from catalogue records or Business Pack pricing policy
+    const authoritativeCurrency = distinctCurrencies[0] || authoritativePackCurrency;
+
+    // Fail closed: Missing authoritative currency across catalogue and pack policy (input.currency cannot be sole authority)
+    if (!authoritativeCurrency) {
+      return {
+        valid: false,
+        totalCents: 0,
+        items,
+        reason: 'Missing authoritative currency in pricing policy and catalogue records - failing closed (input.currency cannot be sole authority)',
+      };
+    }
+
+    // Fail closed: Multi-currency cart items without conversion
     if (distinctCurrencies.length > 1) {
       return {
         valid: false,
@@ -108,6 +129,17 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
       };
     }
 
+    // Fail closed: Conflicting currency between requested constraint and authoritative currency
+    if (input.currency && input.currency.toUpperCase() !== authoritativeCurrency) {
+      return {
+        valid: false,
+        totalCents: 0,
+        currency: authoritativeCurrency,
+        items,
+        reason: `Conflicting currency: caller requested '${input.currency.toUpperCase()}' but authoritative records require '${authoritativeCurrency}'`,
+      };
+    }
+
     const allFound = items.every((i) => i.found);
     const allInStock = items.every((i) => i.inStock);
     const totalCents = items.reduce((sum, i) => sum + i.priceCents, 0);
@@ -115,7 +147,7 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
     return {
       valid: allFound && allInStock,
       totalCents,
-      currency: distinctCurrencies[0] || requestedCurrency,
+      currency: authoritativeCurrency,
       items,
       details: {
         allFound,

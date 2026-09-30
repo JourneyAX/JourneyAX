@@ -129,6 +129,8 @@ function identityHeaders(h: Record<string, any>): Record<string, string> {
     'x-user-permissions',
     'x-auth-type',
     'x-internal-key',
+    'x-idempotency-key',
+    'idempotency-key',
   ]) {
     if (h[k]) out[k] = String(h[k]);
   }

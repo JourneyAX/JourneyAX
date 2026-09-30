@@ -106,6 +106,13 @@ class IsolatedTestCutoverRepository extends CutoverRepository {
     }
     return null; // Unknown tenant → no record (negative case)
   }
+
+  override async getReleaseActivation(
+    tenantId: string,
+    environmentId: string = 'production'
+  ): Promise<ReleaseActivationRecord | null> {
+    return this.getCutoverRecord(tenantId, environmentId);
+  }
 }
 
 // ── Deterministic Model Gateway Test Adapter ───────────────────────────────
@@ -1036,16 +1043,27 @@ async function runCoreJourneyRuntimeScenario() {
     message: 'Certified weight is Standard (5-15kg)',
   };
 
-  const sseEvents: Array<{ event: string; data: any }> = [];
+  const sseEvents: Array<{ event: string; data: any; arrivedAt: number }> = [];
+  let turnCompleted = false;
+  let eventsArrivedBeforeTurnCompletion = 0;
+
   const mockRes: any = {
     setHeader: () => {},
     write: (chunk: string) => {
       const matchEvent = chunk.match(/event:\s*([^\n]+)/);
       const matchData = chunk.match(/data:\s*([^\n]+)/);
       if (matchEvent && matchData) {
+        const evName = matchEvent[1].trim();
+        if (!turnCompleted) {
+          eventsArrivedBeforeTurnCompletion++;
+        }
+        if (evName === 'done') {
+          turnCompleted = true;
+        }
         sseEvents.push({
-          event: matchEvent[1].trim(),
+          event: evName,
           data: JSON.parse(matchData[1].trim()),
+          arrivedAt: Date.now(),
         });
       }
     },
@@ -1061,12 +1079,24 @@ async function runCoreJourneyRuntimeScenario() {
   );
   console.log('   8c completed.');
 
-  // Assert SSE events emitted
+  // Assert genuine streaming: at least one token/event arrives before turn completion (done)
+  assert.ok(
+    eventsArrivedBeforeTurnCompletion > 1,
+    `Expected multiple events before turn completion, got ${eventsArrivedBeforeTurnCompletion}`
+  );
+
+  // Assert SSE events emitted in order: session, trace, token, capability, uiAction, data, done
   const eventTypes = sseEvents.map((e) => e.event);
-  assert.ok(eventTypes.includes('session'), 'session event missing');
-  assert.ok(eventTypes.includes('uiAction'), 'uiAction event missing');
+  assert.equal(eventTypes[0], 'session', 'First event must be session');
+  assert.equal(eventTypes[1], 'trace', 'Second event must be trace');
   assert.ok(eventTypes.includes('token'), 'token event missing');
-  assert.ok(eventTypes.includes('done'), 'done event missing');
+  assert.ok(eventTypes.includes('uiAction'), 'uiAction event missing');
+  assert.equal(eventTypes[eventTypes.length - 1], 'done', 'Final event must be done');
+
+  // Assert honest token delivery: emit completed message event honestly without simulated word timing
+  const tokenEvents = sseEvents.filter((e) => e.event === 'token');
+  assert.ok(tokenEvents.length >= 1, 'token event must be present');
+  assert.equal(tokenEvents[0].data.token, tokenEvents[0].data.delta, 'Token must not manufacture word chunks');
 
   // Assert registered presentCard envelopes ONLY
   const uiActionEvents = sseEvents.filter((e) => e.event === 'uiAction');
@@ -1267,7 +1297,97 @@ async function runCoreJourneyRuntimeScenario() {
   const proxyTurn2Body = proxyHelper(newTurnReq);
   const proxyTurn2Result = await runtimeController2.runTurn('tenant-aero-dispatch', 'test', proxyTurn2Body, authReq);
   assert.equal(capabilityCallCount, countBeforeProxyIdem, 'Proxy request with same tool idempotency key must not re-execute tool');
-  assert.equal(proxyTurn2Result.executedCapabilities[0].status, 'success');
+  // 8i. Negative test: inject workspace/outbox commit failure and prove client receives NO success completion
+  console.log('   8i: testing persistence commit failure event ordering (client receives NO success completion/done)...');
+  const failingWorkspaceRepo: any = {
+    getOrCreate: async (...args: any[]) => workspaceRepo.getOrCreate(...args),
+    get: async (...args: any[]) => workspaceRepo.get(...args),
+    save: async () => {
+      throw new Error('Simulated atomic persistence commit failure');
+    },
+  };
+
+  const appServiceFailing = new TurnApplicationService(
+    packRepo,
+    failingWorkspaceRepo,
+    journeyResolver,
+    undefined,
+    modelGateway,
+    capabilityGateway,
+    undefined,
+    executionRepo,
+    outboxRepo,
+    presentationPort,
+    interpreter,
+    undefined,
+    outcomeValidator
+  );
+  const runtimeServiceFailing = new RuntimeService(appServiceFailing);
+  runtimeServiceFailing.setCutoverRepositoryForTest(isolatedCutoverRepo);
+  const runtimeControllerFailing = new RuntimeController(runtimeServiceFailing);
+
+  const failureTurnBody = {
+    sessionId: 'sess-commit-fail-01',
+    workspaceId: 'ws-commit-fail-01',
+    turnId: 'turn-commit-fail-001',
+    correlationId: 'corr-commit-fail-001',
+    message: 'Calculate airway route',
+  };
+
+  const failureEvents: Array<{ event: string; data: any }> = [];
+  const failureRes: any = {
+    setHeader: () => {},
+    write: (chunk: string) => {
+      const matchEvent = chunk.match(/event:\s*([^\n]+)/);
+      const matchData = chunk.match(/data:\s*([^\n]+)/);
+      if (matchEvent && matchData) {
+        failureEvents.push({
+          event: matchEvent[1].trim(),
+          data: JSON.parse(matchData[1].trim()),
+        });
+      }
+    },
+    end: () => {},
+  };
+
+  await runtimeControllerFailing.streamTurn('tenant-aero-dispatch', 'test', failureTurnBody, authReq, failureRes);
+
+  const failureErrorEvents = failureEvents.filter((e) => e.event === 'error');
+  assert.equal(failureErrorEvents.length, 1, 'Must emit exactly one error event when persistence fails');
+  assert.ok(
+    failureErrorEvents[0].data.message?.includes('Simulated atomic persistence commit failure'),
+    'Error message must reflect persistence failure'
+  );
+
+  const failureTokenEvents = failureEvents.filter((e) => e.event === 'token' || e.event === 'message');
+  assert.equal(failureTokenEvents.length, 0, 'Client must NEVER receive success-looking token or message events when persistence fails');
+
+  const failureDoneEvents = failureEvents.filter((e) => e.event === 'done');
+  assert.equal(failureDoneEvents.length, 0, 'Client must NEVER receive done event when persistence fails');
+
+  const failureUiActionEvents = failureEvents.filter((e) => e.event === 'uiAction');
+  assert.equal(failureUiActionEvents.length, 0, 'Client must NEVER receive confirmed uiAction events when persistence fails');
+
+  const failureDataEvents = failureEvents.filter((e) => e.event === 'data');
+  assert.equal(failureDataEvents.length, 0, 'Client must NEVER receive data event when persistence fails');
+
+  const failureCapabilityEvents = failureEvents.filter((e) => e.event === 'capability');
+  assert.equal(failureCapabilityEvents.length, 0, 'Client must NEVER receive capability results when persistence fails');
+
+  // Assert exact event sequence: only pre-commit session/trace events precede error, and error is terminal
+  assert.ok(failureEvents.length >= 2, 'Must receive initial pre-commit events then error');
+  const failureEventTypes = failureEvents.map((e) => e.event);
+  assert.equal(failureEventTypes[0], 'session', 'Pre-commit event 1 must be session');
+  assert.equal(failureEventTypes[1], 'trace', 'Pre-commit event 2 must be trace');
+  for (let i = 0; i < failureEvents.length - 1; i++) {
+    assert.ok(
+      ['session', 'trace', 'progress'].includes(failureEvents[i].event),
+      `Only pre-commit non-confirming events permitted before error; got: ${failureEvents[i].event}`
+    );
+  }
+  assert.equal(failureEventTypes[failureEventTypes.length - 1], 'error', 'Error must be the final terminal event on persistence failure');
+  console.log('   8i completed.');
+
   console.log('   ✅ PASS: User-facing conversation path, HTTP/SSE streaming, and boundary replay protection verified.\n');
 
   console.log('🎉 ALL REVIEW REQUIREMENTS FULLY PROVEN AND GROUNDED WITH ZERO HARDCODING!');

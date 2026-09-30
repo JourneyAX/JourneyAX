@@ -322,6 +322,22 @@ async function runRealMongoIntegrationTests() {
     assert.equal(cutoverRecord.revision, 1);
     assert.equal(cutoverRecord.approvedReleaseVersion, '1.0.0');
 
+    // Verify canonical release-activation endpoint and compatibility cutover alias return the exact same authoritative record
+    const canonicalActivation = await runtimeController.getReleaseActivationRecord(
+      testTenant,
+      'production',
+      { authContext: { principalId: 'admin' } }
+    );
+    const aliasCutover = await runtimeController.getCutoverRecord(
+      testTenant,
+      'production',
+      { authContext: { principalId: 'admin' } }
+    );
+    assert.equal(canonicalActivation.status, 'migrated');
+    assert.equal(canonicalActivation.revision, 1);
+    assert.equal(canonicalActivation.approvedReleaseVersion, '1.0.0');
+    assert.deepEqual(canonicalActivation, aliasCutover, 'Canonical and alias endpoints must return identical record');
+
     // Verify written to real tenant_cutovers
     const persistedCutover = await db.collection(COLLECTION_TENANT_CUTOVERS).findOne({
       tenantId: testTenant,

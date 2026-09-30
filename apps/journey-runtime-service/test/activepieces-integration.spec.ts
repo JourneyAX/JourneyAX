@@ -79,7 +79,8 @@ async function runTests() {
     assert.match(tamperedResult.reason || '', /HMAC signature verification failed/);
 
     // Tampered signature fails
-    const badSig = signed.signature.slice(0, -2) + '00';
+    const lastChar = signed.signature.slice(-1);
+    const badSig = signed.signature.slice(0, -1) + (lastChar === '0' ? '1' : '0');
     const badSigResult = verifyWebhookSignature(
       badSig,
       signed.timestamp,

@@ -181,7 +181,7 @@ export class WorkwearSolutionOptimizerHandler implements NativeCapabilityHandler
       bundle: {
         bundleId: `bnd_${Date.now()}`,
         occupation,
-        currency: 'AUD',
+        currency: (ctx as any)?.pricing?.currency || selectedPant?.price?.currency || (ctx as any)?.currency,
         totalPriceCents,
         sizingRequired: !hasSizing,
         items: [pantItem, bootItem],

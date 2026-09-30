@@ -9,12 +9,13 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
   async execute(input: PricingValidateInput, ctx: ExecutionContext): Promise<any> {
     const tenantId = ctx.tenantId;
     const skus = Array.isArray(input.skus) ? input.skus : [];
+    const resolvedCurrency = (ctx as any)?.pricing?.currency || (ctx as any)?.currency;
 
     if (skus.length === 0) {
       return {
         valid: false,
         totalCents: 0,
-        currency: 'AUD',
+        currency: resolvedCurrency,
         items: [],
         reason: 'No SKUs provided for validation',
       };
@@ -31,7 +32,7 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
       return {
         valid: true,
         totalCents: items.reduce((sum, item) => sum + item.priceCents, 0),
-        currency: 'AUD',
+        currency: resolvedCurrency,
         items,
       };
     }
@@ -70,10 +71,41 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
       const allInStock = items.every((i) => i.inStock);
       const totalCents = items.reduce((sum, i) => sum + i.priceCents, 0);
 
+      const docCurrencies = Array.from(new Set(docs.map((d: any) => d.price?.currency || d.currency).filter(Boolean)));
+      if (docCurrencies.length > 1) {
+        return {
+          valid: false,
+          totalCents: 0,
+          currency: docCurrencies[0],
+          items,
+          reason: `Multi-currency cart items detected without authoritative FX conversion: ${docCurrencies.join(', ')}`,
+        };
+      }
+
+      if (resolvedCurrency && docCurrencies.length > 0 && docCurrencies[0].toUpperCase() !== resolvedCurrency.toUpperCase()) {
+        return {
+          valid: false,
+          totalCents: 0,
+          currency: docCurrencies[0],
+          items,
+          reason: `Conflicting currency: pricing policy '${resolvedCurrency}' conflicts with catalogue '${docCurrencies[0]}'`,
+        };
+      }
+
+      const currency = resolvedCurrency || docCurrencies[0];
+      if (!currency) {
+        return {
+          valid: false,
+          totalCents: 0,
+          items,
+          reason: 'Missing authoritative currency in pricing policy and catalogue records - failing closed',
+        };
+      }
+
       return {
         valid: allFound && allInStock,
         totalCents,
-        currency: 'AUD',
+        currency,
         items,
         details: {
           allFound,
@@ -85,7 +117,7 @@ export class PricingValidateHandler implements NativeCapabilityHandler {
       return {
         valid: false,
         totalCents: 0,
-        currency: 'AUD',
+        currency: resolvedCurrency,
         error: err.message,
       };
     }

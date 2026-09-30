@@ -101,92 +101,126 @@ export class TurnApplicationService {
    *                           Using it here avoids a redundant second loadActivePack call and
    *                           guarantees the exact validated version/checksum is what executes.
    */
+  /**
+   * Executes a single turn buffered.
+   */
   async executeTurn(command: TurnCommand, preloadedRelease?: any): Promise<TurnResult> {
-    const tenantId = command.tenantId;
-    const envId: EnvironmentId = command.environmentId || 'production';
-    const workspaceId = command.workspaceId || command.sessionId;
-    const turnId = command.turnId;
+    return this.executeTurnStream(command, preloadedRelease, () => {});
+  }
 
-    // 1. Authoritative Business Pack resolution
-    // If a pre-validated release was passed by the cutover gate, use it directly.
-    // This eliminates the double loadActivePack call and guarantees the exact
-    // version and checksum that was validated is what executes — no TOCTOU window.
-    const release = preloadedRelease ?? await this.packRepo.loadActivePack(tenantId, envId);
+  /**
+   * Executes a single turn with genuine streaming event sink boundary.
+   * Forward real model/runtime events in order: session, trace, token, capability, uiAction, data, error and done.
+   */
+  async executeTurnStream(
+    command: TurnCommand,
+    preloadedRelease?: any,
+    sink: (event: string, data: any) => void = () => {}
+  ): Promise<TurnResult> {
+    try {
+      const tenantId = command.tenantId;
+      const envId: EnvironmentId = command.environmentId || 'production';
+      const workspaceId = command.workspaceId || command.sessionId;
+      const turnId = command.turnId;
 
+      // 1. Forward session event at start of streaming boundary
+      sink('session', { sessionId: command.sessionId || workspaceId });
 
-    // 2. Load existing Workspace State (if present)
-    let workspace =
-      typeof this.workspaceRepo?.load === 'function'
-        ? await this.workspaceRepo.load(tenantId, envId, workspaceId)
-        : null;
+      // 2. Authoritative Business Pack resolution
+      // If a pre-validated release was passed by the cutover gate, use it directly.
+      // This eliminates the double loadActivePack call and guarantees the exact
+      // version and checksum that was validated is what executes — no TOCTOU window.
+      const release = preloadedRelease ?? await this.packRepo.loadActivePack(tenantId, envId);
 
-    // 2a. Turn Replay Rejection — Duplicate turnId is rejected unconditionally regardless of tool execution!
-    if (turnId && workspace && workspace.lastProcessedTurnId === turnId) {
-      throw new DuplicateTurnError(turnId);
-    }
+      // 3. Load existing Workspace State (if present)
+      let workspace =
+        typeof this.workspaceRepo?.load === 'function'
+          ? await this.workspaceRepo.load(tenantId, envId, workspaceId)
+          : null;
 
-    // 3. Extract and reduce conversational facts through model-gateway & schema validation
-    const interpretation = await this.interpreter.interpret(command, release, workspace || ({} as any));
-
-    // 2b. Goal/Policy-based Journey Selection (strictly typed, zero positional fallback)
-    if (!this.journeyResolver || typeof this.journeyResolver.resolveJourneyResolution !== 'function') {
-      const decision: Decision = {
-        decisionId: `dec_${Date.now()}`,
-        type: 'handoff',
-        payload: { error: 'JourneyResolver unavailable' },
-        reason: 'Journey resolution component is unavailable',
-        createdAt: new Date().toISOString(),
-      };
-      return this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
-    }
-
-    const resolution = this.journeyResolver.resolveJourneyResolution(
-      release,
-      workspace || ({} as any),
-      command,
-      interpretation
-    );
-
-    if (resolution.status === 'ambiguous') {
-      if (!workspace) {
-        workspace = await this.workspaceRepo.getOrCreate(
-          tenantId,
-          envId,
-          workspaceId,
-          'unassigned',
-          'initial',
-          undefined,
-          release.manifest.version || release.manifest.packId
-        );
+      // 3a. Turn Replay Rejection — Duplicate turnId is rejected unconditionally regardless of tool execution!
+      if (turnId && workspace && workspace.lastProcessedTurnId === turnId) {
+        throw new DuplicateTurnError(turnId);
       }
-      // Preserve candidate facts already captured
-      workspace = this.factReducer.apply(workspace, interpretation.candidateFacts);
-      const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
-      if (decision.type === 'ask_fact' && decision.payload?.targetFact) {
-        workspace.openQuestions = [decision.payload.targetFact];
-      }
-      workspace.decisions.push({
-        ...decision,
-        executedAt: new Date().toISOString(),
-        outcomeStatus: 'pending',
-      });
-      workspace.lastProcessedTurnId = turnId;
-      await this.workspaceRepo.save(workspace);
 
-      const turnResult = this.presentationPort.compose({ valid: true }, decision, workspace, release);
-      if (turnResult.trace) {
-        turnResult.trace.transitions = [];
-        if (interpretation.failure) {
-          (turnResult.trace as any).errors = [interpretation.failure];
+      // 4. Extract and reduce conversational facts through model-gateway & schema validation
+      const interpretation = await this.interpreter.interpret(command, release, workspace || ({} as any));
+
+      // 4a. Goal/Policy-based Journey Selection (strictly typed, zero positional fallback)
+      if (!this.journeyResolver || typeof this.journeyResolver.resolveJourneyResolution !== 'function') {
+        const decision: Decision = {
+          decisionId: `dec_${Date.now()}`,
+          type: 'handoff',
+          payload: { error: 'JourneyResolver unavailable' },
+          reason: 'Journey resolution component is unavailable',
+          createdAt: new Date().toISOString(),
+        };
+        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
+        sink('trace', { currentStage: workspace?.currentStage || 'initial', transitions: [] });
+        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        return turnResult;
+      }
+
+      const resolution = this.journeyResolver.resolveJourneyResolution(
+        release,
+        workspace || ({} as any),
+        command,
+        interpretation
+      );
+
+      if (resolution.status === 'ambiguous') {
+        if (!workspace) {
+          workspace = await this.workspaceRepo.getOrCreate(
+            tenantId,
+            envId,
+            workspaceId,
+            'unassigned',
+            'initial',
+            undefined,
+            release.manifest.version || release.manifest.packId
+          );
         }
-      }
-      return turnResult;
-    }
+        // Preserve candidate facts already captured
+        workspace = this.factReducer.apply(workspace, interpretation.candidateFacts);
+        const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+        if (decision.type === 'ask_fact' && decision.payload?.targetFact) {
+          workspace.openQuestions = [decision.payload.targetFact];
+        }
+        workspace.decisions.push({
+          ...decision,
+          executedAt: new Date().toISOString(),
+          outcomeStatus: 'pending',
+        });
+        workspace.lastProcessedTurnId = turnId;
 
-    if (resolution.status !== 'resolved') {
-      const decision = this.journeyResolver.decide(release, workspace || ({} as any), command, interpretation);
-      return this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
-    }
+        const turnResult = this.presentationPort.compose({ valid: true }, decision, workspace, release);
+        if (turnResult.trace) {
+          turnResult.trace.transitions = [];
+          if (interpretation.failure) {
+            (turnResult.trace as any).errors = [interpretation.failure];
+          }
+        }
+        sink('trace', {
+          currentStage: workspace.currentStage,
+          transitions: [],
+        });
+        // Commit atomically before final success/confirmation
+        await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
+        // Only after commit emit final confirmed events
+        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        return turnResult;
+      }
+
+      if (resolution.status !== 'resolved') {
+        const decision = this.journeyResolver.decide(release, workspace || ({} as any), command, interpretation);
+        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
+        sink('trace', {
+          currentStage: workspace?.currentStage || 'initial',
+          transitions: [],
+        });
+        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        return turnResult;
+      }
 
     const activeJourney = resolution.journey;
     if (!activeJourney) {
@@ -260,6 +294,13 @@ export class TurnApplicationService {
       };
       decision = this.journeyResolver.decide(release, workspace, command, interpretation);
     }
+
+    // Emit stage/journey trace event
+    sink('trace', {
+      currentStage: workspace.currentStage,
+      journeyId: activeJourney.journeyId,
+      transitions,
+    });
 
     let outcome: any = null;
     let pendingApproval: any = null;
@@ -592,7 +633,35 @@ export class TurnApplicationService {
       turnResult.executedCapabilities = executedCapabilities;
     }
 
-    // 9. Commit updated workspace state and outbox events atomically
+    // 8. Commit updated workspace state and outbox events atomically BEFORE confirming outcome
+    await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
+
+    // 9. Only after successful commit emit final assistant response, capability results, confirmed UI actions, data and exactly one done
+    this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, sink);
+
+    return turnResult;
+    } catch (err: any) {
+      sink('error', {
+        message: err.message || 'Error executing turn stream',
+        code: err.code,
+        turnId: err.turnId,
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Commits workspace state and outbox events atomically.
+   */
+  private async commitWorkspace(
+    workspace: any,
+    turnId: string | undefined,
+    envId: EnvironmentId,
+    tenantId: string,
+    workspaceId: string,
+    decisionType: string,
+    correlationId: string | undefined
+  ): Promise<void> {
     workspace.lastProcessedTurnId = turnId;
 
     const isProdOrStaging =
@@ -634,11 +703,11 @@ export class TurnApplicationService {
           {
             workspaceId,
             stage: workspace.currentStage,
-            decisionType: decision.type,
+            decisionType,
           },
-          command.correlationId
+          correlationId
         );
-        return turnResult;
+        return;
       }
 
       // Transactions are supported
@@ -653,15 +722,13 @@ export class TurnApplicationService {
             {
               workspaceId,
               stage: workspace.currentStage,
-              decisionType: decision.type,
+              decisionType,
             },
-            command.correlationId,
+            correlationId,
             session
           );
         });
-        return turnResult;
-      } catch (txErr: any) {
-        throw txErr;
+        return;
       } finally {
         await session.endSession();
       }
@@ -676,11 +743,67 @@ export class TurnApplicationService {
       {
         workspaceId,
         stage: workspace.currentStage,
-        decisionType: decision.type,
+        decisionType,
       },
-      command.correlationId
+      correlationId
     );
+  }
 
-    return turnResult;
+  /**
+   * Only after successful commit emit final assistant response, capability results, confirmed UI actions, data and exactly one done.
+   */
+  private streamCommittedFinalEvents(
+    command: TurnCommand,
+    turnResult: TurnResult,
+    executedCapabilities: any[],
+    sink: (event: string, data: any) => void
+  ): void {
+    // 1. token: honest model message delivery of the final confirmed assistant response
+    const text = turnResult.assistantMessage || '';
+    if (text) {
+      sink('token', { token: text, delta: text });
+    }
+
+    // 2. capability: executed capabilities
+    for (const cap of executedCapabilities) {
+      sink('capability', cap);
+    }
+
+    // 3. uiAction: presentCard envelopes for confirmed UI instructions
+    for (const inst of turnResult.uiInstructions || []) {
+      sink('uiAction', {
+        name: 'presentCard',
+        arguments: {
+          card: {
+            id: inst.actionId || `${inst.component}-${Date.now()}`,
+            cardType: inst.component,
+            state: inst.props,
+          },
+        },
+        card: {
+          cardType: inst.component,
+          state: inst.props,
+        },
+      });
+    }
+
+    // 4. data: state, decision, and trace
+    sink('data', {
+      sessionId: command.sessionId,
+      workspaceId: command.workspaceId,
+      decision: turnResult.decision,
+      trace: turnResult.trace,
+    });
+
+    // 5. done: final outcome — exactly one done event
+    sink('done', {
+      sessionId: command.sessionId,
+      workspaceId: command.workspaceId,
+      decision: turnResult.decision,
+      trace: turnResult.trace,
+      response: text,
+      assistantMessage: text,
+      message: { role: 'assistant', content: text },
+    });
   }
 }

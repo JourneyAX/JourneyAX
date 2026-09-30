@@ -184,6 +184,10 @@ export interface TurnCommand {
 
   approvalRequestId?: string;
   idempotencyKey?: string;
+
+  projectId?: string;
+  journeyId?: string;
+  environment?: string;
 }
 
 export interface TurnResult {

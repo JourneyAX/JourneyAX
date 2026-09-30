@@ -11,7 +11,9 @@ export const COLLECTION_PRODUCTS = 'products';
 export const COLLECTION_ORDERS = 'orders';
 export const COLLECTION_QUOTES = 'quotes';
 export const COLLECTION_TENANT_CUTOVERS = 'tenant_cutovers';
+export const COLLECTION_RELEASE_ACTIVATIONS = COLLECTION_TENANT_CUTOVERS;
 export const COLLECTION_CUTOVER_AUDIT_LOGS = 'cutover_audit_logs';
+export const COLLECTION_RELEASE_ACTIVATION_AUDIT_LOGS = COLLECTION_CUTOVER_AUDIT_LOGS;
 export const COLLECTION_GATEWAY_ASSERTION_NONCES = 'gateway_assertion_nonces';
 export const COLLECTION_NOTIFICATION_DELIVERIES = 'notification_deliveries';
 export const COLLECTION_NOTIFICATION_SUPPRESSIONS = 'notification_suppressions';
@@ -270,11 +272,35 @@ export interface QuoteRecord {
   createdAt: Date;
 }
 
-export interface DurableCutoverRecord {
+// Enterprise Release Concepts
+export type TrafficPolicy = 'migrated' | 'canary' | 'unmigrated' | 'rollback';
+
+export interface ReleaseApproval {
+  approvedReleaseVersion: string;
+  approvedReleaseChecksum: string;
+  approvedBy: string;
+  promotedAt: Date;
+  notes?: string;
+}
+
+export interface CanaryPolicy {
+  canaryPercentage?: number; // 0 - 100
+}
+
+export interface RollbackTarget {
+  rollbackTargetVersion?: string;
+}
+
+export interface ActiveRelease {
+  version: string;
+  checksum: string;
+}
+
+export interface ReleaseActivationRecord {
   _id?: any;
   tenantId: string;
   environmentId: EnvironmentId;
-  status: 'migrated' | 'canary' | 'unmigrated' | 'rollback';
+  status: TrafficPolicy;
   approvedReleaseChecksum: string;
   approvedReleaseVersion: string;
   canaryPercentage?: number; // 0 - 100
@@ -286,7 +312,10 @@ export interface DurableCutoverRecord {
   updatedAt: Date;
 }
 
-export interface CutoverAuditLogRecord {
+// Deprecated alias for backward compatibility
+export type DurableCutoverRecord = ReleaseActivationRecord;
+
+export interface ReleaseActivationAuditLogRecord {
   _id?: any;
   tenantId: string;
   environmentId: EnvironmentId;
@@ -301,6 +330,9 @@ export interface CutoverAuditLogRecord {
   notes?: string;
   timestamp: Date;
 }
+
+// Deprecated alias for backward compatibility
+export type CutoverAuditLogRecord = ReleaseActivationAuditLogRecord;
 
 export interface GatewayAssertionNonceRecord {
   _id?: any;

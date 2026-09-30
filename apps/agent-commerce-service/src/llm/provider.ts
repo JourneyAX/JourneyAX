@@ -18,7 +18,6 @@
  */
 import OpenAI from 'openai';
 import { createHash } from 'crypto';
-import { execSync } from 'child_process';
 import { GoogleAuth } from 'google-auth-library';
 
 let cachedGcpToken: { token: string; expiresAt: number; audience: string } | null = null;
@@ -53,9 +52,7 @@ async function getGcpIdentityToken(targetAudience: string): Promise<string> {
     return cachedGcpToken.token;
   }
 
-  // 1. Running inside GCP Cloud Run (Metadata service) — the real production
-  // path. Uses the Cloud Run service's own attached identity; nothing to
-  // configure.
+  // 1. Running inside GCP Cloud Run (Metadata service) — the real production path.
   try {
     const res = await fetch(`http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(targetAudience)}`, {
       headers: { 'Metadata-Flavor': 'Google' },
@@ -70,11 +67,7 @@ async function getGcpIdentityToken(targetAudience: string): Promise<string> {
     // Non-GCP runtime
   }
 
-  // 2. Dedicated service account key (local dev / any non-GCP host). Preferred
-  // over the gcloud CLI fallback below: a service account never needs
-  // interactive reauth, so local dev doesn't silently 401 whenever a
-  // developer's personal `gcloud auth login` session (Workspace reauth
-  // policy) lapses.
+  // 2. Dedicated service account key (local dev / non-GCP host).
   {
     const token = await getServiceAccountIdToken(targetAudience);
     if (token) {
@@ -83,34 +76,11 @@ async function getGcpIdentityToken(targetAudience: string): Promise<string> {
     }
   }
 
-  // 3. Explicit environment variable override
-  if (process.env.GCP_ID_TOKEN || process.env.PLACEMAKER_MODEL_TOKEN) {
-    const token = (process.env.GCP_ID_TOKEN || process.env.PLACEMAKER_MODEL_TOKEN)!.trim();
+  // 3. Explicit environment variable override (environment-neutral provider interface)
+  if (process.env.GCP_ID_TOKEN || process.env.CLOUD_RUN_ID_TOKEN) {
+    const token = (process.env.GCP_ID_TOKEN || process.env.CLOUD_RUN_ID_TOKEN)!.trim();
     cachedGcpToken = { token, expiresAt: now + 50 * 60 * 1000, audience: targetAudience };
     return token;
-  }
-
-  // 4. Local development machine fallback (gcloud CLI, personal login — needs
-  // periodic interactive reauth under a Workspace reauth policy; prefer #2
-  // above where possible). MUST pass --audiences:
-  // without it, `gcloud auth print-identity-token` mints a token whose `aud`
-  // claim is gcloud's own default client, not this Cloud Run service — Cloud
-  // Run's IAM front door then rejects it with exactly the symptom this was
-  // built to fix, a 401 `Bearer error="invalid_token"`, before the request
-  // ever reaches the model server.
-  try {
-    const token = execSync(
-      `gcloud auth print-identity-token --audiences=${JSON.stringify(targetAudience)}`,
-      // stderr dropped: an expired personal login otherwise prints gcloud's
-      // re-auth instructions into the service log on every call.
-      { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
-    ).trim();
-    if (token) {
-      cachedGcpToken = { token, expiresAt: now + 45 * 60 * 1000, audience: targetAudience };
-      return token;
-    }
-  } catch {
-    // gcloud not in PATH or unauthenticated
   }
 
   return '';
@@ -122,6 +92,8 @@ export interface LlmClientConfig {
   apiKey?: string;
   /** Optional endpoint override (self-hosted / proxy / gateway). */
   baseUrl?: string;
+  /** Explicit fallback provider if declared in model policy */
+  fallbackProvider?: string;
 }
 
 interface Resolved {
@@ -149,29 +121,30 @@ function resolve(provider: string, projectKey?: string, baseUrlOverride?: string
         ok: !!apiKey,
       };
     }
-    case 'jax':
-    case 'jax-placemakers':
-    case 'placemaker':
-    case 'placemaker-gemma': {
-      // JAX PlaceMakers custom model server (Cloud Run NVIDIA L4 GPU / local fallback)
+    case 'open-model':
+    case 'custom': {
+      const apiKey = key('OPEN_MODEL_API_KEY');
+      const baseURL = baseUrlOverride || process.env.OPEN_MODEL_BASE_URL;
       return {
-        baseURL: baseUrlOverride || process.env.JAX_PLACEMAKERS_MODEL_URL || process.env.PLACEMAKER_MODEL_URL || 'http://localhost:8085/v1',
-        apiKey: (projectKey && projectKey.trim()) || 'journeyax-l4-gpu',
-        ok: true,
+        baseURL,
+        apiKey: apiKey || '',
+        ok: !!baseURL,
       };
     }
     case 'ollama': {
-      // Self-hosted: no real key needed, but honour an override if provided.
+      const apiKey = key('OLLAMA_API_KEY');
       return {
         baseURL: baseUrlOverride || process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
-        apiKey: (projectKey && projectKey.trim()) || process.env.OLLAMA_API_KEY || 'ollama',
+        apiKey: apiKey || 'ollama',
         ok: true,
       };
     }
-    case 'openai':
-    default: {
+    case 'openai': {
       const apiKey = key('OPENAI_API_KEY');
       return { baseURL: baseUrlOverride, apiKey, ok: !!apiKey };
+    }
+    default: {
+      return { baseURL: baseUrlOverride, apiKey: '', ok: false };
     }
   }
 }
@@ -179,20 +152,21 @@ function resolve(provider: string, projectKey?: string, baseUrlOverride?: string
 /**
  * Resolve just the endpoint + key for a project (no client), for callers that
  * speak a protocol the chat-completions SDK doesn't cover — e.g. the Responses
- * API with `web_search`, which school research uses. Same per-project-then-env
- * key resolution as the chat client, so research bills to the project's own key.
- * Returns a concrete base URL (OpenAI's default filled in) so callers can just
- * append `/responses`.
+ * API with `web_search`, which school research uses.
  */
 export function resolveLlm(config?: LlmClientConfig): { baseURL: string; apiKey: string; ok: boolean; provider: string } {
   const provider = (config?.provider || 'openai').toLowerCase();
   const r = resolve(provider, config?.apiKey, config?.baseUrl);
+  if (!r.ok) {
+    throw new Error(`[llm/provider] Provider "${provider}" is not configured or missing credentials.`);
+  }
   return { baseURL: (r.baseURL || 'https://api.openai.com/v1').replace(/\/$/, ''), apiKey: r.apiKey, ok: r.ok, provider };
 }
 
 /**
  * Get a chat client for a project's AI config. Accepts either a provider string
  * (back-compat) or the full `{ provider, apiKey, baseUrl }` config.
+ * Never silently falls back to OpenAI unless explicitly configured in model policy.
  */
 export function getChatClient(config?: string | LlmClientConfig): OpenAI {
   const cfg: LlmClientConfig = typeof config === 'string' ? { provider: config } : config || {};
@@ -200,12 +174,13 @@ export function getChatClient(config?: string | LlmClientConfig): OpenAI {
 
   const r = resolve(provider, cfg.apiKey, cfg.baseUrl);
   if (!r.ok) {
-    // No key for the chosen provider anywhere → fall back to platform OpenAI so
-    // the journey degrades gracefully instead of hard-failing on a mis-config.
-    if (provider !== 'openai') {
-      console.warn(`[llm/provider] provider="${provider}" has no API key (project or env) — falling back to OpenAI.`);
-      return getChatClient('openai');
+    if (cfg.fallbackProvider) {
+      console.warn(`[llm/provider] Provider "${provider}" unconfigured — falling back to declared fallback "${cfg.fallbackProvider}"`);
+      return getChatClient({ ...cfg, provider: cfg.fallbackProvider, fallbackProvider: undefined });
     }
+    throw new Error(
+      `[llm/provider] Provider "${provider}" has no API credentials configured (implicit fallback to OpenAI is prohibited).`
+    );
   }
 
   // Cache by provider + endpoint + a collision-free key fingerprint (a hash, not

@@ -31,10 +31,11 @@ function fmtMoney(amount: unknown, currency?: string): string | null {
   if (amount === null || amount === undefined || amount === '') return null;
   const n = typeof amount === 'number' ? amount : Number(amount);
   if (!Number.isFinite(n)) return typeof amount === 'string' ? amount : null;
+  if (!currency) return n.toFixed(2);
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(n);
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
   } catch {
-    return `${n.toFixed(2)} ${currency || ''}`.trim();
+    return `${n.toFixed(2)} ${currency}`.trim();
   }
 }
 

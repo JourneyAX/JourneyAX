@@ -8,7 +8,7 @@
  * validation, and persist a versioned, expiring quote. Nothing monetary comes
  * from the model or the browser.
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Collection, Db } from 'mongodb';
 import { connectToDatabase } from '@journeyax/database';
@@ -29,6 +29,7 @@ const QUOTE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // quotes valid for 7 days
 export interface BuildQuoteArgs {
   tenantId: string;
   sessionId?: string;
+  idempotencyKey?: string;
   title?: string;
   items: QuoteLineInput[];
   roomType?: string;
@@ -44,6 +45,7 @@ export interface BuildQuoteArgs {
 export class QuoteService {
   private col: Collection<Quote> | null = null;
   private readonly productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+  private readonly inMemoryIdempotencyCache = new Map<string, Quote>();
 
   constructor() {}
 
@@ -54,6 +56,9 @@ export class QuoteService {
     const { db }: { db: Db } = await connectToDatabase(uri, DB_NAME);
     this.col = db.collection<Quote>(QUOTES);
     await this.col.createIndex({ quoteId: 1 }, { unique: true }).catch(() => {});
+    await this.col
+      .createIndex({ tenantId: 1, idempotencyKey: 1 }, { unique: true, sparse: true })
+      .catch(() => {});
     return this.col;
   }
 
@@ -82,6 +87,23 @@ export class QuoteService {
   /** Build + persist an authoritative quote from proposed SKUs/quantities. */
   async build(args: BuildQuoteArgs): Promise<Quote> {
     const { tenantId, pricing } = args;
+    const rawIdempotencyKey = args.idempotencyKey ? String(args.idempotencyKey).trim() : '';
+    const cacheKey = rawIdempotencyKey ? `${tenantId}:${rawIdempotencyKey}` : null;
+    if (cacheKey && this.inMemoryIdempotencyCache.has(cacheKey)) {
+      return this.inMemoryIdempotencyCache.get(cacheKey)!;
+    }
+    const col = await this.getCol();
+    if (col && rawIdempotencyKey) {
+      const existing = await col.findOne(
+        { tenantId, idempotencyKey: rawIdempotencyKey },
+        { projection: { _id: 0 } },
+      );
+      if (existing) {
+        if (cacheKey) this.inMemoryIdempotencyCache.set(cacheKey, existing);
+        return existing;
+      }
+    }
+
     const rawItems = (args.items || []).filter((i) => i && i.sku);
     const skus = rawItems.map((i) => String(i.sku).trim());
     const book = await this.fetchPricebook(tenantId, skus);
@@ -95,28 +117,40 @@ export class QuoteService {
     if (!pack) {
       try {
         const loader = args.packLoader || new BusinessPackLoader();
-        pack =
-          (await loader.loadPublished(tenantId, 'production').catch(() => null)) ||
-          (await loader.loadPublished(tenantId, 'test').catch(() => null)) ||
-          null;
+        // Strict production pack only: never fall back to test pack in production quoting
+        pack = await loader.loadPublished(tenantId, 'production').catch(() => null);
       } catch {
         pack = null;
       }
     }
     const plannerExt = pack ? getSpacePlannerExtension(pack) : null;
     const effectiveRoomType = (args.roomType || args.plannerContext?.roomType || '').toLowerCase().trim();
+    const isPlannerQuote = Boolean(effectiveRoomType || args.plannerContext);
 
-    if (plannerExt) {
-      // 1. Enforce Room Layout Isolation server-side
-      if (effectiveRoomType) {
-        const layoutErrs = validateRoomLayoutAgainstPack(rawItems, effectiveRoomType, plannerExt);
-        errors.push(...layoutErrs);
+    // Fail closed: if planner quoting is invoked and active production pack is unavailable
+    if (isPlannerQuote && (!pack || !plannerExt)) {
+      throw new HttpException(
+        `Active production Business Pack space planner is unavailable for tenant '${tenantId}'. Planner quoting fails closed.`,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    if (isPlannerQuote && plannerExt) {
+      if (!effectiveRoomType) {
+        throw new HttpException(
+          `Configured room type is required for space planner quoting for tenant '${tenantId}' - failing closed`,
+          HttpStatus.BAD_REQUEST,
+        );
       }
+
+      // 1. Enforce Room Layout Isolation server-side
+      const layoutErrs = validateRoomLayoutAgainstPack(rawItems, effectiveRoomType, plannerExt);
+      errors.push(...layoutErrs);
 
       // 2. Enforce Accessory System Compatibility server-side
       const accCheck = validateAccessoryCompatibilityAgainstPack(
         rawItems,
-        effectiveRoomType || 'bathroom',
+        effectiveRoomType,
         plannerExt
       );
       if (!accCheck.valid) {
@@ -182,14 +216,44 @@ export class QuoteService {
     const tax = Number((preTax * taxRate).toFixed(2));
     const total = Number((preTax + tax).toFixed(2));
 
+    // Resolve authoritative currency strictly from project pricing or active pack
+    const resolvedCurrency =
+      pricing?.currency ||
+      pack?.profile?.primaryCurrency ||
+      (pack?.experience as any)?.theme?.customCssVars?.currency;
+
+    if (!resolvedCurrency) {
+      throw new HttpException(
+        `Authoritative currency is required in project pricing or Business Pack for tenant '${tenantId}' - failing closed`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const itemCurrencies = Array.from(
+      new Set(book.items.map((i: any) => i.currency || i.priceCurrency).filter(Boolean))
+    );
+    if (itemCurrencies.length > 1) {
+      throw new HttpException(
+        `Multi-currency items detected without authoritative FX conversion: ${itemCurrencies.join(', ')}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (itemCurrencies.length === 1 && itemCurrencies[0].toUpperCase() !== resolvedCurrency.toUpperCase()) {
+      throw new HttpException(
+        `Conflicting currency: catalogue requires '${itemCurrencies[0]}' but quote pricing policy specifies '${resolvedCurrency}'`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const now = Date.now();
     const quote: Quote = {
       quoteId: 'q_' + randomUUID().replace(/-/g, ''),
       tenantId,
       sessionId: args.sessionId,
+      idempotencyKey: rawIdempotencyKey || undefined,
       version: 1,
       title: args.title || 'Your Quote',
-      currency: pricing.currency || 'AUD',
+      currency: resolvedCurrency,
       symbol: pricing.symbol || '$',
       lines,
       subtotal,
@@ -208,8 +272,27 @@ export class QuoteService {
       expiresAt: new Date(now + QUOTE_TTL_MS).toISOString(),
     };
 
-    const col = await this.getCol();
-    if (col) await col.insertOne(quote).catch((e) => console.error('[QuoteService] persist failed', e));
+    if (col) {
+      try {
+        await col.insertOne({ ...quote } as any);
+      } catch (insertErr: any) {
+        if (rawIdempotencyKey && (insertErr.code === 11000 || /duplicate/i.test(insertErr.message))) {
+          const existing = await col.findOne(
+            { tenantId, idempotencyKey: rawIdempotencyKey },
+            { projection: { _id: 0 } },
+          );
+          if (existing) {
+            if (cacheKey) this.inMemoryIdempotencyCache.set(cacheKey, existing);
+            return existing;
+          }
+        }
+        console.error('[QuoteService] persist failed', insertErr);
+      }
+    }
+
+    if (cacheKey) {
+      this.inMemoryIdempotencyCache.set(cacheKey, quote);
+    }
     return quote;
   }
 

@@ -40,6 +40,7 @@ export interface Quote {
   quoteId: string;
   tenantId: string;
   sessionId?: string;
+  idempotencyKey?: string;
   version: number;
   title: string;
   currency: string;              // from project.pricing.currency

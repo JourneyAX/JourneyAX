@@ -56,8 +56,13 @@ export class ModelRouter {
     // 2. Find policy item
     const policy =
       modelPolicy.policies.find((p) => p.policyId === targetPolicyId) ||
-      modelPolicy.policies.find((p) => p.policyId === modelPolicy.defaultPolicy) ||
-      modelPolicy.policies[0];
+      modelPolicy.policies.find((p) => p.policyId === modelPolicy.defaultPolicy);
+
+    if (!policy) {
+      throw new Error(
+        `[ModelRouter] No matching policy found for targetPolicyId='${targetPolicyId}' or defaultPolicy='${modelPolicy.defaultPolicy}'. Available policies: ${modelPolicy.policies.map((p) => p.policyId).join(', ')} - failing closed.`
+      );
+    }
 
     // 3. Verify data residency (case-insensitive)
     if (options?.targetDataResidency && policy.dataResidency && policy.dataResidency.trim().toLowerCase() !== options.targetDataResidency.trim().toLowerCase()) {
@@ -90,8 +95,14 @@ export class ModelRouter {
     // If still none found, check if fallback is permitted among listed candidates
     if (!selected && sortedCandidates.length > 0) {
       if (policy.fallbackAllowed) {
-        // Pick primary candidate even if key needs to be provided at request time
-        selected = sortedCandidates[0];
+        const topPriority = Math.min(...sortedCandidates.map((c) => c.priority));
+        const topCandidates = sortedCandidates.filter((c) => c.priority === topPriority);
+        if (topCandidates.length > 1) {
+          throw new Error(
+            `[ModelRouter] Ambiguous top-priority candidates (${topCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}) in policy '${policy.policyId}' with no credentials configured - failing closed.`
+          );
+        }
+        selected = topCandidates[0];
       } else {
         throw new Error(
           `[ModelRouter] No configured API credentials found for policy '${policy.policyId}' (candidates: ${sortedCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}), and fallback is not allowed.`

@@ -10,6 +10,7 @@
  * Lazy, resilient connection (like product-service): if Mongo is unavailable the
  * agent degrades to stateless behaviour rather than failing.
  */
+import { Injectable } from '@nestjs/common';
 import { connectToDatabase } from '@journeyax/database';
 import { Collection } from 'mongodb';
 
@@ -139,6 +140,7 @@ export function summarizeToolCall(
   }
 }
 
+@Injectable()
 export class SessionStore {
   private col: Collection<SessionDoc> | null = null;
   private tried = false;

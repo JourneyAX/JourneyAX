@@ -70,7 +70,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           description: doc.description || '',
           category: doc.category || doc.type || 'General',
           priceCents,
-          currency: doc.currency || 'AUD',
+          currency: doc.currency || doc.price?.currency || (ctx as any)?.pricing?.currency || (ctx as any)?.currency || undefined,
           inStock: doc.inStock !== false,
           imageUrl: doc.imageUrl || doc.images?.[0]?.url || '',
         };

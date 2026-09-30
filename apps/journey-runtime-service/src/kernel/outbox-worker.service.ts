@@ -328,6 +328,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         capabilities: releaseDoc.capabilities,
         experience: releaseDoc.experience,
         evaluations: releaseDoc.evaluations,
+        extensions: releaseDoc.extensions || {},
       };
       const packToHash = releaseDoc.manifest
         ? packPayload

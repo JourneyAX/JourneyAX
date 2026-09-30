@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-search.handler';
 import { PricingValidateHandler } from '../src/capabilities/handlers/pricing-validate.handler';
 import { OrderCommitHandler } from '../src/capabilities/handlers/order-commit.handler';
+import { TradeQuoteCreateHandler } from '../src/capabilities/handlers/trade-quote-create.handler';
 import { ExecutionContext } from '@journeyax/capability-sdk';
 
 const mockContext: ExecutionContext = {
@@ -339,6 +340,158 @@ async function runCatalogOrderPortsTests() {
         mockContext
       );
     }, /Missing authoritative currency/);
+  });
+
+  // --- 4. Missing and Mixed Currency Fail-Closed Negative Tests ---
+  await test('17. Pricing validation fails closed when currency is missing across catalog, pack, and input', async () => {
+    const catalogNoCurrency = [
+      {
+        projectId: 'tenant-test-grounded',
+        sku: 'NO-CURR-P1',
+        name: 'Product without currency',
+        price: { amount: 100 },
+        priceCents: 10000,
+        stock: { inStock: true },
+      },
+    ];
+    const handler = new PricingValidateHandler(catalogNoCurrency);
+    const result = await handler.execute({ skus: ['NO-CURR-P1'] }, mockContext);
+
+    assert.equal(result.valid, false, 'Validation must fail closed when currency is missing');
+    assert.ok(result.reason?.includes('Missing authoritative currency'), 'Must explain missing currency');
+  });
+
+  await test('18. Pricing validation fails closed when input currency conflicts with catalogue currency', async () => {
+    const handler = new PricingValidateHandler(sampleCatalog); // BOOT-STEEL-01 is AUD
+    const result = await handler.execute(
+      { skus: ['BOOT-STEEL-01'], currency: 'USD' },
+      mockContext
+    );
+
+    assert.equal(result.valid, false, 'Must fail closed on currency conflict');
+    assert.ok(result.reason?.includes('Conflicting currency'), 'Must report conflicting currency');
+  });
+
+  await test('19. Trade quote creation fails closed when currency is missing across catalog, pack, and input', async () => {
+    const catalogNoCurrency = [
+      {
+        projectId: 'tenant-test-grounded',
+        sku: 'NO-CURR-Q1',
+        name: 'Item without currency',
+        priceCents: 5000,
+      },
+    ];
+    const handler = new TradeQuoteCreateHandler(undefined, undefined, catalogNoCurrency);
+    await assert.rejects(
+      async () => {
+        await handler.execute(
+          { items: [{ sku: 'NO-CURR-Q1', quantity: 1 }] },
+          mockContext
+        );
+      },
+      /Missing authoritative currency/,
+      'TradeQuoteCreateHandler must fail closed when currency is missing'
+    );
+  });
+
+  await test('20. Trade quote creation fails closed when mixed currencies are detected across items', async () => {
+    const mixedCatalog = [
+      {
+        projectId: 'tenant-test-grounded',
+        sku: 'ITEM-AUD',
+        priceCents: 4000,
+        currency: 'AUD',
+      },
+      {
+        projectId: 'tenant-test-grounded',
+        sku: 'ITEM-NZD',
+        priceCents: 4500,
+        currency: 'NZD',
+      },
+    ];
+    const handler = new TradeQuoteCreateHandler(undefined, undefined, mixedCatalog);
+    await assert.rejects(
+      async () => {
+        await handler.execute(
+          {
+            items: [
+              { sku: 'ITEM-AUD', quantity: 1 },
+              { sku: 'ITEM-NZD', quantity: 1 },
+            ],
+          },
+          mockContext
+        );
+      },
+      /Mixed currencies detected/,
+      'TradeQuoteCreateHandler must fail closed on mixed currencies'
+    );
+  });
+
+  await test('21. Trade quote creation fails closed when caller requests conflicting currency', async () => {
+    const handler = new TradeQuoteCreateHandler(undefined, undefined, sampleCatalog); // BOOT-STEEL-01 is AUD
+    await assert.rejects(
+      async () => {
+        await handler.execute(
+          {
+            items: [{ sku: 'BOOT-STEEL-01', quantity: 1 }],
+            currency: 'NZD', // Conflicts with AUD!
+          },
+          mockContext
+        );
+      },
+      /Conflicting currency/,
+      'TradeQuoteCreateHandler must fail closed when caller currency conflicts with catalogue currency'
+    );
+  });
+
+  await test('22. Pricing validation fails closed on input-only currency when authoritative currency is missing', async () => {
+    const catalogNoCurrency = [
+      {
+        projectId: 'tenant-test-grounded',
+        sku: 'NO-CURR-ITEM-X',
+        name: 'Item without currency',
+        priceCents: 5000,
+        stock: { inStock: true },
+      },
+    ];
+    const handler = new PricingValidateHandler(catalogNoCurrency);
+    // Caller passes currency: 'USD', but catalogue and pack have NO currency
+    const result = await handler.execute(
+      { skus: ['NO-CURR-ITEM-X'], currency: 'USD' },
+      mockContext
+    );
+    assert.equal(result.valid, false, 'Validation must fail closed because input.currency cannot be sole authority');
+    assert.ok(
+      result.reason?.includes('input.currency cannot be sole authority') ||
+      result.reason?.includes('Missing authoritative currency'),
+      'Must explain missing authoritative currency'
+    );
+  });
+
+  await test('23. Trade quote creation fails closed on input-only currency when authoritative currency is missing', async () => {
+    const catalogNoCurrency = [
+      {
+        projectId: 'tenant-test-grounded',
+        sku: 'NO-CURR-ITEM-Y',
+        name: 'Item without currency',
+        priceCents: 6000,
+      },
+    ];
+    const handler = new TradeQuoteCreateHandler(undefined, undefined, catalogNoCurrency);
+    // Caller passes currency: 'NZD', but catalogue and pack have NO currency
+    await assert.rejects(
+      async () => {
+        await handler.execute(
+          {
+            items: [{ sku: 'NO-CURR-ITEM-Y', quantity: 1 }],
+            currency: 'NZD',
+          },
+          mockContext
+        );
+      },
+      /input\.currency cannot be sole authority|Missing authoritative currency/,
+      'TradeQuoteCreateHandler must fail closed because input.currency cannot be sole authority'
+    );
   });
 
   console.log(`\n==================================================`);

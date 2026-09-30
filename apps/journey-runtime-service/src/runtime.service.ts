@@ -18,9 +18,14 @@ import {
   COLLECTION_TOOL_EXECUTIONS,
   ToolExecutionRecord,
   DurableCutoverRecord,
+  ReleaseActivationRecord,
   CutoverRepository,
+  ReleaseActivationRepository,
   CutoverValidationError,
+  ReleaseActivationValidationError,
   CutoverConflictError,
+  ReleaseActivationConflictError,
+  ReleaseActivationRepositoryUnavailableError,
 } from '@journeyax/database';
 import { hashToolInput } from './approval/approval.store';
 import * as crypto from 'crypto';
@@ -33,8 +38,9 @@ import { isInCanaryBucket } from '@journeyax/journey-core';
 export class RuntimeService {
   public appService: TurnApplicationService;
   private inMemoryClaimedNonces = new Set<string>();
-  private inMemoryCutoverRecords = new Map<string, DurableCutoverRecord>();
-  private cutoverRepo: CutoverRepository | null = null;
+  private inMemoryActivationRecords = new Map<string, ReleaseActivationRecord>();
+  private inMemoryCutoverRecords = this.inMemoryActivationRecords;
+  private activationRepo: ReleaseActivationRepository | null = null;
 
   constructor(appService?: TurnApplicationService) {
     this.appService = appService || new TurnApplicationService();
@@ -44,48 +50,75 @@ export class RuntimeService {
     this.appService = appService;
   }
 
-  public getCutoverRepository(): CutoverRepository {
-    if (!this.cutoverRepo) {
-      this.cutoverRepo = new CutoverRepository(async () => {
+  public getReleaseActivationRepository(): ReleaseActivationRepository {
+    if (!this.activationRepo) {
+      this.activationRepo = new ReleaseActivationRepository(async () => {
         const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
         const dbName = process.env.MONGODB_DB_NAME || 'journeyx';
         const { db, client } = await connectToDatabase(uri, dbName);
         return { db, client };
       });
     }
-    return this.cutoverRepo;
-  }
-
-  public setCutoverRepositoryForTest(repo: CutoverRepository): void {
-    this.cutoverRepo = repo;
-  }
-
-  setCutoverRecordForTest(record: DurableCutoverRecord): void {
-    const key = `${record.tenantId}:${record.environmentId}`;
-    this.inMemoryCutoverRecords.set(key, record);
+    return this.activationRepo;
   }
 
   /**
-   * Retrieves the authoritative durable cutover record for a tenant and environment.
+   * Backward-compatibility alias for getReleaseActivationRepository.
+   * @deprecated Use getReleaseActivationRepository instead.
+   */
+  public getCutoverRepository(): ReleaseActivationRepository {
+    return this.getReleaseActivationRepository();
+  }
+
+  public setReleaseActivationRepositoryForTest(repo: ReleaseActivationRepository): void {
+    this.activationRepo = repo;
+  }
+
+  /**
+   * Backward-compatibility alias for setReleaseActivationRepositoryForTest.
+   * @deprecated Use setReleaseActivationRepositoryForTest instead.
+   */
+  public setCutoverRepositoryForTest(repo: ReleaseActivationRepository): void {
+    this.setReleaseActivationRepositoryForTest(repo);
+  }
+
+  setReleaseActivationRecordForTest(record: ReleaseActivationRecord): void {
+    const key = `${record.tenantId}:${record.environmentId}`;
+    this.inMemoryActivationRecords.set(key, record);
+  }
+
+  /**
+   * Backward-compatibility alias for setReleaseActivationRecordForTest.
+   * @deprecated Use setReleaseActivationRecordForTest instead.
+   */
+  setCutoverRecordForTest(record: DurableCutoverRecord): void {
+    this.setReleaseActivationRecordForTest(record);
+  }
+
+  /**
+   * Retrieves the authoritative durable release activation record for a tenant and environment.
    *
    * GOVERNANCE:
-   * 'tenant_cutovers' is the ONLY production cutover authority.
+   * 'tenant_cutovers' is the authoritative release activation record store.
    * Hardcoded in-memory registries are forbidden in production.
-   * Any database failure or missing approval record fails closed to null.
+   * Any database/infrastructure failure fails closed with 503.
    */
-  async getCutoverRecord(
+  async getReleaseActivationRecord(
     tenantId: string,
     environmentId: string = 'production'
-  ): Promise<DurableCutoverRecord | null> {
+  ): Promise<ReleaseActivationRecord | null> {
     const normTenant = (tenantId || '').trim().toLowerCase();
     const normEnv = (environmentId || 'production').trim().toLowerCase();
     const key = `${normTenant}:${normEnv}`;
 
     if (process.env.MONGODB_URI) {
       try {
-        return await this.getCutoverRepository().getCutoverRecord(normTenant, normEnv);
+        return await this.getReleaseActivationRepository().getReleaseActivation(normTenant, normEnv);
       } catch (err: any) {
-        console.warn('[RuntimeService] Mongo cutover query failed; failing closed:', err.message);
+        if (err instanceof ReleaseActivationRepositoryUnavailableError) {
+          throw new ServiceUnavailableException(`[ReleaseActivation] Database unavailable: ${err.message}`);
+        }
+        console.warn('[RuntimeService] Mongo release activation query failed; failing closed:', err.message);
         return null;
       }
     }
@@ -94,12 +127,106 @@ export class RuntimeService {
     if (process.env.NODE_ENV === 'production') {
       return null;
     }
-    return this.inMemoryCutoverRecords.get(key) || null;
+    return this.inMemoryActivationRecords.get(key) || null;
   }
 
   /**
-   * Transactionally persists/updates a durable cutover record.
-   * Delegates to CutoverRepository for strict release checksum validation, pointer check, CAS, and audit logging.
+   * Backward-compatibility alias for getReleaseActivationRecord.
+   * @deprecated Use getReleaseActivationRecord instead.
+   */
+  async getCutoverRecord(
+    tenantId: string,
+    environmentId: string = 'production'
+  ): Promise<DurableCutoverRecord | null> {
+    return this.getReleaseActivationRecord(tenantId, environmentId);
+  }
+
+  /**
+   * Transactionally persists/updates a durable release activation record.
+   * Delegates to ReleaseActivationRepository for strict release checksum validation, pointer check, CAS, and audit logging.
+   */
+  async persistReleaseActivationRecordTransactionally(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    activationData: {
+      status: 'migrated' | 'canary' | 'unmigrated' | 'rollback';
+      approvedReleaseVersion: string;
+      approvedReleaseChecksum: string;
+      expectedRevision?: number;
+      canaryPercentage?: number;
+      approvedBy: string;
+      rollbackTargetVersion?: string;
+      notes?: string;
+    }
+  ): Promise<ReleaseActivationRecord> {
+    const normTenant = (tenantId || '').trim().toLowerCase();
+    const normEnv = (environmentId || 'production').trim().toLowerCase() as EnvironmentId;
+
+    if (!process.env.MONGODB_URI) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new ServiceUnavailableException('Database unavailable: MONGODB_URI is not set');
+      }
+      // In-memory test fallback
+      const key = `${normTenant}:${normEnv}`;
+      const existing = this.inMemoryActivationRecords.get(key);
+      if (activationData.expectedRevision !== undefined) {
+        const currentRev = existing?.revision || 0;
+        if (activationData.expectedRevision !== currentRev) {
+          throw new ConflictException(
+            `Release activation revision conflict (CAS mismatch): current revision is ${currentRev}, expected ${activationData.expectedRevision}`
+          );
+        }
+      }
+      const record: ReleaseActivationRecord = {
+        tenantId: normTenant,
+        environmentId: normEnv,
+        status: activationData.status,
+        approvedReleaseChecksum: activationData.approvedReleaseChecksum,
+        approvedReleaseVersion: activationData.approvedReleaseVersion,
+        canaryPercentage: activationData.canaryPercentage ?? 0,
+        revision: (existing?.revision || 0) + 1,
+        approvedBy: activationData.approvedBy,
+        promotedAt: new Date(),
+        rollbackTargetVersion: activationData.rollbackTargetVersion,
+        notes: activationData.notes,
+        updatedAt: new Date(),
+      };
+      this.inMemoryActivationRecords.set(key, record);
+      return record;
+    }
+
+    try {
+      return await this.getReleaseActivationRepository().promoteReleaseActivation(
+        normTenant,
+        normEnv,
+        {
+          status: activationData.status,
+          approvedReleaseVersion: activationData.approvedReleaseVersion,
+          approvedReleaseChecksum: activationData.approvedReleaseChecksum,
+          expectedRevision: activationData.expectedRevision ?? 0,
+          canaryPercentage: activationData.canaryPercentage,
+          approvedBy: activationData.approvedBy,
+          rollbackTargetVersion: activationData.rollbackTargetVersion,
+          notes: activationData.notes,
+        }
+      );
+    } catch (err: any) {
+      if (err instanceof ReleaseActivationValidationError) {
+        throw new BadRequestException(err.message);
+      }
+      if (err instanceof ReleaseActivationConflictError) {
+        throw new ConflictException(err.message);
+      }
+      if (err instanceof ReleaseActivationRepositoryUnavailableError) {
+        throw new ServiceUnavailableException(err.message);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Backward-compatibility alias for persistReleaseActivationRecordTransactionally.
+   * @deprecated Use persistReleaseActivationRecordTransactionally instead.
    */
   async persistCutoverRecordTransactionally(
     tenantId: string,
@@ -115,66 +242,7 @@ export class RuntimeService {
       notes?: string;
     }
   ): Promise<DurableCutoverRecord> {
-    const normTenant = (tenantId || '').trim().toLowerCase();
-    const normEnv = (environmentId || 'production').trim().toLowerCase() as EnvironmentId;
-
-    if (!process.env.MONGODB_URI) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new ServiceUnavailableException('Database unavailable: MONGODB_URI is not set');
-      }
-      // In-memory test fallback
-      const key = `${normTenant}:${normEnv}`;
-      const existing = this.inMemoryCutoverRecords.get(key);
-      if (cutoverData.expectedRevision !== undefined) {
-        const currentRev = existing?.revision || 0;
-        if (cutoverData.expectedRevision !== currentRev) {
-          throw new ConflictException(
-            `Cutover revision conflict (CAS mismatch): current revision is ${currentRev}, expected ${cutoverData.expectedRevision}`
-          );
-        }
-      }
-      const record: DurableCutoverRecord = {
-        tenantId: normTenant,
-        environmentId: normEnv,
-        status: cutoverData.status,
-        approvedReleaseChecksum: cutoverData.approvedReleaseChecksum,
-        approvedReleaseVersion: cutoverData.approvedReleaseVersion,
-        canaryPercentage: cutoverData.canaryPercentage ?? 0,
-        revision: (existing?.revision || 0) + 1,
-        approvedBy: cutoverData.approvedBy,
-        promotedAt: new Date(),
-        rollbackTargetVersion: cutoverData.rollbackTargetVersion,
-        notes: cutoverData.notes,
-        updatedAt: new Date(),
-      };
-      this.inMemoryCutoverRecords.set(key, record);
-      return record;
-    }
-
-    try {
-      return await this.getCutoverRepository().promoteCutoverTransactionally(
-        normTenant,
-        normEnv,
-        {
-          status: cutoverData.status,
-          approvedReleaseVersion: cutoverData.approvedReleaseVersion,
-          approvedReleaseChecksum: cutoverData.approvedReleaseChecksum,
-          expectedRevision: cutoverData.expectedRevision ?? 0,
-          canaryPercentage: cutoverData.canaryPercentage,
-          approvedBy: cutoverData.approvedBy,
-          rollbackTargetVersion: cutoverData.rollbackTargetVersion,
-          notes: cutoverData.notes,
-        }
-      );
-    } catch (err: any) {
-      if (err instanceof CutoverValidationError) {
-        throw new BadRequestException(err.message);
-      }
-      if (err instanceof CutoverConflictError) {
-        throw new ConflictException(err.message);
-      }
-      throw err;
-    }
+    return this.persistReleaseActivationRecordTransactionally(tenantId, environmentId, cutoverData);
   }
 
   clearClaimedNoncesForTest(): void {
@@ -203,10 +271,10 @@ export class RuntimeService {
   }
 
   /**
-   * Enforces the durable tenant_cutovers record before any Business Pack is loaded or executed.
+   * Enforces the durable release activation record before any Business Pack is loaded or executed.
    *
    * Rules (all must hold — any failure throws ForbiddenException):
-   *   1. A durable cutover record must exist in tenant_cutovers for the tenant+environment.
+   *   1. A durable release activation record must exist for the tenant+environment.
    *   2. The record's tenantId must match the request tenant (cross-tenant binding).
    *   3. The record's status must be 'migrated', or 'canary' with this workspace in-bucket.
    *   4. A pack must be loadable from the active pointer.
@@ -219,7 +287,7 @@ export class RuntimeService {
    * Returns the validated pack so the caller can pass it directly to executeTurn,
    * eliminating the double pack lookup.
    */
-  async assertCutoverApproved(
+  async assertReleaseActivationApproved(
     tenantId: string,
     environmentId: string,
     stableKey?: string
@@ -227,49 +295,47 @@ export class RuntimeService {
     const normTenant = (tenantId || '').trim().toLowerCase();
     const normEnv = (environmentId || 'production').trim().toLowerCase();
 
-    // 1. Load the durable cutover record.
-    // Always use the repository directly — do NOT go through getCutoverRecord()'s MONGODB_URI
-    // environment guard, which can silently return null when the test repo is injected.
-    let cutover: DurableCutoverRecord | null;
+    // 1. Load the durable release activation record.
+    let activation: ReleaseActivationRecord | null;
     try {
-      cutover = await this.getCutoverRepository().getCutoverRecord(normTenant, normEnv);
+      activation = await this.getReleaseActivationRepository().getReleaseActivation(normTenant, normEnv);
     } catch (repoErr: any) {
       // Fail closed with 503 if the repository itself throws (e.g. connection error in prod)
       throw new ServiceUnavailableException(
-        `[CutoverGate] Cutover record lookup failed for tenant='${normTenant}' env='${normEnv}': ${repoErr.message}`
+        `[ReleaseActivationGate] Release activation record lookup failed for tenant='${normTenant}' env='${normEnv}': ${repoErr.message}`
       );
     }
 
-    if (!cutover) {
+    if (!activation) {
       throw new ForbiddenException(
-        `[CutoverGate] No approved cutover record found for tenant='${normTenant}' env='${normEnv}'. ` +
-        `Execution requires a durable tenant_cutovers entry with status 'migrated' or 'canary'.`
+        `[ReleaseActivationGate] No approved release activation record found for tenant='${normTenant}' env='${normEnv}'. ` +
+        `Execution requires a durable release activation entry with status 'migrated' or 'canary'.`
       );
     }
 
     // 2. Cross-tenant binding: the record must belong to this tenant
-    if (cutover.tenantId !== normTenant) {
+    if (activation.tenantId !== normTenant) {
       throw new ForbiddenException(
-        `[CutoverGate] Cutover record tenant mismatch: record.tenantId='${cutover.tenantId}' ` +
+        `[ReleaseActivationGate] Release activation record tenant mismatch: record.tenantId='${activation.tenantId}' ` +
         `does not match request tenant='${normTenant}'.`
       );
     }
 
     // 3. Status must be 'migrated' or 'canary' (with in-bucket routing for canary)
-    if (cutover.status === 'canary') {
-      const canaryPct = cutover.canaryPercentage ?? 0;
+    if (activation.status === 'canary') {
+      const canaryPct = activation.canaryPercentage ?? 0;
       const routingKey = stableKey || normTenant;
       if (!isInCanaryBucket(normTenant, normEnv, routingKey, canaryPct)) {
         throw new ForbiddenException(
-          `[CutoverGate] Canary bucket assignment: tenant='${normTenant}' env='${normEnv}' ` +
+          `[ReleaseActivationGate] Canary bucket assignment: tenant='${normTenant}' env='${normEnv}' ` +
           `key='${routingKey}' is NOT in the ${canaryPct}% canary bucket. ` +
           `Request must be served by legacy path for this workspace.`
         );
       }
-    } else if (cutover.status !== 'migrated') {
+    } else if (activation.status !== 'migrated') {
       const ALLOWED_STATUSES = ['migrated', 'canary'];
       throw new ForbiddenException(
-        `[CutoverGate] Cutover status '${cutover.status}' is not executable for tenant='${normTenant}' env='${normEnv}'. ` +
+        `[ReleaseActivationGate] Traffic policy status '${activation.status}' is not executable for tenant='${normTenant}' env='${normEnv}'. ` +
         `Allowed statuses: ${ALLOWED_STATUSES.join(', ')}.`
       );
     }
@@ -280,32 +346,32 @@ export class RuntimeService {
       activePack = await this.appService.packRepo.loadActivePack(normTenant, normEnv as EnvironmentId);
     } catch (err: any) {
       throw new ForbiddenException(
-        `[CutoverGate] Active Business Pack unavailable for tenant='${normTenant}' env='${normEnv}': ${err.message}`
+        `[ReleaseActivationGate] Active Business Pack unavailable for tenant='${normTenant}' env='${normEnv}': ${err.message}`
       );
     }
 
     if (!activePack) {
       throw new ForbiddenException(
-        `[CutoverGate] No active Business Pack found for tenant='${normTenant}' env='${normEnv}'.`
+        `[ReleaseActivationGate] No active Business Pack found for tenant='${normTenant}' env='${normEnv}'.`
       );
     }
 
     // 5. Version agreement
     const activeVersion = activePack.manifest?.version;
-    if (cutover.approvedReleaseVersion !== activeVersion) {
+    if (activation.approvedReleaseVersion !== activeVersion) {
       throw new ForbiddenException(
-        `[CutoverGate] Version mismatch for tenant='${normTenant}' env='${normEnv}': ` +
-        `cutover approves v'${cutover.approvedReleaseVersion}' but active pointer is v'${activeVersion}'. ` +
-        `Pointer and cutover record must be in agreement.`
+        `[ReleaseActivationGate] Version mismatch for tenant='${normTenant}' env='${normEnv}': ` +
+        `release activation approves v'${activation.approvedReleaseVersion}' but active pointer is v'${activeVersion}'. ` +
+        `Pointer and release activation record must be in agreement.`
       );
     }
 
     // 6. Checksum agreement — compute from the live pack, compare to approved
     const liveChecksum = computePackChecksum(activePack);
-    if (cutover.approvedReleaseChecksum !== liveChecksum) {
+    if (activation.approvedReleaseChecksum !== liveChecksum) {
       throw new ForbiddenException(
-        `[CutoverGate] Checksum mismatch for tenant='${normTenant}' env='${normEnv}' v'${activeVersion}': ` +
-        `cutover approved checksum '${cutover.approvedReleaseChecksum}' does not match ` +
+        `[ReleaseActivationGate] Checksum mismatch for tenant='${normTenant}' env='${normEnv}' v'${activeVersion}': ` +
+        `release activation approved checksum '${activation.approvedReleaseChecksum}' does not match ` +
         `computed live checksum '${liveChecksum}'. Pack may have been tampered or pointer is stale.`
       );
     }
@@ -316,18 +382,48 @@ export class RuntimeService {
   }
 
   /**
+   * Backward-compatibility alias for assertReleaseActivationApproved.
+   * @deprecated Use assertReleaseActivationApproved instead.
+   */
+  async assertCutoverApproved(
+    tenantId: string,
+    environmentId: string,
+    stableKey?: string
+  ): Promise<any> {
+    return this.assertReleaseActivationApproved(tenantId, environmentId, stableKey);
+  }
+
+  /**
    * Executes a turn in the canonical runtime engine.
-   * Enforces the durable cutover gate, then passes the already-validated pack
+   * Enforces the durable release activation gate, then passes the already-validated pack
    * directly to executeTurn — eliminating the double loadActivePack call.
    */
   async runTurn(command: TurnCommand): Promise<TurnResult> {
     const stableKey = command.workspaceId || command.sessionId || command.tenantId;
-    const validatedPack = await this.assertCutoverApproved(
+    const validatedPack = await this.assertReleaseActivationApproved(
       command.tenantId,
       command.environmentId || 'production',
       stableKey
     );
     return this.appService.executeTurn(command, validatedPack);
+  }
+
+  /**
+   * Executes a turn over a genuine streaming event sink boundary.
+   * Enforces the durable release activation gate, then passes the validated pack and event sink
+   * directly to executeTurnStream.
+   */
+  async streamTurn(
+    command: TurnCommand,
+    sink: (event: string, data: any) => void
+  ): Promise<TurnResult> {
+    const stableKey = command.workspaceId || command.sessionId || command.tenantId;
+    const validatedPack = await this.assertReleaseActivationApproved(
+      command.tenantId,
+      command.environmentId || 'production',
+      stableKey
+    );
+    return this.appService.executeTurnStream(command, validatedPack, sink);
   }
 
   /**

@@ -113,7 +113,7 @@ export class TurnInterpreter {
         if (slotKey === 'budget') {
           const num = Number(String(matched[0]).replace(/[^0-9.]/g, ''));
           if (!isNaN(num) && num > 0) {
-            factVal = { amountCents: Math.round(num * 100), currency: 'AUD' };
+            factVal = { amountCents: Math.round(num * 100), currency: release?.profile?.primaryCurrency || (release as any)?.pricing?.currency || '' };
           }
         }
         if (slotKey === 'quantity') {
@@ -145,7 +145,7 @@ export class TurnInterpreter {
         const dollars = Number(budgetMatch[1]);
         if (!isNaN(dollars) && dollars > 0) {
           rawCandidateFacts['budget'] = {
-            value: { amountCents: Math.round(dollars * 100), currency: 'AUD' },
+            value: { amountCents: Math.round(dollars * 100), currency: release?.profile?.primaryCurrency || (release as any)?.pricing?.currency || '' },
             source: 'customer',
             confidence: 0.95,
             extractedAt: new Date().toISOString(),

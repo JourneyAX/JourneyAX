@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { adapterRegistry } from '@journeyax/integration';
 /**
  * Step 0 — Config Loader (config over code).
@@ -7,11 +8,8 @@ import { adapterRegistry } from '@journeyax/integration';
  * the agent config-driven: an admin edits a rule in the back office and the next
  * conversation reflects it — no code change, no deploy.
  *
- * Resilient: if project-service is unavailable, returns no rules and the agent
- * proceeds on its base prompt (graceful degradation).
- *
- * (Reaches project-service by URL for now; can move behind a ConfigPort in
- * @journeyax/integration later, like KnowledgePort.)
+ * Fails closed: if project-service is unavailable or tenant has no published config,
+ * returns null. The agent requires an active configuration to proceed.
  */
 export interface LoadedRule {
   name: string;
@@ -43,7 +41,7 @@ export interface LoadedProjectConfig {
   journeyGuidance?: string;       // persona.journeyGuidance (goals, not stages)
   capabilities?: string[];        // enabled agent capabilities (runtime toolset)
   commerceMode?: string;          // 'cart' (B2C guided journey) | 'quote' (B2B/fixtures)
-  pricing?: { currency: string; symbol: string; taxRate: number; discountRate: number }; // project.pricing (authoritative money rules)
+  pricing?: { currency?: string; symbol?: string; taxRate?: number; discountRate?: number }; // project.pricing (authoritative money rules)
   stripe?: { secretKey?: string; enabled: boolean };  // integrations.stripe (per-project payment key)
   scope?: ProjectScopeSlice;      // scope.rooms/categories — which spaces this business serves
   contextDimensions?: ContextDimension[]; // project-configured dims the agent extracts + scopes by
@@ -89,6 +87,7 @@ export interface ContextDimension {
   derive?: { from: string; map: Record<string, string> };
 }
 
+@Injectable()
 export class ConfigLoader {
   constructor(
     private readonly projectServiceUrl = process.env.PROJECT_SERVICE_URL_HTTP ||
@@ -98,19 +97,24 @@ export class ConfigLoader {
 
   /**
    * Load the tenant's published config (model + persona + journey guidance).
-   * Resilient: on any failure returns {} so the agent falls back to env defaults.
+   * Genuinely fails closed: returns null when the published configuration is missing,
+   * invalid, or unavailable. Never returns {} to fall back to an environment model.
    */
-  async loadProjectConfig(tenantId: string): Promise<LoadedProjectConfig> {
+  async loadProjectConfig(tenantId: string): Promise<LoadedProjectConfig | null> {
     try {
       // PUBLISHED config, not the live draft (FR-CONFIG-002): back-office edits only
-      // reach conversations after an explicit Publish. Falls back to the draft server-side
-      // for projects that have never been published.
+      // reach conversations after an explicit Publish.
       const res = await fetch(
         `${this.projectServiceUrl}/api/v1/projects/${encodeURIComponent(tenantId)}/published`,
         { headers: { 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' } },
       );
-      if (!res.ok) return {};
+      if (!res.ok) {
+        return null;
+      }
       const p: any = await res.json();
+      if (!p || typeof p !== 'object' || Object.keys(p).length === 0) {
+        return null;
+      }
       return {
         provider: p?.ai?.provider,
         model: p?.ai?.model,
@@ -128,9 +132,6 @@ export class ConfigLoader {
         systemPromptOverrides: p?.persona?.systemPromptOverrides,
         journeyGuidance: p?.persona?.journeyGuidance,
         capabilities: Array.isArray(p?.capabilities) ? p.capabilities : undefined,
-        // Commerce surface — a retail 'cart' brand sells the guided journey, so the
-        // agent must not force show-first over the occasion/fit/size clarify. 'quote'
-        // (or unset) keeps the direct-ask show-first behaviour for fixtures/kits.
         commerceMode: p?.commerceMode === 'cart' ? 'cart' : 'quote',
         scope: {
           rooms: Array.isArray(p?.scope?.rooms) ? p.scope.rooms : undefined,
@@ -138,29 +139,22 @@ export class ConfigLoader {
         },
         contextDimensions: this.resolveDimensions(p),
         configVersion: typeof p?.activeVersion === 'number' ? p.activeVersion : undefined,
-        // 'garment' (Three.js over a per-SKU mesh) vs 'candy' (a client-side
-        // composited disc). The agent must NOT try to server-render a candy —
-        // there is no mesh to render, so the garment validate would report the
-        // design "not displayable" and the agent would apologise over a panel
-        // that opened fine.
         configuratorType: p?.configurator?.productType || undefined,
         sizeScale: Array.isArray(p?.configurator?.sizeScale) ? p.configurator.sizeScale : undefined,
-        pricing: {
-          currency: p?.pricing?.currency || 'AUD',
-          symbol: p?.pricing?.symbol || '$',
-          taxRate: typeof p?.pricing?.taxRate === 'number' ? p.pricing.taxRate : 0,
-          discountRate: typeof p?.pricing?.discountRate === 'number' ? p.pricing.discountRate : 0,
-        },
-        stripe: {
-          // Per-project Stripe key (integrations.stripe.secretKey), un-redacted via
-          // the internal-key fetch. Falls back to platform env in the order service.
-          secretKey: p?.integrations?.stripe?.secretKey,
-          enabled: !!p?.integrations?.stripe?.enabled,
-        },
+        pricing: p?.pricing ? {
+          currency: p.pricing.currency,
+          symbol: p.pricing.symbol,
+          taxRate: typeof p.pricing.taxRate === 'number' ? p.pricing.taxRate : undefined,
+          discountRate: typeof p.pricing.discountRate === 'number' ? p.pricing.discountRate : undefined,
+        } : undefined,
+        stripe: p?.integrations?.stripe ? {
+          secretKey: p.integrations.stripe.secretKey,
+          enabled: !!p.integrations.stripe.enabled,
+        } : undefined,
       };
     } catch (err) {
-      console.warn('[ConfigLoader] could not load project config, using defaults:', (err as Error).message);
-      return {};
+      console.warn('[ConfigLoader] could not load project config:', (err as Error).message);
+      return null;
     }
   }
 

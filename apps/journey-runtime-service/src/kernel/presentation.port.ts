@@ -329,7 +329,7 @@ export class PresentationPort {
       (!validated.outcome?.bundle && decision.payload?.items);
 
     if (Array.isArray(searchItems) && searchItems.length > 0 && !validated.outcome?.bundle) {
-      const currency = validated.outcome?.currency || release.profile?.primaryCurrency || 'USD';
+      const currency = validated.outcome?.currency || release.profile?.primaryCurrency || '';
       const validProducts: any[] = [];
 
       for (let i = 0; i < searchItems.length; i++) {
@@ -459,8 +459,11 @@ export class PresentationPort {
           : typeof journeysRaw === 'object' && journeysRaw
           ? Object.values(journeysRaw)
           : [];
-        const activeJourney = journeys.find((j: any) => j.journeyId === workspace.journeyId) || journeys[0];
-        const stages = activeJourney?.stages || {};
+        const activeJourney = journeys.find((j: any) => j.journeyId === workspace.journeyId);
+        if (!activeJourney) {
+          throw new Error(`[presentation.port] Unknown or ambiguous journeyId "${workspace.journeyId}" on release for tenant "${release.manifest?.tenantId || 'unknown'}" - failing closed`);
+        }
+        const stages = activeJourney.stages || {};
         const stageDef = Array.isArray(stages)
           ? stages.find((s: any) => s.stageId === workspace.currentStage)
           : stages[workspace.currentStage];

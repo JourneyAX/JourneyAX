@@ -21,7 +21,7 @@ export class AgentRouter {
     const activeJourney = release.journeys.find((j) => j.journeyId === workspace.journeyId);
     const currentStage = activeJourney?.stages[workspace.currentStage];
 
-    let selectedAgent = agents[0];
+    let selectedAgent: AgentDefinition | undefined;
 
     // 1. Stage-level handoff policy targetRole match
     if (currentStage?.handoffPolicy?.targetRole) {
@@ -39,9 +39,20 @@ export class AgentRouter {
     } else {
       // 2. Direct stage ID match
       const stageMatch = agents.find(
-        (a) => a.agentId.toLowerCase() === workspace.currentStage.toLowerCase()
+        (a) => a.agentId.toLowerCase() === workspace.currentStage?.toLowerCase()
       );
       if (stageMatch) selectedAgent = stageMatch;
+    }
+
+    // 3. Single-agent pack: if exactly one agent is declared, it is the sole specialist
+    if (!selectedAgent && agents.length === 1) {
+      selectedAgent = agents.find(Boolean);
+    }
+
+    if (!selectedAgent) {
+      throw new Error(
+        `[AgentRouter] Could not resolve specialist agent for stage '${workspace.currentStage}' in journey '${workspace.journeyId}'. Pack declares ${agents.length} agents without an explicit match or targetRole - failing closed.`
+      );
     }
 
     return {

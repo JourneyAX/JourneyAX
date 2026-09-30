@@ -17,6 +17,9 @@ export const TurnCommandRequestSchema = z.object({
   idempotencyKey: z.string().optional(),
   tenantId: z.string().optional(),
   environmentId: z.enum(['dev', 'test', 'staging', 'production']).optional(),
+  environment: z.string().optional(),
+  projectId: z.string().optional(),
+  journeyId: z.string().optional(),
 });
 
 export type TurnCommandRequest = z.infer<typeof TurnCommandRequestSchema>;

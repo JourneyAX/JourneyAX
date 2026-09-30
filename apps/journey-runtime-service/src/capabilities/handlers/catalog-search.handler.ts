@@ -55,18 +55,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     } else {
       const uri = process.env.MONGODB_URI;
       if (!uri) {
-        const fallbackItems = [
-          {
-            sku: 'SKU-STD-001',
-            name: query ? `Specification for ${query}` : 'Standard Specified Materials',
-            description: 'Standard compliant materials specification package',
-            priceCents: 15000,
-            currency: input.currency || 'NZD',
-            inStock: true,
-            totalPriceCents: 15000,
-          },
-        ];
-        return { items: fallbackItems, total: fallbackItems.length };
+        return { items: [], total: 0, error: 'Database connection required for catalog search' };
       }
 
       try {

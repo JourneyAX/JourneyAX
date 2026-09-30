@@ -53,3 +53,38 @@ export interface TraceEntry {
   detail: string;
   data?: unknown;
 }
+
+export interface ChatRequest {
+  message?: string;
+  messages?: any[];
+  state?: {
+    phase?: string;
+    bom?: any[];
+    recommendedProducts?: any[];
+    finish?: string;
+    qty?: number;
+  };
+  tenantId?: string;
+  sessionId?: string;
+  customerId?: string;
+  demoPrincipalId?: string;
+  imageBase64?: string;
+  imageUrl?: string;
+  idempotencyKey?: string;
+  turnId?: string;
+  correlationId?: string;
+  workspaceId?: string;
+  projectId?: string;
+  journeyId?: string;
+  environment?: string;
+  environmentId?: string;
+}
+
+export interface ChatResponse {
+  message: any;
+  conversation: any[];
+  uiActions: { name: string; arguments: any }[];
+  sessionId: string;
+  intent?: IntentResult;
+  trace?: TraceEntry[];
+}

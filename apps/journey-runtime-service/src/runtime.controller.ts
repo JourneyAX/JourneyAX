@@ -11,6 +11,7 @@ import {
   UseGuards,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Inject,
   UsePipes,
   PipeTransform,
@@ -20,7 +21,7 @@ import {
 import { Response } from 'express';
 import { RuntimeService } from './runtime.service';
 import { TurnCommand, TurnResult, WorkspaceState, FactSource, DuplicateTurnError, ChannelEvent } from '@journeyax/journey-core';
-import { DurableCutoverRecord } from '@journeyax/database';
+import { DurableCutoverRecord, ReleaseActivationRecord } from '@journeyax/database';
 import { RuntimeAuthGuard, InternalOnly, Public } from './auth/auth.guard';
 import {
   TurnCommandRequestSchema,
@@ -70,6 +71,9 @@ export class RuntimeController {
       inputFacts: dto.inputFacts,
       approvalRequestId: dto.approvalRequestId,
       idempotencyKey: dto.idempotencyKey,
+      projectId: dto.projectId,
+      journeyId: dto.journeyId,
+      environment: dto.environment || env,
     };
 
     try {
@@ -88,6 +92,15 @@ export class RuntimeController {
     }
   }
 
+  /**
+   * SSE Event Streaming Boundary
+   *
+   * Note on Protocol Architecture:
+   * This endpoint provides Server-Sent Event (SSE) streaming via RuntimeService.streamTurn.
+   * Model and runtime lifecycle events (session, trace, capability, uiAction, token, data, error, done)
+   * are emitted directly to the event sink as they occur, preserving atomic capability execution
+   * and final outcome validation.
+   */
   @Post('chat/stream')
   async streamTurn(
     @Param('tenantId') tenantId: string,
@@ -122,6 +135,9 @@ export class RuntimeController {
       inputFacts: dto.inputFacts,
       approvalRequestId: dto.approvalRequestId,
       idempotencyKey: dto.idempotencyKey,
+      projectId: dto.projectId,
+      journeyId: dto.journeyId,
+      environment: dto.environment || env,
     };
 
     // Set SSE headers
@@ -133,56 +149,27 @@ export class RuntimeController {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
+    let errorEmitted = false;
     const emit = (event: string, data: any) => {
+      if (event === 'error') {
+        errorEmitted = true;
+      }
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
-    emit('session', { sessionId: command.sessionId });
-
     try {
-      const turnResult = await this.runtimeService.runTurn(command);
-
-      // Emit presentCard envelopes for validated UI cards
-      for (const inst of turnResult.uiInstructions) {
-        emit('uiAction', {
-          name: 'presentCard',
-          arguments: {
-            card: {
-              id: inst.actionId || `${inst.component}-${Date.now()}`,
-              cardType: inst.component,
-              state: inst.props,
-            },
-          },
-          card: {
-            cardType: inst.component,
-            state: inst.props,
-          },
-        });
-      }
-
-      // Stream assistant response tokens
-      const text = turnResult.assistantMessage || '';
-      const words = text.split(' ');
-      for (let i = 0; i < words.length; i++) {
-        emit('token', words[i] + (i < words.length - 1 ? ' ' : ''));
-        await new Promise((r) => setTimeout(r, 10));
-      }
-
-      emit('done', {
-        sessionId: command.sessionId,
-        workspaceId: command.workspaceId,
-        decision: turnResult.decision,
-        trace: turnResult.trace,
-      });
+      await this.runtimeService.streamTurn(command, emit);
     } catch (err: any) {
-      if (err instanceof DuplicateTurnError) {
-        emit('error', {
-          code: err.code,
-          turnId: err.turnId,
-          message: err.message,
-        });
-      } else {
-        emit('error', { message: err.message || 'Error executing turn stream' });
+      if (!errorEmitted) {
+        if (err instanceof DuplicateTurnError) {
+          emit('error', {
+            code: err.code,
+            turnId: err.turnId,
+            message: err.message,
+          });
+        } else {
+          emit('error', { message: err.message || 'Error executing turn stream' });
+        }
       }
     } finally {
       res.end();
@@ -357,34 +344,65 @@ export class RuntimeController {
     );
   }
 
-  @Get('cutover')
-  @Public()
-  async getCutoverRecord(
+  @Get('release-activation')
+  @InternalOnly()
+  async getReleaseActivationRecord(
     @Param('tenantId') pathTenantId: string,
     @Param('environmentId') pathEnvId: string | undefined,
     @Req() req: any
-  ): Promise<DurableCutoverRecord> {
-    const tenantId = pathTenantId || req.authContext?.tenantId;
-    const environmentId = pathEnvId || req.authContext?.environmentId || 'production';
-    const record = await this.runtimeService.getCutoverRecord(tenantId, environmentId);
+  ): Promise<ReleaseActivationRecord> {
+    const tenantId = (pathTenantId || req.authContext?.tenantId || '').toLowerCase().trim();
+    const environmentId = (pathEnvId || req.authContext?.environmentId || 'production').toLowerCase().trim();
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (req.authContext?.tenantId && req.authContext.tenantId !== tenantId) {
+      throw new ForbiddenException(`Tenant binding mismatch: token=${req.authContext.tenantId}, requested=${tenantId}`);
+    }
+    if (req.authContext?.environmentId && req.authContext.environmentId !== environmentId) {
+      throw new ForbiddenException(`Environment binding mismatch: token=${req.authContext.environmentId}, requested=${environmentId}`);
+    }
+    const record = await this.runtimeService.getReleaseActivationRecord(tenantId, environmentId);
     if (!record) {
       throw new NotFoundException(
-        `No durable cutover record found for tenant '${tenantId}' in environment '${environmentId}'`
+        `No authoritative release activation record found for tenant '${tenantId}' in environment '${environmentId}'`
       );
     }
     return record;
   }
 
-  @Post('cutover')
+  /**
+   * @deprecated Temporary backward-compatibility route for /cutover. Use /release-activation.
+   */
+  @Get('cutover')
   @InternalOnly()
-  async setCutoverRecord(
+  async getCutoverRecord(
+    @Param('tenantId') pathTenantId: string,
+    @Param('environmentId') pathEnvId: string | undefined,
+    @Req() req: any
+  ): Promise<ReleaseActivationRecord> {
+    return this.getReleaseActivationRecord(pathTenantId, pathEnvId, req);
+  }
+
+  @Post('release-activation')
+  @InternalOnly()
+  async setReleaseActivationRecord(
     @Param('tenantId') pathTenantId: string,
     @Param('environmentId') pathEnvId: string | undefined,
     @Body() body: any,
     @Req() req: any
-  ): Promise<DurableCutoverRecord> {
-    const tenantId = pathTenantId || req.authContext?.tenantId;
-    const environmentId = (pathEnvId || req.authContext?.environmentId || 'production') as any;
+  ): Promise<ReleaseActivationRecord> {
+    const tenantId = (pathTenantId || req.authContext?.tenantId || '').toLowerCase().trim();
+    const environmentId = (pathEnvId || req.authContext?.environmentId || 'production').toLowerCase().trim() as any;
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (req.authContext?.tenantId && req.authContext.tenantId !== tenantId) {
+      throw new ForbiddenException(`Tenant binding mismatch: token=${req.authContext.tenantId}, requested=${tenantId}`);
+    }
+    if (req.authContext?.environmentId && req.authContext.environmentId !== environmentId) {
+      throw new ForbiddenException(`Environment binding mismatch: token=${req.authContext.environmentId}, requested=${environmentId}`);
+    }
 
     if (!body || !body.status || !body.approvedReleaseVersion || !body.approvedReleaseChecksum) {
       throw new BadRequestException(
@@ -392,7 +410,7 @@ export class RuntimeController {
       );
     }
 
-    return this.runtimeService.persistCutoverRecordTransactionally(
+    return this.runtimeService.persistReleaseActivationRecordTransactionally(
       tenantId,
       environmentId,
       {
@@ -406,6 +424,20 @@ export class RuntimeController {
         notes: body.notes,
       }
     );
+  }
+
+  /**
+   * @deprecated Temporary backward-compatibility route for /cutover. Use /release-activation.
+   */
+  @Post('cutover')
+  @InternalOnly()
+  async setCutoverRecord(
+    @Param('tenantId') pathTenantId: string,
+    @Param('environmentId') pathEnvId: string | undefined,
+    @Body() body: any,
+    @Req() req: any
+  ): Promise<ReleaseActivationRecord> {
+    return this.setReleaseActivationRecord(pathTenantId, pathEnvId, body, req);
   }
 
   @Get('outbox/metrics')

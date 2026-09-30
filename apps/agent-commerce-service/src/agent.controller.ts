@@ -10,6 +10,7 @@ import { WhatsAppService } from './commerce/whatsapp.service';
 import { BranchStockService } from './commerce/branch-stock.service';
 import { ConfigLoader } from './pipeline/config-loader';
 import { SessionStore } from './pipeline/session-store';
+import { BusinessPackLoader } from '@journeyax/business-pack';
 
 @Controller('api/v1/:projectId/commerce')
 export class JourneyAXController {
@@ -80,20 +81,23 @@ export class JourneyAXController {
     const items = Array.isArray(body?.items) ? body.items : [];
     const branch = String(body?.branch || '').trim();
     let branchName = branch;
-    const results = items
-      .filter((it) => it?.sku)
-      .map((it) => {
-        const r = BranchStockService.getStockForSku(String(it.sku), it.productTitle || 'Building Material / Tool', branch);
-        const top = r.branches[0];
-        if (top?.branchName) branchName = top.branchName;
-        return {
-          sku: String(it.sku),
-          status: top?.status || 'Order on Request',
-          stockQty: top?.stockQty ?? 0,
-          clickAndCollectReady: !!top?.clickAndCollectReady,
-          collectionTimeframe: top?.collectionTimeframe || 'Transfer from DC (2 days)',
-        };
-      });
+    const tenantId = (_projectId || '').toLowerCase().trim();
+    const results = await Promise.all(
+      items
+        .filter((it) => it?.sku)
+        .map(async (it) => {
+          const r = await BranchStockService.getStockForSku(tenantId, String(it.sku), it.productTitle || 'Item', branch);
+          const top = r.branches[0];
+          if (top?.branchName) branchName = top.branchName;
+          return {
+            sku: String(it.sku),
+            status: top?.status || (r.ok ? 'Order on Request' : 'Unavailable'),
+            stockQty: top?.stockQty ?? 0,
+            clickAndCollectReady: !!top?.clickAndCollectReady,
+            collectionTimeframe: top?.collectionTimeframe || 'Contact store for fulfilment',
+          };
+        })
+    );
     return { ok: true, branch, branchName, results };
   }
 
@@ -139,7 +143,8 @@ export class JourneyAXController {
   @Post('roster/quote')
   async quoteRoster(
     @Param('projectId') projectId: string,
-    @Body() body: { rows?: any[]; skuByGarment?: Record<string, string>; sessionId?: string; title?: string },
+    @Headers('x-idempotency-key') headerIdempotencyKey: string,
+    @Body() body: { rows?: any[]; skuByGarment?: Record<string, string>; sessionId?: string; title?: string; idempotencyKey?: string },
   ) {
     const rows = body?.rows || [];
     const skuByGarment = body?.skuByGarment || {};
@@ -149,16 +154,23 @@ export class JourneyAXController {
     }
 
     const tenantId = (projectId || '').toLowerCase();
+    const idempotencyKey =
+      (headerIdempotencyKey && typeof headerIdempotencyKey === 'string' ? headerIdempotencyKey.trim() : '') ||
+      (body?.idempotencyKey && typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : undefined);
     const items = this.rosterService.toQuoteLines(rows, skuByGarment);
-    // Pricing comes from PROJECT CONFIG and the quote engine does the arithmetic
+    // Pricing comes from PROJECT CONFIG or authoritative BUSINESS PACK and the quote engine does the arithmetic
     // — the roster only ever says which SKU and how many.
-    const project: any = await this.configLoader.loadProjectConfig(tenantId).catch(() => null);
+    const pricing = await this.resolvePricingPolicy(tenantId);
+    if (!pricing?.currency) {
+      throw new HttpException(`Pricing configuration is required for tenant "${tenantId}" - failing closed`, HttpStatus.BAD_REQUEST);
+    }
     const quote = await this.quoteService.build({
       tenantId,
       sessionId: body?.sessionId,
+      idempotencyKey,
       title: body?.title || 'Team order',
       items,
-      pricing: project?.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
+      pricing,
     });
     return { quote, players: rows.length, lines: items.length };
   }
@@ -177,9 +189,13 @@ export class JourneyAXController {
   @Post('kit/quote')
   async quoteKit(
     @Param('projectId') projectId: string,
-    @Body() body: { items?: Array<{ sku: string; quantity?: number }>; sessionId?: string; title?: string },
+    @Headers('x-idempotency-key') headerIdempotencyKey: string,
+    @Body() body: { items?: Array<{ sku: string; quantity?: number; reason?: string; required?: boolean }>; sessionId?: string; title?: string; idempotencyKey?: string; roomType?: string; plannerContext?: any },
   ) {
     const tenantId = (projectId || '').toLowerCase();
+    const idempotencyKey =
+      (headerIdempotencyKey && typeof headerIdempotencyKey === 'string' ? headerIdempotencyKey.trim() : '') ||
+      (body?.idempotencyKey && typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : undefined);
 
     /* How many of each — from the roster the customer already gave.
      * The browser doesn't know the team size (it lives in the session), so a
@@ -201,17 +217,46 @@ export class JourneyAXController {
       }));
     if (!items.length) return { error: 'Nothing on the rack to price yet.' };
 
-    const project: any = await this.configLoader.loadProjectConfig(tenantId).catch(() => null);
+    const pricing = await this.resolvePricingPolicy(tenantId);
+    if (!pricing?.currency) {
+      throw new HttpException(`Pricing configuration is required for tenant "${tenantId}" - failing closed`, HttpStatus.BAD_REQUEST);
+    }
     const quote = await this.quoteService.build({
       tenantId,
       sessionId: body?.sessionId,
+      idempotencyKey,
       title: body?.title || 'Team kit',
       items,
       roomType: (body as any)?.roomType,
       plannerContext: (body as any)?.plannerContext,
-      pricing: project?.pricing || { currency: 'AUD', symbol: '$', taxRate: 0, discountRate: 0 },
+      pricing,
     });
     return { quote, lines: items.length };
+  }
+
+  private async resolvePricingPolicy(tenantId: string): Promise<{ currency: string; symbol: string; taxRate: number; discountRate: number } | null> {
+    const project: any = await this.configLoader.loadProjectConfig(tenantId).catch(() => null);
+    if (project?.pricing?.currency) {
+      return {
+        currency: project.pricing.currency,
+        symbol: project.pricing.symbol || '$',
+        taxRate: typeof project.pricing.taxRate === 'number' ? project.pricing.taxRate : 0,
+        discountRate: typeof project.pricing.discountRate === 'number' ? project.pricing.discountRate : 0,
+      };
+    }
+    const loader = new BusinessPackLoader();
+    const pack = await loader.loadPublished(tenantId, 'production').catch(() => null);
+    if (pack?.profile?.primaryCurrency) {
+      const curr = pack.profile.primaryCurrency;
+      const isNz = curr === 'NZD';
+      return {
+        currency: curr,
+        symbol: '$',
+        taxRate: typeof (pack as any).pricing?.taxRate === 'number' ? (pack as any).pricing.taxRate : (isNz ? 0.15 : 0),
+        discountRate: typeof (pack as any).pricing?.discountRate === 'number' ? (pack as any).pricing.discountRate : 0,
+      };
+    }
+    return null;
   }
 
   /**
@@ -242,6 +287,14 @@ export class JourneyAXController {
       sessionId?: string;
       imageBase64?: string;
       imageUrl?: string;
+      turnId?: string;
+      correlationId?: string;
+      workspaceId?: string;
+      idempotencyKey?: string;
+      projectId?: string;
+      journeyId?: string;
+      environment?: string;
+      environmentId?: string;
     }
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
@@ -261,16 +314,46 @@ export class JourneyAXController {
         sessionId: body.sessionId,
         imageBase64: body.imageBase64,
         imageUrl: body.imageUrl,
+        turnId: body.turnId,
+        correlationId: body.correlationId,
+        workspaceId: body.workspaceId,
+        idempotencyKey: body.idempotencyKey,
+        projectId: body.projectId || projectId,
+        journeyId: body.journeyId,
+        environment: body.environment || body.environmentId,
+        environmentId: body.environmentId || body.environment,
       });
 
       return result;
     } catch (error: any) {
       console.error('[JourneyAX] Chat error:', error);
-      return {
-        message: { role: 'assistant', content: `🚨 **Error:** ${error.message || 'An error occurred during AI processing.'}` },
-        conversation: [],
-        uiActions: [],
-      };
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (typeof error?.getStatus === 'function') {
+        throw error;
+      }
+      const statusCode = error?.status || error?.statusCode;
+      if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 600) {
+        throw new HttpException(error.message || 'Request failed', statusCode);
+      }
+      if (
+        error.name === 'BadRequestException' ||
+        error.message?.includes('required') ||
+        error.message?.includes('Validation') ||
+        error.message?.includes('Missing')
+      ) {
+        throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+      }
+      if (
+        error.name === 'ServiceUnavailableException' ||
+        error.message?.includes('BLOCKED') ||
+        error.message?.includes('503') ||
+        error.message?.includes('Cutover repository lookup failed')
+      ) {
+        throw new HttpException(error.message, HttpStatus.SERVICE_UNAVAILABLE);
+      }
+      throw error;
     }
   }
 
@@ -284,7 +367,25 @@ export class JourneyAXController {
   async chatStream(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
-    @Body() body: { message?: string; messages?: any[]; customerId?: string; state?: any; tenantId?: string; sessionId?: string; imageBase64?: string; imageUrl?: string; demoPrincipalId?: string },
+    @Body() body: {
+      message?: string;
+      messages?: any[];
+      customerId?: string;
+      state?: any;
+      tenantId?: string;
+      sessionId?: string;
+      imageBase64?: string;
+      imageUrl?: string;
+      demoPrincipalId?: string;
+      turnId?: string;
+      correlationId?: string;
+      workspaceId?: string;
+      idempotencyKey?: string;
+      projectId?: string;
+      journeyId?: string;
+      environment?: string;
+      environmentId?: string;
+    },
     @Res() res: Response,
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
@@ -292,13 +393,32 @@ export class JourneyAXController {
       res.status(400).json({ error: 'Bad Request', message: 'Tenant identifier is required' });
       return;
     }
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // disable proxy buffering
-    (res as any).flushHeaders?.();
+
+    let headersSent = false;
+    let heartbeat: NodeJS.Timeout | null = null;
+
+    const ensureHeaders = () => {
+      if (!headersSent && !res.headersSent) {
+        headersSent = true;
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no'); // disable proxy buffering
+        (res as any).flushHeaders?.();
+
+        heartbeat = setInterval(() => {
+          try {
+            res.write(`: ping\n\n`);
+            (res as any).flush?.();
+          } catch {
+            /* client disconnected */
+          }
+        }, 4000);
+      }
+    };
 
     const emit = (event: string, data: any) => {
+      ensureHeaders();
       try {
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         (res as any).flush?.();
@@ -307,30 +427,55 @@ export class JourneyAXController {
       }
     };
 
-    // Keepalive: the quote turn has a long silent gap (multiple searches + BOM
-    // assembly) with no events. Without a heartbeat, proxies/browsers can drop
-    // the idle SSE connection before the tokens arrive. SSE comment lines (": ")
-    // are ignored by clients but keep the connection warm.
-    const heartbeat = setInterval(() => {
-      try {
-        res.write(`: ping\n\n`);
-        (res as any).flush?.();
-      } catch {
-        /* client disconnected */
-      }
-    }, 4000);
-
     try {
       await this.agentService.processChatStream(
-        { message: body.message, messages: body.messages, customerId: body.customerId, demoPrincipalId: body.demoPrincipalId, state: body.state, tenantId, sessionId: body.sessionId, imageBase64: body.imageBase64, imageUrl: body.imageUrl },
+        {
+          message: body.message,
+          messages: body.messages,
+          customerId: body.customerId,
+          demoPrincipalId: body.demoPrincipalId,
+          state: body.state,
+          tenantId,
+          sessionId: body.sessionId,
+          imageBase64: body.imageBase64,
+          imageUrl: body.imageUrl,
+          turnId: body.turnId,
+          correlationId: body.correlationId,
+          workspaceId: body.workspaceId,
+          idempotencyKey: body.idempotencyKey,
+          projectId: body.projectId || projectId,
+          journeyId: body.journeyId,
+          environment: body.environment || body.environmentId,
+          environmentId: body.environmentId || body.environment,
+        },
         emit,
       );
     } catch (error: any) {
       console.error('[JourneyAX] Stream error:', error);
+      if (!headersSent && !res.headersSent) {
+        const status =
+          error instanceof HttpException
+            ? error.getStatus()
+            : typeof error?.status === 'number' && error.status >= 400 && error.status < 600
+            ? error.status
+            : error.message?.includes('BLOCKED') || error.message?.includes('503')
+            ? HttpStatus.SERVICE_UNAVAILABLE
+            : error.message?.includes('required')
+            ? HttpStatus.BAD_REQUEST
+            : HttpStatus.INTERNAL_SERVER_ERROR;
+        res.status(status).json({
+          statusCode: status,
+          message: error.message || 'Stream error',
+          error: error.name || 'Error',
+        });
+        return;
+      }
       emit('error', { message: error.message || 'stream error' });
     } finally {
-      clearInterval(heartbeat);
-      res.end();
+      if (heartbeat) clearInterval(heartbeat);
+      if (!res.writableEnded) {
+        res.end();
+      }
     }
   }
 
@@ -374,6 +519,7 @@ export class JourneyAXController {
     if (!quote) return { success: false, error: 'Quote not found or expired.' };
 
     const cfg = await this.configLoader.loadProjectConfig(tenantId);
+    if (!cfg) throw new HttpException(`Configuration not found for tenant: ${tenantId}`, HttpStatus.NOT_FOUND);
     const base = process.env.STOREFRONT_URL || 'http://localhost:3008';
     const result = await this.orderService.create({
       tenantId,
@@ -441,7 +587,7 @@ export class JourneyAXController {
     if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
     const cfg = await this.configLoader.loadProjectConfig(tenantId);
     const raw = (req as any).rawBody instanceof Buffer ? (req as any).rawBody.toString('utf8') : JSON.stringify(req.body || {});
-    const out = await this.orderService.handleWebhook(raw, signature || '', cfg.stripe?.secretKey);
+    const out = await this.orderService.handleWebhook(raw, signature || '', cfg?.stripe?.secretKey);
     if (out.handled?.startsWith('paid:')) {
       const order = await this.orderService.get(out.handled.slice('paid:'.length), tenantId);
       if (order) await this.quoteService.markStatus(order.quoteId, 'ordered');

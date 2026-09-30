@@ -1,16 +1,21 @@
 import { Db, MongoClient } from 'mongodb';
 import {
   COLLECTION_TENANT_CUTOVERS,
+  COLLECTION_RELEASE_ACTIVATIONS,
   COLLECTION_CUTOVER_AUDIT_LOGS,
+  COLLECTION_RELEASE_ACTIVATION_AUDIT_LOGS,
   COLLECTION_BUSINESS_PACK_RELEASES,
   COLLECTION_BUSINESS_PACK_POINTERS,
   DurableCutoverRecord,
+  ReleaseActivationRecord,
   CutoverAuditLogRecord,
+  ReleaseActivationAuditLogRecord,
+  TrafficPolicy,
   EnvironmentId,
 } from './types';
 
-export interface PromoteCutoverParams {
-  status: 'migrated' | 'canary' | 'unmigrated' | 'rollback';
+export interface PromoteReleaseActivationParams {
+  status: TrafficPolicy;
   approvedReleaseVersion: string;
   approvedReleaseChecksum: string;
   expectedRevision: number; // strictly required! 0 for initial
@@ -20,35 +25,67 @@ export interface PromoteCutoverParams {
   notes?: string;
 }
 
-export class CutoverValidationError extends Error {
+// Deprecated alias for backward compatibility
+export type PromoteCutoverParams = PromoteReleaseActivationParams;
+
+export class ReleaseActivationValidationError extends Error {
   constructor(message: string, public readonly code: string = 'VALIDATION_FAILED') {
     super(message);
-    this.name = 'CutoverValidationError';
+    this.name = 'ReleaseActivationValidationError';
   }
 }
 
-export class CutoverConflictError extends Error {
+// Deprecated alias for backward compatibility
+export const CutoverValidationError = ReleaseActivationValidationError;
+
+export class ReleaseActivationConflictError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'CutoverConflictError';
+    this.name = 'ReleaseActivationConflictError';
   }
 }
 
-export class CutoverRepository {
+// Deprecated alias for backward compatibility
+export const CutoverConflictError = ReleaseActivationConflictError;
+
+export class ReleaseActivationRepositoryUnavailableError extends Error {
+  constructor(message: string, public readonly cause?: any) {
+    super(message);
+    this.name = 'ReleaseActivationRepositoryUnavailableError';
+  }
+}
+
+// Deprecated alias for backward compatibility
+export const CutoverRepositoryUnavailableError = ReleaseActivationRepositoryUnavailableError;
+
+/**
+ * ReleaseActivationRepository
+ * (Canonical implementation for Release Activation & Traffic Policy)
+ *
+ * Durable MongoDB repository managing authoritative release activation records,
+ * atomic compare-and-swap (CAS) promotions, and immutable audit logs.
+ */
+export class ReleaseActivationRepository {
   constructor(
     private dbProvider: () => Promise<{ db: Db; client: MongoClient }>
   ) {}
 
   /**
-   * Retrieves the authoritative durable cutover record for a tenant and environment.
-   * Fails closed if not found or if database fails in production.
+   * Retrieves the authoritative durable release activation record for a tenant and environment.
+   * - A successful lookup with no activation record returns null.
+   * - Any database/provider/connection failure throws ReleaseActivationRepositoryUnavailableError.
    */
-  async getCutoverRecord(
+  async getReleaseActivation(
     tenantId: string,
     environmentId: string = 'production'
-  ): Promise<DurableCutoverRecord | null> {
+  ): Promise<ReleaseActivationRecord | null> {
     const normTenant = (tenantId || '').trim().toLowerCase();
     const normEnv = (environmentId || 'production').trim().toLowerCase();
+
+    // If subclass overrode getCutoverRecord, delegate to preserve compatibility
+    if (this.getCutoverRecord !== ReleaseActivationRepository.prototype.getCutoverRecord) {
+      return this.getCutoverRecord(normTenant, normEnv);
+    }
 
     try {
       const { db } = await this.dbProvider();
@@ -74,64 +111,84 @@ export class CutoverRepository {
         updatedAt: doc.updatedAt,
       };
     } catch (err: any) {
-      if (process.env.NODE_ENV === 'production') {
-        // Fail closed in production
-        return null;
+      if (
+        err instanceof ReleaseActivationValidationError ||
+        err instanceof ReleaseActivationConflictError
+      ) {
+        throw err;
       }
-      throw err;
+      throw new ReleaseActivationRepositoryUnavailableError(
+        `Failed to retrieve release activation record for tenant='${normTenant}' env='${normEnv}': ${err.message}`,
+        err
+      );
     }
   }
 
   /**
-   * Promotes or updates a cutover record inside a strict MongoDB session transaction.
+   * Backward-compatibility alias for getReleaseActivation.
+   * @deprecated Use getReleaseActivation instead.
+   */
+  async getCutoverRecord(
+    tenantId: string,
+    environmentId: string = 'production'
+  ): Promise<DurableCutoverRecord | null> {
+    return this.getReleaseActivation(tenantId, environmentId);
+  }
+
+  /**
+   * Promotes or updates a release activation record inside a strict MongoDB session transaction.
    *
    * Enforces:
    * 1. Validate tenant and environment.
    * 2. Load referenced Business Pack release.
    * 3. Verify version and checksum.
    * 4. Verify active pointer in business_pack_pointers.
-   * 5. Require expectedRevision.
+   * 5. Require expectedRevision for compare-and-swap (CAS).
    * 6. Update using a revision-constrained filter.
    * 7. Write audit record in the same transaction.
    * 8. Fail if the revision changed (CAS mismatch).
    */
-  async promoteCutover(
+  async promoteReleaseActivation(
     tenantId: string,
     environmentId: EnvironmentId,
-    params: PromoteCutoverParams
-  ): Promise<DurableCutoverRecord> {
-    return this.promoteCutoverTransactionally(tenantId, environmentId, params);
-  }
-
-  async promoteCutoverTransactionally(
-    tenantId: string,
-    environmentId: EnvironmentId,
-    params: PromoteCutoverParams
-  ): Promise<DurableCutoverRecord> {
+    params: PromoteReleaseActivationParams
+  ): Promise<ReleaseActivationRecord> {
     const normTenant = (tenantId || '').trim().toLowerCase();
     const normEnv = (environmentId || 'production').trim().toLowerCase() as EnvironmentId;
 
     if (!normTenant) {
-      throw new CutoverValidationError('tenantId is required', 'TENANT_REQUIRED');
+      throw new ReleaseActivationValidationError('tenantId is required', 'TENANT_REQUIRED');
     }
     if (!params.approvedReleaseVersion || !params.approvedReleaseChecksum) {
-      throw new CutoverValidationError(
+      throw new ReleaseActivationValidationError(
         'approvedReleaseVersion and approvedReleaseChecksum are required',
         'RELEASE_INFO_REQUIRED'
       );
     }
     if (typeof params.expectedRevision !== 'number') {
-      throw new CutoverValidationError(
+      throw new ReleaseActivationValidationError(
         'expectedRevision is strictly required for revision-based compare-and-swap',
         'EXPECTED_REVISION_REQUIRED'
       );
     }
 
-    const { db, client } = await this.dbProvider();
+    let client: MongoClient;
+    let db: Db;
+    try {
+      const providerRes = await this.dbProvider();
+      db = providerRes.db;
+      client = providerRes.client;
+    } catch (err: any) {
+      throw new ReleaseActivationRepositoryUnavailableError(
+        `Failed to connect to database provider for promoteReleaseActivation: ${err.message}`,
+        err
+      );
+    }
+
     const session = client.startSession();
 
     try {
-      let resultRecord: DurableCutoverRecord | null = null;
+      let resultRecord: ReleaseActivationRecord | null = null;
 
       await session.withTransaction(async () => {
         // 1 & 2: Load the referenced Business Pack release
@@ -148,7 +205,7 @@ export class CutoverRepository {
         );
 
         if (!releaseDoc) {
-          throw new CutoverValidationError(
+          throw new ReleaseActivationValidationError(
             `Referenced Business Pack release v${params.approvedReleaseVersion} not found for tenant '${normTenant}' (${normEnv})`,
             'RELEASE_NOT_FOUND'
           );
@@ -157,7 +214,7 @@ export class CutoverRepository {
         // 3. Verify version and checksum
         const actualChecksum = releaseDoc.checksum || releaseDoc.manifest?.checksum;
         if (actualChecksum !== params.approvedReleaseChecksum) {
-          throw new CutoverValidationError(
+          throw new ReleaseActivationValidationError(
             `Release checksum mismatch: expected '${actualChecksum}', got '${params.approvedReleaseChecksum}'`,
             'CHECKSUM_MISMATCH'
           );
@@ -169,27 +226,27 @@ export class CutoverRepository {
           { session }
         );
         if (!pointerDoc) {
-          throw new CutoverValidationError(
+          throw new ReleaseActivationValidationError(
             `No active Business Pack pointer found for tenant '${normTenant}' (${normEnv})`,
             'POINTER_NOT_FOUND'
           );
         }
         const pointerVersion = pointerDoc.activeReleaseVersion || pointerDoc.activeVersion;
         if (pointerVersion !== params.approvedReleaseVersion) {
-          throw new CutoverValidationError(
+          throw new ReleaseActivationValidationError(
             `Pointer activeVersion mismatch: pointer points to version '${pointerVersion}', but approved release version is '${params.approvedReleaseVersion}'`,
             'POINTER_VERSION_MISMATCH'
           );
         }
         const pointerChecksum = pointerDoc.activeReleaseChecksum || pointerDoc.checksum;
         if (!pointerChecksum) {
-          throw new CutoverValidationError(
+          throw new ReleaseActivationValidationError(
             `Active Business Pack pointer for tenant '${normTenant}' (${normEnv}) is missing checksum`,
             'POINTER_CHECKSUM_MISSING'
           );
         }
         if (pointerChecksum !== params.approvedReleaseChecksum) {
-          throw new CutoverValidationError(
+          throw new ReleaseActivationValidationError(
             `Pointer checksum mismatch: pointer checksum '${pointerChecksum}' does not match approved release checksum '${params.approvedReleaseChecksum}'`,
             'POINTER_CHECKSUM_MISMATCH'
           );
@@ -203,15 +260,15 @@ export class CutoverRepository {
 
         const currentRevision = currentCutover ? currentCutover.revision : 0;
         if (currentRevision !== params.expectedRevision) {
-          throw new CutoverConflictError(
-            `Cutover revision conflict: current revision is ${currentRevision}, expected ${params.expectedRevision}`
+          throw new ReleaseActivationConflictError(
+            `Release activation revision conflict: current revision is ${currentRevision}, expected ${params.expectedRevision}`
           );
         }
 
         const nextRevision = currentRevision + 1;
         const now = new Date();
 
-        const updatedDoc: DurableCutoverRecord = {
+        const updatedDoc: ReleaseActivationRecord = {
           tenantId: normTenant,
           environmentId: normEnv,
           status: params.status,
@@ -234,8 +291,8 @@ export class CutoverRepository {
             { session }
           );
           if (updateRes.matchedCount === 0) {
-            throw new CutoverConflictError(
-              `Concurrent cutover modification detected (CAS filter failed for revision ${params.expectedRevision})`
+            throw new ReleaseActivationConflictError(
+              `Concurrent release activation modification detected (CAS filter failed for revision ${params.expectedRevision})`
             );
           }
         } else {
@@ -243,7 +300,7 @@ export class CutoverRepository {
         }
 
         // 7. Write audit record in the same transaction
-        const auditDoc: CutoverAuditLogRecord = {
+        const auditDoc: ReleaseActivationAuditLogRecord = {
           tenantId: normTenant,
           environmentId: normEnv,
           previousStatus: currentCutover?.status || 'unmigrated',
@@ -263,8 +320,47 @@ export class CutoverRepository {
       });
 
       return resultRecord!;
+    } catch (err: any) {
+      if (
+        err instanceof ReleaseActivationValidationError ||
+        err instanceof ReleaseActivationConflictError
+      ) {
+        throw err;
+      }
+      throw new ReleaseActivationRepositoryUnavailableError(
+        `Failed to promote release activation for tenant='${normTenant}' env='${normEnv}': ${err.message}`,
+        err
+      );
     } finally {
       await session.endSession();
     }
   }
+
+  /**
+   * Backward-compatibility alias for promoteReleaseActivation.
+   * @deprecated Use promoteReleaseActivation instead.
+   */
+  async promoteCutover(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    params: PromoteCutoverParams
+  ): Promise<DurableCutoverRecord> {
+    return this.promoteReleaseActivation(tenantId, environmentId, params);
+  }
+
+  /**
+   * Backward-compatibility alias for promoteReleaseActivation.
+   * @deprecated Use promoteReleaseActivation instead.
+   */
+  async promoteCutoverTransactionally(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    params: PromoteCutoverParams
+  ): Promise<DurableCutoverRecord> {
+    return this.promoteReleaseActivation(tenantId, environmentId, params);
+  }
 }
+
+// Backward-compatibility alias for CutoverRepository
+export const CutoverRepository = ReleaseActivationRepository;
+export type CutoverRepository = ReleaseActivationRepository;
