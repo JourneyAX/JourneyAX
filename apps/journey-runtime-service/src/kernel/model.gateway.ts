@@ -203,7 +203,7 @@ export class ModelGateway {
 
     // 2. Evidenced Data Residency Verification (Must be proven by endpoint/config, not just label)
     const evidenced = this.determineEndpointResidency(route.provider, endpoint);
-    const requiredResidency = (req.targetDataResidency || route.dataResidency).trim().toLowerCase();
+    const requiredResidency = (req.targetDataResidency || route.dataResidency || 'au').trim().toLowerCase();
 
     // Find the active policy item for residency allow-lists & attestations
     const policy =

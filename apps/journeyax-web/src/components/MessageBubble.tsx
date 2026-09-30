@@ -4,6 +4,9 @@ import React from 'react';
 
 import { JourneyMessage } from '@/lib/types';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import { sanitizeMessageText } from '../lib/sanitize';
+
+export { sanitizeMessageText };
 
 interface Props {
   message: JourneyMessage;
@@ -11,8 +14,11 @@ interface Props {
 
 // Simple markdown parser for chat messages — handles **bold**, *italic*, and line breaks
 function renderMarkdown(text: string) {
+  const sanitized = sanitizeMessageText(text);
+  if (!sanitized) return null;
+
   // Split into paragraphs by double newlines
-  const paragraphs = text.split(/\n\n+/);
+  const paragraphs = sanitized.split(/\n\n+/);
 
   return paragraphs.map((para, pIdx) => {
     // Handle single line breaks within a paragraph
@@ -78,7 +84,7 @@ export default function MessageBubble({ message }: Props) {
   if (message.role === 'user') {
     return (
       <div className="msg msg--user">
-        <div className="msg__bubble--user">{message.text}</div>
+        <div className="msg__bubble--user">{sanitizeMessageText(message.text)}</div>
       </div>
     );
   }
@@ -87,12 +93,12 @@ export default function MessageBubble({ message }: Props) {
     return (
       <div className="msg msg--note">
         <div className="msg__note">
-          <svg className="msg__note-icon" width="15" height="15" viewBox="0 0 24 24" fill="none">
+          <svg className="msg__note-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z" stroke="#A67C4E" strokeWidth="1.6" strokeLinejoin="round" />
           </svg>
           <div className="msg__note-content">
-            {message.head && <b className="msg__note-head">{message.head} </b>}
-            {message.text}
+            {message.head && <b className="msg__note-head">{sanitizeMessageText(message.head)} </b>}
+            {sanitizeMessageText(message.text)}
           </div>
         </div>
       </div>

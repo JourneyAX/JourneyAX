@@ -5,7 +5,8 @@ export type TaskType =
   | 'planning'
   | 'tool_selection'
   | 'complex_reasoning'
-  | 'fast_intent';
+  | 'fast_intent'
+  | 'response_generation';
 
 export interface ModelRouteResult {
   policyId: string;
@@ -16,6 +17,9 @@ export interface ModelRouteResult {
   maxInputTokens: number;
   maxOutputTokens: number;
   timeoutMs: number;
+  tenantId?: string;
+  environmentId?: string;
+  releaseVersion?: string;
 }
 
 export class ModelRouter {
@@ -50,6 +54,14 @@ export class ModelRouter {
       } else if (taskType === 'tool_selection') {
         const toolPolicy = modelPolicy.policies.find((p) => p.policyId === 'tool_selection' || p.policyId === 'complex_reasoning');
         if (toolPolicy) targetPolicyId = toolPolicy.policyId;
+      } else if (taskType === 'response_generation') {
+        const respPolicy = modelPolicy.policies.find((p) => p.policyId === 'response_generation');
+        if (respPolicy) {
+          targetPolicyId = 'response_generation';
+        } else {
+          const complexPolicy = modelPolicy.policies.find((p) => p.policyId === 'complex_reasoning');
+          if (complexPolicy) targetPolicyId = 'complex_reasoning';
+        }
       }
     }
 
@@ -84,10 +96,24 @@ export class ModelRouter {
     }
 
     if (!selected) {
-      for (const candidate of sortedCandidates) {
-        if (this.isProviderConfigured(candidate.provider)) {
-          selected = candidate;
-          break;
+      if (policy.fallbackAllowed === false) {
+        // Fallback is strictly disallowed: only priority 1 candidate is permitted
+        const primaryCandidates = sortedCandidates.filter((c) => c.priority === 1);
+        const configuredPrimary = primaryCandidates.find((c) => this.isProviderConfigured(c.provider));
+        if (configuredPrimary) {
+          selected = configuredPrimary;
+        } else {
+          throw new Error(
+            `[ModelRouter] No configured API credentials found for primary candidate in policy '${policy.policyId}' (primary: ${primaryCandidates.map((c) => `${c.provider}/${c.model}`).join(', ')}), and fallback is not allowed.`
+          );
+        }
+      } else {
+        // Fallback is allowed: iterate sorted candidates and select first configured candidate
+        for (const candidate of sortedCandidates) {
+          if (this.isProviderConfigured(candidate.provider)) {
+            selected = candidate;
+            break;
+          }
         }
       }
     }
@@ -114,6 +140,10 @@ export class ModelRouter {
       throw new Error(`[ModelRouter] No compliant candidate models found in policy '${policy.policyId}'. Never falling back to unlisted model.`);
     }
 
+    const tenantId = release.manifest?.tenantId || 'unknown';
+    const environmentId = release.manifest?.environmentId || 'unknown';
+    const releaseVersion = release.manifest?.version || (release.modelPolicy as any)?.version || '1.0.0';
+
     return {
       policyId: policy.policyId,
       provider: selected.provider as ModelRouteResult['provider'],
@@ -123,6 +153,9 @@ export class ModelRouter {
       maxInputTokens: policy.maxInputTokens,
       maxOutputTokens: policy.maxOutputTokens,
       timeoutMs: policy.timeoutMs,
+      tenantId,
+      environmentId,
+      releaseVersion,
     };
   }
 
@@ -136,7 +169,14 @@ export class ModelRouter {
         return Boolean(process.env.ANTHROPIC_API_KEY);
       case 'open-model':
       case 'custom':
-        return true;
+        return Boolean(
+          process.env.OPEN_MODEL_ENDPOINT ||
+          process.env.OPEN_MODEL_URL ||
+          process.env.CUSTOM_MODEL_ENDPOINT ||
+          process.env.CUSTOM_MODEL_URL ||
+          process.env.NODE_ENV === 'test' ||
+          !process.env.NODE_ENV
+        );
       default:
         return false;
     }

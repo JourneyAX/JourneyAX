@@ -17,7 +17,7 @@ import {
   validateAccessoryCompatibilityAgainstPack,
   SpacePlannerExtension,
 } from '@journeyax/business-pack';
-import placemakersSpacePlannerPack from '../packs/placemakers/extensions/space-planner.json';
+import placemakersSpacePlannerPack from './fixtures/business-packs/placemakers-space-planner.json';
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 

@@ -17,6 +17,7 @@
     "@journeyax/capability-sdk": "*",
     "@journeyax/database": "*",
     "@journeyax/events": "*",
+    "@journeyax/integration": "*",
     "@journeyax/journey-core": "*",
     "@journeyax/shared-types": "*",
     "@journeyax/ui-cards": "*",

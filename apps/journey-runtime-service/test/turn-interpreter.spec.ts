@@ -274,6 +274,47 @@ async function runTests() {
   );
   console.log('✓ Individual list slot elements validated against enum\n');
 
+  // Test 5: Fenced JSON extraction & modelRoute metadata
+  {
+    console.log('Test 5: Fenced JSON markdown and commentary extracted safely');
+    const fencedContent =
+      'I have processed the request.\n```json\n{\n  "intent": "placemakers_trade_quote",\n  "candidateFacts": {\n    "tradeCategory": { "value": "decking", "confidence": 0.98 }\n  }\n}\n```\nLet me know if you need anything else.';
+
+    const mockFencedGateway: Partial<ModelGateway> = {
+      execute: async () => ({
+        content: fencedContent,
+        route: {
+          policyId: 'fast_intent',
+          provider: 'openai' as any,
+          model: 'gpt-4o-mini',
+          dataResidency: 'nz',
+          maxInputTokens: 8000,
+          maxOutputTokens: 1000,
+          timeoutMs: 5000,
+        },
+        latencyMs: 120,
+        residencyProven: true,
+        residencyEvidence: 'test',
+      }),
+    };
+
+    const interpreterFenced = new TurnInterpreter(mockFencedGateway as ModelGateway);
+    const resultFenced = await interpreterFenced.interpret(
+      { message: 'I need decking materials' } as TurnCommand,
+      testRelease,
+      mockWorkspace
+    );
+
+    assert.equal(resultFenced.intent, 'placemakers_trade_quote', 'Fenced intent must be extracted safely');
+    assert.equal(resultFenced.candidateFacts['tradeCategory']?.value, 'decking');
+    assert.ok(resultFenced.modelRoute, 'modelRoute must be populated');
+    assert.equal(resultFenced.modelRoute?.provider, 'openai');
+    assert.equal(resultFenced.modelRoute?.model, 'gpt-4o-mini');
+    assert.equal(resultFenced.modelRoute?.policyId, 'fast_intent');
+    assert.equal(resultFenced.modelRoute?.version, testRelease.manifest.version);
+    console.log('✓ Markdown-fenced JSON safely parsed and modelRoute trace verified\n');
+  }
+
   console.log('====================================================');
   console.log('✓ All TurnInterpreter Security & Fact Hardening Tests PASSED!');
   console.log('====================================================');

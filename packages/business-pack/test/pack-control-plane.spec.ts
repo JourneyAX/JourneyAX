@@ -336,25 +336,27 @@ async function runPackControlPlaneTests() {
     assert.equal(lastOutbox.payload.activeVersion, '1.0.1');
   });
 
-  // ── TEST 3: Fail-Closed Production Behavior (No Disk Fallback) ─────────
-  await test('BusinessPackLoader in production fails closed and never loads uncommitted disk files', async () => {
-    const origEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+  // ── TEST 3: Fail-Closed Behavior in All Environments (No Disk Fallback) ─
+  await test('BusinessPackLoader in all environments fails closed and never loads uncommitted disk files', async () => {
+    for (const envMode of ['development', 'test', 'production']) {
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = envMode;
 
-    try {
-      const loader = new BusinessPackLoader();
+      try {
+        const loader = new BusinessPackLoader();
 
-      // Querying an unpublished or missing tenant in production must throw
-      await assert.rejects(
-        () => loader.loadPublished('non-existent-tenant-xyz', 'production'),
-        /No published Business Pack found/
-      );
+        // Querying an unpublished or missing tenant in any env must throw (fail closed)
+        await assert.rejects(
+          () => loader.loadPublished('non-existent-tenant-xyz', 'production'),
+          /No published Business Pack found/
+        );
 
-      // Synchronous hasPublishedPack in production must return false without disk search
-      const hasPack = loader.hasPublishedPack('workweargroup', 'production');
-      assert.equal(hasPack, false, 'hasPublishedPack in production must not inspect disk');
-    } finally {
-      process.env.NODE_ENV = origEnv;
+        // Synchronous hasPublishedPack without cache must return false without disk search
+        const hasPack = loader.hasPublishedPack('workweargroup', 'production');
+        assert.equal(hasPack, false, `hasPublishedPack in ${envMode} must not inspect disk`);
+      } finally {
+        process.env.NODE_ENV = origEnv;
+      }
     }
   });
 

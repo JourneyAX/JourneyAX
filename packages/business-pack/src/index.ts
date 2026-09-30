@@ -5,3 +5,5 @@ export * from './loader';
 export * from './publisher';
 export * from './repository';
 export * from './space-planner-validator';
+export * from './migration';
+export * from './model-policy-compiler';

@@ -118,43 +118,29 @@ export class EvaluationRunner {
       (process.env.EVAL_MODE as EvaluationExecutionMode) ||
       'in_process';
 
-    // 1. Load release candidate if not provided
+    // 1. Resolve Business Pack release (either explicitly provided or from active database pointer)
     let release = options.release;
     if (!release) {
-      const loader = new BusinessPackLoader();
-      release = (await loader.loadFromDisk(tenantId, environmentId)) || undefined;
+      const loader = new BusinessPackLoader({ db: options.isolatedDb });
+      release = (await loader.loadPublished(tenantId, environmentId).catch(() => null)) || undefined;
       if (!release) {
         throw new Error(
-          `[EvaluationRunner] Failed to load Business Pack release for tenant '${tenantId}'`
+          `[EvaluationRunner] Failed to load Business Pack release for tenant '${tenantId}' (active database release or explicit options.release required)`
         );
       }
     }
 
-    // 2. Locate suite definition
+    // 2. Locate suite definition from explicit suitePath or compiled release.evaluations
     let suite: EvaluationSuite | undefined;
     if (options.suitePath && fs.existsSync(options.suitePath)) {
       suite = JSON.parse(fs.readFileSync(options.suitePath, 'utf8'));
     } else if (release?.evaluations && release.evaluations.length > 0) {
       suite = release.evaluations[0] as EvaluationSuite;
-    } else {
-      const candidatesDirs = [
-        path.resolve(process.cwd(), 'packs', tenantId, 'evaluations'),
-        path.resolve(process.cwd(), '..', '..', 'packs', tenantId, 'evaluations'),
-      ];
-      for (const dir of candidatesDirs) {
-        if (fs.existsSync(dir)) {
-          const jsonFiles = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
-          if (jsonFiles.length > 0) {
-            suite = JSON.parse(fs.readFileSync(path.join(dir, jsonFiles[0]), 'utf8'));
-            break;
-          }
-        }
-      }
     }
 
     if (!suite) {
       throw new Error(
-        `[EvaluationRunner] No evaluation suite found for tenant '${tenantId}'.`
+        `[EvaluationRunner] No evaluation suite found for tenant '${tenantId}'. Provide an explicit options.suitePath or compile evaluations into the Business Pack release.`
       );
     }
 
@@ -450,18 +436,6 @@ export class EvaluationRunner {
       : new ApprovalStore({ forceInMemory: true });
     const approvalService = new ApprovalService(approvalStore, outboxRepo);
 
-    try {
-      const packTenant = release.manifest?.tenantId || (release as any).tenantId || release.manifest?.packId || '';
-      const handlerPath = path.resolve(process.cwd(), 'packs', packTenant, 'handlers', 'workwear-solution.handler.ts');
-      if (fs.existsSync(handlerPath)) {
-        const { WorkwearSolutionOptimizerHandler } = require(handlerPath);
-        if (WorkwearSolutionOptimizerHandler) {
-          capabilityGateway.registerCustomAdapter('solution.optimize', new WorkwearSolutionOptimizerHandler());
-        }
-      }
-    } catch (err: any) {
-      console.error('Handler register error:', err?.message || err);
-    }
 
     return new TurnApplicationService(
       packRepo,

@@ -14,6 +14,7 @@ import {
   publishBusinessPack,
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
+  compileModelPolicy,
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { PublicationGateValidator } from './publication-gate-validator';
@@ -731,6 +732,28 @@ export class ProjectService {
       // Secret guard: never persist raw apiKey. Only store non-secret AI configurations.
       if (k === 'apiKey' || k === 'apiKeyHint' || k === 'apiKeyConfigured') continue;
       $set[`ai.${k}`] = v;
+    }
+
+    // Synchronize modelPolicy deterministically using compileModelPolicy
+    if ((dto as any).modelPolicy || (dto as any).ai?.model) {
+      const currentDoc: any = current || (await this.projectsCol!.findOne({ projectId: pid }));
+      const incomingAi = (dto as any).ai || currentDoc?.ai;
+      const isExplicitModelPolicy = Boolean((dto as any).modelPolicy);
+      const incomingPolicy = (dto as any).modelPolicy || currentDoc?.modelPolicy;
+      const mode = (dto as any).modelPolicyMode || currentDoc?.modelPolicyMode || (incomingPolicy?.isAdvanced ? 'advanced' : 'simple');
+
+      if (incomingAi?.model || incomingPolicy) {
+        $set.modelPolicy = compileModelPolicy({
+          projectId: pid,
+          mode,
+          existingModelPolicy: isExplicitModelPolicy ? (dto as any).modelPolicy : currentDoc?.modelPolicy,
+          aiConfig: incomingAi,
+          dataResidency: currentDoc?.dataResidency || 'au',
+        });
+        if ((dto as any).modelPolicyMode) {
+          $set.modelPolicyMode = (dto as any).modelPolicyMode;
+        }
+      }
     }
 
     // Integrations: strip all raw secret fields so only tenant-scoped connectionRef or secretRef are persisted

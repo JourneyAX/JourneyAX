@@ -666,6 +666,7 @@ async function runCrossTenantAuthTests() {
         channel: 'production', // Only production pointer exists!
         environmentId: 'production',
         activeVersionId: '1.0.0',
+        checksum: 'chk_1.0.0',
       });
 
       const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {

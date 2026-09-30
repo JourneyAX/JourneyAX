@@ -116,7 +116,7 @@ export class JourneyResolver {
       }
 
       // C. Match against journey goals
-      if (targetIntent && j.goals.some((g) => g.toLowerCase().includes(targetIntent.toLowerCase()))) {
+      if (targetIntent && Array.isArray(j.goals) && j.goals.some((g) => g.toLowerCase().includes(targetIntent.toLowerCase()))) {
         score += 40;
       }
 
@@ -504,13 +504,25 @@ export class JourneyResolver {
         };
       }
 
-      // Find stage tool binding if defined
+      // Deterministic precedence for input mappings:
+      // 1. Stage tool binding (highest precedence)
+      // 2. Tenant tool binding (tenant default)
+      // 3. Tool definition (base schema default)
       const stageBinding = release.capabilities?.stageBindings?.find(
         (sb) => sb.journeyId === journey.journeyId && sb.stageId === currentStageId
       );
       const stageTool = stageBinding?.tools?.find((t) => t.toolId === targetCapability);
-      const inputMapping: Record<string, string> =
-        (stageTool as any)?.inputMapping || (toolDef as any)?.inputMapping || {};
+      const toolBinding = release.capabilities?.toolBindings?.find((tb) => tb.toolId === targetCapability);
+
+      const defMapping: Record<string, string> = (toolDef as any)?.inputMapping || {};
+      const tenantMapping: Record<string, string> = (toolBinding as any)?.inputMapping || {};
+      const stageMapping: Record<string, string> = (stageTool as any)?.inputMapping || {};
+
+      const inputMapping: Record<string, string> = {
+        ...defMapping,
+        ...tenantMapping,
+        ...stageMapping,
+      };
 
       const inputSchema = toolDef.inputSchema || {};
       const schemaProperties = (inputSchema as any).properties || inputSchema;
@@ -522,12 +534,21 @@ export class JourneyResolver {
 
       const mappedInputs: Record<string, any> = {};
 
-      // 1. Map fields based on declared input schema and explicit mappings ONLY
+      // 1. Map fields based on declared input schema and explicit mappings
       for (const [field] of Object.entries(schemaProperties)) {
         const sourceFactKey = inputMapping[field] || field;
         const sourceEntry = workspace.facts[sourceFactKey];
         if (sourceEntry && sourceEntry.value !== undefined && sourceEntry.value !== null) {
           mappedInputs[field] = sourceEntry.value;
+        }
+
+        // For retrieval query: ensure full customer question is available for knowledge retrieval
+        if (field === 'query') {
+          const userMsg = (command?.message || (command as any)?.userInput || '').trim();
+          if (userMsg) {
+            // Keep the customer's actual inquiry as the query so technical knowledge retrieval is grounded
+            mappedInputs[field] = userMsg;
+          }
         }
       }
 

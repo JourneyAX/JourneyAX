@@ -8,6 +8,9 @@ node_modules/
 # Ingested artifacts (feeds, catalogue PDFs) — belong in per-project cloud storage, never the repo
 /data/
 
+# Legacy migration pack files — dynamic releases are stored in the database, never the repo
+/packs/
+
 # Build and IDE artifacts
 dist/
 .turbo/

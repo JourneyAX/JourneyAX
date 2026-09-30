@@ -483,6 +483,7 @@ export interface ProjectConfig {
   // ── Business Pack & Studio Engine Configuration ─────────────
   journeys?: any[];
   modelPolicy?: any;
+  modelPolicyMode?: 'simple' | 'advanced';
   agents?: any[];
   rules?: any[];
   evaluations?: any[];
@@ -643,6 +644,7 @@ export interface UpdateProjectDto {
   cardTemplates?: Record<string, CardTemplateDoc>;
   journeys?: any[];
   modelPolicy?: any;
+  modelPolicyMode?: 'simple' | 'advanced';
   agents?: any[];
   rules?: any[];
   evaluations?: any[];

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { Db } from 'mongodb';
 import { BusinessPackRelease, BusinessPackReleaseSchema } from './schemas/business-pack.schema';
 import { validateBusinessPack } from './validator';
+import { BusinessPackLoader } from './loader';
 
 const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
@@ -291,6 +292,9 @@ export async function publishBusinessPack(
       sessionOpts
     );
 
+    // Invalidate any cached packs for this tenant and environment across the system
+    BusinessPackLoader.invalidateAll(tenantId, environmentId);
+
     return { release: pack, checksum, revision };
   });
 }
@@ -423,6 +427,9 @@ export async function rollbackBusinessPack(
       },
       sessionOpts
     );
+
+    // Invalidate any cached packs for this tenant and environment across the system
+    BusinessPackLoader.invalidateAll(tenantId, environmentId);
 
     return {
       activeVersion: targetVersion,

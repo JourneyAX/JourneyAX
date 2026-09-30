@@ -17,7 +17,7 @@ import {
   ExecutionContext,
   ExecutionRequest,
 } from '@journeyax/capability-sdk';
-import { computePackChecksum } from '@journeyax/business-pack';
+import { computePackChecksum, BusinessPackLoader, PackRepository } from '@journeyax/business-pack';
 import { hashToolInput } from '../approval/approval.store';
 import { OutboxRepository } from './outbox.repository';
 import { OutboxWorker, OutboxWorkerOptions } from './outbox.worker';
@@ -31,6 +31,7 @@ export interface ProductionHandlersOptions {
   capabilityDispatcher?: CapabilityDispatcher;
   notificationDispatcher?: NotificationDispatcher;
   ownershipRepository?: IConnectionOwnershipRepository;
+  packRepo?: PackRepository;
 }
 
 export interface WorkerHealthResponse {
@@ -115,6 +116,12 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         },
         { upsert: true }
       );
+
+      // Immediately invalidate cached business pack for the affected tenant/environment
+      BusinessPackLoader.invalidateAll(event.tenantId, event.environmentId);
+      if (options.packRepo) {
+        options.packRepo.invalidate(event.tenantId, event.environmentId as any);
+      }
     });
 
     this.registerHandler('business_pack.rolled_back', async (event) => {
@@ -140,6 +147,12 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         },
         { upsert: true }
       );
+
+      // Immediately invalidate cached business pack for the affected tenant/environment
+      BusinessPackLoader.invalidateAll(event.tenantId, event.environmentId);
+      if (options.packRepo) {
+        options.packRepo.invalidate(event.tenantId, event.environmentId as any);
+      }
     });
 
     // 2. Notification dispatch — calls real NotificationDispatcher and enforces delivery persistence

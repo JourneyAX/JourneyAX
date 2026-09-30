@@ -6,6 +6,9 @@ import {
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
   computePackChecksum,
+  BusinessPackLoader,
+  ModelPolicySchema,
+  compileModelPolicy,
 } from '@journeyax/business-pack';
 import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
 import { ReleaseValidationPort } from './release-validation.port';
@@ -239,61 +242,20 @@ export class BusinessPackPublicationService {
       allowedValues: d.values || [],
     }));
 
-    let compiledModelPolicy: any = null;
-    if (doc.modelPolicy?.policies && Array.isArray(doc.modelPolicy.policies) && doc.modelPolicy.policies.length > 0) {
-      const resolvedDefaultPolicy =
-        doc.modelPolicy.defaultPolicy ||
-        (doc.modelPolicy.policies.length === 1 ? doc.modelPolicy.policies[0].policyId : undefined);
-      if (!resolvedDefaultPolicy) {
-        throw new Error(
-          `[BusinessPackPublication] modelPolicy has ${doc.modelPolicy.policies.length} policies but no explicit 'defaultPolicy' specified - failing closed.`
-        );
-      }
-      compiledModelPolicy = {
-        version: doc.modelPolicy.version || '1.0.0',
-        defaultPolicy: resolvedDefaultPolicy,
-        policies: doc.modelPolicy.policies,
-      };
-    } else if (doc.ai?.model) {
-      const rawProvider = (doc.ai.provider || 'openai').toLowerCase();
-      const provider = rawProvider === 'gemini'
-        ? 'google'
-        : rawProvider === 'ollama'
-        ? 'open-model'
-        : ['openai', 'anthropic', 'google', 'open-model', 'custom'].includes(rawProvider)
-        ? rawProvider
-        : 'custom';
-
-      const candidates = [
-        {
-          provider: provider as any,
-          model: doc.ai.model,
-          priority: 1,
-          temperature: typeof doc.ai.temperature === 'number' ? doc.ai.temperature : undefined,
-        },
-      ];
-
-      compiledModelPolicy = {
-        version: '1.0.0',
-        defaultPolicy: 'standard_turn',
-        policies: [
-          {
-            policyId: 'standard_turn',
-            description: `Default model policy for ${pid}`,
-            allowedTaskTypes: ['all'],
-            candidates,
-            timeoutMs: 15000,
-            maxRetries: 2,
-            maxOutputTokens: typeof doc.ai.maxTokens === 'number' ? doc.ai.maxTokens : undefined,
-          },
-        ],
-      };
-    } else {
+    if (!doc.modelPolicy && !doc.ai?.model) {
       return {
         success: false,
         message: 'Publish blocked: Project must define AI model policy or AI model configuration.',
       };
     }
+
+    const compiledModelPolicy = compileModelPolicy({
+      projectId: pid,
+      mode: doc.modelPolicyMode || (doc.modelPolicy?.isAdvanced ? 'advanced' : 'simple'),
+      existingModelPolicy: doc.modelPolicy,
+      aiConfig: doc.ai,
+      dataResidency: doc.dataResidency || 'au',
+    });
 
     // Ensure journeys conform to JourneyDefinitionSchema
     const validatedJourneys = journeyList.map((j: any) => ({

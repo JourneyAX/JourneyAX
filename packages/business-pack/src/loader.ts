@@ -5,9 +5,9 @@ import { computePackChecksum } from './publisher';
 const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
 
-function getNodeModules(): { fs: any; path: any; mongodb: any } {
+function getNodeModules(): { mongodb: any } {
   if (typeof window !== 'undefined') {
-    return { fs: null, path: null, mongodb: null };
+    return { mongodb: null };
   }
   try {
     const globalObj = globalThis as any;
@@ -20,27 +20,45 @@ function getNodeModules(): { fs: any; path: any; mongodb: any } {
     } catch {
       // mongodb package not available in client environment
     }
-    return { fs: req('fs'), path: req('path'), mongodb };
+    return { mongodb };
   } catch {
-    return { fs: null, path: null, mongodb: null };
+    return { mongodb: null };
   }
 }
 
 export interface PackLoaderOptions {
   mongoDbUri?: string;
-  localPacksRoot?: string;
   db?: any;
 }
 
 export class BusinessPackLoader {
+  private static activeInstances = new Set<BusinessPackLoader>();
   private cache = new Map<string, { pack: BusinessPackRelease; loadedAt: number }>();
   private cacheTtlMs = 60_000 * 5; // 5 minutes cache for published versions
 
-  constructor(private options: PackLoaderOptions = {}) {}
+  constructor(private options: PackLoaderOptions = {}) {
+    BusinessPackLoader.activeInstances.add(this);
+  }
+
+  /**
+   * Invalidate cached releases across all active loader instances.
+   */
+  static invalidateAll(tenantId?: string, environmentId?: string): void {
+    for (const inst of BusinessPackLoader.activeInstances) {
+      inst.invalidate(tenantId, environmentId);
+    }
+  }
 
   /**
    * Loads an immutable published Business Pack by tenantId and optional version.
    * If version is omitted, loads the currently active release for the specified environment.
+   *
+   * Database-only published release loader:
+   * Backoffice draft -> validation/compiler -> immutable database release -> active pointer -> runtime
+   *
+   * Fails closed if the pointer or release is missing or invalid.
+   * Never inspects the filesystem.
+   * Never silently falls back to migration data.
    */
   async loadPublished(
     tenantId: string,
@@ -53,22 +71,14 @@ export class BusinessPackLoader {
       return cached.pack;
     }
 
-    // 1. Try loading from MongoDB business_pack_releases & pointers
+    // 1. Authoritative lookup from MongoDB business_pack_releases & pointers
     const mongoPack = await this.loadFromMongo(tenantId, environmentId, version);
     if (mongoPack) {
       this.cache.set(cacheKey, { pack: mongoPack, loadedAt: Date.now() });
       return mongoPack;
     }
 
-    // 2. Fall back to local filesystem ONLY in non-production development/test environments
-    if (process.env.NODE_ENV !== 'production') {
-      const pack = await this.loadFromDisk(tenantId, environmentId, version);
-      if (pack) {
-        this.cache.set(cacheKey, { pack, loadedAt: Date.now() });
-        return pack;
-      }
-    }
-
+    // Fail closed: No filesystem fallback permitted
     throw new Error(
       `[BusinessPackLoader] No published Business Pack found for tenant='${tenantId}', env='${environmentId}', version='${version || 'latest'}'`
     );
@@ -154,6 +164,15 @@ export class BusinessPackLoader {
         return null;
       }
 
+      // Sanitized audit logging (never logs secrets)
+      const modelPolicyId =
+        (parsed.data.modelPolicy as any)?.id ||
+        parsed.data.modelPolicy?.defaultPolicy ||
+        'unspecified';
+      console.log(
+        `[BusinessPackLoader] Loaded active release: source=database tenant='${tenantId}' env='${environmentId}' version='${targetVersion}' checksum='${rawChecksum.slice(0, 16)}...' modelPolicyId='${modelPolicyId}'`
+      );
+
       return parsed.data;
     } catch (err: any) {
       console.warn(`[BusinessPackLoader] Mongo load error for '${tenantId}':`, err.message);
@@ -162,22 +181,23 @@ export class BusinessPackLoader {
   }
 
   /**
-   * Invalidate cached releases (e.g. on config.published event)
+   * Invalidate cached releases (e.g. on business_pack.published or rollback event)
    */
-  invalidate(tenantId?: string): void {
+  invalidate(tenantId?: string, environmentId?: string): void {
     if (!tenantId) {
       this.cache.clear();
       return;
     }
+    const prefix = environmentId ? `${tenantId}:${environmentId}:` : `${tenantId}:`;
     for (const key of this.cache.keys()) {
-      if (key.startsWith(`${tenantId}:`)) {
+      if (key.startsWith(prefix) || (!environmentId && key.startsWith(`${tenantId}:`))) {
         this.cache.delete(key);
       }
     }
   }
 
   /**
-   * Asynchronously checks whether a published pack exists in cache, in MongoDB pointers, or on disk (dev).
+   * Asynchronously checks whether a published pack exists in cache or in MongoDB pointers.
    */
   async hasPublishedPackAsync(
     tenantId: string,
@@ -190,11 +210,10 @@ export class BusinessPackLoader {
       try {
         const pointerCol = this.options.db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
         const pointer = await pointerCol.findOne({ tenantId, environmentId });
-        if (pointer?.activeVersion) {
-          return true;
-        }
+        return Boolean(pointer?.activeVersion);
       } catch (err: any) {
         console.warn(`[BusinessPackLoader] MongoDB pointer check warning for '${tenantId}':`, err.message);
+        return false;
       }
     } else {
       const { mongodb } = getNodeModules();
@@ -206,168 +225,25 @@ export class BusinessPackLoader {
           const db = client.db(process.env.MONGODB_DB_NAME || 'journeyx');
           const pointerCol = db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
           const pointer = await pointerCol.findOne({ tenantId, environmentId });
-          if (pointer?.activeVersion) {
-            return true;
-          }
+          return Boolean(pointer?.activeVersion);
         } catch (err: any) {
           console.warn(`[BusinessPackLoader] MongoDB pointer check warning for '${tenantId}':`, err.message);
+          return false;
         }
       }
     }
 
-    if (process.env.NODE_ENV !== 'production') {
-      return this.hasPublishedPack(tenantId, environmentId);
-    }
     return false;
   }
 
   /**
-   * Synchronously checks whether a published pack is cached (or present on disk in local development).
+   * Synchronously checks whether a published pack is present in memory cache.
    */
   hasPublishedPack(
     tenantId: string,
     environmentId: 'dev' | 'test' | 'staging' | 'production' = 'production'
   ): boolean {
     const cacheKey = `${tenantId}:${environmentId}:latest`;
-    if (this.cache.has(cacheKey)) return true;
-
-    // In production, Docker containers do not ship packs/ directory; do not fall back to disk
-    if (process.env.NODE_ENV === 'production') {
-      return false;
-    }
-
-    const { fs, path } = getNodeModules();
-    if (!fs || !path) return false;
-
-    const searchDirs = [
-      this.options.localPacksRoot,
-      path.resolve(process.cwd(), 'packs', tenantId),
-      path.resolve(process.cwd(), '..', '..', 'packs', tenantId),
-      path.resolve(__dirname, '..', '..', '..', 'packs', tenantId),
-    ].filter(Boolean) as string[];
-
-    for (const baseDir of searchDirs) {
-      const manifestPath = path.join(baseDir, 'manifest.json');
-      if (fs.existsSync(manifestPath)) {
-        try {
-          const rawManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          if (rawManifest.tenantId === tenantId) {
-            return true;
-          }
-        } catch {
-          // ignore corrupted files in check
-        }
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Loads pack candidate from local disk (development / initial seeding fallback)
-   */
-  async loadFromDisk(
-    tenantId: string,
-    environmentId: string,
-    version?: string
-  ): Promise<BusinessPackRelease | null> {
-    const { fs, path } = getNodeModules();
-    if (!fs || !path) return null;
-
-    const searchDirs = [
-      this.options.localPacksRoot,
-      path.resolve(process.cwd(), 'packs', tenantId),
-      path.resolve(process.cwd(), '..', '..', 'packs', tenantId),
-      path.resolve(__dirname, '..', '..', '..', 'packs', tenantId),
-    ].filter(Boolean) as string[];
-
-    for (const baseDir of searchDirs) {
-      const manifestPath = path.join(baseDir, 'manifest.json');
-      if (fs.existsSync(manifestPath)) {
-        const rawManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-
-        if (rawManifest.tenantId !== tenantId) {
-          continue;
-        }
-        if (rawManifest.environmentId && rawManifest.environmentId !== environmentId) {
-          continue;
-        }
-        if (version && rawManifest.version !== version) {
-          continue;
-        }
-
-        const readJson = (file: string, fallback: any = {}) => {
-          const p = path.join(baseDir, file);
-          return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : fallback;
-        };
-
-        const readJsonArray = (dirName: string) => {
-          const dir = path.join(baseDir, dirName);
-          if (!fs.existsSync(dir)) return [];
-          return fs
-            .readdirSync(dir)
-            .filter((f: string) => f.endsWith('.json'))
-            .map((f: string) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
-        };
-
-        const packCandidate = {
-          manifest: rawManifest,
-          profile: readJson('business-profile.json', { companyName: tenantId, industry: 'General' }),
-          vocabulary: readJson('vocabulary.json', { terms: [], acronyms: {}, slotSynonyms: {} }),
-          entities: readJson('entities.json', { entities: [] }),
-          conversationPolicy: readJson('conversation-policy.json', {}),
-          modelPolicy: (() => {
-            const mp = readJson('model-policy.json', null);
-            if (!mp) {
-              throw new Error(`[BusinessPackLoader] Mandatory 'model-policy.json' is missing for pack '${tenantId}' - failing closed`);
-            }
-            return mp;
-          })(),
-          agents: readJsonArray('agents'),
-          journeys: readJsonArray('journeys'),
-          rules: readJsonArray('rules'),
-          capabilities: readJson('capabilities/bindings.json', {
-            toolDefinitions: [],
-            toolBindings: [],
-            stageBindings: [],
-          }),
-          experience: readJson('experience/cards-and-theme.json', {}),
-          evaluations: readJsonArray('evaluations'),
-          extensions: {
-            ...(readJson('extensions/space-planner.json', null)
-              ? { spacePlanner: readJson('extensions/space-planner.json', null) }
-              : readJson('experience/space-planner.json', null)
-              ? { spacePlanner: readJson('experience/space-planner.json', null) }
-              : {}),
-            ...readJson('extensions.json', {}),
-          },
-        };
-
-        const parsed = BusinessPackReleaseSchema.safeParse(packCandidate);
-        if (!parsed.success) {
-          const errorMsg = `[BusinessPackLoader] Schema mismatch loading pack '${tenantId}': ${JSON.stringify(parsed.error.format())}`;
-          console.error(errorMsg);
-          throw new Error(errorMsg);
-        }
-
-        const validation = validateBusinessPack(parsed.data);
-        if (!validation.valid) {
-          const errors = validation.issues
-            .filter((i) => i.severity === 'error')
-            .map((i) => `[${i.path}] ${i.message}`)
-            .join('; ');
-          const errorMsg = `[BusinessPackLoader] Validation failed (fail-closed) for pack '${tenantId}': ${errors}`;
-          console.error(errorMsg);
-          throw new Error(errorMsg);
-        }
-
-        if (validation.issues.length > 0) {
-          console.warn(`[BusinessPackLoader] Validation warnings for pack '${tenantId}':`, validation.issues);
-        }
-
-        return parsed.data;
-      }
-    }
-
-    return null;
+    return this.cache.has(cacheKey);
   }
 }

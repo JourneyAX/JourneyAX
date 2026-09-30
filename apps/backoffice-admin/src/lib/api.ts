@@ -78,6 +78,27 @@ export interface Project {
     // (P0-01 secret redaction). Send `apiKey` only when the admin types a new one.
     apiKey?: string; apiKeyHint?: string; apiKeyConfigured?: boolean;
   };
+  modelPolicy?: {
+    version: string;
+    defaultPolicy: string;
+    policies: Array<{
+      policyId: string;
+      description?: string;
+      candidates: Array<{
+        provider: string;
+        model: string;
+        priority: number;
+        temperature?: number;
+      }>;
+      dataResidency?: string;
+      acceptedResidencies?: string[];
+      residencyAttestation?: any;
+      maxInputTokens?: number;
+      maxOutputTokens?: number;
+      fallbackAllowed?: boolean;
+      timeoutMs?: number;
+    }>;
+  };
   capabilities?: string[];
   contextDimensions?: ContextDimension[];
   /** Acceptance scenarios for the one journey loop — examples and a test list, never agent instructions. */

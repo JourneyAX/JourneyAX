@@ -41,39 +41,74 @@ export function normalizeFactRequirements(requirements?: Array<string | FactRequ
 }
 
 /**
- * Checks whether all specified fact keys are present with a valid (non-null, non-undefined, non-empty) value.
+ * Evaluates whether a fact entry satisfies a success condition.
+ * Rules:
+ * - A missing, null, undefined, or empty string/array does NOT satisfy.
+ * - A boolean value of `false` does NOT satisfy a success requirement merely because the field exists.
+ * - Objects with `verified: false`, `found: false`, `success: false`, or `inStock: false` do NOT satisfy.
+ * - Objects with `resultCount: 0` or empty results array do NOT satisfy.
+ * - Declarative conditions (expectedValue, predicate, minCount) are enforced.
+ */
+export function isFactSatisfied(
+  entry: FactEntry | undefined,
+  condition?: {
+    expectedValue?: any;
+    minCount?: number;
+    predicate?: (val: any) => boolean;
+  }
+): boolean {
+  if (!entry) return false;
+  const v = entry.value;
+  if (v === null || v === undefined) return false;
+  if (v === false) return false;
+  if (typeof v === 'string' && v.trim() === '') return false;
+  if (Array.isArray(v) && v.length === 0) return false;
+
+  if (typeof v === 'object' && !Array.isArray(v)) {
+    if (v.verified === false) return false;
+    if (v.found === false) return false;
+    if (v.success === false) return false;
+    if (v.inStock === false) return false;
+    if (typeof v.resultCount === 'number' && v.resultCount === 0) {
+      if (Array.isArray(v.results) && v.results.length === 0) return false;
+      if (Array.isArray(v.documents) && v.documents.length === 0) return false;
+    }
+  }
+
+  if (condition) {
+    if (condition.expectedValue !== undefined && v !== condition.expectedValue) {
+      return false;
+    }
+    if (typeof condition.minCount === 'number') {
+      if (Array.isArray(v) && v.length < condition.minCount) return false;
+      if (typeof v === 'object' && typeof v.resultCount === 'number' && v.resultCount < condition.minCount) return false;
+    }
+    if (condition.predicate && typeof condition.predicate === 'function' && !condition.predicate(v)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Checks whether all specified fact keys are present with a valid (non-null, non-undefined, non-empty, truthy) value.
  */
 export function areAllFactsPresent(facts: FactsMap, requiredKeys: string[]): boolean {
   if (!requiredKeys || requiredKeys.length === 0) return true;
-  return requiredKeys.every((key) => {
-    const entry = facts[key];
-    if (!entry) return false;
-    const v = entry.value;
-    if (v === null || v === undefined) return false;
-    if (typeof v === 'string' && v.trim() === '') return false;
-    if (Array.isArray(v) && v.length === 0) return false;
-    return true;
-  });
+  return requiredKeys.every((key) => isFactSatisfied(facts[key]));
 }
 
 /**
- * Checks whether any of the specified fact keys are present with a valid value.
+ * Checks whether any of the specified fact keys are present with a valid truthy value.
  */
 export function areAnyFactsPresent(facts: FactsMap, candidateKeys: string[]): boolean {
   if (!candidateKeys || candidateKeys.length === 0) return true;
-  return candidateKeys.some((key) => {
-    const entry = facts[key];
-    if (!entry) return false;
-    const v = entry.value;
-    if (v === null || v === undefined) return false;
-    if (typeof v === 'string' && v.trim() === '') return false;
-    if (Array.isArray(v) && v.length === 0) return false;
-    return true;
-  });
+  return candidateKeys.some((key) => isFactSatisfied(facts[key]));
 }
 
 /**
- * Returns a list of required fact keys that are missing or empty in the current facts map.
+ * Returns a list of required fact keys that are missing or unsatisfied in the current facts map.
  * Optional facts (required: false) are excluded so they do not block exit conditions.
  */
 export function findMissingRequiredFacts(stage: JourneyStage, facts: FactsMap): string[] {
@@ -81,15 +116,7 @@ export function findMissingRequiredFacts(stage: JourneyStage, facts: FactsMap): 
   return normalized
     .filter((req) => req.required !== false)
     .map((req) => req.key)
-    .filter((key) => {
-      const entry = facts[key];
-      if (!entry) return true;
-      const v = entry.value;
-      if (v === null || v === undefined) return true;
-      if (typeof v === 'string' && v.trim() === '') return true;
-      if (Array.isArray(v) && v.length === 0) return true;
-      return false;
-    });
+    .filter((key) => !isFactSatisfied(facts[key]));
 }
 
 /**

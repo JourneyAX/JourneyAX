@@ -73,10 +73,11 @@ export class PresentationPort {
     validated: ValidatedTurnOutcome,
     decision: Decision,
     workspace: WorkspaceState,
-    release: BusinessPackRelease
+    release: BusinessPackRelease,
+    options?: { assistantMessage?: string }
   ): TurnResult {
     const uiInstructions: UIInstruction[] = [];
-    let assistantMessage = '';
+    let assistantMessage = (options?.assistantMessage || '').trim();
 
     // ── 1. ASK FACT / CLARIFICATION CARD ──────────────────────────────────
     if (decision.type === 'ask_fact') {
@@ -449,28 +450,18 @@ export class PresentationPort {
 
     // ── 6. TRUTHFUL STATE REPLIES (ZERO FABRICATED SUCCESS) ───────────────
     if (!assistantMessage) {
-      let rawMsg = decision.reason || '';
-      if (!rawMsg || rawMsg.includes("Stage '") || rawMsg.includes("Capability '") || rawMsg.includes("requires input")) {
-        const journeysRaw: any = release.journeys;
-        const journeys: any[] = Array.isArray(journeysRaw)
-          ? journeysRaw
-          : journeysRaw?.journeys
-          ? journeysRaw.journeys
-          : typeof journeysRaw === 'object' && journeysRaw
-          ? Object.values(journeysRaw)
-          : [];
-        const activeJourney = journeys.find((j: any) => j.journeyId === workspace.journeyId);
-        if (!activeJourney) {
-          throw new Error(`[presentation.port] Unknown or ambiguous journeyId "${workspace.journeyId}" on release for tenant "${release.manifest?.tenantId || 'unknown'}" - failing closed`);
-        }
-        const stages = activeJourney.stages || {};
-        const stageDef = Array.isArray(stages)
-          ? stages.find((s: any) => s.stageId === workspace.currentStage)
-          : stages[workspace.currentStage];
-        const stageName = stageDef?.displayName || workspace.currentStage.replace(/_/g, ' ');
-        assistantMessage = `Specifications and items have been updated for ${stageName}.`;
+      if ((decision as any).type === 'ask_fact' && (decision as any).payload?.question) {
+        assistantMessage = (decision as any).payload.question;
       } else {
-        assistantMessage = rawMsg;
+        const rawMsg = decision.reason || '';
+        if (rawMsg && !rawMsg.includes("Stage '") && !rawMsg.includes("Capability '") && !rawMsg.includes("requires input") && !rawMsg.includes("policyId")) {
+          assistantMessage = rawMsg;
+        } else {
+          assistantMessage =
+            (release.experience as any)?.welcomeMessage ||
+            (release.vocabulary as any)?.welcomeMessage ||
+            `Kia ora! How can I assist you with your project today?`;
+        }
       }
     }
 

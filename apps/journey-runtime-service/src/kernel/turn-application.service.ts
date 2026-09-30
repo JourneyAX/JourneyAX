@@ -9,6 +9,7 @@ import {
   Transition,
   FactsMap,
 } from '@journeyax/journey-core';
+import { BusinessPackRelease } from '@journeyax/business-pack';
 import { ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase } from '@journeyax/database';
 import { PackRepository } from './pack.repository';
@@ -196,6 +197,9 @@ export class TurnApplicationService {
         const turnResult = this.presentationPort.compose({ valid: true }, decision, workspace, release);
         if (turnResult.trace) {
           turnResult.trace.transitions = [];
+          if ((interpretation as any)?.modelRoute) {
+            turnResult.trace.modelRoute = (interpretation as any).modelRoute;
+          }
           if (interpretation.failure) {
             (turnResult.trace as any).errors = [interpretation.failure];
           }
@@ -214,6 +218,12 @@ export class TurnApplicationService {
       if (resolution.status !== 'resolved') {
         const decision = this.journeyResolver.decide(release, workspace || ({} as any), command, interpretation);
         const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
+        if (turnResult.trace) {
+          turnResult.trace.transitions = [];
+          if ((interpretation as any)?.modelRoute) {
+            turnResult.trace.modelRoute = (interpretation as any).modelRoute;
+          }
+        }
         sink('trace', {
           currentStage: workspace?.currentStage || 'initial',
           transitions: [],
@@ -470,8 +480,16 @@ export class TurnApplicationService {
             const planFacts: FactsMap = {};
             for (const pf of planItem.producesFacts) {
               if (!workspace.facts[pf]) {
+                let resolvedVal = outcome;
+                if (outcome && typeof outcome === 'object') {
+                  if (outcome[pf] !== undefined) {
+                    resolvedVal = outcome[pf];
+                  } else if (typeof outcome.verified === 'boolean' && pf.toLowerCase().includes('verified')) {
+                    resolvedVal = outcome.verified;
+                  }
+                }
                 planFacts[pf] = {
-                  value: outcome || true,
+                  value: resolvedVal,
                   source: 'capability',
                   confidence: 1.0,
                   extractedAt: new Date().toISOString(),
@@ -596,17 +614,36 @@ export class TurnApplicationService {
       } catch {}
     }
 
+    // 8. Grounded customer response composition using explicit response_generation model policy
+    let groundedResponse: { message?: string; modelRoute?: any } = {};
+    try {
+      groundedResponse = await this.composeGroundedCustomerResponse(
+        command,
+        workspace,
+        release,
+        activeJourney,
+        decision,
+        executedCapabilities,
+        resolvedAgentInfo
+      );
+    } catch (e: any) {
+      // Degrade gracefully; compose will provide safe deterministic response
+    }
+
     const turnResult = this.presentationPort.compose(
       validatedOutcome,
       decision,
       workspace,
-      release
+      release,
+      { assistantMessage: groundedResponse.message }
     );
 
     if (turnResult.trace) {
       turnResult.trace.transitions = transitions;
 
-      if ((interpretation as any)?.modelRoute) {
+      if (groundedResponse.modelRoute) {
+        turnResult.trace.modelRoute = groundedResponse.modelRoute;
+      } else if ((interpretation as any)?.modelRoute) {
         turnResult.trace.modelRoute = (interpretation as any).modelRoute;
       } else if (release.modelPolicy) {
         try {
@@ -618,6 +655,7 @@ export class TurnApplicationService {
             provider: route.provider,
             model: route.model,
             dataResidency: route.dataResidency,
+            version: release.manifest?.version || (release.modelPolicy as any)?.version || '1.0.0',
           };
         } catch (err: any) {
           // Fallback or warning if credentials unconfigured in test
@@ -805,5 +843,165 @@ export class TurnApplicationService {
       assistantMessage: text,
       message: { role: 'assistant', content: text },
     });
+  }
+
+  /**
+   * Asynchronously composes a truthful customer response grounded strictly in verified
+   * technical documents, catalog results, and active session context.
+   * Uses explicit `response_generation` model policy.
+   * Never invents SKUs, prices, compliance claims, inventory, quotes, or installation requirements.
+   */
+  private async composeGroundedCustomerResponse(
+    command: TurnCommand,
+    workspace: WorkspaceState,
+    release: BusinessPackRelease,
+    activeJourney: any,
+    decision: Decision,
+    executedCapabilities: any[],
+    resolvedAgentInfo: any
+  ): Promise<{ message?: string; modelRoute?: any }> {
+    const customerQuestion = (command?.message || (command as any)?.userInput || '').trim();
+    if (!customerQuestion) {
+      return {};
+    }
+
+    // Collect verified knowledge search outputs
+    const knowledgeCaps = executedCapabilities.filter((c) => c.toolId === 'knowledge.search');
+    const catalogCaps = executedCapabilities.filter(
+      (c) => c.toolId === 'catalog.search' || c.toolId === 'catalog-search'
+    );
+
+    const verifiedDocs: any[] = [];
+    for (const kc of knowledgeCaps) {
+      const output = kc.output;
+      if (output?.verified || output?.found) {
+        if (Array.isArray(output.documents)) {
+          verifiedDocs.push(...output.documents);
+        } else if (Array.isArray(output.results)) {
+          verifiedDocs.push(...output.results);
+        }
+      }
+    }
+
+    const verifiedProducts: any[] = [];
+    for (const cc of catalogCaps) {
+      const output = cc.output;
+      if (Array.isArray(output?.items)) {
+        verifiedProducts.push(...output.items);
+      }
+    }
+
+    // If no capabilities ran and this is an ask_fact without customer query reasoning, return empty
+    if (executedCapabilities.length === 0 && decision.type === 'ask_fact') {
+      return {};
+    }
+
+    const companyName = release.profile?.companyName || 'PlaceMakers';
+    const personaGuidance =
+      (release as any)?.persona?.systemPromptOverrides ||
+      (release.agents && ((release.agents[0] as any)?.systemPrompt || release.agents[0]?.systemPromptTemplate)) ||
+      '';
+    const journeyGuidance = (release as any)?.persona?.journeyGuidance || '';
+
+    const systemPrompt = [
+      `You are the verified trade and building advisor for ${companyName}.`,
+      personaGuidance,
+      journeyGuidance,
+      `Strict Instructions:`,
+      `1. Answer the customer directly and professionally using ONLY the verified evidence provided.`,
+      `2. Ground all product recommendations, building code, lining, and waterproofing requirements strictly in the verified technical documents.`,
+      `3. NEVER invent products, SKUs, prices, compliance claims, inventory, quotes, or installation requirements.`,
+      `4. If no verified technical information was found, truthfully state: "I don't have verified technical documentation for that specific requirement. Could you provide more details about your project?"`,
+      `5. Do NOT generate or claim a quote was assembled unless the customer explicitly requested a quote.`,
+      `6. NEVER expose internal stage IDs, capability names, fact names, internal policy names, or release IDs.`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    let verifiedDocsSummary = 'None found.';
+    if (verifiedDocs.length > 0) {
+      verifiedDocsSummary = verifiedDocs
+        .map(
+          (d, i) =>
+            `Document ${i + 1}: ${d.title || d.id || 'Untitled'}\nContent: ${
+              d.content || d.summary || ''
+            }\nSpecifications: ${JSON.stringify(d.specifications || d.specs || {})}\nSource: ${
+              d.sourceUrl || d.url || 'Internal'
+            }`
+        )
+        .join('\n\n');
+    }
+
+    let verifiedProdsSummary = 'None found.';
+    if (verifiedProducts.length > 0) {
+      verifiedProdsSummary = verifiedProducts
+        .map(
+          (p, i) =>
+            `Product ${i + 1}: ${p.name || p.title || p.sku} (SKU: ${p.sku})\nCategory: ${
+              p.category || 'General'
+            }\nPrice: ${
+              p.price?.amountCents ? `$${(p.price.amountCents / 100).toFixed(2)}` : 'On Request'
+            }`
+        )
+        .join('\n\n');
+    }
+
+    const userPrompt = [
+      `Customer Question: "${customerQuestion}"`,
+      `Journey: ${activeJourney?.displayName || activeJourney?.journeyId || 'General Trade'}`,
+      `Goal: ${activeJourney?.goals?.[0] || 'Provide accurate building and materials guidance'}`,
+      `\n--- VERIFIED TECHNICAL DOCUMENTS ---`,
+      verifiedDocsSummary,
+      `\n--- VERIFIED PRODUCTS ---`,
+      verifiedProdsSummary,
+      `\nRespond to the customer's question thoroughly using only the verified facts above. If relevant, explain options and offer next steps.`,
+    ].join('\n');
+
+    try {
+      const modelRes = await this.modelGateway.execute(
+        release,
+        {
+          taskType: 'response_generation',
+          prompt: userPrompt,
+          systemPrompt,
+          policyRef: resolvedAgentInfo?.modelPolicyRef,
+        }
+      );
+
+      if (modelRes?.content) {
+        let content = modelRes.content.trim();
+        if (content.startsWith('"') && content.endsWith('"')) {
+          content = content.slice(1, -1);
+        }
+        return {
+          message: content,
+          modelRoute: modelRes.route,
+        };
+      }
+    } catch (err: any) {
+      // Model call unavailable or failed (e.g. offline testing without credentials).
+      // Fallback to truthful grounded synthesis over verified documents:
+      if (verifiedDocs.length > 0) {
+        const docSummaries = verifiedDocs
+          .map((d) => d.content || d.summary)
+          .filter(Boolean)
+          .join('\n\n');
+
+        const fallback = [
+          docSummaries,
+          `Would you like to review specific product options or provide your room dimensions to plan the project?`,
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+
+        return { message: fallback };
+      } else {
+        return {
+          message: `I don't have verified technical specifications for that wet-area inquiry. Could you tell me more about your project requirements or dimensions?`,
+        };
+      }
+    }
+
+    return {};
   }
 }

@@ -93,14 +93,13 @@ export class CrmConnectorBindingResolver {
       }
     }
 
-    // 2. Canonical Business Pack tool bindings (strictly tenant-scoped)
+    // 2. Canonical Business Pack tool bindings (strictly tenant-scoped from active database release)
     try {
       let pack = null;
       if (db) {
         pack = await this.packLoader.loadFromMongo(normTenant, 'production');
-      }
-      if (!pack) {
-        pack = await this.packLoader.loadFromDisk(normTenant, 'production');
+      } else {
+        pack = await this.packLoader.loadPublished(normTenant, 'production').catch(() => null);
       }
 
       if (pack?.capabilities?.toolBindings) {

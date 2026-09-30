@@ -9,12 +9,15 @@
  */
 import React, { useEffect, useState } from "react";
 import { Cpu, Save, Sparkles, Puzzle, Route, KeyRound } from "lucide-react";
+import { compileModelPolicy } from "@journeyax/business-pack";
 import { projectApi, LLM_OPTIONS, EMBEDDING_OPTIONS, CAPABILITY_CATALOG, type Project, type ContextDimension } from "../lib/api";
 
 export function AiOrchestration({ project, onSaved }: { project: Project; onSaved: () => void }) {
   const [provider, setProvider] = useState(project.ai?.provider || "openai");
   const [model, setModel] = useState(project.ai?.model || "gpt-4o");
   const [temperature, setTemperature] = useState(project.ai?.temperature ?? 0.4);
+  const [fallbackProvider, setFallbackProvider] = useState((project.ai as any)?.fallbackProvider || "");
+  const [fallbackModel, setFallbackModel] = useState((project.ai as any)?.fallbackModel || "");
   const [embeddingModel, setEmbeddingModel] = useState(project.ai?.embeddingModel || "text-embedding-3-small");
   // Offline ingestion models — separate from the conversational model so bulk
   // jobs can run cheap (narratives) or strong (relationship extraction) without
@@ -34,15 +37,34 @@ export function AiOrchestration({ project, onSaved }: { project: Project; onSave
   );
   const [dimensions, setDimensions] = useState<ContextDimension[]>(project.contextDimensions || []);
 
+  const [mode, setMode] = useState<'simple' | 'advanced'>((project as any)?.modelPolicyMode || 'simple');
+  const [modelPolicy, setModelPolicy] = useState(
+    project.modelPolicy ||
+      compileModelPolicy({
+        projectId: project.projectId,
+        mode: 'simple',
+        aiConfig: project.ai || { provider: 'openai', model: 'gpt-4o', temperature: 0.4 },
+        dataResidency: (project as any)?.dataResidency || 'au',
+      })
+  );
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Re-hydrate when the active tenant changes
+  // Re-hydrate when the active tenant changes — COMPLETELY RESET modelPolicy state
   useEffect(() => {
-    setProvider(project.ai?.provider || "openai");
-    setModel(project.ai?.model || "gpt-4o");
-    setTemperature(project.ai?.temperature ?? 0.4);
+    const curProvider = project.ai?.provider || "openai";
+    const curModel = project.ai?.model || "gpt-4o";
+    const curTemp = project.ai?.temperature ?? 0.4;
+    const curFallbackProv = (project.ai as any)?.fallbackProvider || "";
+    const curFallbackMod = (project.ai as any)?.fallbackModel || "";
+
+    setProvider(curProvider);
+    setModel(curModel);
+    setTemperature(curTemp);
+    setFallbackProvider(curFallbackProv);
+    setFallbackModel(curFallbackMod);
     setEmbeddingModel(project.ai?.embeddingModel || "text-embedding-3-small");
     setIngestModel(project.ai?.ingestModel || "");
     setExtractModel(project.ai?.extractModel || "");
@@ -54,6 +76,28 @@ export function AiOrchestration({ project, onSaved }: { project: Project; onSave
     setJourneyGuidance(project.persona?.journeyGuidance || "");
     setCapabilities(project.capabilities && project.capabilities.length ? project.capabilities : CAPABILITY_CATALOG.map((c) => c.id));
     setDimensions(project.contextDimensions || []);
+
+    const newMode: 'simple' | 'advanced' = (project as any).modelPolicyMode || ((project.modelPolicy as any)?.isAdvanced ? 'advanced' : 'simple');
+    setMode(newMode);
+
+    if (project.modelPolicy && newMode === 'advanced') {
+      setModelPolicy(project.modelPolicy);
+    } else {
+      // Clean reset: Never carry a previous tenant's policy into another tenant
+      const compiled = compileModelPolicy({
+        projectId: project.projectId,
+        mode: 'simple',
+        aiConfig: {
+          provider: curProvider,
+          model: curModel,
+          temperature: curTemp,
+          fallbackProvider: curFallbackProv || undefined,
+          fallbackModel: curFallbackMod || undefined,
+        },
+        dataResidency: (project as any).dataResidency || 'au',
+      });
+      setModelPolicy(compiled);
+    }
   }, [project.projectId]);
 
   const addDimension = () => setDimensions((ds) => [...ds, { key: "", label: "", values: [], scoping: false, filtersRetrieval: true }]);
@@ -65,30 +109,101 @@ export function AiOrchestration({ project, onSaved }: { project: Project; onSave
   const toggleCap = (id: string) =>
     setCapabilities((cs) => (cs.includes(id) ? cs.filter((c) => c !== id) : [...cs, id]));
 
+  const updateConversationalModel = (
+    newProvider: string,
+    newModel: string,
+    newFallbackProv?: string,
+    newFallbackMod?: string
+  ) => {
+    setProvider(newProvider);
+    setModel(newModel);
+    const effFallbackProv = newFallbackProv !== undefined ? newFallbackProv : fallbackProvider;
+    const effFallbackMod = newFallbackMod !== undefined ? newFallbackMod : fallbackModel;
+
+    setModelPolicy(
+      compileModelPolicy({
+        projectId: project.projectId,
+        mode: 'simple',
+        aiConfig: {
+          provider: newProvider,
+          model: newModel,
+          temperature,
+          fallbackProvider: effFallbackProv || undefined,
+          fallbackModel: effFallbackMod || undefined,
+        },
+        dataResidency: (project as any).dataResidency || 'au',
+      })
+    );
+  };
+
+  const patchPolicyCandidate = (policyId: string, candPatch: { provider: string; model: string; fallbackAllowed?: boolean }) => {
+    setModelPolicy((prev: any) => {
+      const updatedPolicies = (prev.policies || []).map((p: any) => {
+        if (p.policyId !== policyId) return p;
+        const candidates = Array.isArray(p.candidates) ? [...p.candidates] : [];
+        const existingIdx = candidates.findIndex((c: any) => c.provider === candPatch.provider && c.model === candPatch.model);
+        if (existingIdx >= 0) {
+          const [sel] = candidates.splice(existingIdx, 1);
+          candidates.forEach((c: any) => { if (c.priority <= 1) c.priority++; });
+          candidates.unshift({ ...sel, priority: 1 });
+        } else {
+          candidates.forEach((c: any) => { if (c.priority <= 1) c.priority++; });
+          candidates.unshift({
+            provider: candPatch.provider,
+            model: candPatch.model,
+            priority: 1,
+            temperature: p.policyId === 'fast_intent' ? 0.0 : temperature,
+          });
+        }
+        return {
+          ...p,
+          candidates,
+          ...(candPatch.fallbackAllowed !== undefined ? { fallbackAllowed: candPatch.fallbackAllowed } : {}),
+        };
+      });
+      return { ...prev, policies: updatedPolicies };
+    });
+  };
+
   async function save() {
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
+      const policyToSave = compileModelPolicy({
+        projectId: project.projectId,
+        mode,
+        existingModelPolicy: mode === 'advanced' ? (modelPolicy as any) : undefined,
+        aiConfig: {
+          provider,
+          model,
+          temperature: Number(temperature),
+          fallbackProvider: fallbackProvider || undefined,
+          fallbackModel: fallbackModel || undefined,
+        },
+        dataResidency: (project as any).dataResidency || 'au',
+      });
+
       await projectApi.update(project.projectId, {
         ai: {
           provider, model, temperature: Number(temperature), embeddingModel,
+          fallbackProvider: fallbackProvider || undefined,
+          fallbackModel: fallbackModel || undefined,
           ingestModel: ingestModel || undefined,
           extractModel: extractModel || undefined,
           baseUrl: baseUrl.trim() || undefined,
-          // Only send the key when the admin actually typed one — otherwise the
-          // server keeps the stored value (never overwritten by the masked hint).
           ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         },
+        modelPolicy: policyToSave,
+        modelPolicyMode: mode,
         persona: { systemName, systemPromptOverrides: systemPrompt, journeyGuidance },
         capabilities,
-        // drop half-filled rows (no key) before saving
         contextDimensions: dimensions.filter((d) => d.key.trim()),
       });
       setSaved(true);
-      setApiKey(""); // clear the write-only field; the stored key now shows as a masked hint
+      setApiKey("");
       onSaved();
-      setTimeout(() => setSaved(false), 2500);
+      setTimeout(() => setSaved(false), 3500);
     } catch (e: any) {
       setError(e.message || "Save failed.");
     } finally {
@@ -96,20 +211,19 @@ export function AiOrchestration({ project, onSaved }: { project: Project; onSave
     }
   }
 
-
   return (
     <>
       <div className="ctop">
         <div>
           <h1 className="pageh">AI Orchestration</h1>
           <p className="pagesub">
-            Choose the model and shape the agent's voice for <b>{project.companyName}</b>. Applied on the next conversation — no deploy.
+            Configure AI model policy and persona for <b>{project.companyName}</b>. Draft changes apply to runtime only after successful validation, publication, and activation.
           </p>
         </div>
         <div className="actions">
           <button className="btn y" onClick={save} disabled={saving}>
             <Save size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-            {saving ? "Saving…" : saved ? "Saved ✓" : "Save changes"}
+            {saving ? "Saving…" : saved ? "Draft saved ✓ (publish to activate)" : "Save draft"}
           </button>
         </div>
       </div>
@@ -122,31 +236,153 @@ export function AiOrchestration({ project, onSaved }: { project: Project; onSave
 
       {/* Model config */}
       <div className="panel">
-        <h4><Cpu size={15} style={{ verticalAlign: "-3px", marginRight: 6 }} />Model</h4>
-        <div className="form-grid" style={{ marginTop: "10px" }}>
-          <div>
-            <span className="flabel">Provider</span>
-            <select className="field" value={provider} onChange={(e) => { setProvider(e.target.value); setModel(LLM_OPTIONS[e.target.value]?.models[0] || ""); }}>
-              {Object.entries(LLM_OPTIONS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <span className="flabel">Model</span>
-            <select className="field" value={model} onChange={(e) => setModel(e.target.value)}>
-              {models.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <span className="flabel">Temperature — {Number(temperature).toFixed(2)}</span>
-            <input type="range" min={0} max={1} step={0.05} value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} style={{ width: "100%", accentColor: "var(--jx-yellow)" }} />
-          </div>
-          <div>
-            <span className="flabel">Embedding model</span>
-            <select className="field" value={embeddingModel} onChange={(e) => setEmbeddingModel(e.target.value)}>
-              {EMBEDDING_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h4 style={{ margin: 0 }}><Cpu size={15} style={{ verticalAlign: "-3px", marginRight: 6 }} />Model Policy & Orchestration</h4>
+          <div style={{ display: "flex", gap: 6, background: "var(--jx-gray-100, #f1f5f9)", padding: "3px 4px", borderRadius: 6 }}>
+            <button
+              type="button"
+              className={`btn micro ${mode === 'simple' ? 'y' : ''}`}
+              onClick={() => setMode('simple')}
+              style={{ padding: "4px 8px", fontSize: 11 }}
+            >
+              Simple Mode
+            </button>
+            <button
+              type="button"
+              className={`btn micro ${mode === 'advanced' ? 'y' : ''}`}
+              onClick={() => setMode('advanced')}
+              style={{ padding: "4px 8px", fontSize: 11 }}
+            >
+              Advanced Mode (Task Policies)
+            </button>
           </div>
         </div>
+
+        {mode === 'simple' ? (
+          <div className="form-grid" style={{ marginTop: "10px" }}>
+            <div>
+              <span className="flabel">Conversational Provider</span>
+              <select
+                className="field"
+                value={provider}
+                onChange={(e) => {
+                  const newP = e.target.value;
+                  const newM = LLM_OPTIONS[newP]?.models[0] || "";
+                  updateConversationalModel(newP, newM);
+                }}
+              >
+                {Object.entries(LLM_OPTIONS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <p className="hint">Configures fast_intent, complex_reasoning, tool_selection, and response_generation uniformly.</p>
+            </div>
+            <div>
+              <span className="flabel">Conversational Model</span>
+              <select className="field" value={model} onChange={(e) => updateConversationalModel(provider, e.target.value)}>
+                {models.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <span className="flabel">Explicit Fallback Provider (Optional)</span>
+              <select
+                className="field"
+                value={fallbackProvider}
+                onChange={(e) => {
+                  const newFbP = e.target.value;
+                  const newFbM = newFbP ? (LLM_OPTIONS[newFbP]?.models[0] || "") : "";
+                  setFallbackProvider(newFbP);
+                  setFallbackModel(newFbM);
+                  updateConversationalModel(provider, model, newFbP, newFbM);
+                }}
+              >
+                <option value="">None (Fail closed)</option>
+                {Object.entries(LLM_OPTIONS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <p className="hint">Fallback is only active if explicitly selected. Hidden fallbacks are disabled.</p>
+            </div>
+            <div>
+              <span className="flabel">Fallback Model</span>
+              <select
+                className="field"
+                value={fallbackModel}
+                disabled={!fallbackProvider}
+                onChange={(e) => {
+                  const newFbM = e.target.value;
+                  setFallbackModel(newFbM);
+                  updateConversationalModel(provider, model, fallbackProvider, newFbM);
+                }}
+              >
+                <option value="">{fallbackProvider ? '-- Select fallback model --' : 'None'}</option>
+                {(LLM_OPTIONS[fallbackProvider]?.models || []).map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <span className="flabel">Temperature — {Number(temperature).toFixed(2)}</span>
+              <input type="range" min={0} max={1} step={0.05} value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} style={{ width: "100%", accentColor: "var(--jx-yellow)" }} />
+            </div>
+            <div>
+              <span className="flabel">Embedding model</span>
+              <select className="field" value={embeddingModel} onChange={(e) => setEmbeddingModel(e.target.value)}>
+                {EMBEDDING_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: "10px" }}>
+            <p className="hint" style={{ marginBottom: 12 }}>
+              Independently configure candidates and fallback settings for each task policy. Publication compiles these deterministically.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {(modelPolicy?.policies || []).map((pol: any) => {
+                const primaryCandidate = pol.candidates?.[0] || { provider: 'openai', model: 'gpt-4o' };
+                const candModels = LLM_OPTIONS[primaryCandidate.provider]?.models || [];
+                return (
+                  <div key={pol.policyId} style={{ border: "1px solid var(--jx-gray-200, #e2e8f0)", borderRadius: 6, padding: "10px 14px", background: "var(--jx-gray-50, #f8fafc)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>{pol.policyId}</span>
+                      <span className="micro" style={{ color: "var(--jx-gray-500)" }}>{pol.description || pol.policyId}</span>
+                    </div>
+                    <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                      <div>
+                        <span className="flabel" style={{ fontSize: 11 }}>Primary Provider</span>
+                        <select
+                          className="field"
+                          value={primaryCandidate.provider}
+                          onChange={(e) => {
+                            const newP = e.target.value;
+                            const newM = LLM_OPTIONS[newP]?.models[0] || "";
+                            patchPolicyCandidate(pol.policyId, { provider: newP, model: newM });
+                          }}
+                        >
+                          {Object.entries(LLM_OPTIONS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <span className="flabel" style={{ fontSize: 11 }}>Primary Model</span>
+                        <select
+                          className="field"
+                          value={primaryCandidate.model}
+                          onChange={(e) => patchPolicyCandidate(pol.policyId, { provider: primaryCandidate.provider, model: e.target.value })}
+                        >
+                          {candModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginTop: 14, cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={pol.fallbackAllowed ?? true}
+                            onChange={(e) => patchPolicyCandidate(pol.policyId, { provider: primaryCandidate.provider, model: primaryCandidate.model, fallbackAllowed: e.target.checked })}
+                          />
+                          Allow Fallback
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Offline ingestion models. Deliberately separate from the conversational
             model above: these run on batch jobs, not customer turns. */}

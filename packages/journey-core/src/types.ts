@@ -211,6 +211,7 @@ export interface TurnResult {
       provider: string;
       model: string;
       dataResidency: string;
+      version?: string;
     };
     errors?: any[];
     events?: any[];
