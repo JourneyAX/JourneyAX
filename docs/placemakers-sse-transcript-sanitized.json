@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-09-28T16:56:44.834Z",
+  "generatedAt": "2026-09-28T20:12:05.857Z",
   "branch": "JourneyAX-dev-v4",
-  "commit": "4c717d2f337bcb61fc8d2273931a359fef8b6492",
+  "commit": "eab4bed8e56b3e9443b7011f1eb75ffe7c1de562",
   "tenantId": "placemakers",
   "environmentId": "production",
   "canonicalEnvironmentId": "production",
@@ -12,13 +12,13 @@
     "semanticValidation": "PASS",
     "publish": {
       "revision": 1,
-      "checksum": "9ef2060cd87dd1f762a309a604c7c8c74c6963e6346c85d0e2345b5546485584",
+      "checksum": "c8dbd5e31e2aa933afb486b3ebe202d687968007b7dec4dddea10d3bb4186a1e",
       "checksumMatchesCanonical": true
     },
     "promoteCutover": {
       "revision": 1,
       "status": "migrated",
-      "checksum": "9ef2060cd87dd1f762a309a604c7c8c74c6963e6346c85d0e2345b5546485584",
+      "checksum": "c8dbd5e31e2aa933afb486b3ebe202d687968007b7dec4dddea10d3bb4186a1e",
       "checksumMatchesCanonical": true
     },
     "casConflictRejected": true,
@@ -36,12 +36,12 @@
       "turn1Status": 200,
       "turn2Status": 200,
       "turn1Stage": "bom_assembly",
-      "turn2Stage": "bom_assembly",
+      "turn2Stage": "trade_approval",
       "workspaceLastTurn": "closure-t2",
       "cutoverGateEnforced": true
     },
     "inlineDryRun": {
-      "checksum": "9ef2060cd87dd1f762a309a604c7c8c74c6963e6346c85d0e2345b5546485584",
+      "checksum": "c8dbd5e31e2aa933afb486b3ebe202d687968007b7dec4dddea10d3bb4186a1e",
       "checksumMatchesCanonical": true,
       "schemaValid": true,
       "semanticValid": true
@@ -61,7 +61,7 @@
     },
     "egressViolations": 0
   },
-  "canonicalChecksum": "9ef2060cd87dd1f762a309a604c7c8c74c6963e6346c85d0e2345b5546485584",
+  "canonicalChecksum": "c8dbd5e31e2aa933afb486b3ebe202d687968007b7dec4dddea10d3bb4186a1e",
   "checksumConsistentAcrossProductionGates": true,
   "canonaryResult": "LOCAL_CANARY_PASSED",
   "canaryResult": "LOCAL_CANARY_PASSED",
@@ -82,7 +82,10 @@
       "responseStatus": 200,
       "sseEvents": [
         "session",
-        "uiAction",
+        "token",
+        "token",
+        "token",
+        "token",
         "token",
         "token",
         "token",
@@ -95,8 +98,7 @@
       "stage": "bom_assembly",
       "facts": {
         "tradeCategory": "Decking",
-        "knowledge_verified": true,
-        "quote_generated": "QUO-PM-885909"
+        "knowledge_verified": true
       }
     },
     {
@@ -111,13 +113,13 @@
         }
       },
       "responseStatus": 200,
-      "stage": "bom_assembly",
+      "stage": "trade_approval",
       "stateVersion": 3,
       "facts": {
         "tradeCategory": "Decking",
         "knowledge_verified": true,
-        "quote_generated": "QUO-PM-885909",
-        "complianceStandard": "NZBC_B1"
+        "complianceStandard": "NZBC_B1",
+        "quote_generated": "QUO-PM-648981"
       }
     }
   ],
