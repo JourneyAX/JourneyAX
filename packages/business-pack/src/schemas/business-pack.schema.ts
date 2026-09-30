@@ -15,6 +15,8 @@ import { SpacePlannerExtensionSchema } from './space-planner.schema';
 export const ConversationPolicySchema = z.object({
   fencingRules: z.array(z.string()).default([]),
   prohibitedTopics: z.array(z.string()).default([]),
+  maxClarificationQuestionsPerTurn: z.number().int().min(1).max(10).default(3).optional(),
+  allowJourneySwitch: z.boolean().default(true).optional(),
   escalationThresholds: z.object({
     sentimentFloor: z.number().min(-1).max(1).default(-0.6),
     maxTurnsWithoutProgress: z.number().int().default(4),

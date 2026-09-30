@@ -16,6 +16,10 @@ export const FactRequirementSchema = z.object({
   options: z.array(z.string()).optional(),
   dependencies: z.array(z.string()).default([]),
   required: z.boolean().default(true),
+  inputType: z.enum(['single_select', 'multi_select', 'number', 'measurement', 'text']).optional(),
+  unit: z.string().optional(),
+  placeholder: z.string().optional(),
+  multi: z.boolean().optional(),
 });
 
 export const FactRequirementItemSchema = z.union([

@@ -55,21 +55,28 @@ export class JourneyResolver {
     }
 
     // 1. Check for intentional journey switch if workspace already has a pinned journey
-    // (a pack-declared switch policy allows customer to explicitly switch journeys)
+    // Only an explicit customer request can switch away from the pinned journey.
+    // Do not infer a journey switch from short or misspelled answers.
     if (workspace && workspace.journeyId && workspace.journeyId !== 'unassigned') {
       const allowSwitch =
         (release.conversationPolicy as any)?.allowJourneySwitch !== false;
 
-      if (allowSwitch && rawMessage.length > 0) {
-        // Check if customer explicitly requested another journey
-        const otherJourneys = release.journeys.filter((j) => j.journeyId !== workspace.journeyId);
-        for (const other of otherJourneys) {
-          const switchRequested =
-            (other.displayName && rawMessage.includes(other.displayName.toLowerCase())) ||
-            rawMessage.includes(other.journeyId.toLowerCase()) ||
-            (rawMessage.includes('switch') && other.goals.some((g) => rawMessage.includes(g.toLowerCase())));
-          if (switchRequested) {
-            return { status: 'resolved', journey: other };
+      if (allowSwitch && rawMessage.length > 5) {
+        const isExplicitSwitchPhrase =
+          /\b(switch to|change to|instead of|cancel this|start over with|different project|change project)\b/i.test(rawMessage) ||
+          rawMessage.toLowerCase().startsWith('i want to switch') ||
+          rawMessage.toLowerCase().startsWith('switch journey');
+
+        if (isExplicitSwitchPhrase) {
+          const otherJourneys = release.journeys.filter((j) => j.journeyId !== workspace.journeyId);
+          for (const other of otherJourneys) {
+            const switchRequested =
+              (other.displayName && rawMessage.toLowerCase().includes(other.displayName.toLowerCase())) ||
+              rawMessage.toLowerCase().includes(other.journeyId.toLowerCase()) ||
+              other.goals.some((g) => rawMessage.toLowerCase().includes(g.toLowerCase()));
+            if (switchRequested) {
+              return { status: 'resolved', journey: other };
+            }
           }
         }
       }
@@ -376,55 +383,106 @@ export class JourneyResolver {
         };
       }
 
-      // Sort eligible requirements:
+      // Sort eligible requirements helper:
       // Primary: Priority descending (e.g. 200 > 100)
       // Secondary: If nextDecisionPolicy === 'dependency-first', prioritize facts that other facts depend on
-      eligibleReqs.sort((a, b) => {
-        const prioA = a.priority ?? 100;
-        const prioB = b.priority ?? 100;
-        if (prioB !== prioA) return prioB - prioA;
+      const sortReqs = (list: typeof eligibleReqs) => {
+        list.sort((a, b) => {
+          const prioA = a.priority ?? 100;
+          const prioB = b.priority ?? 100;
+          if (prioB !== prioA) return prioB - prioA;
 
-        if (currentStage.nextDecisionPolicy === 'dependency-first') {
-          const isDepA = missingReqs.some((r) => r.dependencies?.includes(a.key));
-          const isDepB = missingReqs.some((r) => r.dependencies?.includes(b.key));
-          if (isDepA && !isDepB) return -1;
-          if (isDepB && !isDepA) return 1;
-        }
+          if (currentStage.nextDecisionPolicy === 'dependency-first') {
+            const isDepA = missingReqs.some((r) => r.dependencies?.includes(a.key));
+            const isDepB = missingReqs.some((r) => r.dependencies?.includes(b.key));
+            if (isDepA && !isDepB) return -1;
+            if (isDepB && !isDepA) return 1;
+          }
 
-        return 0;
+          return 0;
+        });
+      };
+
+      // Determine max questions per turn (default 3)
+      const maxQuestions =
+        (release.conversationPolicy as any)?.maxClarificationQuestionsPerTurn ?? 3;
+
+      // Retain previously open questions that remain unanswered and eligible
+      // (Never replace an unanswered question group with an unrelated group)
+      const previouslyOpenReqs = eligibleReqs.filter(
+        (r) => Array.isArray(workspace.openQuestions) && workspace.openQuestions.includes(r.key)
+      );
+      const newlyEligibleReqs = eligibleReqs.filter(
+        (r) => !Array.isArray(workspace.openQuestions) || !workspace.openQuestions.includes(r.key)
+      );
+
+      sortReqs(previouslyOpenReqs);
+      sortReqs(newlyEligibleReqs);
+
+      // Select up to maxQuestions eligible questions, keeping pending open questions first
+      const selectedReqs = [...previouslyOpenReqs, ...newlyEligibleReqs].slice(0, maxQuestions);
+
+      const slotQuestions = (release.vocabulary as any)?.slotQuestions || {};
+      const entities = release.entities?.entities || [];
+
+      const selectedQuestions = selectedReqs.map((req) => {
+        const factKey = req.key;
+        const slotDef = slotQuestions[factKey] || (currentStage as any).questionDefinitions?.[factKey];
+        const entityDef = entities.find(
+          (e: any) => e.entityName === factKey || e.entityId === factKey || e.name === factKey
+        );
+        const attrDef = entityDef?.attributes?.find((a: any) => a.name === factKey);
+        const options = req.options || slotDef?.options || (entityDef as any)?.allowedValues || attrDef?.enum || [];
+        const questionText = req.question || slotDef?.text || `Could you please specify your ${factKey.replace(/_/g, ' ')}?`;
+        const multi = Boolean(req.multi ?? slotDef?.multi ?? false);
+        const inputType =
+          req.inputType ||
+          slotDef?.inputType ||
+          (attrDef?.type === 'number' || (entityDef as any)?.type === 'number'
+            ? 'number'
+            : options.length > 0
+            ? multi
+              ? 'multi_select'
+              : 'single_select'
+            : 'text');
+        const unit = req.unit || slotDef?.unit;
+        const placeholder = req.placeholder || slotDef?.placeholder;
+
+        return {
+          id: factKey,
+          text: questionText,
+          options,
+          multi,
+          inputType,
+          unit,
+          placeholder,
+        };
       });
 
-      // Select EXACTLY ONE highest-priority eligible question
-      const targetReq = eligibleReqs[0];
+      const targetReq = selectedReqs[0];
       const targetFact = targetReq.key;
-
-      // Question text and options from structured requirement or vocabulary slotQuestions
-      const slotQuestions = (release.vocabulary as any)?.slotQuestions || {};
-      const slotDef = slotQuestions[targetFact] || (currentStage as any).questionDefinitions?.[targetFact];
-
-      const entityDef = release.entities?.entities?.find(
-        (e: any) => e.entityName === targetFact || e.entityId === targetFact
-      );
-      const attrDef = entityDef?.attributes?.find((a: any) => a.name === targetFact);
-      const options = targetReq.options || slotDef?.options || (entityDef as any)?.allowedValues || attrDef?.enum || [];
-      const questionText = targetReq.question || slotDef?.text || `Could you please specify your ${targetFact.replace(/_/g, ' ')}?`;
-      const multi = slotDef?.multi || false;
 
       return {
         decisionId: `dec_${Date.now()}`,
         type: 'ask_fact',
         payload: {
           targetFact,
+          questions: selectedQuestions,
           missingFacts: missingReqs.map((r) => r.key),
           allMissingFacts: missingReqs.map((r) => r.key),
           stage: currentStageId,
-          question: questionText,
-          options,
-          multi,
+          question: selectedQuestions[0].text,
+          options: selectedQuestions[0].options,
+          multi: selectedQuestions[0].multi,
+          inputType: selectedQuestions[0].inputType,
+          unit: selectedQuestions[0].unit,
+          placeholder: selectedQuestions[0].placeholder,
           priority: targetReq.priority ?? 100,
           reason: targetReq.reason,
         },
-        reason: targetReq.reason || `Stage '${currentStageId}' requires mandatory fact '${targetFact}' before advancement`,
+        reason:
+          targetReq.reason ||
+          `Stage '${currentStageId}' requires mandatory facts [${selectedQuestions.map((q) => q.id).join(', ')}] before advancement`,
         createdAt: new Date().toISOString(),
       };
     }

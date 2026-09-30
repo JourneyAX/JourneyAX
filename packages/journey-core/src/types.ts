@@ -41,6 +41,10 @@ export interface FactRequirement {
   options?: string[];
   dependencies?: string[];
   required?: boolean;
+  inputType?: 'single_select' | 'multi_select' | 'number' | 'measurement' | 'text';
+  unit?: string;
+  placeholder?: string;
+  multi?: boolean;
 }
 
 export interface CapabilityPlanItem {

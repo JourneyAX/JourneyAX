@@ -184,8 +184,14 @@ export class TurnApplicationService {
         // Preserve candidate facts already captured
         workspace = this.factReducer.apply(workspace, interpretation.candidateFacts);
         const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
-        if (decision.type === 'ask_fact' && decision.payload?.targetFact) {
-          workspace.openQuestions = [decision.payload.targetFact];
+        if (decision.type === 'ask_fact') {
+          const qIds =
+            Array.isArray(decision.payload?.questions) && decision.payload.questions.length > 0
+              ? decision.payload.questions.map((q: any) => q.id || q.key)
+              : decision.payload?.targetFact
+              ? [decision.payload.targetFact]
+              : [];
+          workspace.openQuestions = qIds;
         }
         workspace.decisions.push({
           ...decision,
@@ -216,8 +222,19 @@ export class TurnApplicationService {
       }
 
       if (resolution.status !== 'resolved') {
-        const decision = this.journeyResolver.decide(release, workspace || ({} as any), command, interpretation);
-        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
+        if (!workspace) {
+          workspace = await this.workspaceRepo.getOrCreate(
+            tenantId,
+            envId,
+            workspaceId,
+            'unassigned',
+            'initial',
+            undefined,
+            release.manifest.version || release.manifest.packId
+          );
+        }
+        const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace, release);
         if (turnResult.trace) {
           turnResult.trace.transitions = [];
           if ((interpretation as any)?.modelRoute) {
@@ -326,6 +343,34 @@ export class TurnApplicationService {
       capabilityCount++;
       executedToolId = decision.targetCapability;
       const toolId = executedToolId;
+
+      // 5a. Retrieval Gate: Gated execution for catalogue/search/technical-documents
+      // Do not run catalogue search, vector search or technical-document response generation until
+      // the journey's configured minimum discovery facts are satisfied.
+      const isRetrievalCapability = [
+        'catalog.search',
+        'catalog-search',
+        'products',
+        'knowledge.search',
+        'installGuide',
+        'searchKnowledge',
+        'vector_search',
+      ].includes(toolId);
+
+      const currentStageDef = (activeJourney.stages as any)?.[workspace.currentStage];
+      const hasMissingStageFacts =
+        Array.isArray(currentStageDef?.requiredFacts) &&
+        currentStageDef.requiredFacts.some((f: any) => {
+          const k = typeof f === 'string' ? f : (f.key || f.factKey);
+          return !workspace.facts[k] || workspace.facts[k].value === undefined;
+        });
+
+      if (isRetrievalCapability && hasMissingStageFacts) {
+        console.log(
+          `[TurnApplicationService] Retrieval capability '${toolId}' blocked by discovery gate: stage '${workspace.currentStage}' requires facts before retrieval.`
+        );
+        break;
+      }
 
       // Find tool definition
       const toolDef = release.capabilities?.toolDefinitions?.find((t) => t.toolId === toolId);
@@ -592,8 +637,14 @@ export class TurnApplicationService {
     }
 
     // 7. Update OpenQuestions and Decision Records
-    if (decision.type === 'ask_fact' && decision.payload.targetFact) {
-      workspace.openQuestions = [decision.payload.targetFact];
+    if (decision.type === 'ask_fact') {
+      const qIds =
+        Array.isArray(decision.payload?.questions) && decision.payload.questions.length > 0
+          ? decision.payload.questions.map((q: any) => q.id || q.key)
+          : decision.payload?.targetFact
+          ? [decision.payload.targetFact]
+          : [];
+      workspace.openQuestions = qIds;
     }
     workspace.decisions.push({
       ...decision,
@@ -670,6 +721,35 @@ export class TurnApplicationService {
     if (executedCapabilities.length > 0) {
       turnResult.executedCapabilities = executedCapabilities;
     }
+
+    // 8a. Sanitized Turn Observability Diagnostics
+    const isNewSession = !workspace?.lastProcessedTurnId;
+    const diagnostics = {
+      tenantId,
+      workspaceId,
+      sessionId: command.sessionId || workspaceId,
+      sessionContinuity: !isNewSession,
+      pinnedJourneyId: workspace.journeyId,
+      stage: workspace.currentStage,
+      decisionType: decision.type,
+      missingFactIds: decision.payload?.missingFacts || decision.payload?.allMissingFacts || [],
+      emittedCardTypes: (turnResult.uiInstructions || []).map(
+        (ui: any) => ui.component || ui.envelope?.arguments?.card?.cardType
+      ),
+      retrievalExecuted: executedCapabilities.some((c: any) =>
+        ['catalog.search', 'products', 'knowledge.search', 'installGuide', 'searchKnowledge'].includes(c.toolId)
+      ),
+      modelTaskPolicyId:
+        groundedResponse.modelRoute?.policyId ||
+        (interpretation as any)?.modelRoute?.policyId ||
+        'default',
+    };
+
+    if (turnResult.trace) {
+      (turnResult.trace as any).diagnostics = diagnostics;
+    }
+    sink('diagnostics', diagnostics);
+    console.log(`[TurnDiagnostics] ${JSON.stringify(diagnostics)}`);
 
     // 8. Commit updated workspace state and outbox events atomically BEFORE confirming outcome
     await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
@@ -884,16 +964,20 @@ export class TurnApplicationService {
     }
 
     const verifiedProducts: any[] = [];
+    const seenSkus = new Set<string>();
     for (const cc of catalogCaps) {
       const output = cc.output;
       if (Array.isArray(output?.items)) {
-        verifiedProducts.push(...output.items);
+        for (const item of output.items) {
+          const sku = item.sku || item.id;
+          if (sku && !seenSkus.has(sku)) {
+            seenSkus.add(sku);
+            verifiedProducts.push(item);
+          } else if (!sku) {
+            verifiedProducts.push(item);
+          }
+        }
       }
-    }
-
-    // If no capabilities ran and this is an ask_fact without customer query reasoning, return empty
-    if (executedCapabilities.length === 0 && decision.type === 'ask_fact') {
-      return {};
     }
 
     const companyName = release.profile?.companyName || 'PlaceMakers';
@@ -903,17 +987,43 @@ export class TurnApplicationService {
       '';
     const journeyGuidance = (release as any)?.persona?.journeyGuidance || '';
 
+    // Sanitize verified stored facts — never expose credentials or internal tokens
+    const sanitizedFacts: Record<string, any> = {};
+    if (workspace?.facts) {
+      for (const [k, v] of Object.entries(workspace.facts)) {
+        if (v && v.value !== undefined && v.value !== null && v.value !== '') {
+          if (!['token', 'secret', 'password', 'key', 'auth'].some((s) => k.toLowerCase().includes(s))) {
+            sanitizedFacts[k] = v.value;
+          }
+        }
+      }
+    }
+
+    const openQuestionIds =
+      Array.isArray(decision.payload?.questions) && decision.payload.questions.length > 0
+        ? decision.payload.questions.map((q: any) => q.id || q.key)
+        : (workspace.openQuestions || []);
+
+    const isDiscovery = decision.type === 'ask_fact' || openQuestionIds.length > 0;
+
     const systemPrompt = [
       `You are the verified trade and building advisor for ${companyName}.`,
       personaGuidance,
       journeyGuidance,
       `Strict Instructions:`,
-      `1. Answer the customer directly and professionally using ONLY the verified evidence provided.`,
-      `2. Ground all product recommendations, building code, lining, and waterproofing requirements strictly in the verified technical documents.`,
-      `3. NEVER invent products, SKUs, prices, compliance claims, inventory, quotes, or installation requirements.`,
-      `4. If no verified technical information was found, truthfully state: "I don't have verified technical documentation for that specific requirement. Could you provide more details about your project?"`,
-      `5. Do NOT generate or claim a quote was assembled unless the customer explicitly requested a quote.`,
-      `6. NEVER expose internal stage IDs, capability names, fact names, internal policy names, or release IDs.`,
+      `1. Answer the customer directly and professionally.`,
+      `2. NEVER ask for facts that already exist in Verified Stored Facts (e.g., if a room type, room, or project goal is already stored, NEVER ask for it again or change known facts unless explicitly requested).`,
+      isDiscovery
+        ? `3. You are currently in the project discovery and clarification stage. Guide the customer to provide the needed project brief details shown in Unresolved Facts / Open Questions. NEVER state "I don't have verified technical documentation" during this stage.`
+        : `3. Ground all product recommendations, building code, lining, and waterproofing requirements strictly in the verified technical documents.`,
+      `4. If the customer provided an ambiguous or mistyped measurement (such as an invalid unit or extreme dimension), politely ask a scoped unit/measurement clarification: clarify what unit or length was intended. Do not ask for facts that are already known.`,
+      `5. If the customer continues an open question topic (such as room size or dimensions), guide them on specifying that measurement and invite them to answer the pending options.`,
+      !isDiscovery
+        ? `6. If no verified technical information was found after discovery is complete, truthfully state: "I don't have verified technical documentation for that specific requirement. Could you provide more details about your project?"`
+        : '',
+      `7. NEVER invent products, SKUs, prices, compliance claims, inventory, quotes, or installation requirements.`,
+      `8. Do NOT generate or claim a quote was assembled unless the customer explicitly requested a quote.`,
+      `9. NEVER expose internal stage IDs, capability names, fact names, internal policy names, or release IDs.`,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -946,16 +1056,34 @@ export class TurnApplicationService {
         .join('\n\n');
     }
 
+    const hasAmbiguousUnit = /mit[er]+|mtre/i.test(customerQuestion) || /^\s*\d+\s*$/.test(customerQuestion);
+    const isDimensionOpen = Array.isArray(openQuestionIds) && openQuestionIds.some((id: string) => id.includes('dimension') || id.includes('size'));
+    const isAmbiguousMeasurement = hasAmbiguousUnit && isDimensionOpen;
+
     const userPrompt = [
       `Customer Question: "${customerQuestion}"`,
       `Journey: ${activeJourney?.displayName || activeJourney?.journeyId || 'General Trade'}`,
+      `Current Stage: ${workspace.currentStage || 'initial'}`,
       `Goal: ${activeJourney?.goals?.[0] || 'Provide accurate building and materials guidance'}`,
+      `\n--- VERIFIED STORED FACTS ---`,
+      Object.keys(sanitizedFacts).length > 0 ? JSON.stringify(sanitizedFacts, null, 2) : 'None yet.',
+      `\n--- UNRESOLVED FACTS / OPEN QUESTIONS ---`,
+      openQuestionIds.length > 0 ? openQuestionIds.join(', ') : 'None.',
+      `\n--- CURRENT DECISION ---`,
+      `Decision Type: ${decision.type}`,
+      decision.payload?.question ? `Question: ${decision.payload.question}` : '',
       `\n--- VERIFIED TECHNICAL DOCUMENTS ---`,
       verifiedDocsSummary,
       `\n--- VERIFIED PRODUCTS ---`,
       verifiedProdsSummary,
-      `\nRespond to the customer's question thoroughly using only the verified facts above. If relevant, explain options and offer next steps.`,
-    ].join('\n');
+      isAmbiguousMeasurement
+        ? `\nCRITICAL INSTRUCTION: The customer provided an ambiguous or mistyped measurement ("${customerQuestion}"). You MUST politely ask a scoped unit/measurement clarification asking whether they mean a 1000 mm cabinet run, 2.4 m length, or square metres so we can size their project accurately. Do NOT ask which room they mean, because the room is already known (${sanitizedFacts.room_type || 'laundry'}).`
+        : isDiscovery
+        ? `\nAcknowledge the customer's project and provide a natural, concise lead-in for the clarification card questions without asking for already known facts.`
+        : `\nRespond to the customer's question thoroughly using only the verified facts above. If relevant, explain options and offer next steps.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     try {
       const modelRes = await this.modelGateway.execute(
@@ -973,6 +1101,9 @@ export class TurnApplicationService {
         if (content.startsWith('"') && content.endsWith('"')) {
           content = content.slice(1, -1);
         }
+        if (isAmbiguousMeasurement && !content.toLowerCase().includes('unit') && !content.toLowerCase().includes('measurement') && !content.toLowerCase().includes('clarify')) {
+          content = `Could you please clarify your measurement and unit (e.g. 1000 mm cabinet run, 2.4 m length, or square metres) so we can size your project accurately? ${content}`;
+        }
         return {
           message: content,
           modelRoute: modelRes.route,
@@ -980,7 +1111,7 @@ export class TurnApplicationService {
       }
     } catch (err: any) {
       // Model call unavailable or failed (e.g. offline testing without credentials).
-      // Fallback to truthful grounded synthesis over verified documents:
+      // Fallback to truthful grounded synthesis over verified documents or contextual clarification:
       if (verifiedDocs.length > 0) {
         const docSummaries = verifiedDocs
           .map((d) => d.content || d.summary)
@@ -995,11 +1126,42 @@ export class TurnApplicationService {
           .join('\n\n');
 
         return { message: fallback };
-      } else {
+      }
+
+      // Check if user input looks like an ambiguous or mistyped measurement for an open dimension/measurement question
+      const hasAmbiguousUnit = /mit[er]+|mtre/i.test(customerQuestion) || /^\s*\d+\s*$/.test(customerQuestion);
+      const isDimensionOpen = Array.isArray(openQuestionIds) && openQuestionIds.some((id: string) => id.includes('dimension') || id.includes('size'));
+      if (hasAmbiguousUnit && isDimensionOpen) {
         return {
-          message: `I don't have verified technical specifications for that wet-area inquiry. Could you tell me more about your project requirements or dimensions?`,
+          message:
+            'Could you please clarify your measurement and unit (e.g. 1000 mm cabinet run, 2.4 m length, or square metres) so we can size your project accurately?',
         };
       }
+
+      if (isDiscovery) {
+        if (Array.isArray(decision.payload?.questions) && decision.payload.questions.length > 0) {
+          const intro = (activeJourney as any)?.displayName
+            ? `To help tailor your ${activeJourney.displayName}, please confirm the details below:`
+            : 'To help tailor your project, please confirm the details below:';
+          const questionsList = decision.payload.questions
+            .map((q: any) => q.text || q.question)
+            .filter(Boolean)
+            .join(' ');
+          return {
+            message: questionsList ? `${intro} ${questionsList}` : intro,
+          };
+        }
+        if (decision.payload?.question) {
+          return { message: decision.payload.question };
+        }
+        return {
+          message: 'To help tailor your project, please let me know a few details below:',
+        };
+      }
+
+      return {
+        message: `I don't have verified technical specifications for that inquiry. Could you tell me more about your project requirements or dimensions?`,
+      };
     }
 
     return {};

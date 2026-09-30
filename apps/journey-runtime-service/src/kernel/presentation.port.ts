@@ -85,22 +85,44 @@ export class PresentationPort {
       const questionText =
         decision.payload.question ||
         `To assist you with your request, could you please specify: ${targetFact.replace(/_/g, ' ')}?`;
-      const options: string[] = Array.isArray(decision.payload.options) ? decision.payload.options : [];
+      const targetOptions: string[] = Array.isArray(decision.payload.options) ? decision.payload.options : [];
       const multi = Boolean(decision.payload.multi);
 
-      assistantMessage = questionText;
+      const rawQuestions =
+        Array.isArray(decision.payload.questions) && decision.payload.questions.length > 0
+          ? decision.payload.questions.slice(0, 3)
+          : [
+              {
+                id: targetFact,
+                text: questionText,
+                options: targetOptions,
+                multi,
+                inputType: decision.payload.inputType || 'single_select',
+                unit: decision.payload.unit,
+                placeholder: decision.payload.placeholder,
+              },
+            ];
+
+      const questionsList = rawQuestions.map((q: any) => ({
+        id: q.id || q.key || targetFact,
+        text: q.text || q.question || `Could you please specify your ${(q.id || targetFact).replace(/_/g, ' ')}?`,
+        options: Array.isArray(q.options) ? q.options : [],
+        multi: Boolean(q.multi),
+        inputType: q.inputType || 'single_select',
+        ...(q.unit ? { unit: q.unit } : {}),
+        ...(q.placeholder ? { placeholder: q.placeholder } : {}),
+      }));
+
+      if (options?.assistantMessage && options.assistantMessage.trim().length > 0) {
+        assistantMessage = options.assistantMessage.trim();
+      } else {
+        assistantMessage = questionsList.map((q) => q.text).join(' ');
+      }
 
       const cardId = `card_clarify_${Date.now()}`;
-      const totalMissing = decision.payload.allMissingFacts?.length || decision.payload.missingFacts?.length || 1;
+      const totalMissing = decision.payload.allMissingFacts?.length || decision.payload.missingFacts?.length || questionsList.length;
       const clarifyState = {
-        questions: [
-          {
-            id: targetFact,
-            text: questionText,
-            options,
-            multi,
-          },
-        ],
+        questions: questionsList,
         progress: `${totalMissing} detail${totalMissing > 1 ? 's' : ''} needed`,
       };
 
