@@ -33,7 +33,7 @@ async function run() {
     packId: 'pack_placemakers',
     tenantId: 'placemakers',
     environmentId: 'production',
-    version: '1.0.8',
+    version: '1.0.9',
     status: 'active',
     publishedAt: new Date().toISOString(),
     publishedBy: 'platform-closure',

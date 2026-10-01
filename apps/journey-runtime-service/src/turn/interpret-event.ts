@@ -136,7 +136,8 @@ export class TurnInterpreter {
           `3. If existingFacts contains room_type, room, or project_goal, NEVER ask which room or project the customer is modifying or change existing facts unless explicitly requested.\n` +
           `4. For ambiguous measurements (e.g. '100 miters' when dimensions are open), do NOT store extreme or ambiguous values (e.g. do not store 100 meters as room dimensions); omit them or capture clarification needed.\n` +
           `5. Only extract candidateFacts that the customer explicitly specified or answered. Do NOT infer categorical facts (e.g. project_mode, cabinetry_storage, appliance_arrangement) from casual phrasing (e.g. 'I want to build a laundry cabinet' indicates the overall project goal, NOT project_mode='New build').\n` +
-          `6. Output only JSON matching: { "intent": string, "candidateFacts": { [key: string]: { "value": any, "confidence": number } } }`;
+          `6. When the customer merely mentions a slot, question, or topic name without answering it (e.g. 'room soize', 'room size', 'dimensions', 'measurements'), do NOT infer an answer or select an option (like 'Need help measuring'). Omit candidateFacts for that slot.\n` +
+          `7. Output only JSON matching: { "intent": string, "candidateFacts": { [key: string]: { "value": any, "confidence": number } } }`;
 
         const modelRes = await this.modelGateway.execute(release, {
           taskType: 'fast_intent',
@@ -184,7 +185,21 @@ export class TurnInterpreter {
                   .filter((w: string) => w.length > 3 && !['space', 'layout', 'build', 'unit', 'existing'].includes(w));
                 const msgContainsWord = optWords.some((w: string) => lowerMsg.includes(w));
 
-                if (!msgContainsOpt && !msgContainsSyn && !msgContainsWord) {
+                const isMeasurementSlot =
+                  k.includes('dimension') ||
+                  k.includes('size') ||
+                  entityDef?.type === 'measurement' ||
+                  attrDef?.type === 'measurement';
+
+                if (isMeasurementSlot) {
+                  // Non-numeric option like "Need help measuring" requires explicit mention of the option or help/measure
+                  const hasMeasurementWording =
+                    msgContainsOpt ||
+                    (lowerOpt.includes('measur') && (lowerMsg.includes('measur') || lowerMsg.includes('help')));
+                  if (!hasMeasurementWording) {
+                    continue;
+                  }
+                } else if (!msgContainsOpt && !msgContainsSyn && !msgContainsWord) {
                   // Ungrounded model extraction from generic casual phrasing; drop candidate fact
                   continue;
                 }

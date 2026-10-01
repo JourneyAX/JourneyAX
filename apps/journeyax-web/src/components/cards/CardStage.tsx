@@ -90,15 +90,46 @@ export function useCardActions() {
         const value = String(params?.value ?? '');
         if (!questionId) break;
         dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value });
-        // Light the chosen chip and update the "n of m answered" footer on
-        // the clarify card itself. Submission is NOT decided here: this
-        // handler used to call __handleClarifySubmit synchronously, before
-        // the dispatch above had committed, so a one-question card sent
-        // "→ Not answered" on the very first tap. ChatPanel now watches the
-        // committed answers and sends once every question has one.
-        const answers = { ...state.dynamicAnswers, [questionId]: value };
+
         const card = [...state.cards].reverse().find((c) => c.cardType === 'clarify');
-        if (card) dispatch({ type: 'PATCH_CARD', id: card.id, state: mapClarifyCard(state.dynamicQuestions, answers) });
+        if (card) {
+          const currentQuestions: any[] =
+            Array.isArray((card.state as any)?.questions) && (card.state as any).questions.length > 0
+              ? (card.state as any).questions
+              : state.dynamicQuestions.map((q) => ({ id: q.id, text: q.title, options: q.options }));
+
+          const answers = { ...state.dynamicAnswers, [questionId]: value };
+
+          const updatedQuestions = currentQuestions.map((q: any) => ({
+            ...q,
+            answer: answers[q.id] !== undefined ? answers[q.id] : q.answer,
+          }));
+
+          const total = updatedQuestions.length;
+          const answeredCount = updatedQuestions.filter((q: any) => {
+            const ans = answers[q.id] !== undefined ? answers[q.id] : q.answer;
+            return ans !== undefined && ans !== null && ans !== '';
+          }).length;
+          const left = total - answeredCount;
+
+          const progress = total === 0
+            ? undefined
+            : left === 0
+              ? `All ${total === 1 ? 'set' : `${total} answered`} — sending your answers…`
+              : total === 1
+                ? 'Pick one to continue.'
+                : `${answeredCount} of ${total} answered — pick the ${left === 1 ? 'last one' : 'rest'} whenever you're ready, nothing sends until then.`;
+
+          dispatch({
+            type: 'PATCH_CARD',
+            id: card.id,
+            state: {
+              ...card.state,
+              questions: updatedQuestions,
+              progress,
+            },
+          });
+        }
         break;
       }
       case 'viewProduct': {

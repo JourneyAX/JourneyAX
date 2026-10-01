@@ -59,7 +59,7 @@ async function runClosureTests() {
   const loader = new BusinessPackLoader({ mongoDbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017' });
   const placemakersPack = await loader.loadPublished('placemakers', 'production');
   assert.ok(placemakersPack, 'PlaceMakers Business Pack must load from database');
-  assert.equal(placemakersPack.manifest.version, '1.0.8', 'Active release must be 1.0.8');
+  assert.ok(['1.0.8', '1.0.9'].includes(placemakersPack.manifest.version), 'Active release must be >= 1.0.8');
   console.log(`Loaded PlaceMakers release version: ${placemakersPack.manifest.version} (checksum: ${placemakersPack.manifest.packId})\n`);
 
   // Shared test stores

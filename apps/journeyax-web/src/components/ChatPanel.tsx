@@ -140,6 +140,17 @@ async function streamChat(
               createdAt: c.createdAt || new Date().toISOString(),
             },
           });
+          if (c.cardType === 'clarify' && Array.isArray(c.state?.questions)) {
+            dispatch({
+              type: 'SET_DYNAMIC_QUESTIONS',
+              questions: c.state.questions.map((q: any) => ({
+                id: q.id,
+                title: q.text || q.title || q.id,
+                options: q.options || [],
+                multi: !!q.multi,
+              })),
+            });
+          }
         }
         // Forward-compatible: once the agent's presentation layer attaches an
         // enriched `card` to the frame directly (docs §5), render it too.
@@ -821,17 +832,20 @@ export default function ChatPanel() {
     dispatch({ type: 'SET_THINKING', thinking: false });
   }, [messages, sendToAI, dispatch]);
 
-  // Called when user submits clarify answers from the right panel
+  // Called when user submits clarify answers from the right panel or card
   const handleClarifySubmit = useCallback(async () => {
-    const qs = state.dynamicQuestions;
-    const answers = state.dynamicAnswers;
+    const card = [...stateRef.current.cards].reverse().find((c) => c.cardType === 'clarify');
+    const qs: any[] = card && Array.isArray((card.state as any)?.questions) && (card.state as any).questions.length > 0
+      ? (card.state as any).questions
+      : stateRef.current.dynamicQuestions.map((q) => ({ id: q.id, title: q.title }));
+    const answers = stateRef.current.dynamicAnswers;
     if (qs.length === 0) return;
 
-    const fingerprint = qs.map((q) => `${q.id}:${answers[q.id] || ''}`).join('|');
+    const fingerprint = qs.map((q: any) => `${q.id}:${answers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
     const answerSummary = qs
-      .map((q) => `${q.title} → ${answers[q.id] || 'Not answered'}`)
+      .map((q: any) => `${q.text || q.title || q.id} → ${answers[q.id] ?? q.answer ?? 'Not answered'}`)
       .join('\n');
     const clarificationText = `My answers:\n${answerSummary}`;
 
@@ -841,7 +855,7 @@ export default function ChatPanel() {
     }
 
     await executeClarificationSubmit(clarificationText, fingerprint);
-  }, [state.dynamicQuestions, state.dynamicAnswers, isLoading, state.isThinking, executeClarificationSubmit]);
+  }, [state.isThinking, isLoading, executeClarificationSubmit]);
 
   // Expose handleClarifySubmit globally so ClarifyPanel can call it
   // Generic bridge so the capability panels (accessories / choice / install /
@@ -860,15 +874,23 @@ export default function ChatPanel() {
   // committed reducer state, never from inside the chip's click handler.
   // One send per question set + answers fingerprint.
   useEffect(() => {
-    const qs = state.dynamicQuestions;
-    if (state.phase !== 'clarify' || qs.length === 0) return;
-    if (!qs.every((q) => !!state.dynamicAnswers[q.id])) return;
+    const card = [...state.cards].reverse().find((c) => c.cardType === 'clarify');
+    const qs: any[] = card && Array.isArray((card.state as any)?.questions) && (card.state as any).questions.length > 0
+      ? (card.state as any).questions
+      : state.dynamicQuestions.map((q) => ({ id: q.id, title: q.title }));
+    if (qs.length === 0) return;
 
-    const fingerprint = qs.map((q) => `${q.id}:${state.dynamicAnswers[q.id] || ''}`).join('|');
+    const isAllAnswered = qs.every((q: any) => {
+      const ans = state.dynamicAnswers[q.id] !== undefined ? state.dynamicAnswers[q.id] : q.answer;
+      return ans !== undefined && ans !== null && ans !== '';
+    });
+    if (!isAllAnswered) return;
+
+    const fingerprint = qs.map((q: any) => `${q.id}:${state.dynamicAnswers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
     const answerSummary = qs
-      .map((q) => `${q.title} → ${state.dynamicAnswers[q.id] || 'Not answered'}`)
+      .map((q: any) => `${q.text || q.title || q.id} → ${state.dynamicAnswers[q.id] ?? q.answer ?? 'Not answered'}`)
       .join('\n');
     const clarificationText = `My answers:\n${answerSummary}`;
 
@@ -878,7 +900,7 @@ export default function ChatPanel() {
     }
 
     void executeClarificationSubmit(clarificationText, fingerprint);
-  }, [state.dynamicQuestions, state.dynamicAnswers, state.phase, isLoading, state.isThinking, executeClarificationSubmit]);
+  }, [state.cards, state.dynamicQuestions, state.dynamicAnswers, isLoading, state.isThinking, executeClarificationSubmit]);
 
   // Flush pending clarification as soon as the streaming turn settles (survives streaming transitions)
   useEffect(() => {
