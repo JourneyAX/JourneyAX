@@ -103,7 +103,6 @@ export class JourneyResolver {
     // 3. Goal/Policy-based semantic matching using pack-declared triggerIntents, goal phrases, and interpreter intent
     // (Drop capability-name keywords and prefix fuzzing. Score matches and resolve when top score beats runner-up by a margin.)
     const scoredJourneys: { journey: JourneyDefinition; score: number }[] = [];
-
     for (const j of release.journeys) {
       let score = 0;
 
@@ -207,7 +206,7 @@ export class JourneyResolver {
       const top = scoredJourneys[0];
       const runnerUp = scoredJourneys[1];
       // Resolve when top score beats runner-up by a clear margin
-      if (top.score >= runnerUp.score + 10 && top.score >= 20) {
+      if (top.score > runnerUp.score + 10 && top.score >= 20) {
         return { status: 'resolved', journey: top.journey };
       }
       return {
@@ -219,9 +218,79 @@ export class JourneyResolver {
 
     // Check if greeting or empty:
     const isGreeting = ['hi', 'hello', 'hey', 'kia ora', 'good morning', 'good afternoon', 'good evening', 'help'].includes(rawMessage);
+    if (isGreeting || !rawMessage) {
+      return {
+        status: 'no_match',
+        reason: 'greeting',
+      };
+    }
+
+    // Generic Pack-Declared Default Consultant Journey Fallback:
+    // When no specific multi-step journey is explicitly resolved, check if the tenant's Business Pack
+    // declares a default consultant journey or fallback policy for domain inquiries.
+    const defaultJourneyId =
+      (release as any).routingPolicy?.defaultJourneyId ||
+      release.conversationPolicy?.defaultJourneyId;
+
+    const defaultJourney = defaultJourneyId
+      ? release.journeys.find((j) => j.journeyId === defaultJourneyId)
+      : release.journeys.find((j) => j.isDefaultConsultant || (j.metadata as any)?.isDefaultConsultant) ||
+        // Fallback: the journey that exposes catalog.search capability
+        ((release as any).routingPolicy?.fallbackOnCatalogSearch !== false
+          ? release.journeys.find((j) =>
+              (j as any).allowedCapabilities?.includes('catalog.search') ||
+              Object.values(j.stages || {}).some((s) => s.allowedCapabilities?.includes('catalog.search'))
+            )
+          : undefined);
+
+    // Verify whether this inquiry belongs to the pack's domain:
+    // 1. Interpreter extracted domain candidate facts (e.g. tradeCategory, material_category, productQuery)
+    // 2. OR customer message or intent matches terms declared in the tenant's vocabulary
+    // 3. OR targetIntent matches defaultJourney's triggerIntents or goals
+    const hasCandidateFacts = Boolean(
+      interpretation?.candidateFacts &&
+      Object.keys(interpretation.candidateFacts).length > 0
+    );
+
+    const hasVocabularyMatch = Boolean(
+      release.vocabulary?.terms?.some((t: any) => {
+        const termStr = (t.term || t.canonical || '').toLowerCase();
+        if (termStr.length > 2 && (rawMessage.includes(termStr) || targetIntent?.toLowerCase().includes(termStr))) {
+          return true;
+        }
+        if (Array.isArray(t.synonyms)) {
+          return t.synonyms.some((s: string) => {
+            const syn = String(s).toLowerCase();
+            return syn.length > 2 && (rawMessage.includes(syn) || targetIntent?.toLowerCase().includes(syn));
+          });
+        }
+        return false;
+      }) ||
+      Object.keys(release.vocabulary?.slotSynonyms || {}).some((synKey) => {
+        const synList = release.vocabulary?.slotSynonyms?.[synKey] || [];
+        return synList.some((s: string) => rawMessage.includes(s.toLowerCase()));
+      })
+    );
+
+    const matchesDefaultTriggers = Boolean(
+      defaultJourney &&
+      (
+        ((defaultJourney as any).triggerIntents || defaultJourney.metadata?.triggerIntents)?.some(
+          (ti: string) => targetIntent?.toLowerCase().includes(ti.toLowerCase()) || rawMessage.includes(ti.toLowerCase())
+        ) ||
+        defaultJourney.goals?.some(
+          (g: string) => targetIntent?.toLowerCase().includes(g.toLowerCase()) || rawMessage.includes(g.toLowerCase())
+        )
+      )
+    );
+
+    if (defaultJourney && (hasCandidateFacts || hasVocabularyMatch || matchesDefaultTriggers)) {
+      return { status: 'resolved', journey: defaultJourney };
+    }
+
     return {
       status: 'no_match',
-      reason: isGreeting ? 'greeting' : `No matching journey found in pack '${release.manifest.packId}' for intent '${targetIntent || rawMessage}'`,
+      reason: `No matching journey found in pack '${release.manifest.packId}' for intent '${targetIntent || rawMessage}'`,
     };
   }
 
@@ -349,8 +418,59 @@ export class JourneyResolver {
       }
     }
 
+    // 0c. NextDecisionPolicy === 'capability-first': if capabilityPlan has an eligible tool whose produced facts are not yet present, run it before asking facts
+    if (currentStage.nextDecisionPolicy === 'capability-first' && currentStage.capabilityPlan && currentStage.capabilityPlan.length > 0) {
+      for (const planItem of currentStage.capabilityPlan) {
+        const { toolId, when, producesFacts } = planItem;
+        if (Array.isArray(producesFacts) && producesFacts.length > 0) {
+          const allProducedPresent = producesFacts.every((fk) => {
+            const fact = workspace.facts[fk];
+            return fact !== undefined && fact.value !== undefined && fact.value !== null && fact.value !== '';
+          });
+          if (allProducedPresent) continue;
+        }
+
+        // Check when condition
+        if (when) {
+          if (typeof when === 'string') {
+            const passed = evaluateControlledExpression(when, workspace.facts);
+            if (!passed) continue;
+          } else if (typeof when === 'object') {
+            if (when.factsPresent && !areAllFactsPresent(workspace.facts, when.factsPresent)) {
+              continue;
+            }
+            if (when.factsMissing && areAnyFactsPresent(workspace.facts, when.factsMissing)) {
+              continue;
+            }
+            if (when.ruleExpression && !evaluateControlledExpression(when.ruleExpression, workspace.facts)) {
+              continue;
+            }
+          }
+        }
+
+        const capDecision = this.buildCapabilityDecision(toolId, journey, currentStageId, release, workspace, command);
+        if (capDecision) return capDecision;
+      }
+    }
+
     // 1. Enforce Structured Fact Requirements with Priority, Dependencies, and Optional Facts
-    const normalizedReqs = normalizeFactRequirements(currentStage.requiredFacts);
+    let stageRequiredFacts = [...(currentStage.requiredFacts || [])];
+
+    // Dynamic Pack-Driven Conditional Fact Groups (Generic across all tenants)
+    const conditionalGroups: any[] =
+      (currentStage as any).conditionalFacts ||
+      (currentStage as any).metadata?.conditionalFacts ||
+      [];
+
+    for (const group of conditionalGroups) {
+      if (group && group.when && Array.isArray(group.facts)) {
+        if (evaluateControlledExpression(group.when, workspace.facts)) {
+          stageRequiredFacts.push(...group.facts);
+        }
+      }
+    }
+
+    const normalizedReqs = normalizeFactRequirements(stageRequiredFacts);
 
     // Filter missing required facts (where value is undefined in workspace.facts)
     const missingReqs = normalizedReqs.filter((r) => {
@@ -567,151 +687,7 @@ export class JourneyResolver {
     }
 
     if (targetCapability) {
-      // Find tool definition
-      const toolDef = release.capabilities?.toolDefinitions?.find((t) => t.toolId === targetCapability);
-      if (!toolDef) {
-        return {
-          decisionId: `dec_${Date.now()}`,
-          type: 'fail',
-          payload: { error: `Tool definition not found for '${targetCapability}'` },
-          reason: `Tool definition '${targetCapability}' not declared in Business Pack`,
-          createdAt: new Date().toISOString(),
-        };
-      }
-
-      // Deterministic precedence for input mappings:
-      // 1. Stage tool binding (highest precedence)
-      // 2. Tenant tool binding (tenant default)
-      // 3. Tool definition (base schema default)
-      const stageBinding = release.capabilities?.stageBindings?.find(
-        (sb) => sb.journeyId === journey.journeyId && sb.stageId === currentStageId
-      );
-      const stageTool = stageBinding?.tools?.find((t) => t.toolId === targetCapability);
-      const toolBinding = release.capabilities?.toolBindings?.find((tb) => tb.toolId === targetCapability);
-
-      const defMapping: Record<string, string> = (toolDef as any)?.inputMapping || {};
-      const tenantMapping: Record<string, string> = (toolBinding as any)?.inputMapping || {};
-      const stageMapping: Record<string, string> = (stageTool as any)?.inputMapping || {};
-
-      const inputMapping: Record<string, string> = {
-        ...defMapping,
-        ...tenantMapping,
-        ...stageMapping,
-      };
-
-      const inputSchema = toolDef.inputSchema || {};
-      const schemaProperties = (inputSchema as any).properties || inputSchema;
-      const schemaRequired: string[] = Array.isArray((inputSchema as any).required)
-        ? (inputSchema as any).required
-        : Object.entries(schemaProperties)
-            .filter(([, def]: [string, any]) => def?.required === true)
-            .map(([k]) => k);
-
-      const mappedInputs: Record<string, any> = {};
-
-      // 1. Map fields based on declared input schema and explicit mappings
-      for (const [field] of Object.entries(schemaProperties)) {
-        const sourceFactKey = inputMapping[field] || field;
-        const sourceEntry = workspace.facts[sourceFactKey];
-        if (sourceEntry && sourceEntry.value !== undefined && sourceEntry.value !== null) {
-          mappedInputs[field] = sourceEntry.value;
-        }
-
-        // For retrieval query: ensure full customer question is available for knowledge retrieval
-        if (field === 'query') {
-          const userMsg = (command?.message || (command as any)?.userInput || '').trim();
-          if (userMsg) {
-            // Keep the customer's actual inquiry as the query so technical knowledge retrieval is grounded
-            mappedInputs[field] = userMsg;
-          }
-        }
-      }
-
-      // 2. Validate required inputs — FAIL CLOSED!
-      for (const requiredField of schemaRequired) {
-        if (mappedInputs[requiredField] === undefined || mappedInputs[requiredField] === null) {
-          return {
-            decisionId: `dec_${Date.now()}`,
-            type: 'fail',
-            payload: {
-              error: `Missing required capability input '${requiredField}' for '${targetCapability}'`,
-              requiredField,
-              targetCapability,
-            },
-            reason: `Capability '${targetCapability}' requires input '${requiredField}', which is missing or unmapped in workspace state`,
-            createdAt: new Date().toISOString(),
-          };
-        }
-      }
-
-      // 3. Validate types and enums — FAIL CLOSED!
-      for (let [field, val] of Object.entries(mappedInputs)) {
-        const fieldDef = (schemaProperties as any)[field];
-        if (!fieldDef) continue;
-
-        const expectedType = fieldDef.type;
-        if (expectedType) {
-          if (expectedType === 'string' && typeof val !== 'string') {
-            return {
-              decisionId: `dec_${Date.now()}`,
-              type: 'fail',
-              payload: { error: `Invalid type for input '${field}': expected string, got ${typeof val}` },
-              reason: `Input type validation failed for '${field}'`,
-              createdAt: new Date().toISOString(),
-            };
-          }
-          if (expectedType === 'number' && typeof val !== 'number') {
-            if (typeof val === 'object' && val !== null && ((val as any).amountCents !== undefined || (val as any).amount !== undefined || (val as any).value !== undefined)) {
-              const num = Number((val as any).amountCents ?? (val as any).amount ?? (val as any).value);
-              if (!isNaN(num)) {
-                mappedInputs[field] = num;
-                val = num;
-              }
-            }
-            if (typeof val !== 'number') {
-              return {
-                decisionId: `dec_${Date.now()}`,
-                type: 'fail',
-                payload: { error: `Invalid type for input '${field}': expected number, got ${typeof val}` },
-                reason: `Input type validation failed for '${field}'`,
-                createdAt: new Date().toISOString(),
-              };
-            }
-          }
-          if (expectedType === 'boolean' && typeof val !== 'boolean') {
-            return {
-              decisionId: `dec_${Date.now()}`,
-              type: 'fail',
-              payload: { error: `Invalid type for input '${field}': expected boolean, got ${typeof val}` },
-              reason: `Input type validation failed for '${field}'`,
-              createdAt: new Date().toISOString(),
-            };
-          }
-        }
-
-        const allowedEnum: string[] = fieldDef.enum || (fieldDef as any).allowedValues;
-        if (Array.isArray(allowedEnum) && allowedEnum.length > 0) {
-          if (!allowedEnum.includes(val)) {
-            return {
-              decisionId: `dec_${Date.now()}`,
-              type: 'fail',
-              payload: { error: `Invalid enum value for input '${field}': '${val}' not in allowed values` },
-              reason: `Input enum validation failed for '${field}'`,
-              createdAt: new Date().toISOString(),
-            };
-          }
-        }
-      }
-
-      // NEVER pass unmapped workspace facts or secrets. Pass ONLY validated mappedInputs.
-      return {
-        decisionId: `dec_${Date.now()}`,
-        type: 'invoke_capability',
-        targetCapability,
-        payload: mappedInputs,
-        reason: `Stage '${currentStageId}' executing allowed capability '${targetCapability}'`,
-        createdAt: new Date().toISOString(),
-      };
+      return this.buildCapabilityDecision(targetCapability, journey, currentStageId, release, workspace, command);
     }
 
     // 4. Optional Facts: if requirements and capabilities are satisfied, check optional facts
@@ -751,6 +727,161 @@ export class JourneyResolver {
       type: 'complete_goal',
       payload: { stage: currentStageId },
       reason: `All requirements for stage '${currentStageId}' satisfied.`,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  private buildCapabilityDecision(
+    targetCapability: string,
+    journey: any,
+    currentStageId: string,
+    release: BusinessPackRelease,
+    workspace: WorkspaceState,
+    command?: TurnCommand
+  ): Decision {
+    // Find tool definition
+    const toolDef = release.capabilities?.toolDefinitions?.find((t) => t.toolId === targetCapability);
+    if (!toolDef) {
+      return {
+        decisionId: `dec_${Date.now()}`,
+        type: 'fail',
+        payload: { error: `Tool definition not found for '${targetCapability}'` },
+        reason: `Tool definition '${targetCapability}' not declared in Business Pack`,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    // Deterministic precedence for input mappings:
+    // 1. Stage tool binding (highest precedence)
+    // 2. Tenant tool binding (tenant default)
+    // 3. Tool definition (base schema default)
+    const stageBinding = release.capabilities?.stageBindings?.find(
+      (sb) => sb.journeyId === journey.journeyId && sb.stageId === currentStageId
+    );
+    const stageTool = stageBinding?.tools?.find((t) => t.toolId === targetCapability);
+    const toolBinding = release.capabilities?.toolBindings?.find((tb) => tb.toolId === targetCapability);
+
+    const defMapping: Record<string, string> = (toolDef as any)?.inputMapping || {};
+    const tenantMapping: Record<string, string> = (toolBinding as any)?.inputMapping || {};
+    const stageMapping: Record<string, string> = (stageTool as any)?.inputMapping || {};
+
+    const inputMapping: Record<string, string> = {
+      ...defMapping,
+      ...tenantMapping,
+      ...stageMapping,
+    };
+
+    const inputSchema = toolDef.inputSchema || {};
+    const schemaProperties = (inputSchema as any).properties || inputSchema;
+    const schemaRequired: string[] = Array.isArray((inputSchema as any).required)
+      ? (inputSchema as any).required
+      : Object.entries(schemaProperties)
+          .filter(([, def]: [string, any]) => def?.required === true)
+          .map(([k]) => k);
+
+    const mappedInputs: Record<string, any> = {};
+
+    // 1. Map fields based on declared input schema and explicit mappings
+    for (const [field] of Object.entries(schemaProperties)) {
+      const sourceFactKey = inputMapping[field] || field;
+      const sourceEntry = workspace.facts[sourceFactKey];
+      if (sourceEntry && sourceEntry.value !== undefined && sourceEntry.value !== null) {
+        mappedInputs[field] = sourceEntry.value;
+      }
+
+      // For retrieval query: ensure full customer question is available for knowledge retrieval
+      if (field === 'query') {
+        const userMsg = (command?.message || (command as any)?.userInput || '').trim();
+        if (userMsg) {
+          // Keep the customer's actual inquiry as the query so technical knowledge retrieval is grounded
+          mappedInputs[field] = userMsg;
+        }
+      }
+    }
+
+    // 2. Validate required inputs — FAIL CLOSED!
+    for (const requiredField of schemaRequired) {
+      if (mappedInputs[requiredField] === undefined || mappedInputs[requiredField] === null) {
+        return {
+          decisionId: `dec_${Date.now()}`,
+          type: 'fail',
+          payload: {
+            error: `Missing required capability input '${requiredField}' for '${targetCapability}'`,
+            requiredField,
+            targetCapability,
+          },
+          reason: `Capability '${targetCapability}' requires input '${requiredField}', which is missing or unmapped in workspace state`,
+          createdAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    // 3. Validate types and enums — FAIL CLOSED!
+    for (let [field, val] of Object.entries(mappedInputs)) {
+      const fieldDef = (schemaProperties as any)[field];
+      if (!fieldDef) continue;
+
+      const expectedType = fieldDef.type;
+      if (expectedType) {
+        if (expectedType === 'string' && typeof val !== 'string') {
+          return {
+            decisionId: `dec_${Date.now()}`,
+            type: 'fail',
+            payload: { error: `Invalid type for input '${field}': expected string, got ${typeof val}` },
+            reason: `Input type validation failed for '${field}'`,
+            createdAt: new Date().toISOString(),
+          };
+        }
+        if (expectedType === 'number' && typeof val !== 'number') {
+          if (typeof val === 'object' && val !== null && ((val as any).amountCents !== undefined || (val as any).amount !== undefined || (val as any).value !== undefined)) {
+            const num = Number((val as any).amountCents ?? (val as any).amount ?? (val as any).value);
+            if (!isNaN(num)) {
+              mappedInputs[field] = num;
+              val = num;
+            }
+          }
+          if (typeof val !== 'number') {
+            return {
+              decisionId: `dec_${Date.now()}`,
+              type: 'fail',
+              payload: { error: `Invalid type for input '${field}': expected number, got ${typeof val}` },
+              reason: `Input type validation failed for '${field}'`,
+              createdAt: new Date().toISOString(),
+            };
+          }
+        }
+        if (expectedType === 'boolean' && typeof val !== 'boolean') {
+          return {
+            decisionId: `dec_${Date.now()}`,
+            type: 'fail',
+            payload: { error: `Invalid type for input '${field}': expected boolean, got ${typeof val}` },
+            reason: `Input type validation failed for '${field}'`,
+            createdAt: new Date().toISOString(),
+          };
+        }
+      }
+
+      const allowedEnum: string[] = fieldDef.enum || (fieldDef as any).allowedValues;
+      if (Array.isArray(allowedEnum) && allowedEnum.length > 0) {
+        if (!allowedEnum.includes(val)) {
+          return {
+            decisionId: `dec_${Date.now()}`,
+            type: 'fail',
+            payload: { error: `Invalid enum value for input '${field}': '${val}' not in allowed values` },
+            reason: `Input enum validation failed for '${field}'`,
+            createdAt: new Date().toISOString(),
+          };
+        }
+      }
+    }
+
+    // NEVER pass unmapped workspace facts or secrets. Pass ONLY validated mappedInputs.
+    return {
+      decisionId: `dec_${Date.now()}`,
+      type: 'invoke_capability',
+      targetCapability,
+      payload: mappedInputs,
+      reason: `Stage '${currentStageId}' executing allowed capability '${targetCapability}'`,
       createdAt: new Date().toISOString(),
     };
   }

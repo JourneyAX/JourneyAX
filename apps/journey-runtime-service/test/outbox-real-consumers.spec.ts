@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { NestFactory } from '@nestjs/core';
 import { CapabilityDispatcher } from '@journeyax/capability-sdk';
 import { computePackChecksum, publishBusinessPack } from '@journeyax/business-pack';
+import { buildCanonicalPackContent, buildStoredRelease } from './fixtures/canonical-release.fixture';
 import { RuntimeModule } from '../src/runtime.module';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { OutboxWorker } from '../src/kernel/outbox.worker';
@@ -79,48 +80,28 @@ function createMockOutboxDb(overrides: {
     },
   ];
 
+  const toolDefinitions = overrides.capabilities?.toolDefinitions || defaultTools;
   const capabilities = {
-    toolDefinitions: overrides.capabilities?.toolDefinitions || defaultTools,
+    toolDefinitions,
     toolBindings: overrides.capabilities?.toolBindings || defaultToolBindings,
     stageBindings:
       overrides.capabilities?.stageBindings !== undefined
         ? overrides.capabilities.stageBindings
         : [
-            {
-              stageId: 'stage_sync',
-              tools: [
-                { toolId: 'activepieces.flow_ct_sync_01' },
-                { toolId: 'activepieces.flow_ct_write_01' },
-                ...(overrides.capabilities?.toolDefinitions || []).map((t: any) => ({ toolId: t.toolId })),
-              ],
-            },
-            {
-              stageId: 'stage_test',
-              tools: [
-                { toolId: 'activepieces.flow_ct_sync_01' },
-                { toolId: 'activepieces.flow_ct_write_01' },
-                ...(overrides.capabilities?.toolDefinitions || []).map((t: any) => ({ toolId: t.toolId })),
-              ],
-            },
-            {
-              stageId: 'stage_restricted',
-              tools: [],
-            },
+            { stageId: 'stage_sync', tools: toolDefinitions.map((t: any) => ({ toolId: t.toolId })) },
+            { stageId: 'stage_test', tools: toolDefinitions.map((t: any) => ({ toolId: t.toolId })) },
+            { stageId: 'stage_restricted', tools: [] },
           ],
   };
 
-  const packPayloadToHash = { capabilities };
-  const canonicalChecksum = computePackChecksum(packPayloadToHash as any);
-
-  const defaultRelease = {
-    tenantId: 'tenant_caroma',
-    environmentId: 'production',
-    versionId: '1.0.0',
-    version: '1.0.0',
-    status: 'published',
-    checksum: overrides.releaseChecksum !== undefined ? overrides.releaseChecksum : canonicalChecksum,
-    capabilities,
-  };
+  // Complete canonical Business Pack (full BusinessPackContentSchema content), stored as a release
+  // envelope. The worker verifies it through the authoritative verifier and never reads raw docs.
+  const canonicalContent = buildCanonicalPackContent({ capabilities });
+  const defaultRelease = buildStoredRelease(canonicalContent);
+  const canonicalChecksum: string = defaultRelease.checksum;
+  if (overrides.releaseChecksum !== undefined) {
+    defaultRelease.checksum = overrides.releaseChecksum;
+  }
 
   const defaultSecrets = overrides.tenantSecrets || [
     {
@@ -1677,7 +1658,7 @@ async function runOutboxRealConsumersSuite() {
     assert.equal(res.failed, 1);
     const event = repo.getEvents().find((e) => e.eventId === eventId)!;
     assert.equal(event.status, 'pending');
-    assert.match(event.error || '', /Business Pack checksum mismatch between release/);
+    assert.match(event.error || '', /pointer_checksum_mismatch/);
 
     service.stopWorker();
   });
@@ -1686,14 +1667,17 @@ async function runOutboxRealConsumersSuite() {
   await test("24. Negative: Business pack release with environmentId='all' is rejected", async () => {
     const repo = new OutboxRepository();
     const mockDb = createMockOutboxDb({
-      businessPackReleases: {
-        tenantId: 'tenant_caroma',
-        environmentId: 'all', // Non-exact environment
-        versionId: '1.0.0',
-        version: '1.0.0',
-        status: 'published',
-        checksum: 'sha256_mock_checksum',
-      },
+      // Complete canonical release whose storage envelope claims a non-exact environment
+      businessPackReleases: buildStoredRelease(
+        buildCanonicalPackContent({
+          capabilities: {
+            toolDefinitions: [{ toolId: 'activepieces.flow_ct_sync_01', sideEffect: 'read', risk: 'low' }],
+            toolBindings: [],
+            stageBindings: [{ stageId: 'stage_sync', tools: [{ toolId: 'activepieces.flow_ct_sync_01' }] }],
+          },
+        }),
+        { envelope: { environmentId: 'all' } }
+      ),
     });
     const service = new OutboxWorkerService();
     service.configureHandlers({ db: mockDb });
@@ -1830,7 +1814,7 @@ async function runOutboxRealConsumersSuite() {
     assert.equal(event.status, 'pending');
     assert.match(
       event.error || '',
-      /ToolBinding for 'activepieces.flow_ct_sync_01' with exact environment 'production' not found/
+      /failed verification.*incomplete_content.*toolBindings\.0\.environmentId/s
     );
 
     service.stopWorker();
@@ -2050,7 +2034,8 @@ async function runOutboxRealConsumersSuite() {
   // ── Test 30: Canonical Business Pack publication and runtime consumer resolution ──
   await test('30. Canonical Business Pack publication via real publishBusinessPack resolves through OutboxWorker with verified checksum', async () => {
     const repo = new OutboxRepository();
-    const mockDb = createMockOutboxDb();
+    // The durable workspace and event must carry the same immutable release binding.
+    const mockDb = createMockOutboxDb({ workspaces: { packVersionId: '3.0.0' } });
 
     const canonicalPack = {
       manifest: {
@@ -2186,6 +2171,7 @@ async function runOutboxRealConsumersSuite() {
         },
       },
       evaluations: [],
+      extensions: {},
     };
 
     // Publish using REAL publishBusinessPack
@@ -2581,6 +2567,193 @@ async function runOutboxRealConsumersSuite() {
       process.env.MONGODB_URI = origTxUri;
       setTestDatabase(null);
     }
+  });
+
+  // ── Tests 35-38: authoritative persisted-release verification in the outbox path ─────────
+  const verifierCaps = () => ({
+    toolDefinitions: [{ toolId: 'activepieces.flow_ct_sync_01', sideEffect: 'read', risk: 'low' }],
+    toolBindings: [
+      {
+        toolId: 'activepieces.flow_ct_sync_01',
+        environmentId: 'production',
+        executor: { type: 'activepieces_flow', flowId: 'flow_ct_sync_01', connectionRef: 'conn_ct_caroma_secret' },
+      },
+    ],
+    stageBindings: [
+      { stageId: 'stage_sync', tools: [{ toolId: 'activepieces.flow_ct_sync_01' }] },
+      { stageId: 'stage_test', tools: [] },
+      { stageId: 'stage_restricted', tools: [] },
+    ],
+  });
+
+  async function dispatchAgainstRelease(
+    releaseDoc: any,
+    workerId: string,
+    pointerChecksum?: string,
+    workspaceOverrides?: Record<string, unknown>,
+    pointerOverrides?: Record<string, unknown>
+  ) {
+    const repo = new OutboxRepository();
+    const mockDb = createMockOutboxDb({
+      businessPackReleases: releaseDoc,
+      workspaces: workspaceOverrides,
+      businessPackPointers: {
+        checksum: pointerChecksum ?? releaseDoc.checksum,
+        ...(pointerOverrides || {}),
+      },
+    });
+    const dispatched: any[] = [];
+    const service = new OutboxWorkerService();
+    service.configureHandlers({
+      db: mockDb,
+      capabilityDispatcher: {
+        dispatch: async (toolDef: any, toolBinding: any, req: any, ctx: any) => {
+          dispatched.push({ toolDef, toolBinding, ctx });
+          return { status: 'success' as const, output: { ok: true } };
+        },
+      } as any,
+    });
+    const eventId = await repo.enqueueEvent('tenant_caroma', 'production', 'activepieces.dispatch', {}, undefined, undefined, {
+      workspaceId: 'ws_caroma',
+      sessionId: 'session_caroma_01',
+      toolId: 'activepieces.flow_ct_sync_01',
+      packVersionId: '1.0.0',
+    });
+    const worker = service.startWithRepository(repo, undefined, {
+      workerId,
+      batchSize: 5,
+      pollIntervalMs: 50,
+      leaseDurationMs: 1000,
+    });
+    const batch = await worker.processNextBatch();
+    const event = repo.getEvents().find((e) => e.eventId === eventId)!;
+    service.stopWorker();
+    return { batch, event, dispatched, executions: mockDb.executions };
+  }
+
+  await test('35. Legitimate pre-9be7b80 release missing persisted `extensions` executes after read-only legacy normalization', async () => {
+    const legacyRelease = buildStoredRelease(buildCanonicalPackContent({ capabilities: verifierCaps() }));
+    delete legacyRelease.extensions; // exactly as an old release was stored; checksum was computed with extensions: {}
+    const before = JSON.stringify(legacyRelease);
+    const { batch, event, dispatched } = await dispatchAgainstRelease(legacyRelease, 'worker_legacy_extensions');
+    assert.equal(batch.succeeded, 1, `legacy release must execute: ${event.error}`);
+    assert.equal(event.status, 'published');
+    assert.equal(dispatched.length, 1);
+    assert.equal(dispatched[0].toolBinding.executor.flowId, 'flow_ct_sync_01');
+    assert.equal(JSON.stringify(legacyRelease), before, 'stored release document must not be mutated');
+  });
+
+  await test('36. Nested `packData` release executes end-to-end using stageBindings/toolDefinitions/toolBindings from verified content', async () => {
+    const nested = buildStoredRelease(buildCanonicalPackContent({ capabilities: verifierCaps() }), { shape: 'nested' });
+    assert.ok(nested.packData && !nested.capabilities, 'precondition: capabilities exist only inside packData');
+    const { batch, event, dispatched, executions } = await dispatchAgainstRelease(nested, 'worker_nested_packdata');
+    assert.equal(batch.succeeded, 1, `nested release must execute: ${event.error}`);
+    assert.equal(event.status, 'published');
+    assert.equal(dispatched.length, 1, 'tool must actually be dispatched');
+    assert.equal(dispatched[0].toolDef.toolId, 'activepieces.flow_ct_sync_01');
+    assert.equal(dispatched[0].toolBinding.executor.connectionRef, 'conn_ct_caroma_secret');
+    assert.equal(executions.length, 1);
+  });
+
+  await test('37. Nested release whose packData denies the tool stays denied (no read from the raw document)', async () => {
+    const caps = verifierCaps();
+    caps.stageBindings = [
+      { stageId: 'stage_sync', tools: [] },
+      { stageId: 'stage_test', tools: [] },
+      { stageId: 'stage_restricted', tools: [] },
+    ];
+    const nested = buildStoredRelease(buildCanonicalPackContent({ capabilities: caps }), { shape: 'nested' });
+    // Decoy at the raw-document level that WOULD allow the tool if the worker read the raw document
+    nested.capabilities = { stageBindings: [{ stageId: 'stage_sync', tools: [{ toolId: 'activepieces.flow_ct_sync_01' }] }] };
+    const { batch, event, dispatched } = await dispatchAgainstRelease(nested, 'worker_nested_decoy');
+    assert.equal(batch.failed, 1);
+    assert.equal(event.status, 'pending');
+    assert.equal(dispatched.length, 0, 'tool must not execute');
+  });
+
+  await test('38. Tenant/environment/version identity violations are rejected before any tool executes (flat and nested)', async () => {
+    const contentFor = (patch: Record<string, unknown>) => {
+      const c = buildCanonicalPackContent({ capabilities: verifierCaps() });
+      c.manifest = { ...c.manifest, ...patch };
+      return c;
+    };
+    const cases: Array<[string, any, RegExp]> = [
+      [
+        'Tenant-A envelope containing Tenant-B content',
+        buildStoredRelease(contentFor({ tenantId: 'tenant_b' }), { envelope: { tenantId: 'tenant_caroma' } }),
+        /identity_mismatch/,
+      ],
+      [
+        'production envelope containing staging content',
+        buildStoredRelease(contentFor({ environmentId: 'staging' }), { envelope: { environmentId: 'production' } }),
+        /identity_mismatch/,
+      ],
+      [
+        'envelope version differing from manifest version',
+        buildStoredRelease(contentFor({ version: '1.0.1' }), { envelope: { version: '1.0.0', versionId: '1.0.0' } }),
+        /identity_mismatch/,
+      ],
+      [
+        'nested Tenant-A envelope containing Tenant-B content',
+        buildStoredRelease(contentFor({ tenantId: 'tenant_b' }), { shape: 'nested', envelope: { tenantId: 'tenant_caroma' } }),
+        /identity_mismatch/,
+      ],
+      [
+        'nested production envelope containing staging content',
+        buildStoredRelease(contentFor({ environmentId: 'staging' }), { shape: 'nested', envelope: { environmentId: 'production' } }),
+        /identity_mismatch/,
+      ],
+      [
+        'withdrawn release',
+        buildStoredRelease(contentFor({}), { envelope: { status: 'withdrawn' } }),
+        /not found|withdrawn/,
+      ],
+    ];
+    for (const [label, doc, pattern] of cases) {
+      const { batch, event, dispatched } = await dispatchAgainstRelease(doc, `worker_identity_${label.length}`);
+      assert.equal(batch.failed, 1, `${label}: must fail closed`);
+      assert.equal(event.status, 'pending', label);
+      assert.equal(dispatched.length, 0, `${label}: no tool may execute`);
+      assert.match(event.error || '', pattern, label);
+    }
+  });
+
+  await test('39. Pinned workspace continues on its verified release after pointer promotion; withdrawal still overrides the pin', async () => {
+    const pinnedRelease = buildStoredRelease(buildCanonicalPackContent({ capabilities: verifierCaps() }));
+    const workspace = {
+      packVersionId: '1.0.0',
+      pins: {
+        packChecksum: pinnedRelease.checksum,
+        pinnedAt: '2026-10-10T00:00:00.000Z',
+      },
+    };
+    const promotedPointer = {
+      activeVersionId: '2.0.0',
+      activeVersion: '2.0.0',
+      checksum: 'f'.repeat(64),
+    };
+
+    const afterPromotion = await dispatchAgainstRelease(
+      pinnedRelease,
+      'worker_pinned_after_promotion',
+      undefined,
+      workspace,
+      promotedPointer
+    );
+    assert.equal(afterPromotion.batch.succeeded, 1, afterPromotion.event.error);
+    assert.equal(afterPromotion.dispatched.length, 1);
+
+    const withdrawn = { ...pinnedRelease, status: 'withdrawn' };
+    const afterWithdrawal = await dispatchAgainstRelease(
+      withdrawn,
+      'worker_pinned_withdrawn',
+      undefined,
+      workspace,
+      promotedPointer
+    );
+    assert.equal(afterWithdrawal.batch.failed, 1);
+    assert.equal(afterWithdrawal.dispatched.length, 0);
+    assert.match(afterWithdrawal.event.error || '', /not found|withdrawn/);
   });
 
   console.log(`\nOutbox Real Consumers Test Suite Complete: ${passed} passed, ${failed} failed.\n`);

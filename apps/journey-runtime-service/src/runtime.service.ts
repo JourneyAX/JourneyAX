@@ -29,7 +29,10 @@ import {
 } from '@journeyax/database';
 import { hashToolInput } from './approval/approval.store';
 import * as crypto from 'crypto';
-import { computePackChecksum } from '@journeyax/business-pack';
+import {
+  computePackChecksum,
+  getVerifiedBusinessPackMetadata,
+} from '@journeyax/business-pack';
 import { isInCanaryBucket } from '@journeyax/journey-core';
 
 
@@ -277,9 +280,10 @@ export class RuntimeService {
    *   1. A durable release activation record must exist for the tenant+environment.
    *   2. The record's tenantId must match the request tenant (cross-tenant binding).
    *   3. The record's status must be 'migrated', or 'canary' with this workspace in-bucket.
-   *   4. A pack must be loadable from the active pointer.
-   *   5. The record's approvedReleaseVersion must equal the active pack's version.
-   *   6. The record's approvedReleaseChecksum must equal computePackChecksum(activePack).
+   *   4. An existing pinned workspace loads its exact immutable release; a new or
+   *      legacy workspace loads from the active pointer.
+   *   5. Active-pointer execution must agree with the activation version/checksum.
+   *      Pinned execution is instead bound to the workspace checksum.
    *
    * Missing record, wrong status (including 'rollback'), version/checksum mismatch,
    * stale pointer, or cross-tenant records are all rejected with HTTP 403 Forbidden.
@@ -290,7 +294,8 @@ export class RuntimeService {
   async assertReleaseActivationApproved(
     tenantId: string,
     environmentId: string,
-    stableKey?: string
+    stableKey?: string,
+    workspaceId?: string
   ): Promise<any> {
     const normTenant = (tenantId || '').trim().toLowerCase();
     const normEnv = (environmentId || 'production').trim().toLowerCase();
@@ -340,7 +345,32 @@ export class RuntimeService {
       );
     }
 
-    // 4. Load the active pack — must exist
+    // 4a. Existing workspaces with immutable pins keep their exact release across
+    // promotions. Revoked/withdrawn releases still fail closed in loadPinnedPack.
+    if (workspaceId) {
+      const workspace = await this.appService.workspaceRepo.load(
+        normTenant,
+        normEnv as EnvironmentId,
+        workspaceId
+      );
+      if (workspace?.pins?.packChecksum) {
+        try {
+          return await this.appService.packRepo.loadPinnedPack(
+            normTenant,
+            normEnv as EnvironmentId,
+            workspace.packVersionId,
+            workspace.pins.packChecksum
+          );
+        } catch (err: any) {
+          throw new ForbiddenException(
+            `[ReleaseActivationGate] Pinned Business Pack unavailable for workspace='${workspaceId}', ` +
+            `tenant='${normTenant}', env='${normEnv}', version='${workspace.packVersionId}': ${err.message}`
+          );
+        }
+      }
+    }
+
+    // 4b. New workspaces and legacy workspaces without pins use the active pack.
     let activePack: any;
     try {
       activePack = await this.appService.packRepo.loadActivePack(normTenant, normEnv as EnvironmentId);
@@ -367,7 +397,8 @@ export class RuntimeService {
     }
 
     // 6. Checksum agreement — compute from the live pack, compare to approved
-    const liveChecksum = computePackChecksum(activePack);
+    const liveChecksum =
+      getVerifiedBusinessPackMetadata(activePack)?.checksum || computePackChecksum(activePack);
     if (activation.approvedReleaseChecksum !== liveChecksum) {
       throw new ForbiddenException(
         `[ReleaseActivationGate] Checksum mismatch for tenant='${normTenant}' env='${normEnv}' v'${activeVersion}': ` +
@@ -403,7 +434,8 @@ export class RuntimeService {
     const validatedPack = await this.assertReleaseActivationApproved(
       command.tenantId,
       command.environmentId || 'production',
-      stableKey
+      stableKey,
+      command.workspaceId || command.sessionId
     );
     return this.appService.executeTurn(command, validatedPack);
   }
@@ -421,7 +453,8 @@ export class RuntimeService {
     const validatedPack = await this.assertReleaseActivationApproved(
       command.tenantId,
       command.environmentId || 'production',
-      stableKey
+      stableKey,
+      command.workspaceId || command.sessionId
     );
     return this.appService.executeTurnStream(command, validatedPack, sink);
   }

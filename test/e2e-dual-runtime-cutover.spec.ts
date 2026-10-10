@@ -304,7 +304,7 @@ async function runDualRuntimeVerificationTests() {
           expectedRevision: 1, // Stale! Revision is now 2
         });
       },
-      /CutoverConflictError/
+      /ReleaseActivationConflictError/
     );
   });
 

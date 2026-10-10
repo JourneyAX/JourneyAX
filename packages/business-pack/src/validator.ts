@@ -60,6 +60,16 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     }
   }
 
+  // 4b. Validate configured default journey exists (never guessed or fabricated)
+  const configuredDefaultJourneyId = pack.routingPolicy?.defaultJourneyId;
+  if (configuredDefaultJourneyId && !pack.journeys.some((j) => j.journeyId === configuredDefaultJourneyId)) {
+    issues.push({
+      severity: 'error',
+      path: 'routingPolicy.defaultJourneyId',
+      message: `routingPolicy.defaultJourneyId '${configuredDefaultJourneyId}' does not match any journey in the pack`,
+    });
+  }
+
   // 5. Validate Journeys and Stages
   for (const journey of pack.journeys) {
     const stageIds = new Set(Object.keys(journey.stages));

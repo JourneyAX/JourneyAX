@@ -3,6 +3,7 @@ import {
   Body, Param, Query, Headers,
   NotFoundException, BadRequestException,
   Inject, Optional, UseGuards,
+  ConflictException,
 } from '@nestjs/common';
 import { PermissionGuard, RequirePermission } from './permission.guard';
 import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
@@ -12,6 +13,7 @@ import {
   CreateBusinessRuleDto, UpdateBusinessRuleDto,
   CardTemplateDoc,
 } from './project.types';
+import { OkfAuthoringService, OkfDraftConflictError } from './okf-authoring.service';
 
 /**
  * Internal runtime services (agent, WhatsApp sender) present this shared key to
@@ -55,6 +57,7 @@ export class ProjectController {
   constructor(
     @Inject(ProjectService) private readonly projectService: ProjectService,
     @Optional() @Inject(BusinessPackPublicationService) private readonly publicationService?: BusinessPackPublicationService,
+    @Optional() @Inject(OkfAuthoringService) private readonly okfAuthoring?: OkfAuthoringService,
   ) {}
 
   // ── Health ────────────────────────────────────────────────────
@@ -200,6 +203,86 @@ export class ProjectController {
     const result = await this.projectService.archiveProject(projectId);
     if (!result.success) throw new NotFoundException(result.message);
     return { ...result, status: 'archived', projectId };
+  }
+
+  // ── Structured knowledge (OKF) authoring ─────────────────────
+
+  @Get(':projectId/knowledge/draft')
+  @RequirePermission('knowledge.read')
+  async getKnowledgeDraft(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
+    const draft = await this.okfAuthoring?.getDraft(projectId, environmentId || 'production');
+    if (!draft) throw new NotFoundException(`OKF draft for '${projectId}' not found.`);
+    return draft;
+  }
+
+  @Put(':projectId/knowledge/draft')
+  @RequirePermission('config.edit')
+  async saveKnowledgeDraft(
+    @Param('projectId') projectId: string,
+    @Body() body: { environmentId?: string; expectedRevision: number; content: unknown },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.saveDraft({
+        projectId,
+        environmentId: body.environmentId,
+        expectedRevision: body.expectedRevision,
+        content: body.content,
+        updatedBy: userId || 'studio',
+      });
+    } catch (error: any) {
+      if (error instanceof OkfDraftConflictError) throw new ConflictException(error.message);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Post(':projectId/knowledge/validate')
+  @RequirePermission('knowledge.read')
+  async validateKnowledgeDraft(@Param('projectId') projectId: string, @Body() body?: { environmentId?: string }) {
+    return this.okfAuthoring!.validateDraft(projectId, body?.environmentId || 'production');
+  }
+
+  @Post(':projectId/knowledge/preview')
+  @RequirePermission('knowledge.read')
+  async previewKnowledgeDraft(
+    @Param('projectId') projectId: string,
+    @Body() body: { environmentId?: string; message: string; knownFacts?: Record<string, unknown>; intentCandidates?: string[]; forceShowResults?: boolean },
+  ) {
+    return this.okfAuthoring!.previewDraft(projectId, body, body.environmentId || 'production');
+  }
+
+  @Post(':projectId/knowledge/publish')
+  @RequirePermission('config.publish')
+  async publishKnowledgeDraft(
+    @Param('projectId') projectId: string,
+    @Body() body: { environmentId?: 'dev' | 'test' | 'staging' | 'production'; expectedRevision: number; version: string; releaseId?: string; required?: boolean; failurePolicy?: 'fail_closed' | 'enrichment_only'; notes?: string },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.publishDraft({ ...body, projectId, publishedBy: userId || 'studio' });
+    } catch (error: any) {
+      if (error instanceof OkfDraftConflictError) throw new ConflictException(error.message);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Get(':projectId/knowledge/releases')
+  @RequirePermission('knowledge.read')
+  async listKnowledgeReleases(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
+    return this.okfAuthoring!.listReleases(projectId, environmentId || 'production');
+  }
+
+  @Post(':projectId/knowledge/select-release')
+  @RequirePermission('config.publish')
+  async selectKnowledgeRelease(
+    @Param('projectId') projectId: string,
+    @Body() body: { environmentId?: string; releaseId: string; version: string; checksum: string; required?: boolean; failurePolicy?: 'fail_closed' | 'enrichment_only' },
+  ) {
+    try {
+      return await this.okfAuthoring!.selectRelease({ ...body, projectId });
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   // ── Isolation Context (inter-service use) ─────────────────────

@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import { requireAuth, scopeTenant, isPlatformIdentity } from "../../../../lib/require-auth";
 import { connectToDatabase } from "@journeyax/database";
 import { can } from "@journeyax/shared-types";
-import { computePackChecksum } from "@journeyax/business-pack";
+import { tryVerifyPersistedBusinessPackRelease } from "@journeyax/business-pack";
 import {
   CapabilityDispatcher,
   ToolDefinition,
@@ -355,49 +355,26 @@ export async function POST(req: Request) {
       );
     }
 
-    const releaseChecksum = typeof activeRelease.checksum === 'string' ? activeRelease.checksum.trim() : '';
-    if (!releaseChecksum) {
+    // Authoritative verifier: envelope, legacy normalization, schema, semantics, stored/recomputed/pointer
+    // checksum agreement and tenant/environment/version identity. Fail closed (HTTP 412) on any error.
+    const verification = tryVerifyPersistedBusinessPackRelease(activeRelease, {
+      tenantId,
+      environmentId,
+      version: targetVersion,
+      pointerChecksum,
+    });
+    if (verification.ok === false) {
       return NextResponse.json(
-        { ok: false, message: `Business pack release '${targetVersion}' lacks mandatory checksum; failing closed.` },
+        {
+          ok: false,
+          reason: verification.error.reason,
+          message: `Business pack release '${targetVersion}' for tenant '${tenantId}' (${environmentId}) failed verification; failing closed. ${verification.error.message}`,
+        },
         { status: 412 }
       );
     }
 
-    // Recompute canonical Business Pack checksum and enforce match against release and pointer
-    const packPayload = activeRelease.packData || {
-      manifest: activeRelease.manifest,
-      profile: activeRelease.profile,
-      vocabulary: activeRelease.vocabulary,
-      entities: activeRelease.entities,
-      conversationPolicy: activeRelease.conversationPolicy,
-      modelPolicy: activeRelease.modelPolicy,
-      agents: activeRelease.agents,
-      journeys: activeRelease.journeys,
-      rules: activeRelease.rules,
-      capabilities: activeRelease.capabilities,
-      experience: activeRelease.experience,
-      evaluations: activeRelease.evaluations,
-      extensions: activeRelease.extensions || {},
-    };
-    const packToHash = activeRelease.manifest
-      ? packPayload
-      : (({ _id, checksum, status, publishedAt, publishedBy, tenantId: _t, environmentId: _e, version: _v, versionId: _vi, ...rest }) => Object.keys(rest).length > 0 ? rest : activeRelease)(activeRelease);
-
-    const computedChecksum = computePackChecksum(packToHash as any);
-    if (computedChecksum !== releaseChecksum) {
-      return NextResponse.json(
-        { ok: false, message: `Canonical Business Pack checksum mismatch for release '${targetVersion}': stored '${releaseChecksum}', recomputed '${computedChecksum}'; failing closed.` },
-        { status: 412 }
-      );
-    }
-    if (computedChecksum !== pointerChecksum) {
-      return NextResponse.json(
-        { ok: false, message: `Business Pack checksum mismatch between release ('${computedChecksum}') and active pointer ('${pointerChecksum}') for tenant '${tenantId}' (${environmentId}); failing closed.` },
-        { status: 412 }
-      );
-    }
-
-    const packVersionId = activeRelease.versionId || activeRelease.version || targetVersion;
+    const packVersionId = verification.release.content.manifest.version;
 
     // Resolve durable workspace record strictly scoped by tenantId and environmentId (no cross-environment leaks)
     const workspaceDoc = await db.collection('workspaces').findOne({

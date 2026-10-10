@@ -4,6 +4,8 @@ import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
 export interface CatalogSearchInput {
   query?: string;
   category?: string;
+  categoryIds?: string[];
+  excludeCategoryIds?: string[];
   maxResults?: number;
   minPriceCents?: number;
   maxPriceCents?: number;
@@ -14,6 +16,56 @@ export interface CatalogSearchInput {
   requireAuthoritativePrice?: boolean;
 }
 
+const STOP_WORDS = new Set([
+  'want', 'need', 'with', 'from', 'this', 'that', 'have', 'make', 'doing', 'does',
+  'will', 'would', 'could', 'should', 'about', 'into', 'over', 'room', 'complete',
+  'makeover', 'please', 'help', 'and', 'the', 'for', 'are', 'you', 'can', 'our'
+]);
+
+interface QueryToken {
+  stem: string;
+  regex: RegExp;
+}
+
+function tokenizeQuery(query: string): QueryToken[] {
+  const words = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+
+  return words.map((w) => {
+    const clean = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const stem = clean.length > 3 && clean.endsWith('s') ? clean.slice(0, -1) : clean;
+    return {
+      stem,
+      regex: new RegExp(`\\b${stem}(?:s|es)?\\b`, 'i'),
+    };
+  });
+}
+
+function scoreDocumentRelevance(doc: any, tokens: QueryToken[]): number {
+  if (!tokens || tokens.length === 0) return 0;
+  let score = 0;
+  const name = (doc.name || doc.title || '').toLowerCase();
+  const brand = (doc.brandCode || doc.brand || '').toLowerCase();
+  const category = (doc.category || doc.type || '').toLowerCase();
+  const categoryPath = Array.isArray(doc.categoryPath)
+    ? doc.categoryPath.join(' ').toLowerCase()
+    : String(doc.categoryPath || '').toLowerCase();
+  const desc = (doc.description || '').toLowerCase();
+
+  for (const t of tokens) {
+    if (new RegExp(`^${t.stem}\\b`, 'i').test(name)) score += 200;
+    if (category.includes(t.stem) || t.regex.test(category)) score += 150;
+    if (t.regex.test(name)) score += 100;
+    if (t.regex.test(brand)) score += 80;
+    if (t.regex.test(categoryPath)) score += 60;
+    if (t.regex.test(desc)) score += 10;
+  }
+  return score;
+}
+
 export class CatalogSearchHandler implements NativeCapabilityHandler {
   constructor(private readonly inMemoryProducts?: any[]) {}
 
@@ -21,6 +73,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const tenantId = ctx.tenantId;
     const query = input.query || '';
     const category = input.category || '';
+    const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
+    const excludeCategoryIds = Array.isArray(input.excludeCategoryIds) ? input.excludeCategoryIds.filter(Boolean) : [];
     const limit = Math.min(input.maxResults || 10, 50);
 
     const attributeFilters: Record<string, any> = {
@@ -30,6 +84,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     };
 
     let docs: any[] = [];
+    const tokens = query ? tokenizeQuery(query) : [];
 
     if (this.inMemoryProducts) {
       docs = this.inMemoryProducts.filter((p) => {
@@ -40,18 +95,26 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             (p.type && p.type.toLowerCase().includes(category.toLowerCase()));
           if (!catMatch) return false;
         }
+        const categoryText = `${p.categoryId || ''} ${p.category || ''} ${p.type || ''} ${Array.isArray(p.categoryPath) ? p.categoryPath.join(' ') : p.categoryPath || ''}`.toLowerCase();
+        if (categoryIds.length > 0 && !categoryIds.some((id) => categoryText.includes(id.toLowerCase()))) return false;
+        if (excludeCategoryIds.some((id) => categoryText.includes(id.toLowerCase()))) return false;
         if (query) {
-          const q = query.toLowerCase();
-          const match =
-            (p.name && p.name.toLowerCase().includes(q)) ||
-            (p.title && p.title.toLowerCase().includes(q)) ||
-            (p.description && p.description.toLowerCase().includes(q)) ||
-            (p.sku && p.sku.toLowerCase().includes(q)) ||
-            (p.parentSku && p.parentSku.toLowerCase().includes(q));
-          if (!match) return false;
+          if (tokens.length > 0) {
+            const text = `${p.name || ''} ${p.title || ''} ${p.brandCode || p.brand || ''} ${p.category || ''} ${p.description || ''} ${p.sku || ''} ${p.parentSku || ''}`.toLowerCase();
+            const matches = tokens.some((t) => t.regex.test(text));
+            if (!matches) return false;
+          } else {
+            const q = query.toLowerCase();
+            const text = `${p.name || ''} ${p.title || ''} ${p.description || ''} ${p.sku || ''} ${p.category || ''}`.toLowerCase();
+            if (!text.includes(q)) return false;
+          }
         }
         return true;
       });
+
+      if (tokens.length > 0 && docs.length > 0) {
+        docs.sort((a, b) => scoreDocumentRelevance(b, tokens) - scoreDocumentRelevance(a, tokens));
+      }
     } else {
       const uri = process.env.MONGODB_URI;
       if (!uri) {
@@ -62,36 +125,84 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
 
         const filter: Record<string, any> = {
-          projectId: tenantId,
+          $or: [{ projectId: tenantId }, { tenantId }],
         };
 
         if (category) {
           const escapedCategory = category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          filter.$or = [
-            { category: new RegExp(escapedCategory, 'i') },
-            { type: new RegExp(escapedCategory, 'i') },
+          filter.$and = [
+            {
+              $or: [
+                { category: new RegExp(escapedCategory, 'i') },
+                { type: new RegExp(escapedCategory, 'i') },
+              ],
+            },
+          ];
+        }
+
+        if (categoryIds.length > 0) {
+          const scopedCategories = categoryIds.map((value) => new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+          const scopeClause = {
+            $or: [
+              { categoryId: { $in: scopedCategories } },
+              { category: { $in: scopedCategories } },
+              { type: { $in: scopedCategories } },
+              { categoryPath: { $in: scopedCategories } },
+            ],
+          };
+          filter.$and = [...(filter.$and || []), scopeClause];
+        }
+
+        if (excludeCategoryIds.length > 0) {
+          const excludedCategories = excludeCategoryIds.map((value) => new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+          filter.$and = [
+            ...(filter.$and || []),
+            {
+              $nor: [
+                { categoryId: { $in: excludedCategories } },
+                { category: { $in: excludedCategories } },
+                { type: { $in: excludedCategories } },
+                { categoryPath: { $in: excludedCategories } },
+              ],
+            },
           ];
         }
 
         if (query) {
-          const queryRegex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-          const textConditions = [
-            { name: queryRegex },
-            { title: queryRegex },
-            { description: queryRegex },
-            { sku: queryRegex },
-            { parentSku: queryRegex },
-            { 'attributes.value': queryRegex },
-          ];
-
-          if (filter.$or) {
-            filter.$and = [
-              { $or: filter.$or },
-              { $or: textConditions },
-            ];
-            delete filter.$or;
+          const textConditions: any[] = [];
+          if (tokens.length > 0) {
+            for (const t of tokens) {
+              textConditions.push(
+                { name: t.regex },
+                { title: t.regex },
+                { brandCode: t.regex },
+                { brand: t.regex },
+                { category: t.regex },
+                { categoryPath: t.regex },
+                { description: t.regex },
+                { sku: t.regex },
+                { parentSku: t.regex },
+                { 'attributes.value': t.regex },
+                { 'metadata.domainKeywords': t.regex }
+              );
+            }
           } else {
-            filter.$or = textConditions;
+            const queryRegex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            textConditions.push(
+              { name: queryRegex },
+              { title: queryRegex },
+              { description: queryRegex },
+              { sku: queryRegex },
+              { parentSku: queryRegex },
+              { 'attributes.value': queryRegex },
+              { 'metadata.domainKeywords': queryRegex }
+            );
+          }
+
+          if (filter.$and) {
+            filter.$and.push({ $or: textConditions });
+          } else {
+            filter.$and = [{ $or: textConditions }];
           }
         }
 
@@ -115,8 +226,13 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
         docs = await db.collection(COLLECTION_PRODUCTS)
           .find(filter)
-          .limit(limit * 2)
+          .limit(150)
           .toArray();
+
+        // Sort by generic relevance score across tokens, brand, name, and category
+        if (tokens.length > 0 && docs.length > 0) {
+          docs.sort((a, b) => scoreDocumentRelevance(b, tokens) - scoreDocumentRelevance(a, tokens));
+        }
       } catch (err: any) {
         console.warn('[CatalogSearchHandler] Failed to query catalog:', err.message);
         return { items: [], total: 0, error: err.message };
@@ -133,16 +249,28 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           priceCents = Math.round(doc.price.amount * 100);
         } else if (typeof doc.price === 'number' && doc.price > 0) {
           priceCents = Math.round(doc.price * 100);
+        } else if (typeof doc.priceUSD?.min === 'number' && doc.priceUSD.min > 0) {
+          priceCents = Math.round(doc.priceUSD.min * 100);
+        } else if (typeof doc.variants?.[0]?.msrpUSD === 'number' && doc.variants[0].msrpUSD > 0) {
+          priceCents = Math.round(doc.variants[0].msrpUSD * 100);
         }
 
         const rawCurrency = doc.price?.currency || doc.currency;
-        const currency = rawCurrency ? String(rawCurrency).toUpperCase() : (input.currency ? input.currency.toUpperCase() : null);
+        const currency = rawCurrency
+          ? String(rawCurrency).toUpperCase()
+          : input.currency
+          ? input.currency.toUpperCase()
+          : undefined;
 
         const inStock =
           typeof doc.inStock === 'boolean'
             ? doc.inStock
+            : typeof doc.availability === 'boolean'
+            ? doc.availability
             : doc.stock?.inStock != null
             ? doc.stock.inStock
+            : (typeof doc.stock?.availableBranchCount === 'number' && doc.stock.availableBranchCount > 0)
+            ? true
             : doc.inventory?.availableUnits != null
             ? doc.inventory.availableUnits > 0
             : undefined;
@@ -164,20 +292,30 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           (Array.isArray(doc.certifications) ? doc.certifications : []);
 
         const finalSku = doc.parentSku || doc.sku || doc.id || String(doc._id);
+        const imageUrl =
+          doc.imageUrl ||
+          (typeof doc.images?.[0] === 'string' ? doc.images[0] : doc.images?.[0]?.url) ||
+          doc.variants?.[0]?.mainImage ||
+          '';
+
+        const title = doc.name || doc.title || 'Product';
+        const price = priceCents != null ? priceCents / 100 : (doc.variants?.[0]?.msrpUSD || doc.priceUSD?.min || undefined);
 
         return {
           ...attributes,
           sku: finalSku,
-          name: doc.name || doc.title || 'Product',
+          title,
+          name: title,
           description: doc.description || '',
           category: doc.category || doc.type || 'General',
           priceCents,
+          price,
           currency,
           inStock,
           attributes,
           availableQuantity: doc.stock?.availableQuantity ?? doc.inventory?.availableUnits,
           certifications,
-          imageUrl: doc.imageUrl || doc.images?.[0]?.url || '',
+          imageUrl,
         };
       })
       .filter((item) => {
@@ -233,4 +371,3 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     };
   }
 }
-

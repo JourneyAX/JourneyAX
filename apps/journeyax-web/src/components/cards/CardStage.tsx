@@ -64,7 +64,7 @@ function findCardProduct(cards: CardInstance[], sku: string): { sku: string; nam
 }
 
 export function useCardActions() {
-  const { state, dispatch, handleApprove } = useJourney();
+  const { state, dispatch, handleApprove, addToCart, removeFromCart, setQuantity, setCartOpen } = useJourney();
   const cfg = useStorefrontConfig();
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -91,7 +91,11 @@ export function useCardActions() {
         if (!questionId) break;
         dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value });
 
-        const card = [...state.cards].reverse().find((c) => c.cardType === 'clarify');
+        const cardId = params?.cardId ? String(params.cardId) : undefined;
+        const card = cardId
+          ? state.cards.find((c) => c.id === cardId)
+          : [...state.cards].reverse().find((c) => c.cardType === 'clarify');
+
         if (card) {
           const currentQuestions: any[] =
             Array.isArray((card.state as any)?.questions) && (card.state as any).questions.length > 0
@@ -129,7 +133,54 @@ export function useCardActions() {
               progress,
             },
           });
+
+          // ChatPanel's useEffect monitors dynamicAnswers and will submit with fingerprint deduplication once all questions are answered
+          if (!w.__handleClarifySubmit && (left === 0 || total <= 1)) {
+            // Only if ChatPanel bridge is somehow absent, fallback to direct send
+            const answerSummary = updatedQuestions
+              .map((q: any) => `${q.text || q.title || q.id} → ${answers[q.id] ?? q.answer ?? 'Not answered'}`)
+              .join('\n');
+            const clarificationText = `My answers:\n${answerSummary}`;
+            w.__journeySend?.(clarificationText);
+          }
+        } else {
+          // If no clarify card was mapped, forward the selected value directly
+          w.__journeySend?.(value);
         }
+        break;
+      }
+      case 'selectItem': {
+        const sku = String(params?.sku ?? '').trim();
+        const title = String(params?.title || params?.name || params?.label || '').trim();
+        const value = String(params?.value ?? params?.id ?? params?.key ?? '').trim();
+        const questionId = String(params?.questionId ?? '').trim();
+
+        if (questionId && (value || title)) {
+          dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value: value || title });
+        }
+
+        if (sku) {
+          const text = title ? `I choose ${title} (SKU ${sku})` : `I choose SKU ${sku}`;
+          w.__journeySend?.(text);
+        } else if (title || value) {
+          w.__journeySend?.(`I choose ${title || value}`);
+        } else if (params?.text) {
+          w.__journeySend?.(String(params.text));
+        }
+        break;
+      }
+      case 'selectTheme':
+      case 'selectDesign': {
+        const label = String(params?.name || params?.title || params?.label || params?.theme || params?.design || params?.value || params?.id || 'this design').trim();
+        w.__journeySend?.(`I choose ${label}`);
+        break;
+      }
+      case 'nextStep':
+      case 'next':
+      case 'proceed':
+      case 'continue': {
+        const text = String(params?.text || params?.label || params?.step || 'Continue to next step').trim();
+        w.__journeySend?.(text);
         break;
       }
       case 'viewProduct': {
@@ -153,34 +204,47 @@ export function useCardActions() {
         break;
       }
       case 'addToCart': {
-        // A sentence a customer could have typed: the product's name first,
-        // its code in brackets (the server applies it deterministically).
+        const sku = String(params?.sku ?? '').trim();
+        if (!sku) break;
+        const qty = Math.max(1, Math.floor(Number(params?.qty) || 1));
         const title = String(params?.title || '').trim();
-        w.__handleBuildQuote?.(params?.sku
-          ? (title ? `Add ${title} (SKU ${params.sku}, qty ${params?.qty ?? 1}) to my ${closing}.` : `Add SKU ${params.sku} (qty ${params?.qty ?? 1}) to my ${closing}.`)
-          : undefined);
+        const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
+        addToCart(sku, qty, title, p);
+        setCartOpen(true);
         break;
       }
       case 'addAllToCart': {
-        // The card passes its own items (products / bundle) — one deterministic
-        // command the server applies through the QuoteService, same as a single
-        // Add. Falls back to the model-driven build when a card has no items.
         const items = Array.isArray(params?.items) ? (params!.items as any[]) : [];
-        const parts = items
-          .map((i) => ({ sku: String(i?.sku || '').trim(), title: String(i?.title || i?.name || '').trim(), qty: Math.max(1, Math.floor(Number(i?.quantity ?? i?.qty) || 1)) }))
-          .filter((i) => i.sku && !/^unsku-/i.test(i.sku))
-          .map((i) => `${i.title || i.sku} (SKU ${i.sku}, qty ${i.qty})`);
-        w.__handleBuildQuote?.(parts.length ? `Add these to my ${closing}: ${parts.join('; ')}.` : undefined);
+        if (items.length > 0) {
+          (async () => {
+            for (const item of items) {
+              const sku = String(item?.sku || '').trim();
+              if (!sku || /^unsku-/i.test(sku)) continue;
+              const qty = Math.max(1, Math.floor(Number(item?.quantity ?? item?.qty) || 1));
+              const title = String(item?.title || item?.name || '').trim();
+              const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
+              await addToCart(sku, qty, title, p);
+            }
+            setCartOpen(true);
+          })();
+        }
         break;
       }
-      case 'setQuantity':
-        // Server-authoritative quote — a quantity change is a new build-quote
-        // request, not a client-side edit; the agent recomputes price/stock.
-        w.__handleBuildQuote?.(`Change the quantity of SKU ${params?.sku} to ${params?.qty}.`);
+      case 'setQuantity': {
+        const sku = String(params?.sku ?? '').trim();
+        const qty = Math.max(0, Math.floor(Number(params?.qty ?? params?.quantity) || 0));
+        if (sku) {
+          setQuantity(sku, qty);
+        }
         break;
-      case 'removeFromCart':
-        w.__handleBuildQuote?.(`Remove SKU ${params?.sku} from my ${closing}.`);
+      }
+      case 'removeFromCart': {
+        const sku = String(params?.sku ?? '').trim();
+        if (sku) {
+          removeFromCart(sku);
+        }
         break;
+      }
       case 'selectBranch': {
         const branchId = String(params?.branchId ?? '');
         if (!branchId) break;
@@ -205,16 +269,25 @@ export function useCardActions() {
         handleApprove();
         break;
       case 'openPanel':
-        if (params?.panel) dispatch({ type: 'SET_PHASE', phase: params.panel as any });
+        if (params?.panel === 'quote' || params?.panel === 'cart' || params?.panel === 'bag') {
+          setCartOpen(true);
+        } else if (params?.panel) {
+          dispatch({ type: 'SET_PHASE', phase: params.panel as any });
+        }
         break;
       case 'openUrl':
         if (params?.url) window.open(String(params.url), '_blank', 'noopener');
         break;
-      default:
+      default: {
+        const fallbackText = params?.text || params?.label || params?.value;
+        if (fallbackText) {
+          w.__journeySend?.(String(fallbackText));
+        }
         break;
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, handleApprove]);
+  }, [dispatch, handleApprove, addToCart, removeFromCart, setQuantity, setCartOpen]);
 }
 
 /** Every card list keyed by SKU (products, bundle items, quote lines, order
@@ -243,7 +316,7 @@ export function CardTile({ card, onAction }: { card: CardInstance; onAction: (na
         // The brand's own logo backs any tile whose catalogue has no picture ("Image coming soon").
         state={{ ...dedupeSkuLists(card.state as Record<string, unknown>), brandLogo: cfg.theme?.logoUrl || null }}
         settings={cfg.uiTheme?.cards?.[card.cardType]?.options}
-        onAction={onAction}
+        onAction={(name, params) => onAction(name, { ...params, cardId: card.id })}
         stateKey={card.id}
       />
     </div>

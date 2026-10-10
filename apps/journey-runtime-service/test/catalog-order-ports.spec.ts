@@ -3,6 +3,8 @@ import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-searc
 import { PricingValidateHandler } from '../src/capabilities/handlers/pricing-validate.handler';
 import { OrderCommitHandler } from '../src/capabilities/handlers/order-commit.handler';
 import { TradeQuoteCreateHandler } from '../src/capabilities/handlers/trade-quote-create.handler';
+import { ProjectPlanHandler } from '../src/capabilities/handlers/project-plan.handler';
+import { KnowledgeSearchHandler } from '../src/capabilities/handlers/knowledge-search.handler';
 import { ExecutionContext } from '@journeyax/capability-sdk';
 
 const mockContext: ExecutionContext = {
@@ -492,6 +494,122 @@ async function runCatalogOrderPortsTests() {
       /input\.currency cannot be sole authority|Missing authoritative currency/,
       'TradeQuoteCreateHandler must fail closed because input.currency cannot be sole authority'
     );
+  });
+
+  await test('24. Catalog search never fabricates a currency when neither catalog nor Business Pack input supplies one', async () => {
+    const handler = new CatalogSearchHandler([{
+      projectId: 'tenant-test-grounded',
+      sku: 'NO-CURRENCY-CATALOG',
+      name: 'Currency-neutral catalog item',
+      category: 'General',
+    }]);
+    const result = await handler.execute({ query: 'currency-neutral' }, mockContext);
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].currency, undefined);
+  });
+
+  await test('25. Project plan refuses to fabricate products, quantities, formulas, prices, or compliance notes', async () => {
+    const handler = new ProjectPlanHandler();
+    const result = await handler.execute(
+      { projectType: 'merchant-authored-project' },
+      mockContext
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.missingInputs.sort(), ['calculationRef', 'materials']);
+    assert.equal(result.materials, undefined);
+  });
+
+  await test('26. Project plan assembles only verified catalog and calculation outputs', async () => {
+    const handler = new ProjectPlanHandler();
+    const result = await handler.execute(
+      {
+        projectType: 'merchant-authored-project',
+        projectName: 'Published plan',
+        calculationRef: 'calc://tenant-test-grounded/project/v3',
+        calculationVersion: '3.0.0',
+        currency: 'AUD',
+        materials: [{
+          sku: 'BOOT-STEEL-01',
+          title: 'Heavy Duty Steel Toe Work Boot',
+          quantity: 2,
+          unit: 'pair',
+          unitPrice: 180,
+          currency: 'AUD',
+          catalogVerified: true,
+          pricingVerified: true,
+        }],
+        verifiedNotes: ['Merchant-authored plan note'],
+      },
+      mockContext
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.materials[0].sku, 'BOOT-STEEL-01');
+    assert.equal(result.materials[0].lineTotal, 360);
+    assert.equal(result.total, 360);
+    assert.deepEqual(result.verifiedNotes, ['Merchant-authored plan note']);
+  });
+
+  await test('27. Knowledge retrieval fails closed without an exact pinned OKF evidence scope', async () => {
+    let called = false;
+    const handler = new KnowledgeSearchHandler(undefined, async () => ({
+      async search() {
+        called = true;
+        return { found: true, results: [] };
+      },
+    }));
+    const result = await handler.execute({ query: 'care instructions' }, mockContext);
+    assert.equal(result.verified, false);
+    assert.equal(result.resultCount, 0);
+    assert.equal(called, false, 'backend must not be called without an immutable evidence allow-list');
+  });
+
+  await test('28. Knowledge retrieval forwards exact release identity and filters backend results to allowed sources', async () => {
+    let received: any;
+    const scope = {
+      releaseId: 'okf-tenant-test-1',
+      version: '1.0.0',
+      checksum: 'a'.repeat(64),
+      conceptIds: ['concept://tenant-test-grounded/care/product-family'],
+      sourceRefs: ['source-approved'],
+      requestedClaimClass: 'care_safety',
+    };
+    const handler = new KnowledgeSearchHandler(undefined, async () => ({
+      async search(_ctx, request) {
+        received = request;
+        return {
+          found: true,
+          results: [
+            { sourceId: 'source-approved', releaseId: scope.releaseId, title: 'Approved guide', content: 'Verified care instruction.' },
+            { sourceId: 'source-other', releaseId: scope.releaseId, title: 'Unapproved guide', content: 'Must not escape.' },
+            { sourceId: 'source-approved', releaseId: 'okf-other-release', title: 'Wrong release', content: 'Must not escape.' },
+          ],
+        };
+      },
+    }));
+    const result = await handler.execute({ query: 'care instructions', knowledgeScope: scope }, mockContext);
+    assert.deepEqual(received.knowledgeScope, scope);
+    assert.equal(result.verified, true);
+    assert.equal(result.resultCount, 1);
+    assert.equal(result.results[0].title, 'Approved guide');
+  });
+
+  await test('29. In-memory knowledge fixtures obey the same release and source allow-list', async () => {
+    const scope = {
+      releaseId: 'okf-test-release',
+      version: '1.0.0',
+      checksum: 'b'.repeat(64),
+      conceptIds: ['concept://tenant-test-grounded/care/test'],
+      sourceRefs: ['source-safe'],
+    };
+    const handler = new KnowledgeSearchHandler([
+      { id: 'safe', sourceId: 'source-safe', releaseId: scope.releaseId, title: 'Safe care guide', content: 'Use the verified method.' },
+      { id: 'cross-source', sourceId: 'source-other', releaseId: scope.releaseId, title: 'Other guide', content: 'care' },
+      { id: 'cross-release', sourceId: 'source-safe', releaseId: 'okf-other', title: 'Old guide', content: 'care' },
+    ]);
+    const result = await handler.execute({ query: 'care', knowledgeScope: scope }, mockContext);
+    assert.equal(result.resultCount, 1);
+    assert.equal(result.results[0].sourceId, 'source-safe');
+    assert.equal(result.results[0].releaseId, scope.releaseId);
   });
 
   console.log(`\n==================================================`);

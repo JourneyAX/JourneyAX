@@ -40,6 +40,15 @@ export class PackRepository {
     return this.loader.loadPublished(tenantId, environmentId, version);
   }
 
+  async loadPinnedPack(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    version: string,
+    checksum: string
+  ): Promise<BusinessPackRelease> {
+    return this.loader.loadPinned(tenantId, environmentId, version, checksum);
+  }
+
   async hasActivePack(
     tenantId: string,
     environmentId: EnvironmentId = 'production'

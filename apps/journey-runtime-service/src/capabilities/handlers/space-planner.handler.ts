@@ -10,17 +10,26 @@ export interface SpacePlannerInput {
 }
 
 export class SpacePlannerHandler implements NativeCapabilityHandler {
-  async execute(input: SpacePlannerInput, ctx: ExecutionContext): Promise<any> {
-    const rawRoom = String(input.roomType || input.spaceType || input.room || 'bathroom').toLowerCase().trim();
+  async execute(input: SpacePlannerInput, _ctx: ExecutionContext): Promise<any> {
+    const rawRoom = String(input.roomType || input.spaceType || input.room || '').toLowerCase().trim();
     const wallWidthMm =
       typeof input.wallWidthMm === 'number' && input.wallWidthMm > 0
         ? input.wallWidthMm
         : Number(input.wallWidthMm) > 0
         ? Number(input.wallWidthMm)
-        : 2400;
+        : undefined;
 
-    const installType = input.installType === 'trade' || input.installType === 'diy' ? input.installType : 'diy';
-    const finish = typeof input.finish === 'string' && input.finish.trim() ? input.finish.trim() : 'standard';
+    const installType = input.installType === 'trade' || input.installType === 'diy' ? input.installType : undefined;
+    const finish = typeof input.finish === 'string' && input.finish.trim() ? input.finish.trim() : undefined;
+
+    if (!rawRoom) {
+      return {
+        status: 'needs_input',
+        ok: false,
+        missingInputs: ['roomType'],
+        message: 'The published journey must supply the configured space type before opening the planner.',
+      };
+    }
 
     return {
       status: 'success',
@@ -29,7 +38,7 @@ export class SpacePlannerHandler implements NativeCapabilityHandler {
       wallWidthMm,
       installType,
       finish,
-      message: `PlaceMakers Space Planner launched for ${rawRoom}`,
+      message: `Space Planner launched for ${rawRoom}`,
     };
   }
 }

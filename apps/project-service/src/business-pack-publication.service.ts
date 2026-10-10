@@ -7,12 +7,16 @@ import {
   compileGraphToJourneyDefinition,
   compileGraphToJourneys,
   computePackChecksum,
+  resolvePublicationRoutingPolicy,
+  RoutingPolicyResolutionError,
   BusinessPackLoader,
   ModelPolicySchema,
   compileModelPolicy,
+  DEFAULT_PLATFORM_CARD_TYPES,
 } from '@journeyax/business-pack';
 import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
 import { ReleaseValidationPort } from './release-validation.port';
+import { assertOkfReferenceReady, validateOkfJourneyReferences } from '@journeyax/knowledge';
 
 export class MissingCatalogueSkuError extends Error {
   constructor(public readonly missingSkus: string[], public readonly tenantId: string) {
@@ -217,7 +221,65 @@ export class BusinessPackPublicationService {
 
     const last = await this.getVersionsCol()
       .find({ projectId: pid }).sort({ version: -1 }).limit(1).toArray();
-    const version = (last[0]?.version ?? 0) + 1;
+    const version = Math.max(
+      last[0]?.version ?? 0,
+      typeof (doc as any).version === 'number' ? (doc as any).version : 0,
+      typeof (doc as any).activeVersion === 'number' ? (doc as any).activeVersion : 0
+    ) + 1;
+
+    // Resolve next immutable Business Pack release semver, strictly preventing collision with existing immutable releases
+    let packReleaseVersion = `1.0.${version}`;
+    try {
+      const db = this.getDb();
+      const existingReleases = await db.collection('business_pack_releases')
+        .find({ tenantId: pid })
+        .project({ version: 1 })
+        .toArray();
+      const activePointer = await db.collection('business_pack_pointers')
+        .findOne({ tenantId: pid, environmentId: 'production' });
+
+      const allVersions = new Set<string>();
+      for (const r of existingReleases) {
+        if (r.version) allVersions.add(String(r.version));
+      }
+      if (activePointer?.activeVersion) {
+        allVersions.add(String(activePointer.activeVersion));
+      }
+
+      let highestMajor = 1;
+      let highestMinor = 0;
+      let highestPatch = version;
+
+      for (const v of allVersions) {
+        const parts = v.split('.').map((p) => parseInt(p, 10));
+        if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+          if (parts[0] > highestMajor) {
+            highestMajor = parts[0];
+            highestMinor = parts[1];
+            highestPatch = parts[2];
+          } else if (parts[0] === highestMajor) {
+            if (parts[1] > highestMinor) {
+              highestMinor = parts[1];
+              highestPatch = parts[2];
+            } else if (parts[1] === highestMinor) {
+              if (parts[2] > highestPatch) {
+                highestPatch = parts[2];
+              }
+            }
+          }
+        }
+      }
+
+      let candidatePatch = highestPatch + 1;
+      let candidate = `${highestMajor}.${highestMinor}.${candidatePatch}`;
+      while (allVersions.has(candidate)) {
+        candidatePatch++;
+        candidate = `${highestMajor}.${highestMinor}.${candidatePatch}`;
+      }
+      packReleaseVersion = candidate;
+    } catch {
+      packReleaseVersion = `1.0.${version}`;
+    }
 
     // ── Assemble and publish Immutable Business Pack release into business_pack_releases ──
     const journeyList = (compiledJourneys && compiledJourneys.length > 0)
@@ -268,6 +330,7 @@ export class BusinessPackPublicationService {
       initialStage: j.initialStage || Object.keys(j.stages || {})[0] || 'discovery',
       stages: j.stages || {},
       metadata: j.metadata || {},
+      ...(typeof j.isDefaultConsultant === 'boolean' ? { isDefaultConsultant: j.isDefaultConsultant } : {}),
     }));
 
     // Compile Agents (min 1 required by BusinessPackReleaseSchema)
@@ -375,17 +438,7 @@ export class BusinessPackPublicationService {
     const tokens = doc.uiTheme?.tokens;
     const allowedCardTypes = doc.experience?.cards?.allowedCardTypes
       || (doc.cardTemplates ? Object.keys(doc.cardTemplates) : undefined)
-      || [
-        'bundle',
-        'products',
-        'productDetail',
-        'quote',
-        'comparison',
-        'plan',
-        'cart',
-        'orderStatus',
-        'guide',
-      ];
+      || [...DEFAULT_PLATFORM_CARD_TYPES];
 
     const compiledExperience = {
       version: '1.0.0',
@@ -482,12 +535,29 @@ export class BusinessPackPublicationService {
       }
     }
 
+    // Default journey is explicit or unambiguous only: no positional ([0]) or tenant-derived guess.
+    let resolvedRoutingPolicy;
+    try {
+      resolvedRoutingPolicy = resolvePublicationRoutingPolicy({
+        configured: (doc as any).routingPolicy,
+        journeys: validatedJourneys as any[],
+      });
+    } catch (err: any) {
+      if (err instanceof RoutingPolicyResolutionError) {
+        return {
+          success: false,
+          message: `Publish blocked by routing policy: ${err.message}`,
+        };
+      }
+      throw err;
+    }
+
     const businessPack = {
       manifest: {
         packId: `pack_${pid}`,
         tenantId: pid,
         name: doc.companyName || doc.name || pid,
-        version: `1.0.${version}`,
+        version: packReleaseVersion,
         description: `${industry} Business Pack`,
         schemaVersion: '1.0.0',
         environmentId: 'production' as const,
@@ -499,6 +569,7 @@ export class BusinessPackPublicationService {
         primaryGoals: doc.scope?.categories || ['customer_service'],
         locales: ['en-AU', 'en-US'],
       },
+      routingPolicy: resolvedRoutingPolicy,
       vocabulary: {
         version: '1.0.0',
         dimensions: dimensions.length > 0 ? dimensions : (doc.vocabulary?.dimensions || []),
@@ -521,12 +592,17 @@ export class BusinessPackPublicationService {
           maxTurnsWithoutProgress: 4,
         },
       },
+      ...((doc as any).factRegistry ? { factRegistry: (doc as any).factRegistry } : {}),
+      ...((doc as any).knowledgeModel ? { knowledgeModel: (doc as any).knowledgeModel } : {}),
       modelPolicy: compiledModelPolicy,
       agents: compiledAgents,
       journeys: validatedJourneys,
       rules: Array.isArray(doc.rules) ? doc.rules : [],
       capabilities: compiledCapabilities,
       experience: compiledExperience,
+      // Studio compilation has never published evaluation suites in the release content;
+      // stated explicitly because the schema no longer injects a default.
+      evaluations: [] as any[],
       extensions: (doc as any).extensions || ((doc as any).spacePlanner ? { spacePlanner: (doc as any).spacePlanner } : {}),
     };
 
@@ -550,6 +626,33 @@ export class BusinessPackPublicationService {
       };
     }
 
+    // A pack and its structured knowledge are one executable release unit. The
+    // reference must resolve before evaluations and is rechecked inside the
+    // publication transaction to close the validation-to-publish race.
+    if ((businessPack as any).knowledgeModel?.type === 'okf_release') {
+      try {
+        const okfRelease = await assertOkfReferenceReady(
+          this.getDb(),
+          (businessPack as any).knowledgeModel,
+          { tenantId: pid, environmentId: 'production' }
+        );
+        const journeyReferenceIssues = validateOkfJourneyReferences(
+          okfRelease.content,
+          businessPack.journeys as any
+        );
+        if (journeyReferenceIssues.length > 0) {
+          throw new Error(
+            journeyReferenceIssues.map((issue) => `${issue.code}:${issue.message}`).join('; ')
+          );
+        }
+      } catch (error: any) {
+        return {
+          success: false,
+          message: `Publish blocked by OKF reference integrity: ${error.message}`,
+        };
+      }
+    }
+
     // Validate Space Planner catalogue mappings (verified SKUs and semantic category matching)
     const spacePlannerExt = businessPack.extensions?.spacePlanner;
     if (spacePlannerExt) {
@@ -568,7 +671,7 @@ export class BusinessPackPublicationService {
     // Publication Gate (PUB-001): Run through injected release-validation port if configured
     let latestEvalSuiteResult: any = null;
     if (this.releaseValidator) {
-      const gateResult = await this.releaseValidator.validateRelease(pid, businessPack, version);
+      const gateResult = await this.releaseValidator.validateRelease(pid, businessPack, packReleaseVersion);
       if (!gateResult.passed) {
         return {
           success: false,
@@ -585,13 +688,35 @@ export class BusinessPackPublicationService {
     const executeTransactionalPublish = async (session?: any) => {
       const sessionOpts = session ? { session } : undefined;
 
+      if ((businessPack as any).knowledgeModel?.type === 'okf_release') {
+        // Deliberately re-read the immutable release at the commit boundary.
+        // Revocations remain independent and continue to override pinned workspaces.
+        const okfRelease = await assertOkfReferenceReady(
+          this.getDb(),
+          (businessPack as any).knowledgeModel,
+          { tenantId: pid, environmentId: 'production' },
+          session
+        );
+        const journeyReferenceIssues = validateOkfJourneyReferences(
+          okfRelease.content,
+          businessPack.journeys as any
+        );
+        if (journeyReferenceIssues.length > 0) {
+          throw new Error(
+            `OKF journey references changed or are invalid: ${journeyReferenceIssues
+              .map((issue) => `${issue.code}:${issue.message}`)
+              .join('; ')}`
+          );
+        }
+      }
+
       // 1. Publish immutable Business Pack release
       await publishBusinessPack(this.getDb(), {
         ...businessPack,
         evaluationResult: latestEvalSuiteResult,
       } as any, {
         publishedBy: opts.publishedBy || 'studio',
-        notes: opts.note || `Studio published version ${version}`,
+        notes: opts.note || `Studio published version ${packReleaseVersion} (${version})`,
         session,
       });
 
@@ -599,6 +724,7 @@ export class BusinessPackPublicationService {
       const snap: ConfigVersion = {
         projectId: pid,
         version,
+        packVersion: packReleaseVersion,
         publishedAt: now,
         publishedBy: opts.publishedBy || 'system',
         note: opts.note,
@@ -607,6 +733,7 @@ export class BusinessPackPublicationService {
           ...doc,
           version,
           activeVersion: version,
+          packVersion: packReleaseVersion,
           updatedAt: now,
         },
       };
@@ -615,7 +742,7 @@ export class BusinessPackPublicationService {
       // 3. Update Studio project activeVersion
       await this.getProjectsCol().updateOne(
         { projectId: pid },
-        { $set: { activeVersion: version, updatedAt: now } },
+        { $set: { activeVersion: version, packVersion: packReleaseVersion, updatedAt: now } },
         sessionOpts
       );
     };
@@ -705,7 +832,7 @@ export class BusinessPackPublicationService {
     const snap = await this.getVersionsCol().findOne({ projectId: pid, version });
     if (!snap) return { success: false, message: `Version ${version} not found for '${pid}'.` };
 
-    const targetPackVersion = `1.0.${version}`;
+    const targetPackVersion = (snap as any).packVersion || `1.0.${version}`;
     const client = (this.getDb() as any).client;
     const isProduction = process.env.NODE_ENV === 'production';
     const now = new Date().toISOString();
@@ -722,7 +849,7 @@ export class BusinessPackPublicationService {
 
       await this.getProjectsCol().updateOne(
         { projectId: pid },
-        { $set: { activeVersion: version, updatedAt: now } },
+        { $set: { activeVersion: version, packVersion: (snap as any).packVersion, updatedAt: now } },
         sessionOpts
       );
     };
@@ -954,4 +1081,3 @@ export class BusinessPackPublicationService {
     return { valid: true };
   }
 }
-

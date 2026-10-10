@@ -2,8 +2,8 @@ import 'reflect-metadata';
 import { resolve } from 'path';
 import { config } from 'dotenv';
 
-// Load env vars from monorepo root .env
-config({ path: resolve(__dirname, '../../../.env') });
+// Load env vars from monorepo root .env (including TEST_MONGODB_URI)
+config({ path: resolve(__dirname, '../../../.env'), override: true });
 
 import { NestFactory } from '@nestjs/core';
 import { ProjectModule } from './project.module';

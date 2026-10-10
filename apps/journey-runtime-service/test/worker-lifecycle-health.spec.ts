@@ -3,6 +3,7 @@ import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { OutboxWorker } from '../src/kernel/outbox.worker';
 import { OutboxWorkerService } from '../src/kernel/outbox-worker.service';
 import { HealthController } from '../src/health.controller';
+import { buildCanonicalPackContent, buildStoredRelease } from './fixtures/canonical-release.fixture';
 
 async function runWorkerLifecycleHealthTests() {
   console.log('--- Starting Worker Lifecycle, Crash Recovery, and Truthful Health Tests ---');
@@ -328,6 +329,25 @@ async function runWorkerLifecycleHealthTests() {
   // Section 6: Real Registered Events vs Unknown Event Acknowledgment
   await test('7. Real registered production events are delivered and acknowledged, whereas unknown events are never acknowledged', async () => {
     const repo = new OutboxRepository();
+    // Complete canonical Business Pack release (verified by the authoritative verifier in the worker)
+    const canonicalRelease = buildStoredRelease(
+      buildCanonicalPackContent({
+        tenantId: 'tenant-prod-test',
+        environmentId: 'production',
+        stageIds: ['stage_checkout'],
+        capabilities: {
+          toolDefinitions: [{ toolId: 'flow_ct_sync_01', sideEffect: 'read', risk: 'low' }],
+          toolBindings: [
+            {
+              toolId: 'flow_ct_sync_01',
+              environmentId: 'production',
+              executor: { type: 'activepieces_flow', flowId: 'flow_ct_sync_01', connectionRef: 'conn_ct_test' },
+            },
+          ],
+          stageBindings: [{ stageId: 'stage_checkout', tools: [{ toolId: 'flow_ct_sync_01' }] }],
+        },
+      })
+    );
     const mockDb = {
       collection: (name: string) => ({
         insertOne: async () => ({ insertedId: 'mock_1' }),
@@ -366,43 +386,11 @@ async function runWorkerLifecycleHealthTests() {
               tenantId: query.tenantId,
               environmentId: 'production',
               activeVersionId: '1.0.0',
-              checksum: '813d76bc67fab9a0deca2265337aed07af9404f5fdcacddb27cec699a8a59474',
+              checksum: canonicalRelease.checksum,
             };
           }
           if (name === 'business_pack_releases') {
-            return {
-              tenantId: query.tenantId,
-              environmentId: 'production',
-              versionId: '1.0.0',
-              status: 'published',
-              checksum: '813d76bc67fab9a0deca2265337aed07af9404f5fdcacddb27cec699a8a59474',
-              capabilities: {
-                toolDefinitions: [
-                  {
-                    toolId: 'flow_ct_sync_01',
-                    sideEffect: 'read',
-                    risk: 'low',
-                  },
-                ],
-                toolBindings: [
-                  {
-                    toolId: 'flow_ct_sync_01',
-                    environmentId: 'production',
-                    executor: {
-                      type: 'activepieces_flow',
-                      flowId: 'flow_ct_sync_01',
-                      connectionRef: 'conn_ct_test',
-                    },
-                  },
-                ],
-                stageBindings: [
-                  {
-                    stageId: 'stage_checkout',
-                    tools: [{ toolId: 'flow_ct_sync_01' }],
-                  },
-                ],
-              },
-            };
+            return canonicalRelease;
           }
           if (name === 'tenant_connections') {
             return {

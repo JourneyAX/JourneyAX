@@ -225,21 +225,52 @@ export function isCapabilityAllowed(
 export function evaluateControlledExpression(expression: string, facts: FactsMap): boolean {
   try {
     const trimmed = expression.trim();
+    if (!trimmed) return true;
+
+    // Compound OR (||)
+    if (trimmed.includes('||')) {
+      return trimmed.split('||').some((sub) => evaluateControlledExpression(sub, facts));
+    }
+
+    // Compound AND (&&)
+    if (trimmed.includes('&&')) {
+      return trimmed.split('&&').every((sub) => evaluateControlledExpression(sub, facts));
+    }
+
     // Match: path (op) literal
     const match = trimmed.match(/^([a-zA-Z0-9_.]+)\s*(<=|>=|===|!==|==|!=|<|>)\s*(.+)$/);
     if (!match) return false;
 
-    const [, path, operator, rawLiteral] = match;
-    const resolvedValue = resolveFactValue(facts, path);
-    if (resolvedValue === undefined) return false;
+    let [, path, operator, rawLiteral] = match;
+    if (path.startsWith('facts.')) {
+      path = path.slice(6);
+    }
 
-    let targetLiteral: any = rawLiteral.trim();
+    const resolvedValue = resolveFactValue(facts, path);
+    const trimmedTarget = rawLiteral.trim();
+    const isTargetNullOrUndefined = trimmedTarget === 'null' || trimmedTarget === 'undefined';
+
+    if (resolvedValue === undefined) {
+      if (isTargetNullOrUndefined) {
+        return operator === '==' || operator === '===';
+      }
+      if (operator === '!=' || operator === '!==') {
+        return !isTargetNullOrUndefined;
+      }
+      return false;
+    }
+
+    let targetLiteral: any = trimmedTarget;
     // Parse quotes
     if (
       (targetLiteral.startsWith('"') && targetLiteral.endsWith('"')) ||
       (targetLiteral.startsWith("'") && targetLiteral.endsWith("'"))
     ) {
       targetLiteral = targetLiteral.slice(1, -1);
+    } else if (targetLiteral === 'null') {
+      targetLiteral = null;
+    } else if (targetLiteral === 'undefined') {
+      targetLiteral = undefined;
     } else if (!isNaN(Number(targetLiteral))) {
       targetLiteral = Number(targetLiteral);
     } else if (targetLiteral === 'true') {
@@ -254,8 +285,14 @@ export function evaluateControlledExpression(expression: string, facts: FactsMap
       case '!==':
         return resolvedValue !== targetLiteral;
       case '==':
+        if (typeof resolvedValue === 'string' && typeof targetLiteral === 'string') {
+          return resolvedValue.toLowerCase() === targetLiteral.toLowerCase();
+        }
         return resolvedValue == targetLiteral;
       case '!=':
+        if (typeof resolvedValue === 'string' && typeof targetLiteral === 'string') {
+          return resolvedValue.toLowerCase() !== targetLiteral.toLowerCase();
+        }
         return resolvedValue != targetLiteral;
       case '<=':
         return Number(resolvedValue) <= Number(targetLiteral);
@@ -274,6 +311,9 @@ export function evaluateControlledExpression(expression: string, facts: FactsMap
 }
 
 function resolveFactValue(facts: FactsMap, path: string): any {
+  if (path.startsWith('facts.')) {
+    path = path.slice(6);
+  }
   const parts = path.split('.');
   const rootKey = parts[0];
   const factEntry = facts[rootKey];

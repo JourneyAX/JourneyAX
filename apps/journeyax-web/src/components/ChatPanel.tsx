@@ -20,6 +20,14 @@ import type { CardInstance } from '@/lib/types';
  *  Deliberately generic — a tenant's own vocabulary lives in the card's own
  *  text, this is just "what is the agent doing right now". */
 const TOOL_TRACE_LABEL: Record<string, string> = {
+  'catalog.search': 'Searching the product catalogue',
+  'knowledge.search': 'Checking verified guidance',
+  'branch.stock': 'Checking location availability',
+  'order.quote': 'Preparing your quote',
+  presentCard: 'Preparing recommendations',
+  products_card: 'Presenting product recommendations',
+  clarify_card: 'Structuring project requirements',
+  bundle_card: 'Presenting complete project package',
   searchKnowledge: 'Searching the catalogue',
   getProductOptions: 'Checking real options',
   findRelated: 'Finding related items',
@@ -104,12 +112,19 @@ async function streamChat(
     try { payload = JSON.parse(dataLine.slice(5).trim()); } catch { return; }
     if (ev === 'session' && payload.sessionId) {
       capturedSessionId = payload.sessionId;
+    } else if (ev === 'capability') {
+      const toolId = payload.toolId || payload.name;
+      if (toolId) pushStep(toolId);
     } else if (ev === 'token') {
       streamText += payload.delta || '';
       setMessages([...newMessages, { role: 'assistant', content: streamText }]);
     } else if (ev === 'uiAction') {
       streamedUiActions.push(payload);
-      pushStep(payload.name);
+      const stepName =
+        payload.name === 'presentCard' && payload.arguments?.card?.cardType
+          ? `${payload.arguments.card.cardType}_card`
+          : payload.name;
+      pushStep(stepName);
       if (dispatch) {
         if (payload.name === 'setPhase' && payload.arguments?.phase) {
           dispatch({ type: 'SET_PHASE', phase: payload.arguments.phase });
@@ -129,6 +144,7 @@ async function streamChat(
           dispatch({ type: 'SET_BUNDLE', bundle: payload.arguments });
         } else if (payload.name === 'presentCard' && payload.arguments?.card) {
           const c = payload.arguments.card;
+          const journeyCount = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
           dispatch({
             type: 'PUSH_CARD',
             card: {
@@ -137,7 +153,7 @@ async function streamChat(
               state: c.state || {},
               variant: c.variant,
               streamId: c.streamId,
-              createdAt: c.createdAt || new Date().toISOString(),
+              createdAt: c.createdAt ? String(c.createdAt) : String(journeyCount ?? (newMessages.length + 1)),
             },
           });
           if (c.cardType === 'clarify' && Array.isArray(c.state?.questions)) {
@@ -150,12 +166,29 @@ async function streamChat(
                 multi: !!q.multi,
               })),
             });
+          } else if (c.cardType === 'products' && Array.isArray(c.state?.products)) {
+            dispatch({
+              type: 'SET_RECOMMENDED_PRODUCTS',
+              products: c.state.products.map((p: any) => ({
+                ...p,
+                name: p.title || p.name || p.sku,
+                description: p.description || p.reason || '',
+              })),
+            });
           }
         }
         // Forward-compatible: once the agent's presentation layer attaches an
         // enriched `card` to the frame directly (docs §5), render it too.
         if (payload.card && payload.name !== 'presentCard') {
-          for (const card of uiActionToCards(payload)) dispatch({ type: 'PUSH_CARD', card });
+          for (const card of uiActionToCards(payload)) {
+            dispatch({
+              type: 'PUSH_CARD',
+              card: {
+                ...card,
+                createdAt: card.createdAt ? String(card.createdAt) : String(newMessages.length + 1),
+              },
+            });
+          }
         }
       }
     } else if (ev === 'done') {
@@ -225,7 +258,7 @@ function personaliseGreeting(greeting: string, name?: string | null): string {
 }
 
 export default function ChatPanel() {
-  const { state, dispatch, bom } = useJourney();
+  const { state, dispatch, bom, cartOpen, setCartOpen } = useJourney();
   const cfg = useStorefrontConfig();
   // Retail bag affordance: a cart brand always needs a way BACK to its bag. Once
   // the complete-the-look step takes over the panel, the bag is no longer the
@@ -270,7 +303,6 @@ export default function ChatPanel() {
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
   // Sample-customer demo (config-driven: cfg.demoCustomers). The chosen profile
   // is remembered per project and sent with every turn; changing it starts a
   // fresh conversation so one thread never mixes two identities.

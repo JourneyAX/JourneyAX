@@ -491,6 +491,10 @@ export interface ProjectConfig {
   vocabulary?: any;
   entities?: any;
   conversationPolicy?: any;
+  /** Versioned structured fact definitions used by journey questions and OKF discriminators. */
+  factRegistry?: any;
+  /** Exact immutable knowledge release coupled to the published Business Pack. */
+  knowledgeModel?: any;
   stageBindings?: any[];
   toolDefinitions?: any[];
   toolBindings?: any[];
@@ -503,6 +507,7 @@ export interface ProjectConfig {
   // Which published ConfigVersion the runtime consumes (see ConfigVersion below).
   // Unset = never published → runtime falls back to the draft (back-compat).
   activeVersion?: number;
+  packVersion?: string;
 }
 
 // ── Knowledge ingestion source (B4 — per-project, configured in the back office) ──
@@ -576,6 +581,7 @@ export interface EmbedConfig {
 export interface ConfigVersion {
   projectId: string;           // isolation key
   version: number;             // monotonically increasing per project
+  packVersion?: string;        // immutable business pack semver (e.g. 1.3.8)
   config: ProjectConfig;       // full immutable snapshot of the draft at publish time
   publishedAt: string;         // ISO timestamp
   publishedBy?: string;        // who published (email/id when auth context available)
@@ -652,6 +658,8 @@ export interface UpdateProjectDto {
   vocabulary?: any;
   entities?: any;
   conversationPolicy?: any;
+  factRegistry?: any;
+  knowledgeModel?: any;
   stageBindings?: any[];
   toolDefinitions?: any[];
   toolBindings?: any[];
@@ -838,4 +846,3 @@ export interface MultiTradeBundleTemplate {
     defaultSkus: string[];
   }>;
 }
-

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect, useState } from 'react';
 import {
   JourneyState, INITIAL_STATE, Phase, ClarifyAnswers, DynamicQuestion, RecommendedProduct, ComparisonData, BundleData,
   FINISHES, DEFAULT_ADDONS, formatAUD, getStockInfo, BOMLine, QuoteTotals, ServerQuote,
@@ -11,12 +11,14 @@ import {
   mapProductsCard, mapQuoteCard, mapGuideCard, mapAccessoriesCard, mapClarifyCard,
   mapWarrantyCard, mapFitmentCard, mapPlanCard, mapOrderStatusCard, mapHeroCard, mapComparisonCard, mapBundleCard,
 } from '@/lib/cards/mappers';
+import { activeSessionId } from '@/lib/conversations';
 
 type Action =
   | { type: 'SET_PHASE'; phase: Phase }
   | { type: 'SET_QUOTE_DATA'; title: string; bom: BOMLine[]; jobId?: string; installationSummary?: string; warrantySummary?: string }
   | { type: 'SET_SCHOOL_RESEARCH'; research: any }
-  | { type: 'SET_SERVER_QUOTE'; quote: ServerQuote }
+  | { type: 'SET_SERVER_QUOTE'; quote: ServerQuote; keepPhase?: boolean }
+  | { type: 'CLEAR_QUOTE' }
   | { type: 'SET_ORDERING'; ordering: boolean; error?: string }
   | { type: 'ADD_MESSAGE'; role: 'ai' | 'user' | 'note'; text: string; head?: string }
   | { type: 'SET_CLARIFY'; key: keyof ClarifyAnswers; value: string }
@@ -135,13 +137,22 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       // its figures — it does NOT recompute any price or total.
       return {
         ...state,
-        phase: 'quote',
+        phase: action.keepPhase ? state.phase : 'quote',
         serverQuote: action.quote,
         quoteTitle: action.quote.title,
         jobId: action.quote.quoteId,
         installationSummary: action.quote.installationSummary,
         warrantySummary: action.quote.warrantySummary,
         leadTimeSummary: action.quote.leadTimeSummary,
+        orderError: undefined,
+      };
+    case 'CLEAR_QUOTE':
+      return {
+        ...state,
+        serverQuote: undefined,
+        customBom: [],
+        quoteTitle: undefined,
+        jobId: undefined,
         orderError: undefined,
       };
     case 'SET_ORDERING':
@@ -313,25 +324,36 @@ function reducer(state: JourneyState, action: Action): JourneyState {
 
     // ── Card CMS (v3) ──────────────────────────────────────────────────
     case 'PUSH_CARD': {
-      // Cards live inline in the thread, so they are part of the record: a
-      // clarify card the customer answered two turns ago stays where it was
-      // when the agent asks something new. A card only REPLACES the previous
-      // one of its type when both belong to the same turn (same `createdAt`
-      // thread position — e.g. the quote re-rendered after a branch pick, or
-      // products re-presented mid-stream), which keeps a turn from stacking
-      // duplicates without erasing history. variant:'append' always stacks.
       const append = action.card.variant === 'append';
+      // If a card with the same ID already exists, update it in place
+      const existingIdx = state.cards.findIndex((c) => c.id === action.card.id);
+      if (existingIdx !== -1) {
+        const updated = [...state.cards];
+        updated[existingIdx] = action.card;
+        return { ...state, cards: updated, activeCardId: action.card.id };
+      }
       const last = append ? undefined : [...state.cards].reverse().find((c) => c.cardType === action.card.cardType);
-      // The card-sync effects re-run on mount / RESTORE (their source state
-      // is already populated) and twice under StrictMode — a push whose
-      // content is identical to the latest card of its type is that replay,
-      // not a new card. This is what put a second "Start here" / a blank
-      // duplicate clarify card into the thread after a reload.
       if (last && JSON.stringify(last.state) === JSON.stringify(action.card.state)) return state;
-      const sameTurn = !!last && last.createdAt === action.card.createdAt;
-      const cards = sameTurn
-        ? state.cards.map((c) => (c.id === last!.id ? action.card : c))
-        : [...state.cards, action.card];
+
+      // If a card of the same cardType already exists, update the most recent one in place rather than stacking duplicates
+      const topCard = state.cards[state.cards.length - 1];
+      const isAdjacentDuplicate = !append && topCard?.cardType === action.card.cardType;
+      const lastSameTypeIdx = !append ? state.cards.findLastIndex((c) => c.cardType === action.card.cardType) : -1;
+
+      if (!append && lastSameTypeIdx !== -1) {
+        const existingCard = state.cards[lastSameTypeIdx];
+        const isRecent =
+          isAdjacentDuplicate ||
+          existingCard.createdAt === action.card.createdAt ||
+          Math.abs(Number(existingCard.createdAt || 0) - Number(action.card.createdAt || 0)) <= 1;
+        if (isRecent) {
+          const updated = [...state.cards];
+          updated[lastSameTypeIdx] = { ...action.card, id: existingCard.id };
+          return { ...state, cards: updated, activeCardId: existingCard.id };
+        }
+      }
+
+      const cards = [...state.cards, action.card];
       // Cap so a long session doesn't grow this forever.
       const trimmed = cards.length > 24 ? cards.slice(cards.length - 24) : cards;
       return { ...state, cards: trimmed, activeCardId: action.card.id };
@@ -387,13 +409,39 @@ interface JourneyContextType {
   handleApprove: () => void;
   handleRestart: () => void;
   handleTryRemove: () => void;
+  addToCart: (sku: string, qty?: number, title?: string, product?: any) => Promise<void>;
+  removeFromCart: (sku: string) => Promise<void>;
+  setQuantity: (sku: string, qty: number) => Promise<void>;
+  cartOpen: boolean;
+  setCartOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const JourneyContext = createContext<JourneyContextType | null>(null);
 
+function resolveTenantId(configuredProjectId?: string): string {
+  const queryProjectId = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('project')
+    : '';
+  return String(configuredProjectId || queryProjectId || '').trim().toLowerCase();
+}
+
 export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const [cartOpen, setCartOpen] = useState(false);
   const cfg = useStorefrontConfig();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__openCart = () => setCartOpen(true);
+      (window as any).__closeCart = () => setCartOpen(false);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__openCart;
+        delete (window as any).__closeCart;
+      }
+    };
+  }, []);
 
   // ── Card CMS card-sync (v3) ──────────────────────────────────────────
   // Mirrors legacy phase-driving state into `state.cards` so CardStage can
@@ -423,6 +471,8 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (state.recommendedProducts.length === 0) return;
+    const hasProductsCard = state.cards.some((c) => c.cardType === 'products');
+    if (hasProductsCard) return;
     pushCard({ id: newId('products'), cardType: 'products', state: mapProductsCard(state.recommendedProducts, undefined, cfg.commerceMode === 'cart' ? 'bag' : 'quote') });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.recommendedProducts]);
@@ -440,7 +490,9 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   }, [state.comparison]);
 
   useEffect(() => {
-    if (!state.serverQuote) return;
+    if (!state.serverQuote || !state.serverQuote.lines || state.serverQuote.lines.length === 0) return;
+    const hasQuoteCard = state.cards.some((c) => c.cardType === 'quote');
+    if (!hasQuoteCard && state.phase !== 'quote') return;
     pushCard({
       id: newId('quote'), cardType: 'quote',
       state: mapQuoteCard(state.serverQuote, {
@@ -450,7 +502,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.serverQuote, state.selectedBranch, state.selectedBranchName]);
+  }, [state.serverQuote, state.selectedBranch, state.selectedBranchName, state.phase]);
 
   // Auto-check the FIRST configured branch as soon as a real quote with SKUs
   // exists — was PlaceMakers-only (`isPlaceMakers && bomSkuSig && !state.
@@ -495,6 +547,8 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (state.dynamicQuestions.length === 0) return;
+    const hasClarifyCard = state.cards.some((c) => c.cardType === 'clarify');
+    if (hasClarifyCard) return;
     // Answers included so a restored thread re-derives the SAME card state it
     // saved (chips lit, footer counted) and the reducer's replay guard holds.
     pushCard({ id: newId('clarify'), cardType: 'clarify', state: mapClarifyCard(state.dynamicQuestions, state.dynamicAnswers) });
@@ -604,6 +658,146 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   // order only becomes "ordered" after Stripe confirms payment (handled on return).
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; });
+
+  const addToCart = useCallback(async (sku: string, qty: number = 1, title?: string, product?: any) => {
+    const cleanSku = String(sku || '').trim();
+    if (!cleanSku) return;
+    const addQty = Math.max(1, Math.floor(Number(qty) || 1));
+    const tenantId = resolveTenantId(cfg.projectId);
+    if (!tenantId) {
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Project context is unavailable. The cart was not changed.' });
+      return;
+    }
+
+    const existingLines = (stateRef.current.serverQuote?.lines && stateRef.current.serverQuote.lines.length > 0)
+      ? stateRef.current.serverQuote.lines
+      : (stateRef.current.customBom || []);
+
+    const matchIdx = existingLines.findIndex((l) => (l.sku || '').toLowerCase() === cleanSku.toLowerCase());
+    let nextItems: { sku: string; quantity: number }[] = [];
+
+    if (matchIdx >= 0) {
+      nextItems = existingLines.map((l, idx) => ({
+        sku: l.sku!,
+        quantity: idx === matchIdx ? (l.quantity || 1) + addQty : (l.quantity || 1),
+      }));
+    } else {
+      nextItems = [
+        ...existingLines.filter((l) => l.sku).map((l) => ({ sku: l.sku!, quantity: l.quantity || 1 })),
+        { sku: cleanSku, quantity: addQty },
+      ];
+    }
+
+    try {
+      const res = await fetch(`/api/kit/quote?project=${encodeURIComponent(tenantId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
+        body: JSON.stringify({
+          sessionId: activeSessionId(tenantId),
+          items: nextItems,
+        }),
+      });
+      const data = await res.json();
+      if (data?.quote) {
+        dispatch({ type: 'SET_SERVER_QUOTE', quote: data.quote, keepPhase: true });
+        return;
+      }
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: data?.error || 'The cart could not be updated.' });
+      return;
+    } catch (e) {
+      console.warn('Failed to fetch server quote on addToCart', e);
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'The quote service is unavailable. The cart was not changed.' });
+    }
+  }, [cfg.projectId, dispatch]);
+
+  const removeFromCart = useCallback(async (sku: string) => {
+    const cleanSku = String(sku || '').trim();
+    if (!cleanSku) return;
+    const tenantId = resolveTenantId(cfg.projectId);
+    if (!tenantId) {
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Project context is unavailable. The cart was not changed.' });
+      return;
+    }
+
+    const existingLines = (stateRef.current.serverQuote?.lines && stateRef.current.serverQuote.lines.length > 0)
+      ? stateRef.current.serverQuote.lines
+      : (stateRef.current.customBom || []);
+
+    const nextItems = existingLines
+      .filter((l) => (l.sku || '').toLowerCase() !== cleanSku.toLowerCase())
+      .map((l) => ({ sku: l.sku!, quantity: l.quantity || 1 }));
+
+    if (nextItems.length === 0) {
+      dispatch({ type: 'CLEAR_QUOTE' });
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/kit/quote?project=${encodeURIComponent(tenantId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
+        body: JSON.stringify({
+          sessionId: activeSessionId(tenantId),
+          items: nextItems,
+        }),
+      });
+      const data = await res.json();
+      if (data?.quote) {
+        dispatch({ type: 'SET_SERVER_QUOTE', quote: data.quote, keepPhase: true });
+        return;
+      }
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: data?.error || 'The cart could not be updated.' });
+      return;
+    } catch (e) {
+      console.warn('Failed to fetch server quote on removeFromCart', e);
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'The quote service is unavailable. The cart was not changed.' });
+    }
+  }, [cfg.projectId, dispatch]);
+
+  const setQuantity = useCallback(async (sku: string, qty: number) => {
+    const cleanSku = String(sku || '').trim();
+    if (!cleanSku) return;
+    const newQty = Math.floor(Number(qty) || 0);
+    if (newQty <= 0) {
+      return removeFromCart(cleanSku);
+    }
+    const tenantId = resolveTenantId(cfg.projectId);
+    if (!tenantId) {
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Project context is unavailable. The cart was not changed.' });
+      return;
+    }
+
+    const existingLines = (stateRef.current.serverQuote?.lines && stateRef.current.serverQuote.lines.length > 0)
+      ? stateRef.current.serverQuote.lines
+      : (stateRef.current.customBom || []);
+
+    const nextItems = existingLines.map((l) => ({
+      sku: l.sku!,
+      quantity: (l.sku || '').toLowerCase() === cleanSku.toLowerCase() ? newQty : (l.quantity || 1),
+    }));
+
+    try {
+      const res = await fetch(`/api/kit/quote?project=${encodeURIComponent(tenantId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
+        body: JSON.stringify({
+          sessionId: activeSessionId(tenantId),
+          items: nextItems,
+        }),
+      });
+      const data = await res.json();
+      if (data?.quote) {
+        dispatch({ type: 'SET_SERVER_QUOTE', quote: data.quote, keepPhase: true });
+        return;
+      }
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: data?.error || 'The cart could not be updated.' });
+      return;
+    } catch (e) {
+      console.warn('Failed to fetch server quote on setQuantity', e);
+      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'The quote service is unavailable. The cart was not changed.' });
+    }
+  }, [cfg.projectId, dispatch, removeFromCart]);
+
   const handleApprove = useCallback(async () => {
     const quote = stateRef.current.serverQuote;
     if (!quote) return;
@@ -689,6 +883,11 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         handleApprove,
         handleRestart,
         handleTryRemove,
+        addToCart,
+        removeFromCart,
+        setQuantity,
+        cartOpen,
+        setCartOpen,
       }}
     >
       {children}

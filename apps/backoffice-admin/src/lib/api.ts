@@ -131,6 +131,14 @@ export interface Project {
     // Which platform backs each agent domain (the runtime switch — B3). Unset = standalone.
     platforms?: { knowledge?: string; commerce?: string };
   };
+  knowledgeModel?: {
+    type: 'okf_release';
+    releaseId: string;
+    version: string;
+    checksum: string;
+    required: boolean;
+    failurePolicy: 'fail_closed' | 'enrichment_only';
+  };
 }
 
 /** One configured ingestion source (mirrors KnowledgeSourceItem in project-service). */
@@ -208,7 +216,7 @@ export const CAPABILITY_CATALOG: { id: string; label: string; description: strin
   { id: 'customerHistory', label: 'Customer history (demo)', description: 'Read-only tools over the project’s sample-customer fixtures (orders, current offers, staff inventory), bound to the profile picked under “Explore a sample customer”. All data fictional; nothing is written.' },
   { id: 'domainClarify', label: 'Trade diagnostic questions', description: 'When the agent asks about wet areas, leaks or linings without giving options, fall back to the built-in trade question set (NZ building-supply vocabulary). Off by default — only for building/plumbing supply brands.' },
   { id: 'openSpacePlanner', label: 'Interactive space planner', description: 'Open a live 3D/2D room or space planner (e.g. cabinetry, modular units) the customer configures directly' },
-  { id: 'buildProjectPlan', label: 'Structural project plan', description: 'Calculate a materials plan for a structural build (decking, fencing, framing, cladding) from dimensions' },
+  { id: 'buildProjectPlan', label: 'Verified project plan', description: 'Assemble a materials plan from Business Pack calculation rules and verified catalog items' },
   { id: 'checkBranchStock', label: 'Branch stock lookup', description: 'Check real, live stock and pickup/delivery availability at a specific branch or location' },
 ];
 
@@ -261,6 +269,56 @@ export const projectApi = {
     req<any>(`${SERVICES.project}/api/v1/projects/${projectId}/rollback/${version}`, { method: 'POST' }),
   listCapabilities: (projectId: string) =>
     req<{ id: string; label: string; description: string }[]>(`${SERVICES.project}/api/v1/projects/${projectId}/capabilities`).catch(() => CAPABILITY_CATALOG),
+};
+
+export interface OkfDraft {
+  tenantId: string;
+  environmentId: string;
+  revision: number;
+  checksum: string;
+  content: any;
+  validation: { valid: boolean; issues: Array<{ code: string; path?: string; message: string }> };
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface OkfReleaseMeta {
+  releaseId: string;
+  tenantId: string;
+  environmentId: string;
+  version: string;
+  checksum: string;
+  status: 'building' | 'ready' | 'failed' | 'retired';
+  publishedAt: string;
+  publishedBy: string;
+  notes?: string;
+}
+
+export const okfApi = {
+  draft: (projectId: string, environmentId = 'production') =>
+    req<OkfDraft>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/draft?environmentId=${encodeURIComponent(environmentId)}`),
+  saveDraft: (projectId: string, expectedRevision: number, content: unknown, environmentId = 'production') =>
+    req<OkfDraft>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/draft`, {
+      method: 'PUT', body: JSON.stringify({ environmentId, expectedRevision, content }),
+    }),
+  validate: (projectId: string, environmentId = 'production') =>
+    req<{ valid: boolean; issues: Array<{ code: string; path?: string; message: string }> }>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/validate`, {
+      method: 'POST', body: JSON.stringify({ environmentId }),
+    }),
+  preview: (projectId: string, message: string, knownFacts: Record<string, unknown> = {}, environmentId = 'production') =>
+    req<any>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/preview`, {
+      method: 'POST', body: JSON.stringify({ environmentId, message, knownFacts }),
+    }),
+  publish: (projectId: string, body: { expectedRevision: number; version: string; releaseId?: string; notes?: string; required?: boolean; failurePolicy?: 'fail_closed' | 'enrichment_only'; environmentId?: 'dev' | 'test' | 'staging' | 'production' }) =>
+    req<any>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/publish`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  releases: (projectId: string, environmentId = 'production') =>
+    req<OkfReleaseMeta[]>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/releases?environmentId=${encodeURIComponent(environmentId)}`),
+  selectRelease: (projectId: string, release: Pick<OkfReleaseMeta, 'releaseId' | 'version' | 'checksum'>, environmentId = 'production') =>
+    req<any>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/select-release`, {
+      method: 'POST', body: JSON.stringify({ ...release, environmentId, required: true, failurePolicy: 'fail_closed' }),
+    }),
 };
 
 // ── Card CMS (v3 — docs/v3-card-cms-architecture.md) ────────────────────────

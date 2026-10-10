@@ -1,4 +1,10 @@
-import { WorkspaceState, EnvironmentId, FactsMap, FactSource } from '@journeyax/journey-core';
+import {
+  WorkspaceState,
+  WorkspaceReleasePins,
+  EnvironmentId,
+  FactsMap,
+  FactSource,
+} from '@journeyax/journey-core';
 import { ClientSession } from 'mongodb';
 import { WorkspaceStore } from '../workspace/workspace.store';
 
@@ -39,7 +45,8 @@ export class WorkspaceRepository {
     defaultJourneyId: string,
     initialStageId: string,
     initialFacts?: FactsMap,
-    packVersionId = 'latest'
+    packVersionId = 'latest',
+    pins?: WorkspaceReleasePins
   ): Promise<WorkspaceState> {
     const existing = await this.load(tenantId, environmentId, workspaceId);
     if (existing) {
@@ -51,6 +58,7 @@ export class WorkspaceRepository {
       environmentId,
       workspaceId,
       packVersionId,
+      pins,
       journeyId: defaultJourneyId,
       initialStage: initialStageId,
       goal: 'Complete journey',

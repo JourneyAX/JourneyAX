@@ -9,6 +9,7 @@ import { TeamService } from './team.service';
 import { NotificationConfigurationService } from './notification-configuration.service';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { PublicationGateValidator } from './publication-gate-validator';
+import { OkfAuthoringService } from './okf-authoring.service';
 
 @Module({
   controllers: [ProjectController],
@@ -17,6 +18,14 @@ import { PublicationGateValidator } from './publication-gate-validator';
     CapabilityRegistryService,
     JourneyConfigurationService,
     PublicationGateValidator,
+    {
+      provide: OkfAuthoringService,
+      useFactory: (projectService: ProjectService) => new OkfAuthoringService(
+        () => projectService.getRuntimeDb(),
+        (pid, knowledgeModel) => projectService.updateProject(pid, { knowledgeModel } as any)
+      ),
+      inject: [ProjectService],
+    },
     {
       provide: BusinessPackPublicationService,
       useFactory: (projectService: ProjectService, gateValidator: PublicationGateValidator) => {
@@ -39,6 +48,7 @@ import { PublicationGateValidator } from './publication-gate-validator';
     JourneyConfigurationService,
     PublicationGateValidator,
     BusinessPackPublicationService,
+    OkfAuthoringService,
   ],
 })
 export class ProjectModule {}

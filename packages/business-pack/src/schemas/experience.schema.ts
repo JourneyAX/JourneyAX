@@ -1,5 +1,29 @@
 import { z } from 'zod';
 
+/** Platform card vocabulary. Tenant packs choose a subset; no tenant-specific
+ * component is introduced in runtime code. */
+export const DEFAULT_PLATFORM_CARD_TYPES = [
+  'products',
+  'productDetail',
+  'comparison',
+  'bundle',
+  'quote',
+  'cart',
+  'orderStatus',
+  'guide',
+  'plan',
+  'clarify',
+  'suggestions',
+  'accessories',
+  'warranty',
+  'fitment',
+  'disclosure',
+  'hero',
+  'working',
+  'action_button_group',
+  'order_confirmation',
+] as const;
+
 export const ExperienceThemeSchema = z.object({
   primaryColor: z.string().default('#0F172A'),
   accentColor: z.string().default('#3B82F6'),
@@ -11,17 +35,7 @@ export const ExperienceThemeSchema = z.object({
 });
 
 export const ExperienceCardsSchema = z.object({
-  allowedCardTypes: z.array(z.string()).default([
-    'bundle',
-    'products',
-    'productDetail',
-    'quote',
-    'comparison',
-    'plan',
-    'cart',
-    'orderStatus',
-    'guide',
-  ]),
+  allowedCardTypes: z.array(z.string()).default([...DEFAULT_PLATFORM_CARD_TYPES]),
   defaultCardRenderer: z.string().default('@journeyax/ui-cards'),
   allowedActions: z.array(z.string()).optional(),
   templates: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
@@ -36,17 +50,7 @@ export const ExperienceSchema = z.object({
     borderRadius: '8px',
   }),
   cards: ExperienceCardsSchema.default({
-    allowedCardTypes: [
-      'bundle',
-      'products',
-      'productDetail',
-      'quote',
-      'comparison',
-      'plan',
-      'cart',
-      'orderStatus',
-      'guide',
-    ],
+    allowedCardTypes: [...DEFAULT_PLATFORM_CARD_TYPES],
     defaultCardRenderer: '@journeyax/ui-cards',
   }),
 });

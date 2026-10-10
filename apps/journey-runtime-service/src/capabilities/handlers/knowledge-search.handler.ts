@@ -1,5 +1,9 @@
 import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability-sdk';
-import { adapterRegistry, AdapterRegistry, KnowledgePort, KnowledgeSearchResult } from '@journeyax/integration';
+import type {
+  KnowledgeRetrievalPort,
+  KnowledgeRetrievalPortResolver,
+  KnowledgeRetrievalResult,
+} from '../../kernel/knowledge-retrieval.port';
 
 export interface KnowledgeSearchInput {
   query?: string;
@@ -7,23 +11,44 @@ export interface KnowledgeSearchInput {
   limit?: number;
   type?: string;
   gender?: string;
+  knowledgeScope?: {
+    releaseId: string;
+    version: string;
+    checksum: string;
+    conceptIds: string[];
+    sourceRefs: string[];
+    requestedClaimClass?: string;
+  };
 }
 
 export class KnowledgeSearchHandler implements NativeCapabilityHandler {
   constructor(
     private readonly inMemoryDocs?: any[],
-    private readonly registry?: AdapterRegistry
+    private readonly resolveKnowledgePort?: KnowledgeRetrievalPortResolver
   ) {}
 
   async execute(input: KnowledgeSearchInput, ctx: ExecutionContext): Promise<any> {
     const rawQuery = (input.query || '').trim();
     const query = rawQuery.toLowerCase();
     const limit = Math.min(input.limit || 5, 20);
+    const scope = input.knowledgeScope;
+    if (!scope || !scope.releaseId || !scope.version || !scope.checksum || scope.sourceRefs.length === 0) {
+      return {
+        found: false,
+        resultCount: 0,
+        results: [],
+        documents: [],
+        verified: false,
+        message: 'Knowledge retrieval blocked: exact pinned OKF evidence scope is required.',
+      };
+    }
+    const allowedSources = new Set(scope.sourceRefs);
 
     // 1. In-memory documents (for isolated tests / fixtures)
     if (this.inMemoryDocs && this.inMemoryDocs.length > 0) {
       const documents = this.inMemoryDocs
         .filter((doc) => {
+          if (doc.releaseId !== scope.releaseId || !allowedSources.has(doc.sourceId)) return false;
           if (!query) return true;
           return (
             doc.title?.toLowerCase().includes(query) ||
@@ -41,6 +66,8 @@ export class KnowledgeSearchHandler implements NativeCapabilityHandler {
         resultCount: documents.length,
         documents,
         results: documents.map((d) => ({
+          sourceId: d.sourceId,
+          releaseId: d.releaseId,
           title: d.title || d.id,
           content: d.content || d.summary || '',
           sku: d.sku,
@@ -51,14 +78,17 @@ export class KnowledgeSearchHandler implements NativeCapabilityHandler {
       };
     }
 
-    // 2. Authoritative tenant-scoped retrieval via AdapterRegistry
+    // 2. Authoritative tenant-scoped retrieval via the injected canonical knowledge port
     try {
-      const activeRegistry = this.registry || adapterRegistry;
-      const knowledgePort: KnowledgePort = await activeRegistry.getKnowledge(ctx.tenantId);
+      if (!this.resolveKnowledgePort) {
+        throw new Error('no knowledge retrieval port is configured for this runtime');
+      }
+      const knowledgePort: KnowledgeRetrievalPort = await this.resolveKnowledgePort(ctx.tenantId);
 
-      const searchResult: KnowledgeSearchResult = await knowledgePort.search(
+      const searchResult: KnowledgeRetrievalResult = await knowledgePort.search(
         {
           tenantId: ctx.tenantId,
+          environmentId: ctx.environmentId,
           correlationId: ctx.correlationId,
         },
         {
@@ -67,11 +97,14 @@ export class KnowledgeSearchHandler implements NativeCapabilityHandler {
           type: input.type,
           limit,
           gender: input.gender,
+          knowledgeScope: scope,
         }
       );
 
-      const found = Boolean(searchResult.found && Array.isArray(searchResult.results) && searchResult.results.length > 0);
-      const results = searchResult.results || [];
+      const results = (searchResult.results || []).filter((result) =>
+        result.releaseId === scope.releaseId && allowedSources.has(result.sourceId)
+      );
+      const found = Boolean(searchResult.found && results.length > 0);
 
       return {
         found,
@@ -79,6 +112,8 @@ export class KnowledgeSearchHandler implements NativeCapabilityHandler {
         results,
         documents: results.map((r) => ({
           id: r.sku || r.title,
+          sourceId: r.sourceId,
+          releaseId: r.releaseId,
           title: r.title,
           summary: r.content,
           content: r.content,

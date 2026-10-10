@@ -100,6 +100,11 @@ export class WorkspaceStore {
         if (existing && existing.stateVersion !== workspace.stateVersion) {
           throw new Error('Workspace state changed concurrently; retry the turn with fresh state.');
         }
+        if (existing) {
+          // Release bindings are immutable for the lifetime of the workspace.
+          workspace.packVersionId = existing.packVersionId;
+          workspace.pins = existing.pins ? structuredClone(existing.pins) : undefined;
+        }
         workspace.stateVersion = (workspace.stateVersion || 0) + 1;
         this.memoryStore.set(key, structuredClone(workspace));
       }
@@ -108,6 +113,15 @@ export class WorkspaceStore {
 
     try {
       const expectedVersion = workspace.stateVersion;
+      const setOnInsert: Record<string, unknown> = {
+        tenantId: workspace.tenantId,
+        environmentId: workspace.environmentId,
+        workspaceId: workspace.workspaceId,
+        packVersionId: workspace.packVersionId,
+        createdAt: now,
+      };
+      if (workspace.pins) setOnInsert.pins = workspace.pins;
+
       const result = await col.updateOne(
         {
           tenantId: workspace.tenantId,
@@ -119,9 +133,9 @@ export class WorkspaceStore {
           $set: {
             currentStage: workspace.currentStage,
             goal: workspace.goal,
-            packVersionId: workspace.packVersionId,
             journeyId: workspace.journeyId,
             journeyVersion: workspace.journeyVersion,
+            knowledgeContext: workspace.knowledgeContext,
             lastProcessedTurnId: workspace.lastProcessedTurnId,
             facts: workspace.facts,
             decisions: workspace.decisions,
@@ -131,12 +145,7 @@ export class WorkspaceStore {
             updatedAt: now,
           },
           $inc: { stateVersion: 1 },
-          $setOnInsert: {
-            tenantId: workspace.tenantId,
-            environmentId: workspace.environmentId,
-            workspaceId: workspace.workspaceId,
-            createdAt: now,
-          },
+          $setOnInsert: setOnInsert,
         },
         { session, upsert: expectedVersion === 0 }
       );
@@ -158,6 +167,7 @@ export class WorkspaceStore {
     environmentId: WorkspaceState['environmentId'];
     workspaceId: string;
     packVersionId: string;
+    pins?: WorkspaceState['pins'];
     journeyId: string;
     initialStage: string;
     goal: string;
@@ -168,6 +178,7 @@ export class WorkspaceStore {
       environmentId: params.environmentId,
       workspaceId: params.workspaceId,
       packVersionId: params.packVersionId,
+      pins: params.pins,
       stateVersion: 0,
       journeyId: params.journeyId,
       currentStage: params.initialStage,

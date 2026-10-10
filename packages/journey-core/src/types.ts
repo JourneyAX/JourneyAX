@@ -24,14 +24,14 @@ export interface StageExitCondition {
   /** At least one of the listed fact keys must be present */
   anyFactsPresent?: string[];
   /** Expression to evaluate, e.g. "budget.amountCents <= 25000" */
-  ruleExpression?: string;
+  ruleExpression?: string | null;
   /** Custom condition identifier defined in Business Pack rules */
-  conditionRuleRef?: string;
+  conditionRuleRef?: string | null;
   /** Target stage to transition into when condition matches */
   nextStage: string;
 }
 
-export type NextDecisionPolicy = 'dependency-first' | 'rule-first' | 'agent-driven';
+export type NextDecisionPolicy = 'dependency-first' | 'rule-first' | 'agent-driven' | 'capability-first';
 
 export interface FactRequirement {
   key: string;
@@ -57,12 +57,18 @@ export interface CapabilityPlanItem {
   producesFacts?: string[];
 }
 
+export interface ConditionalFactRequirementGroup {
+  when: string;
+  facts: Array<string | FactRequirement>;
+}
+
 export interface JourneyStage {
   stageId?: string;
-  displayName?: string;
-  description?: string;
+  displayName?: string | null;
+  description?: string | null;
   requiredFacts: Array<string | FactRequirement>;
   optionalFacts?: Array<string | FactRequirement>;
+  conditionalFacts?: ConditionalFactRequirementGroup[];
   allowedCapabilities: string[];
   blockedCapabilities?: string[];
   capabilityPlan?: CapabilityPlanItem[];
@@ -78,10 +84,12 @@ export interface JourneyStage {
 export interface JourneyDefinition {
   journeyId: string;
   version: string;
-  displayName?: string;
-  description?: string;
+  displayName?: string | null;
+  description?: string | null;
   goals: string[];
   initialStage: string;
+  isDefaultConsultant?: boolean;
+  triggerIntents?: string[];
   stages: Record<string, JourneyStage>;
   metadata?: Record<string, any>;
 }
@@ -150,11 +158,36 @@ export interface UIInstruction {
 
 export type WorkspaceStatus = 'active' | 'completed' | 'paused' | 'failed';
 
+export interface WorkspaceReleasePins {
+  /** Checksum of the immutable Business Pack selected when the workspace was created. */
+  packChecksum: string;
+  /** Exact OKF release coupled to the Business Pack, when configured. */
+  okfReleaseId?: string;
+  okfChecksum?: string;
+  /** Last time knowledge staleness/revocation policy was evaluated for this workspace. */
+  knowledgeEvaluatedAt?: string | Date;
+  pinnedAt: string | Date;
+}
+
+export interface WorkspaceKnowledgeContext {
+  /** Exact immutable knowledge release that supplied the active concept. */
+  releaseId: string;
+  checksum: string;
+  /** Internal routing context only; never exposed as a conversational fact. */
+  conceptId: string;
+  journeyId?: string;
+  selectedAt: string | Date;
+}
+
 export interface WorkspaceState {
   tenantId: string;
   environmentId: EnvironmentId;
   workspaceId: string;
   packVersionId: string;
+  /** Optional for backward compatibility. New workspaces always receive immutable pins. */
+  pins?: WorkspaceReleasePins;
+  /** Release-scoped OKF context retained across short follow-up answers. */
+  knowledgeContext?: WorkspaceKnowledgeContext;
   journeyId: string;
   journeyVersion?: string;
   currentStage: string;

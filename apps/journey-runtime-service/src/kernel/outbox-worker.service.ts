@@ -17,7 +17,7 @@ import {
   ExecutionContext,
   ExecutionRequest,
 } from '@journeyax/capability-sdk';
-import { computePackChecksum, BusinessPackLoader, PackRepository } from '@journeyax/business-pack';
+import { tryVerifyPersistedBusinessPackRelease, BusinessPackLoader, PackRepository } from '@journeyax/business-pack';
 import { hashToolInput } from '../approval/approval.store';
 import { OutboxRepository } from './outbox.repository';
 import { OutboxWorker, OutboxWorkerOptions } from './outbox.worker';
@@ -241,7 +241,18 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       const stageId = workspaceDoc.currentStage || workspaceDoc.stageId;
-      const packVersionId = (event as any).packVersionId || workspaceDoc.packVersionId;
+      const eventPackVersionId = (event as any).packVersionId;
+      const workspacePackVersionId = workspaceDoc.packVersionId;
+      if (
+        eventPackVersionId &&
+        workspacePackVersionId &&
+        eventPackVersionId !== workspacePackVersionId
+      ) {
+        throw new Error(
+          `[OutboxWorker] Event packVersionId '${eventPackVersionId}' does not match durable workspace packVersionId '${workspacePackVersionId}'`
+        );
+      }
+      const packVersionId = workspacePackVersionId || eventPackVersionId;
       if (!stageId || !packVersionId) {
         throw new Error(
           `[OutboxWorker] Durable workspace record '${workspaceId}' lacks required currentStage or packVersionId`
@@ -268,36 +279,43 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      // Authoritative active business pack release pointer lookup strictly scoped to tenant and environment (no fallback to workspace packVersionId)
-      const pointer = await db.collection('business_pack_pointers').findOne({
-        tenantId: event.tenantId,
-        $or: [{ channel: event.environmentId }, { environmentId: event.environmentId }],
-      });
+      // New workspaces use the active pointer. Existing pinned workspaces use the
+      // immutable checksum captured at creation, so a later promotion cannot change
+      // the policy/tool definitions underneath an already-running journey.
+      let expectedChecksum = typeof workspaceDoc.pins?.packChecksum === 'string'
+        ? workspaceDoc.pins.packChecksum.trim()
+        : '';
+      if (!expectedChecksum) {
+        const pointer = await db.collection('business_pack_pointers').findOne({
+          tenantId: event.tenantId,
+          $or: [{ channel: event.environmentId }, { environmentId: event.environmentId }],
+        });
 
-      if (!pointer) {
-        throw new Error(
-          `[OutboxWorker] Active business pack pointer not found for tenant '${event.tenantId}' (${event.environmentId}); failing closed (fallback prohibited)`
-        );
-      }
+        if (!pointer) {
+          throw new Error(
+            `[OutboxWorker] Active business pack pointer not found for tenant '${event.tenantId}' (${event.environmentId}); failing closed (fallback prohibited)`
+          );
+        }
 
-      const activeVersion = pointer.activeVersionId || pointer.activeVersion;
-      if (!activeVersion) {
-        throw new Error(
-          `[OutboxWorker] Active business pack pointer for tenant '${event.tenantId}' (${event.environmentId}) lacks activeVersionId; failing closed`
-        );
-      }
+        const activeVersion = pointer.activeVersionId || pointer.activeVersion;
+        if (!activeVersion) {
+          throw new Error(
+            `[OutboxWorker] Active business pack pointer for tenant '${event.tenantId}' (${event.environmentId}) lacks activeVersionId; failing closed`
+          );
+        }
 
-      if (activeVersion !== packVersionId) {
-        throw new Error(
-          `[OutboxWorker] Workspace packVersionId '${packVersionId}' does not match active release pointer '${activeVersion}' for tenant '${event.tenantId}' (${event.environmentId})`
-        );
-      }
+        if (activeVersion !== packVersionId) {
+          throw new Error(
+            `[OutboxWorker] Workspace packVersionId '${packVersionId}' does not match active release pointer '${activeVersion}' for tenant '${event.tenantId}' (${event.environmentId})`
+          );
+        }
 
-      const pointerChecksum = typeof pointer.checksum === 'string' ? pointer.checksum.trim() : '';
-      if (!pointerChecksum) {
-        throw new Error(
-          `[OutboxWorker] Active business pack pointer for tenant '${event.tenantId}' (${event.environmentId}) lacks mandatory checksum; failing closed`
-        );
+        expectedChecksum = typeof pointer.checksum === 'string' ? pointer.checksum.trim() : '';
+        if (!expectedChecksum) {
+          throw new Error(
+            `[OutboxWorker] Active business pack pointer for tenant '${event.tenantId}' (${event.environmentId}) lacks mandatory checksum; failing closed`
+          );
+        }
       }
 
       // Load immutable published Business Pack release strictly for exact environment (NO environmentId='all')
@@ -320,47 +338,24 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      // Validate release checksum and recompute canonical Business Pack checksum
-      const releaseChecksum = typeof releaseDoc.checksum === 'string' ? releaseDoc.checksum.trim() : '';
-      if (!releaseChecksum) {
+      // Authoritative verifier: envelope (flattened or nested packData), read-only legacy normalization,
+      // full BusinessPackContentSchema, semantic validation, stored/recomputed/pointer checksum agreement
+      // and tenant/environment/version identity. Nothing below reads the raw release document.
+      const verification = tryVerifyPersistedBusinessPackRelease(releaseDoc, {
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        version: packVersionId,
+        pointerChecksum: expectedChecksum,
+      });
+      if (verification.ok === false) {
         throw new Error(
-          `[OutboxWorker] Business pack release '${packVersionId}' lacks mandatory checksum; failing closed`
+          `[OutboxWorker] Business pack release '${packVersionId}' for tenant '${event.tenantId}' (${event.environmentId}) failed verification; failing closed: ${verification.error.message}`
         );
       }
-
-      const packPayload = releaseDoc.packData || {
-        manifest: releaseDoc.manifest,
-        profile: releaseDoc.profile,
-        vocabulary: releaseDoc.vocabulary,
-        entities: releaseDoc.entities,
-        conversationPolicy: releaseDoc.conversationPolicy,
-        modelPolicy: releaseDoc.modelPolicy,
-        agents: releaseDoc.agents,
-        journeys: releaseDoc.journeys,
-        rules: releaseDoc.rules,
-        capabilities: releaseDoc.capabilities,
-        experience: releaseDoc.experience,
-        evaluations: releaseDoc.evaluations,
-        extensions: releaseDoc.extensions || {},
-      };
-      const packToHash = releaseDoc.manifest
-        ? packPayload
-        : (({ _id, checksum, status, publishedAt, publishedBy, tenantId: _t, environmentId: _e, version: _v, versionId: _vi, ...rest }) => Object.keys(rest).length > 0 ? rest : releaseDoc)(releaseDoc);
-
-      const computedChecksum = computePackChecksum(packToHash as any);
-      if (computedChecksum !== releaseChecksum) {
-        throw new Error(
-          `[OutboxWorker] Canonical Business Pack checksum mismatch for release '${packVersionId}': stored '${releaseChecksum}', recomputed '${computedChecksum}'`
-        );
-      }
-      if (computedChecksum !== pointerChecksum) {
-        throw new Error(
-          `[OutboxWorker] Business Pack checksum mismatch between release ('${computedChecksum}') and active pointer ('${pointerChecksum}') for tenant '${event.tenantId}' (${event.environmentId})`
-        );
-      }
+      const releaseContent = verification.release.content;
 
       // Fail closed when stageBindings is missing, the current stage binding is absent, or the tool is not explicitly allowed
-      const stageBindings = releaseDoc.capabilities?.stageBindings;
+      const stageBindings = releaseContent.capabilities?.stageBindings;
       if (!Array.isArray(stageBindings) || stageBindings.length === 0) {
         throw new Error(
           `[OutboxWorker] Published business pack release '${packVersionId}' lacks mandatory 'stageBindings'; failing closed`
@@ -382,7 +377,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Resolve stage-scoped ToolDefinition from release (never trust payload for policy/risk/sideEffect)
-      const toolDefs: ToolDefinition[] = releaseDoc.capabilities?.toolDefinitions || [];
+      const toolDefs: ToolDefinition[] = (releaseContent.capabilities?.toolDefinitions || []) as unknown as ToolDefinition[];
       const toolDef = toolDefs.find((t: any) => t.toolId === toolId);
       if (!toolDef) {
         throw new Error(
@@ -391,7 +386,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Resolve ToolBinding from release strictly enforcing exact tenant/environment (NO environmentId='all')
-      const toolBindings: ToolBinding[] = releaseDoc.capabilities?.toolBindings || [];
+      const toolBindings: ToolBinding[] = (releaseContent.capabilities?.toolBindings || []) as unknown as ToolBinding[];
       const toolBinding = toolBindings.find(
         (b: any) =>
           b.toolId === toolId &&

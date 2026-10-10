@@ -1,6 +1,5 @@
-import { BusinessPackRelease, BusinessPackReleaseSchema } from './schemas/business-pack.schema';
-import { validateBusinessPack } from './validator';
-import { computePackChecksum } from './publisher';
+import { BusinessPackRelease } from './schemas/business-pack.schema';
+import { tryVerifyPersistedBusinessPackRelease } from './release-verifier';
 
 const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
@@ -29,6 +28,38 @@ function getNodeModules(): { mongodb: any } {
 export interface PackLoaderOptions {
   mongoDbUri?: string;
   db?: any;
+}
+
+export interface VerifiedBusinessPackMetadata {
+  tenantId: string;
+  environmentId: string;
+  version: string;
+  checksum: string;
+}
+
+const VERIFIED_RELEASE_METADATA = Symbol.for('@journeyax/business-pack/verified-release-metadata');
+
+/**
+ * Reads verifier-produced metadata without adding envelope fields to checksum-bearing content.
+ * The property is non-enumerable, so serialization and checksum computation remain unchanged.
+ */
+export function getVerifiedBusinessPackMetadata(
+  pack: BusinessPackRelease
+): VerifiedBusinessPackMetadata | undefined {
+  return (pack as any)?.[VERIFIED_RELEASE_METADATA];
+}
+
+function attachVerifiedMetadata(
+  pack: BusinessPackRelease,
+  metadata: VerifiedBusinessPackMetadata
+): BusinessPackRelease {
+  Object.defineProperty(pack, VERIFIED_RELEASE_METADATA, {
+    value: Object.freeze({ ...metadata }),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return pack;
 }
 
 export class BusinessPackLoader {
@@ -85,12 +116,42 @@ export class BusinessPackLoader {
   }
 
   /**
+   * Loads the exact immutable release pinned to an existing workspace.
+   * This deliberately does not consult the active pointer: promotions affect new
+   * workspaces only. Withdrawn/revoked or checksum-mismatched releases fail closed.
+   */
+  async loadPinned(
+    tenantId: string,
+    environmentId: 'dev' | 'test' | 'staging' | 'production',
+    version: string,
+    checksum: string
+  ): Promise<BusinessPackRelease> {
+    const normalizedChecksum = (checksum || '').trim();
+    if (!version || !normalizedChecksum) {
+      throw new Error('[BusinessPackLoader] Pinned version and checksum are required');
+    }
+    const cacheKey = `${tenantId}:${environmentId}:${version}:${normalizedChecksum}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.loadedAt < this.cacheTtlMs) return cached.pack;
+
+    const pack = await this.loadFromMongo(tenantId, environmentId, version, normalizedChecksum);
+    if (!pack) {
+      throw new Error(
+        `[BusinessPackLoader] Pinned Business Pack unavailable or invalid for tenant='${tenantId}', env='${environmentId}', version='${version}'`
+      );
+    }
+    this.cache.set(cacheKey, { pack, loadedAt: Date.now() });
+    return pack;
+  }
+
+  /**
    * Loads the pack directly from MongoDB collections.
    */
   async loadFromMongo(
     tenantId: string,
     environmentId: 'dev' | 'test' | 'staging' | 'production',
-    version?: string
+    version?: string,
+    expectedChecksum?: string
   ): Promise<BusinessPackRelease | null> {
     let db: any;
 
@@ -115,13 +176,29 @@ export class BusinessPackLoader {
 
     try {
       let targetVersion = version;
+      let pointerChecksum: string | undefined = expectedChecksum?.trim();
+
+      if (expectedChecksum !== undefined && !pointerChecksum) {
+        console.error(
+          `[BusinessPackLoader] Pinned checksum for '${tenantId}' (${environmentId}) v${version || '<missing>'} is blank`
+        );
+        return null;
+      }
 
       if (!targetVersion) {
         // Resolve active pointer from business_pack_pointers
         const pointerCol = db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
         const pointer = await pointerCol.findOne({ tenantId, environmentId });
-        if (pointer?.activeVersion) {
-          targetVersion = pointer.activeVersion;
+        const activeVersion = pointer?.activeVersionId || pointer?.activeVersion;
+        if (activeVersion) {
+          targetVersion = String(activeVersion);
+          pointerChecksum = typeof pointer?.checksum === 'string' ? pointer.checksum.trim() : '';
+          if (!pointerChecksum) {
+            console.error(
+              `[BusinessPackLoader] Active pointer for '${tenantId}' (${environmentId}) lacks a mandatory checksum`
+            );
+            return null;
+          }
         }
       }
 
@@ -135,34 +212,29 @@ export class BusinessPackLoader {
 
       if (!releaseDoc) return null;
 
-      const parsed = BusinessPackReleaseSchema.safeParse(releaseDoc);
-      if (!parsed.success) {
-        console.error(`[BusinessPackLoader] Schema mismatch in Mongo release for '${tenantId}':`, parsed.error.format());
-        return null;
-      }
-
-      // Checksum integrity check: verify release document has mandatory non-blank checksum and matches content
-      const rawChecksum = typeof releaseDoc.checksum === 'string' ? releaseDoc.checksum.trim() : '';
-      if (!rawChecksum) {
+      // Authoritative verifier: envelope, legacy normalization, schema, semantics, checksum,
+      // pointer agreement and tenant/environment/version identity. Fail closed (null) on any error.
+      const verification = tryVerifyPersistedBusinessPackRelease(releaseDoc, {
+        tenantId,
+        environmentId,
+        version: targetVersion,
+        pointerChecksum,
+      });
+      if (verification.ok === false) {
         console.error(
-          `[BusinessPackLoader] Mandatory release checksum missing or blank for Mongo release '${tenantId}' (${environmentId}) v${targetVersion}`
+          `[BusinessPackLoader] Release rejected (${verification.error.reason}) for '${tenantId}' (${environmentId}) v${targetVersion}: ${verification.error.message}`
         );
         return null;
       }
-
-      const computed = computePackChecksum(parsed.data);
-      if (computed !== rawChecksum) {
-        console.error(
-          `[BusinessPackLoader] Checksum mismatch for '${tenantId}' (${environmentId}) v${targetVersion}: record='${rawChecksum}' computed='${computed}'`
-        );
-        return null;
-      }
-
-      const validation = validateBusinessPack(parsed.data);
-      if (!validation.valid) {
-        console.error(`[BusinessPackLoader] Validation failed for Mongo release '${tenantId}':`, validation.issues);
-        return null;
-      }
+      const parsed = {
+        data: attachVerifiedMetadata(verification.release.content, {
+          tenantId,
+          environmentId,
+          version: targetVersion,
+          checksum: verification.release.checksum,
+        }),
+      };
+      const rawChecksum = verification.release.checksum;
 
       // Sanitized audit logging (never logs secrets)
       const modelPolicyId =
@@ -210,7 +282,11 @@ export class BusinessPackLoader {
       try {
         const pointerCol = this.options.db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
         const pointer = await pointerCol.findOne({ tenantId, environmentId });
-        return Boolean(pointer?.activeVersion);
+        return Boolean(
+          (pointer?.activeVersionId || pointer?.activeVersion) &&
+          typeof pointer?.checksum === 'string' &&
+          pointer.checksum.trim()
+        );
       } catch (err: any) {
         console.warn(`[BusinessPackLoader] MongoDB pointer check warning for '${tenantId}':`, err.message);
         return false;
@@ -225,7 +301,11 @@ export class BusinessPackLoader {
           const db = client.db(process.env.MONGODB_DB_NAME || 'journeyx');
           const pointerCol = db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
           const pointer = await pointerCol.findOne({ tenantId, environmentId });
-          return Boolean(pointer?.activeVersion);
+          return Boolean(
+            (pointer?.activeVersionId || pointer?.activeVersion) &&
+            typeof pointer?.checksum === 'string' &&
+            pointer.checksum.trim()
+          );
         } catch (err: any) {
           console.warn(`[BusinessPackLoader] MongoDB pointer check warning for '${tenantId}':`, err.message);
           return false;

@@ -932,7 +932,7 @@ export class ProjectService {
     const snap = await this.versionsCol.findOne({ projectId: pid, version });
     if (!snap) return { success: false, message: `Version ${version} not found for '${pid}'.` };
 
-    const targetPackVersion = `1.0.${version}`;
+    const targetPackVersion = (snap as any).packVersion || `1.0.${version}`;
     const client = (this.db as any).client;
     const isProduction = process.env.NODE_ENV === 'production';
     const now = new Date().toISOString();
@@ -951,7 +951,7 @@ export class ProjectService {
       // 2. Rollback Studio project activeVersion atomically
       await this.projectsCol.updateOne(
         { projectId: pid },
-        { $set: { activeVersion: version, updatedAt: now } },
+        { $set: { activeVersion: version, packVersion: (snap as any).packVersion, updatedAt: now } },
         sessionOpts
       );
     };

@@ -8,8 +8,13 @@ import {
   DuplicateTurnError,
   Transition,
   FactsMap,
+  WorkspaceReleasePins,
 } from '@journeyax/journey-core';
-import { BusinessPackRelease } from '@journeyax/business-pack';
+import {
+  BusinessPackRelease,
+  computePackChecksum,
+  getVerifiedBusinessPackMetadata,
+} from '@journeyax/business-pack';
 import { ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase } from '@journeyax/database';
 import { PackRepository } from './pack.repository';
@@ -25,6 +30,11 @@ import { PresentationPort } from './presentation.port';
 import { TurnInterpreter } from '../turn/interpret-event';
 import { FactReducer } from '../turn/fact-reducer';
 import { OutcomeValidator } from '../turn/validate-outcome';
+import {
+  OkfKnowledgeControlPlane,
+  type KnowledgeControlPlanePort,
+} from './knowledge-control-plane';
+import type { OkfGateDecision } from '@journeyax/knowledge';
 function extractValueByJsonPath(obj: any, path: string): any {
   if (!obj || !path) return undefined;
   if (path === 'true') return true;
@@ -86,11 +96,27 @@ export class TurnApplicationService {
     public readonly presentationPort: PresentationPort = new PresentationPort(),
     private readonly interpreter: TurnInterpreter = new TurnInterpreter(modelGateway),
     private readonly factReducer: FactReducer = new FactReducer(),
-    public readonly outcomeValidator: OutcomeValidator = new OutcomeValidator()
+    public readonly outcomeValidator: OutcomeValidator = new OutcomeValidator(),
+    public readonly knowledgeControlPlane: KnowledgeControlPlanePort = new OkfKnowledgeControlPlane()
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
     }
+  }
+
+  private createWorkspacePins(release: BusinessPackRelease): WorkspaceReleasePins {
+    const verified = getVerifiedBusinessPackMetadata(release);
+    const knowledge = release.knowledgeModel?.type === 'okf_release'
+      ? release.knowledgeModel
+      : undefined;
+    const now = new Date().toISOString();
+    return {
+      packChecksum: verified?.checksum || computePackChecksum(release),
+      okfReleaseId: knowledge?.releaseId,
+      okfChecksum: knowledge?.checksum,
+      knowledgeEvaluatedAt: knowledge ? now : undefined,
+      pinnedAt: now,
+    };
   }
 
   /**
@@ -146,6 +172,43 @@ export class TurnApplicationService {
 
       // 4. Extract and reduce conversational facts through model-gateway & schema validation
       const interpretation = await this.interpreter.interpret(command, release, workspace || ({} as any));
+      const knowledgeGate = await this.knowledgeControlPlane.evaluate(
+        release,
+        command,
+        workspace,
+        interpretation
+      );
+
+      // A pack that declares required fail-closed knowledge must never continue
+      // into an LLM or retrieval fallback when that exact pinned release cannot load.
+      if (knowledgeGate?.trace.reasonCodes.includes('knowledge_required_unavailable')) {
+        if (!workspace) {
+          workspace = await this.workspaceRepo.getOrCreate(
+            tenantId,
+            envId,
+            workspaceId,
+            'unassigned',
+            'initial',
+            undefined,
+            release.manifest.version || release.manifest.packId,
+            this.createWorkspacePins(release)
+          );
+        }
+        workspace = this.factReducer.apply(workspace, interpretation.candidateFacts);
+        const decision: Decision = {
+          decisionId: `dec_${Date.now()}`,
+          type: 'fail',
+          payload: { error: 'Verified business guidance is temporarily unavailable.' },
+          reason: 'Verified business guidance is temporarily unavailable. Please try again or contact a specialist.',
+          createdAt: new Date().toISOString(),
+        };
+        workspace.decisions.push({ ...decision, executedAt: new Date().toISOString(), outcomeStatus: 'failure' });
+        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace, release);
+        (turnResult.trace as any).knowledgeGate = knowledgeGate;
+        await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
+        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        return turnResult;
+      }
 
       // 4a. Goal/Policy-based Journey Selection (strictly typed, zero positional fallback)
       if (!this.journeyResolver || typeof this.journeyResolver.resolveJourneyResolution !== 'function') {
@@ -162,11 +225,35 @@ export class TurnApplicationService {
         return turnResult;
       }
 
+      const routingInterpretation = knowledgeGate?.conceptId && ![
+        'no_match',
+        'operational_journey',
+      ].includes(knowledgeGate.mode)
+        ? {
+            ...interpretation,
+            // Routing-only marker: establishes that the query is in the pack's
+            // verified domain without persisting an internal OKF ID as a fact.
+            candidateFacts: {
+              ...interpretation.candidateFacts,
+              __okf_domain_match: {
+                value: true,
+                source: 'system',
+                confidence: 1,
+                extractedAt: new Date().toISOString(),
+              },
+            },
+          }
+        : interpretation;
+
+      const routingCommand = knowledgeGate?.journeyRef?.journeyId
+        ? { ...command, journeyId: knowledgeGate.journeyRef.journeyId }
+        : command;
+
       const resolution = this.journeyResolver.resolveJourneyResolution(
         release,
         workspace || ({} as any),
-        command,
-        interpretation
+        routingCommand,
+        routingInterpretation
       );
 
       if (resolution.status === 'ambiguous') {
@@ -178,7 +265,8 @@ export class TurnApplicationService {
             'unassigned',
             'initial',
             undefined,
-            release.manifest.version || release.manifest.packId
+            release.manifest.version || release.manifest.packId,
+            this.createWorkspacePins(release)
           );
         }
         // Preserve candidate facts already captured
@@ -230,14 +318,42 @@ export class TurnApplicationService {
             'unassigned',
             'initial',
             undefined,
-            release.manifest.version || release.manifest.packId
+            release.manifest.version || release.manifest.packId,
+            this.createWorkspacePins(release)
           );
         }
         const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
-        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace, release);
+
+        let groundedResponse: { message?: string; modelRoute?: any } = {};
+        if (command?.message && command.message.trim() && decision.type === 'handoff') {
+          try {
+            groundedResponse = await this.composeGroundedCustomerResponse(
+              command,
+              workspace,
+              release,
+              null,
+              decision,
+              [],
+              null
+            );
+          } catch (e: any) {}
+        }
+
+        const turnResult = this.presentationPort.compose(
+          { valid: false, notes: decision.reason },
+          decision,
+          workspace,
+          release,
+          {
+            assistantMessage: groundedResponse.message,
+            customerQuery: command?.message,
+          }
+        );
         if (turnResult.trace) {
           turnResult.trace.transitions = [];
-          if ((interpretation as any)?.modelRoute) {
+          if (groundedResponse.modelRoute) {
+            turnResult.trace.modelRoute = groundedResponse.modelRoute;
+          } else if ((interpretation as any)?.modelRoute) {
             turnResult.trace.modelRoute = (interpretation as any).modelRoute;
           }
         }
@@ -255,14 +371,21 @@ export class TurnApplicationService {
     }
 
     if (!workspace) {
+      const configuredEntryStage = knowledgeGate?.journeyRef?.entryStageId;
+      if (configuredEntryStage && !(activeJourney.stages as any)?.[configuredEntryStage]) {
+        throw new Error(
+          `[TurnApplicationService] OKF entry stage '${configuredEntryStage}' does not exist in journey '${activeJourney.journeyId}'`
+        );
+      }
       workspace = await this.workspaceRepo.getOrCreate(
         tenantId,
         envId,
         workspaceId,
         activeJourney.journeyId,
-        activeJourney.initialStage,
+        configuredEntryStage || activeJourney.initialStage,
         undefined,
-        release.manifest.version || release.manifest.packId
+        release.manifest.version || release.manifest.packId,
+        this.createWorkspacePins(release)
       );
     }
 
@@ -279,6 +402,15 @@ export class TurnApplicationService {
     }
     if (!workspace.decisions) {
       workspace.decisions = [];
+    }
+    if (knowledgeGate?.conceptId && release.knowledgeModel?.type === 'okf_release') {
+      workspace.knowledgeContext = {
+        releaseId: release.knowledgeModel.releaseId,
+        checksum: release.knowledgeModel.checksum,
+        conceptId: knowledgeGate.conceptId,
+        journeyId: knowledgeGate.journeyRef?.journeyId || activeJourney.journeyId,
+        selectedAt: new Date().toISOString(),
+      };
     }
 
     // Apply interpreted candidate facts
@@ -297,6 +429,44 @@ export class TurnApplicationService {
 
     // 4. Resolve Stage Decision & Handle Stage Transitions (with loop cap)
     let decision = this.journeyResolver.decide(release, workspace, command, interpretation);
+
+    // OKF owns specificity and safety gates; journey stages continue to own the
+    // end-to-end business process. Translate only the deterministic gate result
+    // into the existing domain-neutral Decision contract.
+    if (knowledgeGate?.clarification && (
+      knowledgeGate.mode === 'clarify_then_search' ||
+      decision.type === 'ask_fact'
+    )) {
+      decision = this.knowledgeClarificationDecision(knowledgeGate);
+    } else if (
+      knowledgeGate?.mode === 'safety_then_diagnose' &&
+      knowledgeGate.safety?.guidanceUnavailable
+    ) {
+      decision = {
+        decisionId: `dec_${Date.now()}`,
+        type: 'fail',
+        payload: { error: 'Verified safety guidance is temporarily unavailable.' },
+        reason: 'Verified safety guidance is temporarily unavailable. Please contact a qualified professional.',
+        createdAt: new Date().toISOString(),
+      };
+    } else if (
+      knowledgeGate?.mode === 'safety_then_diagnose' &&
+      knowledgeGate.safety?.guidance?.length
+    ) {
+      decision = {
+        decisionId: `dec_${Date.now()}`,
+        type: 'complete_goal',
+        payload: {
+          safetyGuidance: {
+            heading: 'Safety first',
+            steps: knowledgeGate.safety.guidance,
+            blocksProducts: knowledgeGate.safety.blocksProducts,
+          },
+        },
+        reason: 'Verified safety guidance must be followed before product selection or commerce can continue.',
+        createdAt: new Date().toISOString(),
+      };
+    }
 
     while (decision.type === 'transition_stage' && decision.targetStage && transitionCount < MAX_TRANSITIONS) {
       transitionCount++;
@@ -333,6 +503,7 @@ export class TurnApplicationService {
     let pendingApproval: any = null;
     let execResponse: any = null;
     let executedToolId: string | null = null;
+    let presentationCapability: { toolId: string; payload?: Record<string, unknown> } | undefined;
 
     const executedCapabilities: any[] = [];
     let capabilityCount = 0;
@@ -356,6 +527,12 @@ export class TurnApplicationService {
         'searchKnowledge',
         'vector_search',
       ].includes(toolId);
+      const isKnowledgeCapability = [
+        'knowledge.search',
+        'installGuide',
+        'searchKnowledge',
+        'vector_search',
+      ].includes(toolId);
 
       const currentStageDef = (activeJourney.stages as any)?.[workspace.currentStage];
       const hasMissingStageFacts =
@@ -365,7 +542,71 @@ export class TurnApplicationService {
           return !workspace.facts[k] || workspace.facts[k].value === undefined;
         });
 
-      if (isRetrievalCapability && hasMissingStageFacts) {
+      const isExplicitlyPlanned =
+        currentStageDef?.nextDecisionPolicy === 'capability-first' ||
+        currentStageDef?.capabilityPlan?.some((p: any) => p.toolId === toolId);
+
+      // Project concepts route into a merchant-authored journey. Once that
+      // journey has collected its declared facts, its explicit catalogue step
+      // is authoritative; the project-level OKF gate must not deadlock it.
+      const projectJourneyAllowsCatalog =
+        knowledgeGate?.mode === 'project_journey' &&
+        ['catalog.search', 'catalog-search', 'products'].includes(toolId) &&
+        isExplicitlyPlanned &&
+        !hasMissingStageFacts;
+
+      if (
+        isRetrievalCapability &&
+        knowledgeGate?.retrieval.permission === 'blocked' &&
+        !projectJourneyAllowsCatalog
+      ) {
+        console.log(
+          `[TurnApplicationService] Retrieval capability '${toolId}' blocked by OKF mode '${knowledgeGate.mode}'.`
+        );
+        break;
+      }
+
+      if (isRetrievalCapability && knowledgeGate) {
+        const knowledgeRef = release.knowledgeModel?.type === 'okf_release'
+          ? release.knowledgeModel
+          : undefined;
+        decision = {
+          ...decision,
+          payload: {
+            ...decision.payload,
+            query: decision.payload?.query || command.message || '',
+            categoryIds: knowledgeGate.retrieval.categoryIds,
+            excludeCategoryIds: knowledgeGate.retrieval.excludeCategoryIds,
+            currency: decision.payload?.currency || release.profile?.primaryCurrency,
+            maxResults:
+              knowledgeGate.retrieval.presentation === 'grouped_overview'
+                ? Math.max(1, knowledgeGate.retrieval.scope.length) * (knowledgeGate.retrieval.maxItemsPerGroup || 2)
+                : decision.payload?.maxResults,
+            ...(isKnowledgeCapability && knowledgeRef && knowledgeGate.evidence
+              ? {
+                  knowledgeScope: {
+                    releaseId: knowledgeRef.releaseId,
+                    version: knowledgeRef.version,
+                    checksum: knowledgeRef.checksum,
+                    conceptIds: knowledgeGate.evidence.conceptIds,
+                    sourceRefs: knowledgeGate.evidence.sourceRefs,
+                    requestedClaimClass: knowledgeGate.evidence.requestedClaimClass,
+                  },
+                }
+              : {}),
+          },
+        };
+      }
+
+      // Preserve the exact governed capability input for presentation even
+      // when successful output advances the workspace to another stage in the
+      // same turn and replaces `decision` with the next-stage decision.
+      presentationCapability = {
+        toolId,
+        payload: { ...(decision.payload || {}) },
+      };
+
+      if (isRetrievalCapability && hasMissingStageFacts && !isExplicitlyPlanned) {
         console.log(
           `[TurnApplicationService] Retrieval capability '${toolId}' blocked by discovery gate: stage '${workspace.currentStage}' requires facts before retrieval.`
         );
@@ -667,18 +908,23 @@ export class TurnApplicationService {
 
     // 8. Grounded customer response composition using explicit response_generation model policy
     let groundedResponse: { message?: string; modelRoute?: any } = {};
-    try {
-      groundedResponse = await this.composeGroundedCustomerResponse(
-        command,
-        workspace,
-        release,
-        activeJourney,
-        decision,
-        executedCapabilities,
-        resolvedAgentInfo
-      );
-    } catch (e: any) {
-      // Degrade gracefully; compose will provide safe deterministic response
+    // Verified safety instructions are rendered deterministically from the
+    // pinned OKF release. Never send them through a model phrasing step.
+    if (!decision.payload?.safetyGuidance) {
+      try {
+        groundedResponse = await this.composeGroundedCustomerResponse(
+          command,
+          workspace,
+          release,
+          activeJourney,
+          decision,
+          executedCapabilities,
+          resolvedAgentInfo,
+          knowledgeGate
+        );
+      } catch (e: any) {
+        // Degrade gracefully; compose will provide safe deterministic response
+      }
     }
 
     const turnResult = this.presentationPort.compose(
@@ -686,8 +932,26 @@ export class TurnApplicationService {
       decision,
       workspace,
       release,
-      { assistantMessage: groundedResponse.message }
+      {
+        assistantMessage: groundedResponse.message,
+        capability: presentationCapability,
+      }
     );
+
+    if (
+      knowledgeGate?.clarification &&
+      knowledgeGate.mode === 'overview_then_ask' &&
+      !(turnResult.uiInstructions || []).some((instruction) => instruction.component === 'clarify')
+    ) {
+      const instruction = this.presentationPort.createKnowledgeClarificationInstruction(
+        knowledgeGate.clarification,
+        release
+      );
+      if (instruction) turnResult.uiInstructions = [...(turnResult.uiInstructions || []), instruction];
+      if (!workspace.openQuestions.includes(knowledgeGate.clarification.factKey)) {
+        workspace.openQuestions.push(knowledgeGate.clarification.factKey);
+      }
+    }
 
     if (turnResult.trace) {
       turnResult.trace.transitions = transitions;
@@ -716,6 +980,9 @@ export class TurnApplicationService {
       if (interpretation.failure) {
         turnResult.trace.errors = [interpretation.failure];
       }
+      if (knowledgeGate) {
+        (turnResult.trace as any).knowledgeGate = knowledgeGate;
+      }
     }
 
     if (executedCapabilities.length > 0) {
@@ -739,6 +1006,8 @@ export class TurnApplicationService {
       retrievalExecuted: executedCapabilities.some((c: any) =>
         ['catalog.search', 'products', 'knowledge.search', 'installGuide', 'searchKnowledge'].includes(c.toolId)
       ),
+      knowledgeMode: knowledgeGate?.mode,
+      knowledgeConceptId: knowledgeGate?.conceptId,
       modelTaskPolicyId:
         groundedResponse.modelRoute?.policyId ||
         (interpretation as any)?.modelRoute?.policyId ||
@@ -748,7 +1017,6 @@ export class TurnApplicationService {
     if (turnResult.trace) {
       (turnResult.trace as any).diagnostics = diagnostics;
     }
-    sink('diagnostics', diagnostics);
     console.log(`[TurnDiagnostics] ${JSON.stringify(diagnostics)}`);
 
     // 8. Commit updated workspace state and outbox events atomically BEFORE confirming outcome
@@ -766,6 +1034,43 @@ export class TurnApplicationService {
       });
       throw err;
     }
+  }
+
+  private knowledgeClarificationDecision(gate: OkfGateDecision): Decision {
+    const clarification = gate.clarification;
+    if (!clarification) {
+      throw new Error('[TurnApplicationService] OKF clarification decision requested without clarification payload');
+    }
+    const inputTypeMap: Record<string, string> = {
+      select: 'single_select',
+      card_choice: 'single_select',
+      multi_select: 'multi_select',
+      number: 'number',
+      slider: 'number',
+      text: 'text',
+      boolean_toggle: 'single_select',
+    };
+    return {
+      decisionId: `dec_${Date.now()}`,
+      type: 'ask_fact',
+      payload: {
+        targetFact: clarification.factKey,
+        question: clarification.question,
+        options: clarification.options.map((option) => option.label || option.value),
+        inputType: inputTypeMap[clarification.uiInputType] || 'text',
+        questions: [{
+          id: clarification.factKey,
+          text: clarification.question,
+          options: clarification.options.map((option) => option.label || option.value),
+          inputType: inputTypeMap[clarification.uiInputType] || 'text',
+          multi: clarification.uiInputType === 'multi_select',
+        }],
+        missingFacts: [clarification.factKey],
+        knowledgeMode: gate.mode,
+      },
+      reason: `Structured knowledge requires '${clarification.factKey}' before a verified recommendation.`,
+      createdAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -876,18 +1181,12 @@ export class TurnApplicationService {
     executedCapabilities: any[],
     sink: (event: string, data: any) => void
   ): void {
-    // 1. token: honest model message delivery of the final confirmed assistant response
-    const text = turnResult.assistantMessage || '';
-    if (text) {
-      sink('token', { token: text, delta: text });
-    }
-
-    // 2. capability: executed capabilities
+    // 1. capability: executed capabilities
     for (const cap of executedCapabilities) {
       sink('capability', cap);
     }
 
-    // 3. uiAction: presentCard envelopes for confirmed UI instructions
+    // 2. uiAction: presentCard envelopes for confirmed UI instructions
     for (const inst of turnResult.uiInstructions || []) {
       sink('uiAction', {
         name: 'presentCard',
@@ -903,6 +1202,12 @@ export class TurnApplicationService {
           state: inst.props,
         },
       });
+    }
+
+    // 3. token: honest model message delivery of the final confirmed assistant response
+    const text = turnResult.assistantMessage || '';
+    if (text) {
+      sink('token', { token: text, delta: text });
     }
 
     // 4. data: state, decision, and trace
@@ -938,7 +1243,8 @@ export class TurnApplicationService {
     activeJourney: any,
     decision: Decision,
     executedCapabilities: any[],
-    resolvedAgentInfo: any
+    resolvedAgentInfo: any,
+    knowledgeGate?: OkfGateDecision | null
   ): Promise<{ message?: string; modelRoute?: any }> {
     const customerQuestion = (command?.message || (command as any)?.userInput || '').trim();
     if (!customerQuestion) {
@@ -979,8 +1285,22 @@ export class TurnApplicationService {
         }
       }
     }
+    // Also include products from workspace.facts['catalog_results'] if current turn did not run catalog.search
+    if (verifiedProducts.length === 0 && workspace?.facts?.['catalog_results']?.value) {
+      const catVal = workspace.facts['catalog_results'].value;
+      const catItems = Array.isArray(catVal) ? catVal : (catVal.items || catVal.products || []);
+      for (const item of catItems) {
+        const sku = item.sku || item.id;
+        if (sku && !seenSkus.has(sku)) {
+          seenSkus.add(sku);
+          verifiedProducts.push(item);
+        } else if (!sku) {
+          verifiedProducts.push(item);
+        }
+      }
+    }
 
-    const companyName = release.profile?.companyName || 'PlaceMakers';
+    const companyName = release.profile?.companyName || release.manifest?.name || 'Customer Consultant';
     const personaGuidance =
       (release as any)?.persona?.systemPromptOverrides ||
       (release.agents && ((release.agents[0] as any)?.systemPrompt || release.agents[0]?.systemPromptTemplate)) ||
@@ -1004,29 +1324,55 @@ export class TurnApplicationService {
         ? decision.payload.questions.map((q: any) => q.id || q.key)
         : (workspace.openQuestions || []);
 
-    const isDiscovery = decision.type === 'ask_fact' || openQuestionIds.length > 0;
+    const isAskingForDetails = /tell me more|more info|more detail|tell me about|explain|details|specs|specifications|features|how does|how do i use|what is|how to/i.test(customerQuestion);
+    const isOutOfDomain = decision.type === 'handoff' || !activeJourney;
+    const isDiscovery = !isOutOfDomain && !isAskingForDetails && (decision.type === 'ask_fact' || openQuestionIds.length > 0);
 
-    const systemPrompt = [
-      `You are the verified trade and building advisor for ${companyName}.`,
-      personaGuidance,
-      journeyGuidance,
-      `Strict Instructions:`,
-      `1. Answer the customer directly and professionally.`,
-      `2. NEVER ask for facts that already exist in Verified Stored Facts (e.g., if a room type, room, or project goal is already stored, NEVER ask for it again or change known facts unless explicitly requested).`,
-      isDiscovery
-        ? `3. You are currently in the project discovery and clarification stage. Guide the customer to provide the needed project brief details shown in Unresolved Facts / Open Questions. NEVER state "I don't have verified technical documentation" during this stage.`
-        : `3. Ground all product recommendations, building code, lining, and waterproofing requirements strictly in the verified technical documents.`,
-      `4. If the customer provided an ambiguous or mistyped measurement (such as an invalid unit or extreme dimension), politely ask a scoped unit/measurement clarification: clarify what unit or length was intended. Do not ask for facts that are already known.`,
-      `5. If the customer continues an open question topic (such as room size or dimensions), guide them on specifying that measurement and invite them to answer the pending options.`,
-      !isDiscovery
-        ? `6. If no verified technical information was found after discovery is complete, truthfully state: "I don't have verified technical documentation for that specific requirement. Could you provide more details about your project?"`
-        : '',
-      `7. NEVER invent products, SKUs, prices, compliance claims, inventory, quotes, or installation requirements.`,
-      `8. Do NOT generate or claim a quote was assembled unless the customer explicitly requested a quote.`,
-      `9. NEVER expose internal stage IDs, capability names, fact names, internal policy names, or release IDs.`,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+    const isExplicitTechnicalDocQuery =
+      knowledgeGate?.mode === 'evidence_answer' ||
+      /\b(compliance|certificate|specification|technical document|technical data|warranty|installation guide|care guide)\b/i.test(customerQuestion);
+
+    const systemPrompt = isOutOfDomain
+      ? [
+          `You are the verified customer advisor for ${companyName}.`,
+          release.profile?.industry ? `Industry: ${release.profile.industry}.` : '',
+          personaGuidance,
+          `Strict Instructions:`,
+          `1. The customer's inquiry falls outside the published products, services, and journeys for ${companyName}${release.profile?.industry ? ` (${release.profile.industry})` : ''}.`,
+          `2. Politely explain the scope boundary without inventing an offering. Mention only configured journeys supplied below.`,
+          `3. Keep the tone consistent with the published persona and brand guidance.`,
+          `4. Offer to assist with one of the configured journeys.`,
+          `5. Keep the response concise (2-3 sentences).`,
+          `6. NEVER expose internal policy names, stage IDs, or error codes.`,
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+      : [
+          `You are the verified customer advisor for ${companyName}.`,
+          personaGuidance,
+          journeyGuidance,
+          `Strict Instructions:`,
+          `1. Answer the customer directly and professionally.`,
+          `2. NEVER ask for facts that already exist in Verified Stored Facts (e.g., if a room type, room, or project goal is already stored, NEVER ask for it again or change known facts unless explicitly requested).`,
+          isDiscovery
+            ? `3. You are currently in the project discovery and clarification stage. Guide the customer to provide the needed project brief details shown in Unresolved Facts / Open Questions. NEVER state "I don't have verified technical documentation" during this stage.`
+            : isAskingForDetails
+            ? `3. Provide comprehensive, helpful, and professional product details, usage directions, and specifications based strictly on the verified catalog items.`
+            : `3. Ground every recommendation and regulated, compatibility, installation, care, safety, or warranty claim strictly in verified evidence supplied to this turn.`,
+          `4. If the customer provided an ambiguous or mistyped measurement (such as an invalid unit or extreme dimension), politely ask a scoped unit/measurement clarification: clarify what unit or length was intended. Do not ask for facts that are already known.`,
+          `5. If the customer continues an open question topic (such as room size or dimensions), guide them on specifying that measurement and invite them to answer the pending options.`,
+          isExplicitTechnicalDocQuery && verifiedDocs.length === 0
+            ? `6. If no verified technical information was found after search, truthfully state: "I don't have verified technical documentation for that specific requirement. Could you provide more details about your project?"`
+            : `6. If answering trade, troubleshooting, or product inquiries, provide helpful practical guidance and ask clarifying questions to diagnose the issue (e.g. source, location, materials). Do NOT mention missing technical documentation unless the customer explicitly asked for technical certificates or specification sheets.`,
+          `7. NEVER invent products, SKUs, prices, compliance claims, inventory, quotes, or installation requirements.`,
+          `8. Do NOT generate or claim a quote was assembled unless the customer explicitly requested a quote.`,
+          `9. NEVER expose internal stage IDs, capability names, fact names, internal policy names, or release IDs.`,
+          knowledgeGate
+            ? `10. Enforce the structured knowledge decision: recommendation=${knowledgeGate.recommendation}; allowed claims=${knowledgeGate.claims.allowedClasses.join(', ') || 'none'}; disclaimers=${knowledgeGate.claims.disclaimers.join(' | ') || 'none'}. Do not make any claim class not listed.`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
 
     let verifiedDocsSummary = 'None found.';
     if (verifiedDocs.length > 0) {
@@ -1050,8 +1396,8 @@ export class TurnApplicationService {
             `Product ${i + 1}: ${p.name || p.title || p.sku} (SKU: ${p.sku})\nCategory: ${
               p.category || 'General'
             }\nPrice: ${
-              p.price?.amountCents ? `$${(p.price.amountCents / 100).toFixed(2)}` : 'On Request'
-            }`
+              p.price?.amountCents ? `$${(p.price.amountCents / 100).toFixed(2)}` : (p.price ? (typeof p.price === 'number' ? `$${p.price.toFixed(2)}` : p.price) : 'On Request')
+            }\nDescription: ${p.description || p.reason || 'Verified catalog item'}${p.features ? `\nFeatures: ${Array.isArray(p.features) ? p.features.join(', ') : p.features}` : ''}${p.specifications ? `\nSpecifications: ${JSON.stringify(p.specifications)}` : ''}`
         )
         .join('\n\n');
     }
@@ -1060,30 +1406,44 @@ export class TurnApplicationService {
     const isDimensionOpen = Array.isArray(openQuestionIds) && openQuestionIds.some((id: string) => id.includes('dimension') || id.includes('size'));
     const isAmbiguousMeasurement = hasAmbiguousUnit && isDimensionOpen;
 
-    const userPrompt = [
-      `Customer Question: "${customerQuestion}"`,
-      `Journey: ${activeJourney?.displayName || activeJourney?.journeyId || 'General Trade'}`,
-      `Current Stage: ${workspace.currentStage || 'initial'}`,
-      `Goal: ${activeJourney?.goals?.[0] || 'Provide accurate building and materials guidance'}`,
-      `\n--- VERIFIED STORED FACTS ---`,
-      Object.keys(sanitizedFacts).length > 0 ? JSON.stringify(sanitizedFacts, null, 2) : 'None yet.',
-      `\n--- UNRESOLVED FACTS / OPEN QUESTIONS ---`,
-      openQuestionIds.length > 0 ? openQuestionIds.join(', ') : 'None.',
-      `\n--- CURRENT DECISION ---`,
-      `Decision Type: ${decision.type}`,
-      decision.payload?.question ? `Question: ${decision.payload.question}` : '',
-      `\n--- VERIFIED TECHNICAL DOCUMENTS ---`,
-      verifiedDocsSummary,
-      `\n--- VERIFIED PRODUCTS ---`,
-      verifiedProdsSummary,
-      isAmbiguousMeasurement
-        ? `\nCRITICAL INSTRUCTION: The customer provided an ambiguous or mistyped measurement ("${customerQuestion}"). You MUST politely ask a scoped unit/measurement clarification asking whether they mean a 1000 mm cabinet run, 2.4 m length, or square metres so we can size their project accurately. Do NOT ask which room they mean, because the room is already known (${sanitizedFacts.room_type || 'laundry'}).`
-        : isDiscovery
-        ? `\nAcknowledge the customer's project and provide a natural, concise lead-in for the clarification card questions without asking for already known facts.`
-        : `\nRespond to the customer's question thoroughly using only the verified facts above. If relevant, explain options and offer next steps.`,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const userPrompt = isOutOfDomain
+      ? [
+          `Customer Question: "${customerQuestion}"`,
+          `Status: Out of scope / no matching journey in our catalog.`,
+          `Our Company: ${companyName}`,
+          release.profile?.industry ? `Industry: ${release.profile.industry}` : '',
+          `Available Services / Projects: ${release.journeys.map((j) => j.displayName || j.journeyId).join(', ')}`,
+          `Instruction: Politely explain that the request is outside the published offering. Mention only the configured journeys above, and ask whether one of those would help.`,
+        ].join('\n')
+      : [
+          `Customer Question: "${customerQuestion}"`,
+          `Journey: ${activeJourney?.displayName || activeJourney?.journeyId || 'General Trade'}`,
+          `Current Stage: ${workspace.currentStage || 'initial'}`,
+          `Goal: ${activeJourney?.goals?.[0] || 'Provide accurate building and materials guidance'}`,
+          `\n--- VERIFIED STORED FACTS ---`,
+          Object.keys(sanitizedFacts).length > 0 ? JSON.stringify(sanitizedFacts, null, 2) : 'None yet.',
+          `\n--- UNRESOLVED FACTS / OPEN QUESTIONS ---`,
+          openQuestionIds.length > 0 ? openQuestionIds.join(', ') : 'None.',
+          `\n--- CURRENT DECISION ---`,
+          `Decision Type: ${decision.type}`,
+          decision.payload?.question ? `Question: ${decision.payload.question}` : '',
+          knowledgeGate ? `Knowledge response mode: ${knowledgeGate.mode}` : '',
+          knowledgeGate ? `Allowed claim classes: ${knowledgeGate.claims.allowedClasses.join(', ') || 'none'}` : '',
+          knowledgeGate?.claims.disclaimers.length ? `Required disclaimers: ${knowledgeGate.claims.disclaimers.join(' | ')}` : '',
+          `\n--- VERIFIED TECHNICAL DOCUMENTS ---`,
+          verifiedDocsSummary,
+          `\n--- VERIFIED PRODUCTS ---`,
+          verifiedProdsSummary,
+          isAmbiguousMeasurement
+            ? `\nCRITICAL INSTRUCTION: The customer provided an ambiguous or mistyped measurement ("${customerQuestion}"). Ask only for the missing unit or scale required by the published fact definition. Do not ask again for any context already present in verified stored facts.`
+            : isAskingForDetails
+            ? `\nCRITICAL INSTRUCTION: The customer is asking for more details or an explanation about products ("${customerQuestion}"). Provide a detailed, professional, and helpful explanation of the product features, active ingredients, usage instructions (e.g. 2-in-1 brush head, stain neutralizer), and benefits based STRICTLY on the VERIFIED PRODUCTS data below. Do not ask intake questions.`
+            : isDiscovery
+            ? `\nAcknowledge the customer's project and provide a natural, concise lead-in for the clarification card questions without asking for already known facts.`
+            : `\nRespond to the customer's question thoroughly using only the verified facts above. If relevant, explain options and offer next steps.`,
+        ]
+          .filter(Boolean)
+          .join('\n');
 
     try {
       const modelRes = await this.modelGateway.execute(
@@ -1112,6 +1472,16 @@ export class TurnApplicationService {
     } catch (err: any) {
       // Model call unavailable or failed (e.g. offline testing without credentials).
       // Fallback to truthful grounded synthesis over verified documents or contextual clarification:
+      if (isAskingForDetails && verifiedProducts.length > 0) {
+        const topProd = verifiedProducts[0];
+        const priceStr = topProd.price?.amountCents
+          ? `$${(topProd.price.amountCents / 100).toFixed(2)}`
+          : (topProd.price ? (typeof topProd.price === 'number' ? `$${topProd.price.toFixed(2)}` : topProd.price) : 'Price on request');
+        return {
+          message: `${topProd.name || topProd.title || 'Product'}: ${topProd.description || 'Verified catalog product.'} Price: ${priceStr}. Would you like to add this to your project quote?`,
+        };
+      }
+
       if (verifiedDocs.length > 0) {
         const docSummaries = verifiedDocs
           .map((d) => d.content || d.summary)

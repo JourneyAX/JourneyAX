@@ -165,49 +165,9 @@ export function compileGraphToJourneys(
         extractedGoalTokens.add(token);
       }
     }
-    // Enrich semantic triggerIntents and goals based on trigger labels and intents
+    // Runtime routing vocabulary is authored in the visual journey itself. The
+    // compiler preserves those words; it never injects tenant/domain examples.
     const triggerIntentsList: string[] = triggerIntent ? [triggerIntent] : [];
-    const lowerLabel = triggerLabel.toLowerCase();
-    const lowerIntent = triggerIntent.toLowerCase();
-
-    if (lowerLabel.includes('shop') || lowerIntent.includes('product or material')) {
-      triggerIntentsList.push('product_search', 'material_search', 'shop', 'find_product', 'screws', 'fasteners', 'hardware');
-      extractedGoalTokens.add('product');
-      extractedGoalTokens.add('material');
-      extractedGoalTokens.add('screws');
-      extractedGoalTokens.add('fasteners');
-      extractedGoalTokens.add('hardware');
-      extractedGoalTokens.add('items');
-    }
-    if (lowerLabel.includes('plan') || lowerIntent.includes('makeover')) {
-      triggerIntentsList.push('plan_your_space', 'space_planner', 'bathroom_makeover', 'laundry_makeover', 'deck_estimator');
-      extractedGoalTokens.add('bathroom');
-      extractedGoalTokens.add('laundry');
-      extractedGoalTokens.add('kitchen');
-      extractedGoalTokens.add('decking');
-      extractedGoalTokens.add('fencing');
-      extractedGoalTokens.add('space');
-    }
-    if (lowerLabel.includes('tools') || lowerLabel.includes('guides') || lowerIntent.includes('compliance') || lowerIntent.includes('how-do-i')) {
-      triggerIntentsList.push('product_advice', 'technical_advice', 'compliance_advice', 'installation_guide', 'linings', 'waterproofing', 'moisture');
-      extractedGoalTokens.add('lining');
-      extractedGoalTokens.add('linings');
-      extractedGoalTokens.add('waterproofing');
-      extractedGoalTokens.add('moisture');
-      extractedGoalTokens.add('compliance');
-      extractedGoalTokens.add('installation');
-      extractedGoalTokens.add('wet');
-      extractedGoalTokens.add('area');
-      extractedGoalTokens.add('advice');
-      extractedGoalTokens.add('guide');
-    }
-    if (lowerLabel.includes('customer') || lowerLabel.includes('service') || lowerIntent.includes('stock')) {
-      triggerIntentsList.push('stock_lookup', 'branch_stock', 'stock_check', 'click_and_collect', 'pickup', 'delivery');
-      extractedGoalTokens.add('stock');
-      extractedGoalTokens.add('branch');
-      extractedGoalTokens.add('pickup');
-      extractedGoalTokens.add('delivery');
-    }
 
     const goals =
       effectiveTriggers.length === 1 && options.goals && options.goals.length > 0

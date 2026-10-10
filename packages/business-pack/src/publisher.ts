@@ -1,29 +1,34 @@
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import type { Db } from 'mongodb';
-import { BusinessPackRelease, BusinessPackReleaseSchema } from './schemas/business-pack.schema';
+import {
+  BusinessPackRelease,
+  BusinessPackReleaseSchema,
+  extractPackContent,
+} from './schemas/business-pack.schema';
 import { validateBusinessPack } from './validator';
 import { BusinessPackLoader } from './loader';
+import { computePackChecksum } from './checksum';
+import {
+  ReleaseVerificationFailureReason,
+  tryVerifyPersistedBusinessPackRelease,
+} from './release-verifier';
+import { assertPublishableRoutingPolicy } from './routing-policy';
+
+/** Typed rollback failure carrying the verifier's reason code. */
+export class BusinessPackRollbackError extends Error {
+  constructor(
+    public readonly reason: ReleaseVerificationFailureReason,
+    message: string
+  ) {
+    super(message);
+    this.name = 'BusinessPackRollbackError';
+  }
+}
 
 const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
 const COLLECTION_OUTBOX_EVENTS = 'outbox_events';
 const COLLECTION_TENANT_CUTOVERS = 'tenant_cutovers';
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
-export function computePackChecksum(pack: BusinessPackRelease): string {
-  return createHash('sha256').update(stableJson(pack)).digest('hex');
-}
 
 export interface PublishOptions {
   publishedBy?: string;
@@ -119,6 +124,9 @@ export async function publishBusinessPack(
     throw new Error(`[BusinessPackPublisher] Pack semantic validation failed: ${errorDetails}`);
   }
 
+  // 2b. Routing policy must be explicit and unambiguous at the canonical publication boundary
+  assertPublishableRoutingPolicy(pack);
+
   // 3. Compute checksum
   const checksum = computePackChecksum(pack);
   const tenantId = pack.manifest.tenantId;
@@ -140,6 +148,27 @@ export async function publishBusinessPack(
           `[BusinessPackPublisher] Immutable release violation: version '${version}' for tenant '${tenantId}' (${environmentId}) is already published with different checksum '${existingRelease.checksum}'. Releases are strictly immutable. You must bump the version to publish modifications.`
         );
       }
+
+      // Never trust the checksum field on an existing document by itself. A
+      // tampered release could retain the original checksum and otherwise be
+      // promoted (or returned idempotently) without its stored content being
+      // re-verified. Verify before any pointer/outbox mutation or early return.
+      const existingVerification = tryVerifyPersistedBusinessPackRelease(existingRelease, {
+        tenantId,
+        environmentId,
+        version,
+      });
+      if (existingVerification.ok === false) {
+        throw new Error(
+          `[BusinessPackPublisher] Existing release '${version}' for tenant '${tenantId}' (${environmentId}) failed integrity verification: ${existingVerification.error.message}`
+        );
+      }
+      if (existingVerification.release.checksum !== checksum) {
+        throw new Error(
+          `[BusinessPackPublisher] Immutable release violation: verified existing release checksum '${existingVerification.release.checksum}' does not match incoming checksum '${checksum}'.`
+        );
+      }
+
       // If identical release is already the active pointer, return idempotently without bumping revision
       const pointersCol = db.collection(COLLECTION_BUSINESS_PACK_POINTERS);
       const activePointer = await pointersCol.findOne({ tenantId, environmentId }, sessionOpts);
@@ -147,6 +176,7 @@ export async function publishBusinessPack(
         return { release: pack, checksum, revision: activePointer.revision };
       }
     } else {
+      const content = extractPackContent(pack);
       const releaseDoc = {
         tenantId,
         environmentId,
@@ -154,19 +184,7 @@ export async function publishBusinessPack(
         versionId: version,
         status: 'published',
         checksum,
-        manifest: pack.manifest,
-        profile: pack.profile,
-        vocabulary: pack.vocabulary,
-        entities: pack.entities,
-        conversationPolicy: pack.conversationPolicy,
-        modelPolicy: pack.modelPolicy,
-        agents: pack.agents,
-        journeys: pack.journeys,
-        rules: pack.rules,
-        capabilities: pack.capabilities,
-        experience: pack.experience,
-        evaluations: pack.evaluations,
-        extensions: pack.extensions || {},
+        ...content,
         publishedAt: now,
         publishedBy,
       };
@@ -357,26 +375,20 @@ export async function rollbackBusinessPack(
       );
     }
 
-    const rawChecksum = typeof targetRelease.checksum === 'string' ? targetRelease.checksum.trim() : '';
-    if (!rawChecksum) {
-      throw new Error(
-        `[BusinessPackPublisher] Rollback failed: target release version '${targetVersion}' has missing or blank checksum for tenant '${tenantId}'`
+    // Authoritative verifier: envelope, legacy normalization, schema, semantics, checksum and
+    // identity (tenant/environment/version) are all enforced before the pointer is touched.
+    const verification = tryVerifyPersistedBusinessPackRelease(targetRelease, {
+      tenantId,
+      environmentId,
+      version: targetVersion,
+    });
+    if (verification.ok === false) {
+      throw new BusinessPackRollbackError(
+        verification.error.reason,
+        `[BusinessPackPublisher] Rollback failed: target release '${targetVersion}' for tenant '${tenantId}' (${environmentId}) rejected: ${verification.error.message}`
       );
     }
-
-    const parsed = BusinessPackReleaseSchema.safeParse(targetRelease);
-    if (!parsed.success) {
-      throw new Error(
-        `[BusinessPackPublisher] Rollback failed: schema validation failed for target release '${targetVersion}': ${JSON.stringify(parsed.error.format())}`
-      );
-    }
-
-    const computedChecksum = computePackChecksum(parsed.data);
-    if (computedChecksum !== rawChecksum) {
-      throw new Error(
-        `[BusinessPackPublisher] Rollback failed: target release version '${targetVersion}' checksum mismatch for tenant '${tenantId}' (stored='${rawChecksum}', computed='${computedChecksum}')`
-      );
-    }
+    const verifiedChecksum = verification.release.checksum;
 
     const expectedRevision = pointer.revision;
     const nextRevision = expectedRevision + 1;
@@ -395,7 +407,7 @@ export async function rollbackBusinessPack(
           rollbackAvailable: true,
           promotedAt: now,
           promotedBy: rolledBackBy,
-          checksum: targetRelease.checksum,
+          checksum: verifiedChecksum,
           notes: options.reason || `Rolled back to ${targetVersion}`,
         },
         $push: {
@@ -403,7 +415,7 @@ export async function rollbackBusinessPack(
             $each: [
               {
                 version: targetVersion,
-                checksum: targetRelease.checksum,
+                checksum: verifiedChecksum,
                 revision: nextRevision,
                 action: 'rolled_back',
                 promotedAt: now,
@@ -433,7 +445,7 @@ export async function rollbackBusinessPack(
         {
           $set: {
             approvedReleaseVersion: targetVersion,
-            approvedReleaseChecksum: targetRelease.checksum,
+            approvedReleaseChecksum: verifiedChecksum,
             status: existingCutover.status === 'canary' ? 'canary' : 'migrated',
             promotedAt: now,
             promotedBy: rolledBackBy,
@@ -456,7 +468,7 @@ export async function rollbackBusinessPack(
           environmentId,
           activeVersion: targetVersion,
           previousVersion: pointer.activeVersion,
-          checksum: targetRelease.checksum,
+          checksum: verifiedChecksum,
           revision: nextRevision,
           rolledBackBy,
           reason: options.reason,

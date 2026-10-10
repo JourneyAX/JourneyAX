@@ -117,6 +117,13 @@ async function runProjectPublishingSuite() {
             },
           };
         }
+        if (name === 'tenant_cutovers') {
+          // No durable activation record exists for this tenant yet: publisher must not sync anything
+          return {
+            findOne: async () => null,
+            updateOne: async () => ({ matchedCount: 0, acknowledged: true }),
+          };
+        }
         if (name === 'outbox_events') {
           return {
             insertOne: async (doc: any) => {
@@ -245,7 +252,7 @@ async function runProjectPublishingSuite() {
             agentId: 'caroma_specialist',
             name: 'Caroma Architectural Specialist',
             purpose: 'Architectural compliance and product specification',
-            modelPolicyRef: 'standard_turn',
+            modelPolicyRef: 'complex_reasoning',
             allowedTools: ['catalog_search', 'quote_create'],
             maxTurns: 4,
             handoffConditions: [],
@@ -292,13 +299,25 @@ async function runProjectPublishingSuite() {
 
     // Verify Model Policy was compiled from doc.ai (NO OpenAI+Anthropic hardcoding)
     const release = releaseDoc;
-    assert.equal(release.modelPolicy.policies.length, 1);
-    assert.equal(release.modelPolicy.policies[0].policyId, 'standard_turn');
-    assert.equal(release.modelPolicy.policies[0].candidates.length, 1);
-    assert.equal(release.modelPolicy.policies[0].candidates[0].provider, 'openai');
-    assert.equal(release.modelPolicy.policies[0].candidates[0].model, 'gpt-4o');
-    assert.equal(release.modelPolicy.policies[0].candidates[0].temperature, 0.2);
-    assert.equal(release.modelPolicy.policies[0].maxOutputTokens, 1500);
+    // Simple-mode compileModelPolicy emits the four conversational policies (complex_reasoning is the default)
+    assert.equal(release.modelPolicy.defaultPolicy, 'complex_reasoning');
+    assert.deepEqual(
+      release.modelPolicy.policies.map((p: any) => p.policyId),
+      ['fast_intent', 'complex_reasoning', 'tool_selection', 'response_generation']
+    );
+    for (const policy of release.modelPolicy.policies) {
+      assert.equal(policy.candidates.length, 1);
+      assert.equal(policy.candidates[0].provider, 'openai');
+      assert.equal(policy.candidates[0].model, 'gpt-4o');
+    }
+    const byId = (id: string) => release.modelPolicy.policies.find((p: any) => p.policyId === id);
+    assert.equal(byId('complex_reasoning').candidates[0].temperature, 0.2);
+    assert.equal(byId('response_generation').candidates[0].temperature, 0.2);
+    assert.equal(byId('fast_intent').candidates[0].temperature, 0.0);
+    assert.equal(byId('tool_selection').candidates[0].temperature, 0.0);
+    assert.equal(byId('complex_reasoning').maxOutputTokens, 2500);
+    // The agent's modelPolicyRef must resolve to a declared policy
+    assert.ok(byId(release.agents[0].modelPolicyRef), 'agent modelPolicyRef must reference a declared policy');
 
     // Verify Specialist Agents compiled
     assert.equal(release.agents.length, 1);
@@ -508,6 +527,12 @@ async function runProjectPublishingSuite() {
               memoryPointers.set(key, { ...prev, ...u.$set });
               return { matchedCount: 1 };
             },
+          };
+        }
+        if (name === 'tenant_cutovers') {
+          return {
+            findOne: async () => null,
+            updateOne: async () => ({ matchedCount: 0, acknowledged: true }),
           };
         }
         if (name === 'outbox_events') {
@@ -944,6 +969,12 @@ async function runProjectPublishingSuite() {
             },
           };
         }
+        if (name === 'tenant_cutovers') {
+          return {
+            findOne: async () => null,
+            updateOne: async () => ({ matchedCount: 0, acknowledged: true }),
+          };
+        }
         if (name === 'outbox_events') {
           return {
             insertOne: async () => ({ acknowledged: true }),
@@ -1172,6 +1203,111 @@ async function runProjectPublishingSuite() {
     assert.ok(publishedPack.experience?.cards?.templates?.promo_banner, 'Release must contain published card template');
     assert.equal(publishedPack.experience.cards.templates.promo_banner.root, 'box');
   });
+
+  // ── TEST: Default journey selection is explicit or unambiguous ───────────
+  {
+    const makeJourney = (journeyId: string, extra: Record<string, unknown> = {}) => ({
+      journeyId,
+      version: '1.0.0',
+      displayName: journeyId,
+      goals: ['discovery'],
+      initialStage: 'start',
+      stages: {
+        start: {
+          stageId: 'start',
+          displayName: 'Start',
+          requiredFacts: [],
+          allowedCapabilities: [],
+          nextDecisionPolicy: 'dependency-first',
+          exitConditions: [],
+        },
+      },
+      ...extra,
+    });
+    const makeProject = (projectId: string, journeys: any[], extra: Record<string, unknown> = {}) => ({
+      projectId,
+      name: projectId,
+      companyName: `${projectId} Co`,
+      ai: { provider: 'openai', model: 'gpt-4o', temperature: 0.2 },
+      persona: { systemName: 'Bot', systemPromptOverrides: 'Help users.' },
+      agents: [
+        {
+          agentId: `${projectId}_agent`,
+          name: 'Agent',
+          purpose: 'Assist',
+          modelPolicyRef: 'complex_reasoning',
+          allowedTools: [],
+          maxTurns: 4,
+          handoffConditions: [],
+        },
+      ],
+      journeys,
+      ...extra,
+    });
+    const publishedRelease = (releases: Map<string, any>, pid: string) =>
+      [...releases.entries()].find(([k]) => k.startsWith(`${pid}:production:`))?.[1];
+
+    await test('publication: explicitly configured valid routingPolicy.defaultJourneyId wins', async () => {
+      const pid = 'route-explicit';
+      const { service, memoryReleases } = createMockProjectService({
+        [pid]: makeProject(
+          pid,
+          [makeJourney('j_first', { isDefaultConsultant: true }), makeJourney('j_second')],
+          { routingPolicy: { defaultJourneyId: 'j_second', fallbackOnCatalogSearch: false } }
+        ),
+      });
+      const result = await service.publishConfig(pid);
+      assert.equal(result.success, true, `Publish should succeed: ${result.message}`);
+      const release = publishedRelease(memoryReleases, pid);
+      assert.deepEqual(release.routingPolicy, { defaultJourneyId: 'j_second', fallbackOnCatalogSearch: false });
+    });
+
+    await test('publication: exactly one journey is inferred as default', async () => {
+      const pid = 'route-single';
+      const { service, memoryReleases } = createMockProjectService({
+        [pid]: makeProject(pid, [makeJourney('only_journey')]),
+      });
+      const result = await service.publishConfig(pid);
+      assert.equal(result.success, true, `Publish should succeed: ${result.message}`);
+      const release = publishedRelease(memoryReleases, pid);
+      assert.deepEqual(release.routingPolicy, { defaultJourneyId: 'only_journey', fallbackOnCatalogSearch: true });
+    });
+
+    await test('publication: journey explicitly marked default is selected among several', async () => {
+      const pid = 'route-marked';
+      const { service, memoryReleases } = createMockProjectService({
+        [pid]: makeProject(pid, [makeJourney('j_a'), makeJourney('j_b', { isDefaultConsultant: true }), makeJourney('j_c')]),
+      });
+      const result = await service.publishConfig(pid);
+      assert.equal(result.success, true, `Publish should succeed: ${result.message}`);
+      assert.equal(publishedRelease(memoryReleases, pid).routingPolicy.defaultJourneyId, 'j_b');
+    });
+
+    await test('publication: multiple journeys without an unambiguous default are rejected', async () => {
+      const pid = 'route-ambiguous';
+      const { service, memoryReleases, memoryPointers } = createMockProjectService({
+        [pid]: makeProject(pid, [makeJourney('j_a'), makeJourney('j_b')]),
+      });
+      const result = await service.publishConfig(pid);
+      assert.equal(result.success, false, 'ambiguous publication must be blocked');
+      assert.match(result.message || '', /Publish blocked by routing policy.*routingPolicy\.defaultJourneyId/s);
+      assert.equal(memoryReleases.size, 0, 'no release may be written');
+      assert.equal(memoryPointers.size, 0, 'no pointer may be written');
+    });
+
+    await test('publication: invalid configured defaultJourneyId is rejected (no fallback to first/marked journey)', async () => {
+      const pid = 'route-invalid';
+      const { service, memoryReleases } = createMockProjectService({
+        [pid]: makeProject(pid, [makeJourney('j_a', { isDefaultConsultant: true })], {
+          routingPolicy: { defaultJourneyId: 'journey_that_does_not_exist', fallbackOnCatalogSearch: true },
+        }),
+      });
+      const result = await service.publishConfig(pid);
+      assert.equal(result.success, false);
+      assert.match(result.message || '', /Publish blocked by routing policy.*'journey_that_does_not_exist'/s);
+      assert.equal(memoryReleases.size, 0);
+    });
+  }
 
   console.log(`\nProject Service Tests Complete: ${passed} passed, ${failed} failed.`);
   if (failed > 0) process.exit(1);

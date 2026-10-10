@@ -42,19 +42,25 @@ export const CapabilityPlanItemSchema = z.object({
   continueTurn: z.boolean().optional(),
 });
 
+export const ConditionalFactRequirementGroupSchema = z.object({
+  when: z.string(),
+  facts: z.array(FactRequirementItemSchema).default([]),
+});
+
 export const JourneyStageSchema = z.object({
   stageId: z.string().optional(),
   displayName: z.string().nullish(),
   description: z.string().nullish(),
   requiredFacts: z.array(FactRequirementItemSchema).default([]),
   optionalFacts: z.array(FactRequirementItemSchema).optional(),
+  conditionalFacts: z.array(ConditionalFactRequirementGroupSchema).optional(),
   allowedCapabilities: z.array(z.string()).default([]),
   blockedCapabilities: z.array(z.string()).optional(),
   capabilityPlan: z.array(CapabilityPlanItemSchema).optional(),
   sameTurnContinuation: z.boolean().optional(),
   autoContinue: z.boolean().optional(),
   continueTurn: z.boolean().optional(),
-  nextDecisionPolicy: z.enum(['dependency-first', 'rule-first', 'agent-driven']).default('dependency-first'),
+  nextDecisionPolicy: z.enum(['dependency-first', 'rule-first', 'agent-driven', 'capability-first']).default('dependency-first'),
   exitConditions: z.array(StageExitConditionSchema).default([]),
   handoffPolicy: z.object({
     allowed: z.boolean().default(false),
@@ -70,6 +76,8 @@ export const JourneyDefinitionSchema = z.object({
   description: z.string().optional(),
   goals: z.array(z.string()).min(1),
   initialStage: z.string(),
+  isDefaultConsultant: z.boolean().optional(),
+  triggerIntents: z.array(z.string()).optional(),
   stages: z.record(z.string(), JourneyStageSchema),
   metadata: z.record(z.string(), z.any()).optional(),
 });
@@ -81,5 +89,6 @@ export const JourneysCollectionSchema = z.object({
 
 export type JourneyDefinition = z.infer<typeof JourneyDefinitionSchema>;
 export type JourneyStage = z.infer<typeof JourneyStageSchema>;
+export type ConditionalFactRequirementGroup = z.infer<typeof ConditionalFactRequirementGroupSchema>;
 export type StageExitCondition = z.infer<typeof StageExitConditionSchema>;
 export type CapabilityPlanItem = z.infer<typeof CapabilityPlanItemSchema>;

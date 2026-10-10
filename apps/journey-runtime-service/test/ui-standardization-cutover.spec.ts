@@ -106,7 +106,7 @@ const mockRelease: BusinessPackRelease = {
       customCssVars: {},
     },
     cards: {
-      allowedCardTypes: ['bundle', 'products', 'productDetail', 'quote'],
+      allowedCardTypes: ['bundle', 'products', 'productDetail', 'quote', 'action_button_group', 'order_confirmation'],
       defaultCardRenderer: '@journeyax/ui-cards',
     },
   },

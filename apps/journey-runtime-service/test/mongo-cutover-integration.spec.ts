@@ -166,6 +166,7 @@ async function runRealMongoIntegrationTests() {
         },
       },
       evaluations: [],
+      extensions: {},
     };
 
     const session1 = client.startSession();

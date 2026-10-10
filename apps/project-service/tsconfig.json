@@ -4,6 +4,10 @@
     "module": "commonjs",
     "declaration": true,
     "outDir": "./dist",
+    "baseUrl": "./",
+    "paths": {
+      "@journeyax/knowledge": ["../../packages/knowledge/src"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

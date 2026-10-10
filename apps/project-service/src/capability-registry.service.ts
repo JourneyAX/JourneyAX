@@ -3,8 +3,7 @@ import {
   ToolDefinition,
   ToolBinding,
   BusinessPackRelease,
-  BusinessPackReleaseSchema,
-  computePackChecksum,
+  tryVerifyPersistedBusinessPackRelease,
 } from '@journeyax/business-pack';
 import { connectToDatabase, COLLECTION_BUSINESS_PACK_RELEASES, COLLECTION_BUSINESS_PACK_POINTERS } from '@journeyax/database';
 import { CARD_TYPE_NAMES, CardType, actions as CARD_ACTIONS, primitives as CARD_PRIMITIVES } from '@journeyax/ui-cards';
@@ -186,12 +185,21 @@ export class CapabilityRegistryService {
       const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
 
       let versionToLoad = packVersion;
+      let pointerChecksum: string | undefined;
       if (!versionToLoad) {
         const pointer = await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).findOne({
           tenantId,
           environmentId,
         });
-        versionToLoad = pointer?.activeVersion;
+        versionToLoad = pointer?.activeVersionId || pointer?.activeVersion;
+        if (versionToLoad) {
+          pointerChecksum = typeof pointer?.checksum === 'string' ? pointer.checksum.trim() : '';
+          if (!pointerChecksum) {
+            throw new Error(
+              `Active Business Pack pointer for tenant '${tenantId}' (${environmentId}) is missing its mandatory checksum`
+            );
+          }
+        }
       }
 
       if (versionToLoad) {
@@ -207,29 +215,22 @@ export class CapabilityRegistryService {
           );
         }
 
-        const parsed = BusinessPackReleaseSchema.safeParse(release);
-        if (!parsed.success) {
+        // Authoritative verifier: envelope, legacy normalization, schema, semantics, checksum,
+        // pointer agreement and tenant/environment/version identity. Fail closed on any error.
+        const verification = tryVerifyPersistedBusinessPackRelease(release, {
+          tenantId,
+          environmentId,
+          version: versionToLoad,
+          pointerChecksum,
+        });
+        if (verification.ok === false) {
           throw new Error(
-            `Business Pack release '${versionToLoad}' schema invalid for tenant '${tenantId}': ${JSON.stringify(parsed.error.format())}`
+            `Business Pack release '${versionToLoad}' for tenant '${tenantId}' (${environmentId}) failed verification: ${verification.error.message}`
           );
         }
 
-        const rawChecksum = typeof release.checksum === 'string' ? release.checksum.trim() : '';
-        if (!rawChecksum) {
-          throw new Error(
-            `Business Pack release '${versionToLoad}' missing mandatory checksum for tenant '${tenantId}'`
-          );
-        }
-
-        const computed = computePackChecksum(parsed.data);
-        if (computed !== rawChecksum) {
-          throw new Error(
-            `Business Pack release '${versionToLoad}' checksum mismatch: expected '${rawChecksum}', computed '${computed}'`
-          );
-        }
-
-        if (parsed.data.capabilities?.toolDefinitions) {
-          discovered.push(...parsed.data.capabilities.toolDefinitions);
+        if (verification.release.content.capabilities?.toolDefinitions) {
+          discovered.push(...verification.release.content.capabilities.toolDefinitions);
         }
       }
 

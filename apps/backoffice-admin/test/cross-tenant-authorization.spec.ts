@@ -3,7 +3,36 @@ import { scopeTenant, tenantAllowed, isPlatformIdentity, AuthedIdentity } from '
 import { GET as getConnections } from '../src/app/api/integrations/connections/route';
 import { POST as testCommercetools } from '../src/app/api/integrations/test-commercetools/route';
 import { setTestDatabase } from '@journeyax/database';
-import { computePackChecksum, publishBusinessPack } from '@journeyax/business-pack';
+import { BusinessPackContentSchema, computePackChecksum, publishBusinessPack } from '@journeyax/business-pack';
+import { rawLegacyFixture } from '../../../packages/business-pack/test/fixtures/legacy-pack.fixture';
+
+/** Complete canonical Business Pack content for a tenant/environment/version (full schema, not a fragment). */
+function canonicalContent(tenantId: string, environmentId: string, version: string, manifestPatch: Record<string, unknown> = {}): any {
+  const c: any = BusinessPackContentSchema.parse(JSON.parse(JSON.stringify(rawLegacyFixture)));
+  c.manifest = { ...c.manifest, tenantId, environmentId, version, ...manifestPatch };
+  c.capabilities.toolBindings = c.capabilities.toolBindings.map((b: any) => ({ ...b, tenantId, environmentId }));
+  return c;
+}
+
+/** Persisted release as publishBusinessPack stores it (flattened envelope + verified checksum). */
+function canonicalRelease(
+  tenantId: string,
+  environmentId: string,
+  version: string,
+  options: { envelope?: Record<string, unknown>; manifestPatch?: Record<string, unknown>; checksum?: string } = {}
+): any {
+  const content = canonicalContent(tenantId, environmentId, version, options.manifestPatch);
+  return {
+    tenantId,
+    environmentId,
+    version,
+    versionId: version,
+    status: 'active',
+    checksum: options.checksum ?? computePackChecksum(content),
+    ...content,
+    ...(options.envelope ?? {}),
+  };
+}
 
 async function runCrossTenantAuthTests() {
   console.log('\n🔒 Running Backoffice Cross-Tenant Authorization & Execution Context Hardening Suite...\n');
@@ -160,15 +189,16 @@ async function runCrossTenantAuthTests() {
     },
   ];
 
-  const mockPackPayload = { capabilities: { toolDefinitions: [] } };
-  const validReleaseChecksum = computePackChecksum(mockPackPayload as any);
+  // tenant_a release/pointer are complete canonical packs; checksum is the verified release checksum
+  const tenantARelease = canonicalRelease('tenant_a', 'production', '1.2.0');
+  const validReleaseChecksum: string = tenantARelease.checksum;
 
   const packPointersTable = [
     { tenantId: 'tenant_a', channel: 'production', environmentId: 'production', activeVersionId: '1.2.0', checksum: validReleaseChecksum },
   ];
 
   const packReleasesTable = [
-    { tenantId: 'tenant_a', environmentId: 'production', versionId: '1.2.0', status: 'active', checksum: validReleaseChecksum, ...mockPackPayload },
+    tenantARelease,
   ];
 
   const workspacesTable = [
@@ -735,7 +765,8 @@ async function runCrossTenantAuthTests() {
       assert.equal(res.status, 412);
       const json = await res.json();
       assert.equal(json.ok, false);
-      assert.match(json.message, /lacks mandatory checksum/);
+      assert.match(json.message, /failed verification/);
+      assert.ok(['missing_checksum', 'malformed_envelope', 'incomplete_content'].includes(json.reason), json.reason);
     });
 
     // ── Test 18: Active membership with missing role rejected in GET /connections ──
@@ -806,14 +837,11 @@ async function runCrossTenantAuthTests() {
         activeVersionId: '2.0.0',
         checksum: validReleaseChecksum,
       });
-      packReleasesTable.push({
-        tenantId: 'tenant_env_all',
-        environmentId: 'all', // Non-exact environmentId='all'
-        versionId: '2.0.0',
-        status: 'active',
-        checksum: validReleaseChecksum,
-        ...mockPackPayload,
-      } as any);
+      packReleasesTable.push(
+        canonicalRelease('tenant_env_all', 'production', '2.0.0', {
+          envelope: { environmentId: 'all' }, // Non-exact environmentId='all'
+        })
+      );
 
       const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
         method: 'POST',
@@ -870,14 +898,7 @@ async function runCrossTenantAuthTests() {
         activeVersionId: '1.0.0',
         checksum: 'ptr_different_checksum',
       });
-      packReleasesTable.push({
-        tenantId: 'tenant_bad_chk',
-        environmentId: 'production',
-        versionId: '1.0.0',
-        status: 'active',
-        checksum: validReleaseChecksum,
-        ...mockPackPayload,
-      } as any);
+      packReleasesTable.push(canonicalRelease('tenant_bad_chk', 'production', '1.0.0'));
 
       const req = new Request('http://localhost:3009/api/integrations/test-commercetools', {
         method: 'POST',
@@ -896,7 +917,69 @@ async function runCrossTenantAuthTests() {
       assert.equal(res.status, 412);
       const json = await res.json();
       assert.equal(json.ok, false);
-      assert.match(json.message, /checksum mismatch/i);
+      assert.equal(json.reason, 'pointer_checksum_mismatch');
+      assert.match(json.message, /pointer checksum/i);
+    });
+
+    // ── Tests 21b-21e: persisted-release identity isolation in POST /test-commercetools ──
+    async function expectReleaseRejected(
+      tenantId: string,
+      release: any,
+      pointerChecksum: string,
+      expectedReason: string
+    ) {
+      tenantConfigsTable.push({ projectId: tenantId, environment: 'production', workspaceId: `ws_${tenantId}` } as any);
+      projectMembersTable.push({ projectId: tenantId, email: 'super@platform.com', role: 'admin', status: 'active' });
+      connectionsTable.push({
+        tenantId,
+        environmentId: 'production',
+        connectionRef: `conn_${tenantId}`,
+        pieceName: '@activepieces/piece-commercetools',
+        status: 'active',
+        enabled: true,
+        allowedFlows: ['flow_ct_sync'],
+      });
+      tenantSecretsTable.push({ tenantId, environmentId: 'production', secretRef: 'activepieces_api_key', value: 'mock_key' });
+      packPointersTable.push({
+        tenantId,
+        channel: 'production',
+        environmentId: 'production',
+        activeVersionId: '1.0.0',
+        checksum: pointerChecksum,
+      });
+      packReleasesTable.push(release);
+
+      const res = await testCommercetools(
+        new Request('http://localhost:3009/api/integrations/test-commercetools', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer token_platform_admin' },
+          body: JSON.stringify({ projectId: tenantId, connectionRef: `conn_${tenantId}`, flowId: 'flow_ct_sync' }),
+        })
+      );
+      assert.equal(res.status, 412, 'must fail closed before any tool execution');
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.equal(json.reason, expectedReason);
+    }
+
+    await test('21b. Negative: Tenant-A envelope containing Tenant-B pack content is rejected before execution', async () => {
+      const release = canonicalRelease('tenant_id_x', 'production', '1.0.0', { manifestPatch: { tenantId: 'tenant_b' } });
+      await expectReleaseRejected('tenant_id_x', release, release.checksum, 'identity_mismatch');
+    });
+
+    await test('21c. Negative: production envelope containing staging content is rejected before execution', async () => {
+      const release = canonicalRelease('tenant_id_y', 'production', '1.0.0', { manifestPatch: { environmentId: 'staging' } });
+      await expectReleaseRejected('tenant_id_y', release, release.checksum, 'identity_mismatch');
+    });
+
+    await test('21d. Negative: envelope version differing from manifest version is rejected before execution', async () => {
+      const release = canonicalRelease('tenant_id_z', 'production', '1.0.0', { manifestPatch: { version: '1.0.1' } });
+      await expectReleaseRejected('tenant_id_z', release, release.checksum, 'identity_mismatch');
+    });
+
+    await test('21e. Negative: incomplete (partial) release fragment is rejected before execution', async () => {
+      const partial = { tenantId: 'tenant_id_p', environmentId: 'production', version: '1.0.0', versionId: '1.0.0', status: 'active', checksum: 'abc', capabilities: { toolDefinitions: [] } };
+      await expectReleaseRejected('tenant_id_p', partial, 'abc', 'incomplete_content');
     });
 
     // ── Test 22: Canonical real Business Pack publication resolves in POST /test-commercetools ──
@@ -1077,6 +1160,7 @@ async function runCrossTenantAuthTests() {
           },
         },
         evaluations: [],
+        extensions: {},
       };
 
       const pubResult = await publishBusinessPack(mockDb as any, packToPublish as any);

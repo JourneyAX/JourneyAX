@@ -58,8 +58,7 @@ async function runClosureTests() {
   // 1. Load the active published PlaceMakers pack from MongoDB release (v1.0.8)
   const loader = new BusinessPackLoader({ mongoDbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017' });
   const placemakersPack = await loader.loadPublished('placemakers', 'production');
-  assert.ok(placemakersPack, 'PlaceMakers Business Pack must load from database');
-  assert.ok(['1.0.8', '1.0.9'].includes(placemakersPack.manifest.version), 'Active release must be >= 1.0.8');
+  assert.ok(['1.0.8', '1.0.9', '1.1.0', '1.2.0', '1.2.1', '1.3.0'].includes(placemakersPack.manifest.version) || placemakersPack.manifest.version >= '1.0.8', 'Active release must be >= 1.0.8');
   console.log(`Loaded PlaceMakers release version: ${placemakersPack.manifest.version} (checksum: ${placemakersPack.manifest.packId})\n`);
 
   // Shared test stores
@@ -167,11 +166,13 @@ async function runClosureTests() {
       'First group must contain project_mode, appliance_arrangement, room_dimensions'
     );
 
-    // 4. Emitted card check in SSE stream before 'done'
+    // 4. Emitted card check in SSE stream before 'done': both products and clarify cards
     const uiActions = events.filter((e) => e.event === 'uiAction');
     assert.ok(uiActions.length > 0, 'Must emit uiAction event');
     const clarifyCard = uiActions.find((a) => a.payload?.arguments?.card?.cardType === 'clarify' || a.payload?.card?.cardType === 'clarify');
     assert.ok(clarifyCard, 'Must emit registered clarify card');
+    const productCard = uiActions.find((a) => a.payload?.arguments?.card?.cardType === 'products' || a.payload?.card?.cardType === 'products');
+    assert.ok(productCard, 'Must emit products card at discovery stage');
 
     const cardState = clarifyCard.payload.arguments?.card?.state || clarifyCard.payload.card?.state;
     assert.equal(cardState.questions.length, 3, 'Clarify card state must carry 3 questions');
@@ -181,9 +182,9 @@ async function runClosureTests() {
     const cardIndex = events.findIndex((e) => e.event === 'uiAction');
     assert.ok(cardIndex < doneIndex, 'UI action card must be emitted before done event');
 
-    // 5. Retrieval Gated
-    assert.equal(catalogSearchExecuted, false, 'Catalogue search must NOT execute during initial discovery');
-    assert.equal(turnResult.executedCapabilities.length, 0, 'No capabilities should execute before required facts complete');
+    // 5. Products Surfaced at Each Stage
+    assert.equal(catalogSearchExecuted, true, 'Catalogue search executes during discovery to surface products at each stage');
+    assert.ok(turnResult.executedCapabilities.length > 0, 'Capabilities execute to surface products during discovery');
   });
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -16,6 +16,14 @@ import {
   COLLECTION_CUSTOM_REPORTS,
   COLLECTION_ANALYTICS_ALERTS,
   COLLECTION_ANALYTICS_AUDIT_LOGS,
+  COLLECTION_OKF_RELEASES,
+  COLLECTION_OKF_DRAFTS,
+  COLLECTION_OKF_CONCEPTS,
+  COLLECTION_OKF_RELATIONSHIPS,
+  COLLECTION_OKF_SOURCES,
+  COLLECTION_OKF_EVIDENCE_CHUNKS,
+  COLLECTION_OKF_VERIFICATION_RECORDS,
+  COLLECTION_OKF_REVOCATION_EVENTS,
 } from './types';
 
 async function safeCreateIndex(
@@ -119,4 +127,39 @@ export async function ensureDatabaseIndices(db: Db): Promise<void> {
   // 16. Analytics Audit Logs: immutable audit history of report executions and exports
   const analyticsAudit = db.collection(COLLECTION_ANALYTICS_AUDIT_LOGS);
   await safeCreateIndex(analyticsAudit, { tenantId: 1, timestamp: -1 });
+
+  // 17. OKF Releases: immutable tenant/environment-scoped knowledge releases.
+  const okfReleases = db.collection(COLLECTION_OKF_RELEASES);
+  await safeCreateIndex(okfReleases, { tenantId: 1, environmentId: 1, releaseId: 1 }, { unique: true });
+  await safeCreateIndex(okfReleases, { tenantId: 1, environmentId: 1, version: 1 }, { unique: true });
+
+  const okfDrafts = db.collection(COLLECTION_OKF_DRAFTS);
+  await safeCreateIndex(okfDrafts, { tenantId: 1, environmentId: 1 }, { unique: true });
+
+  // 18. Release-scoped normalized knowledge records. No cross-tenant/global lookup paths.
+  const okfConcepts = db.collection(COLLECTION_OKF_CONCEPTS);
+  await safeCreateIndex(okfConcepts, { tenantId: 1, environmentId: 1, releaseId: 1, conceptId: 1 }, { unique: true });
+  await safeCreateIndex(okfConcepts, { tenantId: 1, environmentId: 1, releaseId: 1, name: 1 });
+
+  const okfRelationships = db.collection(COLLECTION_OKF_RELATIONSHIPS);
+  await safeCreateIndex(okfRelationships, { tenantId: 1, environmentId: 1, releaseId: 1, relationshipId: 1 }, { unique: true });
+  await safeCreateIndex(okfRelationships, { tenantId: 1, environmentId: 1, releaseId: 1, from: 1, type: 1 });
+
+  const okfSources = db.collection(COLLECTION_OKF_SOURCES);
+  await safeCreateIndex(okfSources, { tenantId: 1, environmentId: 1, releaseId: 1, sourceId: 1 }, { unique: true });
+
+  const okfEvidenceChunks = db.collection(COLLECTION_OKF_EVIDENCE_CHUNKS);
+  await safeCreateIndex(okfEvidenceChunks, { tenantId: 1, environmentId: 1, releaseId: 1, chunkId: 1 }, { unique: true });
+  await safeCreateIndex(okfEvidenceChunks, { tenantId: 1, environmentId: 1, releaseId: 1, sourceRef: 1 });
+  await safeCreateIndex(okfEvidenceChunks, { tenantId: 1, environmentId: 1, releaseId: 1, conceptIds: 1, claimClasses: 1 });
+
+  const okfVerifications = db.collection(COLLECTION_OKF_VERIFICATION_RECORDS);
+  await safeCreateIndex(okfVerifications, { tenantId: 1, environmentId: 1, releaseId: 1, recordId: 1 }, { unique: true });
+  await safeCreateIndex(okfVerifications, { tenantId: 1, environmentId: 1, releaseId: 1, targetType: 1, targetId: 1 });
+
+  // 19. Append-only revocation events; safety-critical runtime reads the latest head per scope.
+  const okfRevocations = db.collection(COLLECTION_OKF_REVOCATION_EVENTS);
+  await safeCreateIndex(okfRevocations, { eventId: 1 }, { unique: true });
+  await safeCreateIndex(okfRevocations, { tenantId: 1, environmentId: 1, revocationId: 1, createdAt: 1 });
+  await safeCreateIndex(okfRevocations, { tenantId: 1, environmentId: 1, releaseId: 1, expiresAt: 1 });
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { compileGraphToJourneyDefinition } from '../src/journey/compiler';
-import { publishBusinessPack, computePackChecksum, rollbackBusinessPack } from '../src/publisher';
+import { publishBusinessPack, rollbackBusinessPack } from '../src/publisher';
+import { computePackChecksum } from '../src/checksum';
 import { BusinessPackLoader } from '../src/loader';
 import { BusinessPackReleaseSchema } from '../src/schemas/business-pack.schema';
 
@@ -136,6 +137,12 @@ async function runPackControlPlaneTests() {
             },
           };
         }
+        if (colName === 'tenant_cutovers') {
+          return {
+            findOne: async () => null,
+            updateOne: async () => ({ matchedCount: 0, acknowledged: true }),
+          };
+        }
         throw new Error(`Unexpected collection: ${colName}`);
       },
     };
@@ -265,6 +272,7 @@ async function runPackControlPlaneTests() {
         },
       },
       evaluations: [],
+      extensions: {},
     };
 
     const pubResult = await publishBusinessPack(mockDb, validPack, {
@@ -423,6 +431,7 @@ async function runPackControlPlaneTests() {
       capabilities: { version: '1.0.0', toolDefinitions: [], toolBindings: [], stageBindings: [] },
       experience: { version: '1.0.0', theme: { primaryColor: '#000', accentColor: '#fff', fontFamily: 'sans', borderRadius: '4px', customCssVars: {} }, cards: { allowedCardTypes: ['bundle'], defaultCardRenderer: '@journeyax/ui-cards' } },
       evaluations: [],
+      extensions: {},
     };
 
     await publishBusinessPack(mockDb, minimalPack, { session: mockSession });
@@ -468,6 +477,7 @@ async function runPackControlPlaneTests() {
       capabilities: { version: '1.0.0', toolDefinitions: [], toolBindings: [], stageBindings: [] },
       experience: { version: '1.0.0', theme: { primaryColor: '#000', accentColor: '#fff', fontFamily: 'sans', borderRadius: '4px', customCssVars: {} }, cards: { allowedCardTypes: ['bundle'], defaultCardRenderer: '@journeyax/ui-cards' } },
       evaluations: [],
+      extensions: {},
     };
 
     const parsedPack = BusinessPackReleaseSchema.parse(validPackData);
@@ -480,7 +490,10 @@ async function runPackControlPlaneTests() {
         tenantId: 'chk-tenant',
         environmentId: 'production',
         version: '1.0.0',
-        ...validPackData,
+        // Publication persists the schema-parsed canonical content. Keeping the
+        // fixture identical to that boundary prevents the test from claiming a
+        // checksum for one payload while storing a different, pre-default payload.
+        ...parsedPack,
         ...releaseDocOverrides,
       };
 
@@ -637,6 +650,7 @@ async function runPackControlPlaneTests() {
       capabilities: { version: '1.0.0', toolDefinitions: [], toolBindings: [], stageBindings: [] },
       experience: { version: '1.0.0', theme: { primaryColor: '#000', accentColor: '#fff', fontFamily: 'sans', borderRadius: '4px', customCssVars: {} }, cards: { allowedCardTypes: ['bundle'], defaultCardRenderer: '@journeyax/ui-cards' } },
       evaluations: [],
+      extensions: {},
     });
 
     // Publish v1.0.0 then v1.0.1
@@ -654,7 +668,7 @@ async function runPackControlPlaneTests() {
       async () => {
         await rollbackBusinessPack(mockDb, 'rb-tenant', 'production', { targetVersion: '1.0.0' });
       },
-      /checksum mismatch/
+      /checksum_mismatch/
     );
 
     // Restore legitimate checksum

@@ -1,4 +1,5 @@
 import { Db, MongoClient } from 'mongodb';
+import { tryVerifyPersistedBusinessPackRelease } from '@journeyax/business-pack';
 import {
   COLLECTION_TENANT_CUTOVERS,
   COLLECTION_RELEASE_ACTIVATIONS,
@@ -211,16 +212,8 @@ export class ReleaseActivationRepository {
           );
         }
 
-        // 3. Verify version and checksum
-        const actualChecksum = releaseDoc.checksum || releaseDoc.manifest?.checksum;
-        if (actualChecksum !== params.approvedReleaseChecksum) {
-          throw new ReleaseActivationValidationError(
-            `Release checksum mismatch: expected '${actualChecksum}', got '${params.approvedReleaseChecksum}'`,
-            'CHECKSUM_MISMATCH'
-          );
-        }
-
-        // 4. Verify active pointer exists in business_pack_pointers and matches approved release exactly
+        // 3 & 4. Load the authoritative pointer before trusting any release checksum.
+        // The persisted release and pointer are verified together below.
         const pointerDoc = await db.collection(COLLECTION_BUSINESS_PACK_POINTERS).findOne(
           { tenantId: normTenant, environmentId: normEnv },
           { session }
@@ -231,7 +224,8 @@ export class ReleaseActivationRepository {
             'POINTER_NOT_FOUND'
           );
         }
-        const pointerVersion = pointerDoc.activeReleaseVersion || pointerDoc.activeVersion;
+        const pointerVersion =
+          pointerDoc.activeVersionId || pointerDoc.activeReleaseVersion || pointerDoc.activeVersion;
         if (pointerVersion !== params.approvedReleaseVersion) {
           throw new ReleaseActivationValidationError(
             `Pointer activeVersion mismatch: pointer points to version '${pointerVersion}', but approved release version is '${params.approvedReleaseVersion}'`,
@@ -245,10 +239,28 @@ export class ReleaseActivationRepository {
             'POINTER_CHECKSUM_MISSING'
           );
         }
-        if (pointerChecksum !== params.approvedReleaseChecksum) {
+        // Never trust matching checksum strings alone. Recompute the immutable
+        // release checksum and enforce envelope/content identity, semantic
+        // validity, tenant/environment/version scope and pointer agreement.
+        const verification = tryVerifyPersistedBusinessPackRelease(releaseDoc, {
+          tenantId: normTenant,
+          environmentId: normEnv,
+          version: params.approvedReleaseVersion,
+          pointerChecksum,
+        });
+        if (verification.ok === false) {
+          const code = verification.error.reason === 'pointer_checksum_mismatch'
+            ? 'POINTER_CHECKSUM_MISMATCH'
+            : `RELEASE_INTEGRITY_${verification.error.reason.toUpperCase()}`;
           throw new ReleaseActivationValidationError(
-            `Pointer checksum mismatch: pointer checksum '${pointerChecksum}' does not match approved release checksum '${params.approvedReleaseChecksum}'`,
-            'POINTER_CHECKSUM_MISMATCH'
+            `Referenced Business Pack release v${params.approvedReleaseVersion} failed integrity verification: ${verification.error.message}`,
+            code
+          );
+        }
+        if (verification.release.checksum !== params.approvedReleaseChecksum) {
+          throw new ReleaseActivationValidationError(
+            `Release checksum mismatch: verified '${verification.release.checksum}', got '${params.approvedReleaseChecksum}'`,
+            'CHECKSUM_MISMATCH'
           );
         }
 

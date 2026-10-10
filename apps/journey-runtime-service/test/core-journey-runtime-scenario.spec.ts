@@ -168,6 +168,7 @@ export class DeterministicModelGatewayAdapter extends ModelGateway {
 
 // ── Canonical Business Pack Definition with at least TWO Journeys ──────────
 const canonicalPublishedPackData = {
+  routingPolicy: { defaultJourneyId: 'journey_fleet_maintenance', fallbackOnCatalogSearch: false },
   manifest: {
     packId: 'pack-air-mobility-v2',
     name: 'Autonomous Air Mobility Logistics',
@@ -475,6 +476,7 @@ const canonicalPublishedPackData = {
     },
   },
   evaluations: [],
+  extensions: {},
 };
 
 // ── Executable Behavioral Scenario Test ────────────────────────────────────
@@ -1300,6 +1302,7 @@ async function runCoreJourneyRuntimeScenario() {
   // 8i. Negative test: inject workspace/outbox commit failure and prove client receives NO success completion
   console.log('   8i: testing persistence commit failure event ordering (client receives NO success completion/done)...');
   const failingWorkspaceRepo: any = {
+    load: async (...args: any[]) => workspaceRepo.load(...args),
     getOrCreate: async (...args: any[]) => workspaceRepo.getOrCreate(...args),
     get: async (...args: any[]) => workspaceRepo.get(...args),
     save: async () => {

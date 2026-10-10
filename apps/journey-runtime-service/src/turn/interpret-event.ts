@@ -81,6 +81,27 @@ export function extractStructuredJson<T = any>(content: string): T {
   throw new Error(`Failed to extract valid JSON from model response: ${trimmed.slice(0, 100)}...`);
 }
 
+/**
+ * Generic compound dimension expression (e.g. "5x3", "2.4 x 1.8 m", "3 by 4 by 2"): two or three positive
+ * numbers joined by x / × / * / by, with an optional trailing length unit. Domain-neutral grammar only.
+ */
+const COMPOUND_DIMENSION_UNIT = '(?:mm|cm|m|metres?|meters?|ft|feet|in|inches)';
+const COMPOUND_DIMENSION_SEARCH = new RegExp(
+  `(\\d+(?:\\.\\d+)?(?:\\s*(?:x|×|\\*|by)\\s*\\d+(?:\\.\\d+)?){1,2})(?:\\s*(${COMPOUND_DIMENSION_UNIT})\\b)?`,
+  'i'
+);
+const COMPOUND_DIMENSION_VALUE = new RegExp(
+  `^\\d+(?:\\.\\d+)?(?:\\s*(?:x|×|\\*|by)\\s*\\d+(?:\\.\\d+)?){1,2}\\s*${COMPOUND_DIMENSION_UNIT}?$`,
+  'i'
+);
+
+function isCompoundDimensionValue(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!COMPOUND_DIMENSION_VALUE.test(trimmed)) return false;
+  const numbers = trimmed.match(/\d+(?:\.\d+)?/g) || [];
+  return numbers.length >= 2 && numbers.every((n) => parseFloat(n) > 0);
+}
+
 export class TurnInterpreter {
   constructor(private readonly modelGateway?: ModelGateway) {}
 
@@ -135,7 +156,7 @@ export class TurnInterpreter {
           `2. Do not restart global intent discovery unless the customer message explicitly changes the subject.\n` +
           `3. If existingFacts contains room_type, room, or project_goal, NEVER ask which room or project the customer is modifying or change existing facts unless explicitly requested.\n` +
           `4. For ambiguous measurements (e.g. '100 miters' when dimensions are open), do NOT store extreme or ambiguous values (e.g. do not store 100 meters as room dimensions); omit them or capture clarification needed.\n` +
-          `5. Only extract candidateFacts that the customer explicitly specified or answered. Do NOT infer categorical facts (e.g. project_mode, cabinetry_storage, appliance_arrangement) from casual phrasing (e.g. 'I want to build a laundry cabinet' indicates the overall project goal, NOT project_mode='New build').\n` +
+          `5. Only extract candidateFacts that the customer explicitly specified or answered. Do NOT infer a categorical fact merely because the customer mentioned a related product, service, or goal.\n` +
           `6. When the customer merely mentions a slot, question, or topic name without answering it (e.g. 'room soize', 'room size', 'dimensions', 'measurements'), do NOT infer an answer or select an option (like 'Need help measuring'). Omit candidateFacts for that slot.\n` +
           `7. Output only JSON matching: { "intent": string, "candidateFacts": { [key: string]: { "value": any, "confidence": number } } }`;
 
@@ -527,12 +548,78 @@ export class TurnInterpreter {
             }
           }
         }
+        if (Array.isArray(s.conditionalFacts)) {
+          for (const grp of s.conditionalFacts) {
+            if (Array.isArray(grp.facts)) {
+              for (const f of grp.facts) {
+                const key = typeof f === 'string' ? f : (f.factKey || f.key || f.name);
+                if (key) {
+                  declaredFactKeys.add(key);
+                  if (typeof f === 'object' && (f.source === 'capability' || f.isConfirmation)) {
+                    capabilitySourcedFacts.add(key);
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
 
     // ── SCHEMA VALIDATION OF CANDIDATE FACTS BEFORE WORKSPACE MUTATION ──
     const validatedCandidateFacts: FactsMap = {};
     const slotQuestions = (release.vocabulary as any)?.slotQuestions || {};
+
+    // 2d. Deterministic compound-dimension extraction for declared measurement facts.
+    //     Journey/stage/registry driven: the target fact is chosen from the facts the active journey declares
+    //     (preferring the current stage), never from domain wording. Ambiguity (several candidate measurement
+    //     facts) extracts nothing rather than guessing, so the fact is asked for explicitly.
+    const compoundDimensionMatch = rawMessage.match(COMPOUND_DIMENSION_SEARCH);
+    if (compoundDimensionMatch) {
+      const registryFacts: Record<string, any> = (release as any).factRegistry?.facts || {};
+      const isMeasurementKey = (key: string): boolean => {
+        const entityDef: any = entities.find(
+          (e: any) => e.entityName === key || e.entityId === key || e.name === key
+        );
+        const attrDef: any = entityDef?.attributes?.find((a: any) => a.name === key);
+        return (
+          key.includes('dimension') ||
+          key.includes('size') ||
+          entityDef?.type === 'measurement' ||
+          attrDef?.type === 'measurement' ||
+          registryFacts[key]?.type === 'measurement'
+        );
+      };
+
+      const stageFactKeys = new Set<string>();
+      for (const activeJourney of activeJourneys) {
+        const stagesList: any[] = Array.isArray(activeJourney.stages)
+          ? activeJourney.stages
+          : typeof activeJourney.stages === 'object' && activeJourney.stages
+          ? Object.entries(activeJourney.stages).map(([stageId, st]: [string, any]) => ({ stageId, ...(st || {}) }))
+          : [];
+        const currentStage = stagesList.find((st) => st.stageId === currentStageId) || stagesList.find((st) => st.stageId === (activeJourney as any).initialStage);
+        for (const list of [currentStage?.requiredFacts, currentStage?.optionalFacts]) {
+          if (!Array.isArray(list)) continue;
+          for (const f of list) {
+            const key = typeof f === 'string' ? f : (f.factKey || f.key || f.name);
+            if (key) stageFactKeys.add(key);
+          }
+        }
+      }
+
+      const measurementKeys = [...declaredFactKeys].filter((k) => isMeasurementKey(k) && !rawCandidateFacts[k]);
+      const stageMeasurementKeys = measurementKeys.filter((k) => stageFactKeys.has(k));
+      const targets = stageMeasurementKeys.length > 0 ? stageMeasurementKeys : measurementKeys;
+      if (targets.length === 1) {
+        rawCandidateFacts[targets[0]] = {
+          value: compoundDimensionMatch[0].trim(),
+          source: 'customer',
+          confidence: 0.9,
+          extractedAt: new Date().toISOString(),
+        };
+      }
+    }
 
     for (const [factKey, factEntry] of Object.entries(rawCandidateFacts)) {
       // 1. Drop unknown keys not declared by current stage, journey, vocabulary, or entities
@@ -595,14 +682,17 @@ export class TurnInterpreter {
             : String(val);
         const lowerRaw = rawStr.toLowerCase().trim();
 
-        // Reject ambiguous or misspelled units like "100 miters"
+        // Reject unrecognised measurement-unit spellings. Plausibility limits
+        // belong to the published entity/fact schema, not the platform runtime.
         if (
           lowerRaw.includes('miter') ||
           lowerRaw.includes('mitre') ||
-          lowerRaw.includes('mtre') ||
-          (lowerRaw.includes('meter') && lowerRaw.includes('100'))
+          lowerRaw.includes('mtre')
         ) {
           isValid = false;
+        } else if (isCompoundDimensionValue(lowerRaw)) {
+          // Compound dimension expression (e.g. WxH[xD] [unit]) is a valid measurement; preserved verbatim.
+          isValid = true;
         } else {
           const m = lowerRaw.match(
             /^([0-9.]+)\s*(mm|millimetres?|millimeters?|cm|centimetres?|centimeters?|m|metres?|meters?|ft|feet|in|inches)?$/i
@@ -614,11 +704,7 @@ export class TurnInterpreter {
               : typeof val === 'object' && (val as any)?.unit
               ? String((val as any).unit).toLowerCase()
               : '';
-            if ((unit === 'm' || unit.startsWith('meter') || unit.startsWith('metre')) && num > 25) {
-              isValid = false; // Laundry or residential room dimensions cannot realistically exceed 25m
-            } else if (unit === '' && num > 25 && num < 500) {
-              isValid = false; // Ambiguous number without unit
-            } else if (!isNaN(num) && num > 0) {
+            if (!isNaN(num) && num > 0) {
               let normMm = num;
               let canonUnit = unit || 'mm';
               if (canonUnit === 'm' || canonUnit.startsWith('meter') || canonUnit.startsWith('metre')) {

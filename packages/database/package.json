@@ -7,9 +7,10 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsx test/notifications.spec.ts"
+    "test": "tsx test/notifications.spec.ts && tsx test/release-activation.spec.ts"
   },
   "dependencies": {
+    "@journeyax/business-pack": "*",
     "@journeyax/capability-sdk": "*",
     "@journeyax/journey-core": "*",
     "mongodb": "^7.4.0"

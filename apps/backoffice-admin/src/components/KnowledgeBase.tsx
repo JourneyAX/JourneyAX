@@ -11,6 +11,7 @@ import { Database, RefreshCw, Sparkles, FileText, Layers, Wrench, Trash2, Globe,
 import { projectApi, type Project } from "../lib/api";
 import { authedFetch } from "../lib/authed-fetch";
 import { IngestionSources } from "./IngestionSources";
+import { OkfStudio } from "./OkfStudio";
 
 interface Stats {
   brand: string;
@@ -170,6 +171,7 @@ export function KnowledgeBase({ project }: { project: Project }) {
 
   return (
     <>
+      <OkfStudio project={project} />
       <IngestionSources project={project} onSaved={load} />
       <div className="ctop">
         <div>

@@ -22,6 +22,14 @@ export const COLLECTION_ANALYTICS_EVENTS = 'analytics_events';
 export const COLLECTION_CUSTOM_REPORTS = 'custom_reports';
 export const COLLECTION_ANALYTICS_ALERTS = 'analytics_alerts';
 export const COLLECTION_ANALYTICS_AUDIT_LOGS = 'analytics_audit_logs';
+export const COLLECTION_OKF_RELEASES = 'okf_releases';
+export const COLLECTION_OKF_DRAFTS = 'okf_drafts';
+export const COLLECTION_OKF_CONCEPTS = 'okf_concepts';
+export const COLLECTION_OKF_RELATIONSHIPS = 'okf_relationships';
+export const COLLECTION_OKF_SOURCES = 'okf_sources';
+export const COLLECTION_OKF_EVIDENCE_CHUNKS = 'okf_evidence_chunks';
+export const COLLECTION_OKF_VERIFICATION_RECORDS = 'okf_verification_records';
+export const COLLECTION_OKF_REVOCATION_EVENTS = 'okf_revocation_events';
 
 export interface BusinessPackReleaseRecord {
   _id?: any;
@@ -54,6 +62,39 @@ export interface BusinessPackPointerRecord {
   revision: number;
   promotedAt: Date;
   promotedBy: string;
+}
+
+export interface OkfReleaseRecord {
+  _id?: any;
+  releaseId: string;
+  tenantId: string;
+  environmentId: EnvironmentId;
+  version: string;
+  checksum: string;
+  status: 'building' | 'ready' | 'failed' | 'retired';
+  artifactUri?: string;
+  content: Record<string, any>;
+  publishedAt: Date;
+  publishedBy: string;
+  notes?: string;
+}
+
+export interface OkfRevocationEventRecord {
+  _id?: any;
+  eventId: string;
+  revocationId: string;
+  eventType: 'created' | 'lifted' | 'expired';
+  tenantId: string;
+  environmentId: EnvironmentId;
+  releaseId?: string;
+  conceptIds: string[];
+  cascade: 'none' | 'descendants';
+  effect: { suppressClaims: boolean; suppressRetrieval: boolean };
+  reason: string;
+  createdBy: string;
+  createdAt: Date;
+  expiresAt: Date;
+  correctedReleaseId?: string;
 }
 
 export type CustomerWorkspaceRecord = WorkspaceState;

@@ -13,7 +13,7 @@ import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 
 export default function CartDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { state, bom, totals, handleApprove } = useJourney();
+  const { state, bom, totals, handleApprove, removeFromCart, setQuantity } = useJourney();
   const cfg = useStorefrontConfig();
   const isCart = (cfg as any).commerceMode === 'cart';
   const ordering = !!state.ordering;
@@ -29,7 +29,7 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
 
   const removeLine = (sku?: string) => {
     if (!sku) return;
-    (window as any).__handleBuildQuote?.(`Remove SKU ${sku} from my ${isCart ? 'bag' : 'quote'}.`);
+    removeFromCart(sku);
   };
 
   return (
@@ -43,6 +43,11 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
           </button>
         </div>
         <div className="cart-drawer__lines">
+          {state.orderError && (
+            <div role="alert" style={{ margin: '0 0 12px', color: 'var(--danger, #b00020)', fontSize: 13 }}>
+              {state.orderError}
+            </div>
+          )}
           {bom.length === 0 ? (
             <div className="cart-drawer__empty">Nothing here yet — ask for a recommendation and I'll add it as you go.</div>
           ) : (
@@ -55,9 +60,26 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
                   <div className="cart-drawer__name">{line.name}</div>
                   <div className="cart-drawer__meta">{money(line.price)}{(line.quantity ?? 1) > 1 ? ` × ${line.quantity}` : ''}</div>
                   {line.stock?.label && <div className="cart-drawer__stock" style={{ color: line.stock.color }}>{line.stock.label}</div>}
-                  {!line.required && (
-                    <button type="button" className="cart-drawer__remove" onClick={() => removeLine(line.sku)}>Remove</button>
-                  )}
+                  <div className="cart-drawer__actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--border, #cbd5e1)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        style={{ padding: '2px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}
+                        onClick={() => line.sku && setQuantity(line.sku, Math.max(0, (line.quantity ?? 1) - 1))}
+                        aria-label="Decrease quantity"
+                      >−</button>
+                      <span style={{ padding: '2px 6px', fontSize: '13px', minWidth: '20px', textAlign: 'center', fontWeight: 500 }}>{line.quantity ?? 1}</span>
+                      <button
+                        type="button"
+                        style={{ padding: '2px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}
+                        onClick={() => line.sku && setQuantity(line.sku, (line.quantity ?? 1) + 1)}
+                        aria-label="Increase quantity"
+                      >+</button>
+                    </div>
+                    {!line.required && (
+                      <button type="button" className="cart-drawer__remove" onClick={() => removeLine(line.sku)}>Remove</button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))

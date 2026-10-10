@@ -6,6 +6,15 @@ import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-searc
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { OutboxWorker } from '../src/kernel/outbox.worker';
 import { OutboxWorkerService } from '../src/kernel/outbox-worker.service';
+import { createSanitizedTestPack } from '../../../test/fixtures/business-packs/test-pack-factory';
+
+/**
+ * Explicit in-memory offline pack sources for the migration inventory. The inventory never reads
+ * the legacy `packs/` folder and never uses the runtime BusinessPackLoader.
+ */
+function offlineInventoryPackSources() {
+  return [{ dirName: 'royalcyber', pack: createSanitizedTestPack({ tenantId: 'royalcyber' }) }];
+}
 
 async function runArchitectureEnforcementTests() {
   console.log('\n🔒 Running Connector Architecture Boundary & Enforcement Tests (PR 9)...\n');
@@ -299,7 +308,7 @@ async function runArchitectureEnforcementTests() {
   // ── Test 6: Truthful migration inventory classifies synthetic fixtures and flags blockers ──
   await test('6. Truthful migration inventory classifies synthetic fixtures and flags mandatory blockers', async () => {
     const { runTenantConnectorInventory } = await import('../../../scripts/inventory-tenant-connectors');
-    const auditResults = await runTenantConnectorInventory({ writeReport: false });
+    const auditResults = await runTenantConnectorInventory({ writeReport: false, packSources: offlineInventoryPackSources() });
 
     assert.ok(auditResults.length > 0, 'Audit must produce tenant results');
 
@@ -328,7 +337,7 @@ async function runArchitectureEnforcementTests() {
   // ── Test 7: Inventory prevents false zero-blocker claims when cutover records are missing ──
   await test('7. Inventory prevents false zero-blocker claims when cutover records are missing', async () => {
     const { runTenantConnectorInventory } = await import('../../../scripts/inventory-tenant-connectors');
-    const auditResults = await runTenantConnectorInventory({ writeReport: false });
+    const auditResults = await runTenantConnectorInventory({ writeReport: false, packSources: offlineInventoryPackSources() });
 
     for (const res of auditResults) {
       assert.ok(
