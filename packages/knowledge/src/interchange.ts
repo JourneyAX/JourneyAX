@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { compareKnowledgeKeys, computeKnowledgeChecksum, computeKnowledgeEntityHash, stableKnowledgeJson } from './checksum';
-import { ConceptSchema, ConceptTypeSchema, EvidenceChunkSchema, FactDefinitionSchema, OkfReleaseContentSchema, RelationshipSchema, SourceSchema, type OkfReleaseContent, type OkfReleaseEnvelope } from './contracts';
+import { OkfTenantPolicySchema } from './policy';
+import { AcceptanceScenarioSchema, ConceptSchema, ConceptTypeSchema, EvidenceChunkSchema, FactDefinitionSchema, OkfReleaseContentSchema, RelationshipSchema, SourceSchema, type OkfReleaseContent, type OkfReleaseEnvelope } from './contracts';
 import { type OkfBundleFiles, readOkfZip, safeOkfPath, validateOkfFiles } from './okf-archive';
 
 // This dependency is deliberately used only at the interchange boundary.
@@ -138,6 +139,8 @@ export function exportOkfBundle(input: OkfReleaseEnvelope | ImportedOkfBundle): 
     verifications: content.verifications,
     index: content.index,
     evaluation: content.evaluation,
+    ...(content.policy ? { policy: content.policy } : {}),
+    ...(content.acceptanceScenarios ? { acceptanceScenarios: content.acceptanceScenarios } : {}),
     ...(content.extensions ? { extensions: content.extensions } : {}),
   };
   files['references/manifest.json'] = encoder.encode(`${stableKnowledgeJson(manifest)}\n`);
@@ -359,10 +362,22 @@ export function importOkfBundle(input: Uint8Array | OkfBundleFiles, tenantId: st
       if (!parsed.success) { diagnostics.push(`Invalid evidence metadata: ${contentPath}`); return []; }
       return [parsed.data];
     }) : [];
+  // Policy and tenant scenarios are imported as data only when they validate;
+  // otherwise they are dropped with a diagnostic, never half-applied.
+  const importedPolicy = ownManifest?.policy !== undefined ? OkfTenantPolicySchema.safeParse(ownManifest.policy) : undefined;
+  if (importedPolicy && !importedPolicy.success) diagnostics.push('Imported tenant policy is invalid and was ignored');
+  const importedScenarios = Array.isArray(ownManifest?.acceptanceScenarios)
+    ? ownManifest.acceptanceScenarios.flatMap((value: unknown) => {
+      const parsed = AcceptanceScenarioSchema.safeParse(value);
+      if (!parsed.success) diagnostics.push('An imported acceptance scenario is invalid and was ignored');
+      return parsed.success ? [parsed.data] : [];
+    }) : [];
   const empty = computeKnowledgeChecksum([]);
   const draft = OkfReleaseContentSchema.parse({
     schemaVersion: '1.0.0', modelId: typeof ownManifest?.modelId === 'string' ? ownManifest.modelId : `imported-${tenantId}`,
     factRegistry, concepts, relationships, sources, evidenceChunks, verifications: [],
+    ...(importedPolicy?.success ? { policy: importedPolicy.data } : {}),
+    ...(importedScenarios.length ? { acceptanceScenarios: importedScenarios } : {}),
     index: { embeddingModel: 'unbuilt', embeddingModelVersion: 'unbuilt', chunkingVersion: 'unbuilt', indexChecksum: empty, builtAt: '1970-01-01T00:00:00.000Z', sourceChecksum: empty },
     evaluation: { reportId: 'not-evaluated', passed: false, evaluatedAt: '1970-01-01T00:00:00.000Z', scenarioCount: 0, failedScenarioCount: 0 },
   });

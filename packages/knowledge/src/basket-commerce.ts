@@ -1,5 +1,6 @@
 import type { OkfReleaseContent, OkfRevocationEvent } from './contracts';
 import { resolveOkfGate, type OkfGateDecision } from './gate';
+import { renderOkfMessage, resolveOkfPolicy } from './policy';
 
 type CommercePolicy = OkfGateDecision['commerce'];
 
@@ -31,6 +32,8 @@ export interface OkfBasketCommerceDecision {
   commerce: CommercePolicy;
   warnings: string[];
   reasonCodes: string[];
+  /** Resolved message templates for runtime-level wording. */
+  messages: Record<string, string>;
 }
 
 const BLOCKED: CommercePolicy = { addToCart: 'blocked', checkout: 'blocked' };
@@ -60,8 +63,9 @@ function categoryIds(product: OkfBasketCatalogProduct): Set<string> {
  * The current conversation's last matched concept is deliberately irrelevant.
  */
 export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfBasketCommerceInput): OkfBasketCommerceDecision {
+  const policyMessages = resolveOkfPolicy(content.policy).messages;
   if (!Array.isArray(input.items) || input.items.length === 0 || input.items.length > 100) {
-    return { commerce: { ...BLOCKED }, warnings: [], reasonCodes: ['invalid_basket'] };
+    return { commerce: { ...BLOCKED }, warnings: [], reasonCodes: ['invalid_basket'], messages: policyMessages };
   }
 
   let policy: CommercePolicy = { addToCart: 'allowed', checkout: 'allowed' };
@@ -69,7 +73,7 @@ export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfB
   const reasonCodes = new Set<string>();
   for (const item of input.items) {
     const sku = typeof item.sku === 'string' ? item.sku.trim() : '';
-    if (!sku) return { commerce: { ...BLOCKED }, warnings: [], reasonCodes: ['invalid_basket_sku'] };
+    if (!sku) return { commerce: { ...BLOCKED }, warnings: [], reasonCodes: ['invalid_basket_sku'], messages: policyMessages };
     const products = input.products.filter((product) =>
       (product.projectId === input.tenantId || product.tenantId === input.tenantId) &&
       (!product.projectId || product.projectId === input.tenantId) &&
@@ -111,16 +115,16 @@ export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfB
       });
       policy = strictest(policy, gate.commerce);
       if (gate.commerce.addToCart === 'allowed_with_warning') {
-        warnings.add(`Merchant review is required for ${concept.name} before purchase.`);
+        warnings.add(renderOkfMessage(policyMessages, 'basket_warning_merchant_review', { conceptName: concept.name }));
       }
       if (gate.commerce.checkout === 'requires_compatibility_resolution') {
-        warnings.add(`Compatibility must be confirmed for ${concept.name} before checkout.`);
+        warnings.add(renderOkfMessage(policyMessages, 'basket_warning_compatibility', { conceptName: concept.name }));
       }
       if (gate.commerce.checkout === 'requires_professional_confirmation') {
-        warnings.add(`A qualified professional must confirm ${concept.name} before checkout.`);
+        warnings.add(renderOkfMessage(policyMessages, 'basket_warning_professional', { conceptName: concept.name }));
       }
       for (const code of gate.trace.reasonCodes) if (code === 'concept_revoked') reasonCodes.add(code);
     }
   }
-  return { commerce: policy, warnings: [...warnings], reasonCodes: [...reasonCodes] };
+  return { commerce: policy, warnings: [...warnings], reasonCodes: [...reasonCodes], messages: policyMessages };
 }

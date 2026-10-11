@@ -1,0 +1,273 @@
+{
+  "policyVersion": "1.0.0",
+  "locale": "en",
+  "matching": {
+    "exact": 1,
+    "phrase": 0.9,
+    "tokens": 0.75,
+    "minimum": 0.75,
+    "wildcardMaxTokens": 4,
+    "minPhraseLength": 3
+  },
+  "intentGroups": {
+    "operational": [
+      "order_status",
+      "track_order",
+      "account",
+      "account_help",
+      "return",
+      "returns",
+      "refund"
+    ],
+    "evidence": [
+      "warranty",
+      "installation",
+      "care",
+      "care_instructions"
+    ],
+    "problem": [
+      "problem",
+      "fault",
+      "leak",
+      "repair",
+      "troubleshoot",
+      "safety"
+    ],
+    "service": [
+      "service_request"
+    ],
+    "control": [
+      "force_show",
+      "topic_switch"
+    ]
+  },
+  "intents": [
+    {
+      "intent": "order_status",
+      "phrases": [
+        "where|track|status * order",
+        "my order"
+      ]
+    },
+    {
+      "intent": "returns",
+      "phrases": [
+        "return*",
+        "refund*"
+      ]
+    },
+    {
+      "intent": "warranty",
+      "phrases": [
+        "warrant*"
+      ]
+    },
+    {
+      "intent": "installation",
+      "phrases": [
+        "install*",
+        "fit this"
+      ]
+    },
+    {
+      "intent": "care",
+      "phrases": [
+        "care",
+        "care instructions",
+        "clean safely",
+        "maintain*",
+        "maintenance"
+      ]
+    },
+    {
+      "intent": "problem",
+      "phrases": [
+        "my|our|the * is|are|has|have|keep|keeps leaking|broken|faulty|mouldy|moldy|sparking|smoking|burning",
+        "water under|around|behind|through my|our|the",
+        "have|got a? problem|fault|leak|damage",
+        "there s|is a? problem|fault|leak|damage",
+        "help with a? problem|fault|leak|damage",
+        "help me with a? problem|fault|leak|damage",
+        "fix|repair|troubleshoot my|our|the *",
+        "mould|moldy|smoke|sparking on|near|under|around my|our|the|a|an"
+      ],
+      "suppressedBy": [
+        "no|not a? problem|fault|leak|damage"
+      ]
+    },
+    {
+      "intent": "service_request",
+      "phrases": [
+        "quote*",
+        "book",
+        "appointment*",
+        "measure service"
+      ]
+    },
+    {
+      "intent": "force_show",
+      "phrases": [
+        "just show me",
+        "show me the? items|products|options",
+        "skip the questions"
+      ]
+    },
+    {
+      "intent": "topic_switch",
+      "phrases": [
+        "^actually",
+        "^instead",
+        "^forget that",
+        "^new topic"
+      ]
+    }
+  ],
+  "sku": {
+    "explicitPrefixes": [
+      "sku"
+    ],
+    "unlabelledMinLength": 5,
+    "unlabelledRequireLetterAndDigit": true,
+    "numericMinLength": 5,
+    "measurementUnits": [
+      "mm",
+      "cm",
+      "m",
+      "kg",
+      "g",
+      "l",
+      "ml",
+      "m2",
+      "m3"
+    ],
+    "durationWords": [
+      "year",
+      "yr",
+      "month",
+      "mo",
+      "week",
+      "day"
+    ]
+  },
+  "verifierRoles": [
+    {
+      "roleId": "trade_expert",
+      "label": "Trade expert",
+      "claimClasses": [
+        "compatibility",
+        "requirement",
+        "substitution",
+        "installation_step",
+        "safety_instruction",
+        "care_safety"
+      ]
+    },
+    {
+      "roleId": "product_manager",
+      "label": "Product manager",
+      "claimClasses": [
+        "compatibility",
+        "requirement",
+        "substitution",
+        "installation_step",
+        "care_safety",
+        "warranty"
+      ]
+    },
+    {
+      "roleId": "compliance_owner",
+      "label": "Compliance owner",
+      "claimClasses": [
+        "legal_requirement",
+        "safety_instruction",
+        "installation_step",
+        "care_safety",
+        "warranty",
+        "compatibility",
+        "requirement"
+      ]
+    },
+    {
+      "roleId": "merchant_policy_owner",
+      "label": "Merchant policy owner",
+      "claimClasses": [
+        "warranty"
+      ]
+    }
+  ],
+  "claimEvidence": {
+    "legal_requirement": [
+      "regulation"
+    ],
+    "warranty": [
+      "manufacturer_document",
+      "merchant_policy"
+    ],
+    "compatibility": [
+      "manufacturer_document",
+      "merchant_policy",
+      "regulation",
+      "trade_expert"
+    ],
+    "requirement": [
+      "manufacturer_document",
+      "merchant_policy",
+      "regulation",
+      "trade_expert"
+    ],
+    "substitution": [
+      "manufacturer_document",
+      "merchant_policy",
+      "regulation",
+      "trade_expert"
+    ]
+  },
+  "evidenceClaims": [
+    {
+      "intent": "warranty",
+      "claimClass": "warranty"
+    },
+    {
+      "intent": "installation",
+      "claimClass": "installation_step"
+    },
+    {
+      "intent": "care",
+      "claimClass": "care_safety"
+    },
+    {
+      "intent": "care_instructions",
+      "claimClass": "care_safety"
+    },
+    {
+      "lens": "care",
+      "claimClass": "care_safety"
+    }
+  ],
+  "messages": {
+    "legacy_catalog_only": "Knowledge guidance is unavailable; only live catalog facts may be shown.",
+    "relationship_unverified": "Relationship '{relationshipId}' is {status}; compatibility, requirement, safety, and equivalence claims are not permitted.",
+    "guidance_temporarily_unavailable": "Guidance for this topic is temporarily unavailable. Please contact a qualified professional.",
+    "safety_guidance_unavailable": "Verified safety guidance is unavailable. Escalate to a qualified professional.",
+    "evidence_unavailable": "No verified source is linked to this concept in the pinned knowledge release.",
+    "compatibility_unverified": "Compatibility must be verified before checkout.",
+    "safety_heading": "Safety first",
+    "knowledge_unavailable": "Verified business guidance is temporarily unavailable. Please try again or contact a specialist.",
+    "safety_unavailable_customer": "Verified safety guidance is temporarily unavailable. Please contact a qualified professional.",
+    "safety_guidance_reason": "Verified safety guidance must be followed before product selection or commerce can continue.",
+    "cart_blocked": "This item cannot be added to cart until the merchant knowledge policy requirements are resolved.",
+    "checkout_blocked": "Checkout is blocked by the merchant knowledge policy.",
+    "checkout_requires_professional": "A qualified professional must confirm this selection before checkout.",
+    "checkout_requires_compatibility": "Product compatibility must be confirmed before checkout.",
+    "basket_policy_unavailable": "The merchant knowledge policy for this basket could not be confirmed.",
+    "default_goal": "Answer only from verified business information.",
+    "default_journey_label": "General assistance",
+    "safety_products_paused": "Product recommendations and commerce are paused until this safety issue is resolved.",
+    "verified_source_label": "Verified source: {sources}",
+    "safety_render_failed": "Verified safety guidance could not be rendered.",
+    "cart_verification_unavailable": "Authoritative cart verification is unavailable for this commerce binding.",
+    "basket_warning_merchant_review": "Merchant review is required for {conceptName} before purchase.",
+    "basket_warning_compatibility": "Compatibility must be confirmed for {conceptName} before checkout.",
+    "basket_warning_professional": "A qualified professional must confirm {conceptName} before checkout."
+  }
+}

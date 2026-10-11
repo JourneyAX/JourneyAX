@@ -6,6 +6,7 @@ import {
   type OkfVerificationRecord,
 } from './contracts';
 import { computeKnowledgeEntityHash } from './checksum';
+import { resolveOkfPolicy, validateOkfTenantPolicy, type ResolvedOkfPolicy } from './policy';
 
 export interface OkfValidationIssue {
   code: string;
@@ -68,23 +69,17 @@ function conditionDepth(value: any): number {
 function verificationIsQualified(
   verification: OkfVerificationRecord | undefined,
   sourceKinds: Set<string>,
-  claimClasses: string[]
+  claimClasses: string[],
+  policy: ResolvedOkfPolicy
 ): boolean {
   if (!verification || verification.status !== 'verified') return true;
-  const role = (verification.verifierRole || '').toLowerCase();
-  if (claimClasses.includes('legal_requirement')) {
-    return sourceKinds.has('regulation') && /compliance|legal|regulat/.test(role);
-  }
-  if (claimClasses.includes('warranty')) {
-    return (sourceKinds.has('manufacturer_document') || sourceKinds.has('merchant_policy')) &&
-      /product|warrant|merchant|policy|compliance|legal/.test(role);
-  }
-  if (claimClasses.some((c) => ['compatibility', 'requirement', 'substitution'].includes(c))) {
-    return [...sourceKinds].some((kind) => ['manufacturer_document', 'merchant_policy', 'regulation', 'trade_expert'].includes(kind)) &&
-      /trade|plumb|electric|builder|product|technical|merchant|compliance/.test(role);
-  }
-  if (claimClasses.some((c) => ['safety_instruction', 'care_safety', 'installation_step'].includes(c))) {
-    return /trade|plumb|electric|builder|product|safety|compliance/.test(role);
+  const role = policy.verifierRoles.get((verification.verifierRole || '').trim().toLowerCase());
+  const governed = claimClasses.filter((claim) => claim !== 'suggestion' && claim !== 'catalog_fact');
+  if (!role) return governed.length === 0;
+  for (const claim of governed) {
+    if (!role.claimClasses.includes(claim as any)) return false;
+    const requiredKinds = policy.claimEvidence[claim];
+    if (requiredKinds && !requiredKinds.some((kind) => sourceKinds.has(kind))) return false;
   }
   return true;
 }
@@ -117,6 +112,7 @@ function validateOkfContent(input: unknown, tenantId: string, publication: boole
   const sources = new Map(content.sources.map((source) => [source.sourceId, source]));
   const verifications = new Map(content.verifications.map((record) => [record.recordId, record]));
   const facts = new Set(content.factRegistry.map((fact) => fact.factKey));
+  const policy = resolveOkfPolicy(content.policy);
 
   const assertUnique = (values: string[], path: string) => {
     const seen = new Set<string>();
@@ -177,7 +173,7 @@ function validateOkfContent(input: unknown, tenantId: string, publication: boole
         }
         const sourceKinds = new Set(verification.sourceRefs.map((id) => sources.get(id)?.kind).filter(Boolean) as string[]);
         if ((concept.riskClass === 'safety_critical' || concept.lens === 'problem') &&
-          !verificationIsQualified(verification, sourceKinds, ['safety_instruction'])) {
+          !verificationIsQualified(verification, sourceKinds, ['safety_instruction'], policy)) {
           issues.push({ code: 'unqualified_verification', path: concept.conceptId, message: 'A safety/problem concept requires qualified evidence and a qualified verifier role' });
         }
       }
@@ -217,7 +213,7 @@ function validateOkfContent(input: unknown, tenantId: string, publication: boole
       }
     }
     const sourceKinds = new Set(relationship.sourceRefs.map((id) => sources.get(id)?.kind).filter(Boolean) as string[]);
-    if (!verificationIsQualified(verification, sourceKinds, relationship.claimClasses)) {
+    if (!verificationIsQualified(verification, sourceKinds, relationship.claimClasses, policy)) {
       issues.push({ code: 'unqualified_verification', path: relationship.relationshipId, message: 'Verifier role or source type is insufficient for the claim class' });
     }
     if (verification?.status === 'verified' && relationship.sourceRefs.some((id) => ['crawl', 'llm_draft', 'catalog_feed'].includes(sources.get(id)?.kind || '')) && !relationship.sourceRefs.some((id) => ['manufacturer_document', 'merchant_policy', 'regulation', 'trade_expert'].includes(sources.get(id)?.kind || ''))) {
@@ -261,6 +257,33 @@ function validateOkfContent(input: unknown, tenantId: string, publication: boole
   };
   if ([...concepts.keys()].some(walk)) {
     issues.push({ code: 'hierarchy_cycle', path: 'relationships', message: 'child_of hierarchy must be acyclic' });
+  }
+
+  // Tenant policy: lexicon phrases must compile, message keys must be known.
+  if (content.policy) {
+    for (const problem of validateOkfTenantPolicy(content.policy)) {
+      issues.push({ code: 'policy_invalid', path: 'policy', message: problem });
+    }
+  }
+
+  // Tenant acceptance scenarios: unique ids, resolvable concepts and facts.
+  const scenarioIds = new Set<string>();
+  for (const scenario of content.acceptanceScenarios || []) {
+    if (scenarioIds.has(scenario.scenarioId)) {
+      issues.push({ code: 'duplicate_id', path: 'acceptanceScenarios', message: `Duplicate scenario id '${scenario.scenarioId}'` });
+    }
+    scenarioIds.add(scenario.scenarioId);
+    if (scenario.expect.conceptId && !concepts.has(scenario.expect.conceptId)) {
+      issues.push({ code: 'unresolved_concept', path: `acceptanceScenarios.${scenario.scenarioId}`, message: `Expected concept '${scenario.expect.conceptId}' does not resolve` });
+    }
+    for (const factKey of Object.keys(scenario.knownFacts || {})) {
+      if (!facts.has(factKey)) {
+        issues.push({ code: 'unknown_fact', path: `acceptanceScenarios.${scenario.scenarioId}`, message: `Unknown fact '${factKey}'` });
+      }
+    }
+    if (scenario.expect.clarificationFactKey && !facts.has(scenario.expect.clarificationFactKey)) {
+      issues.push({ code: 'unknown_fact', path: `acceptanceScenarios.${scenario.scenarioId}`, message: `Unknown expected clarification fact '${scenario.expect.clarificationFactKey}'` });
+    }
   }
 
   for (const verification of content.verifications) {

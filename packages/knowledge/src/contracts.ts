@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import { ClaimClassSchema } from './claim-classes';
+import { OkfTenantPolicySchema } from './policy';
+
+export { ClaimClassSchema } from './claim-classes';
+export type { ClaimClass } from './claim-classes';
 
 export const EnvironmentIdSchema = z.enum(['dev', 'test', 'staging', 'production']);
 export const ConceptIdSchema = z.string().regex(
@@ -40,19 +45,6 @@ export const OkfInterchangeSchema = z.object({
   /** Untrusted controls retained for a human reviewer, never read by the runtime. */
   controlFields: z.record(z.string(), z.unknown()).optional(),
 }).strict();
-
-export const ClaimClassSchema = z.enum([
-  'catalog_fact',
-  'compatibility',
-  'requirement',
-  'substitution',
-  'care_safety',
-  'installation_step',
-  'safety_instruction',
-  'legal_requirement',
-  'warranty',
-  'suggestion',
-]);
 
 export const PredicateSchema = z.object({
   fact: FactKeySchema,
@@ -281,6 +273,51 @@ export const EvidenceChunkSchema = z.object({
   extensions: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
+/** Every mode the gate can return. */
+export const OkfResponseModeSchema = z.enum([
+  'direct_results',
+  'overview_then_ask',
+  'clarify_then_search',
+  'safety_then_diagnose',
+  'project_journey',
+  'service_intake',
+  'evidence_answer',
+  'operational_journey',
+  'legacy_search',
+  'knowledge_unavailable',
+  'no_match',
+]);
+export type OkfResponseMode = z.infer<typeof OkfResponseModeSchema>;
+
+/**
+ * A tenant-authored acceptance scenario. It is executed against the draft at
+ * publication time; a failing scenario blocks the release.
+ */
+export const AcceptanceScenarioSchema = z.object({
+  scenarioId: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,80}$/i),
+  description: z.string().max(300).optional(),
+  message: z.string().min(1).max(500),
+  knownFacts: z.record(FactKeySchema, z.union([z.string(), z.number(), z.boolean()])).optional(),
+  declinedQuestions: z.array(z.string().min(1)).max(20).optional(),
+  forceShowResults: z.boolean().optional(),
+  expect: z.object({
+    mode: OkfResponseModeSchema.optional(),
+    conceptId: ConceptIdSchema.optional(),
+    retrievalPermission: z.enum(['allowed', 'blocked']).optional(),
+    recommendation: z.enum(['blocked', 'category_examples', 'matched_to_stated_needs', 'verified_recommendation']).optional(),
+    clarificationFactKey: FactKeySchema.optional(),
+    noClarification: z.boolean().optional(),
+    claimsIncluded: z.array(ClaimClassSchema).max(10).optional(),
+    claimsExcluded: z.array(ClaimClassSchema).max(10).optional(),
+    commerce: z.object({
+      addToCart: z.enum(['allowed', 'allowed_with_warning', 'blocked']).optional(),
+      checkout: z.enum(['allowed', 'requires_compatibility_resolution', 'requires_professional_confirmation', 'blocked']).optional(),
+    }).strict().optional(),
+    reasonCodesInclude: z.array(z.string().min(1)).max(10).optional(),
+  }).strict(),
+}).strict();
+export type OkfAcceptanceScenario = z.infer<typeof AcceptanceScenarioSchema>;
+
 export const OkfReleaseContentSchema = z.object({
   schemaVersion: z.literal('1.0.0'),
   modelId: z.string().min(1),
@@ -305,6 +342,10 @@ export const OkfReleaseContentSchema = z.object({
     scenarioCount: z.number().int().nonnegative(),
     failedScenarioCount: z.number().int().nonnegative(),
   }).strict(),
+  /** Tenant decision policy: intent vocabulary, thresholds, verifier roles and customer-facing messages. */
+  policy: OkfTenantPolicySchema.optional(),
+  /** Tenant acceptance scenarios executed at publication. */
+  acceptanceScenarios: z.array(AcceptanceScenarioSchema).max(500).optional(),
   extensions: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
@@ -359,4 +400,3 @@ export type OkfVerificationRecord = z.infer<typeof VerificationRecordSchema>;
 export type OkfReleaseContent = z.infer<typeof OkfReleaseContentSchema>;
 export type OkfReleaseEnvelope = z.infer<typeof OkfReleaseEnvelopeSchema>;
 export type OkfRevocationEvent = z.infer<typeof OkfRevocationEventSchema>;
-export type ClaimClass = z.infer<typeof ClaimClassSchema>;

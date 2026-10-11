@@ -1,5 +1,6 @@
 import { computeKnowledgeChecksum } from './checksum';
 import { resolveOkfGate } from './gate';
+import { compareAcceptanceExpectation } from './acceptance';
 import type { OkfDraftContent, OkfReleaseContent } from './contracts';
 
 export interface OkfEvaluationScenarioResult {
@@ -93,6 +94,21 @@ export function evaluateOkfDraft(
   check('cross_tenant_scope', foreign.conceptId === undefined && foreign.commerce.checkout === 'blocked',
     'Cross-tenant concept was available');
   check('nonempty_scenario_suite', draft.concepts.length > 0, 'No concepts were evaluated');
+
+  // Tenant-authored acceptance scenarios are part of the publication gate.
+  for (const scenario of draft.acceptanceScenarios || []) {
+    const decision = resolveOkfGate(gateContent, {
+      tenantId, environmentId, releaseId,
+      message: scenario.message,
+      knownFacts: scenario.knownFacts,
+      declinedQuestions: scenario.declinedQuestions,
+      forceShowResults: scenario.forceShowResults,
+      now: asOf,
+      knowledgeAvailability: { available: true, required: true, failurePolicy: 'fail_closed' },
+    });
+    const failures = compareAcceptanceExpectation(scenario.expect, decision);
+    check(`tenant_scenario:${scenario.scenarioId}`, failures.length === 0, failures.join('; '));
+  }
   return results;
 }
 

@@ -8,3 +8,6 @@ export * from './server-evaluation';
 export * from './okf-archive';
 export * from './interchange';
 export * from './artifact-store';
+export * from './claim-classes';
+export * from './policy';
+export * from './acceptance';
