@@ -1,3 +1,4 @@
+import { renderOkfMessage } from '@journeyax/knowledge';
 import { TurnResult, UIInstruction, WorkspaceState, Decision } from '@journeyax/journey-core';
 import { BusinessPackRelease } from '@journeyax/business-pack';
 import { CARD_TYPES } from '@journeyax/ui-cards';
@@ -155,14 +156,15 @@ export class PresentationPort {
         title: String(step.title || '').trim(),
         body: String(step.instruction || '').trim(),
         steps: Array.isArray(step.sources) && step.sources.length > 0
-          ? [`Verified source: ${step.sources.map((source: any) => source.title).filter(Boolean).join(', ')}`]
+          ? [renderOkfMessage({ verified_source_label: safetyGuidance.sourceLabelTemplate || '' }, 'verified_source_label',
+              { sources: step.sources.map((source: any) => source.title).filter(Boolean).join(', ') })]
           : undefined,
       }));
       const state = {
-        heading: String(safetyGuidance.heading || 'Safety first'),
+        heading: String(safetyGuidance.heading || renderOkfMessage({}, 'safety_heading')),
         sections,
         safety: safetyGuidance.blocksProducts
-          ? 'Product recommendations and commerce are paused until this safety issue is resolved.'
+          ? String(safetyGuidance.blockedNotice || renderOkfMessage({}, 'safety_products_paused'))
           : undefined,
       };
       const parsed = CARD_TYPES.guide.state.safeParse(state);
@@ -208,10 +210,10 @@ export class PresentationPort {
         decision: {
           ...decision,
           type: 'fail',
-          payload: { error: 'Verified safety guidance could not be rendered.' },
-          reason: 'Verified safety guidance could not be rendered.',
+          payload: { error: String(safetyGuidance?.renderFailedMessage || renderOkfMessage({}, 'safety_render_failed')) },
+          reason: String(safetyGuidance?.renderFailedMessage || renderOkfMessage({}, 'safety_render_failed')),
         },
-        assistantMessage: 'Verified safety guidance is temporarily unavailable. Please contact a qualified professional.',
+        assistantMessage: String(safetyGuidance?.unavailableMessage || renderOkfMessage({}, 'safety_unavailable_customer')),
         uiInstructions: [],
         executedCapabilities: [],
         trace: {

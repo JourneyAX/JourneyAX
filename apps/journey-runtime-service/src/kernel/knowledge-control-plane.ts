@@ -3,7 +3,11 @@ import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
 import {
   loadActiveOkfRevocations,
   loadPinnedOkfRelease,
+  detectIntents,
+  extractSkuCandidate,
   resolveOkfGate,
+  resolveOkfPolicy,
+  type SkuPolicy,
   resolveOkfBasketCommerce,
   type OkfBasketCommerceDecision,
   type OkfGateDecision,
@@ -28,19 +32,9 @@ export interface KnowledgeControlPlanePort {
   ): Promise<OkfBasketCommerceDecision | null>;
 }
 
-export function extractExactSku(message: string): string | undefined {
-  const plausible = (candidate: string): boolean => {
-    if (/^\d+(?:x\d+)+(?:mm|cm|m)?$/i.test(candidate)) return false;
-    if (/^\d+(?:\.\d+)?(?:mm|cm|m|kg|g|l|ml|m2|m3)$/i.test(candidate)) return false;
-    if (/^\d{1,4}[-/]?(?:year|yr|month|mo|week|day)s?$/i.test(candidate)) return false;
-    if (/^\d{5,}$/.test(candidate)) return true;
-    return candidate.length >= 5 && /[a-z]/i.test(candidate) && /\d/.test(candidate);
-  };
-  const explicit = /\bsku\s*[:#-]?\s*([a-z0-9][a-z0-9._/-]{1,})\b/i.exec(message)?.[1];
-  if (explicit && plausible(explicit)) return explicit;
-  // This is only a candidate. The control plane verifies it against the
-  // tenant's catalog before enabling exact-SKU routing.
-  return message.match(/\b[a-z0-9]+(?:[._/-][a-z0-9]+)*\b/gi)?.find(plausible);
+/** Candidate identifier in a message; shape rules come from the resolved policy. */
+export function extractExactSku(message: string, sku: SkuPolicy = resolveOkfPolicy().sku): string | undefined {
+  return extractSkuCandidate(message, sku);
 }
 
 export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
@@ -83,7 +77,6 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       knownFacts: facts,
       intentCandidates: interpretation.intent ? [interpretation.intent] : [],
       exactSku: undefined as string | undefined,
-      forceShowResults: /\b(?:just\s+show\s+me|show\s+me\s+(?:the\s+)?(?:items|products|options)|skip\s+the\s+questions)\b/i.test(message),
     } as const;
 
     try {
@@ -95,19 +88,6 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       }
 
       const db = await this.dbProvider();
-      const candidateSku = extractExactSku(message);
-      let exactSku: string | undefined;
-      if (candidateSku) {
-        const candidates = [candidateSku, candidateSku.toUpperCase(), candidateSku.toLowerCase()];
-        const identifiers = [...new Set(candidates)];
-        for (const scope of [{ projectId: command.tenantId }, { tenantId: command.tenantId }]) {
-          const product = await db.collection(COLLECTION_PRODUCTS).findOne({
-            ...scope,
-            $or: identifiers.flatMap((value) => [{ sku: value }, { parentSku: value }, { partCode: value }]),
-          });
-          if (product) { exactSku = candidateSku; break; }
-        }
-      }
       const cacheKey = `${command.tenantId}:${environmentId}:${ref.releaseId}:${ref.checksum}`;
       let content = this.releaseCache.get(cacheKey);
       if (!content) {
@@ -130,6 +110,21 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
         this.releaseCache.set(cacheKey, content);
       }
 
+      const policy = resolveOkfPolicy(content.policy);
+      const candidateSku = extractExactSku(message, policy.sku);
+      let exactSku: string | undefined;
+      if (candidateSku) {
+        const candidates = [candidateSku, candidateSku.toUpperCase(), candidateSku.toLowerCase()];
+        const identifiers = [...new Set(candidates)];
+        for (const scope of [{ projectId: command.tenantId }, { tenantId: command.tenantId }]) {
+          const product = await db.collection(COLLECTION_PRODUCTS).findOne({
+            ...scope,
+            $or: identifiers.flatMap((value) => [{ sku: value }, { parentSku: value }, { partCode: value }]),
+          });
+          if (product) { exactSku = candidateSku; break; }
+        }
+      }
+
       // Revocations intentionally bypass the immutable release cache. A pinned
       // conversation may keep its release, but never bypass a safety revocation.
       const activeRevocations = await loadActiveOkfRevocations(
@@ -146,7 +141,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
         if (!workspace?.openQuestions?.includes(discriminator.factKey)) return false;
         const definition = content.factRegistry.find((fact) => fact.factKey === discriminator.factKey);
         const normalizedMessage = message.trim().toLowerCase();
-        if (/^(?:actually|instead|forget that|new topic)\b/i.test(normalizedMessage)) return false;
+        if (detectIntents(message, policy).intents.includes('topic_switch')) return false;
         const option = definition?.options?.some((entry) =>
           normalizedMessage === entry.value.toLowerCase() || normalizedMessage === entry.label.toLowerCase()) ||
           definition?.allowedValues?.some((value) => normalizedMessage === value.toLowerCase());
@@ -219,6 +214,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
     const environmentId = command.environmentId || 'production';
     const blocked: OkfBasketCommerceDecision = {
       commerce: { addToCart: 'blocked', checkout: 'blocked' }, warnings: [], reasonCodes: ['basket_policy_unavailable'],
+      messages: resolveOkfPolicy().messages,
     };
     try {
       if (workspace?.pins?.okfReleaseId && workspace.pins.okfReleaseId !== ref.releaseId) return blocked;

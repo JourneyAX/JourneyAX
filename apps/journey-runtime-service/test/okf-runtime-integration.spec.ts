@@ -207,7 +207,7 @@ function addLaundryJourneyKnowledge(content: any): any {
     status: 'verified',
     sourceRefs: ['src-trade-guide'],
     verifiedBy: 'merchant-product-expert',
-    verifierRole: 'product expert',
+    verifierRole: 'product_manager',
     verifiedAt: '2026-10-01T00:00:00.000Z',
     contentHash: relationship.contentHash,
     staleAfter: '2027-10-01T00:00:00.000Z',

@@ -24,6 +24,7 @@ import { AgentRouter } from './agent.router';
 import { ModelGateway } from './model.gateway';
 import { CapabilityGateway } from './capability.gateway';
 import { validateOkfGeneratedClaims } from './okf-claim-validator';
+import { renderOkfMessage } from '@journeyax/knowledge';
 import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
 import { OutboxRepository } from './outbox.repository';
@@ -199,8 +200,8 @@ export class TurnApplicationService {
         const decision: Decision = {
           decisionId: `dec_${Date.now()}`,
           type: 'fail',
-          payload: { error: 'Verified business guidance is temporarily unavailable.' },
-          reason: 'Verified business guidance is temporarily unavailable. Please try again or contact a specialist.',
+          payload: { error: renderOkfMessage(knowledgeGate.messages, 'knowledge_unavailable') },
+          reason: renderOkfMessage(knowledgeGate.messages, 'knowledge_unavailable'),
           createdAt: new Date().toISOString(),
         };
         workspace.decisions.push({ ...decision, executedAt: new Date().toISOString(), outcomeStatus: 'failure' });
@@ -446,8 +447,8 @@ export class TurnApplicationService {
       decision = {
         decisionId: `dec_${Date.now()}`,
         type: 'fail',
-        payload: { error: 'Verified safety guidance is temporarily unavailable.' },
-        reason: 'Verified safety guidance is temporarily unavailable. Please contact a qualified professional.',
+        payload: { error: renderOkfMessage(knowledgeGate.messages, 'safety_unavailable_customer') },
+        reason: renderOkfMessage(knowledgeGate.messages, 'safety_unavailable_customer'),
         createdAt: new Date().toISOString(),
       };
     } else if (
@@ -459,12 +460,16 @@ export class TurnApplicationService {
         type: 'complete_goal',
         payload: {
           safetyGuidance: {
-            heading: 'Safety first',
+            heading: renderOkfMessage(knowledgeGate.messages, 'safety_heading'),
+            blockedNotice: renderOkfMessage(knowledgeGate.messages, 'safety_products_paused'),
+            sourceLabelTemplate: knowledgeGate.messages.verified_source_label,
+            unavailableMessage: renderOkfMessage(knowledgeGate.messages, 'safety_unavailable_customer'),
+            renderFailedMessage: renderOkfMessage(knowledgeGate.messages, 'safety_render_failed'),
             steps: knowledgeGate.safety.guidance,
             blocksProducts: knowledgeGate.safety.blocksProducts,
           },
         },
-        reason: 'Verified safety guidance must be followed before product selection or commerce can continue.',
+        reason: renderOkfMessage(knowledgeGate.messages, 'safety_guidance_reason'),
         createdAt: new Date().toISOString(),
       };
     }
@@ -709,6 +714,7 @@ export class TurnApplicationService {
           (release.knowledgeModel?.type === 'okf_release'
             ? { addToCart: 'blocked' as const, checkout: 'blocked' as const }
             : knowledgeGate?.commerce);
+        const policyMessages = basketPolicy?.messages || knowledgeGate?.messages || {};
         const commercePolicyResult = (() => {
           const nativeHandler = commerceBinding?.executor.nativeHandler;
           const trustedCommerceHandler = commerceBinding?.executor.type === 'native_capability' &&
@@ -718,7 +724,7 @@ export class TurnApplicationService {
             !trustedCommerceHandler) {
             return {
               toolId, status: 'failure' as const,
-              error: 'Authoritative cart verification is unavailable for this commerce binding.', durationMs: 0,
+              error: renderOkfMessage(policyMessages, 'cart_verification_unavailable'), durationMs: 0,
               provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
             };
           }
@@ -727,7 +733,7 @@ export class TurnApplicationService {
             return {
               toolId,
               status: 'failure' as const,
-              error: 'This item cannot be added to cart until the merchant knowledge policy requirements are resolved.',
+              error: renderOkfMessage(policyMessages, 'cart_blocked'),
               durationMs: 0,
               provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
             };
@@ -736,7 +742,7 @@ export class TurnApplicationService {
             return {
               toolId,
               status: 'failure' as const,
-              error: 'Checkout is blocked by the merchant knowledge policy.',
+              error: renderOkfMessage(policyMessages, 'checkout_blocked'),
               durationMs: 0,
               provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
             };
@@ -746,8 +752,8 @@ export class TurnApplicationService {
               toolId,
               status: 'requires_approval' as const,
               error: commercePolicy.checkout === 'requires_professional_confirmation'
-                ? 'A qualified professional must confirm this selection before checkout.'
-                : 'Product compatibility must be confirmed before checkout.',
+                ? renderOkfMessage(policyMessages, 'checkout_requires_professional')
+                : renderOkfMessage(policyMessages, 'checkout_requires_compatibility'),
               durationMs: 0,
               provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
             };
@@ -1493,9 +1499,9 @@ export class TurnApplicationService {
         ].join('\n')
       : [
           `Customer Question: "${customerQuestion}"`,
-          `Journey: ${activeJourney?.displayName || activeJourney?.journeyId || 'General Trade'}`,
+          `Journey: ${activeJourney?.displayName || activeJourney?.journeyId || renderOkfMessage(knowledgeGate?.messages || {}, 'default_journey_label')}`,
           `Current Stage: ${workspace.currentStage || 'initial'}`,
-          `Goal: ${activeJourney?.goals?.[0] || 'Provide accurate building and materials guidance'}`,
+          `Goal: ${activeJourney?.goals?.[0] || renderOkfMessage(knowledgeGate?.messages || {}, 'default_goal')}`,
           `\n--- VERIFIED STORED FACTS ---`,
           Object.keys(sanitizedFacts).length > 0 ? JSON.stringify(sanitizedFacts, null, 2) : 'None yet.',
           `\n--- UNRESOLVED FACTS / OPEN QUESTIONS ---`,
