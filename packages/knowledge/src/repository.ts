@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Db } from 'mongodb';
 import {
   OkfReleaseEnvelopeSchema,
+  OkfReleaseContentSchema,
   OkfRevocationEventSchema,
   type OkfReleaseContent,
   type OkfReleaseEnvelope,
@@ -9,20 +10,72 @@ import {
 } from './contracts';
 import { computeKnowledgeChecksum } from './checksum';
 import { validateOkfReleaseContent } from './validator';
+import { archiveOkfBundle } from './okf-archive';
+import { exportOkfBundle } from './interchange';
+import { buildOkfIndexMetadata, evaluateOkfDraft, type OkfEvaluationScenarioResult } from './server-evaluation';
+import { GcsOkfArtifactStore, okfArtifactChecksum, okfArtifactKey, type OkfArtifactStore } from './artifact-store';
 
 export const COLLECTION_OKF_RELEASES = 'okf_releases';
+export const COLLECTION_OKF_EVALUATION_REPORTS = 'okf_evaluation_reports';
 export const COLLECTION_OKF_CONCEPTS = 'okf_concepts';
+export const COLLECTION_OKF_FACT_DEFINITIONS = 'okf_fact_definitions';
 export const COLLECTION_OKF_RELATIONSHIPS = 'okf_relationships';
 export const COLLECTION_OKF_SOURCES = 'okf_sources';
 export const COLLECTION_OKF_EVIDENCE_CHUNKS = 'okf_evidence_chunks';
 export const COLLECTION_OKF_VERIFICATION_RECORDS = 'okf_verification_records';
 export const COLLECTION_OKF_REVOCATION_EVENTS = 'okf_revocation_events';
+export const COLLECTION_OKF_ARTIFACT_POLICIES = 'okf_artifact_policies';
+const COLLECTION_OUTBOX_EVENTS = 'outbox_events';
 
 export class OkfIntegrityError extends Error {
   constructor(public readonly code: string, message: string) {
     super(message);
     this.name = 'OkfIntegrityError';
   }
+}
+
+const RELEASE_COLLECTIONS = {
+  factRegistry: COLLECTION_OKF_FACT_DEFINITIONS,
+  concepts: COLLECTION_OKF_CONCEPTS,
+  relationships: COLLECTION_OKF_RELATIONSHIPS,
+  sources: COLLECTION_OKF_SOURCES,
+  evidenceChunks: COLLECTION_OKF_EVIDENCE_CHUNKS,
+  verifications: COLLECTION_OKF_VERIFICATION_RECORDS,
+} as const;
+type ReleaseCollectionKey = keyof typeof RELEASE_COLLECTIONS;
+
+/** Hydrates new metadata-only releases, while allowing already-published legacy envelopes. */
+export async function hydrateOkfReleaseEnvelope(db: Db, stored: any, session?: any): Promise<OkfReleaseEnvelope> {
+  if (stored?.content !== undefined) {
+    const { _id, ...legacyEnvelope } = stored;
+    return verifyOkfReleaseEnvelope(legacyEnvelope);
+  }
+  if (stored?.contentStorage !== 'release_scoped_v1' || !stored.contentHeader || !stored.collectionChecksums) {
+    throw new OkfIntegrityError('schema_invalid', 'Invalid OKF release storage metadata');
+  }
+  const scope = { tenantId: stored.tenantId, environmentId: stored.environmentId, releaseId: stored.releaseId };
+  const content: Record<string, unknown> = { ...stored.contentHeader };
+  for (const [key, collectionName] of Object.entries(RELEASE_COLLECTIONS) as Array<[ReleaseCollectionKey, string]>) {
+    const rows = await db.collection(collectionName).find(scope, session ? { session } : undefined)
+      .sort({ _releaseOrdinal: 1 }).toArray();
+    // Only indexed records belong to the metadata-only release representation.
+    // Unindexed stray rows cannot expand or reorder the immutable content.
+    const releaseRows = rows.filter((row: any) => Number.isInteger(row._releaseOrdinal));
+    const records = releaseRows.map((row: any, index: number) => {
+      if (row._releaseOrdinal !== index) {
+        throw new OkfIntegrityError('collection_checksum_mismatch', `OKF ${key} release order is incomplete`);
+      }
+      const { _id, _releaseOrdinal, releaseId, environmentId, ...record } = row;
+      if (key !== 'concepts') delete record.tenantId;
+      return record;
+    });
+    if (computeKnowledgeChecksum(records) !== stored.collectionChecksums[key]) {
+      throw new OkfIntegrityError('collection_checksum_mismatch', `OKF ${key} release records failed integrity verification`);
+    }
+    content[key] = records;
+  }
+  const { contentStorage, contentHeader, collectionChecksums, _id, ...metadata } = stored;
+  return verifyOkfReleaseEnvelope({ ...metadata, content });
 }
 
 export interface PublishOkfReleaseInput {
@@ -34,6 +87,8 @@ export interface PublishOkfReleaseInput {
   artifactUri?: string;
   publishedBy: string;
   notes?: string;
+  evaluationScenarios?: OkfEvaluationScenarioResult[];
+  sourceDraftChecksum?: string;
 }
 
 export function verifyOkfReleaseEnvelope(
@@ -50,14 +105,20 @@ export function verifyOkfReleaseEnvelope(
   if (expected?.releaseId && release.releaseId !== expected.releaseId) throw new OkfIntegrityError('release_mismatch', 'OKF release ID mismatch');
   if (expected?.version && release.version !== expected.version) throw new OkfIntegrityError('version_mismatch', 'OKF release version mismatch');
   if (expected?.checksum && checksum !== expected.checksum.replace(/^sha256:/, '')) throw new OkfIntegrityError('reference_checksum_mismatch', 'OKF release reference checksum mismatch');
-  const validation = validateOkfReleaseContent(release.content, release.tenantId);
-  if (!validation.valid) throw new OkfIntegrityError('semantic_invalid', validation.issues.map((issue) => `${issue.code}:${issue.message}`).join('; '));
+  // Publication policy is applied once, before the immutable release is written.
+  // Loading checks structure, stored checksum, and the caller's pinned identity;
+  // a later policy tightening must not invalidate an already-published release.
   return release;
 }
 
 async function withOptionalTransaction<T>(db: Db, operation: (session?: any) => Promise<T>): Promise<T> {
   const client = (db as any).client;
-  if (!client || typeof client.startSession !== 'function') return operation(undefined);
+  if (!client || typeof client.startSession !== 'function') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new OkfIntegrityError('transaction_unavailable', 'Transactional OKF publication requires a MongoDB session');
+    }
+    return operation(undefined);
+  }
   const session = client.startSession();
   try {
     let result!: T;
@@ -69,9 +130,32 @@ async function withOptionalTransaction<T>(db: Db, operation: (session?: any) => 
 }
 
 export async function publishOkfRelease(db: Db, input: PublishOkfReleaseInput): Promise<OkfReleaseEnvelope> {
-  const validation = validateOkfReleaseContent(input.content, input.tenantId);
+  // Parse exactly once and use the parsed value for validation, hashing,
+  // storage and normalized records. Zod defaults are therefore checksum-bound
+  // instead of creating two subtly different representations.
+  const content = OkfReleaseContentSchema.parse(input.content);
+  const validation = validateOkfReleaseContent(content, input.tenantId);
   if (!validation.valid) throw new OkfIntegrityError('semantic_invalid', validation.issues.map((issue) => `${issue.code}:${issue.message}`).join('; '));
-  const checksum = computeKnowledgeChecksum(input.content);
+  if (process.env.NODE_ENV === 'production' && !input.evaluationScenarios) {
+    throw new OkfIntegrityError('evaluation_missing', 'Production OKF publication requires server-run evaluation evidence');
+  }
+  if (input.evaluationScenarios) {
+    const { index: _index, evaluation: _evaluation, ...draft } = content;
+    const expectedScenarios = evaluateOkfDraft(
+      draft, input.tenantId, input.environmentId, input.releaseId, content.evaluation.evaluatedAt,
+    );
+    const expectedIndex = buildOkfIndexMetadata(draft, content.evaluation.evaluatedAt);
+    const reportId = `eval-${computeKnowledgeChecksum(input.evaluationScenarios)}`;
+    if (content.evaluation.reportId !== reportId ||
+      computeKnowledgeChecksum(input.evaluationScenarios) !== computeKnowledgeChecksum(expectedScenarios) ||
+      computeKnowledgeChecksum(content.index) !== computeKnowledgeChecksum(expectedIndex) ||
+      content.evaluation.scenarioCount !== input.evaluationScenarios.length ||
+      content.evaluation.failedScenarioCount !== input.evaluationScenarios.filter((result) => !result.passed).length ||
+      input.evaluationScenarios.some((result) => !result.passed)) {
+      throw new OkfIntegrityError('evaluation_mismatch', 'Server evaluation report does not match the release');
+    }
+  }
+  const checksum = computeKnowledgeChecksum(content);
   const envelope: OkfReleaseEnvelope = {
     releaseId: input.releaseId,
     tenantId: input.tenantId,
@@ -80,7 +164,8 @@ export async function publishOkfRelease(db: Db, input: PublishOkfReleaseInput): 
     checksum,
     status: 'ready',
     artifactUri: input.artifactUri,
-    content: input.content,
+    artifact: { status: 'pending' },
+    content,
     publishedAt: new Date(),
     publishedBy: input.publishedBy,
     notes: input.notes,
@@ -92,7 +177,8 @@ export async function publishOkfRelease(db: Db, input: PublishOkfReleaseInput): 
     const releases = db.collection(COLLECTION_OKF_RELEASES);
     const existing = await releases.findOne({ tenantId: input.tenantId, environmentId: input.environmentId, releaseId: input.releaseId }, options);
     if (existing) {
-      const verified = verifyOkfReleaseEnvelope(existing, {
+      const hydrated = await hydrateOkfReleaseEnvelope(db, existing, session);
+      const verified = verifyOkfReleaseEnvelope(hydrated, {
         tenantId: input.tenantId,
         environmentId: input.environmentId,
         releaseId: input.releaseId,
@@ -102,13 +188,39 @@ export async function publishOkfRelease(db: Db, input: PublishOkfReleaseInput): 
       return verified;
     }
 
-    await releases.insertOne(envelope as any, options);
     const scope = { tenantId: input.tenantId, environmentId: input.environmentId, releaseId: input.releaseId };
-    if (input.content.concepts.length) await db.collection(COLLECTION_OKF_CONCEPTS).insertMany(input.content.concepts.map((value) => ({ ...scope, ...value })) as any[], options);
-    if (input.content.relationships.length) await db.collection(COLLECTION_OKF_RELATIONSHIPS).insertMany(input.content.relationships.map((value) => ({ ...scope, ...value })) as any[], options);
-    if (input.content.sources.length) await db.collection(COLLECTION_OKF_SOURCES).insertMany(input.content.sources.map((value) => ({ ...scope, ...value })) as any[], options);
-    if (input.content.evidenceChunks.length) await db.collection(COLLECTION_OKF_EVIDENCE_CHUNKS).insertMany(input.content.evidenceChunks.map((value) => ({ ...scope, ...value })) as any[], options);
-    if (input.content.verifications.length) await db.collection(COLLECTION_OKF_VERIFICATION_RECORDS).insertMany(input.content.verifications.map((value) => ({ ...scope, ...value })) as any[], options);
+    const { content: _content, ...releaseMetadata } = envelope;
+    const { factRegistry, concepts, relationships, sources, evidenceChunks, verifications, ...contentHeader } = content;
+    const releaseRecords = { factRegistry, concepts, relationships, sources, evidenceChunks, verifications };
+    const collectionChecksums = Object.fromEntries(Object.entries(releaseRecords)
+      .map(([key, values]) => [key, computeKnowledgeChecksum(values)]));
+    await releases.insertOne({
+      ...releaseMetadata, contentStorage: 'release_scoped_v1', contentHeader, collectionChecksums,
+    } as any, options);
+    if (input.evaluationScenarios) {
+      await db.collection(COLLECTION_OKF_EVALUATION_REPORTS).insertOne({
+        ...scope,
+        reportId: content.evaluation.reportId,
+        releaseChecksum: checksum,
+        sourceDraftChecksum: input.sourceDraftChecksum,
+        scenarios: input.evaluationScenarios,
+        evaluatedAt: content.evaluation.evaluatedAt,
+      } as any, options);
+    }
+    for (const [key, collectionName] of Object.entries(RELEASE_COLLECTIONS) as Array<[ReleaseCollectionKey, string]>) {
+      const values = releaseRecords[key];
+      if (values.length) await db.collection(collectionName).insertMany(values.map((value, index) => ({
+        ...scope, ...value, _releaseOrdinal: index,
+      })) as any[], options);
+    }
+    await db.collection(COLLECTION_OUTBOX_EVENTS).insertOne({
+      eventId: `evt_okf_export_${randomUUID()}`,
+      tenantId: input.tenantId,
+      environmentId: input.environmentId,
+      eventType: 'okf.release.export_requested',
+      payload: { releaseId: input.releaseId, version: input.version, checksum },
+      status: 'pending', attempts: 0, maxAttempts: 5, createdAt: new Date(),
+    }, options);
     return envelope;
   });
 }
@@ -125,7 +237,7 @@ export async function loadPinnedOkfRelease(
     version: ref.version,
   }, session ? { session } : undefined);
   if (!stored) throw new OkfIntegrityError('not_found', `OKF release '${ref.releaseId}' not found`);
-  const release = verifyOkfReleaseEnvelope(stored, ref);
+  const release = verifyOkfReleaseEnvelope(await hydrateOkfReleaseEnvelope(db, stored, session), ref);
   if (release.status !== 'ready') throw new OkfIntegrityError('not_ready', `OKF release '${ref.releaseId}' is ${release.status}`);
   return { release, activeRevocations: await loadActiveOkfRevocations(db, ref.tenantId, ref.environmentId, ref.releaseId, new Date(), session) };
 }
@@ -134,10 +246,75 @@ export async function assertOkfReferenceReady(
   db: Db,
   ref: { releaseId: string; version: string; checksum: string },
   scope: { tenantId: string; environmentId: string },
-  session?: any
+  session?: any,
+  artifactStore?: OkfArtifactStore
 ): Promise<OkfReleaseEnvelope> {
   const loaded = await loadPinnedOkfRelease(db, { ...scope, ...ref }, session);
+  const policy = await db.collection(COLLECTION_OKF_ARTIFACT_POLICIES).findOne(scope, session ? { session } : undefined);
+  if (policy?.artifactRequired === true) {
+    const artifact = loaded.release.artifact;
+    if (artifact?.status !== 'ready' || !artifact.uri || !artifact.checksum ||
+        artifact.checksum !== artifact.verifiedChecksum || loaded.release.artifactUri !== artifact.uri) {
+      throw new OkfIntegrityError('artifact_not_ready', 'Required OKF export artifact has not been verified');
+    }
+    const key = okfArtifactKey({
+      ...scope, releaseId: ref.releaseId, checksum: ref.checksum.replace(/^sha256:/, ''),
+    });
+    if (!artifact.uri.startsWith('gs://') || !artifact.uri.endsWith(`/${key}`)) {
+      throw new OkfIntegrityError('artifact_not_ready', 'Required OKF export artifact URI does not match the pinned release');
+    }
+    if (!artifactStore && process.env.OKF_ARTIFACT_BUCKET &&
+        artifact.uri !== `gs://${process.env.OKF_ARTIFACT_BUCKET}/${key}`) {
+      throw new OkfIntegrityError('artifact_not_ready', 'Required OKF artifact bucket does not match configuration');
+    }
+    const store = artifactStore || (process.env.OKF_ARTIFACT_BUCKET
+      ? new GcsOkfArtifactStore(process.env.OKF_ARTIFACT_BUCKET) : undefined);
+    if (!store) throw new OkfIntegrityError('artifact_not_ready', 'Required OKF artifact store is unavailable');
+    try {
+      if (!await store.verify(key, artifact.checksum)) {
+        throw new OkfIntegrityError('artifact_not_ready', 'Required OKF artifact object failed checksum verification');
+      }
+    } catch (error) {
+      if (error instanceof OkfIntegrityError) throw error;
+      throw new OkfIntegrityError('artifact_not_ready', 'Required OKF artifact object could not be verified');
+    }
+  }
   return loaded.release;
+}
+
+/** The durable outbox worker performs this operation and retries it on failure. */
+export async function processOkfExport(
+  db: Db,
+  store: OkfArtifactStore,
+  ref: { tenantId: string; environmentId: string; releaseId: string; version: string; checksum: string }
+): Promise<{ uri: string; checksum: string }> {
+  const { release } = await loadPinnedOkfRelease(db, ref);
+  const scope = { tenantId: ref.tenantId, environmentId: ref.environmentId, releaseId: ref.releaseId, version: ref.version, checksum: ref.checksum };
+  try {
+    const bytes = archiveOkfBundle(exportOkfBundle(release));
+    const checksum = okfArtifactChecksum(bytes);
+    const key = okfArtifactKey({ ...ref, checksum: ref.checksum.replace(/^sha256:/, '') });
+    const uri = await store.put(key, bytes, checksum);
+    if (!await store.verify(key, checksum)) throw new OkfIntegrityError('artifact_checksum_mismatch', 'Uploaded OKF artifact did not verify');
+    const existing = release.artifact;
+    if (existing?.status === 'ready' && (existing.uri !== uri || existing.checksum !== checksum)) {
+      throw new OkfIntegrityError('artifact_collision', 'Ready OKF artifact metadata differs from immutable export');
+    }
+    const result = await db.collection(COLLECTION_OKF_RELEASES).updateOne(
+      scope,
+      { $set: { artifactUri: uri, artifact: { status: 'ready', uri, checksum, verifiedChecksum: checksum, exportedAt: new Date() } } }
+    );
+    if (result.matchedCount !== 1) throw new OkfIntegrityError('release_changed', 'OKF release changed during export');
+    return { uri, checksum };
+  } catch (error: any) {
+    if (release.artifact?.status !== 'ready') {
+      await db.collection(COLLECTION_OKF_RELEASES).updateOne(
+        { ...scope, 'artifact.status': { $ne: 'ready' } },
+        { $set: { artifact: { status: 'failed', error: String(error?.message || error).slice(0, 500) } } }
+      );
+    }
+    throw error;
+  }
 }
 
 export async function appendOkfRevocationEvent(

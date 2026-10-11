@@ -7,9 +7,11 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsx test/okf-release.spec.ts && tsx test/okf-gate.spec.ts"
+    "test": "tsx test/okf-release.spec.ts && tsx test/okf-gate.spec.ts && tsx test/okf-interchange.spec.ts"
   },
   "dependencies": {
+    "google-auth-library": "^11.0.2",
+    "js-yaml": "^4.1.1",
     "mongodb": "^7.4.0",
     "zod": "^3.23.8 || ^4.0.0"
   },

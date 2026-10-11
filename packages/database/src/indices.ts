@@ -17,13 +17,18 @@ import {
   COLLECTION_ANALYTICS_ALERTS,
   COLLECTION_ANALYTICS_AUDIT_LOGS,
   COLLECTION_OKF_RELEASES,
+  COLLECTION_OKF_EVALUATION_REPORTS,
   COLLECTION_OKF_DRAFTS,
   COLLECTION_OKF_CONCEPTS,
+  COLLECTION_OKF_FACT_DEFINITIONS,
   COLLECTION_OKF_RELATIONSHIPS,
   COLLECTION_OKF_SOURCES,
   COLLECTION_OKF_EVIDENCE_CHUNKS,
   COLLECTION_OKF_VERIFICATION_RECORDS,
   COLLECTION_OKF_REVOCATION_EVENTS,
+  COLLECTION_OKF_ARTIFACT_POLICIES,
+  COLLECTION_OKF_VERIFICATION_ATTESTATIONS,
+  COLLECTION_OKF_VERIFIER_ROLES,
 } from './types';
 
 async function safeCreateIndex(
@@ -132,30 +137,47 @@ export async function ensureDatabaseIndices(db: Db): Promise<void> {
   const okfReleases = db.collection(COLLECTION_OKF_RELEASES);
   await safeCreateIndex(okfReleases, { tenantId: 1, environmentId: 1, releaseId: 1 }, { unique: true });
   await safeCreateIndex(okfReleases, { tenantId: 1, environmentId: 1, version: 1 }, { unique: true });
+  await safeCreateIndex(db.collection(COLLECTION_OKF_EVALUATION_REPORTS),
+    { tenantId: 1, environmentId: 1, releaseId: 1, reportId: 1 }, { unique: true });
+  await safeCreateIndex(db.collection(COLLECTION_OKF_ARTIFACT_POLICIES), { tenantId: 1, environmentId: 1 }, { unique: true });
 
   const okfDrafts = db.collection(COLLECTION_OKF_DRAFTS);
   await safeCreateIndex(okfDrafts, { tenantId: 1, environmentId: 1 }, { unique: true });
 
   // 18. Release-scoped normalized knowledge records. No cross-tenant/global lookup paths.
+  await safeCreateIndex(db.collection(COLLECTION_OKF_FACT_DEFINITIONS),
+    { tenantId: 1, environmentId: 1, releaseId: 1, factKey: 1 }, { unique: true });
+  await safeCreateIndex(db.collection(COLLECTION_OKF_FACT_DEFINITIONS),
+    { tenantId: 1, environmentId: 1, releaseId: 1, _releaseOrdinal: 1 });
   const okfConcepts = db.collection(COLLECTION_OKF_CONCEPTS);
   await safeCreateIndex(okfConcepts, { tenantId: 1, environmentId: 1, releaseId: 1, conceptId: 1 }, { unique: true });
   await safeCreateIndex(okfConcepts, { tenantId: 1, environmentId: 1, releaseId: 1, name: 1 });
+  await safeCreateIndex(okfConcepts, { tenantId: 1, environmentId: 1, releaseId: 1, _releaseOrdinal: 1 });
 
   const okfRelationships = db.collection(COLLECTION_OKF_RELATIONSHIPS);
   await safeCreateIndex(okfRelationships, { tenantId: 1, environmentId: 1, releaseId: 1, relationshipId: 1 }, { unique: true });
   await safeCreateIndex(okfRelationships, { tenantId: 1, environmentId: 1, releaseId: 1, from: 1, type: 1 });
+  await safeCreateIndex(okfRelationships, { tenantId: 1, environmentId: 1, releaseId: 1, _releaseOrdinal: 1 });
 
   const okfSources = db.collection(COLLECTION_OKF_SOURCES);
   await safeCreateIndex(okfSources, { tenantId: 1, environmentId: 1, releaseId: 1, sourceId: 1 }, { unique: true });
+  await safeCreateIndex(okfSources, { tenantId: 1, environmentId: 1, releaseId: 1, _releaseOrdinal: 1 });
 
   const okfEvidenceChunks = db.collection(COLLECTION_OKF_EVIDENCE_CHUNKS);
   await safeCreateIndex(okfEvidenceChunks, { tenantId: 1, environmentId: 1, releaseId: 1, chunkId: 1 }, { unique: true });
   await safeCreateIndex(okfEvidenceChunks, { tenantId: 1, environmentId: 1, releaseId: 1, sourceRef: 1 });
   await safeCreateIndex(okfEvidenceChunks, { tenantId: 1, environmentId: 1, releaseId: 1, conceptIds: 1, claimClasses: 1 });
+  await safeCreateIndex(okfEvidenceChunks, { tenantId: 1, environmentId: 1, releaseId: 1, _releaseOrdinal: 1 });
 
   const okfVerifications = db.collection(COLLECTION_OKF_VERIFICATION_RECORDS);
   await safeCreateIndex(okfVerifications, { tenantId: 1, environmentId: 1, releaseId: 1, recordId: 1 }, { unique: true });
   await safeCreateIndex(okfVerifications, { tenantId: 1, environmentId: 1, releaseId: 1, targetType: 1, targetId: 1 });
+  await safeCreateIndex(okfVerifications, { tenantId: 1, environmentId: 1, releaseId: 1, _releaseOrdinal: 1 });
+
+  await safeCreateIndex(db.collection(COLLECTION_OKF_VERIFICATION_ATTESTATIONS),
+    { tenantId: 1, environmentId: 1, recordId: 1, attestationHash: 1 }, { unique: true });
+  await safeCreateIndex(db.collection(COLLECTION_OKF_VERIFIER_ROLES),
+    { tenantId: 1, environmentId: 1, roleId: 1 }, { unique: true });
 
   // 19. Append-only revocation events; safety-critical runtime reads the latest head per scope.
   const okfRevocations = db.collection(COLLECTION_OKF_REVOCATION_EVENTS);

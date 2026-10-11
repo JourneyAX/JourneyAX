@@ -1,5 +1,7 @@
 import {
+  OkfDraftContentSchema,
   OkfReleaseContentSchema,
+  type OkfDraftContent,
   type OkfReleaseContent,
   type OkfVerificationRecord,
 } from './contracts';
@@ -73,14 +75,30 @@ function verificationIsQualified(
   if (claimClasses.includes('legal_requirement')) {
     return sourceKinds.has('regulation') && /compliance|legal|regulat/.test(role);
   }
+  if (claimClasses.includes('warranty')) {
+    return (sourceKinds.has('manufacturer_document') || sourceKinds.has('merchant_policy')) &&
+      /product|warrant|merchant|policy|compliance|legal/.test(role);
+  }
+  if (claimClasses.some((c) => ['compatibility', 'requirement', 'substitution'].includes(c))) {
+    return [...sourceKinds].some((kind) => ['manufacturer_document', 'merchant_policy', 'regulation', 'trade_expert'].includes(kind)) &&
+      /trade|plumb|electric|builder|product|technical|merchant|compliance/.test(role);
+  }
   if (claimClasses.some((c) => ['safety_instruction', 'care_safety', 'installation_step'].includes(c))) {
     return /trade|plumb|electric|builder|product|safety|compliance/.test(role);
   }
   return true;
 }
 
+export function validateOkfDraftContent(input: unknown, tenantId: string): OkfValidationResult {
+  return validateOkfContent(input, tenantId, false);
+}
+
 export function validateOkfReleaseContent(input: unknown, tenantId: string): OkfValidationResult {
-  const parsed = OkfReleaseContentSchema.safeParse(input);
+  return validateOkfContent(input, tenantId, true);
+}
+
+function validateOkfContent(input: unknown, tenantId: string, publication: boolean): OkfValidationResult {
+  const parsed = (publication ? OkfReleaseContentSchema : OkfDraftContentSchema).safeParse(input);
   if (!parsed.success) {
     return {
       valid: false,
@@ -92,7 +110,7 @@ export function validateOkfReleaseContent(input: unknown, tenantId: string): Okf
     };
   }
 
-  const content = parsed.data;
+  const content = parsed.data as OkfReleaseContent | OkfDraftContent;
   const issues: OkfValidationIssue[] = [];
   const concepts = new Map(content.concepts.map((concept) => [concept.conceptId, concept]));
   const relationships = new Map(content.relationships.map((relationship) => [relationship.relationshipId, relationship]));
@@ -115,6 +133,13 @@ export function validateOkfReleaseContent(input: unknown, tenantId: string): Okf
   assertUnique(content.factRegistry.map((f) => f.factKey), 'factRegistry');
 
   for (const concept of content.concepts) {
+    if (concept.importReview?.status === 'required') {
+      issues.push({
+        code: 'import_review_required',
+        path: concept.conceptId,
+        message: 'Imported concept controls require authenticated review and classification before publication',
+      });
+    }
     if (concept.tenantId !== tenantId || tenantFromConceptId(concept.conceptId) !== tenantId) {
       issues.push({ code: 'tenant_scope_mismatch', path: concept.conceptId, message: 'Concept tenant scope does not match release tenant' });
     }
@@ -143,6 +168,18 @@ export function validateOkfReleaseContent(input: unknown, tenantId: string): Okf
         issues.push({ code: 'invalid_verification_ref', path: concept.conceptId, message: 'Concept verification reference does not resolve to this concept' });
       } else if (verification.contentHash.replace(/^sha256:/, '') !== concept.contentHash.replace(/^sha256:/, '')) {
         issues.push({ code: 'verification_hash_mismatch', path: concept.conceptId, message: 'Concept verification does not cover current contentHash' });
+      } else if (verification.status === 'verified') {
+        if (verification.sourceRefs.length === 0) {
+          issues.push({ code: 'verification_missing_sources', path: concept.conceptId, message: 'Verified concepts require at least one source' });
+        }
+        if (verification.sourceRefs.some((sourceRef) => !concept.evidenceRefs.includes(sourceRef))) {
+          issues.push({ code: 'verification_scope_mismatch', path: concept.conceptId, message: 'Concept verification sources must be declared in concept evidenceRefs' });
+        }
+        const sourceKinds = new Set(verification.sourceRefs.map((id) => sources.get(id)?.kind).filter(Boolean) as string[]);
+        if ((concept.riskClass === 'safety_critical' || concept.lens === 'problem') &&
+          !verificationIsQualified(verification, sourceKinds, ['safety_instruction'])) {
+          issues.push({ code: 'unqualified_verification', path: concept.conceptId, message: 'A safety/problem concept requires qualified evidence and a qualified verifier role' });
+        }
       }
     }
   }
@@ -170,6 +207,14 @@ export function validateOkfReleaseContent(input: unknown, tenantId: string): Okf
     }
     if (verification && verification.contentHash.replace(/^sha256:/, '') !== relationship.contentHash.replace(/^sha256:/, '')) {
       issues.push({ code: 'verification_hash_mismatch', path: relationship.relationshipId, message: 'Relationship verification does not cover current contentHash' });
+    }
+    if (verification?.status === 'verified') {
+      if (verification.sourceRefs.length === 0 || relationship.sourceRefs.length === 0) {
+        issues.push({ code: 'verification_missing_sources', path: relationship.relationshipId, message: 'Verified relationships require target and verification source references' });
+      }
+      if (verification.sourceRefs.some((sourceRef) => !relationship.sourceRefs.includes(sourceRef))) {
+        issues.push({ code: 'verification_scope_mismatch', path: relationship.relationshipId, message: 'Relationship verification sources must be declared on the relationship' });
+      }
     }
     const sourceKinds = new Set(relationship.sourceRefs.map((id) => sources.get(id)?.kind).filter(Boolean) as string[]);
     if (!verificationIsQualified(verification, sourceKinds, relationship.claimClasses)) {
@@ -219,14 +264,23 @@ export function validateOkfReleaseContent(input: unknown, tenantId: string): Okf
   }
 
   for (const verification of content.verifications) {
+    const expectedTarget = verification.targetType === 'concept'
+      ? concepts.get(verification.targetId)
+      : relationships.get(verification.targetId);
+    if (!expectedTarget) {
+      issues.push({ code: 'unresolved_verification_target', path: verification.recordId, message: `Verification target '${verification.targetId}' does not resolve` });
+    }
+    if (verification.status === 'verified' && verification.sourceRefs.length === 0) {
+      issues.push({ code: 'verification_missing_sources', path: verification.recordId, message: 'Verified records require source references' });
+    }
     for (const sourceRef of verification.sourceRefs) {
       if (!sources.has(sourceRef)) issues.push({ code: 'unresolved_source', path: verification.recordId, message: `Verification source '${sourceRef}' does not resolve` });
     }
   }
 
-  if (!content.evaluation.passed || content.evaluation.failedScenarioCount > 0) {
+  if (publication && (!('evaluation' in content) || !content.evaluation.passed || content.evaluation.failedScenarioCount > 0 || content.evaluation.scenarioCount < 1)) {
     issues.push({ code: 'evaluation_failed', path: 'evaluation', message: 'OKF release evaluation must pass before publication' });
   }
 
-  return { valid: issues.length === 0, issues, content };
+  return { valid: issues.length === 0, issues, content: publication ? content as OkfReleaseContent : undefined };
 }

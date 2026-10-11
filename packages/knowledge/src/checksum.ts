@@ -1,12 +1,17 @@
 import { createHash } from 'node:crypto';
 import type { OkfReleaseContent } from './contracts';
 
+/** Stable UTF-16 code-unit order; independent of host locale and ICU data. */
+export function compareKnowledgeKeys(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export function stableKnowledgeJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableKnowledgeJson).join(',')}]`;
   if (value && typeof value === 'object') {
     return `{${Object.entries(value as Record<string, unknown>)
       .filter(([, entry]) => entry !== undefined)
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => compareKnowledgeKeys(a, b))
       .map(([key, entry]) => `${JSON.stringify(key)}:${stableKnowledgeJson(entry)}`)
       .join(',')}}`;
   }

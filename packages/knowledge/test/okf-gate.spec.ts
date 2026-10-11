@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resolveOkfGate, validateOkfReleaseContent, type OkfGateInput } from '../src';
+import { resolveOkfGate, resolveOkfBasketCommerce, validateOkfReleaseContent, type OkfGateInput } from '../src';
 import { buildOkfContent, conceptId } from './fixtures';
 
 const content = buildOkfContent();
@@ -27,7 +27,7 @@ function scenario(name: string, input: OkfGateInput, verify: (decision: ReturnTy
   }
 }
 
-console.log('🧪 Running 34 deterministic OKF gate scenarios...');
+console.log('🧪 Running 41 deterministic OKF gate scenarios...');
 
 scenario('broad screws gives grouped overview and a non-blocking substrate card', { ...base, message: 'screws' }, (d) => {
   assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.retrieval.presentation, 'grouped_overview'); assert.equal(d.clarification?.factKey, 'substrate'); assert.equal(d.clarification?.blocking, false);
@@ -63,6 +63,12 @@ scenario('replacement toilet without outlet clarifies first', { ...base, message
   assert.equal(d.mode, 'clarify_then_search'); assert.equal(d.clarification?.blocking, true);
 });
 scenario('replacement toilet with outlet goes direct', { ...base, message: 'replacement toilet', matchedConcepts: matched(conceptId('bathrooms/replacement-toilet')), knownFacts: { outlet_type: 's-trap' } }, (d) => assert.equal(d.mode, 'direct_results'));
+const clarifyFirstContent = structuredClone(content);
+clarifyFirstContent.concepts.find((entry) => entry.conceptId === conceptId('bathrooms/replacement-toilet'))!.broadQueryPolicy = {
+  groupConceptIds: [conceptId('bathrooms/toilet-suites')], maxItemsPerGroup: 2, productRetrievalAllowed: true,
+};
+assert.equal(resolveOkfGate(clarifyFirstContent, { ...base, message: 'replacement toilet', matchedConcepts: matched(conceptId('bathrooms/replacement-toilet')) }).mode,
+  'clarify_then_search', 'merchant-authored clarifyFirst must override grouped overview for compatibility-sensitive products');
 scenario('toilet seat excludes suites', { ...base, message: 'toilet seat' }, (d) => {
   assert.equal(d.conceptId, conceptId('bathrooms/toilet-seat')); assert.equal(d.retrieval.excludeCategoryIds.includes('bathrooms.toilet-suites'), true);
 });
@@ -103,7 +109,33 @@ scenario('known fact is not asked again', { ...base, message: 'screws', knownFac
   assert.equal(d.conceptId, conceptId('fastenings/wood-screws')); assert.equal(d.clarification, undefined);
 });
 scenario('customer declines a question and asks to see items', { ...base, message: 'screws just show me', matchedConcepts: matched(conceptId('fastenings/screws')), declinedQuestions: ['q.substrate'], forceShowResults: true }, (d) => {
-  assert.equal(d.mode, 'direct_results'); assert.equal(d.clarification, undefined);
+  assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.recommendation, 'category_examples'); assert.equal(d.clarification, undefined);
+});
+scenario('screwdriver is not matched to screws by substring', { ...base, message: 'screwdriver' }, (d) => {
+  assert.equal(d.conceptId, undefined); assert.equal(d.mode, 'no_match');
+});
+scenario('negative problem wording does not trigger safety flow', { ...base, message: 'bathroom no problem' }, (d) => {
+  assert.equal(d.mode, 'project_journey');
+});
+scenario('broken glass cleaner is a shopping request, not a diagnosis', { ...base, message: 'broken glass cleaner' }, (d) => {
+  assert.equal(d.mode, 'overview_then_ask');
+});
+for (const message of ['mould resistant paint', 'smoke alarm', 'leak sealant for roof']) {
+  const decision = resolveOkfGate(content, { ...base, message });
+  assert.notEqual(decision.mode, 'safety_then_diagnose', `${message} must not be classified as a fault`);
+}
+scenario('my toilet is leaking remains a problem statement', { ...base, message: 'my toilet is leaking' }, (d) => {
+  assert.equal(d.mode, 'safety_then_diagnose');
+});
+scenario('revoked matched parent cannot be bypassed by discriminator narrowing', { ...base, message: 'screws', knownFacts: { substrate: 'timber' }, activeRevocations: [{ eventId: 'e-parent', revocationId: 'r-parent', eventType: 'created', tenantId: 'placemakers', environmentId: 'production', releaseId: 'okf-placemakers-1.0.0', conceptIds: [conceptId('fastenings/screws')], cascade: 'none', effect: { suppressClaims: true, suppressRetrieval: true }, reason: 'correction', createdBy: 'owner', createdAt: new Date('2026-10-09T00:00:00.000Z'), expiresAt: new Date('2026-10-20T00:00:00.000Z') }] }, (d) => {
+  assert.equal(d.trace.reasonCodes.includes('concept_revoked'), true); assert.equal(d.retrieval.permission, 'blocked');
+});
+scenario('retrieval-only revocation preserves claims but blocks retrieval and commerce', { ...base, message: 'screws', activeRevocations: [{ eventId: 'e-retrieval', revocationId: 'r-retrieval', eventType: 'created', tenantId: 'placemakers', environmentId: 'production', releaseId: 'okf-placemakers-1.0.0', conceptIds: [conceptId('fastenings/screws')], cascade: 'none', effect: { suppressClaims: false, suppressRetrieval: true }, reason: 'catalog correction', createdBy: 'owner', createdAt: new Date('2026-10-09T00:00:00.000Z'), expiresAt: new Date('2026-10-20T00:00:00.000Z') }] }, (d) => {
+  assert.equal(d.retrieval.permission, 'blocked'); assert.equal(d.commerce.addToCart, 'blocked');
+});
+scenario('gate decisions never mutate immutable concept commerce policy', { ...base, message: 'SKU POA', matchedConcepts: matched(conceptId('fastenings/screws')), exactSku: 'POA', commerceContext: { productStatus: 'poa' } }, () => {
+  const concept = content.concepts.find((entry) => entry.conceptId === conceptId('fastenings/screws'))!;
+  assert.equal(concept.commercePolicy.addToCart, 'allowed_with_warning');
 });
 scenario('gibberish produces no match and no retrieval', { ...base, message: 'asdf' }, (d) => {
   assert.equal(d.mode, 'no_match'); assert.equal(d.retrieval.permission, 'blocked');
@@ -114,12 +146,44 @@ scenario('active revocation suppresses pinned safety concept', { ...base, messag
   assert.deepEqual(d.trace.revocationsApplied, ['r1']); assert.equal(d.safety?.guidanceUnavailable, true);
 });
 scenario('required knowledge failure closes', { ...base, message: 'screws', knowledgeAvailability: { available: false, required: true, failurePolicy: 'fail_closed' } }, (d) => {
-  assert.equal(d.mode, 'no_match'); assert.equal(d.claims.allowedClasses.length, 0);
+  assert.equal(d.mode, 'knowledge_unavailable'); assert.equal(d.claims.allowedClasses.length, 0);
 });
 scenario('optional enrichment failure permits legacy catalog facts only', { ...base, message: 'screws', knowledgeAvailability: { available: false, required: false, failurePolicy: 'enrichment_only' } }, (d) => {
   assert.equal(d.mode, 'legacy_search'); assert.deepEqual(d.claims.allowedClasses, ['catalog_fact']);
 });
 scenario('pinned release ID remains the decision release', { ...base, message: 'screws' }, (d) => assert.equal(d.trace.releaseId, 'okf-placemakers-1.0.0'));
 
-assert.equal(passed, 34);
+const blockedCriticalContent = structuredClone(content);
+const blockedCriticalScrews = blockedCriticalContent.concepts.find((entry) => entry.conceptId === conceptId('fastenings/screws'))!;
+blockedCriticalScrews.riskClass = 'safety_critical';
+blockedCriticalScrews.commercePolicy.checkout = 'blocked';
+for (const input of [
+  { ...base, message: 'screws' },
+  { ...base, message: 'SKU 123', matchedConcepts: matched(conceptId('fastenings/screws')), exactSku: '123' },
+]) {
+  assert.equal(
+    resolveOkfGate(blockedCriticalContent, input).commerce.checkout,
+    'blocked',
+    'a safety-critical gate must never loosen an existing checkout block',
+  );
+}
+
+const basketContent = structuredClone(content);
+const governedWoodSku = basketContent.concepts.find((entry) => entry.conceptId === conceptId('fastenings/wood-screws'))!;
+governedWoodSku.riskClass = 'safety_critical';
+governedWoodSku.commercePolicy.checkout = 'blocked';
+const basketInput = {
+  tenantId: 'placemakers', environmentId: 'production', releaseId: 'okf-placemakers-1.0.0',
+  items: [{ sku: 'WOOD-001' }, { sku: 'CLEAN-001' }],
+  products: [
+    { projectId: 'placemakers', sku: 'WOOD-001', categoryId: 'fastenings.wood-screws' },
+    { projectId: 'placemakers', sku: 'CLEAN-001', categoryId: 'cleaning' },
+  ],
+};
+assert.equal(resolveOkfBasketCommerce(basketContent, basketInput).commerce.checkout, 'blocked', 'basket safety policy must survive a later unrelated turn');
+assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, items: [{ sku: 'SCREW-001' }], products: [{ projectId: 'placemakers', sku: 'SCREW-001', categoryId: 'fastenings.screws' }] }).commerce.addToCart, 'allowed_with_warning');
+assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, products: [{ projectId: 'other', sku: 'WOOD-001', categoryId: 'fastenings.wood-screws' }] }).commerce.checkout, 'blocked');
+assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, products: [{ projectId: 'other', tenantId: 'placemakers', sku: 'WOOD-001', categoryId: 'fastenings.wood-screws' }] }).commerce.checkout, 'blocked');
+
+assert.equal(passed, 41);
 console.log(`✅ OKF gate suite: ${passed} passed, 0 failed`);

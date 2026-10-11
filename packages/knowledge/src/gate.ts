@@ -16,6 +16,7 @@ export type OkfResponseMode =
   | 'evidence_answer'
   | 'operational_journey'
   | 'legacy_search'
+  | 'knowledge_unavailable'
   | 'no_match';
 
 export interface OkfGateInput {
@@ -54,6 +55,7 @@ export interface OkfGateDecision {
     scope: string[];
     categoryIds: string[];
     excludeCategoryIds: string[];
+    groups?: Array<{ conceptId: string; label: string; categoryIds: string[]; excludeCategoryIds: string[]; maxItems: number }>;
     presentation: 'grouped_overview' | 'list' | 'none';
     maxItemsPerGroup?: number;
   };
@@ -123,6 +125,16 @@ function normalizedWords(value: string): string[] {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 }
 
+function hasExplicitProblemStatement(message: string): boolean {
+  const lower = message.toLowerCase();
+  if (/\b(?:no|not)\s+(?:a\s+)?(?:problem|fault|leak|damage)\b/.test(lower)) return false;
+  return /\b(?:my|our|the)\s+(?:[a-z-]+\s+){0,4}(?:is|are|has|have|keeps?)\s+(?:leaking|broken|faulty|mouldy|sparking|smoking|burning)\b/.test(lower) ||
+    /\bwater\s+(?:under|around|behind|through)\s+(?:my|our|the)\b/.test(lower) ||
+    /\b(?:have|got|there(?:'s| is)|help(?:\s+me)?\s+with)\s+(?:a\s+)?(?:problem|fault|leak|damage)\b/.test(lower) ||
+    /\b(?:fix|repair|troubleshoot)\s+(?:my|our|the)\s+[a-z-]+\b/.test(lower) ||
+    /\b(?:mould|smoke|sparking)\s+(?:on|near|under|around)\s+(?:my|our|the|an?)\b/.test(lower);
+}
+
 function inferIntent(message: string): string[] {
   const lower = message.toLowerCase();
   const intents: string[] = [];
@@ -131,7 +143,7 @@ function inferIntent(message: string): string[] {
   if (/\bwarrant/.test(lower)) intents.push('warranty');
   if (/\binstall|installation|fit this\b/.test(lower)) intents.push('installation');
   if (/\bcare|clean safely|maintain/.test(lower)) intents.push('care');
-  if (/\bleak|fault|broken|damage|mould|problem|repair/.test(lower)) intents.push('problem');
+  if (hasExplicitProblemStatement(message)) intents.push('problem');
   if (/\bquote|book|appointment|measure service/.test(lower)) intents.push('service_request');
   return intents;
 }
@@ -153,17 +165,34 @@ function findConcept(content: OkfReleaseContent, input: OkfGateInput): { concept
 
   const message = input.message.toLowerCase().trim();
   const messageWords = new Set(normalizedWords(message));
-  let best: { concept: OkfConcept; score: number; matchedBy: string } | undefined;
+  let best: { concept: OkfConcept; score: number; specificity: number; depth: number; matchedBy: string } | undefined;
   for (const concept of content.concepts) {
     const phrases = [concept.name, ...concept.synonyms, ...concept.customerPhrases];
     for (const phrase of phrases) {
-      const normalized = phrase.toLowerCase().trim();
-      const words = normalizedWords(normalized);
-      const exact = normalized === message;
-      const included = normalized.length > 2 && message.includes(normalized);
+      const words = normalizedWords(phrase);
+      const normalized = words.join(' ');
+      if (!normalized) continue;
+      const messageNormalized = normalizedWords(message).join(' ');
+      const exact = normalized === messageNormalized;
+      // Token sequence matching avoids classifying “screwdriver” as “screw”
+      // and avoids hyphenated adjectives such as “damage-free” as problems.
+      const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+      const included = normalized.length > 2 && new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`, 'i').test(messageNormalized);
       const coverage = words.length ? words.filter((word) => messageWords.has(word)).length / words.length : 0;
       const score = exact ? 1 : included ? 0.9 : coverage === 1 && words.length > 0 ? 0.75 : 0;
-      if (score > (best?.score || 0)) best = { concept, score, matchedBy: exact ? 'exact_phrase' : included ? 'phrase' : 'tokens' };
+      const candidate = {
+        concept,
+        score,
+        specificity: words.length,
+        depth: conceptDepth(concept.conceptId),
+        matchedBy: exact ? 'exact_phrase' : included ? 'phrase' : 'tokens',
+      };
+      if (
+        score > 0 &&
+        (!best || score > best.score ||
+          (score === best.score && candidate.specificity > best.specificity) ||
+          (score === best.score && candidate.specificity === best.specificity && candidate.depth > best.depth))
+      ) best = candidate;
     }
   }
   return best ? { concept: best.concept, matchedBy: best.matchedBy } : { matchedBy: 'none' };
@@ -292,6 +321,7 @@ function noMatch(input: OkfGateInput, reason: string, mode: OkfResponseMode = 'n
       scope: [],
       categoryIds: [],
       excludeCategoryIds: [],
+      groups: [],
       presentation: mode === 'legacy_search' ? 'list' : 'none',
     },
     recommendation: mode === 'legacy_search' ? 'category_examples' : 'blocked',
@@ -315,7 +345,7 @@ function noMatch(input: OkfGateInput, reason: string, mode: OkfResponseMode = 'n
 export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput): OkfGateDecision {
   if (input.knowledgeAvailability && !input.knowledgeAvailability.available) {
     return input.knowledgeAvailability.required || input.knowledgeAvailability.failurePolicy === 'fail_closed'
-      ? noMatch(input, 'knowledge_required_unavailable')
+      ? noMatch(input, 'knowledge_required_unavailable', 'knowledge_unavailable')
       : noMatch(input, 'knowledge_optional_unavailable', 'legacy_search');
   }
 
@@ -343,7 +373,8 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
   }
 
   const appliedRevocations: string[] = [];
-  let revoked = false;
+  let suppressClaims = false;
+  let suppressRetrieval = false;
   for (const revocation of input.activeRevocations || []) {
     if (revocation.tenantId !== input.tenantId || revocation.environmentId !== input.environmentId) continue;
     if (revocation.expiresAt <= (input.now || new Date())) continue;
@@ -351,8 +382,12 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     if (revocation.cascade === 'descendants') {
       for (const root of revocation.conceptIds) for (const child of descendantsOf(content, root)) suppressed.add(child);
     }
-    if (suppressed.has(concept.conceptId)) {
-      revoked = true;
+    // Check both the customer-matched parent and a discriminator-narrowed child.
+    // Otherwise a revoked broad concept can be bypassed simply by answering its
+    // narrowing question in the same turn.
+    if (suppressed.has(initialConcept.conceptId) || suppressed.has(concept.conceptId)) {
+      suppressClaims ||= revocation.effect.suppressClaims;
+      suppressRetrieval ||= revocation.effect.suppressRetrieval;
       appliedRevocations.push(revocation.revocationId);
     }
   }
@@ -380,10 +415,11 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
       scope: [],
       categoryIds: concept.searchScope.catalogCategoryIds,
       excludeCategoryIds: concept.searchScope.excludeCategoryIds,
+      groups: [],
       presentation: 'none',
     },
     recommendation: 'blocked',
-    commerce: concept.commercePolicy,
+    commerce: { ...concept.commercePolicy },
     catalogHandling: {
       requiresLiveValidation: true,
       productStatus: input.commerceContext?.productStatus,
@@ -400,17 +436,23 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     },
   };
 
-  if (revoked) {
+  if (suppressClaims || suppressRetrieval) {
     base.mode = concept.lens === 'problem' || concept.riskClass === 'safety_critical' ? 'safety_then_diagnose' : 'no_match';
-    base.commerce = BLOCKED_COMMERCE;
-    base.claims.allowedClasses = [];
-    base.claims.disclaimers.push('Guidance for this topic is temporarily unavailable. Please contact a qualified professional.');
-    base.safety = { steps: [], blocksProducts: true, guidanceUnavailable: true };
+    if (suppressRetrieval) {
+      base.retrieval.permission = 'blocked';
+      base.commerce = { ...BLOCKED_COMMERCE };
+    }
+    if (suppressClaims) {
+      base.claims.allowedClasses = [];
+      base.claims.disclaimers.push('Guidance for this topic is temporarily unavailable. Please contact a qualified professional.');
+    }
+    base.safety = { steps: [], blocksProducts: suppressRetrieval, guidanceUnavailable: suppressClaims };
     base.trace.reasonCodes.push('concept_revoked');
     return base;
   }
 
-  const safetyIntent = concept.lens === 'problem' || concept.type === 'symptom' || intents.some((intent) => PROBLEM_INTENTS.has(intent));
+  const safetyIntent = concept.lens === 'problem' || concept.type === 'symptom' ||
+    (hasExplicitProblemStatement(input.message) && intents.some((intent) => PROBLEM_INTENTS.has(intent)));
   if (safetyIntent) {
     const guidance = verifiedSafetyGuidance(content, concept, now);
     const hasCompleteGuidance = concept.safety.stepRefs.length > 0 && guidance.length === concept.safety.stepRefs.length;
@@ -420,8 +462,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
       blocksProducts: concept.safety.blocksProducts,
       guidance: hasCompleteGuidance ? guidance : [],
       guidanceUnavailable:
-        concept.riskClass === 'safety_critical' &&
-        (!base.claims.allowedClasses.includes('safety_instruction') || !hasCompleteGuidance),
+        !base.claims.allowedClasses.includes('safety_instruction') || !hasCompleteGuidance,
     };
     if (base.safety.blocksProducts || base.safety.guidanceUnavailable) {
       base.retrieval.permission = 'blocked';
@@ -473,14 +514,16 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     base.mode = 'project_journey';
     base.retrieval.permission = 'blocked';
     base.trace.reasonCodes.push('project_or_room');
-  } else if (input.exactSku || missingFacts.length === 0 || input.forceShowResults) {
+  } else if (input.exactSku) {
     base.mode = 'direct_results';
     base.retrieval.permission = 'allowed';
     base.retrieval.scope = [concept.conceptId];
     base.retrieval.presentation = 'list';
     base.recommendation = input.exactSku ? 'matched_to_stated_needs' : 'matched_to_stated_needs';
-    base.trace.reasonCodes.push(input.exactSku ? 'exact_sku' : input.forceShowResults ? 'customer_declined_questions' : 'required_facts_known');
+    base.trace.reasonCodes.push('exact_sku');
   } else if (concept.compatibilitySensitive && nextDiscriminator?.clarifyFirst) {
+    // A merchant's blocking compatibility question takes precedence over a
+    // broad overview, including when the customer asks to skip questions.
     base.mode = 'clarify_then_search';
     base.retrieval.permission = 'blocked';
     base.commerce = {
@@ -488,19 +531,41 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
       checkout: concept.riskClass === 'safety_critical' ? 'requires_professional_confirmation' : 'requires_compatibility_resolution',
     };
     base.trace.reasonCodes.push('compatibility_fact_missing');
-  } else if (concept.broadQueryPolicy) {
+  } else if (
+    concept.broadQueryPolicy &&
+    (input.forceShowResults || concept.discriminators.length === 0 || missingFacts.length > 0)
+  ) {
+    // “Just show me” means show a safe, grouped overview now; it does not turn
+    // a low-specificity query into a fully matched recommendation.
     base.mode = 'overview_then_ask';
     base.retrieval.permission = concept.broadQueryPolicy.productRetrievalAllowed ? 'allowed' : 'blocked';
     base.retrieval.scope = concept.broadQueryPolicy.groupConceptIds;
+    base.retrieval.groups = concept.broadQueryPolicy.groupConceptIds.flatMap((conceptId) => {
+      const group = concepts.get(conceptId);
+      return group ? [{
+        conceptId,
+        label: group.name,
+        categoryIds: group.searchScope.catalogCategoryIds,
+        excludeCategoryIds: group.searchScope.excludeCategoryIds,
+        maxItems: concept.broadQueryPolicy!.maxItemsPerGroup,
+      }] : [];
+    });
     base.retrieval.presentation = concept.broadQueryPolicy.productRetrievalAllowed ? 'grouped_overview' : 'none';
     base.retrieval.maxItemsPerGroup = concept.broadQueryPolicy.maxItemsPerGroup;
     base.recommendation = 'category_examples';
-    base.trace.reasonCodes.push('broad_product_concept');
+    base.trace.reasonCodes.push(input.forceShowResults ? 'customer_declined_questions' : 'broad_product_concept');
+  } else if (missingFacts.length === 0 || input.forceShowResults) {
+    base.mode = 'direct_results';
+    base.retrieval.permission = 'allowed';
+    base.retrieval.scope = [concept.conceptId];
+    base.retrieval.presentation = 'list';
+    base.recommendation = 'matched_to_stated_needs';
+    base.trace.reasonCodes.push(input.forceShowResults ? 'customer_declined_questions' : 'required_facts_known');
   } else {
     base.trace.reasonCodes.push('no_policy_match');
   }
 
-  if (nextDiscriminator && factDefinition && !input.forceShowResults) {
+  if (nextDiscriminator && factDefinition && base.mode !== 'direct_results') {
     base.clarification = {
       blocking: base.mode === 'clarify_then_search',
       factKey: factDefinition.factKey,
@@ -515,7 +580,9 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     base.claims.disclaimers.push('Compatibility must be verified before checkout.');
   }
   if (concept.riskClass === 'safety_critical') {
-    base.commerce.checkout = 'requires_professional_confirmation';
+    if (base.commerce.checkout !== 'blocked') {
+      base.commerce.checkout = 'requires_professional_confirmation';
+    }
   }
   if (input.commerceContext?.productStatus === 'discontinued') {
     base.catalogHandling.alternativeLanguage = input.commerceContext.hasVerifiedAlternative

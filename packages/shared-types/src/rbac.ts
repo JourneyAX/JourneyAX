@@ -16,6 +16,7 @@ export type Permission =
   | 'config.edit'
   | 'config.publish'
   | 'knowledge.read'
+  | 'knowledge.verify'
   | 'knowledge.ingest'
   | 'knowledge.delete'
   | 'secret.rotate'
@@ -31,7 +32,7 @@ const GUEST: Permission[] = ['chat.use'];
 const BUYER: Permission[] = [...GUEST, 'project.read', 'order.read', 'knowledge.read'];
 const MANAGER: Permission[] = [
   ...BUYER,
-  'config.edit', 'config.publish', 'knowledge.ingest', 'knowledge.delete',
+  'config.edit', 'config.publish', 'knowledge.verify', 'knowledge.ingest', 'knowledge.delete',
   'order.manage', 'analytics.read', 'user.read',
 ];
 // Platform admin: everything, including cross-tenant + secret rotation + user mgmt.

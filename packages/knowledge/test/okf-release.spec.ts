@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import {
   appendOkfRevocationEvent,
+  buildServerOwnedOkfContent,
   computeKnowledgeEntityHash,
   computeKnowledgeChecksum,
+  evaluateOkfDraft,
   loadActiveOkfRevocations,
   loadPinnedOkfRelease,
   OkfIntegrityError,
@@ -103,6 +105,25 @@ await test('reference identity and checksum are all enforced', () => {
   assert.throws(() => verifyOkfReleaseEnvelope(stored, { checksum: 'f'.repeat(64) }), (error: any) => error.code === 'reference_checksum_mismatch');
 });
 
+await test('an immutable historical release loads by integrity even if current publish rules are stricter', async () => {
+  const db = new MemoryDb();
+  const content = buildOkfContent() as any;
+  content.evaluation = { ...content.evaluation, passed: false, failedScenarioCount: 1 };
+  const stored = buildStoredOkfRelease() as any;
+  stored.content = content;
+  stored.checksum = computeKnowledgeChecksum(content);
+  db.collection('okf_releases').docs.push(stored);
+  const ref = {
+    tenantId: stored.tenantId, environmentId: stored.environmentId,
+    releaseId: stored.releaseId, version: stored.version, checksum: stored.checksum,
+  };
+  assert.equal((await loadPinnedOkfRelease(db as any, ref)).release.checksum, stored.checksum);
+  await rejectsCode(() => publishOkfRelease(db as any, {
+    releaseId: 'new-release', tenantId: stored.tenantId, environmentId: stored.environmentId,
+    version: '2.0.0', content, publishedBy: 'test',
+  }), 'semantic_invalid');
+});
+
 await test('publication writes immutable envelope and release-scoped normalized records', async () => {
   const db = new MemoryDb();
   const content = buildOkfContent();
@@ -112,10 +133,104 @@ await test('publication writes immutable envelope and release-scoped normalized 
   assert.equal(release.checksum, computeKnowledgeChecksum(content));
   assert.equal(db.collection('okf_releases').docs.length, 1);
   assert.equal(db.collection('okf_concepts').docs.length, content.concepts.length);
+  assert.equal(db.collection('okf_fact_definitions').docs.length, content.factRegistry.length);
   assert.equal(db.collection('okf_relationships').docs.length, content.relationships.length);
   assert.equal(db.collection('okf_sources').docs.length, content.sources.length);
   assert.equal(db.collection('okf_evidence_chunks').docs.length, content.evidenceChunks.length);
   assert.equal(db.collection('okf_verification_records').docs.length, content.verifications.length);
+  assert.equal(release.artifact?.status, 'pending');
+  assert.equal(db.collection('outbox_events').docs.length, 1);
+  assert.equal(db.collection('outbox_events').docs[0].eventType, 'okf.release.export_requested');
+});
+
+await test('publication rejects a server evaluation report that does not match its release metadata', async () => {
+  const db = new MemoryDb();
+  await rejectsCode(() => publishOkfRelease(db as any, {
+    releaseId: 'okf-report-mismatch', tenantId: 'placemakers', environmentId: 'test',
+    version: '1.0.0', content: buildOkfContent(), publishedBy: 'test',
+    evaluationScenarios: [{ id: 'safety', passed: true }],
+  }), 'evaluation_mismatch');
+  assert.equal(db.collection('okf_releases').docs.length, 0);
+});
+
+await test('large evidence stays outside the release metadata document and hydrates with integrity checks', async () => {
+  const db = new MemoryDb();
+  const content = buildOkfContent() as any;
+  const original = content.evidenceChunks[0];
+  content.evidenceChunks = Array.from({ length: 21 }, (_, index) => {
+    const chunk = {
+      ...original,
+      chunkId: `large-evidence-${index}`,
+      ordinal: index,
+      content: `Evidence ${index}: ${'x'.repeat(1_000_000)}`,
+    };
+    chunk.contentHash = computeKnowledgeEntityHash(chunk);
+    return chunk;
+  });
+  for (const concept of content.concepts) {
+    concept.evidenceRefs = [];
+    concept.contentHash = computeKnowledgeEntityHash(concept);
+  }
+  const release = await publishOkfRelease(db as any, {
+    releaseId: 'okf-placemakers-large', tenantId: 'placemakers', environmentId: 'test',
+    version: '2.0.0', content, publishedBy: 'test',
+  });
+  const stored = db.collection('okf_releases').docs[0];
+  assert.ok(Buffer.byteLength(JSON.stringify(content)) > 20_000_000);
+  assert.ok(Buffer.byteLength(JSON.stringify(stored)) < 1_000_000);
+  assert.equal(stored.content, undefined);
+  const ref = { tenantId: 'placemakers', environmentId: 'test', releaseId: release.releaseId, version: release.version, checksum: release.checksum };
+  const loaded = await loadPinnedOkfRelease(db as any, ref);
+  assert.equal(loaded.release.content.evidenceChunks.length, 21);
+  assert.equal(loaded.release.checksum, release.checksum);
+  db.collection('okf_evidence_chunks').docs[0].content = 'tampered';
+  await rejectsCode(() => loadPinnedOkfRelease(db as any, ref), 'collection_checksum_mismatch');
+});
+
+await test('production publication requires a transactional database session', async () => {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    const { index: _index, evaluation: _evaluation, ...draft } = buildOkfContent();
+    const scope = { tenantId: 'placemakers', environmentId: 'production', releaseId: 'okf-placemakers-no-session', evaluatedAt: '2026-10-01T00:00:00.000Z' };
+    const content = buildServerOwnedOkfContent(draft, scope);
+    await rejectsCode(() => publishOkfRelease(new MemoryDb() as any, {
+      releaseId: 'okf-placemakers-no-session', tenantId: 'placemakers',
+      environmentId: 'production', version: '1.0.0', content,
+      evaluationScenarios: evaluateOkfDraft(draft, scope.tenantId, scope.environmentId, scope.releaseId, scope.evaluatedAt),
+      publishedBy: 'test',
+    }), 'transaction_unavailable');
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous;
+  }
+});
+
+await test('production publication rejects client-only evaluation without server scenarios', async () => {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    await rejectsCode(() => publishOkfRelease(new MemoryDb() as any, {
+      releaseId: 'okf-client-evaluation', tenantId: 'placemakers', environmentId: 'production',
+      version: '1.0.0', content: buildOkfContent(), publishedBy: 'test',
+    }), 'evaluation_missing');
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous;
+  }
+});
+
+await test('publication hashes and stores the same parsed representation when defaults are omitted', async () => {
+  const db = new MemoryDb();
+  const raw = buildOkfContent() as any;
+  const defaultedConcept = raw.concepts.find((concept: any) => concept.synonyms.length === 0);
+  delete defaultedConcept.synonyms;
+  const release = await publishOkfRelease(db as any, {
+    releaseId: 'okf-placemakers-defaults', tenantId: 'placemakers', environmentId: 'production', version: '1.0.1', content: raw, publishedBy: 'test',
+  });
+  assert.deepEqual(release.content.concepts.find((concept) => concept.conceptId === defaultedConcept.conceptId)?.synonyms, []);
+  assert.equal(release.checksum, computeKnowledgeChecksum(release.content));
+  assert.doesNotThrow(() => verifyOkfReleaseEnvelope(release));
 });
 
 await test('identical publication is idempotent and modified immutable release is rejected', async () => {
@@ -186,6 +301,22 @@ await test('unresolved relationships, hierarchy cycles, and cross-tenant concept
   assert.equal(result.issues.some((issue) => ['unresolved_relationship', 'cross_tenant_relationship'].includes(issue.code)), true);
 });
 
+await test('verified records fail closed without target-declared sources or a resolvable target', () => {
+  const missingSources = buildOkfContent() as any;
+  missingSources.relationships.find((entry: any) => entry.relationshipId === 'rel-leak-safety').sourceRefs = [];
+  missingSources.relationships.find((entry: any) => entry.relationshipId === 'rel-leak-safety').contentHash =
+    computeKnowledgeEntityHash(missingSources.relationships.find((entry: any) => entry.relationshipId === 'rel-leak-safety'));
+  missingSources.verifications.find((entry: any) => entry.recordId === 'verify-leak-safety').contentHash =
+    missingSources.relationships.find((entry: any) => entry.relationshipId === 'rel-leak-safety').contentHash;
+  const sourceResult = validateOkfReleaseContent(missingSources, 'placemakers');
+  assert.equal(sourceResult.issues.some((issue) => issue.code === 'verification_missing_sources'), true);
+
+  const orphan = buildOkfContent() as any;
+  orphan.verifications.push({ ...orphan.verifications[0], recordId: 'orphan-verification', targetId: 'missing-target' });
+  const orphanResult = validateOkfReleaseContent(orphan, 'placemakers');
+  assert.equal(orphanResult.issues.some((issue) => issue.code === 'unresolved_verification_target'), true);
+});
+
 await test('evidence chunks must bind to a release source, concepts, and their exact content hash', () => {
   const missingSource = buildOkfContent() as any;
   missingSource.evidenceChunks[0].sourceRef = 'missing-source';
@@ -197,7 +328,7 @@ await test('evidence chunks must bind to a release source, concepts, and their e
   assert.equal(validateOkfReleaseContent(tampered, 'placemakers').issues.some((issue) => issue.code === 'content_hash_mismatch'), true);
 });
 
-assert.equal(passed, 13);
+assert.equal(passed, 20);
 console.log(`✅ OKF release suite: ${passed} passed, 0 failed`);
 }
 

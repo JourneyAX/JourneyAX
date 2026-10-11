@@ -9,6 +9,7 @@ export const FactKeySchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
 export const Sha256Schema = z.string().regex(/^(?:sha256:)?[a-f0-9]{64}$/i);
 
 export const ConceptTypeSchema = z.enum([
+  'unknown',
   'department',
   'product_category',
   'product_family',
@@ -27,6 +28,18 @@ export const ConceptTypeSchema = z.enum([
   'service',
   'document_family',
 ]);
+
+/** Portable source text is retained for interchange only; the runtime never reads it. */
+export const OkfInterchangeSchema = z.object({
+  path: z.string().min(1),
+  originalType: z.string().min(1),
+  frontmatterExtras: z.record(z.string(), z.unknown()),
+  bodyMarkdown: z.string(),
+  /** Standard OKF metadata preserved independently of JourneyAX's runtime fields. */
+  standardFields: z.record(z.string(), z.unknown()).optional(),
+  /** Untrusted controls retained for a human reviewer, never read by the runtime. */
+  controlFields: z.record(z.string(), z.unknown()).optional(),
+}).strict();
 
 export const ClaimClassSchema = z.enum([
   'catalog_fact',
@@ -186,6 +199,7 @@ export const RelationshipSchema = z.object({
   effectiveFrom: z.string().datetime().optional(),
   contentHash: Sha256Schema,
   extensions: z.record(z.string(), z.unknown()).optional(),
+  interchange: OkfInterchangeSchema.optional(),
 }).strict();
 
 export const ConceptSchema = z.object({
@@ -238,6 +252,8 @@ export const ConceptSchema = z.object({
   version: z.number().int().positive(),
   contentHash: Sha256Schema,
   extensions: z.record(z.string(), z.unknown()).optional(),
+  interchange: OkfInterchangeSchema.optional(),
+  importReview: z.object({ status: z.literal('required'), fields: z.array(z.string()) }).strict().optional(),
 }).strict();
 
 /**
@@ -292,6 +308,10 @@ export const OkfReleaseContentSchema = z.object({
   extensions: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
+/** Merchant-editable data never includes server-owned evaluation or index state. */
+export const OkfDraftContentSchema = OkfReleaseContentSchema.omit({ index: true, evaluation: true });
+export type OkfDraftContent = z.infer<typeof OkfDraftContentSchema>;
+
 export const OkfReleaseEnvelopeSchema = z.object({
   releaseId: z.string().min(1),
   tenantId: z.string().regex(/^[a-z0-9-]+$/),
@@ -300,6 +320,14 @@ export const OkfReleaseEnvelopeSchema = z.object({
   checksum: Sha256Schema,
   status: z.enum(['building', 'ready', 'failed', 'retired']),
   artifactUri: z.string().min(1).optional(),
+  artifact: z.object({
+    status: z.enum(['pending', 'ready', 'failed']),
+    uri: z.string().min(1).optional(),
+    checksum: Sha256Schema.optional(),
+    verifiedChecksum: Sha256Schema.optional(),
+    exportedAt: z.coerce.date().optional(),
+    error: z.string().optional(),
+  }).strict().optional(),
   content: OkfReleaseContentSchema,
   publishedAt: z.coerce.date(),
   publishedBy: z.string().min(1),

@@ -23,13 +23,18 @@ export const COLLECTION_CUSTOM_REPORTS = 'custom_reports';
 export const COLLECTION_ANALYTICS_ALERTS = 'analytics_alerts';
 export const COLLECTION_ANALYTICS_AUDIT_LOGS = 'analytics_audit_logs';
 export const COLLECTION_OKF_RELEASES = 'okf_releases';
+export const COLLECTION_OKF_EVALUATION_REPORTS = 'okf_evaluation_reports';
 export const COLLECTION_OKF_DRAFTS = 'okf_drafts';
 export const COLLECTION_OKF_CONCEPTS = 'okf_concepts';
+export const COLLECTION_OKF_FACT_DEFINITIONS = 'okf_fact_definitions';
 export const COLLECTION_OKF_RELATIONSHIPS = 'okf_relationships';
 export const COLLECTION_OKF_SOURCES = 'okf_sources';
 export const COLLECTION_OKF_EVIDENCE_CHUNKS = 'okf_evidence_chunks';
 export const COLLECTION_OKF_VERIFICATION_RECORDS = 'okf_verification_records';
 export const COLLECTION_OKF_REVOCATION_EVENTS = 'okf_revocation_events';
+export const COLLECTION_OKF_ARTIFACT_POLICIES = 'okf_artifact_policies';
+export const COLLECTION_OKF_VERIFICATION_ATTESTATIONS = 'okf_verification_attestations';
+export const COLLECTION_OKF_VERIFIER_ROLES = 'okf_verifier_roles';
 
 export interface BusinessPackReleaseRecord {
   _id?: any;
@@ -73,6 +78,7 @@ export interface OkfReleaseRecord {
   checksum: string;
   status: 'building' | 'ready' | 'failed' | 'retired';
   artifactUri?: string;
+  artifact?: { status: 'pending' | 'ready' | 'failed'; uri?: string; checksum?: string; verifiedChecksum?: string; exportedAt?: Date; error?: string };
   content: Record<string, any>;
   publishedAt: Date;
   publishedBy: string;
