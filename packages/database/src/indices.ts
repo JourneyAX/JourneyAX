@@ -26,6 +26,7 @@ import {
   COLLECTION_OKF_EVIDENCE_CHUNKS,
   COLLECTION_OKF_VERIFICATION_RECORDS,
   COLLECTION_OKF_REVOCATION_EVENTS,
+  COLLECTION_OKF_REVOCATION_ARCHIVE,
   COLLECTION_OKF_ARTIFACT_POLICIES,
   COLLECTION_OKF_VERIFICATION_ATTESTATIONS,
   COLLECTION_OKF_VERIFIER_ROLES,
@@ -183,5 +184,8 @@ export async function ensureDatabaseIndices(db: Db): Promise<void> {
   const okfRevocations = db.collection(COLLECTION_OKF_REVOCATION_EVENTS);
   await safeCreateIndex(okfRevocations, { eventId: 1 }, { unique: true });
   await safeCreateIndex(okfRevocations, { tenantId: 1, environmentId: 1, revocationId: 1, createdAt: 1 });
+  // One event per type per revocation: concurrent creates/lifts cannot both succeed.
+  await safeCreateIndex(okfRevocations, { tenantId: 1, environmentId: 1, revocationId: 1, eventType: 1 }, { unique: true });
+  await safeCreateIndex(db.collection(COLLECTION_OKF_REVOCATION_ARCHIVE), { tenantId: 1, environmentId: 1, revocationId: 1 });
   await safeCreateIndex(okfRevocations, { tenantId: 1, environmentId: 1, releaseId: 1, expiresAt: 1 });
 }

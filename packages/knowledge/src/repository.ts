@@ -24,6 +24,7 @@ export const COLLECTION_OKF_SOURCES = 'okf_sources';
 export const COLLECTION_OKF_EVIDENCE_CHUNKS = 'okf_evidence_chunks';
 export const COLLECTION_OKF_VERIFICATION_RECORDS = 'okf_verification_records';
 export const COLLECTION_OKF_REVOCATION_EVENTS = 'okf_revocation_events';
+export const COLLECTION_OKF_REVOCATION_ARCHIVE = 'okf_revocation_events_archive';
 export const COLLECTION_OKF_ARTIFACT_POLICIES = 'okf_artifact_policies';
 const COLLECTION_OUTBOX_EVENTS = 'outbox_events';
 
@@ -317,6 +318,12 @@ export async function processOkfExport(
   }
 }
 
+/** Stored events carry the driver's `_id`; the contract itself is strict, so it is dropped before parsing. */
+function parseStoredRevocation(raw: any): OkfRevocationEvent {
+  const { _id, ...event } = raw || {};
+  return OkfRevocationEventSchema.parse(event);
+}
+
 export async function appendOkfRevocationEvent(
   db: Db,
   event: Omit<OkfRevocationEvent, 'eventId' | 'createdAt'> & { eventId?: string; createdAt?: Date }
@@ -333,8 +340,162 @@ export async function appendOkfRevocationEvent(
   const previous = existingEvents.at(-1) as any;
   if (parsed.eventType === 'created' && previous) throw new OkfIntegrityError('invalid_transition', 'Revocation already exists; append lifted/expired instead');
   if (parsed.eventType !== 'created' && (!previous || previous.eventType !== 'created')) throw new OkfIntegrityError('invalid_transition', 'Only an active created revocation may be lifted or expired');
-  await db.collection(COLLECTION_OKF_REVOCATION_EVENTS).insertOne(parsed as any);
+  if (parsed.eventType === 'lifted' && !parsed.correctedReleaseId) {
+    throw new OkfIntegrityError('corrected_release_required', 'A revocation can only be lifted by pointing at the corrected release');
+  }
+  try {
+    await db.collection(COLLECTION_OKF_REVOCATION_EVENTS).insertOne(parsed as any);
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      throw new OkfIntegrityError('invalid_transition', `Revocation ${parsed.revocationId} already has a '${parsed.eventType}' event`);
+    }
+    throw error;
+  }
   return parsed;
+}
+
+export interface CreateOkfRevocationInput {
+  tenantId: string;
+  environmentId: string;
+  /** Release whose guidance is being withdrawn; its concepts are verified to exist. */
+  releaseId: string;
+  conceptIds: string[];
+  cascade: 'none' | 'descendants';
+  effect: { suppressClaims: boolean; suppressRetrieval: boolean };
+  reason: string;
+  createdBy: string;
+  expiresAt: Date;
+  revocationId?: string;
+  now?: Date;
+}
+
+async function loadScopedRelease(db: Db, scope: { tenantId: string; environmentId: string }, releaseId: string): Promise<OkfReleaseEnvelope> {
+  const stored = await db.collection(COLLECTION_OKF_RELEASES).findOne({ ...scope, releaseId });
+  if (!stored) throw new OkfIntegrityError('release_not_found', `OKF release ${releaseId} not found in this tenant/environment`);
+  return hydrateOkfReleaseEnvelope(db, stored);
+}
+
+export async function createOkfRevocation(db: Db, input: CreateOkfRevocationInput): Promise<OkfRevocationEvent> {
+  if (!input.createdBy.trim()) throw new OkfIntegrityError('actor_required', 'A revocation must name the authenticated principal who created it');
+  const scope = { tenantId: input.tenantId, environmentId: input.environmentId };
+  const release = await loadScopedRelease(db, scope, input.releaseId);
+  const known = new Set(release.content.concepts.map((concept) => concept.conceptId));
+  const unknown = input.conceptIds.filter((id) => !known.has(id));
+  if (unknown.length) throw new OkfIntegrityError('unknown_concept', `Concepts not in release ${input.releaseId}: ${unknown.join(', ')}`);
+  return appendOkfRevocationEvent(db, {
+    tenantId: scope.tenantId,
+    environmentId: release.environmentId,
+    revocationId: input.revocationId || `okfrev_${randomUUID()}`,
+    eventType: 'created',
+    releaseId: input.releaseId,
+    conceptIds: [...new Set(input.conceptIds)],
+    cascade: input.cascade,
+    effect: input.effect,
+    reason: input.reason,
+    createdBy: input.createdBy,
+    expiresAt: input.expiresAt,
+    createdAt: input.now,
+  });
+}
+
+export interface LiftOkfRevocationInput {
+  tenantId: string;
+  environmentId: string;
+  revocationId: string;
+  correctedReleaseId: string;
+  liftedBy: string;
+  reason: string;
+  now?: Date;
+}
+
+/**
+ * Lifting is never an administrative toggle: the corrected release must exist in the same scope and, for every
+ * revoked concept it still contains, carry different content than the revoked release (or have retired it).
+ */
+export async function liftOkfRevocation(db: Db, input: LiftOkfRevocationInput): Promise<OkfRevocationEvent> {
+  if (!input.liftedBy.trim()) throw new OkfIntegrityError('actor_required', 'Lifting a revocation must name the authenticated principal');
+  const now = input.now || new Date();
+  const scope = { tenantId: input.tenantId, environmentId: input.environmentId };
+  const history = (await db.collection(COLLECTION_OKF_REVOCATION_EVENTS)
+    .find({ ...scope, revocationId: input.revocationId }).sort({ createdAt: 1 }).toArray())
+    .map((raw) => parseStoredRevocation(raw));
+  const created = history.find((event) => event.eventType === 'created');
+  if (!created) throw new OkfIntegrityError('revocation_not_found', `Revocation ${input.revocationId} not found`);
+  if (history.some((event) => event.eventType !== 'created') || created.expiresAt <= now) {
+    throw new OkfIntegrityError('invalid_transition', 'Only an active revocation may be lifted');
+  }
+  if (input.correctedReleaseId === created.releaseId) {
+    throw new OkfIntegrityError('corrected_release_invalid', 'The corrected release must differ from the revoked release');
+  }
+  const corrected = await loadScopedRelease(db, scope, input.correctedReleaseId);
+  const revoked = created.releaseId ? await loadScopedRelease(db, scope, created.releaseId) : undefined;
+  const hashes = (release: OkfReleaseEnvelope | undefined) =>
+    new Map((release?.content.concepts || []).map((concept) => [concept.conceptId, concept] as const));
+  const before = hashes(revoked);
+  const after = hashes(corrected);
+  const unresolved = created.conceptIds.filter((id) => {
+    const next = after.get(id);
+    if (!next || next.lifecycle.status === 'retired') return false;
+    const prior = before.get(id);
+    return !prior || prior.contentHash === next.contentHash;
+  });
+  if (unresolved.length) {
+    throw new OkfIntegrityError('corrected_release_invalid', `Corrected release still carries unchanged content for: ${unresolved.join(', ')}`);
+  }
+  return appendOkfRevocationEvent(db, {
+    ...created,
+    eventType: 'lifted',
+    reason: input.reason || created.reason,
+    createdBy: input.liftedBy,
+    createdAt: now,
+    correctedReleaseId: input.correctedReleaseId,
+  } as any);
+}
+
+export type OkfRevocationStatus = 'active' | 'lifted' | 'expired';
+export interface OkfRevocationSummary {
+  revocationId: string;
+  status: OkfRevocationStatus;
+  created: OkfRevocationEvent;
+  closedBy?: OkfRevocationEvent;
+}
+
+export async function listOkfRevocations(
+  db: Db, scope: { tenantId: string; environmentId: string }, now = new Date(),
+): Promise<OkfRevocationSummary[]> {
+  const events = (await db.collection(COLLECTION_OKF_REVOCATION_EVENTS).find(scope).sort({ createdAt: 1 }).toArray())
+    .map((raw) => parseStoredRevocation(raw));
+  const byId = new Map<string, OkfRevocationEvent[]>();
+  for (const event of events) byId.set(event.revocationId, [...(byId.get(event.revocationId) || []), event]);
+  return [...byId.entries()].flatMap(([revocationId, chain]) => {
+    const created = chain.find((event) => event.eventType === 'created');
+    if (!created) return [];
+    const closedBy = chain.find((event) => event.eventType !== 'created');
+    const status: OkfRevocationStatus = closedBy ? (closedBy.eventType === 'lifted' ? 'lifted' : 'expired')
+      : created.expiresAt > now ? 'active' : 'expired';
+    return [{ revocationId, status, created, ...(closedBy ? { closedBy } : {}) }];
+  });
+}
+
+/**
+ * Moves fully terminated revocations (lifted, or expired before `before`) to an archive collection so the
+ * latest-head scan used by the safety-critical read path stays bounded. Active revocations are never touched.
+ */
+export async function pruneOkfRevocationEvents(
+  db: Db, input: { tenantId: string; environmentId: string; before: Date; now?: Date },
+): Promise<{ archived: number }> {
+  const scope = { tenantId: input.tenantId, environmentId: input.environmentId };
+  const summaries = await listOkfRevocations(db, scope, input.now || new Date());
+  const terminal = summaries.filter((summary) => summary.status !== 'active' &&
+    (summary.closedBy?.createdAt ?? summary.created.expiresAt) < input.before);
+  let archived = 0;
+  for (const summary of terminal) {
+    const chain = await db.collection(COLLECTION_OKF_REVOCATION_EVENTS).find({ ...scope, revocationId: summary.revocationId }).toArray();
+    await db.collection(COLLECTION_OKF_REVOCATION_ARCHIVE).insertMany(chain.map((event: any) => ({ ...event, archivedAt: new Date() })));
+    await db.collection(COLLECTION_OKF_REVOCATION_EVENTS).deleteMany({ ...scope, revocationId: summary.revocationId });
+    archived += chain.length;
+  }
+  return { archived };
 }
 
 export async function loadActiveOkfRevocations(
@@ -345,15 +506,18 @@ export async function loadActiveOkfRevocations(
   now = new Date(),
   session?: any
 ): Promise<OkfRevocationEvent[]> {
-  const events = await db.collection(COLLECTION_OKF_REVOCATION_EVENTS).find({
+  // Safety-critical read: primary + majority so a just-created revocation is never missed on a lagging secondary.
+  const events = await db.collection(COLLECTION_OKF_REVOCATION_EVENTS, { readPreference: 'primary', readConcern: { level: 'majority' } } as any).find({
     tenantId,
     environmentId,
     ...(releaseId ? { $or: [{ releaseId }, { releaseId: { $exists: false } }] } : {}),
   }, session ? { session } : undefined).sort({ createdAt: 1 }).toArray();
   const latest = new Map<string, OkfRevocationEvent>();
   for (const raw of events) {
-    const event = OkfRevocationEventSchema.parse(raw);
-    latest.set(event.revocationId, event);
+    const event = parseStoredRevocation(raw);
+    // A closing event always supersedes `created`, regardless of timestamp resolution or read order.
+    const current = latest.get(event.revocationId);
+    if (!current || current.eventType === 'created') latest.set(event.revocationId, event);
   }
   return [...latest.values()].filter((event) => event.eventType === 'created' && event.expiresAt > now);
 }

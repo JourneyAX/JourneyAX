@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { can } from '@journeyax/shared-types';
 import {
   COLLECTION_OKF_RELEASES,
@@ -9,6 +9,11 @@ import {
   buildServerOwnedOkfContent,
   evaluateOkfDraft,
   assertOkfReferenceReady,
+  createOkfRevocation,
+  liftOkfRevocation,
+  listOkfRevocations,
+  pruneOkfRevocationEvents,
+  OkfIntegrityError,
   computeKnowledgeChecksum,
   exportOkfBundle,
   hydrateOkfReleaseEnvelope,
@@ -53,6 +58,8 @@ type AttachRelease = (
 
 @Injectable()
 export class OkfAuthoringService {
+  private readonly logger = new Logger(OkfAuthoringService.name);
+
   constructor(
     private readonly dbProvider: DbProvider,
     private readonly attachRelease: AttachRelease
@@ -441,6 +448,75 @@ export class OkfAuthoringService {
     };
     await this.attachToProjectDraft(scope.tenantId, release.content, ref);
     return { release, knowledgeModel: ref, nextStep: 'publish_business_pack' };
+  }
+
+  private requireActor(actor: string | undefined, action: string): string {
+    const principal = (actor || '').trim();
+    if (!principal) throw new Error(`${action} requires an authenticated principal`);
+    return principal;
+  }
+
+  /** Withdraws guidance from a published release at once; expiry is mandatory and explicit. */
+  async createRevocation(input: {
+    projectId: string;
+    environmentId?: string;
+    releaseId: string;
+    conceptIds: string[];
+    cascade?: 'none' | 'descendants';
+    effect?: { suppressClaims?: boolean; suppressRetrieval?: boolean };
+    reason: string;
+    expiresAt: string | Date;
+    actor?: string;
+  }) {
+    const actor = this.requireActor(input.actor, 'Creating a revocation');
+    const scope = this.scope(input.projectId, input.environmentId || 'production');
+    const expiresAt = new Date(input.expiresAt);
+    if (Number.isNaN(expiresAt.getTime())) throw new Error('expiresAt must be a valid date');
+    const reason = (input.reason || '').trim();
+    if (!reason) throw new Error('A revocation reason is required');
+    const event = await createOkfRevocation(await this.dbProvider(), {
+      ...scope,
+      releaseId: input.releaseId,
+      conceptIds: input.conceptIds,
+      cascade: input.cascade || 'descendants',
+      effect: { suppressClaims: input.effect?.suppressClaims ?? true, suppressRetrieval: input.effect?.suppressRetrieval ?? true },
+      reason,
+      createdBy: actor,
+      expiresAt,
+    });
+    this.logger.warn(JSON.stringify({ event: 'okf.revocation.created', ...scope, revocationId: event.revocationId, releaseId: event.releaseId, concepts: event.conceptIds.length, actor, expiresAt: event.expiresAt }));
+    return event;
+  }
+
+  async liftRevocation(input: {
+    projectId: string;
+    environmentId?: string;
+    revocationId: string;
+    correctedReleaseId: string;
+    reason?: string;
+    actor?: string;
+  }) {
+    const actor = this.requireActor(input.actor, 'Lifting a revocation');
+    const scope = this.scope(input.projectId, input.environmentId || 'production');
+    const event = await liftOkfRevocation(await this.dbProvider(), {
+      ...scope, revocationId: input.revocationId, correctedReleaseId: input.correctedReleaseId,
+      liftedBy: actor, reason: (input.reason || '').trim(),
+    });
+    this.logger.warn(JSON.stringify({ event: 'okf.revocation.lifted', ...scope, revocationId: event.revocationId, correctedReleaseId: event.correctedReleaseId, actor }));
+    return event;
+  }
+
+  async listRevocations(projectId: string, environmentId = 'production') {
+    return listOkfRevocations(await this.dbProvider(), this.scope(projectId, environmentId));
+  }
+
+  async pruneRevocations(projectId: string, environmentId: string, before: string | Date, actor?: string) {
+    const principal = this.requireActor(actor, 'Pruning revocation history');
+    const cutoff = new Date(before);
+    if (Number.isNaN(cutoff.getTime())) throw new Error('before must be a valid date');
+    const result = await pruneOkfRevocationEvents(await this.dbProvider(), { ...this.scope(projectId, environmentId), before: cutoff });
+    this.logger.log(JSON.stringify({ event: 'okf.revocation.pruned', ...this.scope(projectId, environmentId), archived: result.archived, actor: principal }));
+    return result;
   }
 
   async listReleases(projectId: string, environmentId = 'production') {

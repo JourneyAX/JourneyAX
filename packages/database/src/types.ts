@@ -32,6 +32,7 @@ export const COLLECTION_OKF_SOURCES = 'okf_sources';
 export const COLLECTION_OKF_EVIDENCE_CHUNKS = 'okf_evidence_chunks';
 export const COLLECTION_OKF_VERIFICATION_RECORDS = 'okf_verification_records';
 export const COLLECTION_OKF_REVOCATION_EVENTS = 'okf_revocation_events';
+export const COLLECTION_OKF_REVOCATION_ARCHIVE = 'okf_revocation_events_archive';
 export const COLLECTION_OKF_ARTIFACT_POLICIES = 'okf_artifact_policies';
 export const COLLECTION_OKF_VERIFICATION_ATTESTATIONS = 'okf_verification_attestations';
 export const COLLECTION_OKF_VERIFIER_ROLES = 'okf_verifier_roles';

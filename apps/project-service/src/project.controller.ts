@@ -15,6 +15,7 @@ import {
   CreateBusinessRuleDto, UpdateBusinessRuleDto,
   CardTemplateDoc,
 } from './project.types';
+import { OkfIntegrityError } from '@journeyax/knowledge';
 import { OkfAuthoringService, OkfDraftConflictError } from './okf-authoring.service';
 
 /**
@@ -384,6 +385,66 @@ export class ProjectController {
     } catch (error: any) {
       throw new BadRequestException(error.message);
     }
+  }
+
+  @Get(':projectId/knowledge/revocations')
+  @RequirePermission('knowledge.read')
+  async listKnowledgeRevocations(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
+    try {
+      return await this.okfAuthoring!.listRevocations(projectId, environmentId || 'production');
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Post(':projectId/knowledge/revocations')
+  @RequirePermission('knowledge.revoke')
+  async createKnowledgeRevocation(
+    @Param('projectId') projectId: string,
+    @Body() body: { environmentId?: string; releaseId: string; conceptIds: string[]; cascade?: 'none' | 'descendants'; effect?: { suppressClaims?: boolean; suppressRetrieval?: boolean }; reason: string; expiresAt: string },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.createRevocation({ ...body, projectId, actor: userId });
+    } catch (error: any) {
+      throw this.revocationError(error);
+    }
+  }
+
+  @Post(':projectId/knowledge/revocations/:revocationId/lift')
+  @RequirePermission('knowledge.revoke')
+  async liftKnowledgeRevocation(
+    @Param('projectId') projectId: string,
+    @Param('revocationId') revocationId: string,
+    @Body() body: { environmentId?: string; correctedReleaseId: string; reason?: string },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.liftRevocation({ ...body, projectId, revocationId, actor: userId });
+    } catch (error: any) {
+      throw this.revocationError(error);
+    }
+  }
+
+  @Post(':projectId/knowledge/revocations/prune')
+  @RequirePermission('knowledge.revoke')
+  async pruneKnowledgeRevocations(
+    @Param('projectId') projectId: string,
+    @Body() body: { environmentId?: string; before: string },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.pruneRevocations(projectId, body.environmentId || 'production', body.before, userId);
+    } catch (error: any) {
+      throw this.revocationError(error);
+    }
+  }
+
+  private revocationError(error: any): Error {
+    if (error instanceof OkfIntegrityError && ['invalid_transition', 'revocation_not_found'].includes(error.code)) {
+      return error.code === 'revocation_not_found' ? new NotFoundException(error.message) : new ConflictException(error.message);
+    }
+    return new BadRequestException(error.message);
   }
 
   @Post(':projectId/knowledge/select-release')
