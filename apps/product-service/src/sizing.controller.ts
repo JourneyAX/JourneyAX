@@ -3,7 +3,7 @@ import { RecommendInput, SizingService } from './sizing.service';
 
 /**
  * Fitment guide (v1) endpoint — the agent's `recommendSize` tool calls this
- * directly (mirrors the `POST /:projectId/products/*` CDL/render pattern used
+ * directly (mirrors the `POST /:projectId/products/*` render pattern used
  * by analyzeDesign/generateDesign, but under its own `/sizing` path since it
  * is not a products-collection operation). Read-only catalogue-derived fact,
  * same exposure level as `/products/related` — no internal key required.

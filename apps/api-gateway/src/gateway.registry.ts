@@ -10,7 +10,6 @@ export const DOMAIN_REGISTRY: Record<string, string> = {
   commerce:      process.env.AGENT_SERVICE_URL              || 'http://localhost:3004',
   runtime:       process.env.JOURNEY_RUNTIME_SERVICE_URL    || process.env.JOURNEY_RUNTIME_URL || process.env.RUNTIME_SERVICE_URL || 'http://localhost:3012',
   products:      process.env.PRODUCT_SERVICE_URL            || 'http://localhost:8083',
-  cdl:           process.env.PRODUCT_SERVICE_URL    || 'http://localhost:8083',  // CDL lives in product-service
   projects:      process.env.PROJECT_SERVICE_URL    || 'http://localhost:8082',
   organizations: process.env.ORG_SERVICE_URL        || 'http://localhost:8085',
   analytics:     process.env.ANALYTICS_SERVICE_URL  || 'http://localhost:8086',
@@ -60,7 +59,7 @@ export function validateProductionRegistry(
 const PLATFORM_DOMAINS = new Set(['auth', 'organizations', 'projects']);
 // Tenant-scoped domains carry the projectId as the first path segment:
 //   /api/v1/:projectId/<domain>/... or /api/v1/:projectId/:environmentId/<domain>/...
-const PROJECT_DOMAINS = new Set(['commerce', 'products', 'cdl', 'analytics', 'leads', 'data', 'runtime']);
+const PROJECT_DOMAINS = new Set(['commerce', 'products', 'analytics', 'leads', 'data', 'runtime']);
 
 export interface ParsedRoute {
   projectId: string | null;
