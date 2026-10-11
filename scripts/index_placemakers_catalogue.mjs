@@ -345,8 +345,10 @@ async function run() {
     const textChunk = `${p.name}\nSKU: ${p.sku}\nCategory: ${p.category}\nCollection: ${p.collection}\nPrice: $${p.price} ${p.currency}\nDescription: ${p.description}\n\nTechnical Specifications:\n${Object.entries(p.specs).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n\nKey Features:\n${p.features.map(f => `- ${f}`).join('\n')}\nURL: ${p.url}`;
 
     const prodDoc = {
+      projectId: 'placemakers',
       tenantId: 'placemakers',
       brand: 'placemakers',
+      parentSku: p.sku,
       sku: p.sku,
       name: p.name,
       title: p.name,
@@ -367,12 +369,13 @@ async function run() {
     };
 
     await prodsCol.updateOne(
-      { tenantId: 'placemakers', sku: p.sku },
+      { projectId: 'placemakers', parentSku: p.sku },
       { $set: prodDoc },
       { upsert: true }
     );
 
     const docRecord = {
+      projectId: 'placemakers',
       tenantId: 'placemakers',
       brand: 'placemakers',
       type: 'product',
@@ -383,6 +386,7 @@ async function run() {
       chunkIndex: 0,
       metadata: {
         type: 'product',
+        projectId: 'placemakers',
         tenantId: 'placemakers',
         brand: 'placemakers',
         category: p.category,

@@ -359,11 +359,20 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
           onStartNaming={() => { setNaming(true); setNewThemeName(selectedTheme && !selectedTheme.builtin ? `${selectedTheme.name} copy` : "My theme"); }}
           onCancelNaming={() => { setNaming(false); setNewThemeName(""); }}
           onSaveAsNew={saveAsNewTheme}
+          onNextStep={() => setTab("editor")}
           busy={busy}
         />
       )}
       {tab === "gallery" && (
-        <GalleryTab cards={cardsForView} loading={loadingCards} tokens={mergedTokens} cardSettings={cardSettings} onSaveSettings={saveCardSettings} onOpenEditor={(ct) => { setEditorCard(ct); setTab("editor"); }} />
+        <GalleryTab
+          cards={cardsForView}
+          loading={loadingCards}
+          tokens={mergedTokens}
+          cardSettings={cardSettings}
+          onSaveSettings={saveCardSettings}
+          onOpenEditor={(ct) => { setEditorCard(ct); setTab("editor"); }}
+          onNextStep={() => setTab("editor")}
+        />
       )}
       {tab === "editor" && (
         <EditorTab
@@ -376,6 +385,8 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
           onSaveDraft={saveDraftOntoTheme}
           onSaveNamedTheme={(name, cardType, spec) => saveAsNewTheme(name, { cardType, spec })}
           onSaved={loadCards}
+          onBackToTokens={() => setTab("tokens")}
+          onPublish={publish}
         />
       )}
     </div>
@@ -386,7 +397,7 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
 
 function TokensTab({
   mergedTokens, onChange, onPatchGroup, onSave, onReset,
-  naming, newName, onNameChange, onStartNaming, onCancelNaming, onSaveAsNew, busy,
+  naming, newName, onNameChange, onStartNaming, onCancelNaming, onSaveAsNew, onNextStep, busy,
 }: {
   mergedTokens: ThemeTokens;
   onChange: (group: keyof ThemeTokens, field: string, value: string) => void;
@@ -399,6 +410,7 @@ function TokensTab({
   onStartNaming: () => void;
   onCancelNaming: () => void;
   onSaveAsNew: () => void;
+  onNextStep?: () => void;
   busy: boolean;
 }) {
   const corner = matchPreset(mergedTokens.radius, CORNER_PRESETS);
@@ -543,6 +555,16 @@ function TokensTab({
               <button type="button" className="btn y" onClick={onSave} disabled={busy}>Save draft</button>
               <button type="button" className="btn" onClick={onStartNaming} disabled={busy}>Save as new theme</button>
               <button type="button" className="btn" onClick={onReset} disabled={busy}>Reset to Classic</button>
+              {onNextStep && (
+                <button
+                  type="button"
+                  className="btn y"
+                  onClick={onNextStep}
+                  style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  Next: Component Studio (Card Designs) &rarr;
+                </button>
+              )}
             </>
           )}
         </div>
@@ -719,7 +741,7 @@ function galleryCardMatches(cardType: CardType, query: string) {
 }
 
 function GalleryTab({
-  cards, loading, tokens, cardSettings, onSaveSettings, onOpenEditor,
+  cards, loading, tokens, cardSettings, onSaveSettings, onOpenEditor, onNextStep,
 }: {
   cards: CardListEntry[];
   loading: boolean;
@@ -727,6 +749,7 @@ function GalleryTab({
   cardSettings: Record<string, { enabled?: boolean; variant?: string; labels?: Record<string, string> }>;
   onSaveSettings: (cardType: string, patch: Partial<{ enabled: boolean; variant: string; labels: Record<string, string> }>) => void;
   onOpenEditor: (cardType: CardType) => void;
+  onNextStep?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -830,6 +853,18 @@ function GalleryTab({
           })}
         </div>
       )}
+      {onNextStep && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button
+            type="button"
+            className="btn y"
+            onClick={onNextStep}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            Next: Component Studio (Card Designs) &rarr;
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -837,7 +872,7 @@ function GalleryTab({
 // ── Tab 3: Template editor ────────────────────────────────────────────────
 
 function EditorTab({
-  projectId, cards, tokens, cardSettings, initialCard, suggestedThemeName, onSaveDraft, onSaveNamedTheme, onSaved,
+  projectId, cards, tokens, cardSettings, initialCard, suggestedThemeName, onSaveDraft, onSaveNamedTheme, onSaved, onBackToTokens, onPublish,
 }: {
   projectId: string;
   cards: CardListEntry[];
@@ -848,6 +883,8 @@ function EditorTab({
   onSaveDraft: (cardType: string, spec: unknown) => Promise<boolean>;
   onSaveNamedTheme: (name: string, cardType: string, spec: unknown) => Promise<boolean>;
   onSaved: () => void;
+  onBackToTokens?: () => void;
+  onPublish?: () => void;
 }) {
   const [selected, setSelected] = useState<CardType>(initialCard);
   const [designMode, setDesignMode] = useState<"json" | "puck">("json");
@@ -1069,6 +1106,8 @@ function EditorTab({
               busy={busy}
               isOverride={entry?.source === "tenant"}
               suggestedThemeName={suggestedThemeName}
+              onBackToTokens={onBackToTokens}
+              onPublish={onPublish}
             />
           </div>
         ) : (
@@ -1110,6 +1149,27 @@ function EditorTab({
               )}
               <button type="button" className="btn" onClick={() => applySpec(DEFAULT_TEMPLATES[selected])}>Copy default into editor</button>
               <button type="button" className="btn" onClick={revert} disabled={busy || entry?.source !== "tenant"}>Revert to platform default</button>
+              {onBackToTokens && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={onBackToTokens}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  &larr; Back to Theme Tokens
+                </button>
+              )}
+              {onPublish && (
+                <button
+                  type="button"
+                  className="btn y"
+                  onClick={onPublish}
+                  disabled={busy}
+                  style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  Next: Publish Changes &rarr;
+                </button>
+              )}
               {problems.length > 0 && (
                 <div style={{ ...badStyle, margin: 0, flex: "1 1 100%" }}>
                   {problems.map((p, i) => <div key={i}>• {p}</div>)}

@@ -40,6 +40,8 @@ export interface JsonSpecDesignerProps {
   busy?: boolean;
   isOverride?: boolean;
   suggestedThemeName?: string;
+  onBackToTokens?: () => void;
+  onPublish?: () => void;
 }
 
 // ── Primitive Category Catalog ─────────────────────────────────────────────
@@ -508,7 +510,9 @@ export function JsonSpecDesigner({
   onRevert,
   busy = false,
   isOverride = false,
-  suggestedThemeName = ""
+  suggestedThemeName = "",
+  onBackToTokens,
+  onPublish,
 }: JsonSpecDesignerProps) {
   // Spec text and parse state
   const [rawJson, setRawJson] = useState<string>(() => JSON.stringify(spec, null, 2));
@@ -1250,6 +1254,30 @@ export function JsonSpecDesigner({
             >
               Reset to Default Recipe
             </button>
+
+            {onBackToTokens && (
+              <button
+                type="button"
+                className="btn"
+                onClick={onBackToTokens}
+                disabled={busy}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                &larr; Back to Theme Tokens
+              </button>
+            )}
+
+            {onPublish && (
+              <button
+                type="button"
+                className="btn y"
+                onClick={onPublish}
+                disabled={busy}
+                style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                Next: Publish Changes &rarr;
+              </button>
+            )}
 
             {onRevert && isOverride && (
               <button

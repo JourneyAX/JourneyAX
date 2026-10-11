@@ -42,8 +42,8 @@ import {
   validateBusinessPack,
   computePackChecksum,
   BusinessPackRelease,
-  BusinessPackLoader,
 } from '@journeyax/business-pack';
+import { MigrationPackSourceReader } from './migration/pack-source-reader';
 import { CapabilityRegistryService } from '../apps/project-service/src/capability-registry.service';
 import { CatalogSearchHandler } from '../apps/journey-runtime-service/src/capabilities/handlers/catalog-search.handler';
 
@@ -527,26 +527,21 @@ export function classifyTenant(
  */
 export async function discoverProjects(
   dbEvidence: DatabaseEvidence,
-  manifest: PortfolioManifest
+  manifest: PortfolioManifest,
+  packSources: ReadonlyArray<OfflinePackSource> = []
 ): Promise<DiscoveredProject[]> {
   const discovered: DiscoveredProject[] = [];
-  const loader = new BusinessPackLoader();
   const fixtureSuffix = manifest.syntheticFixtureSuffix ?? '_fixture';
-  const packsRelPath = manifest.packsRoot ?? 'packs';
-  const packsDir = path.resolve(__dirname, '..', packsRelPath);
 
-  // 1. Filesystem packs/
-  if (fs.existsSync(packsDir)) {
-    const entries = fs.readdirSync(packsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const tenantDir = path.join(packsDir, entry.name);
-      if (!fs.existsSync(path.join(tenantDir, 'manifest.json'))) continue;
-
-      const loaded = await loader.loadFromDisk(entry.name, 'production');
+  // 1. Explicitly supplied offline pack sources (test fixtures or an explicit migration source root).
+  //    The runtime BusinessPackLoader is never used here: runtime filesystem fallback is prohibited and
+  //    nothing is discovered implicitly from any repository folder.
+  {
+    for (const source of packSources) {
+      const loaded = source.pack;
       if (!loaded) continue;
 
-      const tenantId = loaded.manifest.tenantId ?? entry.name;
+      const tenantId = loaded.manifest.tenantId ?? source.dirName;
       const classification = classifyTenant(tenantId, manifest);
 
       // Resolve display metadata from manifest entry (never hardcoded here)
@@ -1054,10 +1049,48 @@ export async function auditProject(
   };
 }
 
+/** A pack supplied explicitly to the offline inventory (in-memory fixture or explicit source reader output). */
+export interface OfflinePackSource {
+  /** Source label (e.g. directory name); informational only. */
+  dirName: string;
+  pack: BusinessPackRelease;
+}
+
+/**
+ * Reads offline pack sources from an EXPLICIT migration source root (one sub-directory per tenant) using the
+ * CLI-only MigrationPackSourceReader. There is no default root: callers must pass one deliberately.
+ */
+export function readOfflinePackSourcesFromExplicitRoot(sourcesRoot: string): OfflinePackSource[] {
+  if (!sourcesRoot || !sourcesRoot.trim()) {
+    throw new Error('[Inventory] An explicit pack sources root is required; implicit discovery is forbidden.');
+  }
+  const root = path.resolve(sourcesRoot.trim());
+  const sources: OfflinePackSource[] = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const sourceDir = path.join(root, entry.name);
+    if (!fs.existsSync(path.join(sourceDir, 'manifest.json'))) continue;
+    sources.push({ dirName: entry.name, pack: MigrationPackSourceReader.readPackFromExplicitDir({ sourceDir }) });
+  }
+  return sources;
+}
+
 export interface InventoryOptions {
   writeReport?: boolean;
   manifestPath?: string;
   manifest?: PortfolioManifest;
+  /** Explicit offline pack sources. When omitted, no filesystem packs are read. */
+  packSources?: OfflinePackSource[];
+}
+
+function resolveExplicitPackSourcesFromArgv(argv: string[]): OfflinePackSource[] {
+  const idx = argv.indexOf('--pack-sources-root');
+  if (idx < 0) return [];
+  const root = argv[idx + 1];
+  if (!root || root.startsWith('--')) {
+    throw new Error('[Inventory] --pack-sources-root requires an explicit directory argument.');
+  }
+  return readOfflinePackSourcesFromExplicitRoot(root);
 }
 
 export async function runTenantConnectorInventory(
@@ -1082,7 +1115,8 @@ export async function runTenantConnectorInventory(
   }
 
   const capabilityRegistry = new CapabilityRegistryService();
-  const discoveredProjects = await discoverProjects(dbEvidence, manifest);
+  const packSources = options.packSources ?? resolveExplicitPackSourcesFromArgv(process.argv);
+  const discoveredProjects = await discoverProjects(dbEvidence, manifest, packSources);
   const results: ComputedAuditResult[] = [];
 
   for (const project of discoveredProjects) {

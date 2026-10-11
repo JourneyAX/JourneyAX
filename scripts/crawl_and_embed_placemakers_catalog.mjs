@@ -480,6 +480,7 @@ async function run() {
   for (const item of PLACEMAKERS_FULL_CATALOGUE) {
     const doc = {
       projectId: PROJECT_ID,
+      tenantId: PROJECT_ID,
       parentSku: item.sku,
       sku: item.sku,
       title: item.name,

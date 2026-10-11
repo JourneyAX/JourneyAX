@@ -33,7 +33,7 @@ async function run() {
     packId: 'pack_placemakers',
     tenantId: 'placemakers',
     environmentId: 'production',
-    version: '1.0.9',
+    version: rawManifest.version || '1.2.1',
     status: 'active',
     publishedAt: new Date().toISOString(),
     publishedBy: 'platform-closure',
@@ -90,10 +90,10 @@ async function run() {
   await client.connect();
 
   const jxDb = client.db('journeyx');
-  console.log(`Publishing release v1.0.6 into journeyx...`);
+  console.log(`Publishing release v${manifest.version} into journeyx...`);
   const pubResult = await publishBusinessPack(jxDb, parsed.data, {
     publishedBy: 'platform-closure',
-    notes: 'PlaceMakers laundry multi-turn clarification release 1.0.6',
+    notes: `PlaceMakers materials, fasteners, and hardware release ${manifest.version}`,
   });
 
   console.log(`✅ Successfully published release:`, {
