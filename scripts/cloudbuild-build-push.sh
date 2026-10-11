@@ -52,8 +52,8 @@ echo "============================================================"
 build_push_svc() {
   local SVC="$1"
   local IMAGE="${REGISTRY}/${PROJECT_ID}/${ARTIFACT_REPO}/${SVC}"
-  # A service may ship its OWN Dockerfile (e.g. the Python retexture-service,
-  # which the Node Dockerfile.template can't build). When present, use it with
+  # A service may ship its OWN Dockerfile (e.g. a non-Node service that the
+  # Node Dockerfile.template can't build). When present, use it with
   # the SERVICE directory as the build context (self-contained, no workspace).
   local DOCKERFILE="Dockerfile.template"
   local CONTEXT="."

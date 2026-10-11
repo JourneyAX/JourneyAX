@@ -50,7 +50,6 @@ ALL_SVCS=(
   "product-service"
   "organization-service"
   "agent-commerce-service"
-  "retexture-service"
   "journey-runtime-service"
 )
 

@@ -40,7 +40,7 @@ flowchart TD
     end
 
     subgraph Database ["Existing Data Layer"]
-        Atlas[("MongoDB Atlas Cluster<br/>journeyax.izrejyy.mongodb.net<br/>(Sessions, Rules, CDL, Product Catalog)")]
+        Atlas[("MongoDB Atlas Cluster<br/>journeyax.izrejyy.mongodb.net<br/>(Sessions, Rules, Product Catalog)")]
     end
 
     Storefront --> Gateway

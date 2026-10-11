@@ -103,10 +103,6 @@ deploy_service() {
     product-service)             MIN=0; MAX=5;  MEM=1Gi;   CPU=1; PORT=8083; RUN_TIMEOUT=300s ;;
     project-service)             MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8082; RUN_TIMEOUT=300s ;;
     organization-service)        MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8085; RUN_TIMEOUT=300s ;;
-    # retexture-service: Python 3D bake. CPU-heavy rasterise + a multi-MB atlas,
-    # so 2 vCPU / 2Gi, a long request timeout (a 4096 bake runs ~2-3 min), and
-    # concurrency=1 (one bake saturates the CPU; don't stack). Scale-to-zero.
-    retexture-service)           MIN=0; MAX=3;  MEM=2Gi;   CPU=2; PORT=8091; RUN_TIMEOUT=900s; CONC=1 ;;
     journey-runtime-service)     MIN=0; MAX=5;  MEM=1Gi;   CPU=2; PORT=3009; RUN_TIMEOUT=300s ;;
     *)                           MIN=0; MAX=5;  MEM=512Mi; CPU=1; PORT=8080; RUN_TIMEOUT=300s ;;
   esac
@@ -121,9 +117,6 @@ deploy_service() {
       SECRETS="MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,CLAUDE_API_KEY=CLAUDE_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PERPLEXITY_API_KEY=PERPLEXITY_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,REDIS_URL=REDIS_URL:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest" ;;
     product-service)
       SECRETS="MONGODB_URI=MONGODB_URI:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" ;;
-    retexture-service)
-      # Only needs the Gemini key (to paint views) + the internal key (to gate /retexture).
-      SECRETS="GEMINI_API_KEY=GEMINI_API_KEY:latest,INTERNAL_API_KEY=INTERNAL_API_KEY:latest" ;;
     api-gateway)
       # REDIS_URL activates the edge response cache (resp:* namespace in Upstash).
       # @journeyax/cache in each service uses the same secret (data:* namespace).
@@ -151,11 +144,7 @@ deploy_service() {
   # ── Auth flag: gateway + auth-service are the ONLY public entry points.
   # All other backend services are kept private; the gateway calls them
   # using its Cloud Run service account + Google ID token (see gateway.service.ts).
-  # retexture-service is also public: the browser loads the baked GLB/atlas
-  # directly from its /jobs/<id>/… URLs (cross-origin, no ID token possible).
-  # It is hardened by X-Internal-Key on /retexture + opaque job ids on /jobs;
-  # production should instead serve /jobs via signed GCS URLs and keep it private.
-  if [ "${SVC}" = "api-gateway" ] || [ "${SVC}" = "auth-service" ] || [ "${SVC}" = "retexture-service" ]; then
+  if [ "${SVC}" = "api-gateway" ] || [ "${SVC}" = "auth-service" ]; then
     AUTH_FLAG="--allow-unauthenticated"
   else
     AUTH_FLAG="--no-allow-unauthenticated"
