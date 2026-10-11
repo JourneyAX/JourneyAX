@@ -15,7 +15,7 @@ import {
   CreateBusinessRuleDto, UpdateBusinessRuleDto,
   CardTemplateDoc,
 } from './project.types';
-import { OkfIntegrityError } from '@journeyax/knowledge';
+import { OKF_LIMITS, OkfIntegrityError } from '@journeyax/knowledge';
 import { OkfAuthoringService, OkfDraftConflictError } from './okf-authoring.service';
 
 /**
@@ -249,7 +249,7 @@ export class ProjectController {
 
   @Post(':projectId/knowledge/import')
   @RequirePermission('config.edit')
-  @UseInterceptors(FileInterceptor('bundle', { limits: { files: 1, fileSize: 72 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('bundle', { limits: { files: 1, fileSize: OKF_LIMITS.importArchiveMaxBytes } }))
   async importKnowledgeBundle(
     @Param('projectId') projectId: string,
     @UploadedFile() file: { buffer?: Buffer } | undefined,

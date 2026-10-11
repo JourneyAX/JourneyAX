@@ -8,7 +8,10 @@ import {
   OkfDraftContentSchema,
   buildServerOwnedOkfContent,
   evaluateOkfDraft,
+  assertDraftSize,
   assertOkfReferenceReady,
+  resolveOkfLimits,
+  type OkfLimits,
   createOkfRevocation,
   liftOkfRevocation,
   listOkfRevocations,
@@ -60,10 +63,15 @@ type AttachRelease = (
 export class OkfAuthoringService {
   private readonly logger = new Logger(OkfAuthoringService.name);
 
+  private readonly limits: OkfLimits;
+
   constructor(
     private readonly dbProvider: DbProvider,
-    private readonly attachRelease: AttachRelease
-  ) {}
+    private readonly attachRelease: AttachRelease,
+    limits: Partial<OkfLimits> = {},
+  ) {
+    this.limits = resolveOkfLimits(limits);
+  }
 
   private async attachToProjectDraft(projectId: string, content: OkfReleaseContent, ref: Parameters<AttachRelease>[1]['knowledgeModel']) {
     const result = await this.attachRelease(projectId, {
@@ -128,6 +136,7 @@ export class OkfAuthoringService {
         : {};
     const parsed = OkfDraftContentSchema.safeParse(editable);
     if (!parsed.success) throw new Error(`Invalid OKF draft structure: ${parsed.error.message}`);
+    assertDraftSize(parsed.data, this.limits);
     const db = await this.dbProvider();
     const collection = db.collection(COLLECTION_OKF_DRAFTS);
     const existing = await collection.findOne(scope);
