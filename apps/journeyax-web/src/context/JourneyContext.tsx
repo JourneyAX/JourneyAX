@@ -4,7 +4,7 @@ import React, { createContext, useContext, useReducer, useCallback, useRef, useE
 import {
   JourneyState, INITIAL_STATE, Phase, ClarifyAnswers, DynamicQuestion, RecommendedProduct, ComparisonData, BundleData,
   FINISHES, DEFAULT_ADDONS, formatAUD, getStockInfo, BOMLine, QuoteTotals, ServerQuote,
-  TeamDesignViews, RosterRow, CardInstance
+  RosterRow, CardInstance
 } from '@/lib/types';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import {
@@ -41,16 +41,13 @@ type Action =
   | { type: 'SET_CHOICE'; choice: import('../lib/types').JourneyChoice }
   | { type: 'SET_DESIGN'; design: Partial<import('../lib/types').DesignSpec> }
   | { type: 'CLEAR_DESIGN' }
-  | { type: 'SET_CONCEPT'; conceptId: string }
-  | { type: 'SET_PROOF'; proofId: string }
   | { type: 'ADD_TO_KIT'; item: import('../lib/types').KitItem }
   | { type: 'REMOVE_FROM_KIT'; sku: string }
   | { type: 'LOAD_KIT_ITEM'; sku: string }
   | { type: 'SELECT_CHOICE'; value: string }
   | { type: 'SET_INSTALL_GUIDE'; installGuide: import('../lib/types').InstallGuide }
   | { type: 'SET_WARRANTY'; warranty: import('../lib/types').WarrantyInfo }
-  // Coach team-order journey
-  | { type: 'SET_TEAM_DESIGN'; teamDesign: Partial<TeamDesignViews> }
+  // Team order journey
   | { type: 'SET_ROSTER'; roster: RosterRow[] }
   | { type: 'SET_SELECTED_PLAYER'; index: number }
   // Fitment guide
@@ -87,13 +84,6 @@ function reducer(state: JourneyState, action: Action): JourneyState {
        * and emits its configurator view a second later, which threw the fresh
        * quote off the screen and looked exactly like the button had failed.
        * Only an explicit move somewhere new (or a fresh quote) takes over. */
-      /* While the customer is choosing between concepts, the agent's own turn
-       * ("I've opened the designer…") must not make the choice for them. Once a
-       * design line IS chosen — by their click, or because they asked for one by
-       * name — the designer is exactly where they should be. */
-      if (state.phase === 'concepts' && action.phase === 'configurator' && !state.design?.designLine) {
-        return state;
-      }
       if (state.phase === 'quote' && action.phase === 'configurator' && state.serverQuote) {
         // Only when it is the SAME garment the quote already covers. Asking to
         // design something else after seeing the quote is a real request and
@@ -265,17 +255,8 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       // Moving to a different style starts a fresh garment. Merging across a
       // style change is what let the panel show the PREVIOUS item while the
       // agent narrated the new one — colours, design line and lettering all
-      // belong to the style they were chosen for. (conceptId is kept — it is the
-      // "your concept" reference for the design the customer is actively making.)
+      // belong to the style they were chosen for.
       return { ...state, design: {} };
-    case 'SET_CONCEPT':
-      // CDL Door A: pin the AI-generated concept image (by id) for this design.
-      return { ...state, conceptId: action.conceptId };
-    case 'SET_PROOF':
-      // CDL Path A: the faithful "your artwork on our garment" proof — becomes
-      // the hero image for artwork-heavy uploads. Also lands us on the
-      // configurator phase so the panel shows it.
-      return { ...state, proofId: action.proofId, phase: 'configurator' };
     case 'SET_CHOICE':
       return { ...state, phase: 'choice', choice: action.choice };
     case 'SELECT_CHOICE':
@@ -286,10 +267,6 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       return { ...state, phase: 'warranty', warranty: action.warranty };
     case 'SET_SIZE_RECOMMENDATION':
       return { ...state, phase: 'sizeRecommendation', sizeRecommendation: action.sizeRecommendation };
-    case 'SET_TEAM_DESIGN':
-      // Merge, never replace: a design "edit" re-generates all 4 views, but the
-      // running brief and any view that failed this round should not vanish.
-      return { ...state, phase: 'teamDesign', teamDesign: { ...(state.teamDesign || {}), ...action.teamDesign } };
     case 'SET_ROSTER':
       // Roster is set but the phase move is a SEPARATE, explicit step (the coach
       // reviews the parsed roster before moving on) — see 'teamRoster' phase.

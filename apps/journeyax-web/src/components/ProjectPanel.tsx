@@ -12,16 +12,12 @@ import AccessoriesPanel from './panels/AccessoriesPanel';
 import ChoicePanel from './panels/ChoicePanel';
 import InstallGuidePanel from './panels/InstallGuidePanel';
 import WarrantyPanel from './panels/WarrantyPanel';
-import ConceptsPanel from './panels/ConceptsPanel';
 import ConfiguratorPanel from './panels/ConfiguratorPanel';
 import CandyDesignPanel from './panels/CandyDesignPanel';
-import DesignEditorPanel from './panels/DesignEditorPanel';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import ResearchPanel from './panels/ResearchPanel';
-import TeamDesignPanel from './panels/TeamDesignPanel';
 import TeamRosterPanel from './panels/TeamRosterPanel';
 import SizeRecommendationPanel from './panels/SizeRecommendationPanel';
-import PhotoUploadDesignPanel from './panels/PhotoUploadDesignPanel';
 import ProjectPlanPanel from './panels/ProjectPlanPanel';
 import SpacePlannerPanel from './panels/SpacePlannerPanel';
 import { LEGACY_CARD_PHASES } from '@/lib/types';
@@ -67,14 +63,10 @@ export default function ProjectPanel() {
       {!useCards && state.phase === 'guide' && <GuidePanel />}
       {!useCards && state.phase === 'quote' && (isCart ? <RetailCartPanel /> : <QuotePanel />)}
       {!useCards && state.phase === 'ordered' && <OrderedPanel />}
-      {state.phase === 'concepts' && <ConceptsPanel />}
       {state.phase === 'configurator' && (isCandy ? <CandyDesignPanel /> : <ConfiguratorPanel />)}
-      {state.phase === 'designEditor' && <DesignEditorPanel />}
-      {state.phase === 'teamDesign' && <TeamDesignPanel />}
       {state.phase === 'teamRoster' && <TeamRosterPanel />}
       {state.phase === 'teamPreview' && <ConfiguratorPanel />}
       {!useCards && state.phase === 'sizeRecommendation' && <SizeRecommendationPanel />}
-      {state.phase === 'photoUploadDesign' && <PhotoUploadDesignPanel />}
       {!useCards && state.phase === 'projectPlan' && <ProjectPlanPanel />}
       {state.phase === 'spacePlanner' && (
         <SpacePlannerPanel

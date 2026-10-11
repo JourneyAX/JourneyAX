@@ -103,8 +103,8 @@ export function resolveTemplate(cfg: StorefrontConfig, cardType: CardType): Spec
 | openPanel {panel, sku} | `SET_PHASE` to the legacy panel phase |
 | openUrl {url} | `window.open(url, '_blank', 'noopener')` |
 
-Legacy phases that stay as React panels for now (no card type yet): configurator, designEditor, concepts,
-teamDesign, teamRoster, teamPreview, photoUploadDesign, spacePlanner (+ candy configurator). Everything else
+Legacy phases that stay as React panels for now (no card type yet): configurator, teamRoster, teamPreview,
+spacePlanner (+ candy configurator). Everything else
 renders through `CardStage`.
 
 ## Rules

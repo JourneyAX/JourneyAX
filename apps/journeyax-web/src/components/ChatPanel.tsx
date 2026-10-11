@@ -44,7 +44,6 @@ const TOOL_TRACE_LABEL: Record<string, string> = {
   openSpacePlanner: 'Opening the planner',
   researchSchool: 'Researching your school',
   showConfigurator: 'Opening the designer',
-  generateTeamDesign: 'Generating your design',
   readRoster: 'Reading your roster',
 };
 function traceLabel(name: string): string {
@@ -326,22 +325,9 @@ export default function ChatPanel() {
   convoIdRef.current = convoId;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // CDL "upload my design": a design image the customer attached for the NEXT
-  // message. sendToAI is a stable closure, so it reads the current value from a
-  // ref (mirrors convoIdRef). Cleared once the message is sent.
-  const [pendingImage, setPendingImage] = useState<{ dataUrl: string; name: string } | null>(null);
-  const pendingImageRef = useRef<{ dataUrl: string; name: string } | null>(null);
-  pendingImageRef.current = pendingImage;
-  const fileInputRef = useRef<HTMLInputElement>(null);
   // v3 Card CMS: lets the CommandBar's stop button cancel an in-flight streamed turn.
   const abortControllerRef = useRef<AbortController | null>(null);
   const stopStreaming = useCallback(() => { abortControllerRef.current?.abort(); }, []);
-  const readImageFile = useCallback((file: File | null | undefined) => {
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = () => setPendingImage({ dataUrl: String(reader.result || ''), name: file.name || 'design' });
-    reader.readAsDataURL(file);
-  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -530,22 +516,15 @@ export default function ChatPanel() {
       const existingSessionId =
         typeof window !== 'undefined' ? localStorage.getItem(sKey) || undefined : undefined;
 
-      // CDL: a design image attached this turn rides along as a data URL. The
-      // agent holds it server-side and reads it with analyzeDesign (it never
-      // enters the LLM prompt). Consumed once, then cleared.
-      const attachedImage = pendingImageRef.current?.dataUrl;
-
       const requestBody = JSON.stringify({
         message: newUserMessage,
         sessionId: existingSessionId,
-        ...(attachedImage ? { imageBase64: attachedImage } : {}),
         // Sample-customer demo: the profile picked in the header binds the
         // server-side identity the history tools read by (a demo stand-in
         // for real sign-in; the agent never trusts an id typed into chat).
         ...(demoPrincipalRef.current ? { demoPrincipalId: demoPrincipalRef.current } : {}),
         // customerId will be attached here once storefront auth lands (long-term memory key).
       });
-      if (attachedImage) { setPendingImage(null); pendingImageRef.current = null; }
 
       // Working strip (v3 Card CMS): visible the instant the turn starts, not
       // only once the first tool call streams back.
@@ -708,49 +687,6 @@ export default function ChatPanel() {
               ...(a.note ? { note: String(a.note) } : {}),
             } });
             dispatch({ type: 'SET_PHASE', phase: 'configurator' });
-            hasPhaseChange = true;
-          } else if (action.name === 'showProof') {
-            /* CDL Path A: the faithful proof — the customer's actual artwork
-             * reproduced on our garment. This is the hero for artwork-heavy
-             * uploads that colour zones can't represent. */
-            if (action.arguments?.proofId) {
-              dispatch({ type: 'SET_PROOF', proofId: String(action.arguments.proofId) });
-              hasPhaseChange = true;
-            }
-          } else if (action.name === 'showConcept') {
-            /* CDL Door A: the AI-generated concept image the customer asked us to
-             * design. Stored separately from `design` so a following
-             * showConfigurator (which CLEAR_DESIGNs for the matched real template)
-             * doesn't wipe it — the concept stays pinned as "your concept". */
-            if (action.arguments?.conceptId) {
-              dispatch({ type: 'SET_CONCEPT', conceptId: String(action.arguments.conceptId) });
-            }
-          } else if (action.name === 'generateTeamDesign') {
-            /* Coach team-order journey — up to four flat views (front/back/left/
-             * right). Merge, never replace: a follow-up edit re-generates all four
-             * but any view that failed this round should not wipe what is shown. */
-            const a = action.arguments || {};
-            dispatch({ type: 'SET_TEAM_DESIGN', teamDesign: {
-              ...(a.frontId ? { frontId: String(a.frontId) } : {}),
-              ...(a.backId ? { backId: String(a.backId) } : {}),
-              ...(a.leftId ? { leftId: String(a.leftId) } : {}),
-              ...(a.rightId ? { rightId: String(a.rightId) } : {}),
-              ...(a.brief ? { brief: String(a.brief) } : {}),
-              ...(a.sku ? { sku: String(a.sku) } : {}),
-            } });
-            // TeamRosterPanel/ConfiguratorPanel (teamPreview) price and render
-            // against state.design.sku, same as the individual-shopper journey —
-            // mirror the sku here so the roster step has a real style to price.
-            if (a.sku) dispatch({ type: 'SET_DESIGN', design: { sku: String(a.sku) } });
-            dispatch({ type: 'SET_PHASE', phase: 'teamDesign' });
-            hasPhaseChange = true;
-          } else if (action.name === 'uploadPhotosFor3D') {
-            /* Real-photo 3D match — the tool's only job is to switch the UI into
-             * "show me your 4 photos" mode; the actual bake happens client-side
-             * in PhotoUploadDesignPanel once the customer submits. */
-            const a = action.arguments || {};
-            if (a.sku) dispatch({ type: 'SET_DESIGN', design: { sku: String(a.sku) } });
-            dispatch({ type: 'SET_PHASE', phase: 'photoUploadDesign' });
             hasPhaseChange = true;
           } else if (action.name === 'recommendSize') {
             /* Fitment guide — arguments IS the server's recommendSize result
@@ -1033,10 +969,8 @@ export default function ChatPanel() {
 
   const onSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    const hasImage = !!pendingImageRef.current;
-    if (!prompt.trim() && !hasImage) return;
-    // Image-only send: give the agent a clear opening so it runs analyzeDesign.
-    const content = prompt.trim() || "Here's my design — can you make this?";
+    const content = prompt.trim();
+    if (!content) return;
     append({ role: 'user', content });
     setPrompt('');
   };
@@ -1288,47 +1222,16 @@ export default function ChatPanel() {
             ))}
           </div>
         )}
-        {/* CDL: a design the customer attached, waiting to send with their next message. */}
-        {pendingImage && (
-          <div className="chat-attach-preview" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 8px', padding: '6px 8px', borderRadius: 10, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.08)' }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pendingImage.dataUrl} alt="Attached design" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6 }} />
-            <span style={{ flex: 1, fontSize: 13, opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pendingImage.name}</span>
-            <button type="button" aria-label="Remove attached design" onClick={() => setPendingImage(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, lineHeight: 1, opacity: 0.6 }}>✕</button>
-          </div>
-        )}
         <form
           className="chat-input-row"
           onSubmit={onSubmit}
-          onDrop={e => { e.preventDefault(); readImageFile(e.dataTransfer?.files?.[0]); }}
-          onDragOver={e => e.preventDefault()}
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={e => { readImageFile(e.target.files?.[0]); e.target.value = ''; }}
-          />
-          <button
-            type="button"
-            className="chat-attach-btn"
-            aria-label="Attach a design image"
-            title="Attach a design image"
-            onClick={() => fileInputRef.current?.click()}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, opacity: 0.65 }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3 3 0 014.24 4.24l-9.19 9.19a1 1 0 01-1.41-1.41l8.48-8.49" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
           <input
             className="chat-input"
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={onKeyDown}
-            onPaste={e => { const f = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'))?.getAsFile(); if (f) { e.preventDefault(); readImageFile(f); } }}
-            placeholder={pendingImage ? 'Add a note, or just send your design…' : introPlaceholder}
+            placeholder={introPlaceholder}
           />
           <button type="submit" className="chat-send-btn" aria-label="Send message">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">

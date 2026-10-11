@@ -1,12 +1,9 @@
 // ── Phase machine ──────────────────────────────────────────────────────
-export type Phase = 'intro' | 'research' | 'clarify' | 'validating' | 'products' | 'accessories' | 'choice' | 'install' | 'warranty' | 'guide' | 'quote' | 'ordered' | 'concepts' | 'configurator' | 'designEditor'
-  // Coach team-order journey: four flat views approval -> roster -> per-player 3D preview.
-  | 'teamDesign' | 'teamRoster' | 'teamPreview'
+export type Phase = 'intro' | 'research' | 'clarify' | 'validating' | 'products' | 'accessories' | 'choice' | 'install' | 'warranty' | 'guide' | 'quote' | 'ordered' | 'configurator'
+  // Team order journey: roster -> per-player preview.
+  | 'teamRoster' | 'teamPreview'
   // Fitment guide: a grounded size recommendation (or an honest "no chart yet").
   | 'sizeRecommendation'
-  // Real-photo 3D match: upload up to 4 real photos of an actual garment, baked
-  // onto the real 3D mesh (distinct from teamDesign's AI-generated views).
-  | 'photoUploadDesign'
   // PlaceMakers deterministic project & materials planner (decking, fencing, wall lining, retaining).
   | 'projectPlan'
   // PlaceMakers 3D / 2D Space & Modular Cabinet Planner (kitchen, laundry, bathroom).
@@ -62,22 +59,8 @@ export interface BranchStockResponse {
   branches: BranchStockItem[];
 }
 
-// ── Coach team-order journey ────────────────────────────────────────────
-/** The four flat 2D design views (front/back/left/right), each a concept id
- *  served by GET /api/cdl/concept/:id. A view is absent if its generation failed
- *  — never blocks the others. */
-export interface TeamDesignViews {
-  frontId?: string; backId?: string; leftId?: string; rightId?: string;
-  /** The running, accumulated brief that produced these views — re-sent on the
-   *  next edit so "make the sleeves orange" layers onto what's already there. */
-  brief?: string;
-  /** The confirmed style/template code this team order prices against — set
-   *  once the coach picks a real style (via getProductOptions), consumed by
-   *  TeamRosterPanel (skuByGarment) and the teamPreview 3D configurator. */
-  sku?: string;
-}
 /** One roster row — mirrors RosterPanel's Row shape, kept minimal for the 3D
- *  per-player overlay (CustomDesign3D's `roster` prop only needs name+number). */
+ *  per-player overlay only needs name+number. */
 export interface RosterRow {
   name?: string;
   number?: string;
@@ -434,12 +417,9 @@ export interface JourneyState {
   accessories?: AccessoryItem[];
   choice?: JourneyChoice;
   design?: DesignSpec;
-  conceptId?: string;          // CDL Door A: id of the AI-generated concept image for this design
-  proofId?: string;            // CDL Path A: id of the faithful "your artwork on our garment" proof
   installGuide?: InstallGuide;
   warranty?: WarrantyInfo;
-  // Coach team-order journey
-  teamDesign?: TeamDesignViews;
+  // Team order journey
   roster?: RosterRow[];
   selectedPlayerIdx?: number;
   // Fitment guide
@@ -496,8 +476,8 @@ export interface CardInstance {
 /** Phases still rendered by a legacy React panel, not a card template.
  *  CardStage takes over every other phase once `state.cards` is non-empty. */
 export const LEGACY_CARD_PHASES: Phase[] = [
-  'configurator', 'designEditor', 'concepts', 'teamDesign', 'teamRoster',
-  'teamPreview', 'photoUploadDesign', 'spacePlanner',
+  'configurator', 'teamRoster',
+  'teamPreview', 'spacePlanner',
 ];
 
 export const INITIAL_STATE: JourneyState = {
