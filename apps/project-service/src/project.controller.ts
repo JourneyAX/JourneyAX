@@ -163,10 +163,16 @@ export class ProjectController {
   @RequirePermission('config.publish')
   async publishProject(
     @Param('projectId') projectId: string,
-    @Body() body?: { note?: string; publishedBy?: string },
+    @Body() body?: { note?: string; environmentId?: string },
+    @Headers('x-user-id') userId?: string,
   ) {
     const pubService = this.publicationService || this.projectService.getPublicationService();
-    const result = await pubService.publishConfig(projectId, body || {});
+    // Identity comes from the authenticated request, never from the body.
+    const result = await pubService.publishConfig(projectId, {
+      note: body?.note,
+      environmentId: body?.environmentId,
+      publishedBy: userId,
+    });
     if (!result.success) throw new NotFoundException(result.message);
     return { ...result, status: 'active', projectId };
   }
@@ -193,8 +199,10 @@ export class ProjectController {
   async rollback(
     @Param('projectId') projectId: string,
     @Param('version') version: string,
+    @Body() body?: { environmentId?: string },
+    @Headers('x-user-id') userId?: string,
   ) {
-    const result = await this.projectService.rollbackConfig(projectId, Number(version));
+    const result = await this.projectService.rollbackConfig(projectId, Number(version), userId, body?.environmentId);
     if (!result.success) throw new NotFoundException(result.message);
     return { ...result, projectId, activeVersion: Number(version) };
   }

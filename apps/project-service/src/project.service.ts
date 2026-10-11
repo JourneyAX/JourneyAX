@@ -876,7 +876,7 @@ export class ProjectService {
 
   async publishConfig(
     projectId: string,
-    opts: { note?: string; publishedBy?: string } = {},
+    opts: { note?: string; publishedBy?: string; environmentId?: string } = {},
   ): Promise<{ success: boolean; version?: number; message?: string }> {
     return this.getPublicationService().publishConfig(projectId, opts);
   }
@@ -911,90 +911,18 @@ export class ProjectService {
 
   /** Version history (metadata only — the audit trail). */
   async listVersions(projectId: string): Promise<Array<Omit<ConfigVersion, 'config'> & { active: boolean }>> {
-    if (!this.isConnected) return [];
-    const pid = projectId.toLowerCase();
-    const draft = await this.getProject(pid);
-    const active = (draft as any)?.activeVersion;
-    const versions = await this.versionsCol
-      .find({ projectId: pid }, { projection: { config: 0, _id: 0 } })
-      .sort({ version: -1 }).limit(50).toArray();
-    return versions.map((v: any) => ({ ...v, active: v.version === active }));
+    return this.getPublicationService().listVersions(projectId);
   }
 
-  /** Point the runtime at an older published snapshot. Append-only — nothing is deleted.
-   *  Coordinates Business Pack pointer and Studio project activeVersion in a single transaction. */
+  /** Point an environment at an older published snapshot. Append-only; nothing is deleted.
+   *  Business Pack pointer and Studio state move together in one transaction. */
   async rollbackConfig(
     projectId: string,
     version: number,
-    rolledBackBy?: string
+    rolledBackBy?: string,
+    environmentId?: string
   ): Promise<{ success: boolean; message?: string }> {
-    if (!this.isConnected) return { success: false, message: 'Database not available.' };
-    const pid = projectId.toLowerCase();
-    const snap = await this.versionsCol.findOne({ projectId: pid, version });
-    if (!snap) return { success: false, message: `Version ${version} not found for '${pid}'.` };
-
-    const targetPackVersion = (snap as any).packVersion || `1.0.${version}`;
-    const client = (this.db as any).client;
-    const isProduction = process.env.NODE_ENV === 'production';
-    const now = new Date().toISOString();
-
-    const executeTransactionalRollback = async (session?: any) => {
-      const sessionOpts = session ? { session } : undefined;
-
-      // 1. Rollback Business Pack pointer atomically
-      await rollbackBusinessPack(this.db, pid, 'production', {
-        targetVersion: targetPackVersion,
-        rolledBackBy: rolledBackBy || 'studio',
-        reason: `Studio rollback to version ${version}`,
-        session,
-      });
-
-      // 2. Rollback Studio project activeVersion atomically
-      await this.projectsCol.updateOne(
-        { projectId: pid },
-        { $set: { activeVersion: version, packVersion: (snap as any).packVersion, updatedAt: now } },
-        sessionOpts
-      );
-    };
-
-    try {
-      if (isProduction) {
-        if (!client || typeof client.startSession !== 'function') {
-          throw new Error('MongoDB client session required for transactional studio rollback in production');
-        }
-        const session = client.startSession();
-        try {
-          await session.withTransaction(async () => {
-            await executeTransactionalRollback(session);
-          });
-        } finally {
-          await session.endSession();
-        }
-      } else {
-        if (client && typeof client.startSession === 'function') {
-          const session = client.startSession();
-          try {
-            await session.withTransaction(async () => {
-              await executeTransactionalRollback(session);
-            });
-          } catch {
-            await executeTransactionalRollback();
-          } finally {
-            await session.endSession();
-          }
-        } else {
-          await executeTransactionalRollback();
-        }
-      }
-    } catch (rbErr: any) {
-      return {
-        success: false,
-        message: `Rollback failed: ${rbErr.message}`,
-      };
-    }
-
-    this.bust(pid);
-    return { success: true };
+    return this.getPublicationService().rollbackConfig(projectId, version, rolledBackBy, environmentId);
   }
 
   async publishProject(projectId: string): Promise<{ success: boolean; message?: string }> {

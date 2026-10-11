@@ -508,6 +508,8 @@ export interface ProjectConfig {
   // Unset = never published → runtime falls back to the draft (back-compat).
   activeVersion?: number;
   packVersion?: string;
+  /** Last published version per non-production environment. */
+  environmentVersions?: Record<string, { version: number; packVersion?: string; publishedAt: string }>;
 }
 
 // ── Knowledge ingestion source (B4 — per-project, configured in the back office) ──
@@ -582,6 +584,7 @@ export interface ConfigVersion {
   projectId: string;           // isolation key
   version: number;             // monotonically increasing per project
   packVersion?: string;        // immutable business pack semver (e.g. 1.3.8)
+  environmentId?: string;      // target environment; absent means production
   config: ProjectConfig;       // full immutable snapshot of the draft at publish time
   publishedAt: string;         // ISO timestamp
   publishedBy?: string;        // who published (email/id when auth context available)

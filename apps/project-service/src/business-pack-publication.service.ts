@@ -18,6 +18,18 @@ import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-r
 import { ReleaseValidationPort } from './release-validation.port';
 import { assertOkfReferenceReady, validateOkfJourneyReferences } from '@journeyax/knowledge';
 
+export type PublicationEnvironment = 'dev' | 'test' | 'staging' | 'production';
+const PUBLICATION_ENVIRONMENTS: readonly PublicationEnvironment[] = ['dev', 'test', 'staging', 'production'];
+
+/** Resolves the target environment of a publication; production is the default, anything unknown is rejected. */
+export function resolvePublicationEnvironment(value?: string | null): PublicationEnvironment {
+  const normalized = (value || 'production').trim().toLowerCase();
+  if (!PUBLICATION_ENVIRONMENTS.includes(normalized as PublicationEnvironment)) {
+    throw new Error(`Invalid environmentId '${value}'. Expected one of: ${PUBLICATION_ENVIRONMENTS.join(', ')}.`);
+  }
+  return normalized as PublicationEnvironment;
+}
+
 export class MissingCatalogueSkuError extends Error {
   constructor(public readonly missingSkus: string[], public readonly tenantId: string) {
     super(`Missing catalogue SKUs in business pack for tenant '${tenantId}': ${missingSkus.join(', ')}`);
@@ -174,10 +186,16 @@ export class BusinessPackPublicationService {
 
   async publishConfig(
     projectId: string,
-    opts: { note?: string; publishedBy?: string } = {}
-  ): Promise<{ success: boolean; version?: number; message?: string }> {
+    opts: { note?: string; publishedBy?: string; environmentId?: string } = {}
+  ): Promise<{ success: boolean; version?: number; message?: string; environmentId?: PublicationEnvironment }> {
     if (!this.isConnected()) return { success: false, message: 'Database not available.' };
     const pid = projectId.toLowerCase();
+    let environmentId: PublicationEnvironment;
+    try {
+      environmentId = resolvePublicationEnvironment(opts.environmentId);
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
 
     const doc = await this.getProjectsCol().findOne({ projectId: pid });
     if (!doc) return { success: false, message: `Project '${pid}' not found.` };
@@ -236,7 +254,7 @@ export class BusinessPackPublicationService {
         .project({ version: 1 })
         .toArray();
       const activePointer = await db.collection('business_pack_pointers')
-        .findOne({ tenantId: pid, environmentId: 'production' });
+        .findOne({ tenantId: pid, environmentId });
 
       const allVersions = new Set<string>();
       for (const r of existingReleases) {
@@ -414,7 +432,7 @@ export class BusinessPackPublicationService {
       }),
       toolBindings: Array.from(toolNames).map((toolId) => ({
         tenantId: pid,
-        environmentId: 'production' as const,
+        environmentId,
         toolId,
         bindingVersion: '1.0.0',
         executor: {
@@ -560,7 +578,7 @@ export class BusinessPackPublicationService {
         version: packReleaseVersion,
         description: `${industry} Business Pack`,
         schemaVersion: '1.0.0',
-        environmentId: 'production' as const,
+        environmentId,
         author: opts.publishedBy || 'studio',
       },
       profile: {
@@ -634,7 +652,7 @@ export class BusinessPackPublicationService {
         const okfRelease = await assertOkfReferenceReady(
           this.getDb(),
           (businessPack as any).knowledgeModel,
-          { tenantId: pid, environmentId: 'production' }
+          { tenantId: pid, environmentId }
         );
         const journeyReferenceIssues = validateOkfJourneyReferences(
           okfRelease.content,
@@ -694,7 +712,7 @@ export class BusinessPackPublicationService {
         const okfRelease = await assertOkfReferenceReady(
           this.getDb(),
           (businessPack as any).knowledgeModel,
-          { tenantId: pid, environmentId: 'production' },
+          { tenantId: pid, environmentId },
           session
         );
         const journeyReferenceIssues = validateOkfJourneyReferences(
@@ -728,6 +746,7 @@ export class BusinessPackPublicationService {
         publishedAt: now,
         publishedBy: opts.publishedBy || 'system',
         note: opts.note,
+        ...(environmentId === 'production' ? {} : { environmentId }),
         evaluationResult: latestEvalSuiteResult,
         config: {
           ...doc,
@@ -739,10 +758,13 @@ export class BusinessPackPublicationService {
       };
       await this.getVersionsCol().insertOne(snap as any, sessionOpts);
 
-      // 3. Update Studio project activeVersion
+      // 3. Record what is active. Production owns the Studio-wide active version;
+      //    other environments are tracked separately so they never disturb it.
       await this.getProjectsCol().updateOne(
         { projectId: pid },
-        { $set: { activeVersion: version, packVersion: packReleaseVersion, updatedAt: now } },
+        environmentId === 'production'
+          ? { $set: { activeVersion: version, packVersion: packReleaseVersion, updatedAt: now } }
+          : { $set: { [`environmentVersions.${environmentId}`]: { version, packVersion: packReleaseVersion, publishedAt: now }, updatedAt: now } },
         sessionOpts
       );
     };
@@ -784,7 +806,7 @@ export class BusinessPackPublicationService {
     }
 
     this.bustCache(pid);
-    return { success: true, version };
+    return { success: true, version, environmentId };
   }
 
   async getPublishedConfig(projectId: string): Promise<(ProjectConfig & { published?: boolean }) | null> {
@@ -814,23 +836,37 @@ export class BusinessPackPublicationService {
   async listVersions(projectId: string): Promise<Array<Omit<ConfigVersion, 'config'> & { active: boolean }>> {
     if (!this.isConnected()) return [];
     const pid = projectId.toLowerCase();
-    const draft = await this.getProjectFn(pid);
-    const active = (draft as any)?.activeVersion;
+    const draft: any = await this.getProjectFn(pid);
     const versions = await this.getVersionsCol()
       .find({ projectId: pid }, { projection: { config: 0, _id: 0 } })
       .sort({ version: -1 }).limit(50).toArray();
-    return versions.map((v: any) => ({ ...v, active: v.version === active }));
+    return versions.map((v: any) => {
+      const environment = v.environmentId || 'production';
+      const activeVersion = environment === 'production' ? draft?.activeVersion : draft?.environmentVersions?.[environment]?.version;
+      return { ...v, environmentId: environment, active: v.version === activeVersion };
+    });
   }
 
   async rollbackConfig(
     projectId: string,
     version: number,
-    rolledBackBy?: string
-  ): Promise<{ success: boolean; message?: string }> {
+    rolledBackBy?: string,
+    environmentInput?: string
+  ): Promise<{ success: boolean; message?: string; environmentId?: PublicationEnvironment }> {
     if (!this.isConnected()) return { success: false, message: 'Database not available.' };
     const pid = projectId.toLowerCase();
+    let environmentId: PublicationEnvironment;
+    try {
+      environmentId = resolvePublicationEnvironment(environmentInput);
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
     const snap = await this.getVersionsCol().findOne({ projectId: pid, version });
     if (!snap) return { success: false, message: `Version ${version} not found for '${pid}'.` };
+    const snapshotEnvironment = (snap as any).environmentId || 'production';
+    if (snapshotEnvironment !== environmentId) {
+      return { success: false, message: `Version ${version} was published to '${snapshotEnvironment}', not '${environmentId}'.` };
+    }
 
     const targetPackVersion = (snap as any).packVersion || `1.0.${version}`;
     const client = (this.getDb() as any).client;
@@ -840,7 +876,7 @@ export class BusinessPackPublicationService {
     const executeTransactionalRollback = async (session?: any) => {
       const sessionOpts = session ? { session } : undefined;
 
-      await rollbackBusinessPack(this.getDb(), pid, 'production', {
+      await rollbackBusinessPack(this.getDb(), pid, environmentId, {
         targetVersion: targetPackVersion,
         rolledBackBy: rolledBackBy || 'studio',
         reason: `Studio rollback to version ${version}`,
@@ -849,7 +885,9 @@ export class BusinessPackPublicationService {
 
       await this.getProjectsCol().updateOne(
         { projectId: pid },
-        { $set: { activeVersion: version, packVersion: (snap as any).packVersion, updatedAt: now } },
+        environmentId === 'production'
+          ? { $set: { activeVersion: version, packVersion: (snap as any).packVersion, updatedAt: now } }
+          : { $set: { [`environmentVersions.${environmentId}`]: { version, packVersion: (snap as any).packVersion, publishedAt: now }, updatedAt: now } },
         sessionOpts
       );
     };
@@ -891,7 +929,7 @@ export class BusinessPackPublicationService {
     }
 
     this.bustCache(pid);
-    return { success: true };
+    return { success: true, environmentId };
   }
 
   /**
