@@ -139,6 +139,9 @@ export interface Project {
     required: boolean;
     failurePolicy: 'fail_closed' | 'enrichment_only';
   };
+  /** Checksum-bound pack settings the back office owns (see PackSettingsEditor). */
+  catalogMapping?: Record<string, unknown>;
+  extensions?: { interpretationPolicy?: Record<string, unknown>; workspacePinPolicy?: { idleRepinAfterHours?: number }; [key: string]: unknown };
 }
 
 /** One configured ingestion source (mirrors KnowledgeSourceItem in project-service). */

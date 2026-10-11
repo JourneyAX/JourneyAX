@@ -8,6 +8,7 @@ import { RevocationPanel } from '../src/components/okf/RevocationPanel';
 import { ImportExportBar } from '../src/components/okf/ImportExportBar';
 import { ArtifactPolicyToggle } from '../src/components/okf/ArtifactPolicyToggle';
 import { ConceptEditor } from '../src/components/okf/ConceptEditor';
+import { PackSettingsEditor } from '../src/components/okf/PackSettingsEditor';
 
 let passed = 0;
 function check(name: string, fn: () => void) {
@@ -94,6 +95,16 @@ check('concept editor renders the selected concept, its facts and policy control
   assert.match(html, /Save concept/);
   assert.match(html, /requires_compatibility_resolution/);
   assert.match(renderToStaticMarkup(<ConceptEditor content={{ concepts: [] }} busy={false} onSave={noop} />), /No concepts yet/);
+});
+
+check('pack settings show current values and blank for platform defaults', () => {
+  const project: any = { projectId: 'p', catalogMapping: { candidateLimit: 50 }, extensions: { workspacePinPolicy: { idleRepinAfterHours: 12 } } };
+  const html = renderToStaticMarkup(<PackSettingsEditor project={project} />);
+  assert.match(html, /Catalogue mapping/);
+  assert.match(html, /candidateLimit/);
+  assert.match(html, /idleRepinAfterHours/);
+  assert.match(html, /Empty = platform defaults/);
+  assert.match(html, /validated by the service/);
 });
 
 console.log(`✅ backoffice OKF Studio components: ${passed} passed, 0 failed`);

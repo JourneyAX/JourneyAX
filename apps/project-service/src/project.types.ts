@@ -637,6 +637,10 @@ export interface UpdateProjectDto {
   console?: { labels?: Record<string, string>; hidden?: string[]; order?: string[] };
   knowledgeSource?: KnowledgeSourceConfig;
   notifications?: Record<string, boolean>;
+  /** Checksum-bound pack settings; validated before they are stored. */
+  catalogMapping?: Record<string, unknown> | null;
+  interpretationPolicy?: Record<string, unknown> | null;
+  workspacePinPolicy?: { idleRepinAfterHours?: number } | null;
   embed?: EmbedConfig;
   /** Per-project 3D product configurator (generic; sportswear kit, etc.). */
   configurator?: ConfiguratorConfig;

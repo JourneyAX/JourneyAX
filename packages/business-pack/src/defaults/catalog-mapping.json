@@ -113,5 +113,6 @@
     "stock.availableQuantity",
     "inventory.availableUnits"
   ],
-  "candidateLimit": 150
+  "candidateLimit": 150,
+  "componentCategoryRules": {}
 }

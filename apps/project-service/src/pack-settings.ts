@@ -1,0 +1,74 @@
+import { CatalogMappingSchema } from '@journeyax/business-pack';
+
+export type PackSettingsResult =
+  | { ok: true; set: Record<string, unknown | null> }
+  | { ok: false; message: string };
+
+const MONEY_KEYS = ['symbols', 'leadPhrases', 'capPhrases'];
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim() !== '');
+}
+
+/**
+ * Validates tenant pack settings before they are stored. `null` removes a setting (back to platform defaults);
+ * the returned map is keyed by the stored project-document path.
+ */
+export function validatePackSettings(dto: {
+  catalogMapping?: unknown;
+  interpretationPolicy?: unknown;
+  workspacePinPolicy?: unknown;
+}): PackSettingsResult {
+  const set: Record<string, unknown | null> = {};
+
+  if (dto.catalogMapping !== undefined) {
+    if (dto.catalogMapping === null) {
+      set.catalogMapping = null;
+    } else {
+      const parsed = CatalogMappingSchema.safeParse(dto.catalogMapping);
+      if (!parsed.success) return { ok: false, message: `Invalid catalogMapping: ${parsed.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`).join('; ')}` };
+      set.catalogMapping = parsed.data;
+    }
+  }
+
+  if (dto.interpretationPolicy !== undefined) {
+    const policy = dto.interpretationPolicy as any;
+    if (policy === null) {
+      set['extensions.interpretationPolicy'] = null;
+    } else {
+      if (typeof policy !== 'object' || Array.isArray(policy)) return { ok: false, message: 'Invalid interpretationPolicy: expected an object' };
+      const allowed = ['quantity', 'money', 'grounding', 'promptRules', 'messages'];
+      const unknown = Object.keys(policy).filter((key) => !allowed.includes(key));
+      if (unknown.length) return { ok: false, message: `Invalid interpretationPolicy: unknown key(s) ${unknown.join(', ')}` };
+      if (policy.promptRules !== undefined && !isStringArray(policy.promptRules)) return { ok: false, message: 'Invalid interpretationPolicy: promptRules must be a list of non-empty strings' };
+      if (policy.messages !== undefined && (typeof policy.messages !== 'object' || Object.values(policy.messages).some((m) => typeof m !== 'string' || !m))) {
+        return { ok: false, message: 'Invalid interpretationPolicy: messages must map ids to non-empty strings' };
+      }
+      for (const key of MONEY_KEYS) {
+        if (policy.money?.[key] !== undefined && !isStringArray(policy.money[key])) return { ok: false, message: `Invalid interpretationPolicy: money.${key} must be a list of non-empty strings` };
+      }
+      for (const key of ['unitWords', 'verbs']) {
+        if (policy.quantity?.[key] !== undefined && !isStringArray(policy.quantity[key])) return { ok: false, message: `Invalid interpretationPolicy: quantity.${key} must be a list of non-empty strings` };
+      }
+      if (policy.grounding?.ignoredOptionWords !== undefined && !isStringArray(policy.grounding.ignoredOptionWords)) {
+        return { ok: false, message: 'Invalid interpretationPolicy: grounding.ignoredOptionWords must be a list of non-empty strings' };
+      }
+      set['extensions.interpretationPolicy'] = policy;
+    }
+  }
+
+  if (dto.workspacePinPolicy !== undefined) {
+    const policy = dto.workspacePinPolicy as any;
+    if (policy === null) {
+      set['extensions.workspacePinPolicy'] = null;
+    } else {
+      const hours = policy?.idleRepinAfterHours;
+      if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0 || hours > 24 * 365) {
+        return { ok: false, message: 'Invalid workspacePinPolicy: idleRepinAfterHours must be a positive number of hours (at most one year)' };
+      }
+      set['extensions.workspacePinPolicy'] = { idleRepinAfterHours: hours };
+    }
+  }
+
+  return { ok: true, set };
+}

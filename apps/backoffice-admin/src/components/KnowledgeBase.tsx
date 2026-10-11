@@ -12,6 +12,7 @@ import { projectApi, type Project } from "../lib/api";
 import { authedFetch } from "../lib/authed-fetch";
 import { IngestionSources } from "./IngestionSources";
 import { OkfStudio } from "./OkfStudio";
+import { PackSettingsEditor } from "./okf/PackSettingsEditor";
 
 interface Stats {
   brand: string;
@@ -172,6 +173,7 @@ export function KnowledgeBase({ project }: { project: Project }) {
   return (
     <>
       <OkfStudio project={project} />
+      <PackSettingsEditor project={project} onSaved={load} />
       <IngestionSources project={project} onSaved={load} />
       <div className="ctop">
         <div>

@@ -16,6 +16,12 @@ export const PriceSourceSchema = z.object({
   rangeKey: z.string().regex(/^[A-Za-z0-9_]+$/).optional(),
 });
 
+/** Terms are matched as lower-case substrings of the catalogue category. */
+export const ComponentCategoryRuleSchema = z.object({
+  allow: z.array(z.string().min(1)).optional(),
+  deny: z.array(z.string().min(1)).optional(),
+}).strict();
+
 export const CatalogMappingSchema = z.object({
   version: z.string().optional(),
   tenantFields: Paths.optional(),
@@ -45,6 +51,8 @@ export const CatalogMappingSchema = z.object({
   certificationPaths: Paths.optional(),
   quantityPaths: Paths.optional(),
   candidateLimit: z.number().int().min(1).max(1000).optional(),
+  /** Which catalogue categories may fill which planner component categories (publication-time integrity). */
+  componentCategoryRules: z.record(z.string().min(1), ComponentCategoryRuleSchema).optional(),
 }).strict();
 
 export type CatalogMappingInput = z.infer<typeof CatalogMappingSchema>;
@@ -70,6 +78,7 @@ export interface ResolvedCatalogMapping {
   certificationPaths: string[];
   quantityPaths: string[];
   candidateLimit: number;
+  componentCategoryRules: Record<string, { allow?: string[]; deny?: string[] }>;
 }
 
 const PLATFORM_DEFAULTS = defaults as unknown as ResolvedCatalogMapping;
@@ -231,4 +240,23 @@ export function readAttribute(item: { attributes: Record<string, unknown> } & Re
     if (value !== undefined && value !== null) return value;
   }
   return undefined;
+}
+
+/**
+ * Publication-time integrity: may a catalogue product of `catalogueCategory` fill a component of
+ * `componentCategory`? Rules are tenant data; a component with no rule is not constrained.
+ */
+export function isComponentCategoryCompatible(
+  componentCategory: string,
+  catalogueCategory: string,
+  rules: ResolvedCatalogMapping['componentCategoryRules'],
+): boolean {
+  const component = (componentCategory || '').toLowerCase().trim();
+  const category = (catalogueCategory || '').toLowerCase().trim();
+  if (!category) return true;
+  const rule = Object.entries(rules).find(([key]) => key.toLowerCase() === component)?.[1];
+  if (!rule) return true;
+  const has = (terms?: string[]) => (terms || []).some((term) => category.includes(term.toLowerCase()));
+  if (has(rule.deny)) return false;
+  return rule.allow && rule.allow.length > 0 ? has(rule.allow) : true;
 }

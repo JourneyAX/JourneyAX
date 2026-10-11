@@ -31,6 +31,8 @@ import {
   type OkfReleaseContent,
 } from '@journeyax/knowledge';
 
+const FACT_ROLES = ['measurement', 'money', 'quantity'];
+
 export const COLLECTION_OKF_DRAFTS = 'okf_drafts';
 export const COLLECTION_OKF_VERIFICATION_ATTESTATIONS = 'okf_verification_attestations';
 export const COLLECTION_OKF_VERIFIER_ROLES = 'okf_verifier_roles';
@@ -52,6 +54,8 @@ type AttachedFactRegistry = {
     uiInputType: string;
     promptQuestion: string;
     metadata: { questionRef: string };
+    role?: 'measurement' | 'money' | 'quantity';
+    multiple?: boolean;
   }>;
 };
 type AttachRelease = (
@@ -111,6 +115,8 @@ export class OkfAuthoringService {
         uiInputType: fact.uiInputType,
         promptQuestion: fact.question,
         metadata: { questionRef: fact.questionRef },
+        ...(FACT_ROLES.includes(fact.extensions?.role as string) ? { role: fact.extensions!.role as 'measurement' | 'money' | 'quantity' } : {}),
+        ...(fact.extensions?.multiple === true ? { multiple: true } : {}),
       }])),
     };
   }

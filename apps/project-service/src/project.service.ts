@@ -1,4 +1,5 @@
 import { loadProjectSeeds } from './seed-loader';
+import { validatePackSettings } from './pack-settings';
 import newProjectDefaults from './defaults/new-project.json';
 
 const NEW_PROJECT_DEFAULTS = newProjectDefaults as unknown as { channels: ProjectConfig['channels']; ai: Record<string, unknown> };
@@ -483,6 +484,13 @@ export class ProjectService {
     if (Array.isArray((dto as any).contextDimensions)) $set.contextDimensions = (dto as any).contextDimensions;
     if ((dto as any).console) $set.console = (dto as any).console;
     if ((dto as any).knowledgeSource) $set.knowledgeSource = (dto as any).knowledgeSource;
+    // Pack settings are validated at write time so an invalid one can never reach a publish.
+    const $unset: Record<string, ''> = {};
+    const settings = validatePackSettings(dto as any);
+    if (!settings.ok) return { success: false, message: settings.message };
+    for (const [path, value] of Object.entries(settings.set)) {
+      if (value === null) $unset[path] = ''; else $set[path] = value;
+    }
     // Business layer (BusinessPort): what kind of business this is and who its
     // customers buy for. Replaced wholesale, not merged — the entity model is a
     // coherent unit and a half-merged one would describe a business that isn't real.
@@ -603,7 +611,7 @@ export class ProjectService {
 
     const result = await this.projectsCol.updateOne(
       { projectId: pid },
-      { $set, $inc: { version: 1 } }
+      { $set, ...(Object.keys($unset).length ? { $unset } : {}), $inc: { version: 1 } }
     );
 
     if (result.matchedCount === 0) {

@@ -19,6 +19,7 @@ import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-r
 import { ReleaseValidationPort } from './release-validation.port';
 import { assertOkfReferenceReady, validateOkfJourneyReferences } from '@journeyax/knowledge';
 import { UNATTRIBUTED_PRINCIPAL } from '@journeyax/shared-types';
+import { isComponentCategoryCompatible, resolveCatalogMapping } from '@journeyax/business-pack';
 
 export type PublicationEnvironment = 'dev' | 'test' | 'staging' | 'production';
 const PUBLICATION_ENVIRONMENTS: readonly PublicationEnvironment[] = ['dev', 'test', 'staging', 'production'];
@@ -31,6 +32,9 @@ export function resolvePublicationEnvironment(value?: string | null): Publicatio
   }
   return normalized as PublicationEnvironment;
 }
+
+/** Components without a declared category are not constrained by category rules. */
+const UNSPECIFIED_COMPONENT_CATEGORY = '';
 
 export class MissingCatalogueSkuError extends Error {
   constructor(public readonly missingSkus: string[], public readonly tenantId: string) {
@@ -49,128 +53,6 @@ export class SemanticCategoryMismatchError extends Error {
       `Semantic category mismatch for SKU '${sku}': component category is '${componentCategory}' but catalogue category is '${catalogueCategory}'`
     );
     this.name = 'SemanticCategoryMismatchError';
-  }
-}
-
-export function isCategorySemanticallyCompatible(
-  componentCategory: string,
-  catalogueCategory: string
-): boolean {
-  const comp = (componentCategory || '').toLowerCase().trim();
-  const cat = (catalogueCategory || '').toLowerCase().trim();
-  if (!cat) return true;
-
-  switch (comp) {
-    case 'lining':
-      return (
-        cat.includes('plasterboard') ||
-        cat.includes('specialist board') ||
-        cat.includes('lining') ||
-        cat.includes('drywall') ||
-        cat.includes('board') ||
-        cat.includes('wallboard')
-      );
-
-    case 'tub':
-    case 'laundry_tub':
-      if (cat.includes('specialist board') || cat.includes('plasterboard') || cat.includes('flashing')) {
-        return false;
-      }
-      return (
-        cat.includes('tub') ||
-        cat.includes('basin') ||
-        cat.includes('sink') ||
-        cat.includes('laundry cabinetry')
-      );
-
-    case 'base':
-      if (
-        cat.includes('specialist board') ||
-        cat.includes('plasterboard') ||
-        cat.includes('flashing') ||
-        cat.includes('traps & wastes')
-      ) {
-        return false;
-      }
-      return (
-        cat.includes('vanit') ||
-        cat.includes('cabinet') ||
-        cat.includes('modular') ||
-        cat.includes('base') ||
-        cat.includes('drawer') ||
-        cat.includes('hardware') ||
-        cat.includes('furniture')
-      );
-
-    case 'overhead':
-      if (
-        cat.includes('tapware') ||
-        cat.includes('specialist board') ||
-        cat.includes('plasterboard') ||
-        cat.includes('traps') ||
-        cat.includes('tub')
-      ) {
-        return false;
-      }
-      return (
-        cat.includes('mirror') ||
-        cat.includes('vanit') ||
-        cat.includes('overhead') ||
-        cat.includes('cabinet') ||
-        cat.includes('cupboard')
-      );
-
-    case 'tall':
-      if (
-        cat.includes('tapware') ||
-        cat.includes('specialist board') ||
-        cat.includes('plasterboard') ||
-        cat.includes('traps') ||
-        cat.includes('scaffold')
-      ) {
-        return false;
-      }
-      return (
-        cat.includes('tall') ||
-        cat.includes('tower') ||
-        cat.includes('cupboard') ||
-        cat.includes('vanit') ||
-        cat.includes('cabinet') ||
-        cat.includes('storage') ||
-        cat.includes('pantry')
-      );
-
-    case 'appliance':
-    case 'washer_cavity':
-      if (
-        cat.includes('specialist board') ||
-        cat.includes('plasterboard') ||
-        cat.includes('vanit') ||
-        cat.includes('traps')
-      ) {
-        return false;
-      }
-      return (
-        cat.includes('appliance') ||
-        cat.includes('washer') ||
-        cat.includes('dryer') ||
-        cat.includes('dishwasher')
-      );
-
-    case 'exterior_barrier':
-      if (cat.includes('drywall') || cat.includes('specialist board') || cat.includes('plasterboard')) {
-        return false;
-      }
-      return cat.includes('flashing') || cat.includes('tape') || cat.includes('barrier') || cat.includes('wrap');
-
-    case 'sanitary_plumbing':
-      if (cat.includes('specialist board') || cat.includes('plasterboard') || cat.includes('flashing')) {
-        return false;
-      }
-      return cat.includes('trap') || cat.includes('waste') || cat.includes('plumbing') || cat.includes('valve');
-
-    default:
-      return true;
   }
 }
 
@@ -624,7 +506,7 @@ export class BusinessPackPublicationService {
       // Studio compilation has never published evaluation suites in the release content;
       // stated explicitly because the schema no longer injects a default.
       evaluations: [] as any[],
-      extensions: (doc as any).extensions || ((doc as any).spacePlanner ? { spacePlanner: (doc as any).spacePlanner } : {}),
+      extensions: { ...((doc as any).spacePlanner ? { spacePlanner: (doc as any).spacePlanner } : {}), ...((doc as any).extensions || {}) },
     };
 
     // Validate Business Pack reference integrity fail-closed
@@ -679,7 +561,8 @@ export class BusinessPackPublicationService {
     if (spacePlannerExt) {
       const plannerIntegrity = await this.validateSpacePlannerCatalogueIntegrity(
         pid,
-        spacePlannerExt
+        spacePlannerExt,
+        (businessPack as any).catalogMapping
       );
       if (!plannerIntegrity.valid) {
         return {
@@ -941,7 +824,8 @@ export class BusinessPackPublicationService {
    */
   async validateSpacePlannerCatalogueIntegrity(
     projectId: string,
-    spacePlanner: any
+    spacePlanner: any,
+    catalogMapping?: unknown
   ): Promise<{ valid: boolean; error?: string }> {
     if (!spacePlanner || typeof spacePlanner !== 'object') {
       return { valid: true };
@@ -956,7 +840,7 @@ export class BusinessPackPublicationService {
       for (const ref of spacePlanner.componentReferences) {
         if (ref?.sku) {
           skuCategories.set(String(ref.sku).trim(), {
-            componentCategory: ref.category || 'base',
+            componentCategory: ref.category || UNSPECIFIED_COMPONENT_CATEGORY,
             componentId: ref.componentId,
           });
         }
@@ -971,7 +855,7 @@ export class BusinessPackPublicationService {
               const s = String(dc.sku).trim();
               if (!skuCategories.has(s)) {
                 skuCategories.set(s, {
-                  componentCategory: dc.category || 'base',
+                  componentCategory: dc.category || UNSPECIFIED_COMPONENT_CATEGORY,
                   componentId: dc.componentId,
                 });
               }
@@ -989,7 +873,7 @@ export class BusinessPackPublicationService {
             // Validate explicit SKU strings (e.g. numeric IDs)
             if (/^\d{5,10}$/.test(s) && !skuCategories.has(s)) {
               skuCategories.set(s, {
-                componentCategory: cc.systemType || 'classification',
+                componentCategory: cc.systemType || UNSPECIFIED_COMPONENT_CATEGORY,
                 componentId: cc.classificationId,
               });
             }
@@ -1107,12 +991,13 @@ export class BusinessPackPublicationService {
       return { valid: false, error: err.message };
     }
 
-    // 4. Check for semantic category mismatches
+    // 4. Check for semantic category mismatches (rules are tenant data in catalogMapping)
+    const categoryRules = resolveCatalogMapping(catalogMapping).componentCategoryRules;
     for (const [sku, meta] of skuCategories.entries()) {
       const catProduct = catalogueMap.get(sku);
       if (!catProduct || !catProduct.category) continue;
 
-      const compatible = isCategorySemanticallyCompatible(meta.componentCategory, catProduct.category);
+      const compatible = isComponentCategoryCompatible(meta.componentCategory, catProduct.category, categoryRules);
       if (!compatible) {
         const err = new SemanticCategoryMismatchError(sku, meta.componentCategory, catProduct.category);
         return { valid: false, error: err.message };

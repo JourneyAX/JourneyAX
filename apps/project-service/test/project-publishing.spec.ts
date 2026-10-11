@@ -755,6 +755,8 @@ async function runProjectPublishingSuite() {
           name: 'PlaceMakers Test',
           companyName: 'PlaceMakers NZ',
           ai: { provider: 'openai', model: 'gpt-4o' },
+          // The category semantics are tenant data (they used to be built into the service).
+          catalogMapping: { componentCategoryRules: { overhead: { deny: ['tapware'], allow: ['mirror', 'cabinet', 'cupboard'] } } },
           persona: {
             systemName: 'PM Assistant',
             journeyDefinition: {

@@ -1,0 +1,148 @@
+{
+  "_comment": "PlaceMakers space-planner component/category rules that used to be hard-coded in project-service. Apply with PATCH /api/v1/projects/placemakers { catalogMapping: <this object's catalogMapping> } (merge with any existing mapping).",
+  "catalogMapping": {
+    "componentCategoryRules": {
+      "lining": {
+        "allow": [
+          "plasterboard",
+          "specialist board",
+          "lining",
+          "drywall",
+          "board",
+          "wallboard"
+        ]
+      },
+      "tub": {
+        "deny": [
+          "specialist board",
+          "plasterboard",
+          "flashing"
+        ],
+        "allow": [
+          "tub",
+          "basin",
+          "sink",
+          "laundry cabinetry"
+        ]
+      },
+      "laundry_tub": {
+        "deny": [
+          "specialist board",
+          "plasterboard",
+          "flashing"
+        ],
+        "allow": [
+          "tub",
+          "basin",
+          "sink",
+          "laundry cabinetry"
+        ]
+      },
+      "base": {
+        "deny": [
+          "specialist board",
+          "plasterboard",
+          "flashing",
+          "traps & wastes"
+        ],
+        "allow": [
+          "vanit",
+          "cabinet",
+          "modular",
+          "base",
+          "drawer",
+          "hardware",
+          "furniture"
+        ]
+      },
+      "overhead": {
+        "deny": [
+          "tapware",
+          "specialist board",
+          "plasterboard",
+          "traps",
+          "tub"
+        ],
+        "allow": [
+          "mirror",
+          "vanit",
+          "overhead",
+          "cabinet",
+          "cupboard"
+        ]
+      },
+      "tall": {
+        "deny": [
+          "tapware",
+          "specialist board",
+          "plasterboard",
+          "traps",
+          "scaffold"
+        ],
+        "allow": [
+          "tall",
+          "tower",
+          "cupboard",
+          "vanit",
+          "cabinet",
+          "storage",
+          "pantry"
+        ]
+      },
+      "appliance": {
+        "deny": [
+          "specialist board",
+          "plasterboard",
+          "vanit",
+          "traps"
+        ],
+        "allow": [
+          "appliance",
+          "washer",
+          "dryer",
+          "dishwasher"
+        ]
+      },
+      "washer_cavity": {
+        "deny": [
+          "specialist board",
+          "plasterboard",
+          "vanit",
+          "traps"
+        ],
+        "allow": [
+          "appliance",
+          "washer",
+          "dryer",
+          "dishwasher"
+        ]
+      },
+      "exterior_barrier": {
+        "deny": [
+          "drywall",
+          "specialist board",
+          "plasterboard"
+        ],
+        "allow": [
+          "flashing",
+          "tape",
+          "barrier",
+          "wrap"
+        ]
+      },
+      "sanitary_plumbing": {
+        "deny": [
+          "specialist board",
+          "plasterboard",
+          "flashing"
+        ],
+        "allow": [
+          "trap",
+          "waste",
+          "plumbing",
+          "valve"
+        ]
+      }
+    }
+  }
+}
