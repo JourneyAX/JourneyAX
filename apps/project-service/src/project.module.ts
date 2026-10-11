@@ -22,7 +22,7 @@ import { OkfAuthoringService } from './okf-authoring.service';
       provide: OkfAuthoringService,
       useFactory: (projectService: ProjectService) => new OkfAuthoringService(
         () => projectService.getRuntimeDb(),
-        (pid, knowledgeModel) => projectService.updateProject(pid, { knowledgeModel } as any)
+        (pid, update) => projectService.updateProject(pid, update as any)
       ),
       inject: [ProjectService],
     },

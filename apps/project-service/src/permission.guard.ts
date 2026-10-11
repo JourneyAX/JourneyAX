@@ -5,8 +5,8 @@
  * the gateway." This guard establishes the caller's permissions on MUTATING
  * project endpoints from, in order:
  *   1. the internal service key (`x-internal-key`) — trusted service-to-service;
- *   2. the trusted `x-user-permissions` header the gateway injects after it
- *      verified the JWT (fast path when the call came via the gateway);
+ *   2. a cryptographically signed gateway assertion (raw role/permission
+ *      headers are never accepted as proof);
  *   3. the caller's own `Authorization: Bearer <jwt>` — verified HERE against
  *      auth-service, so project-service enforces even when reached directly
  *      (the back office calls it directly today).
@@ -17,6 +17,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { can, type Permission } from '@journeyax/shared-types';
+import { verifyGatewayAssertion } from '@journeyax/database';
 
 export const PERMISSION_KEY = 'requiredPermission';
 export const RequirePermission = (permission: Permission) => SetMetadata(PERMISSION_KEY, permission);
@@ -44,12 +45,36 @@ export class PermissionGuard implements CanActivate {
 
     // 1. Internal service-to-service call.
     const internalKeyValue = internalKey();
-    if (internalKeyValue && req.headers['x-internal-key'] === internalKeyValue) return true;
+    if (internalKeyValue && req.headers['x-internal-key'] === internalKeyValue) {
+      req.headers['x-user-id'] = String(req.headers['x-user-id'] || req.headers['x-principal-id'] || 'internal-service');
+      req.headers['x-authenticated-role'] = String(req.headers['x-user-role'] || req.headers['x-principal-role'] || 'admin');
+      return true;
+    }
 
-    // 2. Trusted permissions header injected by the gateway.
-    const headerPerms = String(req.headers['x-user-permissions'] || '')
-      .split(',').map((p: string) => p.trim()).filter(Boolean);
-    if (headerPerms.includes(required)) return true;
+    // 2. Cryptographically signed gateway identity. Never trust raw
+    // x-user-permissions/x-user-role headers from a direct caller.
+    const assertion = String(req.headers['x-gateway-assertion'] || '');
+    if (assertion) {
+      const secret = process.env.GATEWAY_ASSERTION_SECRET || '';
+      try {
+        const payload = verifyGatewayAssertion(assertion, secret, {
+          expectedTenantId: String(req.params?.projectId || req.headers['x-tenant-id'] || ''),
+          // Project-service routes are tenant-scoped control-plane routes rather
+          // than /:environment runtime routes, so the gateway signs this hop as
+          // production regardless of which target environment is being edited.
+          expectedEnvironmentId: 'production',
+        });
+        if (!can(payload.role, required)) {
+          throw new ForbiddenException(`This action requires the '${required}' permission.`);
+        }
+        req.headers['x-user-id'] = payload.sub;
+        req.headers['x-authenticated-role'] = payload.role;
+        return true;
+      } catch (error) {
+        if (error instanceof ForbiddenException) throw error;
+        throw new ForbiddenException('Invalid gateway identity assertion.');
+      }
+    }
 
     // 3. Verify the caller's own JWT directly (back office calls us directly).
     const authz = String(req.headers['authorization'] || '');
@@ -63,8 +88,12 @@ export class PermissionGuard implements CanActivate {
           signal: AbortSignal.timeout(3000),
         });
         if (r.ok) {
-          const { valid, payload } = (await r.json()) as { valid: boolean; payload?: { role: string } };
-          if (valid && payload && can(payload.role, required)) return true;
+          const { valid, payload } = (await r.json()) as { valid: boolean; payload?: { sub?: string; role: string } };
+          if (valid && payload && can(payload.role, required)) {
+            req.headers['x-user-id'] = payload.sub || 'authenticated-user';
+            req.headers['x-authenticated-role'] = payload.role;
+            return true;
+          }
           throw new ForbiddenException(`This action requires the '${required}' permission.`);
         }
       } catch (e) {

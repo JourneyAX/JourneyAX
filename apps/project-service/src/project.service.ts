@@ -726,6 +726,7 @@ export class ProjectService {
     for (const k of [
       'journeys', 'modelPolicy', 'agents', 'rules', 'evaluations',
       'experience', 'vocabulary', 'entities', 'conversationPolicy',
+      'factRegistry', 'knowledgeModel',
       'stageBindings', 'toolDefinitions', 'toolBindings', 'dataResidency',
     ]) {
       if ((dto as any)[k] !== undefined) $set[k] = (dto as any)[k];

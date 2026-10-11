@@ -2,9 +2,11 @@ import {
   Controller, Get, Post, Put, Patch, Delete,
   Body, Param, Query, Headers,
   NotFoundException, BadRequestException,
-  Inject, Optional, UseGuards,
+  Inject, Optional, UseGuards, UseInterceptors, UploadedFile,
   ConflictException,
+  StreamableFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { PermissionGuard, RequirePermission } from './permission.guard';
 import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
@@ -236,10 +238,95 @@ export class ProjectController {
     }
   }
 
+  @Post(':projectId/knowledge/import')
+  @RequirePermission('config.edit')
+  @UseInterceptors(FileInterceptor('bundle', { limits: { files: 1, fileSize: 72 * 1024 * 1024 } }))
+  async importKnowledgeBundle(
+    @Param('projectId') projectId: string,
+    @UploadedFile() file: { buffer?: Buffer } | undefined,
+    @Body() body: { environmentId?: string; expectedRevision?: string },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    if (!file?.buffer) throw new BadRequestException('A ZIP bundle is required');
+    try {
+      return await this.okfAuthoring!.importBundle({
+        projectId,
+        environmentId: body.environmentId,
+        expectedRevision: Number(body.expectedRevision),
+        archive: file.buffer,
+        updatedBy: userId || 'studio',
+      });
+    } catch (error: any) {
+      if (error instanceof OkfDraftConflictError) throw new ConflictException(error.message);
+      throw new BadRequestException(error.message);
+    }
+  }
+
   @Post(':projectId/knowledge/validate')
   @RequirePermission('knowledge.read')
   async validateKnowledgeDraft(@Param('projectId') projectId: string, @Body() body?: { environmentId?: string }) {
     return this.okfAuthoring!.validateDraft(projectId, body?.environmentId || 'production');
+  }
+
+  @Get(':projectId/knowledge/artifact-policy')
+  @RequirePermission('knowledge.read')
+  async getKnowledgeArtifactPolicy(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
+    return this.okfAuthoring!.getArtifactPolicy(projectId, environmentId || 'production');
+  }
+
+  @Put(':projectId/knowledge/artifact-policy')
+  @RequirePermission('config.publish')
+  async setKnowledgeArtifactPolicy(
+    @Param('projectId') projectId: string,
+    @Body() body: { environmentId?: string; artifactRequired: boolean },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.setArtifactPolicy(projectId, body.environmentId || 'production', body.artifactRequired, userId || 'studio');
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Post(':projectId/knowledge/verifications/:recordId/attest')
+  @RequirePermission('knowledge.verify')
+  async attestKnowledgeVerification(
+    @Param('projectId') projectId: string,
+    @Param('recordId') recordId: string,
+    @Body() body: { environmentId?: string; expectedRevision: number },
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-authenticated-role') authenticatedRole?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.attestDraftVerification({
+        projectId,
+        environmentId: body.environmentId,
+        expectedRevision: body.expectedRevision,
+        recordId,
+        approvedBy: userId || '',
+        approverRole: authenticatedRole || 'publisher',
+      });
+    } catch (error: any) {
+      if (error instanceof OkfDraftConflictError) throw new ConflictException(error.message);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Put(':projectId/knowledge/verifier-roles/:roleId')
+  @RequirePermission('user.manage')
+  async configureKnowledgeVerifierRole(
+    @Param('projectId') projectId: string,
+    @Param('roleId') roleId: string,
+    @Body() body: { environmentId?: string; principalIds: string[] },
+    @Headers('x-user-id') userId?: string,
+  ) {
+    try {
+      return await this.okfAuthoring!.configureVerifierRole(
+        projectId, body.environmentId || 'production', roleId, body.principalIds, userId || 'internal-service',
+      );
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   @Post(':projectId/knowledge/preview')
@@ -270,6 +357,25 @@ export class ProjectController {
   @RequirePermission('knowledge.read')
   async listKnowledgeReleases(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
     return this.okfAuthoring!.listReleases(projectId, environmentId || 'production');
+  }
+
+  @Get(':projectId/knowledge/releases/:releaseId/export')
+  @RequirePermission('knowledge.read')
+  async exportKnowledgeRelease(
+    @Param('projectId') projectId: string,
+    @Param('releaseId') releaseId: string,
+    @Query('environmentId') environmentId?: string,
+  ) {
+    try {
+      const bytes = await this.okfAuthoring!.exportRelease(projectId, releaseId, environmentId || 'production');
+      const filename = releaseId.replace(/[^a-zA-Z0-9._-]/g, '_');
+      return new StreamableFile(Buffer.from(bytes), {
+        type: 'application/zip',
+        disposition: `attachment; filename="${filename}.zip"`,
+      });
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   @Post(':projectId/knowledge/select-release')
