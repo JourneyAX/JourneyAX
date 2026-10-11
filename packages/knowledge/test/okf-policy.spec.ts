@@ -4,6 +4,8 @@ import {
   compilePhrase,
   detectIntents,
   evaluateOkfDraft,
+  foldText,
+  tokenizeText,
   exportOkfBundle,
   extractSkuCandidate,
   importOkfBundle,
@@ -274,6 +276,77 @@ test('policy and acceptance scenarios survive export then import', () => {
   assert.equal(imported.draft.policy?.locale, 'es');
   assert.deepEqual(imported.draft.acceptanceScenarios?.map((s) => s.scenarioId), ['es-1']);
   assert.equal(imported.diagnostics.some((text) => text.includes('policy')), false);
+});
+
+
+const localized: OkfTenantPolicy = {
+  locales: {
+    fr: {
+      intents: [
+        { intent: 'order_status', phrases: ['où|ou est|sont ma|mon commande|colis'] },
+        { intent: 'problem', phrases: ['mon|ma|mes * étincelle|etincelle|fuit|fuite'] },
+      ],
+      messages: { safety_heading: 'Sécurité d’abord' },
+    },
+    'fr-CA': { messages: { safety_heading: 'Sécurité avant tout' } },
+    mi: { intents: [{ intent: 'returns', phrases: ['whakahoki*'] }] },
+  },
+};
+
+test('tokenizer keeps letters of any script and folds diacritics', () => {
+  assert.deepEqual(tokenizeText('Où est ma commande ?'), ['ou', 'est', 'ma', 'commande']);
+  assert.deepEqual(tokenizeText('Whakahokia te tāpiri'), ['whakahokia', 'te', 'tapiri']);
+  assert.deepEqual(tokenizeText('订单 在哪里 123'), ['订单', '在哪里', '123']);
+  assert.equal(foldText('ĀÉÎ'), 'aei');
+});
+
+test('locale lexicon only applies for that language, with exact-then-language lookup', () => {
+  const fr = resolveOkfPolicy(localized, 'fr-FR');
+  assert.ok(detectIntents('où est ma commande', fr).intents.includes('order_status'));
+  const en = resolveOkfPolicy(localized, 'en');
+  assert.equal(detectIntents('où est ma commande', en).intents.includes('order_status'), false);
+  assert.equal(resolveOkfPolicy(localized).locale, 'en');
+  assert.equal(resolveOkfPolicy(localized, 'fr').locale, 'fr');
+});
+
+test('locale messages layer over the tenant default and prefer the exact region', () => {
+  assert.equal(resolveOkfPolicy(localized, 'fr').messages.safety_heading, 'Sécurité d’abord');
+  assert.equal(resolveOkfPolicy(localized, 'fr-CA').messages.safety_heading, 'Sécurité avant tout');
+  assert.equal(resolveOkfPolicy(localized, 'de').messages.safety_heading, OKF_PLATFORM_POLICY.messages.safety_heading);
+});
+
+test('te reo Māori phrases match with macrons folded', () => {
+  assert.ok(detectIntents('Whakahokia mai tēnei', resolveOkfPolicy(localized, 'mi')).intents.includes('returns'));
+});
+
+test('locale overlays are validated like the base policy', () => {
+  assert.deepEqual(validateOkfTenantPolicy(localized), []);
+  assert.ok(validateOkfTenantPolicy({ locales: { fr: { intents: [{ intent: 'returns', phrases: ['* a?'] }] } } }).some((p) => p.includes('policy.locales.fr')));
+  assert.ok(validateOkfTenantPolicy({ locales: { fr: { messages: { nope: 'x' } } } }).some((p) => p.includes('policy.locales.fr.messages.nope')));
+  assert.ok(validateOkfTenantPolicy({ locales: { 'not a locale': {} } }).length > 0);
+});
+
+test('the gate uses the request locale: a French safety problem beats a French order question', () => {
+  const content: any = structuredClone(buildOkfContent());
+  content.policy = localized;
+  const base = { tenantId: 'placemakers', environmentId: 'production', releaseId: 'r', matchedConcepts: [{ id: conceptId('problems/bathroom-leak'), score: 1, matchedBy: 'test' }] };
+  const mixed = resolveOkfGate(content, { ...base, locale: 'fr', message: 'Où est ma commande ? Mon appareil étincelle' });
+  assert.equal(mixed.mode, 'safety_then_diagnose');
+  const orderOnly = resolveOkfGate(content, { ...base, locale: 'fr', message: 'Où est ma commande ?' });
+  assert.equal(orderOnly.mode, 'operational_journey');
+  const wrongLocale = resolveOkfGate(content, { ...base, locale: 'en', message: 'Où est ma commande ?' });
+  assert.notEqual(wrongLocale.mode, 'operational_journey');
+});
+
+test('locale policy survives bundle export and import', () => {
+  const content: any = structuredClone(buildOkfContent());
+  content.policy = localized;
+  const bundle = exportOkfBundle({
+    releaseId: 'r-loc', tenantId: 'placemakers', environmentId: 'production', version: '1.0.0',
+    checksum: 'a'.repeat(64), status: 'ready', content, publishedAt: new Date('2026-10-10'), publishedBy: 'tester',
+  } as any);
+  const imported = importOkfBundle(bundle, 'placemakers');
+  assert.deepEqual(imported.draft.policy?.locales, localized.locales);
 });
 
 console.log(`✅ OKF policy suite: ${passed} passed, 0 failed`);

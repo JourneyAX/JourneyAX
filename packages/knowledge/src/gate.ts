@@ -20,6 +20,8 @@ export interface OkfGateInput {
   environmentId: string;
   releaseId: string;
   message: string;
+  /** Customer language (BCP-47); selects the tenant's locale lexicon and wording. */
+  locale?: string;
   knownFacts?: Record<string, unknown>;
   matchedConcepts?: Array<{ id: string; score: number; matchedBy?: string }>;
   intentCandidates?: string[];
@@ -320,7 +322,7 @@ function noMatch(input: OkfGateInput, reason: string, mode: OkfResponseMode = 'n
 }
 
 export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput): OkfGateDecision {
-  const policy = resolveOkfPolicy(content?.policy);
+  const policy = resolveOkfPolicy(content?.policy, input.locale);
   if (input.knowledgeAvailability && !input.knowledgeAvailability.available) {
     return input.knowledgeAvailability.required || input.knowledgeAvailability.failurePolicy === 'fail_closed'
       ? noMatch(input, 'knowledge_required_unavailable', 'knowledge_unavailable', policy)
@@ -330,14 +332,18 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
   const detectedIntents = detectIntents(input.message, policy).intents;
   const intents = [...new Set([...(input.intentCandidates || []), ...detectedIntents])];
   const forceShow = Boolean(input.forceShowResults) || detectedIntents.includes('force_show');
-  if (intentInGroup(policy, 'operational', intents)) {
+  // A safety problem outranks an operational request in the same message: the operational branch is taken
+  // only when the message carries no problem intent, or when no governed concept exists to enforce safety.
+  const operational = intentInGroup(policy, 'operational', intents);
+  const operationalDecision = () => {
     const decision = noMatch(input, 'operational_intent', 'operational_journey', policy);
     decision.claims.disclaimers = [];
     return decision;
-  }
+  };
+  if (operational && !intentInGroup(policy, 'problem', intents)) return operationalDecision();
 
   const { concept: initialConcept, matchedBy } = findConcept(content, input, policy);
-  if (!initialConcept) return noMatch(input, 'concept_not_found', 'no_match', policy);
+  if (!initialConcept) return operational ? operationalDecision() : noMatch(input, 'concept_not_found', 'no_match', policy);
   if (initialConcept.tenantId !== input.tenantId || tenantFromConceptId(initialConcept.conceptId) !== input.tenantId) {
     return noMatch(input, 'cross_tenant_concept_rejected', 'no_match', policy);
   }

@@ -4,6 +4,8 @@ import {
   loadActiveOkfRevocations,
   loadPinnedOkfRelease,
   detectIntents,
+  foldText,
+  tokenizeText,
   extractSkuCandidate,
   resolveOkfGate,
   resolveOkfPolicy,
@@ -74,6 +76,8 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       environmentId,
       releaseId: ref.releaseId,
       message,
+      // Request language wins; otherwise the pack's primary locale. Selects the tenant's lexicon and wording.
+      locale: (command as any).locale || release.profile?.primaryLocale,
       knownFacts: facts,
       intentCandidates: interpretation.intent ? [interpretation.intent] : [],
       exactSku: undefined as string | undefined,
@@ -110,7 +114,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
         this.releaseCache.set(cacheKey, content);
       }
 
-      const policy = resolveOkfPolicy(content.policy);
+      const policy = resolveOkfPolicy(content.policy, inputBase.locale);
       const candidateSku = extractExactSku(message, policy.sku);
       let exactSku: string | undefined;
       if (candidateSku) {
@@ -147,7 +151,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
           definition?.allowedValues?.some((value) => normalizedMessage === value.toLowerCase());
         const candidateValue = interpretation.candidateFacts?.[discriminator.factKey]?.value;
         return Boolean(option || (typeof candidateValue === 'string' &&
-          normalizedMessage.split(/[^a-z0-9]+/).includes(candidateValue.toLowerCase())));
+          tokenizeText(normalizedMessage).includes(foldText(candidateValue))));
       });
       if (retainedConcept && pendingAnswer) {
         const continued = resolveOkfGate(content, {

@@ -48,6 +48,16 @@ async function main() {
     assert.equal(a2.currency, undefined);
   });
 
+  await suite.test('regression: a USD-only product requested in NZD is never returned as an NZD price', async () => {
+    const only = new CatalogSearchHandler([{ projectId: 't1', sku: 'U1', name: 'Boot', priceUSD: { min: 100 } }]);
+    const result = await only.execute({ query: 'boot', currency: 'NZD' } as any, ctx());
+    for (const item of result.items) {
+      assert.equal(item.currency, undefined);
+      assert.equal(item.price, undefined);
+      assert.equal(item.priceCents, null);
+    }
+  });
+
   await suite.test('tenant mapping can declare a price source and its currency explicitly', async () => {
     const mapping = {
       pricing: { sources: [{ path: 'priceUSD', rangeKey: 'min', unit: 'major', currency: 'USD' }] },

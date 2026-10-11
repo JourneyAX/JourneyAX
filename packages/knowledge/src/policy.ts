@@ -78,8 +78,17 @@ export const PlatformPolicySchema = z.object({
   messages: MessageMapSchema,
 }).strict();
 
+const LocaleKeySchema = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/);
+
+/** Per-language lexicon and wording layered over the tenant default; lookup is exact locale, then language. */
+export const OkfLocalePolicySchema = z.object({
+  intents: z.array(IntentRuleSchema).max(100).optional(),
+  messages: MessageMapSchema.optional(),
+}).strict();
+
 /** Tenant override block carried by an OKF release. Every field is optional. */
 export const OkfTenantPolicySchema = z.object({
+  locales: z.record(LocaleKeySchema, OkfLocalePolicySchema).optional(),
   locale: z.string().min(2).max(20).optional(),
   matching: MatchingPolicySchema.partial().optional(),
   intentGroups: z.record(IdentifierSchema, z.array(IdentifierSchema).max(100)).optional(),
@@ -109,8 +118,13 @@ export interface CompiledPhrase {
   tokens: PhraseToken[];
 }
 
+/** Lower-cases, folds diacritics (so "māori" matches "maori") and keeps letters/digits of any script. */
+export function foldText(value: string): string {
+  return value.normalize('NFD').replace(/\p{M}+/gu, '').normalize('NFC').toLowerCase();
+}
+
 export function tokenizeText(value: string): string[] {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  return foldText(value).replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
 }
 
 export class PolicyPhraseError extends Error {
@@ -142,7 +156,7 @@ export function compilePhrase(phrase: string): CompiledPhrase {
     if (body === '*') return { kind: 'wildcard', optional: false, alternatives: [] } as PhraseToken;
     const alternatives = body.split('|').map((alt) => {
       const prefix = alt.endsWith('*');
-      const value = alt.replace(/\*$/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const value = foldText(alt.replace(/\*$/, '')).replace(/[^\p{L}\p{N}]/gu, '');
       if (!value) throw new PolicyPhraseError(phrase, 'Empty phrase alternative');
       return { value, prefix };
     });
@@ -201,7 +215,7 @@ export interface ResolvedOkfPolicy {
 }
 
 const PLATFORM: PlatformPolicy = PlatformPolicySchema.parse(platformDefaults);
-const resolvedCache = new WeakMap<object, ResolvedOkfPolicy>();
+const resolvedCache = new WeakMap<object, Map<string, ResolvedOkfPolicy>>();
 const NO_TENANT_POLICY = {};
 
 function compileIntent(rule: { intent: string; phrases: string[]; suppressedBy?: string[] }): CompiledIntent {
@@ -212,16 +226,29 @@ function compileIntent(rule: { intent: string; phrases: string[]; suppressedBy?:
   };
 }
 
-export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null): ResolvedOkfPolicy {
+/** Exact locale first ("en-NZ"), then its language ("en"). */
+function localeOverlay(tenant: OkfTenantPolicy | null | undefined, locale?: string) {
+  if (!locale || !tenant?.locales) return undefined;
+  const wanted = locale.trim().toLowerCase();
+  const entries = Object.entries(tenant.locales);
+  return entries.find(([key]) => key.toLowerCase() === wanted)?.[1]
+    ?? entries.find(([key]) => key.toLowerCase() === wanted.split('-')[0])?.[1];
+}
+
+export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null, locale?: string): ResolvedOkfPolicy {
   const key = (tenant as object | undefined | null) ?? NO_TENANT_POLICY;
-  const cached = resolvedCache.get(key);
+  const localeKey = (locale || '').trim().toLowerCase();
+  const perLocale = resolvedCache.get(key) ?? new Map<string, ResolvedOkfPolicy>();
+  resolvedCache.set(key, perLocale);
+  const cached = perLocale.get(localeKey);
   if (cached) return cached;
+  const overlay = localeOverlay(tenant, locale);
 
   const merged = new Map<string, { intent: string; phrases: string[]; suppressedBy: string[] }>();
   for (const rule of PLATFORM.intents) {
     merged.set(rule.intent, { intent: rule.intent, phrases: [...rule.phrases], suppressedBy: [...(rule.suppressedBy || [])] });
   }
-  for (const rule of tenant?.intents || []) {
+  for (const rule of [...(tenant?.intents || []), ...(overlay?.intents || [])]) {
     const existing = merged.get(rule.intent);
     if (existing && rule.extend) {
       existing.phrases.push(...rule.phrases);
@@ -240,7 +267,7 @@ export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null): ResolvedOkfPo
   for (const role of [...PLATFORM.verifierRoles, ...(tenant?.verifierRoles || [])]) roles.set(role.roleId, role);
 
   const resolved: ResolvedOkfPolicy = {
-    locale: tenant?.locale || PLATFORM.locale,
+    locale: (overlay ? localeKey : undefined) || tenant?.locale || PLATFORM.locale,
     matching: { ...PLATFORM.matching, ...(tenant?.matching || {}) },
     intentGroups: groups,
     intents: [...merged.values()].map(compileIntent),
@@ -248,9 +275,9 @@ export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null): ResolvedOkfPo
     verifierRoles: roles,
     claimEvidence: PLATFORM.claimEvidence,
     evidenceClaims: tenant?.evidenceClaims || PLATFORM.evidenceClaims,
-    messages: { ...PLATFORM.messages, ...(tenant?.messages || {}) },
+    messages: { ...PLATFORM.messages, ...(tenant?.messages || {}), ...(overlay?.messages || {}) },
   };
-  resolvedCache.set(key, resolved);
+  perLocale.set(localeKey, resolved);
   return resolved;
 }
 
@@ -269,6 +296,16 @@ export function validateOkfTenantPolicy(input: unknown): string[] {
   for (const key of Object.keys(policy.messages || {})) {
     if (!knownMessages.has(key)) problems.push(`policy.messages.${key}: unknown message key`);
   }
+  for (const [locale, overlay] of Object.entries(policy.locales || {})) {
+    for (const [index, rule] of (overlay.intents || []).entries()) {
+      for (const phrase of [...rule.phrases, ...(rule.suppressedBy || [])]) {
+        try { compilePhrase(phrase); } catch (error: any) { problems.push(`policy.locales.${locale}.intents[${index}] (${rule.intent}): ${error.message}`); }
+      }
+    }
+    for (const key of Object.keys(overlay.messages || {})) {
+      if (!knownMessages.has(key)) problems.push(`policy.locales.${locale}.messages.${key}: unknown message key`);
+    }
+  }
   const unknownPlaceholders = (template: string, key: string) => {
     const allowed = new Set(['relationshipId', 'status', 'conceptId', 'conceptName', 'reason', 'sources']);
     for (const match of template.matchAll(/\{([A-Za-z0-9_]+)\}/g)) {
@@ -276,6 +313,9 @@ export function validateOkfTenantPolicy(input: unknown): string[] {
     }
   };
   for (const [key, template] of Object.entries(policy.messages || {})) unknownPlaceholders(template, key);
+  for (const [locale, overlay] of Object.entries(policy.locales || {})) {
+    for (const [key, template] of Object.entries(overlay.messages || {})) unknownPlaceholders(template, `${locale}.${key}`);
+  }
   return problems;
 }
 

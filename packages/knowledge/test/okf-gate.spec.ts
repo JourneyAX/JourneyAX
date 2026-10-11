@@ -27,7 +27,7 @@ function scenario(name: string, input: OkfGateInput, verify: (decision: ReturnTy
   }
 }
 
-console.log('🧪 Running 42 deterministic OKF gate scenarios...');
+console.log('🧪 Running 45 deterministic OKF gate scenarios...');
 
 scenario('broad screws gives grouped overview and a non-blocking substrate card', { ...base, message: 'screws' }, (d) => {
   assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.retrieval.presentation, 'grouped_overview'); assert.equal(d.clarification?.factKey, 'substrate'); assert.equal(d.clarification?.blocking, false);
@@ -85,6 +85,11 @@ scenario('bathroom leak blocks products', { ...base, message: 'my bathroom is le
 scenario('unverified critical diagnosis yields unavailable guidance', { ...base, message: 'toilet leaking', matchedConcepts: matched(conceptId('problems/toilet-fault')) }, (d) => {
   assert.equal(d.safety?.guidanceUnavailable, true); assert.equal(d.commerce.addToCart, 'blocked');
 });
+scenario('mixed operational + safety message cannot bypass safety', { ...base, message: 'Where is my order? My appliance is sparking', matchedConcepts: matched(conceptId('problems/bathroom-leak')) }, (d) => {
+  assert.equal(d.mode, 'safety_then_diagnose'); assert.equal(d.safety?.blocksProducts, true);
+});
+scenario('purely operational message still routes to the operational journey', { ...base, message: 'Where is my order?', matchedConcepts: matched(conceptId('problems/bathroom-leak')) }, (d) => assert.equal(d.mode, 'operational_journey'));
+scenario('mixed message with no matched safety concept stays operational', { ...base, message: 'Where is my order? My appliance is sparking' }, (d) => assert.equal(d.mode, 'operational_journey'));
 scenario('electrical mould problem is safety first', { ...base, message: 'mould near an electrical outlet', matchedConcepts: matched(conceptId('problems/bathroom-leak')) }, (d) => assert.equal(d.mode, 'safety_then_diagnose'));
 scenario('cleaner gives task-group overview', { ...base, message: 'cleaner' }, (d) => {
   assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.retrieval.scope.length, 3);
@@ -199,5 +204,5 @@ assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, products: [{ pr
   console.log(`  ✓ ${passed}. basket lifecycle vocabulary is caller-supplied data`);
 }
 
-assert.equal(passed, 42);
+assert.equal(passed, 45);
 console.log(`✅ OKF gate suite: ${passed} passed, 0 failed`);
