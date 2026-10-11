@@ -167,6 +167,8 @@ export interface WorkspaceReleasePins {
   /** Last time knowledge staleness/revocation policy was evaluated for this workspace. */
   knowledgeEvaluatedAt?: string | Date;
   pinnedAt: string | Date;
+  /** Set when an idle workspace was moved onto a newer release under the pack's pin policy. */
+  repinnedAt?: string | Date;
 }
 
 export interface WorkspaceKnowledgeContext {
@@ -202,6 +204,8 @@ export interface WorkspaceState {
   createdAt: string | Date;
   updatedAt: string | Date;
   correlationId?: string;
+  /** Transient: the pins/pack version were rebound this turn and must be persisted. Never stored. */
+  pinsRebound?: boolean;
 }
 
 export interface TurnCommand {

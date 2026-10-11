@@ -135,3 +135,4 @@ export interface CreateCheckoutResult {
 
 // ── RBAC policy (P0-02) ──
 export * from "./rbac";
+export * from './service-url';

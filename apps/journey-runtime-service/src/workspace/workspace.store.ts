@@ -102,10 +102,15 @@ export class WorkspaceStore {
         }
         if (existing) {
           // Release bindings are immutable for the lifetime of the workspace.
-          workspace.packVersionId = existing.packVersionId;
-          workspace.pins = existing.pins ? structuredClone(existing.pins) : undefined;
+          if (!workspace.pinsRebound) {
+            workspace.packVersionId = existing.packVersionId;
+            workspace.pins = existing.pins
+              ? { ...structuredClone(existing.pins), ...(workspace.pins?.knowledgeEvaluatedAt ? { knowledgeEvaluatedAt: workspace.pins.knowledgeEvaluatedAt } : {}) }
+              : undefined;
+          }
         }
         workspace.stateVersion = (workspace.stateVersion || 0) + 1;
+        delete workspace.pinsRebound;
         this.memoryStore.set(key, structuredClone(workspace));
       }
       return;
@@ -121,6 +126,9 @@ export class WorkspaceStore {
         createdAt: now,
       };
       if (workspace.pins) setOnInsert.pins = workspace.pins;
+      // MongoDB rejects $set and $setOnInsert on the same path; updates to an existing workspace never insert.
+      const isInsert = expectedVersion === 0;
+      if (!isInsert) { delete setOnInsert.pins; delete setOnInsert.packVersionId; }
 
       const result = await col.updateOne(
         {
@@ -143,6 +151,11 @@ export class WorkspaceStore {
             openQuestions: workspace.openQuestions,
             status: workspace.status,
             updatedAt: now,
+            // Pins are write-once except for the evaluation timestamp and an explicit idle re-pin.
+            ...(isInsert ? {}
+              : workspace.pinsRebound && workspace.pins
+              ? { pins: workspace.pins, packVersionId: workspace.packVersionId }
+              : workspace.pins?.knowledgeEvaluatedAt ? { 'pins.knowledgeEvaluatedAt': workspace.pins.knowledgeEvaluatedAt } : {}),
           },
           $inc: { stateVersion: 1 },
           $setOnInsert: setOnInsert,
@@ -153,6 +166,7 @@ export class WorkspaceStore {
         throw new Error('Workspace state changed concurrently; retry the turn with fresh state.');
       }
       workspace.stateVersion = expectedVersion + 1;
+      delete workspace.pinsRebound;
       if (this.allowMemoryFallback) this.memoryStore.set(key, structuredClone(workspace));
     } catch (e: any) {
       if (!this.allowMemoryFallback) {

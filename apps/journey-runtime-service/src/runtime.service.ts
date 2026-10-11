@@ -34,6 +34,7 @@ import {
   getVerifiedBusinessPackMetadata,
 } from '@journeyax/business-pack';
 import { isInCanaryBucket } from '@journeyax/journey-core';
+import { idleRepinHours, isIdleBeyond, packHostsWorkspace } from './kernel/pin-lifecycle';
 
 
 
@@ -347,6 +348,7 @@ export class RuntimeService {
 
     // 4a. Existing workspaces with immutable pins keep their exact release across
     // promotions. Revoked/withdrawn releases still fail closed in loadPinnedPack.
+    let idleRepinCandidate: { workspace: any; pinned: any } | undefined;
     if (workspaceId) {
       const workspace = await this.appService.workspaceRepo.load(
         normTenant,
@@ -355,12 +357,16 @@ export class RuntimeService {
       );
       if (workspace?.pins?.packChecksum) {
         try {
-          return await this.appService.packRepo.loadPinnedPack(
+          const pinned = await this.appService.packRepo.loadPinnedPack(
             normTenant,
             normEnv as EnvironmentId,
             workspace.packVersionId,
             workspace.pins.packChecksum
           );
+          // Opt-in lifecycle: an idle, active workspace may move to the active release (checked below).
+          const idleHours = idleRepinHours(pinned);
+          if (!(idleHours && workspace.status === 'active' && isIdleBeyond(workspace, idleHours))) return pinned;
+          idleRepinCandidate = { workspace, pinned };
         } catch (err: any) {
           throw new ForbiddenException(
             `[ReleaseActivationGate] Pinned Business Pack unavailable for workspace='${workspaceId}', ` +
@@ -405,6 +411,11 @@ export class RuntimeService {
         `release activation approved checksum '${activation.approvedReleaseChecksum}' does not match ` +
         `computed live checksum '${liveChecksum}'. Pack may have been tampered or pointer is stale.`
       );
+    }
+
+    if (idleRepinCandidate && !packHostsWorkspace(activePack, idleRepinCandidate.workspace)) {
+      // The active release cannot continue this conversation; keep the exact pinned release.
+      return idleRepinCandidate.pinned;
     }
 
     // Return the validated pack so runTurn can pass it directly to executeTurn

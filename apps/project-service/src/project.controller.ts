@@ -1,13 +1,14 @@
 import {
   Controller, Get, Post, Put, Patch, Delete,
   Body, Param, Query, Headers,
-  NotFoundException, BadRequestException,
+  NotFoundException, BadRequestException, UnauthorizedException,
   Inject, Optional, UseGuards, UseInterceptors, UploadedFile,
   ConflictException,
   StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PermissionGuard, RequirePermission } from './permission.guard';
+import { UNATTRIBUTED_PRINCIPAL } from '@journeyax/shared-types';
 import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import {
@@ -239,7 +240,7 @@ export class ProjectController {
         environmentId: body.environmentId,
         expectedRevision: body.expectedRevision,
         content: body.content,
-        updatedBy: userId || 'studio',
+        updatedBy: this.principal(userId),
       });
     } catch (error: any) {
       if (error instanceof OkfDraftConflictError) throw new ConflictException(error.message);
@@ -263,7 +264,7 @@ export class ProjectController {
         environmentId: body.environmentId,
         expectedRevision: Number(body.expectedRevision),
         archive: file.buffer,
-        updatedBy: userId || 'studio',
+        updatedBy: this.principal(userId),
       });
     } catch (error: any) {
       if (error instanceof OkfDraftConflictError) throw new ConflictException(error.message);
@@ -291,7 +292,7 @@ export class ProjectController {
     @Headers('x-user-id') userId?: string,
   ) {
     try {
-      return await this.okfAuthoring!.setArtifactPolicy(projectId, body.environmentId || 'production', body.artifactRequired, userId || 'studio');
+      return await this.okfAuthoring!.setArtifactPolicy(projectId, body.environmentId || 'production', body.artifactRequired, this.principal(userId));
     } catch (error: any) {
       throw new BadRequestException(error.message);
     }
@@ -331,7 +332,7 @@ export class ProjectController {
   ) {
     try {
       return await this.okfAuthoring!.configureVerifierRole(
-        projectId, body.environmentId || 'production', roleId, body.principalIds, userId || 'internal-service',
+        projectId, body.environmentId || 'production', roleId, body.principalIds, this.principal(userId),
       );
     } catch (error: any) {
       throw new BadRequestException(error.message);
@@ -355,7 +356,7 @@ export class ProjectController {
     @Headers('x-user-id') userId?: string,
   ) {
     try {
-      return await this.okfAuthoring!.publishDraft({ ...body, projectId, publishedBy: userId || 'studio' });
+      return await this.okfAuthoring!.publishDraft({ ...body, projectId, publishedBy: this.principal(userId) });
     } catch (error: any) {
       if (error instanceof OkfDraftConflictError) throw new ConflictException(error.message);
       throw new BadRequestException(error.message);
@@ -438,6 +439,13 @@ export class ProjectController {
     } catch (error: any) {
       throw this.revocationError(error);
     }
+  }
+
+  /** Human-attributed authoring actions require an authenticated principal; no default identity is invented. */
+  private principal(userId?: string): string {
+    const principal = (userId || '').trim();
+    if (!principal) throw new UnauthorizedException('An authenticated principal is required for this action');
+    return principal;
   }
 
   private revocationError(error: any): Error {

@@ -169,6 +169,16 @@ export class TurnApplicationService {
           ? await this.workspaceRepo.load(tenantId, envId, workspaceId)
           : null;
 
+      // 3-pin. The runtime gate resolves a different release for a pinned workspace only when the pack's
+      // opt-in idle re-pin policy applies and the new release can host the conversation; rebind pins then.
+      if (workspace?.pins?.packChecksum && workspace.pins.packChecksum !== (getVerifiedBusinessPackMetadata(release)?.checksum || computePackChecksum(release))) {
+        const previous = workspace.pins;
+        workspace.pins = { ...this.createWorkspacePins(release), repinnedAt: new Date().toISOString() };
+        workspace.packVersionId = release.manifest.version || release.manifest.packId;
+        workspace.pinsRebound = true;
+        console.log(JSON.stringify({ event: 'workspace.repinned', tenantId, workspaceId, fromChecksum: previous.packChecksum, toChecksum: workspace.pins.packChecksum }));
+      }
+
       // 3a. Turn Replay Rejection — Duplicate turnId is rejected unconditionally regardless of tool execution!
       if (turnId && workspace && workspace.lastProcessedTurnId === turnId) {
         throw new DuplicateTurnError(turnId);
@@ -407,6 +417,7 @@ export class TurnApplicationService {
     if (!workspace.decisions) {
       workspace.decisions = [];
     }
+    if (workspace.pins && knowledgeGate) workspace.pins.knowledgeEvaluatedAt = new Date().toISOString();
     if (knowledgeGate?.conceptId && release.knowledgeModel?.type === 'okf_release') {
       workspace.knowledgeContext = {
         releaseId: release.knowledgeModel.releaseId,

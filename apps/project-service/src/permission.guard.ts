@@ -16,7 +16,7 @@
  */
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { can, type Permission } from '@journeyax/shared-types';
+import { can, resolveServiceUrl, type Permission } from '@journeyax/shared-types';
 import { verifyGatewayAssertion } from '@journeyax/database';
 
 export const PERMISSION_KEY = 'requiredPermission';
@@ -28,7 +28,7 @@ export const RequirePermission = (permission: Permission) => SetMetadata(PERMISS
 // process — silently rejecting every internal-key-authenticated request.
 const internalKey = () => process.env.INTERNAL_API_KEY;
 const devBypass = () => process.env.AUTH_DEV_BYPASS === 'true';
-const authUrl = () => process.env.AUTH_SERVICE_URL || 'http://localhost:8080';
+const authUrl = () => resolveServiceUrl('AUTH_SERVICE_URL', process.env.AUTH_SERVICE_URL, 'http://localhost:8080');
 
 // A standalone Reflector (its .get just calls Reflect.getMetadata) — no DI
 // needed, so the guard works even when applied via @UseGuards(ClassName) where
@@ -46,7 +46,7 @@ export class PermissionGuard implements CanActivate {
     // 1. Internal service-to-service call.
     const internalKeyValue = internalKey();
     if (internalKeyValue && req.headers['x-internal-key'] === internalKeyValue) {
-      req.headers['x-user-id'] = String(req.headers['x-user-id'] || req.headers['x-principal-id'] || 'internal-service');
+      req.headers['x-user-id'] = String(req.headers['x-user-id'] || req.headers['x-principal-id'] || 'service:internal');
       req.headers['x-authenticated-role'] = String(req.headers['x-user-role'] || req.headers['x-principal-role'] || 'admin');
       return true;
     }
@@ -89,8 +89,8 @@ export class PermissionGuard implements CanActivate {
         });
         if (r.ok) {
           const { valid, payload } = (await r.json()) as { valid: boolean; payload?: { sub?: string; role: string } };
-          if (valid && payload && can(payload.role, required)) {
-            req.headers['x-user-id'] = payload.sub || 'authenticated-user';
+          if (valid && payload?.sub && can(payload.role, required)) {
+            req.headers['x-user-id'] = payload.sub;
             req.headers['x-authenticated-role'] = payload.role;
             return true;
           }

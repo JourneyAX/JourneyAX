@@ -17,6 +17,7 @@ import {
 import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
 import { ReleaseValidationPort } from './release-validation.port';
 import { assertOkfReferenceReady, validateOkfJourneyReferences } from '@journeyax/knowledge';
+import { UNATTRIBUTED_PRINCIPAL } from '@journeyax/shared-types';
 
 export type PublicationEnvironment = 'dev' | 'test' | 'staging' | 'production';
 const PUBLICATION_ENVIRONMENTS: readonly PublicationEnvironment[] = ['dev', 'test', 'staging', 'production'];
@@ -579,7 +580,7 @@ export class BusinessPackPublicationService {
         description: `${industry} Business Pack`,
         schemaVersion: '1.0.0',
         environmentId,
-        author: opts.publishedBy || 'studio',
+        author: opts.publishedBy || UNATTRIBUTED_PRINCIPAL,
       },
       profile: {
         companyName: doc.companyName || doc.name || pid,
@@ -734,7 +735,7 @@ export class BusinessPackPublicationService {
         ...businessPack,
         evaluationResult: latestEvalSuiteResult,
       } as any, {
-        publishedBy: opts.publishedBy || 'studio',
+        publishedBy: opts.publishedBy || UNATTRIBUTED_PRINCIPAL,
         notes: opts.note || `Studio published version ${packReleaseVersion} (${version})`,
         session,
       });
@@ -879,7 +880,7 @@ export class BusinessPackPublicationService {
 
       await rollbackBusinessPack(this.getDb(), pid, environmentId, {
         targetVersion: targetPackVersion,
-        rolledBackBy: rolledBackBy || 'studio',
+        rolledBackBy: rolledBackBy || UNATTRIBUTED_PRINCIPAL,
         reason: `Studio rollback to version ${version}`,
         session,
       });

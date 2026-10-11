@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { parseRoute } from './gateway.registry';
-import { requiredPermission, can, permissionsFor } from '@journeyax/shared-types';
+import { requiredPermission, can, permissionsFor, resolveServiceUrl } from '@journeyax/shared-types';
 
 /**
  * Validate the URL's projectId against the authenticated identity.
@@ -31,7 +31,7 @@ function projectAllowed(projectId: string, role?: string, tenantId?: string): bo
  *                         (backoffice analytics, leads, organizations, etc.)
  */
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8080';
+const AUTH_SERVICE_URL = resolveServiceUrl('AUTH_SERVICE_URL', process.env.AUTH_SERVICE_URL, 'http://localhost:8080');
 // P0-02: NO implicit fail-open. Auth previously passed through on bad/missing
 // tokens whenever NODE_ENV !== 'production'. That is removed. A local developer
 // who genuinely needs to bypass auth must opt in EXPLICITLY with AUTH_DEV_BYPASS=true
