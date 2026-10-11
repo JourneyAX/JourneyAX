@@ -18,6 +18,7 @@ import {
   ExecutionRequest,
 } from '@journeyax/capability-sdk';
 import { tryVerifyPersistedBusinessPackRelease, BusinessPackLoader, PackRepository } from '@journeyax/business-pack';
+import { COLLECTION_OKF_RELEASES, GcsOkfArtifactStore, processOkfExport, type OkfArtifactStore } from '@journeyax/knowledge';
 import { hashToolInput } from '../approval/approval.store';
 import { OutboxRepository } from './outbox.repository';
 import { OutboxWorker, OutboxWorkerOptions } from './outbox.worker';
@@ -32,6 +33,7 @@ export interface ProductionHandlersOptions {
   notificationDispatcher?: NotificationDispatcher;
   ownershipRepository?: IConnectionOwnershipRepository;
   packRepo?: PackRepository;
+  okfArtifactStore?: OkfArtifactStore;
 }
 
 export interface WorkerHealthResponse {
@@ -91,6 +93,34 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
   registerProductionHandlers(options: ProductionHandlersOptions = {}): void {
     const { db, capabilityDispatcher, notificationDispatcher, ownershipRepository } = options;
     this.handlers.clear();
+
+    this.registerHandler('okf.release.export_requested', async (event) => {
+      if (!db) throw new Error('OKF export requires durable database storage');
+      const payload = event.payload || {};
+      if (!payload.releaseId || !payload.version || !payload.checksum) throw new Error('OKF export event missing release identity');
+      const store = options.okfArtifactStore || (process.env.OKF_ARTIFACT_BUCKET
+        ? new GcsOkfArtifactStore(process.env.OKF_ARTIFACT_BUCKET)
+        : null);
+      if (!store) {
+        const reason = 'OKF_ARTIFACT_BUCKET is required to export OKF releases';
+        await db.collection(COLLECTION_OKF_RELEASES).updateOne(
+          {
+            tenantId: event.tenantId, environmentId: event.environmentId,
+            releaseId: payload.releaseId, version: payload.version, checksum: payload.checksum,
+            'artifact.status': { $ne: 'ready' },
+          },
+          { $set: { artifact: { status: 'failed', error: reason } } },
+        );
+        throw new Error(reason);
+      }
+      await processOkfExport(db, store, {
+        tenantId: event.tenantId,
+        environmentId: event.environmentId,
+        releaseId: payload.releaseId,
+        version: payload.version,
+        checksum: payload.checksum,
+      });
+    });
 
     // 1. Business Pack lifecycle events — persists audit trail or throws
     this.registerHandler('business_pack.published', async (event) => {

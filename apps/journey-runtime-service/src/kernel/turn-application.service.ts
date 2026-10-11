@@ -23,6 +23,7 @@ import { JourneyResolver } from './journey.resolver';
 import { AgentRouter } from './agent.router';
 import { ModelGateway } from './model.gateway';
 import { CapabilityGateway } from './capability.gateway';
+import { validateOkfGeneratedClaims } from './okf-claim-validator';
 import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
 import { OutboxRepository } from './outbox.repository';
@@ -504,6 +505,7 @@ export class TurnApplicationService {
     let execResponse: any = null;
     let executedToolId: string | null = null;
     let presentationCapability: { toolId: string; payload?: Record<string, unknown> } | undefined;
+    const basketWarnings = new Set<string>();
 
     const executedCapabilities: any[] = [];
     let capabilityCount = 0;
@@ -577,6 +579,9 @@ export class TurnApplicationService {
             query: decision.payload?.query || command.message || '',
             categoryIds: knowledgeGate.retrieval.categoryIds,
             excludeCategoryIds: knowledgeGate.retrieval.excludeCategoryIds,
+            groups: knowledgeGate.retrieval.presentation === 'grouped_overview'
+              ? knowledgeGate.retrieval.groups
+              : undefined,
             currency: decision.payload?.currency || release.profile?.primaryCurrency,
             maxResults:
               knowledgeGate.retrieval.presentation === 'grouped_overview'
@@ -666,6 +671,9 @@ export class TurnApplicationService {
           stageId: workspace.currentStage,
           packVersionId: release.manifest.version || release.manifest.packId,
           correlationId: command.correlationId,
+          ...(release.knowledgeModel?.type === 'okf_release' && toolId === 'order.commit'
+            ? { requiresAuthoritativeCart: true }
+            : {}),
         };
 
         const execRecord = {
@@ -683,7 +691,71 @@ export class TurnApplicationService {
 
         await this.executionRepo.recordExecution(execRecord);
 
-        execResponse = await this.capabilityGateway.executeCapability(
+        const isCartMutation = ['cart.update', 'cart-update'].includes(toolId);
+        const isCheckoutCommit = toolId === 'order.commit';
+        const commerceBinding = (isCartMutation || isCheckoutCommit) && release.knowledgeModel?.type === 'okf_release'
+          ? release.capabilities?.toolBindings?.find((binding) => binding.toolId === toolId &&
+              (!binding.tenantId || binding.tenantId === tenantId) &&
+              (!binding.environmentId || binding.environmentId === envId))
+          : undefined;
+        const basketPolicy = isCartMutation || isCheckoutCommit
+          ? await this.knowledgeControlPlane.evaluateBasket(
+              release, command, workspace,
+              Array.isArray(decision.payload?.items) ? decision.payload.items : [],
+              { operation: isCheckoutCommit ? 'order.commit' : 'cart.update', cartId: decision.payload?.cartId },
+            )
+          : null;
+        const commercePolicy = basketPolicy?.commerce ||
+          (release.knowledgeModel?.type === 'okf_release'
+            ? { addToCart: 'blocked' as const, checkout: 'blocked' as const }
+            : knowledgeGate?.commerce);
+        const commercePolicyResult = (() => {
+          const nativeHandler = commerceBinding?.executor.nativeHandler;
+          const trustedCommerceHandler = commerceBinding?.executor.type === 'native_capability' &&
+            (isCheckoutCommit ? nativeHandler === 'order.commit'
+              : ['cart.update', 'cart-update'].includes(nativeHandler || ''));
+          if (release.knowledgeModel?.type === 'okf_release' && (isCartMutation || isCheckoutCommit) &&
+            !trustedCommerceHandler) {
+            return {
+              toolId, status: 'failure' as const,
+              error: 'Authoritative cart verification is unavailable for this commerce binding.', durationMs: 0,
+              provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
+            };
+          }
+          if (!commercePolicy) return undefined;
+          if (isCartMutation && commercePolicy.addToCart === 'blocked') {
+            return {
+              toolId,
+              status: 'failure' as const,
+              error: 'This item cannot be added to cart until the merchant knowledge policy requirements are resolved.',
+              durationMs: 0,
+              provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
+            };
+          }
+          if (isCheckoutCommit && commercePolicy.checkout === 'blocked') {
+            return {
+              toolId,
+              status: 'failure' as const,
+              error: 'Checkout is blocked by the merchant knowledge policy.',
+              durationMs: 0,
+              provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
+            };
+          }
+          if (isCheckoutCommit && commercePolicy.checkout !== 'allowed') {
+            return {
+              toolId,
+              status: 'requires_approval' as const,
+              error: commercePolicy.checkout === 'requires_professional_confirmation'
+                ? 'A qualified professional must confirm this selection before checkout.'
+                : 'Product compatibility must be confirmed before checkout.',
+              durationMs: 0,
+              provenance: { executorType: 'okf-policy-gate', executedAt: new Date().toISOString(), correlationId: command.correlationId },
+            };
+          }
+          return undefined;
+        })();
+
+        execResponse = commercePolicyResult || await this.capabilityGateway.executeCapability(
           release,
           toolId,
           decision.payload || {},
@@ -713,6 +785,7 @@ export class TurnApplicationService {
             status: 'requires_approval',
           });
         } else if (execResponse.status === 'success') {
+          if (basketPolicy) for (const warning of basketPolicy.warnings) basketWarnings.add(warning);
           outcome = execResponse.output;
           await this.executionRepo.recordExecution({
             ...execRecord,
@@ -937,6 +1010,9 @@ export class TurnApplicationService {
         capability: presentationCapability,
       }
     );
+    if (basketWarnings.size > 0) {
+      turnResult.assistantMessage = [turnResult.assistantMessage, ...basketWarnings].filter(Boolean).join('\n\n');
+    }
 
     if (
       knowledgeGate?.clarification &&
@@ -1463,6 +1539,18 @@ export class TurnApplicationService {
         }
         if (isAmbiguousMeasurement && !content.toLowerCase().includes('unit') && !content.toLowerCase().includes('measurement') && !content.toLowerCase().includes('clarify')) {
           content = `Could you please clarify your measurement and unit (e.g. 1000 mm cabinet run, 2.4 m length, or square metres) so we can size your project accurately? ${content}`;
+        }
+        if (release.knowledgeModel?.type === 'okf_release') {
+          const checked = validateOkfGeneratedClaims(content, knowledgeGate?.claims.allowedClasses || []);
+          if (!checked.valid) {
+            // Never stream the rejected text. The question/card can still be
+            // shown without repeating an unsupported model-generated claim.
+            return {
+              message: decision.payload?.question || knowledgeGate?.clarification?.question ||
+                'I cannot verify that detail from the published merchant guidance. Please review the options shown or tell me what you would like to clarify.',
+              modelRoute: modelRes.route,
+            };
+          }
         }
         return {
           message: content,

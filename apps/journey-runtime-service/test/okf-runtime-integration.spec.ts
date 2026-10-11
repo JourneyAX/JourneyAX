@@ -18,13 +18,15 @@ import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { PresentationPort } from '../src/kernel/presentation.port';
 import { TurnInterpreter } from '../src/turn/interpret-event';
 import { OutcomeValidator } from '../src/turn/validate-outcome';
-import { OkfKnowledgeControlPlane } from '../src/kernel/knowledge-control-plane';
+import { OkfKnowledgeControlPlane, extractExactSku } from '../src/kernel/knowledge-control-plane';
 import { buildCanonicalPackContent } from './fixtures/canonical-release.fixture';
 import { buildOkfContent } from '../../../packages/knowledge/test/fixtures';
 
 function matches(doc: any, query: any): boolean {
   return Object.entries(query || {}).every(([key, expected]: [string, any]) => {
+    if (key === '$and') return expected.every((clause: any) => matches(doc, clause));
     if (key === '$or') return expected.some((clause: any) => matches(doc, clause));
+    if (expected && typeof expected === 'object' && '$in' in expected) return expected.$in.includes(doc[key]);
     if (expected && typeof expected === 'object' && '$exists' in expected) {
       return (doc[key] !== undefined) === expected.$exists;
     }
@@ -387,8 +389,7 @@ function buildPack(knowledgeModel?: any, toolId = 'catalog.search'): any {
   return pack;
 }
 
-function buildService(pack: any, db: MemoryDb, products: any[], knowledgeDocs?: any[]) {
-  const modelGateway = new DeterministicGateway();
+function buildService(pack: any, db: MemoryDb, products: any[], knowledgeDocs?: any[], modelGateway = new DeterministicGateway()) {
   const capabilityGateway = new CapabilityGateway();
   capabilityGateway.registerCustomAdapter('catalog.search', new CatalogSearchHandler(products));
   if (knowledgeDocs) {
@@ -434,6 +435,10 @@ async function main() {
   );
   screwsConcept.journeyRef = { journeyId: 'journey_catalog', entryStageId: 'stage_catalog' };
   screwsConcept.contentHash = computeKnowledgeEntityHash(screwsConcept);
+  const safetyWoodConcept = content.concepts.find((concept: any) => concept.conceptId === 'concept://placemakers/fastenings/wood-screws');
+  safetyWoodConcept.riskClass = 'safety_critical';
+  safetyWoodConcept.commercePolicy.checkout = 'blocked';
+  safetyWoodConcept.contentHash = computeKnowledgeEntityHash(safetyWoodConcept);
   const okfRelease = await publishOkfRelease(db as any, {
     releaseId: 'okf-placemakers-1.0.0',
     tenantId: 'placemakers',
@@ -444,6 +449,7 @@ async function main() {
   });
   const reference = {
     type: 'okf_release',
+    modelId: okfRelease.content.modelId,
     releaseId: okfRelease.releaseId,
     version: okfRelease.version,
     checksum: okfRelease.checksum,
@@ -451,9 +457,99 @@ async function main() {
     failurePolicy: 'fail_closed',
   };
 
+  await test('exact SKU detection accepts numeric/prefixed product codes and rejects ordinary hyphenated words', async () => {
+    assert.equal(extractExactSku('SKU 123456'), '123456');
+    assert.equal(extractExactSku('show product AB-12345'), 'AB-12345');
+    assert.equal(extractExactSku('I need self-tapping screws'), undefined);
+    assert.equal(extractExactSku('damage-free repair kit'), undefined);
+    assert.equal(extractExactSku('90x45mm'), undefined);
+    assert.equal(extractExactSku('10-year warranty'), undefined);
+    assert.equal(extractExactSku('1002486'), '1002486');
+  });
+
+  await test('unlabelled numeric SKU is direct only after tenant catalog verification', async () => {
+    await db.collection('products').insertOne({ projectId: 'placemakers', sku: '1002486', categoryId: 'fastenings.screws' });
+    const plane = new OkfKnowledgeControlPlane(async () => db as any);
+    const command = { tenantId: 'placemakers', environmentId: 'test', workspaceId: 'sku-check', sessionId: 'sku-check', correlationId: 'sku-check', message: 'screws 1002486' } as any;
+    const interpretation = { intent: 'product_search', candidateFacts: {} } as any;
+    assert.equal((await plane.evaluate(buildPack(reference), command, null, interpretation))?.mode, 'direct_results');
+    assert.equal((await plane.evaluate(buildPack(reference), { ...command, message: 'screws 9999999' }, null, interpretation))?.mode, 'overview_then_ask');
+  });
+
+  await test('a short answer to the pending merchant question stays on the retained concept', async () => {
+    const continuation = structuredClone(content);
+    const timber = structuredClone(continuation.concepts.find((entry: any) => entry.conceptId.endsWith('/fastenings/wood-screws')));
+    timber.conceptId = 'concept://placemakers/materials/timber';
+    timber.name = 'Timber';
+    timber.description = 'General timber material family.';
+    timber.customerPhrases = ['timber'];
+    timber.synonyms = [];
+    timber.contentHash = computeKnowledgeEntityHash(timber);
+    continuation.concepts.push(timber);
+    const nextRelease = await publishOkfRelease(db as any, {
+      releaseId: 'okf-placemakers-continuity', tenantId: 'placemakers', environmentId: 'test',
+      version: '1.0.1', content: continuation, publishedBy: 'runtime-integration-test',
+    });
+    const nextRef = { ...reference, releaseId: nextRelease.releaseId, version: nextRelease.version, checksum: nextRelease.checksum };
+    const retained = {
+      knowledgeContext: { releaseId: nextRef.releaseId, checksum: nextRef.checksum,
+        conceptId: screwsConcept.conceptId, journeyId: 'journey_catalog', selectedAt: new Date().toISOString() },
+      pins: { okfReleaseId: nextRef.releaseId, okfChecksum: nextRef.checksum },
+      openQuestions: ['substrate'], facts: {},
+    } as any;
+    const plane = new OkfKnowledgeControlPlane(async () => db as any);
+    const decision = await plane.evaluate(buildPack(nextRef), {
+      tenantId: 'placemakers', environmentId: 'test', workspaceId: 'continuity',
+      sessionId: 'continuity', correlationId: 'continuity', message: 'timber',
+    } as any, retained, { intent: 'product_search', candidateFacts: { substrate: { value: 'timber', confidence: 1 } } } as any);
+    assert.equal(decision?.conceptId, 'concept://placemakers/fastenings/wood-screws');
+    assert.ok(decision?.trace.reasonCodes.includes('clarification_answer_continuity'));
+    const switched = await plane.evaluate(buildPack(nextRef), {
+      tenantId: 'placemakers', environmentId: 'test', workspaceId: 'continuity',
+      sessionId: 'continuity', correlationId: 'continuity-switch', message: 'actually I need timber',
+    } as any, retained, { intent: 'product_search', candidateFacts: {} } as any);
+    assert.equal(switched?.conceptId, 'concept://placemakers/materials/timber', 'an explicit topic switch must still work');
+  });
+
+  await test('basket policy uses every tenant-scoped SKU even after an unrelated paint turn', async () => {
+    await db.collection('products').insertOne({ projectId: 'placemakers', sku: 'WOOD-001', categoryId: 'fastenings.wood-screws' });
+    await db.collection('products').insertOne({ projectId: 'placemakers', sku: 'SCREW-001', categoryId: 'fastenings.screws' });
+    const plane = new OkfKnowledgeControlPlane(async () => db as any);
+    const command = { tenantId: 'placemakers', environmentId: 'test', workspaceId: 'basket-check', sessionId: 'basket-check', correlationId: 'basket-check', message: 'yes, place the order' } as any;
+    const blocked = await plane.evaluateBasket(buildPack(reference), command, null, [{ sku: 'WOOD-001' }, { sku: 'SCREW-001' }]);
+    assert.equal(blocked?.commerce.checkout, 'blocked');
+    const warning = await plane.evaluateBasket(buildPack(reference), command, null, [{ sku: 'SCREW-001' }]);
+    assert.equal(warning?.commerce.addToCart, 'allowed_with_warning');
+    assert.ok(warning?.warnings.length);
+    const crossTenant = await plane.evaluateBasket(buildPack(reference), command, null, [{ sku: 'OTHER-001' }]);
+    assert.equal(crossTenant?.commerce.checkout, 'blocked');
+    await db.collection('customer_carts').insertOne({
+      projectId: 'placemakers', workspaceId: 'basket-check', cartId: 'cart-basket-check', status: 'active',
+      items: [{ sku: 'WOOD-001', quantity: 1 }, { sku: 'SCREW-001', quantity: 2 }],
+    });
+    const omittedUnsafeSku = await plane.evaluateBasket(
+      buildPack(reference), command, null, [{ sku: 'SCREW-001', quantity: 2 }],
+      { operation: 'order.commit', cartId: 'cart-basket-check' },
+    );
+    assert.equal(omittedUnsafeSku?.commerce.checkout, 'blocked');
+    assert.ok(omittedUnsafeSku?.reasonCodes.includes('basket_payload_mismatch'));
+    const fullCart = await plane.evaluateBasket(
+      buildPack(reference), command, null,
+      [{ sku: 'WOOD-001', quantity: 1 }, { sku: 'SCREW-001', quantity: 2 }],
+      { operation: 'order.commit', cartId: 'cart-basket-check' },
+    );
+    assert.equal(fullCart?.commerce.checkout, 'blocked', 'persisted safety SKU must govern checkout');
+    const missingCart = await plane.evaluateBasket(
+      buildPack(reference), { ...command, workspaceId: 'other-workspace' }, null,
+      [{ sku: 'SCREW-001', quantity: 2 }],
+      { operation: 'order.commit', cartId: 'cart-basket-check' },
+    );
+    assert.deepEqual(missingCart?.reasonCodes, ['authoritative_cart_unavailable']);
+  });
+
   await test('broad query scopes catalog retrieval and returns products before a merchant-authored clarification card', async () => {
     const products = [
-      { projectId: 'placemakers', sku: 'WOOD-001', name: 'Exterior wood screw', categoryId: 'fastenings.screws', category: 'Fastenings Screws', currency: 'NZD', priceCents: 1299 },
+      { projectId: 'placemakers', sku: 'WOOD-001', name: 'Exterior wood screw', categoryId: 'fastenings.wood-screws', category: 'Fastenings Wood Screws', currency: 'NZD', priceCents: 1299 },
       { projectId: 'placemakers', sku: 'DRIVER-001', name: 'Screwdriver set', categoryId: 'tools.screwdrivers', category: 'Tools Screwdrivers', currency: 'NZD', priceCents: 1899 },
     ];
     const service = buildService(buildPack(reference), db, products);
@@ -477,6 +573,24 @@ async function main() {
     assert.deepEqual((result.trace as any).knowledgeGate.retrieval.excludeCategoryIds, ['tools.screwdrivers']);
   });
 
+  await test('response generation rejects a warranty claim outside the pinned claim allow-list', async () => {
+    class UnsupportedWarrantyGateway extends DeterministicGateway {
+      async execute(release: any, request: ModelExecutionRequest): Promise<ModelExecutionResponse> {
+        const response = await super.execute(release, request);
+        return request.taskType === 'response_generation'
+          ? { ...response, content: 'Every screw is guaranteed for 10 years.' }
+          : response;
+      }
+    }
+    const pack = buildPack(reference);
+    const service = buildService(pack, db, [], undefined, new UnsupportedWarrantyGateway());
+    const result = await service.executeTurn({
+      tenantId: 'placemakers', environmentId: 'test', workspaceId: 'ws-claim-guard', sessionId: 'ws-claim-guard',
+      turnId: 'turn-claim-guard', correlationId: 'corr-claim-guard', message: 'screws',
+    } as any, pack);
+    assert.doesNotMatch(result.assistantMessage, /guarantee/i);
+  });
+
   await test('required OKF integrity failure closes before catalog retrieval or success cards', async () => {
     const badReference = { ...reference, checksum: 'f'.repeat(64) };
     const service = buildService(buildPack(badReference), db, [
@@ -489,8 +603,9 @@ async function main() {
 
     assert.equal(result.decision.type, 'fail');
     assert.equal(result.uiInstructions.length, 0);
-    assert.equal((result.trace as any).knowledgeGate.mode, 'no_match');
+    assert.equal((result.trace as any).knowledgeGate.mode, 'knowledge_unavailable');
     assert.ok((result.trace as any).knowledgeGate.trace.reasonCodes.includes('knowledge_required_unavailable'));
+    assert.deepEqual((result.trace as any).knowledgeGate.trace.reasonCodes.filter((code: string) => code.startsWith('knowledge_load_error')), ['knowledge_load_error']);
   });
 
   await test('safety-sensitive problem renders verified guidance while blocking product retrieval and commerce cards', async () => {
@@ -587,7 +702,7 @@ async function main() {
     const recommendations = await turn(2, 'It is a renovation, 3x2 m, with a front loader');
     assert.equal(recommendations.workspace.facts.room_type.value, 'laundry', 'known room context must survive');
     assert.equal(recommendations.workspace.currentStage, 'stage_selection');
-    assert.equal((recommendations.trace as any).knowledgeGate.trace.matchedBy, 'workspace_context');
+    assert.equal((recommendations.trace as any).knowledgeGate.trace.matchedBy, 'pending_clarification');
     assert.ok(recommendations.uiInstructions.some((card) => card.component === 'products'));
     assert.ok(recommendations.uiInstructions.some((card) => card.component === 'clarify'));
 

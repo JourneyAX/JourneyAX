@@ -22,7 +22,7 @@ import {
   ProjectPlanHandler,
 } from '../capabilities/handlers';
 
-import type { KnowledgeRetrievalPortResolver } from './knowledge-retrieval.port';
+import type { KnowledgeRetrievalPortResolver, LegacyKnowledgeRetrievalPortResolver } from './knowledge-retrieval.port';
 import {
   IConnectionOwnershipRepository,
   DurableConnectionOwnershipRepository,
@@ -31,6 +31,7 @@ import {
 export interface CapabilityGatewayOptions {
   /** Injected canonical knowledge-retrieval port (composition root). Absent => knowledge.search returns a typed unavailable result. */
   knowledgePortResolver?: KnowledgeRetrievalPortResolver;
+  legacyKnowledgePortResolver?: LegacyKnowledgeRetrievalPortResolver;
   ownershipRepository?: IConnectionOwnershipRepository;
   db?: any;
   activepiecesApiUrl?: string;
@@ -64,8 +65,8 @@ export class CapabilityGateway {
     this.dispatcher.registerNativeHandler('products', new CatalogSearchHandler());
     this.dispatcher.registerNativeHandler('pricing.validate', new PricingValidateHandler());
     this.dispatcher.registerNativeHandler('order.commit', new OrderCommitHandler());
-    this.dispatcher.registerNativeHandler('knowledge.search', new KnowledgeSearchHandler(undefined, options.knowledgePortResolver));
-    this.dispatcher.registerNativeHandler('installGuide', new KnowledgeSearchHandler(undefined, options.knowledgePortResolver));
+    this.dispatcher.registerNativeHandler('knowledge.search', new KnowledgeSearchHandler(undefined, options.knowledgePortResolver, options.legacyKnowledgePortResolver));
+    this.dispatcher.registerNativeHandler('installGuide', new KnowledgeSearchHandler(undefined, options.knowledgePortResolver, options.legacyKnowledgePortResolver));
     this.dispatcher.registerNativeHandler('branch.stock_check', new BranchStockCheckHandler());
     this.dispatcher.registerNativeHandler('checkBranchStock', new BranchStockCheckHandler());
     this.dispatcher.registerNativeHandler('trade.quote_create', new TradeQuoteCreateHandler());

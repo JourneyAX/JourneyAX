@@ -293,6 +293,18 @@ async function runCatalogOrderPortsTests() {
     assert.equal(second.replayed, true);
   });
 
+  await test('13a. OKF order commit rejects items that do not equal the authoritative scoped cart', async () => {
+    const handler = new OrderCommitHandler([], sampleCatalog, undefined, async () => ({
+      projectId: 'tenant-test-grounded', workspaceId: mockContext.workspaceId,
+      cartId: 'cart-authoritative', status: 'active',
+      items: [{ sku: 'BOOT-STEEL-01', quantity: 1 }, { sku: 'VEST-HI-VIS', quantity: 1 }],
+    }));
+    await assert.rejects(() => handler.execute({
+      idempotencyKey: 'unsafe-subset', cartId: 'cart-authoritative',
+      items: [{ sku: 'BOOT-STEEL-01', quantity: 1 }],
+    }, { ...mockContext, requiresAuthoritativeCart: true } as any), /authoritative cart mismatch/i);
+  });
+
   await test('14. Order commit fails closed when storage layer is unavailable or persistence fails', async () => {
     // When no in-memory storage and no MONGODB_URI, handler MUST throw and never return pending_payment
     delete process.env.MONGODB_URI;
@@ -549,7 +561,7 @@ async function runCatalogOrderPortsTests() {
     assert.deepEqual(result.verifiedNotes, ['Merchant-authored plan note']);
   });
 
-  await test('27. Knowledge retrieval fails closed without an exact pinned OKF evidence scope', async () => {
+  await test('27. Knowledge retrieval fails closed without OKF scope when no legacy tenant port is configured', async () => {
     let called = false;
     const handler = new KnowledgeSearchHandler(undefined, async () => ({
       async search() {
@@ -610,6 +622,50 @@ async function runCatalogOrderPortsTests() {
     assert.equal(result.resultCount, 1);
     assert.equal(result.results[0].sourceId, 'source-safe');
     assert.equal(result.results[0].releaseId, scope.releaseId);
+  });
+
+  await test('30. Catalog search excludes discontinued products even when they otherwise match', async () => {
+    const handler = new CatalogSearchHandler([
+      { projectId: mockContext.tenantId, sku: 'ACTIVE-1', name: 'Deck screw active', category: 'Fastenings' },
+      { projectId: mockContext.tenantId, sku: 'OLD-1', name: 'Deck screw discontinued', category: 'Fastenings', discontinued: true },
+      { projectId: mockContext.tenantId, sku: 'OLD-2', name: 'Deck screw retired', category: 'Fastenings', lifecycle: { status: 'discontinued' } },
+    ]);
+    const result = await handler.execute({ query: 'deck screw' }, mockContext);
+    assert.deepEqual(result.items.map((item: any) => item.sku), ['ACTIVE-1']);
+  });
+
+  await test('31. Grouped overview retrieves independently per governed child scope', async () => {
+    const handler = new CatalogSearchHandler([
+      { projectId: mockContext.tenantId, sku: 'WOOD-1', name: 'Screw timber', categoryId: 'fastenings.wood-screws' },
+      { projectId: mockContext.tenantId, sku: 'METAL-1', name: 'Screw metal', categoryId: 'fastenings.metal-screws' },
+      { projectId: mockContext.tenantId, sku: 'TOOL-1', name: 'Screw driver', categoryId: 'tools.screwdrivers' },
+    ]);
+    const result = await handler.execute({
+      query: 'screw',
+      groups: [
+        { conceptId: 'concept://test/wood', label: 'Wood screws', categoryIds: ['fastenings.wood-screws'], maxItems: 1 },
+        { conceptId: 'concept://test/metal', label: 'Metal screws', categoryIds: ['fastenings.metal-screws'], maxItems: 1 },
+      ],
+    }, mockContext);
+    assert.equal(result.groups.length, 2);
+    assert.deepEqual(result.groups.map((group: any) => group.items[0]?.sku), ['WOOD-1', 'METAL-1']);
+    assert.equal(result.items.some((item: any) => item.sku === 'TOOL-1'), false);
+  });
+
+  await test('32. Non-OKF knowledge uses the tenant legacy port but never claims OKF verification', async () => {
+    let called = false;
+    const handler = new KnowledgeSearchHandler(undefined, undefined, async () => ({
+      async search(_ctx, request) {
+        called = true;
+        assert.equal(request.query, 'installation guide');
+        return { found: true, results: [{ sourceId: 'legacy:standalone', releaseId: 'legacy-unpinned', title: 'Legacy guide', content: 'Grounded legacy content.' }] };
+      },
+    }));
+    const result = await handler.execute({ query: 'installation guide' }, mockContext);
+    assert.equal(called, true);
+    assert.equal(result.found, true);
+    assert.equal(result.verified, false);
+    assert.equal(result.results[0].title, 'Legacy guide');
   });
 
   console.log(`\n==================================================`);

@@ -8,6 +8,7 @@ import { OutboxWorkerService } from './kernel/outbox-worker.service';
 import { TurnApplicationService } from './kernel/turn-application.service';
 import { CapabilityGateway } from './kernel/capability.gateway';
 import { createMongoOkfKnowledgePortResolver } from './infrastructure/mongo-okf-knowledge.port';
+import { createLegacyKnowledgePortResolver } from './infrastructure/legacy-knowledge.port';
 
 @Module({
   imports: [],
@@ -23,6 +24,7 @@ import { createMongoOkfKnowledgePortResolver } from './infrastructure/mongo-okf-
         undefined,
         new CapabilityGateway({
           knowledgePortResolver: createMongoOkfKnowledgePortResolver(),
+          legacyKnowledgePortResolver: createLegacyKnowledgePortResolver(),
         })
       ),
     },

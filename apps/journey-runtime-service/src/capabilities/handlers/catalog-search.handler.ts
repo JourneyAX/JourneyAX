@@ -14,6 +14,13 @@ export interface CatalogSearchInput {
   attributeFilters?: Record<string, any>;
   currency?: string;
   requireAuthoritativePrice?: boolean;
+  groups?: Array<{
+    conceptId: string;
+    label: string;
+    categoryIds: string[];
+    excludeCategoryIds?: string[];
+    maxItems?: number;
+  }>;
 }
 
 const STOP_WORDS = new Set([
@@ -70,6 +77,29 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
   constructor(private readonly inMemoryProducts?: any[]) {}
 
   async execute(input: CatalogSearchInput, ctx: ExecutionContext): Promise<any> {
+    if (input.groups?.length) {
+      const groups = [];
+      const seen = new Set<string>();
+      const flattened: any[] = [];
+      for (const group of input.groups) {
+        const result = await this.execute({
+          ...input,
+          groups: undefined,
+          categoryIds: group.categoryIds,
+          excludeCategoryIds: group.excludeCategoryIds || [],
+          maxResults: group.maxItems || Math.min(input.maxResults || 2, 10),
+        }, ctx);
+        const items = (result.items || []).filter((item: any) => {
+          if (seen.has(item.sku)) return false;
+          seen.add(item.sku);
+          flattened.push(item);
+          return true;
+        });
+        groups.push({ conceptId: group.conceptId, label: group.label, items, total: items.length });
+      }
+      return { items: flattened, total: flattened.length, groups };
+    }
+
     const tenantId = ctx.tenantId;
     const query = input.query || '';
     const category = input.category || '';
@@ -89,6 +119,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     if (this.inMemoryProducts) {
       docs = this.inMemoryProducts.filter((p) => {
         if (p.projectId && p.projectId !== tenantId) return false;
+        if (p.discontinued === true || String(p.status || p.lifecycle?.status || '').toLowerCase() === 'discontinued') return false;
         if (category) {
           const catMatch =
             (p.category && p.category.toLowerCase().includes(category.toLowerCase())) ||
@@ -126,11 +157,19 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
         const filter: Record<string, any> = {
           $or: [{ projectId: tenantId }, { tenantId }],
+          $and: [{
+            $nor: [
+              { discontinued: true },
+              { status: /^discontinued$/i },
+              { 'lifecycle.status': /^discontinued$/i },
+            ],
+          }],
         };
 
         if (category) {
           const escapedCategory = category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           filter.$and = [
+            ...(filter.$and || []),
             {
               $or: [
                 { category: new RegExp(escapedCategory, 'i') },

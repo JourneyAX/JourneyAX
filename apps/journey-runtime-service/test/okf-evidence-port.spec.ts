@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { publishOkfRelease } from '@journeyax/knowledge';
 import { MongoOkfKnowledgeRetrievalPort } from '../src/infrastructure/mongo-okf-knowledge.port';
+import { KnowledgeSearchHandler } from '../src/capabilities/handlers/knowledge-search.handler';
 import { buildOkfContent, conceptId } from '../../../packages/knowledge/test/fixtures';
 
 function matches(doc: any, query: any): boolean {
-  return Object.entries(query || {}).every(([key, expected]: [string, any]) => doc[key] === expected);
+  return Object.entries(query || {}).every(([key, expected]: [string, any]) => {
+    if (expected && typeof expected === 'object' && '$in' in expected) return expected.$in.includes(doc[key]);
+    return doc[key] === expected;
+  });
 }
 
 class MemoryCursor {
@@ -69,6 +73,10 @@ async function main() {
   };
 
   await test('exact tenant/environment/release/source scope returns published evidence', async () => {
+    db.collection('okf_evidence_chunks').docs.unshift(...Array.from({ length: 25 }, (_, index) => ({
+      tenantId: 'placemakers', environmentId: 'production', releaseId: release.releaseId,
+      chunkId: `unscoped-${index}`, sourceRef: 'src-trade-guide', content: 'must never be read',
+    })));
     const result = await port.search(
       { tenantId: 'placemakers', environmentId: 'production', correlationId: 'corr-1' },
       request
@@ -77,16 +85,15 @@ async function main() {
     assert.equal(result.results.length, 1);
     assert.equal(result.results[0].sourceId, 'src-trade-guide');
     assert.equal(result.results[0].releaseId, release.releaseId);
+    db.collection('okf_evidence_chunks').docs.splice(0, 25);
   });
 
-  await test('tampered normalized index text is rejected against the verified release envelope', async () => {
+  await test('tampered normalized index text fails the release checksum before retrieval', async () => {
     db.collection('okf_evidence_chunks').docs[0].content = 'tampered runtime text';
-    const result = await port.search(
+    await assert.rejects(() => port.search(
       { tenantId: 'placemakers', environmentId: 'production', correlationId: 'corr-2' },
       request
-    );
-    assert.equal(result.found, false);
-    assert.equal(result.results.length, 0);
+    ), (error: any) => error.code === 'collection_checksum_mismatch');
     db.collection('okf_evidence_chunks').docs[0].content = content.evidenceChunks[0].content;
   });
 
@@ -114,7 +121,18 @@ async function main() {
     assert.equal(wrongConcept.found, false);
   });
 
-  assert.equal(passed, 4);
+  await test('retrieval failure never exposes raw connection details to the customer result', async () => {
+    const handler = new KnowledgeSearchHandler(undefined, async () => {
+      throw new Error('mongodb://user:password@private-host/internal');
+    });
+    const result = await handler.execute({ query: 'care', knowledgeScope: request.knowledgeScope }, {
+      tenantId: 'placemakers', environmentId: 'production', correlationId: 'corr-error',
+    } as any);
+    assert.equal(result.found, false);
+    assert.doesNotMatch(result.message, /password|private-host|mongodb:\/\//);
+  });
+
+  assert.equal(passed, 5);
   console.log(`✅ Canonical OKF evidence-port suite: ${passed} passed, 0 failed`);
 }
 

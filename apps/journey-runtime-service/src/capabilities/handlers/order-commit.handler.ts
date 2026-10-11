@@ -2,6 +2,7 @@ import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability
 import { connectToDatabase, ensureDatabaseIndices } from '@journeyax/database';
 
 export interface OrderCommitInput {
+  cartId?: string;
   quoteId?: string;
   idempotencyKey?: string;
   items?: Array<{ sku: string; quantity: number; priceCents?: number; name?: string }>;
@@ -13,7 +14,8 @@ export class OrderCommitHandler implements NativeCapabilityHandler {
   constructor(
     private readonly inMemoryOrders?: any[],
     private readonly catalogSnapshot?: any[],
-    private readonly quotesSnapshot?: any[]
+    private readonly quotesSnapshot?: any[],
+    private readonly cartSnapshotProvider?: (scope: { projectId: string; workspaceId: string; cartId: string }) => Promise<any>
   ) {}
 
   async execute(input: OrderCommitInput, ctx: ExecutionContext): Promise<any> {
@@ -88,6 +90,25 @@ export class OrderCommitHandler implements NativeCapabilityHandler {
               : existingDbOrder.createdAt,
           replayed: true,
         };
+      }
+    }
+
+    if ((ctx as ExecutionContext & { requiresAuthoritativeCart?: boolean }).requiresAuthoritativeCart) {
+      const cartId = input.cartId || `cart-${ctx.workspaceId}`;
+      const scope = { projectId: tenantId, workspaceId: ctx.workspaceId, cartId };
+      const cart = this.cartSnapshotProvider
+        ? await this.cartSnapshotProvider(scope)
+        : dbInstance
+          ? await dbInstance.collection('customer_carts').findOne({ ...scope, status: 'active' })
+          : null;
+      if (!cart || cart.projectId !== tenantId || cart.workspaceId !== ctx.workspaceId ||
+        cart.cartId !== cartId || cart.status !== 'active' || !Array.isArray(cart.items)) {
+        throw new Error('[OrderCommitHandler] Authoritative tenant/workspace cart is unavailable');
+      }
+      const identity = (values: Array<{ sku: string; quantity?: number }>) =>
+        values.map((item) => `${String(item.sku || '').trim()}\u0000${item.quantity ?? 1}`).sort().join('\u0001');
+      if (identity(items) !== identity(cart.items)) {
+        throw new Error('[OrderCommitHandler] Authoritative cart mismatch: order items differ from the persisted cart');
       }
     }
 

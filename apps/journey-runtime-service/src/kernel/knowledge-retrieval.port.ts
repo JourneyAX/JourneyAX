@@ -52,3 +52,22 @@ export interface KnowledgeRetrievalPort {
 export type KnowledgeRetrievalPortResolver = (
   tenantId: string
 ) => Promise<KnowledgeRetrievalPort> | KnowledgeRetrievalPort;
+
+/** Compatibility port for Business Packs that have not attached an OKF model.
+ * It is deliberately separate from the verified OKF port: legacy results may
+ * ground an answer, but they are never labelled as verified OKF evidence. */
+export interface LegacyKnowledgeRetrievalRequest {
+  query: string;
+  category?: string;
+  type?: string;
+  limit?: number;
+  gender?: string;
+}
+
+export interface LegacyKnowledgeRetrievalPort {
+  search(ctx: KnowledgeRetrievalContext, req: LegacyKnowledgeRetrievalRequest): Promise<KnowledgeRetrievalResult>;
+}
+
+export type LegacyKnowledgeRetrievalPortResolver = (
+  tenantId: string
+) => Promise<LegacyKnowledgeRetrievalPort> | LegacyKnowledgeRetrievalPort;

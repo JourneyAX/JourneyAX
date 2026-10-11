@@ -135,7 +135,7 @@ async function runTests() {
 
   const interpreterBOM = new TurnInterpreter(mockModelGatewayBOM as ModelGateway);
   const resultBOM = await interpreterBOM.interpret(
-    { message: 'Yes, please confirm the bill of materials' } as TurnCommand,
+    { message: 'Yes, please confirm the decking bill of materials' } as TurnCommand,
     testRelease,
     mockWorkspace
   );
@@ -313,6 +313,45 @@ async function runTests() {
     assert.equal(resultFenced.modelRoute?.policyId, 'fast_intent');
     assert.equal(resultFenced.modelRoute?.version, testRelease.manifest.version);
     console.log('✓ Markdown-fenced JSON safely parsed and modelRoute trace verified\n');
+  }
+
+  // Test 6: OKF-published Business Pack registry facts are declared and validated
+  {
+    console.log('Test 6: Business Pack factRegistry facts are accepted without vocabulary duplication');
+    const registryRelease: any = structuredClone(testRelease as any);
+    registryRelease.factRegistry = {
+      version: '1.0.0',
+      facts: {
+        substrate: {
+          type: 'enum',
+          allowedValues: ['timber', 'metal'],
+          promptQuestion: 'What are you fixing into?',
+          uiInputType: 'card_choice',
+        },
+      },
+    };
+    const validGateway: Partial<ModelGateway> = {
+      execute: async () => ({
+        content: JSON.stringify({ intent: 'process_turn', candidateFacts: { substrate: { value: 'timber', confidence: 0.95 } } }),
+        provider: 'test-provider', model: 'test-model', residencyProven: 'nz',
+      }),
+    };
+    const valid = await new TurnInterpreter(validGateway as ModelGateway).interpret(
+      { message: 'I am fixing into timber' } as TurnCommand, registryRelease, mockWorkspace
+    );
+    assert.equal(valid.candidateFacts.substrate?.value, 'timber');
+
+    const invalidGateway: Partial<ModelGateway> = {
+      execute: async () => ({
+        content: JSON.stringify({ intent: 'process_turn', candidateFacts: { substrate: { value: 'glass', confidence: 0.95 } } }),
+        provider: 'test-provider', model: 'test-model', residencyProven: 'nz',
+      }),
+    };
+    const invalid = await new TurnInterpreter(invalidGateway as ModelGateway).interpret(
+      { message: 'I am fixing into glass' } as TurnCommand, registryRelease, mockWorkspace
+    );
+    assert.equal(invalid.candidateFacts.substrate, undefined);
+    console.log('✓ OKF registry facts are available to interpretation and enforce their schema\n');
   }
 
   console.log('====================================================');

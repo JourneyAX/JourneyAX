@@ -87,7 +87,11 @@ export class MongoOkfKnowledgeRetrievalPort implements KnowledgeRetrievalPort {
       tenantId: ctx.tenantId,
       environmentId: ctx.environmentId,
       releaseId: scope.releaseId,
-    }).limit(Math.min(Math.max(canonical.size * 2, 20), 500)).toArray();
+      // Fetch only IDs that are present in the checksum-verified immutable
+      // release. Limiting an arbitrary tenant/release cursor first can omit the
+      // allowed chunks when unrelated or malicious records sort ahead of them.
+      chunkId: { $in: [...canonical.keys()] },
+    }).limit(Math.min(canonical.size, 500)).toArray();
 
     const queryTokens = tokens(req.query);
     const verified = stored.flatMap((raw: any) => {

@@ -118,6 +118,7 @@ export class TurnInterpreter {
     const rawMessage = command.message || (command as any).userInput || '';
     const lowerMsg = rawMessage.toLowerCase();
     const rawCandidateFacts: FactsMap = {};
+    const registryFacts: Record<string, any> = (release as any).factRegistry?.facts || {};
     let extractedIntent = 'process_turn';
     let interpretationFailure: InterpretationFailure | undefined;
     let capturedModelRoute: InterpretationResult['modelRoute'];
@@ -125,7 +126,15 @@ export class TurnInterpreter {
     // 1. Model Gateway Port Execution (if ModelGateway is injected)
     if (this.modelGateway) {
       try {
-        const slotQuestions = (release.vocabulary as any)?.slotQuestions || {};
+        const slotQuestions = {
+          ...Object.fromEntries(Object.entries(registryFacts).map(([factKey, definition]: [string, any]) => [factKey, {
+            question: definition.promptQuestion || definition.description,
+            type: definition.type,
+            allowedValues: definition.allowedValues,
+            uiInputType: definition.uiInputType,
+          }])),
+          ...((release.vocabulary as any)?.slotQuestions || {}),
+        };
 
         // Sanitize canonical context: include active journey, stage, existing facts, open questions
         // Keep sensitive values and internal credentials out of prompt
@@ -453,6 +462,11 @@ export class TurnInterpreter {
       'quote_finalized',
     ]);
 
+    // OKF authoring publishes its governed facts into the Business Pack fact
+    // registry. They are first-class declared facts even when a merchant has
+    // not duplicated them in vocabulary, entities, or an individual stage.
+    for (const factKey of Object.keys(registryFacts)) declaredFactKeys.add(factKey);
+
     // Vocabulary slot questions and synonyms
     const vocab = release.vocabulary as any;
     if (vocab?.slotQuestions) {
@@ -576,7 +590,6 @@ export class TurnInterpreter {
     //     facts) extracts nothing rather than guessing, so the fact is asked for explicitly.
     const compoundDimensionMatch = rawMessage.match(COMPOUND_DIMENSION_SEARCH);
     if (compoundDimensionMatch) {
-      const registryFacts: Record<string, any> = (release as any).factRegistry?.facts || {};
       const isMeasurementKey = (key: string): boolean => {
         const entityDef: any = entities.find(
           (e: any) => e.entityName === key || e.entityId === key || e.name === key
@@ -642,9 +655,10 @@ export class TurnInterpreter {
       );
       const attrDef: any = entityDef?.attributes?.find((a: any) => a.name === factKey);
       const slotDef = slotQuestions[factKey];
+      const registryDef = registryFacts[factKey];
       let isValid = true;
 
-      const enumValues = entityDef?.allowedValues || attrDef?.enum;
+      const enumValues = entityDef?.allowedValues || attrDef?.enum || registryDef?.allowedValues;
       if (Array.isArray(enumValues) && enumValues.length > 0) {
         if (Array.isArray(val)) {
           // List slots: validate each element against the enum, not the whole array
@@ -656,7 +670,8 @@ export class TurnInterpreter {
         entityDef?.type === 'number' ||
         entityDef?.type === 'integer' ||
         attrDef?.type === 'number' ||
-        attrDef?.type === 'currency'
+        attrDef?.type === 'currency' ||
+        registryDef?.type === 'number'
       ) {
         const rawNum = typeof val === 'object' && val !== null
           ? ((val as any).amountCents ?? (val as any).amount ?? (val as any).value)

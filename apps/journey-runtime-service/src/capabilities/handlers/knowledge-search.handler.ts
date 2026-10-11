@@ -3,6 +3,7 @@ import type {
   KnowledgeRetrievalPort,
   KnowledgeRetrievalPortResolver,
   KnowledgeRetrievalResult,
+  LegacyKnowledgeRetrievalPortResolver,
 } from '../../kernel/knowledge-retrieval.port';
 
 export interface KnowledgeSearchInput {
@@ -24,7 +25,8 @@ export interface KnowledgeSearchInput {
 export class KnowledgeSearchHandler implements NativeCapabilityHandler {
   constructor(
     private readonly inMemoryDocs?: any[],
-    private readonly resolveKnowledgePort?: KnowledgeRetrievalPortResolver
+    private readonly resolveKnowledgePort?: KnowledgeRetrievalPortResolver,
+    private readonly resolveLegacyKnowledgePort?: LegacyKnowledgeRetrievalPortResolver
   ) {}
 
   async execute(input: KnowledgeSearchInput, ctx: ExecutionContext): Promise<any> {
@@ -32,14 +34,54 @@ export class KnowledgeSearchHandler implements NativeCapabilityHandler {
     const query = rawQuery.toLowerCase();
     const limit = Math.min(input.limit || 5, 20);
     const scope = input.knowledgeScope;
-    if (!scope || !scope.releaseId || !scope.version || !scope.checksum || scope.sourceRefs.length === 0) {
+    if (!scope) {
+      if (!this.resolveLegacyKnowledgePort) {
+        return {
+          found: false,
+          resultCount: 0,
+          results: [],
+          documents: [],
+          verified: false,
+          message: 'Knowledge retrieval unavailable: no legacy tenant knowledge port is configured.',
+        };
+      }
+      try {
+        const port = await this.resolveLegacyKnowledgePort(ctx.tenantId);
+        const result = await port.search({
+          tenantId: ctx.tenantId,
+          environmentId: ctx.environmentId,
+          correlationId: ctx.correlationId,
+        }, { query: rawQuery, category: input.category, type: input.type, limit, gender: input.gender });
+        return {
+          found: result.found,
+          resultCount: result.results.length,
+          results: result.results,
+          documents: result.results.map((item) => ({
+            id: item.sku || item.title,
+            title: item.title,
+            summary: item.content,
+            content: item.content,
+            specifications: item.specs,
+            sourceUrl: item.url,
+          })),
+          // A legacy connector result is grounded but is not a checksum-pinned
+          // OKF verification. Keep the distinction explicit for presentation.
+          verified: false,
+          message: result.message,
+        };
+      } catch {
+        return { found: false, resultCount: 0, results: [], documents: [], verified: false,
+          errorCode: 'knowledge_unavailable', message: 'Knowledge retrieval is temporarily unavailable.' };
+      }
+    }
+    if (!scope.releaseId || !scope.version || !scope.checksum || scope.sourceRefs.length === 0) {
       return {
         found: false,
         resultCount: 0,
         results: [],
         documents: [],
         verified: false,
-        message: 'Knowledge retrieval blocked: exact pinned OKF evidence scope is required.',
+        message: 'Knowledge retrieval blocked: the supplied OKF evidence scope is incomplete.',
       };
     }
     const allowedSources = new Set(scope.sourceRefs);
@@ -123,7 +165,7 @@ export class KnowledgeSearchHandler implements NativeCapabilityHandler {
         verified: found,
         message: searchResult.message,
       };
-    } catch (err: any) {
+    } catch {
       // Typed unavailable/not-found result when retrieval fails
       return {
         found: false,
@@ -131,7 +173,8 @@ export class KnowledgeSearchHandler implements NativeCapabilityHandler {
         results: [],
         documents: [],
         verified: false,
-        message: `Knowledge retrieval unavailable: ${err.message}`,
+        errorCode: 'knowledge_unavailable',
+        message: 'Knowledge retrieval is temporarily unavailable.',
       };
     }
   }
