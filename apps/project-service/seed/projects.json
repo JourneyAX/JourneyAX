@@ -1,0 +1,225 @@
+[
+  {
+    "projectId": "caroma",
+    "orgId": "org-gwa",
+    "name": "Caroma Australia",
+    "companyName": "Caroma Industries Ltd",
+    "slug": "caroma-bathrooms",
+    "domain": "caroma.journeyax.com",
+    "status": "active",
+    "scope": {
+      "rooms": [
+        "Bathroom",
+        "Ensuite",
+        "Powder Room",
+        "Laundry"
+      ],
+      "finishes": [
+        "Chrome",
+        "Matte Black",
+        "Brushed Brass",
+        "Brushed Nickel",
+        "Gloss White"
+      ],
+      "categories": [
+        "basin",
+        "toilet",
+        "tapware",
+        "shower",
+        "bath",
+        "accessories"
+      ],
+      "complianceTags": [
+        "WELS",
+        "WaterMark",
+        "AS1428"
+      ],
+      "excludedSkus": []
+    },
+    "pricing": {
+      "currency": "AUD",
+      "symbol": "$",
+      "taxRate": 0.1,
+      "discountRate": 0.12
+    },
+    "persona": {
+      "systemName": "Caroma Stylist & Plumber",
+      "systemPromptOverrides": "You are the Caroma Stylist, a bathroom design and plumbing advisor. Ground ALL recommendations exclusively in Caroma product catalog data. Never hallucinate SKUs, prices, or product names.",
+      "greetingMessage": "Welcome to Caroma! I'll help you design your perfect bathroom.",
+      "escalationEmail": "support@caroma.com.au",
+      "journeyDefinition": {
+        "journeyId": "caroma_bathroom_design",
+        "version": "1.0.0",
+        "displayName": "Caroma Bathroom Design",
+        "description": "Guided bathroom design and product selection",
+        "goals": [
+          "understand_space",
+          "select_fixtures"
+        ],
+        "initialStage": "discovery",
+        "stages": {
+          "discovery": {
+            "stageId": "discovery",
+            "displayName": "Space Discovery",
+            "description": "Discover bathroom layout and style preferences",
+            "requiredFacts": [],
+            "allowedCapabilities": [
+              "catalog_search"
+            ],
+            "nextDecisionPolicy": "dependency-first",
+            "exitConditions": [
+              {
+                "nextStage": "specification"
+              }
+            ]
+          },
+          "specification": {
+            "stageId": "specification",
+            "displayName": "Product Specification",
+            "description": "Recommend fixtures and finalize specifications",
+            "requiredFacts": [],
+            "allowedCapabilities": [
+              "catalog_search",
+              "quote_create",
+              "order_commit"
+            ],
+            "nextDecisionPolicy": "dependency-first",
+            "exitConditions": []
+          }
+        }
+      }
+    },
+    "ai": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.4
+    },
+    "theme": {
+      "primaryColor": "#FFD600",
+      "accentColor": "#0A0A0A",
+      "fontFamily": "Space Grotesk, sans-serif",
+      "logoUrl": "/assets/caroma-logo.svg",
+      "visualizerEnabled": true
+    },
+    "channels": {
+      "web": true,
+      "mobile": true,
+      "email": true,
+      "whatsapp": false,
+      "voice": false,
+      "kiosk": true,
+      "partner": false,
+      "csr": true
+    },
+    "createdAt": "2026-01-10T00:00:00Z",
+    "updatedAt": "2026-01-10T00:00:00Z",
+    "version": 1
+  },
+  {
+    "projectId": "caroma-nz",
+    "orgId": "org-gwa",
+    "name": "Caroma New Zealand",
+    "companyName": "Caroma Industries Ltd",
+    "slug": "caroma-nz",
+    "domain": "caroma-nz.journeyax.com",
+    "status": "draft",
+    "scope": {
+      "rooms": [
+        "Bathroom",
+        "Ensuite",
+        "Powder Room"
+      ],
+      "finishes": [
+        "Chrome",
+        "Matte Black",
+        "Brushed Nickel"
+      ],
+      "categories": [
+        "basin",
+        "toilet",
+        "tapware",
+        "shower"
+      ],
+      "complianceTags": [
+        "WELS"
+      ],
+      "excludedSkus": []
+    },
+    "pricing": {
+      "currency": "NZD",
+      "symbol": "$",
+      "taxRate": 0.15,
+      "discountRate": 0.1
+    },
+    "persona": {
+      "systemName": "Caroma NZ Stylist",
+      "systemPromptOverrides": "You are the Caroma NZ Stylist. Only recommend products available in New Zealand. Apply NZD pricing and 15% GST.",
+      "greetingMessage": "Kia ora! Let's design your perfect bathroom.",
+      "journeyDefinition": {
+        "journeyId": "caroma_nz_bathroom_design",
+        "version": "1.0.0",
+        "displayName": "Caroma NZ Bathroom Design",
+        "description": "Guided bathroom design for New Zealand",
+        "goals": [
+          "understand_space",
+          "select_fixtures"
+        ],
+        "initialStage": "discovery",
+        "stages": {
+          "discovery": {
+            "stageId": "discovery",
+            "displayName": "Discovery",
+            "description": "Discover bathroom space and NZ requirements",
+            "requiredFacts": [],
+            "allowedCapabilities": [
+              "catalog_search"
+            ],
+            "nextDecisionPolicy": "dependency-first",
+            "exitConditions": [
+              {
+                "nextStage": "specification"
+              }
+            ]
+          },
+          "specification": {
+            "stageId": "specification",
+            "displayName": "Specification",
+            "description": "Recommend fixtures with NZ GST pricing",
+            "requiredFacts": [],
+            "allowedCapabilities": [
+              "catalog_search",
+              "quote_create",
+              "order_commit"
+            ],
+            "nextDecisionPolicy": "dependency-first",
+            "exitConditions": []
+          }
+        }
+      }
+    },
+    "ai": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.4
+    },
+    "theme": {
+      "primaryColor": "#FFD600",
+      "accentColor": "#0A0A0A",
+      "fontFamily": "Space Grotesk, sans-serif",
+      "visualizerEnabled": true
+    },
+    "channels": {
+      "web": true,
+      "mobile": false,
+      "email": true,
+      "whatsapp": false,
+      "voice": false,
+      "kiosk": false,
+      "partner": false,
+      "csr": false
+    },
+    "createdAt": "2026-04-01T00:00:00Z",
+    "updatedAt": "2026-04-01T00:00:00Z",
+    "version": 1
+  }
+]

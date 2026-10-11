@@ -1,0 +1,13 @@
+{
+  "channels": {
+    "web": true, "email": true, "mobile": false,
+    "whatsapp": false, "voice": false, "kiosk": false,
+    "partner": false, "csr": false
+  },
+  "ai": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "temperature": 0.4,
+    "embeddingModel": "text-embedding-3-small"
+  }
+}

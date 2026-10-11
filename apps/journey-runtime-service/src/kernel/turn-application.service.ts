@@ -1396,9 +1396,13 @@ export class TurnApplicationService {
     }
 
     const companyName = release.profile?.companyName || release.manifest?.name || 'Customer Consultant';
+    // The prompt comes from the agent the router actually resolved for this workspace, never from list position.
+    const resolvedAgent: any = resolvedAgentInfo?.agentId
+      ? (release.agents || []).find((candidate: any) => candidate.agentId === resolvedAgentInfo.agentId)
+      : undefined;
     const personaGuidance =
       (release as any)?.persona?.systemPromptOverrides ||
-      (release.agents && ((release.agents[0] as any)?.systemPrompt || release.agents[0]?.systemPromptTemplate)) ||
+      resolvedAgent?.systemPrompt || resolvedAgent?.systemPromptTemplate ||
       '';
     const journeyGuidance = (release as any)?.persona?.journeyGuidance || '';
 

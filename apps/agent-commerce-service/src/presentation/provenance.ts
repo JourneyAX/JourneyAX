@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 /**
  * Provenance (v3 Card CMS, docs/v3-card-cms-architecture.md) — the same
  * existence check `enforceItemDesignability` already runs for `showItems`
@@ -12,7 +13,7 @@
 async function skusThatExist(tenantId: string, skus: string[]): Promise<Set<string>> {
   if (!skus.length) return new Set();
   try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const base = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
     const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/skus/exists`, {
       method: 'POST',
       headers: {
@@ -40,7 +41,7 @@ export interface SkuFact { sku: string; name: string; price: number | null; imag
 export async function lookupSkuFacts(tenantId: string, skus: string[]): Promise<SkuFact[]> {
   if (!skus.length) return [];
   try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const base = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
     const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/skus/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId, 'X-Internal-Key': process.env.INTERNAL_API_KEY || '' },

@@ -62,7 +62,8 @@ export function resolvePublicationRoutingPolicy(input: {
   }
 
   if (journeys.length === 1) {
-    return { ...configured, defaultJourneyId: journeys[0].journeyId, fallbackOnCatalogSearch };
+    const [onlyJourney] = journeys;
+    return { ...configured, defaultJourneyId: onlyJourney.journeyId, fallbackOnCatalogSearch };
   }
 
   if (journeys.length === 0) {

@@ -84,8 +84,11 @@ export function compileModelPolicy(input: CompileModelPolicyInput): ModelPolicy 
   }
 
   // Simple mode: compile authoritative conversational policies from aiConfig
-  const primaryProvider = normalizeProvider(aiConfig?.provider || 'openai');
-  const primaryModel = (aiConfig?.model || 'gpt-4o').trim();
+  if (!aiConfig?.provider?.trim() || !aiConfig?.model?.trim()) {
+    throw new Error(`[compileModelPolicy] ai.provider and ai.model must be configured for '${projectId}'; no provider or model is assumed.`);
+  }
+  const primaryProvider = normalizeProvider(aiConfig.provider);
+  const primaryModel = aiConfig.model.trim();
   const configuredTemp = typeof aiConfig?.temperature === 'number' ? aiConfig.temperature : 0.4;
 
   const hasExplicitFallback = Boolean(

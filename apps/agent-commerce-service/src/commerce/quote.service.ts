@@ -8,6 +8,7 @@
  * validation, and persist a versioned, expiring quote. Nothing monetary comes
  * from the model or the browser.
  */
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Collection, Db } from 'mongodb';
@@ -44,7 +45,7 @@ export interface BuildQuoteArgs {
 @Injectable()
 export class QuoteService {
   private col: Collection<Quote> | null = null;
-  private readonly productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+  private readonly productServiceUrl = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
   private readonly inMemoryIdempotencyCache = new Map<string, Quote>();
 
   constructor() {}

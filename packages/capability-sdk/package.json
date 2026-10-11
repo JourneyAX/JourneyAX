@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@journeyax/journey-core": "*",
-    "@journeyax/business-pack": "*"
+    "@journeyax/business-pack": "*",
+    "@journeyax/shared-types": "*"
   },
   "devDependencies": {
     "typescript": "^5"

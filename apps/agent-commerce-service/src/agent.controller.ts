@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { Controller, Post, Get, Body, Headers, Param, Req, Res, Inject, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AgentService } from './agent.service';
@@ -46,7 +47,7 @@ export class JourneyAXController {
     // The brand palette gives research colours something real to map onto.
     let palette: { name: string; hex?: string }[] = [];
     try {
-      const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+      const base = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
       const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/renderer-config`);
       if (res.ok) {
         const rc: any = await res.json();
@@ -520,7 +521,7 @@ export class JourneyAXController {
 
     const cfg = await this.configLoader.loadProjectConfig(tenantId);
     if (!cfg) throw new HttpException(`Configuration not found for tenant: ${tenantId}`, HttpStatus.NOT_FOUND);
-    const base = process.env.STOREFRONT_URL || 'http://localhost:3008';
+    const base = resolveServiceUrl('STOREFRONT_URL', process.env.STOREFRONT_URL, 'http://localhost:3008');
     const result = await this.orderService.create({
       tenantId,
       quote,

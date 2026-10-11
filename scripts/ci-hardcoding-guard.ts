@@ -33,11 +33,16 @@ const AUDIT_DIRECTORIES = [
   'packages/capability-sdk/src',
   'packages/ui-cards/src',
   'apps/journeyax-web/src/app/api/chat',
+  'packages/knowledge/src',
+  'apps/project-service/src',
+  'apps/api-gateway/src',
 ];
 
 // Documented narrow allowlist for files that are legitimate adapter bridges or freeze notices
 const ALLOWLISTED_FILES = new Set([
   'apps/journey-runtime-service/src/kernel/presentation.port.ts',
+  // Dev-only localhost defaults, rejected in production by validateProductionTargets().
+  'apps/api-gateway/src/gateway.registry.ts',
   // Frozen legacy compatibility adapters for unmigrated tenants only - scheduled for decommissioning
   'apps/agent-commerce-service/src/legacy/legacy-journey-adapter.ts',
   'apps/agent-commerce-service/src/legacy/project-calculator.service.ts',
@@ -163,6 +168,26 @@ const RULES: Array<{
     name: 'Hardcoded Clarifying Question Text in Generic Runtime',
     regex: /['"](?:Who are you shopping for\?|What's the occasion\?|Which room are you working on\?)['"]/,
     reason: 'Clarification questions and option choices must come from published Business Pack, never hardcoded in generic runtime.',
+  },
+  {
+    name: 'Fact Meaning Guessed From Key Spelling',
+    regex: /\.includes\(\s*['"](?:size|dimension|budget|quantity)['"]\s*\)|(?:Key|key|slotKey|factKey)\s*===\s*['"](?:budget|quantity)['"]/,
+    reason: 'What a fact means must come from the pack (fact role / entity type), not from how its key is spelled.',
+  },
+  {
+    name: 'Invented Human Identity',
+    regex: /\|\|\s*['"](?:studio|internal-service|authenticated-user|operator|system)['"]/,
+    reason: 'Actors must be authenticated principals or explicitly namespaced system/service principals, never invented human-looking identities.',
+  },
+  {
+    name: 'Localhost Service Fallback in Platform Code',
+    regex: /\|\|\s*['"]https?:\/\/(?:localhost|127\.0\.0\.1)/,
+    reason: 'Service endpoints must resolve through resolveServiceUrl (development-only fallback, fail fast in production).',
+  },
+  {
+    name: 'Assumed Currency Symbol',
+    regex: /`\$\$\{/,
+    reason: 'Prices must be formatted from the declared currency (Intl), never with an assumed dollar sign.',
   },
   {
     name: 'Hardcoded Tenant Vocabulary in Generic Runtime',

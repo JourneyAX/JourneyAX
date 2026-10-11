@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { Injectable, Optional, Inject } from '@nestjs/common';
 import { QuoteService } from './quote.service';
 import { OrderService } from './order.service';
@@ -6,7 +7,7 @@ import { pickNamedProduct } from '../pipeline/context-assembler';
 export async function fetchPricebookRows(tenantId: string, skus: string[]): Promise<any[]> {
   if (!skus.length) return [];
   try {
-    const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const base = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
     const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/pricebook`, {
       method: 'POST',
       headers: {

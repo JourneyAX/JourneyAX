@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import 'reflect-metadata';
 import { resolve } from 'path';
 import { config } from 'dotenv';
@@ -26,7 +27,7 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`[Agent Commerce Service] Running on HTTP port ${port}`);
   console.log(`[Agent Commerce Service] Model policy: Resolved dynamically per project / Business Pack`);
-  console.log(`[Agent Commerce Service] Product Service: ${process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083'}`);
+  console.log(`[Agent Commerce Service] Product Service: ${resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083')}`);
 }
 
 bootstrap();

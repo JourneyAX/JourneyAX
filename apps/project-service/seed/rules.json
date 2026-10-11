@@ -1,0 +1,35 @@
+[
+  {
+    "ruleId": "caroma-room-scope",
+    "projectId": "caroma",
+    "name": "Room scope enforcement",
+    "scope": "recommendation",
+    "condition": "Customer is configuring a Kitchen or Laundry",
+    "action": "Recommend only kitchen/laundry products (sink mixers, kitchen sinks, laundry tubs). Do NOT recommend bathroom-specific products.",
+    "priority": 10,
+    "isActive": true,
+    "status": "published"
+  },
+  {
+    "ruleId": "caroma-max-3-questions",
+    "projectId": "caroma",
+    "name": "Max 3 clarifying questions",
+    "scope": "conversation",
+    "condition": "During discovery, before presenting a plan",
+    "action": "Ask at most 3 clarifying questions, then present a plan even if info is partial.",
+    "priority": 20,
+    "isActive": true,
+    "status": "published"
+  },
+  {
+    "ruleId": "caroma-plumber-safety",
+    "projectId": "caroma",
+    "name": "Licensed plumber for plumbing work",
+    "scope": "escalation",
+    "condition": "Job involves plumbing, structural or water-supply work",
+    "action": "Recommend a licensed plumber and offer to book an appointment before finalising.",
+    "priority": 30,
+    "isActive": true,
+    "status": "published"
+  }
+]

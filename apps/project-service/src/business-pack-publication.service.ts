@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { Injectable } from '@nestjs/common';
 import { Db, Collection } from 'mongodb';
 import { ProjectConfig, ConfigVersion } from './project.types';
@@ -746,7 +747,7 @@ export class BusinessPackPublicationService {
         version,
         packVersion: packReleaseVersion,
         publishedAt: now,
-        publishedBy: opts.publishedBy || 'system',
+        publishedBy: opts.publishedBy || UNATTRIBUTED_PRINCIPAL,
         note: opts.note,
         ...(environmentId === 'production' ? {} : { environmentId }),
         evaluationResult: latestEvalSuiteResult,
@@ -1068,7 +1069,7 @@ export class BusinessPackPublicationService {
     // If still missing SKUs, try product-service pricebook via HTTP if internal key available
     const missingFromDb = skus.filter((s) => !catalogueMap.has(s));
     if (missingFromDb.length > 0) {
-      const prodServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+      const prodServiceUrl = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
       const internalKey = process.env.INTERNAL_API_KEY;
       if (internalKey) {
         try {

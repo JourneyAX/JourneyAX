@@ -6,6 +6,7 @@
  * routing authority to select legacy vs canonical runtime streaming.
  */
 
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { resolveTenant } from '../../../../lib/tenant';
 import { upstreamAuthHeaders, unauthorized } from '../../../../lib/bff-auth';
 
@@ -13,7 +14,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
+const GATEWAY_URL = resolveServiceUrl('GATEWAY_URL', process.env.GATEWAY_URL, 'http://localhost:3010');
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));

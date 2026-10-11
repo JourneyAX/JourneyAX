@@ -167,7 +167,7 @@ export class RuntimeAuthGuard implements CanActivate {
       principalRole = payload.role;
     } else if (isInternalKeyValid) {
       // Authenticated workload identity presenting verified X-Internal-Key
-      principalId = (headers['x-user-id'] as string) || (headers['x-principal-id'] as string) || 'internal-service';
+      principalId = (headers['x-user-id'] as string) || (headers['x-principal-id'] as string) || 'service:internal';
       principalRole = (headers['x-user-role'] as string) || (headers['x-principal-role'] as string) || 'admin';
     } else {
       // External caller without proof: cannot claim elevated roles

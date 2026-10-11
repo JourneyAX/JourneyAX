@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 /**
  * Tenant-Scoped Branch Stock & Fulfillment Lookup Service
  *
@@ -30,7 +31,7 @@ export interface BranchStockResponse {
 }
 
 export class BranchStockService {
-  private static productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+  private static productServiceUrl = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
 
   /**
    * Retrieves real inventory and fulfillment facts for an SKU across tenant branches.

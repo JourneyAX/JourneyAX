@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import type {
   LegacyKnowledgeRetrievalPort,
   LegacyKnowledgeRetrievalPortResolver,
@@ -10,7 +11,7 @@ import type {
  * Activepieces binding; the modern runtime never imports legacy connectors.
  */
 export function createLegacyKnowledgePortResolver(): LegacyKnowledgeRetrievalPortResolver {
-  const baseUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+  const baseUrl = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
   const port: LegacyKnowledgeRetrievalPort = {
     async search(ctx, req) {
       const response = await fetch(`${baseUrl}/api/v1/${encodeURIComponent(ctx.tenantId)}/products/search`, {

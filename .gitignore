@@ -40,3 +40,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# test run output
+logs/

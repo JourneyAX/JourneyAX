@@ -20,6 +20,7 @@
  * Money/authority note: this calls the project's OWN key (resolveLlm), so a
  * white-label tenant's research bills to them.
  */
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { Injectable } from '@nestjs/common';
 import { Collection, Db } from 'mongodb';
 import { connectToDatabase } from '@journeyax/database';
@@ -149,7 +150,7 @@ export class SchoolResearchService {
     const names = colours.map((c) => c?.mappedTo?.name).filter(Boolean);
     if (!names.length) return;
     try {
-      const base = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+      const base = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
       const res = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/products/colours/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId,

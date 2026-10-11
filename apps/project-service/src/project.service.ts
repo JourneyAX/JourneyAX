@@ -1,3 +1,7 @@
+import { loadProjectSeeds } from './seed-loader';
+import newProjectDefaults from './defaults/new-project.json';
+
+const NEW_PROJECT_DEFAULTS = newProjectDefaults as unknown as { channels: ProjectConfig['channels']; ai: Record<string, unknown> };
 import { Injectable, Optional } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { connectToDatabase } from '@journeyax/database';
@@ -61,146 +65,9 @@ export class ProjectService {
   private cache = new Map<string, { config: ProjectConfig; expiresAt: number }>();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000;
 
-  // ── Seed data — upserted on startup ──────────────────────────
-  private readonly SEEDS: ProjectConfig[] = [
-    {
-      projectId: 'caroma',
-      orgId: 'org-gwa',
-      name: 'Caroma Australia',
-      companyName: 'Caroma Industries Ltd',
-      slug: 'caroma-bathrooms',
-      domain: 'caroma.journeyax.com',
-      status: 'active',
-      scope: {
-        rooms: ['Bathroom', 'Ensuite', 'Powder Room', 'Laundry'],
-        finishes: ['Chrome', 'Matte Black', 'Brushed Brass', 'Brushed Nickel', 'Gloss White'],
-        categories: ['basin', 'toilet', 'tapware', 'shower', 'bath', 'accessories'],
-        complianceTags: ['WELS', 'WaterMark', 'AS1428'],
-        excludedSkus: [],
-      },
-      pricing: { currency: 'AUD', symbol: '$', taxRate: 0.10, discountRate: 0.12 },
-      persona: {
-        systemName: 'Caroma Stylist & Plumber',
-        systemPromptOverrides:
-          'You are the Caroma Stylist, a bathroom design and plumbing advisor. ' +
-          'Ground ALL recommendations exclusively in Caroma product catalog data. ' +
-          'Never hallucinate SKUs, prices, or product names.',
-        greetingMessage: "Welcome to Caroma! I'll help you design your perfect bathroom.",
-        escalationEmail: 'support@caroma.com.au',
-        journeyDefinition: {
-          journeyId: 'caroma_bathroom_design',
-          version: '1.0.0',
-          displayName: 'Caroma Bathroom Design',
-          description: 'Guided bathroom design and product selection',
-          goals: ['understand_space', 'select_fixtures'],
-          initialStage: 'discovery',
-          stages: {
-            discovery: {
-              stageId: 'discovery',
-              displayName: 'Space Discovery',
-              description: 'Discover bathroom layout and style preferences',
-              requiredFacts: [],
-              allowedCapabilities: ['catalog_search'],
-              nextDecisionPolicy: 'dependency-first',
-              exitConditions: [{ nextStage: 'specification' }],
-            },
-            specification: {
-              stageId: 'specification',
-              displayName: 'Product Specification',
-              description: 'Recommend fixtures and finalize specifications',
-              requiredFacts: [],
-              allowedCapabilities: ['catalog_search', 'quote_create', 'order_commit'],
-              nextDecisionPolicy: 'dependency-first',
-              exitConditions: [],
-            },
-          },
-        },
-      },
-      ai: {
-        provider: 'openai',
-        model: 'gpt-4o',
-        temperature: 0.4,
-      },
-      theme: {
-        primaryColor: '#FFD600',
-        accentColor: '#0A0A0A',
-        fontFamily: 'Space Grotesk, sans-serif',
-        logoUrl: '/assets/caroma-logo.svg',
-        visualizerEnabled: true,
-      },
-      channels: { web: true, mobile: true, email: true, whatsapp: false, voice: false, kiosk: true, partner: false, csr: true },
-      createdAt: '2026-01-10T00:00:00Z',
-      updatedAt: '2026-01-10T00:00:00Z',
-      version: 1,
-    },
-    {
-      projectId: 'caroma-nz',
-      orgId: 'org-gwa',
-      name: 'Caroma New Zealand',
-      companyName: 'Caroma Industries Ltd',
-      slug: 'caroma-nz',
-      domain: 'caroma-nz.journeyax.com',
-      status: 'draft',
-      scope: {
-        rooms: ['Bathroom', 'Ensuite', 'Powder Room'],
-        finishes: ['Chrome', 'Matte Black', 'Brushed Nickel'],
-        categories: ['basin', 'toilet', 'tapware', 'shower'],
-        complianceTags: ['WELS'],
-        excludedSkus: [],
-      },
-      pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0.10 },
-      persona: {
-        systemName: 'Caroma NZ Stylist',
-        systemPromptOverrides:
-          'You are the Caroma NZ Stylist. Only recommend products available in New Zealand. ' +
-          'Apply NZD pricing and 15% GST.',
-        greetingMessage: "Kia ora! Let's design your perfect bathroom.",
-        journeyDefinition: {
-          journeyId: 'caroma_nz_bathroom_design',
-          version: '1.0.0',
-          displayName: 'Caroma NZ Bathroom Design',
-          description: 'Guided bathroom design for New Zealand',
-          goals: ['understand_space', 'select_fixtures'],
-          initialStage: 'discovery',
-          stages: {
-            discovery: {
-              stageId: 'discovery',
-              displayName: 'Discovery',
-              description: 'Discover bathroom space and NZ requirements',
-              requiredFacts: [],
-              allowedCapabilities: ['catalog_search'],
-              nextDecisionPolicy: 'dependency-first',
-              exitConditions: [{ nextStage: 'specification' }],
-            },
-            specification: {
-              stageId: 'specification',
-              displayName: 'Specification',
-              description: 'Recommend fixtures with NZ GST pricing',
-              requiredFacts: [],
-              allowedCapabilities: ['catalog_search', 'quote_create', 'order_commit'],
-              nextDecisionPolicy: 'dependency-first',
-              exitConditions: [],
-            },
-          },
-        },
-      },
-      ai: {
-        provider: 'openai',
-        model: 'gpt-4o',
-        temperature: 0.4,
-      },
-      theme: {
-        primaryColor: '#FFD600',
-        accentColor: '#0A0A0A',
-        fontFamily: 'Space Grotesk, sans-serif',
-        visualizerEnabled: true,
-      },
-      channels: { web: true, mobile: false, email: true, whatsapp: false, voice: false, kiosk: false, partner: false, csr: false },
-      createdAt: '2026-04-01T00:00:00Z',
-      updatedAt: '2026-04-01T00:00:00Z',
-      version: 1,
-    },
-  ];
+  // ── Seed data — opt-in development fixtures loaded from JSON (see seed-loader.ts) ──
+  private readonly seedData = loadProjectSeeds();
+  private get SEEDS(): ProjectConfig[] { return this.seedData.projects as ProjectConfig[]; }
 
   // ── Init ──────────────────────────────────────────────────────
   async onModuleInit() {
@@ -331,44 +198,7 @@ export class ProjectService {
     }
   }
 
-  // Default business rules for Caroma — mirrors rules previously hardcoded in the
-  // agent prompt, now data the back office owns. Upserted once (won't overwrite edits).
-  private readonly SEED_RULES: BusinessRule[] = [
-    {
-      ruleId: 'caroma-room-scope',
-      projectId: 'caroma',
-      name: 'Room scope enforcement',
-      scope: 'recommendation',
-      condition: 'Customer is configuring a Kitchen or Laundry',
-      action:
-        'Recommend only kitchen/laundry products (sink mixers, kitchen sinks, laundry tubs). Do NOT recommend bathroom-specific products.',
-      priority: 10,
-      isActive: true,
-      status: 'published',
-    },
-    {
-      ruleId: 'caroma-max-3-questions',
-      projectId: 'caroma',
-      name: 'Max 3 clarifying questions',
-      scope: 'conversation',
-      condition: 'During discovery, before presenting a plan',
-      action: 'Ask at most 3 clarifying questions, then present a plan even if info is partial.',
-      priority: 20,
-      isActive: true,
-      status: 'published',
-    },
-    {
-      ruleId: 'caroma-plumber-safety',
-      projectId: 'caroma',
-      name: 'Licensed plumber for plumbing work',
-      scope: 'escalation',
-      condition: 'Job involves plumbing, structural or water-supply work',
-      action: 'Recommend a licensed plumber and offer to book an appointment before finalising.',
-      priority: 30,
-      isActive: true,
-      status: 'published',
-    },
-  ];
+  private get SEED_RULES(): BusinessRule[] { return this.seedData.rules as BusinessRule[]; }
 
   private async seedRules() {
     for (const r of this.SEED_RULES) {
@@ -569,19 +399,9 @@ export class ProjectService {
       pricing: dto.pricing,
       persona: dto.persona,
       theme: dto.theme,
-      channels: {
-        web: true, email: true, mobile: false,
-        whatsapp: false, voice: false, kiosk: false,
-        partner: false, csr: false,
-        ...(dto.channels || {}),
-      },
-      ai: {
-        provider: 'openai',
-        model: 'gpt-4o',
-        temperature: 0.4,
-        embeddingModel: 'text-embedding-3-small',
-        ...((dto as any).ai || {}),
-      },
+      // Platform defaults for a brand-new project live in defaults/new-project.json; the operator's values win.
+      channels: { ...NEW_PROJECT_DEFAULTS.channels, ...(dto.channels || {}) } as ProjectConfig['channels'],
+      ai: { ...NEW_PROJECT_DEFAULTS.ai, ...((dto as any).ai || {}) },
       integrations: (dto as any).integrations || {},
       // Onboarding can seed knowledge sources from the customer's own site, so a
       // new tenant is ready to ingest rather than starting empty. Optional —

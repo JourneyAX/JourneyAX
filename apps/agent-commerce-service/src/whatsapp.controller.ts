@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { Controller, Get, Post, Req, Res, Headers, HttpException, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -8,7 +9,7 @@ const GRAPH = process.env.WHATSAPP_GRAPH_VERSION || 'v21.0';
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || '';
 const APP_SECRET = process.env.WHATSAPP_APP_SECRET || '';
 const CONFIGURED = Boolean(VERIFY_TOKEN && APP_SECRET);
-const PROJECT_API = process.env.PROJECT_SERVICE_URL || 'http://localhost:8082';
+const PROJECT_API = resolveServiceUrl('PROJECT_SERVICE_URL', process.env.PROJECT_SERVICE_URL, 'http://localhost:8082');
 
 interface TenantWa { tenantId: string; accessToken?: string }
 

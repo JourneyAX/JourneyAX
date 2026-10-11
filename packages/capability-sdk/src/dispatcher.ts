@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { createHmac, randomUUID } from 'crypto';
 import {
   ToolDefinition,
@@ -212,7 +213,7 @@ export class CapabilityDispatcher {
         );
       }
     }
-    const baseUrl = rawBaseUrl || 'http://localhost:3010';
+    const baseUrl = rawBaseUrl || resolveServiceUrl('ACTIVEPIECES_API_URL', undefined, 'http://localhost:3010');
 
     // 4. Payload carries connectionRef only - NEVER raw credentials or secrets
     const payload = {

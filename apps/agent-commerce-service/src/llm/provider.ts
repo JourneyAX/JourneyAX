@@ -16,6 +16,7 @@
  * endpoint (self-hosted / proxy / Azure-OpenAI style). Because the key/baseUrl
  * are now per-project, clients are cached by a composite key, not just provider.
  */
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import OpenAI from 'openai';
 import { createHash } from 'crypto';
 import { GoogleAuth } from 'google-auth-library';
@@ -134,7 +135,7 @@ function resolve(provider: string, projectKey?: string, baseUrlOverride?: string
     case 'ollama': {
       const apiKey = key('OLLAMA_API_KEY');
       return {
-        baseURL: baseUrlOverride || process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+        baseURL: baseUrlOverride || resolveServiceUrl('OLLAMA_BASE_URL', process.env.OLLAMA_BASE_URL, 'http://localhost:11434/v1'),
         apiKey: apiKey || 'ollama',
         ok: true,
       };

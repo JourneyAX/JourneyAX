@@ -1,3 +1,4 @@
+import { resolveServiceUrl } from '@journeyax/shared-types';
 import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability-sdk';
 
 export interface BranchStockCheckInput {
@@ -50,7 +51,7 @@ export class BranchStockCheckHandler implements NativeCapabilityHandler {
     }
 
     // Production handler queries tenant-scoped inventory connector
-    const productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:8083';
+    const productServiceUrl = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
     try {
       const url = `${productServiceUrl}/api/v1/${encodeURIComponent(ctx.tenantId)}/products/inventory?sku=${encodeURIComponent(sku)}&branch=${encodeURIComponent(branch)}`;
       const res = await fetch(url, { headers: { 'x-tenant-id': ctx.tenantId } });

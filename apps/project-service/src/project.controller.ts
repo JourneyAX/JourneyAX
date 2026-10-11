@@ -583,7 +583,7 @@ export class ProjectController {
       body.email,
       body.fullName,
       body.role,
-      userId || 'operator',
+      this.principal(userId),
       {
         teams: body.teams,
         responsibilities: body.responsibilities,

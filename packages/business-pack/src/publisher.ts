@@ -1,3 +1,4 @@
+import { UNATTRIBUTED_PRINCIPAL } from '@journeyax/shared-types';
 import { randomUUID } from 'crypto';
 import type { Db } from 'mongodb';
 import {
@@ -133,7 +134,7 @@ export async function publishBusinessPack(
   const environmentId = pack.manifest.environmentId || 'production';
   const version = pack.manifest.version;
   const now = new Date();
-  const publishedBy = options.publishedBy || 'system';
+  const publishedBy = options.publishedBy || UNATTRIBUTED_PRINCIPAL;
 
   return runWithTransaction(db, options, async (session) => {
     const sessionOpts = session ? { session } : undefined;
@@ -393,7 +394,7 @@ export async function rollbackBusinessPack(
     const expectedRevision = pointer.revision;
     const nextRevision = expectedRevision + 1;
     const now = new Date();
-    const rolledBackBy = options.rolledBackBy || 'system';
+    const rolledBackBy = options.rolledBackBy || UNATTRIBUTED_PRINCIPAL;
 
     const casResult = await pointersCol.updateOne(
       { tenantId, environmentId, revision: expectedRevision },

@@ -683,7 +683,7 @@ export class RuntimeService {
         await executionsCol.insertOne({
           tenantId,
           environmentId,
-          workspaceId: workspaceId || 'system',
+          workspaceId: workspaceId || 'unscoped',
           toolId: 'activepieces.webhook',
           idempotencyKey: nonceHeader,
           inputHash: hashToolInput(payload),

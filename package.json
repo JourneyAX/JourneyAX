@@ -16,7 +16,12 @@
     "inventory:connectors": "tsx scripts/inventory-tenant-connectors.ts",
     "demo:e2e": "tsx scripts/demo-local-e2e.ts",
     "eval": "tsx scripts/eval.ts",
-    "cleanup:test-data": "tsx scripts/cleanup-v4-test-data.ts"
+    "cleanup:test-data": "tsx scripts/cleanup-v4-test-data.ts",
+    "test": "node scripts/run-all-tests.mjs --group core+typecheck+guard",
+    "test:core": "node scripts/run-all-tests.mjs --group core",
+    "test:typecheck": "node scripts/run-all-tests.mjs --group typecheck",
+    "test:all": "node scripts/run-all-tests.mjs --group all",
+    "test:guard": "node scripts/run-all-tests.mjs --group guard"
   },
   "packageManager": "npm@10.9.2",
   "devDependencies": {

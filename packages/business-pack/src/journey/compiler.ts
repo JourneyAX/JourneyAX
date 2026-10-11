@@ -214,9 +214,17 @@ export function compileGraphToJourneyDefinition(
       warnings: multi.warnings,
     };
   }
+  if (multi.journeys.length !== 1) {
+    return {
+      success: false,
+      errors: [`The graph compiles to ${multi.journeys.length} journeys; compile it as a multi-journey graph instead of selecting one by position.`],
+      warnings: multi.warnings,
+    };
+  }
+  const [journeyDefinition] = multi.journeys;
   return {
     success: true,
-    journeyDefinition: multi.journeys[0],
+    journeyDefinition,
     warnings: multi.warnings,
   };
 }

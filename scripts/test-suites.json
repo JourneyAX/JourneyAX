@@ -1,0 +1,129 @@
+{
+  "groups": {
+    "core": [
+      "test-support",
+      "business-pack",
+      "knowledge",
+      "capability-sdk",
+      "database",
+      "project-service",
+      "journey-runtime-service",
+      "api-gateway"
+    ],
+    "typecheck": [
+      "tsc:shared-types",
+      "tsc:journey-core",
+      "tsc:business-pack",
+      "tsc:knowledge",
+      "tsc:capability-sdk",
+      "tsc:database",
+      "tsc:project-service",
+      "tsc:journey-runtime-service",
+      "tsc:api-gateway",
+      "tsc:agent-commerce-service",
+      "tsc:journeyax-web"
+    ],
+    "extended": [
+      "agent-commerce-service",
+      "analytics-service",
+      "backoffice-admin"
+    ],
+    "guard": [
+      "hardcoding-guard"
+    ]
+  },
+  "suites": {
+    "test-support": {
+      "cwd": "packages/test-support",
+      "command": "npm test"
+    },
+    "business-pack": {
+      "cwd": "packages/business-pack",
+      "command": "npm test"
+    },
+    "knowledge": {
+      "cwd": "packages/knowledge",
+      "command": "npm test"
+    },
+    "capability-sdk": {
+      "cwd": "packages/capability-sdk",
+      "command": "npm test"
+    },
+    "database": {
+      "cwd": "packages/database",
+      "command": "npm test"
+    },
+    "project-service": {
+      "cwd": "apps/project-service",
+      "command": "npm test"
+    },
+    "journey-runtime-service": {
+      "cwd": "apps/journey-runtime-service",
+      "command": "npm test"
+    },
+    "api-gateway": {
+      "cwd": "apps/api-gateway",
+      "command": "npm test"
+    },
+    "agent-commerce-service": {
+      "cwd": "apps/agent-commerce-service",
+      "command": "npm test"
+    },
+    "analytics-service": {
+      "cwd": "apps/analytics-service",
+      "command": "npm test"
+    },
+    "backoffice-admin": {
+      "cwd": "apps/backoffice-admin",
+      "command": "npm test"
+    },
+    "tsc:shared-types": {
+      "cwd": "packages/shared-types",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:journey-core": {
+      "cwd": "packages/journey-core",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:business-pack": {
+      "cwd": "packages/business-pack",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:knowledge": {
+      "cwd": "packages/knowledge",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:capability-sdk": {
+      "cwd": "packages/capability-sdk",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:database": {
+      "cwd": "packages/database",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:project-service": {
+      "cwd": "apps/project-service",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:journey-runtime-service": {
+      "cwd": "apps/journey-runtime-service",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:api-gateway": {
+      "cwd": "apps/api-gateway",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "hardcoding-guard": {
+      "cwd": ".",
+      "command": "npx tsx scripts/ci-hardcoding-guard.ts"
+    },
+    "tsc:agent-commerce-service": {
+      "cwd": "apps/agent-commerce-service",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:journeyax-web": {
+      "cwd": "apps/journeyax-web",
+      "command": "npx tsc --noEmit -p ."
+    }
+  }
+}
