@@ -40,6 +40,10 @@ export const FactDefinitionSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   type: z.enum(['string', 'number', 'boolean', 'array', 'object', 'date', 'enum']).optional(),
+  /** What the fact means to the runtime (extraction and validation), independent of its key spelling. */
+  role: z.enum(['measurement', 'money', 'quantity']).optional(),
+  /** True when the fact holds several values. */
+  multiple: z.boolean().optional(),
   allowedValues: z.array(z.string()).optional(),
   constraints: z.record(z.string(), z.any()).optional(),
   uiInputType: z.enum([

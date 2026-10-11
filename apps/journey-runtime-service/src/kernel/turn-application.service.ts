@@ -29,7 +29,9 @@ import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
 import { OutboxRepository } from './outbox.repository';
 import { PresentationPort } from './presentation.port';
-import { TurnInterpreter } from '../turn/interpret-event';
+import { TurnInterpreter, isAmbiguousMeasurementAnswer } from '../turn/interpret-event';
+import { resolveFactRole, resolveInterpretationPolicy } from '../turn/fact-semantics';
+import { formatCatalogPrice } from '../turn/price-format';
 import { FactReducer } from '../turn/fact-reducer';
 import { OutcomeValidator } from '../turn/validate-outcome';
 import {
@@ -1435,17 +1437,17 @@ export class TurnApplicationService {
           journeyGuidance,
           `Strict Instructions:`,
           `1. Answer the customer directly and professionally.`,
-          `2. NEVER ask for facts that already exist in Verified Stored Facts (e.g., if a room type, room, or project goal is already stored, NEVER ask for it again or change known facts unless explicitly requested).`,
+          `2. NEVER ask for facts that already exist in Verified Stored Facts (NEVER ask for an answer that is already stored, and never change known facts unless the customer explicitly corrects them).`,
           isDiscovery
             ? `3. You are currently in the project discovery and clarification stage. Guide the customer to provide the needed project brief details shown in Unresolved Facts / Open Questions. NEVER state "I don't have verified technical documentation" during this stage.`
             : isAskingForDetails
             ? `3. Provide comprehensive, helpful, and professional product details, usage directions, and specifications based strictly on the verified catalog items.`
             : `3. Ground every recommendation and regulated, compatibility, installation, care, safety, or warranty claim strictly in verified evidence supplied to this turn.`,
           `4. If the customer provided an ambiguous or mistyped measurement (such as an invalid unit or extreme dimension), politely ask a scoped unit/measurement clarification: clarify what unit or length was intended. Do not ask for facts that are already known.`,
-          `5. If the customer continues an open question topic (such as room size or dimensions), guide them on specifying that measurement and invite them to answer the pending options.`,
+          `5. If the customer continues an open question topic (such as a pending measurement), guide them on specifying it and invite them to answer the pending options.`,
           isExplicitTechnicalDocQuery && verifiedDocs.length === 0
             ? `6. If no verified technical information was found after search, truthfully state: "I don't have verified technical documentation for that specific requirement. Could you provide more details about your project?"`
-            : `6. If answering trade, troubleshooting, or product inquiries, provide helpful practical guidance and ask clarifying questions to diagnose the issue (e.g. source, location, materials). Do NOT mention missing technical documentation unless the customer explicitly asked for technical certificates or specification sheets.`,
+            : `6. If answering trade, troubleshooting, or product inquiries, provide helpful practical guidance and ask clarifying questions to diagnose the issue (e.g. cause, location, materials involved). Do NOT mention missing technical documentation unless the customer explicitly asked for technical certificates or specification sheets.`,
           `7. NEVER invent products, SKUs, prices, compliance claims, inventory, quotes, or installation requirements.`,
           `8. Do NOT generate or claim a quote was assembled unless the customer explicitly requested a quote.`,
           `9. NEVER expose internal stage IDs, capability names, fact names, internal policy names, or release IDs.`,
@@ -1478,15 +1480,17 @@ export class TurnApplicationService {
             `Product ${i + 1}: ${p.name || p.title || p.sku} (SKU: ${p.sku})\nCategory: ${
               p.category || 'General'
             }\nPrice: ${
-              p.price?.amountCents ? `$${(p.price.amountCents / 100).toFixed(2)}` : (p.price ? (typeof p.price === 'number' ? `$${p.price.toFixed(2)}` : p.price) : 'On Request')
+              formatCatalogPrice(p.priceCents != null ? p.priceCents / 100 : p.price, p.currency || p.price?.currency || release.profile?.primaryCurrency, renderOkfMessage(resolveInterpretationPolicy(release).messages, 'price_on_request'))
             }\nDescription: ${p.description || p.reason || 'Verified catalog item'}${p.features ? `\nFeatures: ${Array.isArray(p.features) ? p.features.join(', ') : p.features}` : ''}${p.specifications ? `\nSpecifications: ${JSON.stringify(p.specifications)}` : ''}`
         )
         .join('\n\n');
     }
 
-    const hasAmbiguousUnit = /mit[er]+|mtre/i.test(customerQuestion) || /^\s*\d+\s*$/.test(customerQuestion);
-    const isDimensionOpen = Array.isArray(openQuestionIds) && openQuestionIds.some((id: string) => id.includes('dimension') || id.includes('size'));
-    const isAmbiguousMeasurement = hasAmbiguousUnit && isDimensionOpen;
+    const interpretationMessages = resolveInterpretationPolicy(release).messages;
+    // A bare number (optionally followed by one unrecognised word) answering an open measurement question is ambiguous.
+    const isBareMeasurementAnswer = isAmbiguousMeasurementAnswer(customerQuestion);
+    const isDimensionOpen = Array.isArray(openQuestionIds) && openQuestionIds.some((id: string) => resolveFactRole(release, id) === 'measurement');
+    const isAmbiguousMeasurement = isBareMeasurementAnswer && isDimensionOpen;
 
     const userPrompt = isOutOfDomain
       ? [
@@ -1519,7 +1523,7 @@ export class TurnApplicationService {
           isAmbiguousMeasurement
             ? `\nCRITICAL INSTRUCTION: The customer provided an ambiguous or mistyped measurement ("${customerQuestion}"). Ask only for the missing unit or scale required by the published fact definition. Do not ask again for any context already present in verified stored facts.`
             : isAskingForDetails
-            ? `\nCRITICAL INSTRUCTION: The customer is asking for more details or an explanation about products ("${customerQuestion}"). Provide a detailed, professional, and helpful explanation of the product features, active ingredients, usage instructions (e.g. 2-in-1 brush head, stain neutralizer), and benefits based STRICTLY on the VERIFIED PRODUCTS data below. Do not ask intake questions.`
+            ? `\nCRITICAL INSTRUCTION: The customer is asking for more details or an explanation about products ("${customerQuestion}"). Provide a detailed, professional, and helpful explanation of the product features, active ingredients, usage instructions, and benefits based STRICTLY on the VERIFIED PRODUCTS data below. Do not ask intake questions.`
             : isDiscovery
             ? `\nAcknowledge the customer's project and provide a natural, concise lead-in for the clarification card questions without asking for already known facts.`
             : `\nRespond to the customer's question thoroughly using only the verified facts above. If relevant, explain options and offer next steps.`,
@@ -1544,7 +1548,7 @@ export class TurnApplicationService {
           content = content.slice(1, -1);
         }
         if (isAmbiguousMeasurement && !content.toLowerCase().includes('unit') && !content.toLowerCase().includes('measurement') && !content.toLowerCase().includes('clarify')) {
-          content = `Could you please clarify your measurement and unit (e.g. 1000 mm cabinet run, 2.4 m length, or square metres) so we can size your project accurately? ${content}`;
+          content = `${renderOkfMessage(interpretationMessages, 'measurement_clarification')} ${content}`;
         }
         if (release.knowledgeModel?.type === 'okf_release') {
           const checked = validateOkfGeneratedClaims(content, knowledgeGate?.claims.allowedClasses || []);
@@ -1568,11 +1572,18 @@ export class TurnApplicationService {
       // Fallback to truthful grounded synthesis over verified documents or contextual clarification:
       if (isAskingForDetails && verifiedProducts.length > 0) {
         const topProd = verifiedProducts[0];
-        const priceStr = topProd.price?.amountCents
-          ? `$${(topProd.price.amountCents / 100).toFixed(2)}`
-          : (topProd.price ? (typeof topProd.price === 'number' ? `$${topProd.price.toFixed(2)}` : topProd.price) : 'Price on request');
+        const detailMessages = resolveInterpretationPolicy(release).messages;
+        const priceStr = formatCatalogPrice(
+          topProd.priceCents != null ? topProd.priceCents / 100 : topProd.price,
+          topProd.currency || topProd.price?.currency || release.profile?.primaryCurrency,
+          renderOkfMessage(detailMessages, 'price_on_request'),
+        );
         return {
-          message: `${topProd.name || topProd.title || 'Product'}: ${topProd.description || 'Verified catalog product.'} Price: ${priceStr}. Would you like to add this to your project quote?`,
+          message: renderOkfMessage(detailMessages, 'product_detail_fallback', {
+            name: topProd.name || topProd.title || renderOkfMessage(detailMessages, 'product_default_name'),
+            description: topProd.description || renderOkfMessage(detailMessages, 'product_default_description'),
+            price: priceStr,
+          }),
         };
       }
 
@@ -1584,7 +1595,7 @@ export class TurnApplicationService {
 
         const fallback = [
           docSummaries,
-          `Would you like to review specific product options or provide your room dimensions to plan the project?`,
+          renderOkfMessage(resolveInterpretationPolicy(release).messages, 'fallback_next_step'),
         ]
           .filter(Boolean)
           .join('\n\n');
@@ -1593,20 +1604,18 @@ export class TurnApplicationService {
       }
 
       // Check if user input looks like an ambiguous or mistyped measurement for an open dimension/measurement question
-      const hasAmbiguousUnit = /mit[er]+|mtre/i.test(customerQuestion) || /^\s*\d+\s*$/.test(customerQuestion);
-      const isDimensionOpen = Array.isArray(openQuestionIds) && openQuestionIds.some((id: string) => id.includes('dimension') || id.includes('size'));
-      if (hasAmbiguousUnit && isDimensionOpen) {
-        return {
-          message:
-            'Could you please clarify your measurement and unit (e.g. 1000 mm cabinet run, 2.4 m length, or square metres) so we can size your project accurately?',
-        };
+      const fallbackMessages = resolveInterpretationPolicy(release).messages;
+      const isBareMeasurementAnswer = isAmbiguousMeasurementAnswer(customerQuestion);
+      const isDimensionOpen = Array.isArray(openQuestionIds) && openQuestionIds.some((id: string) => resolveFactRole(release, id) === 'measurement');
+      if (isBareMeasurementAnswer && isDimensionOpen) {
+        return { message: renderOkfMessage(fallbackMessages, 'measurement_clarification') };
       }
 
       if (isDiscovery) {
         if (Array.isArray(decision.payload?.questions) && decision.payload.questions.length > 0) {
           const intro = (activeJourney as any)?.displayName
-            ? `To help tailor your ${activeJourney.displayName}, please confirm the details below:`
-            : 'To help tailor your project, please confirm the details below:';
+            ? renderOkfMessage(fallbackMessages, 'discovery_intro_named', { journeyName: activeJourney.displayName })
+            : renderOkfMessage(fallbackMessages, 'discovery_intro');
           const questionsList = decision.payload.questions
             .map((q: any) => q.text || q.question)
             .filter(Boolean)
@@ -1619,7 +1628,7 @@ export class TurnApplicationService {
           return { message: decision.payload.question };
         }
         return {
-          message: 'To help tailor your project, please let me know a few details below:',
+          message: renderOkfMessage(fallbackMessages, 'discovery_default'),
         };
       }
 

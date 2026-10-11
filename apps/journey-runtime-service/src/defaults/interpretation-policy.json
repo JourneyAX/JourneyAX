@@ -1,0 +1,61 @@
+{
+  "version": "1.0.0",
+  "quantity": {
+    "unitWords": [
+      "unit",
+      "piece",
+      "item",
+      "pair"
+    ],
+    "verbs": [
+      "need",
+      "order",
+      "buy",
+      "qty",
+      "quantity"
+    ]
+  },
+  "money": {
+    "symbols": [
+      "$"
+    ],
+    "leadPhrases": [
+      "under",
+      "budget of",
+      "budget",
+      "max"
+    ],
+    "capPhrases": [
+      "under"
+    ]
+  },
+  "grounding": {
+    "ignoredOptionWords": [
+      "space",
+      "layout",
+      "build",
+      "unit",
+      "existing"
+    ]
+  },
+  "promptRules": [
+    "When openQuestions exist, first attempt to map the customer message to those question facts.",
+    "Do not restart global intent discovery unless the customer message explicitly changes the subject.",
+    "If existingFacts already holds an answer, NEVER ask for it again or change it unless the customer explicitly corrects it.",
+    "For ambiguous or implausible measurements, do NOT store extreme or ambiguous values; omit them so that a clarification can be requested.",
+    "Only extract candidateFacts that the customer explicitly specified or answered. Do NOT infer a categorical fact merely because the customer mentioned a related product, service, or goal.",
+    "When the customer merely mentions a slot, question, or topic name without answering it, do NOT infer an answer or select an option. Omit candidateFacts for that slot.",
+    "Output only JSON matching: { \"intent\": string, \"candidateFacts\": { [key: string]: { \"value\": any, \"confidence\": number } } }"
+  ],
+  "messages": {
+    "measurement_clarification": "Could you please clarify the measurement and its unit so we can size your request accurately?",
+    "discovery_intro_named": "To help tailor your {journeyName}, please confirm the details below:",
+    "discovery_intro": "To help tailor your request, please confirm the details below:",
+    "discovery_default": "To help tailor your request, please let me know a few details below:",
+    "fallback_next_step": "Would you like to review specific product options or share more details about your request?",
+    "price_on_request": "Price on request",
+    "product_default_name": "Product",
+    "product_default_description": "Verified catalog product.",
+    "product_detail_fallback": "{name}: {description} Price: {price}. Would you like to add this item?"
+  }
+}

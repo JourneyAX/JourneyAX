@@ -2,6 +2,14 @@ import { TurnCommand, WorkspaceState, FactsMap } from '@journeyax/journey-core';
 import { BusinessPackRelease } from '@journeyax/business-pack';
 import { ModelGateway } from '../kernel/model.gateway';
 import { z } from 'zod';
+import {
+  compileExpressions,
+  firstCapture,
+  isListFact,
+  resolveFactRole,
+  resolveInterpretationPolicy,
+  uniqueFactWithRole,
+} from './fact-semantics';
 
 export interface InterpretationFailure {
   type: string;
@@ -95,6 +103,26 @@ const COMPOUND_DIMENSION_VALUE = new RegExp(
   'i'
 );
 
+const SIMPLE_MEASUREMENT_VALUE = new RegExp(
+  `^[0-9.]+\\s*(?:mm|millimetres?|millimeters?|cm|centimetres?|centimeters?|m|metres?|meters?|ft|feet|in|inches)?$`,
+  'i',
+);
+
+/** True when the text is a complete, recognisable measurement (single or compound) under the platform grammar. */
+export function isRecognisedMeasurement(raw: string): boolean {
+  const trimmed = raw.trim();
+  return SIMPLE_MEASUREMENT_VALUE.test(trimmed) && /\d/.test(trimmed) ? parseFloat(trimmed) > 0 : isCompoundDimensionValue(trimmed);
+}
+
+/**
+ * A short reply (number, optionally one word) that is not a complete measurement: a bare number without a unit,
+ * or a number followed by an unrecognised unit word. Used to ask for the missing unit.
+ */
+export function isAmbiguousMeasurementAnswer(raw: string): boolean {
+  if (!/^\s*[\d.]+\s*[a-z]*\s*$/i.test(raw)) return false;
+  return /^\s*[\d.]+\s*$/.test(raw) || !isRecognisedMeasurement(raw);
+}
+
 function isCompoundDimensionValue(raw: string): boolean {
   const trimmed = raw.trim();
   if (!COMPOUND_DIMENSION_VALUE.test(trimmed)) return false;
@@ -116,6 +144,8 @@ export class TurnInterpreter {
     workspace: WorkspaceState
   ): Promise<InterpretationResult> {
     const rawMessage = command.message || (command as any).userInput || '';
+    const policy = resolveInterpretationPolicy(release);
+    const expressions = compileExpressions(policy);
     const lowerMsg = rawMessage.toLowerCase();
     const rawCandidateFacts: FactsMap = {};
     const registryFacts: Record<string, any> = (release as any).factRegistry?.facts || {};
@@ -160,14 +190,7 @@ export class TurnInterpreter {
           `Canonical Context:\n${JSON.stringify(canonicalContext, null, 2)}\n\n` +
           `Available slots and schemas:\n${JSON.stringify(slotQuestions)}\n\n` +
           `<customer_message>\n${rawMessage}\n</customer_message>\n\n` +
-          `Instructions:\n` +
-          `1. When openQuestions exist, first attempt to map the customer message to those question facts.\n` +
-          `2. Do not restart global intent discovery unless the customer message explicitly changes the subject.\n` +
-          `3. If existingFacts contains room_type, room, or project_goal, NEVER ask which room or project the customer is modifying or change existing facts unless explicitly requested.\n` +
-          `4. For ambiguous measurements (e.g. '100 miters' when dimensions are open), do NOT store extreme or ambiguous values (e.g. do not store 100 meters as room dimensions); omit them or capture clarification needed.\n` +
-          `5. Only extract candidateFacts that the customer explicitly specified or answered. Do NOT infer a categorical fact merely because the customer mentioned a related product, service, or goal.\n` +
-          `6. When the customer merely mentions a slot, question, or topic name without answering it (e.g. 'room soize', 'room size', 'dimensions', 'measurements'), do NOT infer an answer or select an option (like 'Need help measuring'). Omit candidateFacts for that slot.\n` +
-          `7. Output only JSON matching: { "intent": string, "candidateFacts": { [key: string]: { "value": any, "confidence": number } } }`;
+          `Instructions:\n${policy.promptRules.map((rule, index) => `${index + 1}. ${rule}`).join('\n')}`;
 
         const modelRes = await this.modelGateway.execute(release, {
           taskType: 'fast_intent',
@@ -212,21 +235,12 @@ export class TurnInterpreter {
                 const msgContainsSyn = syns.some((s: string) => lowerMsg.includes(s));
                 const optWords = lowerOpt
                   .split(/[^a-z0-9]+/)
-                  .filter((w: string) => w.length > 3 && !['space', 'layout', 'build', 'unit', 'existing'].includes(w));
+                  .filter((w: string) => w.length > 3 && !policy.grounding.ignoredOptionWords.includes(w));
                 const msgContainsWord = optWords.some((w: string) => lowerMsg.includes(w));
 
-                const isMeasurementSlot =
-                  k.includes('dimension') ||
-                  k.includes('size') ||
-                  entityDef?.type === 'measurement' ||
-                  attrDef?.type === 'measurement';
-
-                if (isMeasurementSlot) {
-                  // Non-numeric option like "Need help measuring" requires explicit mention of the option or help/measure
-                  const hasMeasurementWording =
-                    msgContainsOpt ||
-                    (lowerOpt.includes('measur') && (lowerMsg.includes('measur') || lowerMsg.includes('help')));
-                  if (!hasMeasurementWording) {
+                if (resolveFactRole(release, k) === 'measurement') {
+                  // A non-numeric option for a measurement slot needs the customer to name that option (or a declared synonym).
+                  if (!msgContainsOpt && !msgContainsSyn) {
                     continue;
                   }
                 } else if (!msgContainsOpt && !msgContainsSyn && !msgContainsWord) {
@@ -289,7 +303,7 @@ export class TurnInterpreter {
     for (const [slotKey, synonyms] of Object.entries(slotSynonyms)) {
       if (!Array.isArray(synonyms)) continue;
       // Measurement slots require actual measurements (numbers + units), not topic keywords
-      if (slotKey.includes('dimension') || slotKey.includes('size')) continue;
+      if (resolveFactRole(release, slotKey) === 'measurement') continue;
       const sortedSyns = [...synonyms].sort((a, b) => b.length - a.length);
       const matched: string[] = [];
 
@@ -303,24 +317,18 @@ export class TurnInterpreter {
       }
 
       if (matched.length > 0 && !rawCandidateFacts[slotKey]) {
-        const isListSlot = slotKey.includes('items') || slotKey.includes('types') || slotKey.includes('list');
+        const isListSlot = isListFact(release, slotKey);
         let factVal: any = isListSlot ? matched : matched[0];
-        if (slotKey === 'budget') {
+        const slotRole = resolveFactRole(release, slotKey);
+        if (slotRole === 'money') {
           const num = Number(String(matched[0]).replace(/[^0-9.]/g, ''));
           if (!isNaN(num) && num > 0) {
             factVal = { amountCents: Math.round(num * 100), currency: release?.profile?.primaryCurrency || (release as any)?.pricing?.currency || '' };
           }
         }
-        if (slotKey === 'quantity') {
-          const explicitNum =
-            lowerMsg.match(/(\d+)\s*(?:units?|pieces?|items?|pairs?)/i) ||
-            lowerMsg.match(/(?:need|order|buy|qty|quantity)\s*(\d+)/i);
-          if (explicitNum) {
-            const num = Number(explicitNum[1]);
-            if (!isNaN(num) && num > 0) {
-              factVal = num;
-            }
-          }
+        if (slotRole === 'quantity') {
+          const explicitNum = firstCapture(expressions.quantity, lowerMsg);
+          if (explicitNum !== undefined) factVal = explicitNum;
         }
         rawCandidateFacts[slotKey] = {
           value: factVal,
@@ -328,42 +336,6 @@ export class TurnInterpreter {
           confidence: 0.95,
           extractedAt: new Date().toISOString(),
         };
-      }
-    }
-
-    // 2b. Dynamic currency / budget expression fallback extraction
-    if (!rawCandidateFacts['budget']) {
-      const budgetMatch =
-        lowerMsg.match(/(?:under|budget(?:\s+of)?|max)?\s*\$(\d+(?:\.\d{2})?)/i) ||
-        lowerMsg.match(/under\s+(\d+(?:\.\d{2})?)/i);
-      if (budgetMatch) {
-        const dollars = Number(budgetMatch[1]);
-        if (!isNaN(dollars) && dollars > 0) {
-          rawCandidateFacts['budget'] = {
-            value: { amountCents: Math.round(dollars * 100), currency: release?.profile?.primaryCurrency || (release as any)?.pricing?.currency || '' },
-            source: 'customer',
-            confidence: 0.95,
-            extractedAt: new Date().toISOString(),
-          };
-        }
-      }
-    }
-
-    // 2c. Dynamic quantity expression fallback extraction
-    if (!rawCandidateFacts['quantity']) {
-      const qtyMatch =
-        lowerMsg.match(/(\d+)\s*(?:units?|pieces?|items?|pairs?)/i) ||
-        lowerMsg.match(/(?:need|order|buy|qty|quantity)\s*(\d+)/i);
-      if (qtyMatch) {
-        const num = Number(qtyMatch[1]);
-        if (!isNaN(num) && num > 0) {
-          rawCandidateFacts['quantity'] = {
-            value: num,
-            source: 'customer',
-            confidence: 0.95,
-            extractedAt: new Date().toISOString(),
-          };
-        }
       }
     }
 
@@ -453,14 +425,15 @@ export class TurnInterpreter {
 
     // ── IDENTIFY DECLARED FACT KEYS AND CAPABILITY-SOURCED / CONFIRMATION FACTS ──
     const declaredFactKeys = new Set<string>();
-    const capabilitySourcedFacts = new Set<string>([
-      'quote_generated',
-      'package_selected',
-      'order_submitted',
-      'order_created',
-      'payment_confirmed',
-      'quote_finalized',
-    ]);
+    // Facts whose registry entry does not permit the customer as a source (only capabilities, system, ...) can
+    // never be set by customer speech. The list is the pack's registry, not a set of well-known names.
+    const capabilitySourcedFacts = new Set<string>(
+      Object.entries(registryFacts)
+        .filter(([, definition]: [string, any]) =>
+          Array.isArray(definition?.permittedSources) && definition.permittedSources.length > 0 &&
+          !definition.permittedSources.includes('customer'))
+        .map(([factKey]) => factKey),
+    );
 
     // OKF authoring publishes its governed facts into the Business Pack fact
     // registry. They are first-class declared facts even when a merchant has
@@ -584,25 +557,35 @@ export class TurnInterpreter {
     const validatedCandidateFacts: FactsMap = {};
     const slotQuestions = (release.vocabulary as any)?.slotQuestions || {};
 
+    // 2b. Money and quantity expressions fill the single declared fact with that role (never guessed by name).
+    {
+      const stamp = () => new Date().toISOString();
+      const moneyKey = uniqueFactWithRole(release, declaredFactKeys, 'money');
+      if (moneyKey && !rawCandidateFacts[moneyKey]) {
+        const amount = firstCapture(expressions.money, lowerMsg);
+        if (amount !== undefined) {
+          rawCandidateFacts[moneyKey] = {
+            value: { amountCents: Math.round(amount * 100), currency: release?.profile?.primaryCurrency || (release as any)?.pricing?.currency || '' },
+            source: 'customer', confidence: 0.95, extractedAt: stamp(),
+          };
+        }
+      }
+      const quantityKey = uniqueFactWithRole(release, declaredFactKeys, 'quantity');
+      if (quantityKey && !rawCandidateFacts[quantityKey]) {
+        const quantity = firstCapture(expressions.quantity, lowerMsg);
+        if (quantity !== undefined) {
+          rawCandidateFacts[quantityKey] = { value: quantity, source: 'customer', confidence: 0.95, extractedAt: stamp() };
+        }
+      }
+    }
+
     // 2d. Deterministic compound-dimension extraction for declared measurement facts.
     //     Journey/stage/registry driven: the target fact is chosen from the facts the active journey declares
     //     (preferring the current stage), never from domain wording. Ambiguity (several candidate measurement
     //     facts) extracts nothing rather than guessing, so the fact is asked for explicitly.
     const compoundDimensionMatch = rawMessage.match(COMPOUND_DIMENSION_SEARCH);
     if (compoundDimensionMatch) {
-      const isMeasurementKey = (key: string): boolean => {
-        const entityDef: any = entities.find(
-          (e: any) => e.entityName === key || e.entityId === key || e.name === key
-        );
-        const attrDef: any = entityDef?.attributes?.find((a: any) => a.name === key);
-        return (
-          key.includes('dimension') ||
-          key.includes('size') ||
-          entityDef?.type === 'measurement' ||
-          attrDef?.type === 'measurement' ||
-          registryFacts[key]?.type === 'measurement'
-        );
-      };
+      const isMeasurementKey = (key: string): boolean => resolveFactRole(release, key) === 'measurement';
 
       const stageFactKeys = new Set<string>();
       for (const activeJourney of activeJourneys) {
@@ -680,12 +663,7 @@ export class TurnInterpreter {
         if (isNaN(num)) isValid = false;
         if (entityDef?.minimum !== undefined && num < entityDef.minimum) isValid = false;
         if (entityDef?.maximum !== undefined && num > entityDef.maximum) isValid = false;
-      } else if (
-        factKey.includes('dimension') ||
-        factKey.includes('size') ||
-        entityDef?.type === 'measurement' ||
-        attrDef?.type === 'measurement'
-      ) {
+      } else if (resolveFactRole(release, factKey) === 'measurement') {
         const rawStr =
           typeof val === 'object' && val !== null
             ? String(
@@ -697,15 +675,9 @@ export class TurnInterpreter {
             : String(val);
         const lowerRaw = rawStr.toLowerCase().trim();
 
-        // Reject unrecognised measurement-unit spellings. Plausibility limits
+        // Unrecognised unit spellings fail the numeric grammar below. Plausibility limits
         // belong to the published entity/fact schema, not the platform runtime.
-        if (
-          lowerRaw.includes('miter') ||
-          lowerRaw.includes('mitre') ||
-          lowerRaw.includes('mtre')
-        ) {
-          isValid = false;
-        } else if (isCompoundDimensionValue(lowerRaw)) {
+        if (isCompoundDimensionValue(lowerRaw)) {
           // Compound dimension expression (e.g. WxH[xD] [unit]) is a valid measurement; preserved verbatim.
           isValid = true;
         } else {
@@ -748,7 +720,7 @@ export class TurnInterpreter {
 
       // 4. Check slot question options if entity wasn't explicit (bypass for measurements as numeric values are valid)
       const slotSynonyms = (release.vocabulary as any)?.slotSynonyms?.[factKey] || [];
-      const isMeasurement = factKey.includes('dimension') || factKey.includes('size');
+      const isMeasurement = resolveFactRole(release, factKey) === 'measurement';
       if (isValid && !isMeasurement && slotDef && Array.isArray(slotDef.options) && slotDef.options.length > 0) {
         const norm = (s: any) => String(s).toLowerCase().replace(/[_\s-]+/g, '');
         const validOptions = [...slotDef.options, ...slotSynonyms];
