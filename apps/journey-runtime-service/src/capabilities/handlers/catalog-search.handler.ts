@@ -1,5 +1,13 @@
 import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
+import {
+  classifyAvailability,
+  normalizeCatalogProduct,
+  readAttribute,
+  readPath,
+  resolveCatalogMapping,
+  type ResolvedCatalogMapping,
+} from '@journeyax/business-pack';
 
 export interface CatalogSearchInput {
   query?: string;
@@ -51,17 +59,20 @@ function tokenizeQuery(query: string): QueryToken[] {
   });
 }
 
-function scoreDocumentRelevance(doc: any, tokens: QueryToken[]): number {
+function scoreDocumentRelevance(doc: any, tokens: QueryToken[], mapping: ResolvedCatalogMapping): number {
   if (!tokens || tokens.length === 0) return 0;
-  let score = 0;
-  const name = (doc.name || doc.title || '').toLowerCase();
-  const brand = (doc.brandCode || doc.brand || '').toLowerCase();
-  const category = (doc.category || doc.type || '').toLowerCase();
-  const categoryPath = Array.isArray(doc.categoryPath)
-    ? doc.categoryPath.join(' ').toLowerCase()
-    : String(doc.categoryPath || '').toLowerCase();
-  const desc = (doc.description || '').toLowerCase();
+  const text = (paths: string[]): string => paths
+    .map((path) => readPath(doc, path))
+    .map((value) => (Array.isArray(value) ? value.join(' ') : typeof value === 'string' ? value : ''))
+    .join(' ')
+    .toLowerCase();
+  const name = text(mapping.titlePaths);
+  const brand = text(mapping.brandPaths);
+  const category = text(mapping.categoryPaths);
+  const categoryPath = text(mapping.categoryHierarchyPaths);
+  const desc = text(mapping.descriptionPaths);
 
+  let score = 0;
   for (const t of tokens) {
     if (new RegExp(`^${t.stem}\\b`, 'i').test(name)) score += 200;
     if (category.includes(t.stem) || t.regex.test(category)) score += 150;
@@ -72,6 +83,8 @@ function scoreDocumentRelevance(doc: any, tokens: QueryToken[]): number {
   }
   return score;
 }
+
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class CatalogSearchHandler implements NativeCapabilityHandler {
   constructor(private readonly inMemoryProducts?: any[]) {}
@@ -100,6 +113,14 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       return { items: flattened, total: flattened.length, groups };
     }
 
+    let mapping: ResolvedCatalogMapping;
+    try {
+      mapping = resolveCatalogMapping(ctx.packSettings?.catalogMapping);
+    } catch (err: any) {
+      console.warn('[CatalogSearchHandler] Invalid catalog mapping in pack:', err.message);
+      return { items: [], total: 0, error: 'Catalog mapping in the Business Pack is invalid' };
+    }
+
     const tenantId = ctx.tenantId;
     const query = input.query || '';
     const category = input.category || '';
@@ -107,44 +128,45 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const excludeCategoryIds = Array.isArray(input.excludeCategoryIds) ? input.excludeCategoryIds.filter(Boolean) : [];
     const limit = Math.min(input.maxResults || 10, 50);
 
+    // Top-level input keys that the tenant mapping declares as attributes behave as attribute filters.
+    const declaredFilterKeys = Object.keys(mapping.attributeAliases);
     const attributeFilters: Record<string, any> = {
       ...(input.attributeFilters || {}),
-      ...((input as any).toeType ? { toeType: (input as any).toeType } : {}),
-      ...((input as any).garmentWeight ? { garmentWeight: (input as any).garmentWeight } : {}),
+      ...Object.fromEntries(declaredFilterKeys
+        .filter((key) => (input as any)[key] !== undefined && (input as any)[key] !== null && (input as any)[key] !== '')
+        .map((key) => [key, (input as any)[key]])),
     };
 
     let docs: any[] = [];
     const tokens = query ? tokenizeQuery(query) : [];
+    const textOf = (doc: any, paths: string[]): string => paths
+      .map((path) => readPath(doc, path))
+      .map((value) => (Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value)))
+      .join(' ')
+      .toLowerCase();
 
     if (this.inMemoryProducts) {
       docs = this.inMemoryProducts.filter((p) => {
-        if (p.projectId && p.projectId !== tenantId) return false;
-        if (p.discontinued === true || String(p.status || p.lifecycle?.status || '').toLowerCase() === 'discontinued') return false;
-        if (category) {
-          const catMatch =
-            (p.category && p.category.toLowerCase().includes(category.toLowerCase())) ||
-            (p.type && p.type.toLowerCase().includes(category.toLowerCase()));
-          if (!catMatch) return false;
-        }
-        const categoryText = `${p.categoryId || ''} ${p.category || ''} ${p.type || ''} ${Array.isArray(p.categoryPath) ? p.categoryPath.join(' ') : p.categoryPath || ''}`.toLowerCase();
+        const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
+        if (owner !== undefined && owner !== tenantId) return false;
+        if (classifyAvailability(p, mapping) === 'excluded') return false;
+        if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
+        const categoryText = textOf(p, mapping.categoryScopePaths);
         if (categoryIds.length > 0 && !categoryIds.some((id) => categoryText.includes(id.toLowerCase()))) return false;
         if (excludeCategoryIds.some((id) => categoryText.includes(id.toLowerCase()))) return false;
         if (query) {
+          const text = textOf(p, mapping.searchPaths);
           if (tokens.length > 0) {
-            const text = `${p.name || ''} ${p.title || ''} ${p.brandCode || p.brand || ''} ${p.category || ''} ${p.description || ''} ${p.sku || ''} ${p.parentSku || ''}`.toLowerCase();
-            const matches = tokens.some((t) => t.regex.test(text));
-            if (!matches) return false;
-          } else {
-            const q = query.toLowerCase();
-            const text = `${p.name || ''} ${p.title || ''} ${p.description || ''} ${p.sku || ''} ${p.category || ''}`.toLowerCase();
-            if (!text.includes(q)) return false;
+            if (!tokens.some((t) => t.regex.test(text))) return false;
+          } else if (!text.includes(query.toLowerCase())) {
+            return false;
           }
         }
         return true;
       });
 
       if (tokens.length > 0 && docs.length > 0) {
-        docs.sort((a, b) => scoreDocumentRelevance(b, tokens) - scoreDocumentRelevance(a, tokens));
+        docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
       }
     } else {
       const uri = process.env.MONGODB_URI;
@@ -155,122 +177,55 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       try {
         const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
 
+        const excluded = [
+          ...mapping.availability.excludeFlagPaths.map((path) => ({ [path]: true })),
+          ...mapping.availability.statusPaths.flatMap((path) =>
+            mapping.availability.excludedStatuses.map((status) => ({ [path]: new RegExp(`^${escapeRegex(status)}$`, 'i') }))),
+        ];
         const filter: Record<string, any> = {
-          $or: [{ projectId: tenantId }, { tenantId }],
-          $and: [{
-            $nor: [
-              { discontinued: true },
-              { status: /^discontinued$/i },
-              { 'lifecycle.status': /^discontinued$/i },
-            ],
-          }],
+          $or: mapping.tenantFields.map((path) => ({ [path]: tenantId })),
+          $and: excluded.length > 0 ? [{ $nor: excluded }] : [],
         };
+        const and: any[] = filter.$and;
+        const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
 
         if (category) {
-          const escapedCategory = category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          filter.$and = [
-            ...(filter.$and || []),
-            {
-              $or: [
-                { category: new RegExp(escapedCategory, 'i') },
-                { type: new RegExp(escapedCategory, 'i') },
-              ],
-            },
-          ];
+          const regex = new RegExp(escapeRegex(category), 'i');
+          and.push({ $or: anyOf(mapping.categoryPaths, regex) });
         }
-
         if (categoryIds.length > 0) {
-          const scopedCategories = categoryIds.map((value) => new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
-          const scopeClause = {
-            $or: [
-              { categoryId: { $in: scopedCategories } },
-              { category: { $in: scopedCategories } },
-              { type: { $in: scopedCategories } },
-              { categoryPath: { $in: scopedCategories } },
-            ],
-          };
-          filter.$and = [...(filter.$and || []), scopeClause];
+          const scoped = categoryIds.map((value) => new RegExp(escapeRegex(value), 'i'));
+          and.push({ $or: anyOf(mapping.categoryScopePaths, { $in: scoped }) });
         }
-
         if (excludeCategoryIds.length > 0) {
-          const excludedCategories = excludeCategoryIds.map((value) => new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
-          filter.$and = [
-            ...(filter.$and || []),
-            {
-              $nor: [
-                { categoryId: { $in: excludedCategories } },
-                { category: { $in: excludedCategories } },
-                { type: { $in: excludedCategories } },
-                { categoryPath: { $in: excludedCategories } },
-              ],
-            },
-          ];
+          const excludedCategories = excludeCategoryIds.map((value) => new RegExp(escapeRegex(value), 'i'));
+          and.push({ $nor: anyOf(mapping.categoryScopePaths, { $in: excludedCategories }) });
         }
-
         if (query) {
-          const textConditions: any[] = [];
-          if (tokens.length > 0) {
-            for (const t of tokens) {
-              textConditions.push(
-                { name: t.regex },
-                { title: t.regex },
-                { brandCode: t.regex },
-                { brand: t.regex },
-                { category: t.regex },
-                { categoryPath: t.regex },
-                { description: t.regex },
-                { sku: t.regex },
-                { parentSku: t.regex },
-                { 'attributes.value': t.regex },
-                { 'metadata.domainKeywords': t.regex }
-              );
-            }
-          } else {
-            const queryRegex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-            textConditions.push(
-              { name: queryRegex },
-              { title: queryRegex },
-              { description: queryRegex },
-              { sku: queryRegex },
-              { parentSku: queryRegex },
-              { 'attributes.value': queryRegex },
-              { 'metadata.domainKeywords': queryRegex }
-            );
-          }
-
-          if (filter.$and) {
-            filter.$and.push({ $or: textConditions });
-          } else {
-            filter.$and = [{ $or: textConditions }];
-          }
+          const matchers = tokens.length > 0
+            ? tokens.map((t) => t.regex)
+            : [new RegExp(escapeRegex(query), 'i')];
+          and.push({ $or: matchers.flatMap((regex) => anyOf(mapping.searchPaths, regex)) });
         }
-
-        if (Object.keys(attributeFilters).length > 0) {
-          for (const [filterKey, filterVal] of Object.entries(attributeFilters)) {
-            const regex = new RegExp(`^${String(filterVal).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-            const filterClause = {
-              $or: [
-                { [`attributes.${filterKey}`]: regex },
-                { [`safety.${filterKey}`]: regex },
-                { [filterKey]: regex },
-              ],
-            };
-            if (filter.$and) {
-              filter.$and.push(filterClause);
-            } else {
-              filter.$and = [filterClause];
-            }
-          }
+        for (const [filterKey, filterVal] of Object.entries(attributeFilters)) {
+          const regex = new RegExp(`^${escapeRegex(String(filterVal))}$`, 'i');
+          const keys = [filterKey, ...(mapping.attributeAliases[filterKey] || [])];
+          and.push({
+            $or: keys.flatMap((key) => [
+              ...mapping.attributeContainers.map((container) => ({ [`${container}.${key}`]: regex })),
+              { [key]: regex },
+            ]),
+          });
         }
+        if (and.length === 0) delete filter.$and;
 
         docs = await db.collection(COLLECTION_PRODUCTS)
           .find(filter)
-          .limit(150)
+          .limit(mapping.candidateLimit)
           .toArray();
 
-        // Sort by generic relevance score across tokens, brand, name, and category
         if (tokens.length > 0 && docs.length > 0) {
-          docs.sort((a, b) => scoreDocumentRelevance(b, tokens) - scoreDocumentRelevance(a, tokens));
+          docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
         }
       } catch (err: any) {
         console.warn('[CatalogSearchHandler] Failed to query catalog:', err.message);
@@ -278,125 +233,47 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       }
     }
 
+    const requestedCurrency = input.currency ? input.currency.toUpperCase() : undefined;
     const items = docs
       .map((doc: any) => {
-        // Authoritative price extraction without zero-dollar fabrication
-        let priceCents: number | null = null;
-        if (typeof doc.priceCents === 'number' && doc.priceCents > 0) {
-          priceCents = doc.priceCents;
-        } else if (typeof doc.price?.amount === 'number' && doc.price.amount > 0) {
-          priceCents = Math.round(doc.price.amount * 100);
-        } else if (typeof doc.price === 'number' && doc.price > 0) {
-          priceCents = Math.round(doc.price * 100);
-        } else if (typeof doc.priceUSD?.min === 'number' && doc.priceUSD.min > 0) {
-          priceCents = Math.round(doc.priceUSD.min * 100);
-        } else if (typeof doc.variants?.[0]?.msrpUSD === 'number' && doc.variants[0].msrpUSD > 0) {
-          priceCents = Math.round(doc.variants[0].msrpUSD * 100);
-        }
-
-        const rawCurrency = doc.price?.currency || doc.currency;
-        const currency = rawCurrency
-          ? String(rawCurrency).toUpperCase()
-          : input.currency
-          ? input.currency.toUpperCase()
-          : undefined;
-
-        const inStock =
-          typeof doc.inStock === 'boolean'
-            ? doc.inStock
-            : typeof doc.availability === 'boolean'
-            ? doc.availability
-            : doc.stock?.inStock != null
-            ? doc.stock.inStock
-            : (typeof doc.stock?.availableBranchCount === 'number' && doc.stock.availableBranchCount > 0)
-            ? true
-            : doc.inventory?.availableUnits != null
-            ? doc.inventory.availableUnits > 0
-            : undefined;
-
-        // Structured attributes aggregation across doc properties
-        const attributes: Record<string, any> = {
-          ...(doc.attributes || {}),
-          ...(doc.safety || {}),
-          ...(doc.specifications || {}),
-        };
-        for (const [k, v] of Object.entries(doc)) {
-          if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-            if (!(k in attributes)) attributes[k] = v;
-          }
-        }
-
-        const certifications: string[] =
-          doc.safety?.certifications ||
-          (Array.isArray(doc.certifications) ? doc.certifications : []);
-
-        const finalSku = doc.parentSku || doc.sku || doc.id || String(doc._id);
-        const imageUrl =
-          doc.imageUrl ||
-          (typeof doc.images?.[0] === 'string' ? doc.images[0] : doc.images?.[0]?.url) ||
-          doc.variants?.[0]?.mainImage ||
-          '';
-
-        const title = doc.name || doc.title || 'Product';
-        const price = priceCents != null ? priceCents / 100 : (doc.variants?.[0]?.msrpUSD || doc.priceUSD?.min || undefined);
-
+        const normalized = normalizeCatalogProduct(doc, mapping, { title: 'Product', category: 'General' });
         return {
-          ...attributes,
-          sku: finalSku,
-          title,
-          name: title,
-          description: doc.description || '',
-          category: doc.category || doc.type || 'General',
-          priceCents,
-          price,
-          currency,
-          inStock,
-          attributes,
-          availableQuantity: doc.stock?.availableQuantity ?? doc.inventory?.availableUnits,
-          certifications,
-          imageUrl,
+          ...normalized.attributes,
+          sku: normalized.sku,
+          title: normalized.title,
+          name: normalized.title,
+          description: normalized.description,
+          category: normalized.category,
+          priceCents: normalized.priceCents,
+          price: normalized.price,
+          // Only a currency the product (or the tenant mapping) declared; the request currency is a filter, never a label.
+          currency: normalized.currency,
+          currencyUndeclared: normalized.currencyUndeclared,
+          inStock: normalized.inStock,
+          attributes: normalized.attributes,
+          availableQuantity: normalized.availableQuantity,
+          certifications: normalized.certifications,
+          imageUrl: normalized.imageUrl,
         };
       })
-      .filter((item) => {
-        // Enforce authoritative pricing: exclude if price is missing/non-positive and price limits or authoritative flag is required
-        if (item.priceCents == null || item.priceCents <= 0) {
-          if (input.requireAuthoritativePrice || input.minPriceCents != null || input.maxPriceCents != null) {
-            return false;
-          }
-        }
-        // Strict budget and price bounds enforcement
-        if (input.minPriceCents != null && (item.priceCents == null || item.priceCents < input.minPriceCents)) {
+      .filter((item: any) => {
+        const unpriced = item.priceCents == null || item.priceCents <= 0;
+        if (unpriced && (input.requireAuthoritativePrice || input.minPriceCents != null || input.maxPriceCents != null)) {
           return false;
         }
-        if (input.maxPriceCents != null && (item.priceCents == null || item.priceCents > input.maxPriceCents)) {
-          return false;
+        if (input.minPriceCents != null && (item.priceCents == null || item.priceCents < input.minPriceCents)) return false;
+        if (input.maxPriceCents != null && (item.priceCents == null || item.priceCents > input.maxPriceCents)) return false;
+        // A price in another or an unknown currency can never satisfy a currency-constrained request.
+        if (requestedCurrency && !unpriced && item.currency !== requestedCurrency) return false;
+        if (input.inStockOnly && item.inStock !== true) return false;
+        for (const [k, expectedVal] of Object.entries(attributeFilters)) {
+          const actualVal = readAttribute(item, k, mapping);
+          if (actualVal === undefined || actualVal === null) return false;
+          if (String(actualVal).trim().toLowerCase() !== String(expectedVal).trim().toLowerCase()) return false;
         }
-        // Currency matching
-        if (input.currency && item.currency && item.currency !== input.currency.toUpperCase()) {
-          return false;
-        }
-        // In-stock enforcement
-        if (input.inStockOnly && item.inStock !== true) {
-          return false;
-        }
-        // Generic pack-declared attribute filters
-        if (Object.keys(attributeFilters).length > 0) {
-          for (const [k, expectedVal] of Object.entries(attributeFilters)) {
-            const expectedStr = String(expectedVal).trim().toLowerCase();
-            const actualVal =
-              (item as any)[k] ??
-              (item.attributes as any)?.[k] ??
-              (k === 'toeType' ? (item as any).toeProtection : undefined);
-            if (actualVal === undefined || actualVal === null) return false;
-            const actualStr = String(actualVal).trim().toLowerCase();
-            if (expectedStr === 'composite' && /steel/i.test(actualStr)) return false;
-            if (actualStr !== expectedStr) return false;
-          }
-        }
-        // Required certifications
         if (input.requiredCertifications && input.requiredCertifications.length > 0) {
           const hasAll = input.requiredCertifications.every((cert) =>
-            item.certifications.some((c) => c.toLowerCase() === cert.toLowerCase())
+            item.certifications.some((c: string) => c.toLowerCase() === cert.toLowerCase())
           );
           if (!hasAll) return false;
         }

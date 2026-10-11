@@ -1,0 +1,117 @@
+{
+  "version": "1.0.0",
+  "tenantFields": [
+    "projectId",
+    "tenantId"
+  ],
+  "identifierPaths": [
+    "parentSku",
+    "sku",
+    "id"
+  ],
+  "titlePaths": [
+    "name",
+    "title"
+  ],
+  "descriptionPaths": [
+    "description"
+  ],
+  "brandPaths": [
+    "brandCode",
+    "brand"
+  ],
+  "categoryPaths": [
+    "category",
+    "type"
+  ],
+  "categoryScopePaths": [
+    "categoryId",
+    "category",
+    "type",
+    "categoryPath"
+  ],
+  "categoryHierarchyPaths": [
+    "categoryPath"
+  ],
+  "searchPaths": [
+    "name",
+    "title",
+    "brandCode",
+    "brand",
+    "category",
+    "categoryPath",
+    "description",
+    "sku",
+    "parentSku",
+    "attributes.value",
+    "metadata.domainKeywords"
+  ],
+  "pricing": {
+    "sources": [
+      {
+        "path": "priceCents",
+        "unit": "minor",
+        "currencyPath": "currency"
+      },
+      {
+        "path": "price.amount",
+        "unit": "major",
+        "currencyPath": "price.currency"
+      },
+      {
+        "path": "price",
+        "unit": "major",
+        "currencyPath": "currency"
+      }
+    ],
+    "requireDeclaredCurrency": true
+  },
+  "stock": {
+    "booleanPaths": [
+      "inStock",
+      "stock.inStock"
+    ],
+    "countPaths": [
+      "stock.availableBranchCount",
+      "inventory.availableUnits"
+    ]
+  },
+  "availability": {
+    "excludeFlagPaths": [
+      "discontinued",
+      "delisted"
+    ],
+    "statusPaths": [
+      "status",
+      "lifecycle.status"
+    ],
+    "excludedStatuses": [
+      "discontinued",
+      "delisted",
+      "retired"
+    ],
+    "unpricedStatuses": [
+      "poa"
+    ]
+  },
+  "attributeAliases": {},
+  "attributeContainers": [
+    "attributes",
+    "safety",
+    "specifications"
+  ],
+  "imagePaths": [
+    "imageUrl",
+    "images.0",
+    "images.0.url"
+  ],
+  "certificationPaths": [
+    "safety.certifications",
+    "certifications"
+  ],
+  "quantityPaths": [
+    "stock.availableQuantity",
+    "inventory.availableUnits"
+  ],
+  "candidateLimit": 150
+}

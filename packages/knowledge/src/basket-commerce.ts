@@ -16,9 +16,19 @@ export interface OkfBasketCatalogProduct {
   discontinued?: boolean;
   delisted?: boolean;
   lifecycle?: { status?: string };
+  [field: string]: unknown;
+}
+
+/** Catalog lifecycle vocabulary; supplied by the caller from the tenant catalog mapping, never assumed here. */
+export interface OkfBasketAvailabilityRules {
+  excludeFlagPaths: string[];
+  statusPaths: string[];
+  /** Statuses (excluded or unpriced) that make a SKU unsellable in a basket. */
+  unavailableStatuses: string[];
 }
 
 export interface OkfBasketCommerceInput {
+  availability: OkfBasketAvailabilityRules;
   tenantId: string;
   environmentId: string;
   releaseId: string;
@@ -58,6 +68,24 @@ function categoryIds(product: OkfBasketCatalogProduct): Set<string> {
     .map((value) => value.trim().toLowerCase()));
 }
 
+function readPath(doc: unknown, path: string): unknown {
+  let current: any = doc;
+  for (const segment of path.split('.')) {
+    if (current === null || current === undefined) return undefined;
+    current = current[segment];
+  }
+  return current;
+}
+
+function productUnavailable(product: OkfBasketCatalogProduct, rules: OkfBasketAvailabilityRules): boolean {
+  if (rules.excludeFlagPaths.some((path) => readPath(product, path) === true)) return true;
+  const blocked = new Set(rules.unavailableStatuses.map((status) => status.trim().toLowerCase()));
+  return rules.statusPaths.some((path) => {
+    const value = readPath(product, path);
+    return typeof value === 'string' && blocked.has(value.trim().toLowerCase());
+  });
+}
+
 /**
  * Re-evaluates every SKU against its catalog category and the pinned release.
  * The current conversation's last matched concept is deliberately irrelevant.
@@ -86,9 +114,7 @@ export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfB
     }
 
     const product = products[0];
-    const status = String(product.status || product.lifecycle?.status || '').toLowerCase();
-    if (product.discontinued === true || product.delisted === true ||
-      ['discontinued', 'delisted', 'retired', 'poa'].includes(status)) {
+    if (productUnavailable(product, input.availability)) {
       policy = strictest(policy, BLOCKED);
       reasonCodes.add('unavailable_catalog_sku');
       continue;

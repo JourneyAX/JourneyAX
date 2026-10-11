@@ -27,7 +27,7 @@ function scenario(name: string, input: OkfGateInput, verify: (decision: ReturnTy
   }
 }
 
-console.log('🧪 Running 41 deterministic OKF gate scenarios...');
+console.log('🧪 Running 42 deterministic OKF gate scenarios...');
 
 scenario('broad screws gives grouped overview and a non-blocking substrate card', { ...base, message: 'screws' }, (d) => {
   assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.retrieval.presentation, 'grouped_overview'); assert.equal(d.clarification?.factKey, 'substrate'); assert.equal(d.clarification?.blocking, false);
@@ -173,6 +173,7 @@ const governedWoodSku = basketContent.concepts.find((entry) => entry.conceptId =
 governedWoodSku.riskClass = 'safety_critical';
 governedWoodSku.commercePolicy.checkout = 'blocked';
 const basketInput = {
+  availability: { excludeFlagPaths: ['discontinued', 'delisted'], statusPaths: ['status', 'lifecycle.status'], unavailableStatuses: ['discontinued', 'retired', 'poa'] },
   tenantId: 'placemakers', environmentId: 'production', releaseId: 'okf-placemakers-1.0.0',
   items: [{ sku: 'WOOD-001' }, { sku: 'CLEAN-001' }],
   products: [
@@ -185,5 +186,18 @@ assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, items: [{ sku: 
 assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, products: [{ projectId: 'other', sku: 'WOOD-001', categoryId: 'fastenings.wood-screws' }] }).commerce.checkout, 'blocked');
 assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, products: [{ projectId: 'other', tenantId: 'placemakers', sku: 'WOOD-001', categoryId: 'fastenings.wood-screws' }] }).commerce.checkout, 'blocked');
 
-assert.equal(passed, 41);
+{
+  const unavailable = (product: Record<string, unknown>, availability = basketInput.availability) => resolveOkfBasketCommerce(content, {
+    ...basketInput, availability, items: [{ sku: 'SCREW-001' }],
+    products: [{ projectId: 'placemakers', sku: 'SCREW-001', categoryId: 'fastenings.screws', ...product }],
+  });
+  assert.deepEqual(unavailable({ status: 'Retired' }).reasonCodes, ['unavailable_catalog_sku']);
+  assert.deepEqual(unavailable({ lifecycle: { status: 'POA' } }).reasonCodes, ['unavailable_catalog_sku']);
+  assert.deepEqual(unavailable({ discontinued: true }).reasonCodes, ['unavailable_catalog_sku']);
+  assert.notDeepEqual(unavailable({ status: 'Retired' }, { ...basketInput.availability, unavailableStatuses: [] }).reasonCodes, ['unavailable_catalog_sku'], 'vocabulary is data, not code');
+  passed++;
+  console.log(`  ✓ ${passed}. basket lifecycle vocabulary is caller-supplied data`);
+}
+
+assert.equal(passed, 42);
 console.log(`✅ OKF gate suite: ${passed} passed, 0 failed`);

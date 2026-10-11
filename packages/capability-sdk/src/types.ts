@@ -13,6 +13,8 @@ export interface ExecutionContext {
   packVersionId: string;
   correlationId: string;
   idempotencyKey?: string;
+  /** Pack-declared, checksum-bound settings handed to native handlers (e.g. the tenant catalog mapping). */
+  packSettings?: { catalogMapping?: unknown };
 }
 
 export interface ExecutionRequest<TInput = any> {

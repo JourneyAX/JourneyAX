@@ -9,3 +9,4 @@ export * from './space-planner-validator';
 export * from './model-policy-compiler';
 export * from './checksum';
 export * from './release-verifier';
+export * from './catalog-mapping';

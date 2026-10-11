@@ -1,4 +1,4 @@
-import type { BusinessPackRelease } from '@journeyax/business-pack';
+import { resolveCatalogMapping, type BusinessPackRelease } from '@journeyax/business-pack';
 import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
 import {
   loadActiveOkfRevocations,
@@ -217,6 +217,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       messages: resolveOkfPolicy().messages,
     };
     try {
+      const mapping = resolveCatalogMapping((release as any).catalogMapping);
       if (workspace?.pins?.okfReleaseId && workspace.pins.okfReleaseId !== ref.releaseId) return blocked;
       if (workspace?.pins?.okfChecksum && workspace.pins.okfChecksum !== ref.checksum) return blocked;
       if (!Array.isArray(items) || items.length === 0 || items.length > 100 ||
@@ -254,6 +255,11 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       return resolveOkfBasketCommerce(pinned.content, {
         tenantId: command.tenantId, environmentId, releaseId: ref.releaseId,
         items: basketItems, products, activeRevocations,
+        availability: {
+          excludeFlagPaths: mapping.availability.excludeFlagPaths,
+          statusPaths: mapping.availability.statusPaths,
+          unavailableStatuses: [...mapping.availability.excludedStatuses, ...mapping.availability.unpricedStatuses],
+        },
       });
     } catch {
       return blocked;

@@ -228,10 +228,12 @@ async function runCatalogOrderPortsTests() {
 
   await test('10. Catalog search strictly separates composite toe from steel toe (steel toe never matches composite)', async () => {
     const handler = new CatalogSearchHandler(sampleCatalog);
+    // The alias is tenant data (Business Pack catalogMapping), not platform code.
+    const mockContextWithAlias = { ...mockContext, packSettings: { catalogMapping: { attributeAliases: { toeType: ['toeProtection'] } } } };
 
     const compResult = await handler.execute(
       { toeType: 'composite' },
-      mockContext
+      mockContextWithAlias
     );
     // BOOT-COMP-02 has toeProtection: 'composite'; BOOT-STEEL-01 has 'steel'
     assert.equal(compResult.items.length, 1);
@@ -240,7 +242,7 @@ async function runCatalogOrderPortsTests() {
 
     const steelResult = await handler.execute(
       { toeType: 'steel' },
-      mockContext
+      mockContextWithAlias
     );
     assert.equal(steelResult.items.length, 1);
     assert.equal(steelResult.items[0].sku, 'BOOT-STEEL');

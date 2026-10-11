@@ -612,6 +612,7 @@ export class BusinessPackPublicationService {
       },
       ...((doc as any).factRegistry ? { factRegistry: (doc as any).factRegistry } : {}),
       ...((doc as any).knowledgeModel ? { knowledgeModel: (doc as any).knowledgeModel } : {}),
+      ...((doc as any).catalogMapping ? { catalogMapping: (doc as any).catalogMapping } : {}),
       modelPolicy: compiledModelPolicy,
       agents: compiledAgents,
       journeys: validatedJourneys,
