@@ -2,13 +2,27 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Brain, CheckCircle2, GitBranch, Play, Save, ShieldCheck, UploadCloud } from "lucide-react";
-import { okfApi, projectApi, type OkfDraft, type OkfReleaseMeta, type Project } from "../lib/api";
+import {
+  okfApi, projectApi,
+  type OkfAnalysis, type OkfDraft, type OkfReleaseMeta, type OkfRevocationSummary, type Project,
+} from "../lib/api";
+import { ENVIRONMENTS, assignVerifier, type EnvironmentId } from "./okf/okf-model";
+import { ArtifactPolicyToggle } from "./okf/ArtifactPolicyToggle";
+import { ConceptEditor } from "./okf/ConceptEditor";
+import { ImportExportBar } from "./okf/ImportExportBar";
+import { ReadinessPanel } from "./okf/ReadinessPanel";
+import { RelationshipList } from "./okf/RelationshipList";
+import { RevocationPanel } from "./okf/RevocationPanel";
+import { VerificationQueue } from "./okf/VerificationQueue";
 
 function shortChecksum(value?: string) {
   return value ? `${value.replace(/^sha256:/, "").slice(0, 12)}…` : "—";
 }
 
 export function OkfStudio({ project }: { project: Project }) {
+  const [environmentId, setEnvironmentId] = useState<EnvironmentId>("production");
+  const [analysis, setAnalysis] = useState<OkfAnalysis | null>(null);
+  const [revocations, setRevocations] = useState<OkfRevocationSummary[]>([]);
   const [draft, setDraft] = useState<OkfDraft | null>(null);
   const [releases, setReleases] = useState<OkfReleaseMeta[]>([]);
   const [raw, setRaw] = useState("");
@@ -22,14 +36,18 @@ export function OkfStudio({ project }: { project: Project }) {
 
   const load = useCallback(async () => {
     setError(null);
-    const [nextDraft, nextReleases] = await Promise.all([
-      okfApi.draft(project.projectId).catch(() => null),
-      okfApi.releases(project.projectId).catch(() => []),
+    const [nextDraft, nextReleases, nextAnalysis, nextRevocations] = await Promise.all([
+      okfApi.draft(project.projectId, environmentId).catch(() => null),
+      okfApi.releases(project.projectId, environmentId).catch(() => []),
+      okfApi.analysis(project.projectId, environmentId).catch(() => null),
+      okfApi.revocations(project.projectId, environmentId).catch(() => []),
     ]);
     setDraft(nextDraft);
     setReleases(nextReleases);
-    if (nextDraft) setRaw(JSON.stringify(nextDraft.content, null, 2));
-  }, [project.projectId]);
+    setAnalysis(nextAnalysis);
+    setRevocations(nextRevocations);
+    setRaw(nextDraft ? JSON.stringify(nextDraft.content, null, 2) : "");
+  }, [project.projectId, environmentId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setHasStagedRelease(Boolean(project.knowledgeModel)); }, [project.projectId, project.knowledgeModel?.checksum]);
@@ -51,32 +69,31 @@ export function OkfStudio({ project }: { project: Project }) {
     finally { setBusy(null); }
   }
 
-  const saveDraft = () => act("save", async () => {
-    const content = JSON.parse(raw);
-    const saved = await okfApi.saveDraft(project.projectId, draft?.revision || 0, content);
+  const persist = async (content: unknown, successMessage?: string) => {
+    const saved = await okfApi.saveDraft(project.projectId, draft?.revision || 0, content, environmentId);
     setDraft(saved);
     setRaw(JSON.stringify(saved.content, null, 2));
-    setNotice(`Draft revision ${saved.revision} saved. ${saved.validation.valid ? "Validation passed." : `${saved.validation.issues.length} issue(s) remain.`}`);
-  });
+    setNotice(successMessage || `Draft revision ${saved.revision} saved. ${saved.validation.valid ? "Validation passed." : `${saved.validation.issues.length} issue(s) remain.`}`);
+    setAnalysis(await okfApi.analysis(project.projectId, environmentId).catch(() => null));
+  };
+
+  const saveDraft = () => act("save", async () => { await persist(JSON.parse(raw)); });
+  const saveContent = (content: unknown) => act("save", async () => { await persist(content); });
 
   const validate = () => act("validate", async () => {
-    const result = await okfApi.validate(project.projectId);
+    const result = await okfApi.validate(project.projectId, environmentId);
     setDraft((current) => current ? { ...current, validation: result } : current);
     setNotice(result.valid ? "The draft satisfies the OKF publication contract." : `${result.issues.length} validation issue(s) must be resolved.`);
   });
 
   const runPreview = () => act("preview", async () => {
-    const result = await okfApi.preview(project.projectId, message);
-    setPreview(result);
+    setPreview(await okfApi.preview(project.projectId, message, {}, environmentId));
   });
 
   const publishKnowledge = () => act("publish", async () => {
     if (!draft) throw new Error("Save a valid draft first.");
     const result = await okfApi.publish(project.projectId, {
-      expectedRevision: draft.revision,
-      version,
-      required: true,
-      failurePolicy: "fail_closed",
+      expectedRevision: draft.revision, version, required: true, failurePolicy: "fail_closed", environmentId,
     });
     setNotice(`Knowledge release ${result.release.releaseId} is ready and staged. Publish the Business Pack to activate both atomically.`);
     setHasStagedRelease(true);
@@ -84,14 +101,64 @@ export function OkfStudio({ project }: { project: Project }) {
   });
 
   const activate = () => act("activate", async () => {
-    await projectApi.publish(project.projectId, { note: `Activate OKF ${project.knowledgeModel?.version || version}` });
-    setNotice("Business Pack published. The pack and its exact OKF release are now one active unit.");
+    await projectApi.publish(project.projectId, { note: `Activate OKF ${project.knowledgeModel?.version || version} (${environmentId})`, environmentId });
+    setNotice(`Business Pack published to ${environmentId}. The pack and its exact OKF release are now one active unit.`);
   });
 
   const stageRelease = (release: OkfReleaseMeta) => act(`stage:${release.releaseId}`, async () => {
-    await okfApi.selectRelease(project.projectId, release);
+    await okfApi.selectRelease(project.projectId, release, environmentId);
     setHasStagedRelease(true);
     setNotice(`Release ${release.version} is staged. Publish the Business Pack to activate it; use Config History for an atomic rollback.`);
+  });
+
+  const importBundle = (file: File) => act("import", async () => {
+    const result = await okfApi.importBundle(project.projectId, file, draft?.revision || 0, environmentId);
+    setDraft(result.draft);
+    setRaw(JSON.stringify(result.draft.content, null, 2));
+    setNotice(`Imported ${file.name} as draft revision ${result.draft.revision}${result.diagnostics.length ? ` with ${result.diagnostics.length} diagnostic(s) to review` : ""}.`);
+    setAnalysis(await okfApi.analysis(project.projectId, environmentId).catch(() => null));
+  });
+
+  const exportRelease = (releaseId: string) => act("export", async () => {
+    const blob = await okfApi.exportRelease(project.projectId, releaseId, environmentId);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = `${releaseId}.zip`; link.click();
+    URL.revokeObjectURL(url);
+  });
+
+  const setArtifactPolicy = (required: boolean) => act("policy", async () => {
+    await okfApi.setArtifactPolicy(project.projectId, required, environmentId);
+    setAnalysis(await okfApi.analysis(project.projectId, environmentId).catch(() => null));
+    setNotice(required ? "Releases now need an exported, verified artifact before they count as ready." : "Artifact export is no longer required for readiness.");
+  });
+
+  const assign = (target: { targetType: "concept" | "relationship"; targetId: string }, verifiedBy: string, verifierRole: string) => act("assign", async () => {
+    if (!draft) throw new Error("No draft to update.");
+    await persist(assignVerifier(draft.content, { ...target, verifiedBy, verifierRole }), `Verifier assigned for ${target.targetId}. They must now attest it themselves.`);
+  });
+
+  const attest = (recordId: string) => act("attest", async () => {
+    if (!draft) throw new Error("No draft to attest.");
+    await okfApi.attest(project.projectId, recordId, draft.revision, environmentId);
+    setNotice(`Attestation recorded for ${recordId}.`);
+  });
+
+  const configureRole = (roleId: string, principalIds: string[]) => act("role", async () => {
+    await okfApi.setVerifierRole(project.projectId, roleId, principalIds, environmentId);
+    setNotice(`Verifier role '${roleId}' now has ${principalIds.length} member(s).`);
+  });
+
+  const createRevocation = (input: { releaseId: string; conceptIds: string[]; reason: string; expiresAt: string }) => act("revoke", async () => {
+    await okfApi.createRevocation(project.projectId, { ...input, environmentId });
+    setNotice("Revocation is active. Affected guidance stops being used immediately.");
+    setRevocations(await okfApi.revocations(project.projectId, environmentId));
+  });
+
+  const liftRevocation = (revocationId: string, correctedReleaseId: string, reason: string) => act("lift", async () => {
+    await okfApi.liftRevocation(project.projectId, revocationId, { environmentId, correctedReleaseId, reason });
+    setNotice("Revocation lifted by the corrected release.");
+    setRevocations(await okfApi.revocations(project.projectId, environmentId));
   });
 
   return (
@@ -104,9 +171,16 @@ export function OkfStudio({ project }: { project: Project }) {
             Concepts decide what to ask and what may be claimed. Verified evidence explains. Live catalogue and commerce APIs still own products, price and stock.
           </p>
         </div>
+        <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+          <label className="micro">Environment
+            <select className="inp" style={{ marginLeft: 6 }} value={environmentId} onChange={(event) => setEnvironmentId(event.target.value as EnvironmentId)} aria-label="Environment">
+              {ENVIRONMENTS.map((env) => <option key={env} value={env}>{env}</option>)}
+            </select>
+          </label>
         <span className={`pill ${draft?.validation?.valid ? "p-active" : "p-draft"}`}>
           {draft ? (draft.validation?.valid ? `Draft r${draft.revision} valid` : `Draft r${draft.revision} needs review`) : "No draft"}
         </span>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
@@ -123,34 +197,49 @@ export function OkfStudio({ project }: { project: Project }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, .85fr)", gap: 14, marginTop: 14 }}>
         <div>
-          <div className="between"><h4>Concept map</h4><span className="micro">{summary.relationships} typed relationships</span></div>
-          <div style={{ maxHeight: 280, overflow: "auto", border: "1px solid var(--jx-gray-200)", borderRadius: 8 }}>
-            {(draft?.content?.concepts || []).map((concept: any) => (
-              <div key={concept.conceptId} style={{ padding: "10px 12px", borderBottom: "1px solid var(--jx-gray-200)" }}>
-                <div className="between"><strong>{concept.name}</strong><span className={`pill ${concept.riskClass === "safety_critical" ? "p-inactive" : "p-draft"}`}>{concept.riskClass}</span></div>
-                <div className="micro" style={{ color: "var(--jx-gray-600)" }}>{concept.type} · {concept.lens} · {concept.requiredFacts?.length || 0} required fact(s)</div>
-                <div className="micro" style={{ color: "var(--jx-gray-500)", overflow: "hidden", textOverflow: "ellipsis" }}>{concept.conceptId}</div>
-              </div>
-            ))}
-            {!draft && <div style={{ padding: 14 }} className="micro">Import or generate a typed OKF release draft to begin. Nothing in the legacy packs folder is read here.</div>}
-          </div>
+          <div className="between"><h4>Concepts</h4><span className="micro">{summary.relationships} typed relationships</span></div>
+          {!draft && <div className="micro" style={{ padding: 6 }}>Import an OKF bundle or paste a typed draft to begin. Nothing in the legacy packs folder is read here.</div>}
+          {draft && <ConceptEditor content={draft.content} busy={busy !== null} onSave={saveContent} />}
+          <h4 style={{ marginTop: 14 }}>Relationships</h4>
+          <RelationshipList content={draft?.content} />
         </div>
 
-        <div>
-          <h4>Conversation preview</h4>
-          <textarea className="inp" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
-          <button className="btn" style={{ marginTop: 8 }} onClick={runPreview} disabled={!draft || busy === "preview"}><Play size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Preview decision</button>
-          {preview && (
-            <div className="node" style={{ marginTop: 10 }}>
-              {preview.previewable === false ? <><b>Blocked</b><div className="micro">Draft must validate before preview.</div></> : <>
-                <div className="between"><b>{preview.decision?.mode}</b><span className="pill p-active">{preview.decision?.retrieval?.permission}</span></div>
-                <div className="micro">Concept: {preview.decision?.conceptId || "No match"}</div>
-                {preview.decision?.clarification?.question && <div style={{ marginTop: 6 }}>{preview.decision.clarification.question}</div>}
-                {preview.decision?.safety?.blocksProducts && <div className="micro" style={{ color: "var(--jx-destructive)", marginTop: 6 }}>Products blocked until safety guidance is satisfied.</div>}
-              </>}
-            </div>
-          )}
+        <div style={{ display: "grid", gap: 14, alignContent: "start" }}>
+          <ReadinessPanel analysis={analysis} />
+          <ArtifactPolicyToggle required={Boolean(analysis?.artifactRequired)} disabled={busy !== null} onChange={setArtifactPolicy} />
+          <div>
+            <h4>Conversation preview</h4>
+            <textarea className="inp" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
+            <button className="btn" style={{ marginTop: 8 }} onClick={runPreview} disabled={!draft || busy === "preview"}><Play size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Preview decision</button>
+            {preview && (
+              <div className="node" style={{ marginTop: 10 }}>
+                {preview.previewable === false ? <><b>Blocked</b><div className="micro">Draft must validate before preview.</div></> : <>
+                  <div className="between"><b>{preview.decision?.mode}</b><span className="pill p-active">{preview.decision?.retrieval?.permission}</span></div>
+                  <div className="micro">Concept: {preview.decision?.conceptId || "No match"}</div>
+                  {preview.decision?.clarification?.question && <div style={{ marginTop: 6 }}>{preview.decision.clarification.question}</div>}
+                  {preview.decision?.safety?.blocksProducts && <div className="micro" style={{ color: "var(--jx-destructive)", marginTop: 6 }}>Products blocked until safety guidance is satisfied.</div>}
+                </>}
+              </div>
+            )}
+          </div>
         </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 16 }}>
+        <VerificationQueue
+          analysis={analysis} content={draft?.content} busy={busy !== null}
+          roles={analysis?.verifierRoles || []}
+          onAssign={assign} onAttest={attest} onConfigureRole={configureRole}
+        />
+        <RevocationPanel
+          revocations={revocations} releases={releases}
+          concepts={(draft?.content?.concepts || []).map((concept: any) => ({ conceptId: concept.conceptId, name: concept.name }))}
+          busy={busy !== null} onCreate={createRevocation} onLift={liftRevocation}
+        />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <ImportExportBar releases={releases} busy={busy !== null} onImport={importBundle} onExport={exportRelease} />
       </div>
 
       <details style={{ marginTop: 14 }}>

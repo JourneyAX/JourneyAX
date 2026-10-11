@@ -8,7 +8,8 @@
       "database",
       "project-service",
       "journey-runtime-service",
-      "api-gateway"
+      "api-gateway",
+      "backoffice-admin"
     ],
     "typecheck": [
       "tsc:shared-types",
@@ -21,12 +22,12 @@
       "tsc:journey-runtime-service",
       "tsc:api-gateway",
       "tsc:agent-commerce-service",
-      "tsc:journeyax-web"
+      "tsc:journeyax-web",
+      "tsc:backoffice-admin"
     ],
     "extended": [
       "agent-commerce-service",
-      "analytics-service",
-      "backoffice-admin"
+      "analytics-service"
     ],
     "guard": [
       "hardcoding-guard"
@@ -123,6 +124,10 @@
     },
     "tsc:journeyax-web": {
       "cwd": "apps/journeyax-web",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:backoffice-admin": {
+      "cwd": "apps/backoffice-admin",
       "command": "npx tsc --noEmit -p ."
     }
   }

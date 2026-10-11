@@ -259,7 +259,7 @@ export const projectApi = {
   update: (projectId: string, dto: any) =>
     req<any>(`${SERVICES.project}/api/v1/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify(dto) }),
   // ── Config versioning (FR-CONFIG-002): draft → publish → rollback ──
-  publish: (projectId: string, body?: { note?: string; publishedBy?: string }) =>
+  publish: (projectId: string, body?: { note?: string; publishedBy?: string; environmentId?: 'dev' | 'test' | 'staging' | 'production' }) =>
     req<{ success: boolean; version: number }>(`${SERVICES.project}/api/v1/projects/${projectId}/publish`, {
       method: 'POST', body: JSON.stringify(body || {}),
     }),
@@ -282,6 +282,38 @@ export interface OkfDraft {
   updatedBy: string;
 }
 
+export interface OkfAnalysis {
+  tenantId: string;
+  environmentId: string;
+  revision: number;
+  artifactRequired: boolean;
+  verifierRoles: Array<{ roleId: string; label: string }>;
+  staleness: Array<{ targetType: 'concept' | 'relationship'; targetId: string; reason: 'edited_since_verification' | 'unverified' | 'expired' }>;
+  checks: Array<{ id: string; ok: boolean; detail?: string }>;
+  ready: boolean;
+}
+
+export interface OkfRevocation {
+  eventId: string;
+  revocationId: string;
+  eventType: 'created' | 'lifted' | 'expired';
+  releaseId?: string;
+  conceptIds: string[];
+  cascade: 'none' | 'descendants';
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  correctedReleaseId?: string;
+}
+
+export interface OkfRevocationSummary {
+  revocationId: string;
+  status: 'active' | 'lifted' | 'expired';
+  created: OkfRevocation;
+  closedBy?: OkfRevocation;
+}
+
 export interface OkfReleaseMeta {
   releaseId: string;
   tenantId: string;
@@ -292,9 +324,52 @@ export interface OkfReleaseMeta {
   publishedAt: string;
   publishedBy: string;
   notes?: string;
+  artifact?: { status: 'pending' | 'ready' | 'failed'; uri?: string; error?: string };
 }
 
+const knowledgeUrl = (projectId: string, path: string) => `${SERVICES.project}/api/v1/projects/${projectId}/knowledge/${path}`;
+const withEnvironment = (url: string, environmentId: string) => `${url}${url.includes('?') ? '&' : '?'}environmentId=${encodeURIComponent(environmentId)}`;
+
 export const okfApi = {
+  analysis: (projectId: string, environmentId = 'production') =>
+    req<OkfAnalysis>(withEnvironment(knowledgeUrl(projectId, 'analysis'), environmentId)),
+  attest: (projectId: string, recordId: string, expectedRevision: number, environmentId = 'production') =>
+    req<any>(knowledgeUrl(projectId, `verifications/${encodeURIComponent(recordId)}/attest`), {
+      method: 'POST', body: JSON.stringify({ environmentId, expectedRevision }),
+    }),
+  artifactPolicy: (projectId: string, environmentId = 'production') =>
+    req<{ artifactRequired: boolean }>(withEnvironment(knowledgeUrl(projectId, 'artifact-policy'), environmentId)),
+  setArtifactPolicy: (projectId: string, artifactRequired: boolean, environmentId = 'production') =>
+    req<{ artifactRequired: boolean }>(knowledgeUrl(projectId, 'artifact-policy'), {
+      method: 'PUT', body: JSON.stringify({ environmentId, artifactRequired }),
+    }),
+  setVerifierRole: (projectId: string, roleId: string, principalIds: string[], environmentId = 'production') =>
+    req<any>(knowledgeUrl(projectId, `verifier-roles/${encodeURIComponent(roleId)}`), {
+      method: 'PUT', body: JSON.stringify({ environmentId, principalIds }),
+    }),
+  revocations: (projectId: string, environmentId = 'production') =>
+    req<OkfRevocationSummary[]>(withEnvironment(knowledgeUrl(projectId, 'revocations'), environmentId)),
+  createRevocation: (projectId: string, body: { environmentId?: string; releaseId: string; conceptIds: string[]; cascade?: 'none' | 'descendants'; reason: string; expiresAt: string }) =>
+    req<OkfRevocation>(knowledgeUrl(projectId, 'revocations'), { method: 'POST', body: JSON.stringify(body) }),
+  liftRevocation: (projectId: string, revocationId: string, body: { environmentId?: string; correctedReleaseId: string; reason?: string }) =>
+    req<OkfRevocation>(knowledgeUrl(projectId, `revocations/${encodeURIComponent(revocationId)}/lift`), { method: 'POST', body: JSON.stringify(body) }),
+  /** Multipart upload: the browser must set the boundary, so this bypasses the JSON-only request helper. */
+  importBundle: async (projectId: string, file: File, expectedRevision: number, environmentId = 'production') => {
+    const form = new FormData();
+    form.append('bundle', file);
+    form.append('expectedRevision', String(expectedRevision));
+    form.append('environmentId', environmentId);
+    const res = await fetch(knowledgeUrl(projectId, 'import'), { method: 'POST', body: form, credentials: 'same-origin' });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error(data?.message || `${res.status} ${res.statusText}`);
+    return data as { draft: OkfDraft; declaredVersion?: string; diagnostics: Array<{ level?: string; code?: string; message: string }> };
+  },
+  exportRelease: async (projectId: string, releaseId: string, environmentId = 'production') => {
+    const res = await fetch(withEnvironment(knowledgeUrl(projectId, `releases/${encodeURIComponent(releaseId)}/export`), environmentId), { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.blob();
+  },
   draft: (projectId: string, environmentId = 'production') =>
     req<OkfDraft>(`${SERVICES.project}/api/v1/projects/${projectId}/knowledge/draft?environmentId=${encodeURIComponent(environmentId)}`),
   saveDraft: (projectId: string, expectedRevision: number, content: unknown, environmentId = 'production') =>

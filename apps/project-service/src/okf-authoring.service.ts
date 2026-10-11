@@ -11,6 +11,7 @@ import {
   assertDraftSize,
   bindDraftEntityHashes,
   findStaleVerifications,
+  resolveOkfPolicy,
   assertOkfReferenceReady,
   resolveOkfLimits,
   type OkfLimits,
@@ -234,10 +235,13 @@ export class OkfAuthoringService {
         ? [{ id: 'artifact_exported', ok: latestReady?.artifact?.status === 'ready', detail: latestReady?.artifact?.status || 'none' }]
         : []),
     ];
+    const verifierRoles = [...resolveOkfPolicy((draft?.content as any)?.policy).verifierRoles.values()]
+      .map((role) => ({ roleId: role.roleId, label: role.label || role.roleId }));
     return {
       ...scope,
       revision: draft?.revision ?? 0,
       artifactRequired: policy.artifactRequired,
+      verifierRoles,
       staleness,
       checks,
       ready: checks.every((check) => check.ok),
