@@ -227,6 +227,16 @@ export class ProjectController {
     return draft;
   }
 
+  @Get(':projectId/knowledge/analysis')
+  @RequirePermission('knowledge.read')
+  async analyzeKnowledgeDraft(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
+    try {
+      return await this.okfAuthoring!.analyzeDraft(projectId, environmentId || 'production');
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
   @Put(':projectId/knowledge/draft')
   @RequirePermission('config.edit')
   async saveKnowledgeDraft(

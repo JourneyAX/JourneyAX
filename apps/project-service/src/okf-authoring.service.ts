@@ -9,6 +9,8 @@ import {
   buildServerOwnedOkfContent,
   evaluateOkfDraft,
   assertDraftSize,
+  bindDraftEntityHashes,
+  findStaleVerifications,
   assertOkfReferenceReady,
   resolveOkfLimits,
   type OkfLimits,
@@ -134,7 +136,7 @@ export class OkfAuthoringService {
       (input.content && typeof input.content === 'object' && !Array.isArray(input.content))
         ? input.content as Record<string, unknown>
         : {};
-    const parsed = OkfDraftContentSchema.safeParse(editable);
+    const parsed = OkfDraftContentSchema.safeParse(bindDraftEntityHashes(editable));
     if (!parsed.success) throw new Error(`Invalid OKF draft structure: ${parsed.error.message}`);
     assertDraftSize(parsed.data, this.limits);
     const db = await this.dbProvider();
@@ -210,6 +212,36 @@ export class OkfAuthoringService {
     const scope = this.scope(projectId, environmentId);
     const stored = await (await this.dbProvider()).collection(COLLECTION_OKF_ARTIFACT_POLICIES).findOne(scope);
     return { ...scope, artifactRequired: stored?.artifactRequired === true };
+  }
+
+  /**
+   * One server-side answer to "what stands between this draft and a safe release?". The Studio renders it; it
+   * does not re-implement the rules, so the UI and the publish gate cannot disagree.
+   */
+  async analyzeDraft(projectId: string, environmentId = 'production') {
+    const scope = this.scope(projectId, environmentId);
+    const draft = await this.getDraft(projectId, scope.environmentId);
+    const releases = await this.listReleases(projectId, scope.environmentId);
+    const policy = await this.getArtifactPolicy(projectId, scope.environmentId);
+    const latestReady = releases.find((release: any) => release.status === 'ready');
+    const staleness = draft ? findStaleVerifications(draft.content) : [];
+    const checks = [
+      { id: 'draft_present', ok: Boolean(draft) },
+      { id: 'draft_valid', ok: Boolean(draft?.validation?.valid), detail: draft?.validation?.issues?.length ? `${draft.validation.issues.length} issue(s)` : undefined },
+      { id: 'verifications_current', ok: Boolean(draft) && staleness.length === 0, detail: staleness.length ? `${staleness.length} item(s) need verification` : undefined },
+      { id: 'release_published', ok: Boolean(latestReady), detail: latestReady?.version },
+      ...(policy.artifactRequired
+        ? [{ id: 'artifact_exported', ok: latestReady?.artifact?.status === 'ready', detail: latestReady?.artifact?.status || 'none' }]
+        : []),
+    ];
+    return {
+      ...scope,
+      revision: draft?.revision ?? 0,
+      artifactRequired: policy.artifactRequired,
+      staleness,
+      checks,
+      ready: checks.every((check) => check.ok),
+    };
   }
 
   /** Explicit tenant/environment verifier assignments; draft JSON cannot grant these. */

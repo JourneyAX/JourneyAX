@@ -12,3 +12,4 @@ export * from './claim-classes';
 export * from './policy';
 export * from './acceptance';
 export * from './limits';
+export * from './authoring';
