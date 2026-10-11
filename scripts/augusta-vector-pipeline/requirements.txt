@@ -1,7 +1,0 @@
-numpy
-pillow
-scipy
-scikit-image
-trimesh
-pygltflib
-scikit-learn
