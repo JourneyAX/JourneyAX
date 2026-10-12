@@ -105,6 +105,20 @@ await test('reference identity and checksum are all enforced', () => {
   assert.throws(() => verifyOkfReleaseEnvelope(stored, { checksum: 'f'.repeat(64) }), (error: any) => error.code === 'reference_checksum_mismatch');
 });
 
+await test('regression: a release written to real Mongo (undefined stored as null) still loads, and new writes omit absent fields', async () => {
+  const stored = buildStoredOkfRelease() as any;
+  stored.artifactUri = null;
+  stored.notes = null;
+  stored.artifact = { status: 'failed', error: 'bucket not configured', uri: null, checksum: null };
+  assert.equal(verifyOkfReleaseEnvelope(stored).releaseId, stored.releaseId);
+
+  const db = new MemoryDb();
+  await publishOkfRelease(db as any, { releaseId: 'r-null', tenantId: 'placemakers', environmentId: 'production', version: '9.9.9', content: buildOkfContent() as any, publishedBy: 'test' });
+  const row = db.collection('okf_releases').docs.find((doc: any) => doc.releaseId === 'r-null') as any;
+  assert.equal('artifactUri' in row, false, 'absent optional fields must not be written as undefined');
+  assert.equal('notes' in row, false);
+});
+
 await test('an immutable historical release loads by integrity even if current publish rules are stricter', async () => {
   const db = new MemoryDb();
   const content = buildOkfContent() as any;
@@ -328,7 +342,7 @@ await test('evidence chunks must bind to a release source, concepts, and their e
   assert.equal(validateOkfReleaseContent(tampered, 'placemakers').issues.some((issue) => issue.code === 'content_hash_mismatch'), true);
 });
 
-assert.equal(passed, 20);
+assert.equal(passed, 21);
 console.log(`✅ OKF release suite: ${passed} passed, 0 failed`);
 }
 

@@ -92,11 +92,25 @@ export interface PublishOkfReleaseInput {
   sourceDraftChecksum?: string;
 }
 
+function omitUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
+}
+
+/** Rows written by an earlier build may carry nulls for absent optional fields; treat them as absent. */
+function withoutNullOptionals(input: unknown): unknown {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const envelope: Record<string, unknown> = Object.fromEntries(Object.entries(input as Record<string, unknown>).filter(([, entry]) => entry !== null));
+  if (envelope.artifact && typeof envelope.artifact === 'object') {
+    envelope.artifact = Object.fromEntries(Object.entries(envelope.artifact as Record<string, unknown>).filter(([, entry]) => entry !== null));
+  }
+  return envelope;
+}
+
 export function verifyOkfReleaseEnvelope(
   input: unknown,
   expected?: { tenantId?: string; environmentId?: string; releaseId?: string; version?: string; checksum?: string }
 ): OkfReleaseEnvelope {
-  const parsed = OkfReleaseEnvelopeSchema.safeParse(input);
+  const parsed = OkfReleaseEnvelopeSchema.safeParse(withoutNullOptionals(input));
   if (!parsed.success) throw new OkfIntegrityError('schema_invalid', `Invalid OKF release envelope: ${parsed.error.message}`);
   const release = parsed.data;
   const checksum = computeKnowledgeChecksum(release.content);
@@ -195,9 +209,10 @@ export async function publishOkfRelease(db: Db, input: PublishOkfReleaseInput): 
     const releaseRecords = { factRegistry, concepts, relationships, sources, evidenceChunks, verifications };
     const collectionChecksums = Object.fromEntries(Object.entries(releaseRecords)
       .map(([key, values]) => [key, computeKnowledgeChecksum(values)]));
-    await releases.insertOne({
+    // MongoDB stores `undefined` as null, which the strict envelope contract rejects on read.
+    await releases.insertOne(omitUndefined({
       ...releaseMetadata, contentStorage: 'release_scoped_v1', contentHeader, collectionChecksums,
-    } as any, options);
+    }) as any, options);
     if (input.evaluationScenarios) {
       await db.collection(COLLECTION_OKF_EVALUATION_REPORTS).insertOne({
         ...scope,
