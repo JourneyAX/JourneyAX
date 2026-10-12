@@ -58,6 +58,24 @@ async function main() {
     }
   });
 
+  await suite.test('PlaceMakers-shaped data: priceUSD.min priced in the currency declared on the product', async () => {
+    const data = [{ projectId: 't1', sku: 'P1', name: 'Screw', priceUSD: { min: 15.33, max: 15.33 }, currency: 'NZD', availability: true, variants: [{ msrpUSD: 15.33 }] },
+      { projectId: 't1', sku: 'P2', name: 'Screw long', variants: [{ msrpUSD: 9.5 }], currency: 'NZD', availability: false }];
+    const mapping = { pricing: { sources: [
+      { path: 'priceUSD', rangeKey: 'min', unit: 'major', currencyPath: 'currency' },
+      { path: 'variants.0.msrpUSD', unit: 'major', currencyPath: 'currency' },
+    ] } };
+    const result = await new CatalogSearchHandler(data).execute({ query: 'screw' } as any, ctx(mapping));
+    const bySku = new Map(result.items.map((i: any) => [i.sku, i]));
+    assert.equal((bySku.get('P1') as any).priceCents, 1533);
+    assert.equal((bySku.get('P1') as any).currency, 'NZD');
+    assert.equal((bySku.get('P2') as any).priceCents, 950, 'falls through to the variant price');
+    assert.equal((bySku.get('P1') as any).inStock, true, 'boolean availability still counts as stock');
+    assert.equal((bySku.get('P2') as any).inStock, false);
+    const without = await new CatalogSearchHandler(data).execute({ query: 'screw' } as any, ctx());
+    assert.ok(without.items.every((i: any) => i.priceCents === null), 'without the tenant mapping these prices are not guessed');
+  });
+
   await suite.test('tenant mapping can declare a price source and its currency explicitly', async () => {
     const mapping = {
       pricing: { sources: [{ path: 'priceUSD', rangeKey: 'min', unit: 'major', currency: 'USD' }] },

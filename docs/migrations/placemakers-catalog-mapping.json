@@ -1,0 +1,20 @@
+{
+  "_comment": "PlaceMakers catalogue price/currency mapping. The products collection prices items in priceUSD.min (and variants[0].msrpUSD) with the currency (NZD) declared on each product. Apply in Knowledge Base > Pack settings > Catalogue mapping (or PATCH /api/v1/projects/placemakers), then publish the Business Pack.",
+  "catalogMapping": {
+    "pricing": {
+      "sources": [
+        {
+          "path": "priceUSD",
+          "rangeKey": "min",
+          "unit": "major",
+          "currencyPath": "currency"
+        },
+        {
+          "path": "variants.0.msrpUSD",
+          "unit": "major",
+          "currencyPath": "currency"
+        }
+      ]
+    }
+  }
+}
