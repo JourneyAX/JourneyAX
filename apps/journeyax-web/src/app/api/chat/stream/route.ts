@@ -14,7 +14,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const GATEWAY_URL = resolveServiceUrl('GATEWAY_URL', process.env.GATEWAY_URL, 'http://localhost:3010');
+// Resolved per request: `next build` loads this module with NODE_ENV=production before runtime config exists.
+const gatewayUrl = () => resolveServiceUrl('GATEWAY_URL', process.env.GATEWAY_URL, 'http://localhost:3010');
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
   };
 
   try {
-    const upstream = await fetch(`${GATEWAY_URL}/api/v1/${tenantId}/commerce/chat/stream`, {
+    const upstream = await fetch(`${gatewayUrl()}/api/v1/${tenantId}/commerce/chat/stream`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
