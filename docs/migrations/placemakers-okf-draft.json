@@ -1,0 +1,452 @@
+{
+  "schemaVersion": "1.0.0",
+  "modelId": "placemakers-trade-knowledge",
+  "factRegistry": [
+    {
+      "factKey": "fastener_substrate",
+      "type": "enum",
+      "questionRef": "q.fastener_substrate",
+      "question": "What are you screwing into?",
+      "uiInputType": "card_choice",
+      "options": [
+        {
+          "value": "timber",
+          "label": "Timber"
+        },
+        {
+          "value": "metal",
+          "label": "Metal"
+        },
+        {
+          "value": "masonry",
+          "label": "Concrete, brick or block"
+        }
+      ]
+    },
+    {
+      "factKey": "leak_location",
+      "type": "enum",
+      "questionRef": "q.leak_location",
+      "question": "Where is the water showing up?",
+      "uiInputType": "card_choice",
+      "options": [
+        {
+          "value": "shower",
+          "label": "Shower or bath"
+        },
+        {
+          "value": "toilet",
+          "label": "Around the toilet"
+        },
+        {
+          "value": "vanity",
+          "label": "Vanity or basin"
+        },
+        {
+          "value": "wall_ceiling",
+          "label": "Wall or ceiling"
+        },
+        {
+          "value": "unknown",
+          "label": "Not sure"
+        }
+      ]
+    }
+  ],
+  "concepts": [
+    {
+      "tenantId": "placemakers",
+      "type": "product_family",
+      "synonyms": [
+        "screw",
+        "screws",
+        "fixings"
+      ],
+      "customerPhrases": [
+        "i need screws",
+        "screws",
+        "what screws do i need"
+      ],
+      "lens": "product",
+      "riskClass": "compatibility",
+      "compatibilitySensitive": true,
+      "requiredFacts": [
+        {
+          "factKey": "fastener_substrate",
+          "importance": "high"
+        }
+      ],
+      "discriminators": [
+        {
+          "factKey": "fastener_substrate",
+          "questionRef": "q.fastener_substrate",
+          "clarifyFirst": false,
+          "valueMap": {
+            "timber": "concept://placemakers/fastenings/wood-screws",
+            "metal": "concept://placemakers/fastenings/metal-screws",
+            "masonry": "concept://placemakers/fastenings/masonry-anchors"
+          }
+        }
+      ],
+      "searchScope": {
+        "catalogCategoryIds": [
+          "Wood Screws",
+          "Metal Screws",
+          "Masonry  Anchors"
+        ],
+        "enrichmentFacets": [
+          "length",
+          "gauge"
+        ],
+        "excludeCategoryIds": [
+          "Screwdrivers",
+          "Screwdriver Bits",
+          "Drill Bits"
+        ]
+      },
+      "commercePolicy": {
+        "addToCart": "allowed_with_warning",
+        "checkout": "requires_compatibility_resolution"
+      },
+      "safety": {
+        "blocksProducts": false,
+        "stepRefs": []
+      },
+      "evidenceRefs": [],
+      "lifecycle": {
+        "status": "active_draft"
+      },
+      "version": 1,
+      "conceptId": "concept://placemakers/fastenings/screws",
+      "name": "Screws",
+      "description": "Screws and fixings, grouped by what they are fixed into.",
+      "broadQueryPolicy": {
+        "groupConceptIds": [
+          "concept://placemakers/fastenings/wood-screws",
+          "concept://placemakers/fastenings/metal-screws",
+          "concept://placemakers/fastenings/masonry-anchors"
+        ],
+        "maxItemsPerGroup": 2,
+        "questionRef": "q.fastener_substrate",
+        "productRetrievalAllowed": true
+      },
+      "contentHash": "36c97d3515987954c799f6d47b621281b6b6ce4c9b18f6ed7a9fb75111268a5c"
+    },
+    {
+      "tenantId": "placemakers",
+      "type": "product_category",
+      "synonyms": [
+        "timber screws"
+      ],
+      "customerPhrases": [
+        "screws for timber",
+        "wood screws"
+      ],
+      "lens": "product",
+      "riskClass": "standard",
+      "compatibilitySensitive": false,
+      "requiredFacts": [],
+      "discriminators": [],
+      "searchScope": {
+        "catalogCategoryIds": [
+          "Wood Screws"
+        ],
+        "enrichmentFacets": [
+          "length",
+          "gauge"
+        ],
+        "excludeCategoryIds": []
+      },
+      "commercePolicy": {
+        "addToCart": "allowed",
+        "checkout": "allowed"
+      },
+      "safety": {
+        "blocksProducts": false,
+        "stepRefs": []
+      },
+      "evidenceRefs": [],
+      "lifecycle": {
+        "status": "active_draft"
+      },
+      "version": 1,
+      "conceptId": "concept://placemakers/fastenings/wood-screws",
+      "name": "Wood screws",
+      "description": "Screws for fixing into timber.",
+      "contentHash": "9c02e9c57e114e454ed4b63f7a8bb9c6ac0bfcfc57785500e479430346e8a618"
+    },
+    {
+      "tenantId": "placemakers",
+      "type": "product_category",
+      "synonyms": [
+        "self drilling screws"
+      ],
+      "customerPhrases": [
+        "screws for metal",
+        "metal screws"
+      ],
+      "lens": "product",
+      "riskClass": "standard",
+      "compatibilitySensitive": false,
+      "requiredFacts": [],
+      "discriminators": [],
+      "searchScope": {
+        "catalogCategoryIds": [
+          "Metal Screws"
+        ],
+        "enrichmentFacets": [
+          "length",
+          "gauge"
+        ],
+        "excludeCategoryIds": []
+      },
+      "commercePolicy": {
+        "addToCart": "allowed",
+        "checkout": "allowed"
+      },
+      "safety": {
+        "blocksProducts": false,
+        "stepRefs": []
+      },
+      "evidenceRefs": [],
+      "lifecycle": {
+        "status": "active_draft"
+      },
+      "version": 1,
+      "conceptId": "concept://placemakers/fastenings/metal-screws",
+      "name": "Metal screws",
+      "description": "Screws for fixing into steel or other metal.",
+      "contentHash": "87772eeb2141cc9f0769cf5be42fb0c80a03dad6212ba211e3872071f56a234b"
+    },
+    {
+      "tenantId": "placemakers",
+      "type": "product_category",
+      "synonyms": [
+        "concrete screws",
+        "wall anchors"
+      ],
+      "customerPhrases": [
+        "screws for concrete",
+        "masonry screws"
+      ],
+      "lens": "product",
+      "riskClass": "standard",
+      "compatibilitySensitive": false,
+      "requiredFacts": [],
+      "discriminators": [],
+      "searchScope": {
+        "catalogCategoryIds": [
+          "Masonry  Anchors"
+        ],
+        "enrichmentFacets": [
+          "length"
+        ],
+        "excludeCategoryIds": []
+      },
+      "commercePolicy": {
+        "addToCart": "allowed",
+        "checkout": "allowed"
+      },
+      "safety": {
+        "blocksProducts": false,
+        "stepRefs": []
+      },
+      "evidenceRefs": [],
+      "lifecycle": {
+        "status": "active_draft"
+      },
+      "version": 1,
+      "conceptId": "concept://placemakers/fastenings/masonry-anchors",
+      "name": "Masonry anchors",
+      "description": "Anchors and screws for concrete, brick and block.",
+      "contentHash": "097153736afc61bc3edf238bc6e24eb8c2d9811c7510a918bbe67aef84b5d7a4"
+    },
+    {
+      "tenantId": "placemakers",
+      "type": "symptom",
+      "synonyms": [
+        "leak",
+        "leaking",
+        "water damage"
+      ],
+      "customerPhrases": [
+        "bathroom is leaking",
+        "my bathroom is leaking",
+        "water under my vanity",
+        "shower is leaking",
+        "toilet is leaking"
+      ],
+      "lens": "problem",
+      "riskClass": "safety_critical",
+      "compatibilitySensitive": false,
+      "requiredFacts": [
+        {
+          "factKey": "leak_location",
+          "importance": "high"
+        }
+      ],
+      "discriminators": [
+        {
+          "factKey": "leak_location",
+          "questionRef": "q.leak_location",
+          "valueMap": {},
+          "clarifyFirst": false
+        }
+      ],
+      "searchScope": {
+        "catalogCategoryIds": [],
+        "enrichmentFacets": [],
+        "excludeCategoryIds": []
+      },
+      "commercePolicy": {
+        "addToCart": "blocked",
+        "checkout": "blocked"
+      },
+      "safety": {
+        "blocksProducts": true,
+        "stepRefs": [
+          "concept://placemakers/safety/isolate-water"
+        ]
+      },
+      "evidenceRefs": [],
+      "lifecycle": {
+        "status": "active_draft"
+      },
+      "version": 1,
+      "conceptId": "concept://placemakers/problems/bathroom-leak",
+      "name": "Bathroom leak",
+      "description": "Water leaking from a shower, toilet, vanity, wall or floor in a bathroom.",
+      "contentHash": "ece829edc9151827f6dc786c3baf52673002ceda14b4f306317a0691a409f8fa"
+    },
+    {
+      "tenantId": "placemakers",
+      "type": "safety_step",
+      "synonyms": [],
+      "customerPhrases": [],
+      "lens": "problem",
+      "riskClass": "safety_critical",
+      "compatibilitySensitive": false,
+      "requiredFacts": [],
+      "discriminators": [],
+      "searchScope": {
+        "catalogCategoryIds": [],
+        "enrichmentFacets": [],
+        "excludeCategoryIds": []
+      },
+      "commercePolicy": {
+        "addToCart": "blocked",
+        "checkout": "blocked"
+      },
+      "safety": {
+        "blocksProducts": true,
+        "stepRefs": []
+      },
+      "evidenceRefs": [
+        "src-leak-safety-draft"
+      ],
+      "lifecycle": {
+        "status": "active_draft"
+      },
+      "version": 1,
+      "conceptId": "concept://placemakers/safety/isolate-water",
+      "name": "Isolate the water and stay clear of electrics",
+      "description": "If water is running or dripping, turn off the water supply at the nearest safe isolation point and stop using the fixture. If water is near power points or lights, keep clear and contact a licensed tradesperson.",
+      "contentHash": "e34120c67926a694b99304b62c3f5ac9d333ca7b1b3d58d6d56488cb0d0ab059"
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "rel-leak-isolate-water",
+      "from": "concept://placemakers/problems/bathroom-leak",
+      "to": "concept://placemakers/safety/isolate-water",
+      "type": "requires",
+      "strength": "required",
+      "scope": "general",
+      "confidence": "low",
+      "sourceRefs": [
+        "src-leak-safety-draft"
+      ],
+      "claimClasses": [
+        "safety_instruction"
+      ],
+      "contentHash": "ee97c1693663e1fe218323b619b4567d28b75d727de7fdad80e1ea5947f1837d"
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "src-leak-safety-draft",
+      "kind": "llm_draft",
+      "title": "Model-drafted leak safety wording — NOT verified",
+      "model": "claude-sonnet-5-5",
+      "promptHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "generatedAt": "2026-10-12T00:00:00.000Z"
+    }
+  ],
+  "evidenceChunks": [
+    {
+      "chunkId": "chunk-leak-safety-draft",
+      "sourceRef": "src-leak-safety-draft",
+      "conceptIds": [
+        "concept://placemakers/problems/bathroom-leak",
+        "concept://placemakers/safety/isolate-water"
+      ],
+      "claimClasses": [
+        "safety_instruction"
+      ],
+      "title": "Leak first response (draft — needs PlaceMakers trade review)",
+      "content": "If water is actively running or dripping, turn off the water supply at the nearest safe isolation point and stop using the fixture. If there is water near power points or lights, keep clear and contact a licensed tradesperson.",
+      "applicability": {
+        "scope": "general",
+        "refs": []
+      },
+      "ordinal": 0,
+      "contentHash": "ad62fad2d9a7306fea01e13b57d4a7ec20d2185d3983f850705ff06a010d235d"
+    }
+  ],
+  "verifications": [],
+  "acceptanceScenarios": [
+    {
+      "scenarioId": "screws-broad",
+      "description": "Broad \"screw\" shows grouped examples and asks what it is going into",
+      "message": "screw",
+      "expect": {
+        "mode": "overview_then_ask",
+        "clarificationFactKey": "fastener_substrate",
+        "retrievalPermission": "allowed"
+      }
+    },
+    {
+      "scenarioId": "screws-for-timber",
+      "description": "A stated substrate narrows directly to wood screws",
+      "message": "screws for timber",
+      "knownFacts": {
+        "fastener_substrate": "timber"
+      },
+      "expect": {
+        "conceptId": "concept://placemakers/fastenings/wood-screws"
+      }
+    },
+    {
+      "scenarioId": "leak-safety-first",
+      "description": "A bathroom leak is safety first and pauses products",
+      "message": "bathroom is leaking",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "retrievalPermission": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        }
+      }
+    },
+    {
+      "scenarioId": "leak-beats-order-question",
+      "description": "Safety outranks an order question in the same message",
+      "message": "Where is my order? My bathroom is leaking",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "retrievalPermission": "blocked"
+      }
+    }
+  ]
+}

@@ -108,9 +108,11 @@ export class TenantMiddleware implements NestMiddleware {
     let tenantId = req.headers['x-tenant-id'] as string;
 
     if (!tenantId) {
-      const host = req.headers.host || '';
-      const subdomain = host.split('.')[0];
-      if (subdomain && subdomain !== 'localhost' && subdomain !== 'www' && subdomain !== 'api') {
+      // Strip the port first: 'localhost:3010' must not be mistaken for a tenant.
+      const hostname = (req.headers.host || '').split(':')[0].toLowerCase();
+      const isIpAddress = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+      const subdomain = hostname.split('.')[0];
+      if (!isIpAddress && subdomain && subdomain !== 'localhost' && subdomain !== 'www' && subdomain !== 'api') {
         tenantId = subdomain;
       }
     }
