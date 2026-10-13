@@ -197,6 +197,8 @@ export class PresentationPort {
       capability?: { toolId: string; payload?: Record<string, unknown> };
       /** The tenant's resolved policy messages. Every sentence this port writes itself comes from here, never from code. */
       messages?: Record<string, string>;
+      /** What the knowledge decision allows to be called a recommendation. Category examples are examples, not recommendations. */
+      recommendation?: string;
     }
   ): TurnResult {
     const uiInstructions: UIInstruction[] = [];
@@ -534,7 +536,8 @@ export class PresentationPort {
       const closing =
         bundle.closing ||
         (release.experience as any)?.cards?.closing ||
-        (release.profile as any)?.closingSurface;
+        (release.profile as any)?.closingSurface ||
+        say('closing_default');
 
       const formattedTotal = `${((bundle.totalPriceCents || 0) / 100).toFixed(2)} ${currency}`;
 
@@ -670,7 +673,8 @@ export class PresentationPort {
           price,
           currency,
           imageUrl,
-          recommended: validProducts.length === 0,
+          // Only a verified recommendation earns the badge; the first sample from a category is not one.
+          recommended: options?.recommendation === 'verified_recommendation' && validProducts.length === 0,
           reason: item.reason || item.description || (item.category ? say('item_category_reason', { category: item.category }) : undefined),
         });
       }
@@ -686,6 +690,8 @@ export class PresentationPort {
         const productsState = {
           heading,
           products: validProducts,
+          // The word after "Add all to": the tenant's closing surface, else the platform's default; never a dangling "Add all to".
+          closing: String((release.profile as any)?.closingSurface || say('closing_default')),
         };
 
         const parsed = CARD_TYPES.products.state.safeParse(productsState);
@@ -711,9 +717,10 @@ export class PresentationPort {
             },
           };
 
+          // The question comes first and the examples follow it, so the customer reads what is being asked before what is shown.
           const clarifyIndex = uiInstructions.findIndex((inst) => inst.component === 'clarify');
           if (clarifyIndex !== -1) {
-            uiInstructions.splice(clarifyIndex, 0, productInst);
+            uiInstructions.splice(clarifyIndex + 1, 0, productInst);
           } else {
             uiInstructions.push(productInst);
           }

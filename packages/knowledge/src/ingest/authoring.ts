@@ -51,6 +51,11 @@ const ProjectSchema = z.object({
   facts: z.array(z.object({ fact: Id, importance: z.enum(['high', 'medium', 'low']).default('medium') }).strict()).max(10).default([]),
   categories: z.array(Ref).min(1).max(40),
   overviewGroups: z.number().int().min(1).max(10).optional(),
+  /** Optional merchant choice: an answered fact narrows the preview to these member categories. */
+  categorySelection: z.object({
+    fact: Id,
+    valueMap: z.record(z.string(), z.array(Ref).min(1).max(10)),
+  }).strict().optional(),
 }).strict();
 
 const ProblemSchema = z.object({
@@ -312,6 +317,29 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
     project.facts.forEach((entry) => requireFact(entry.fact, `${where}.facts`));
     const members = project.categories.map((ref, index) => refToNodesAndConcepts(ref, `${where}.categories[${index}]`)).filter((entry) => entry.conceptId);
     const memberIds = members.map((entry) => entry.conceptId!);
+    let groupSelection: { factKey: string; valueMap: Record<string, string[]> } | undefined;
+    if (project.categorySelection) {
+      const { fact, valueMap } = project.categorySelection;
+      requireFact(fact, `${where}.categorySelection.fact`);
+      if (!project.facts.some((entry) => entry.fact === fact)) {
+        errors.push({ code: 'undeclared_selection_fact', where, message: `category selection fact '${fact}' must be a project question` });
+      }
+      const allowedValues = new Set(authoredFacts.get(fact)?.options?.map((option) => option.value) ?? []);
+      const resolved: Record<string, string[]> = {};
+      for (const [value, refs] of Object.entries(valueMap)) {
+        if (!allowedValues.has(value)) {
+          errors.push({ code: 'unknown_selection_value', where, message: `'${value}' is not an option of '${fact}'` });
+        }
+        resolved[value] = refs.flatMap((ref) => {
+          const target = refToNodesAndConcepts(ref, `${where}.categorySelection.${value}`);
+          if (target.conceptId && !memberIds.includes(target.conceptId)) {
+            errors.push({ code: 'selection_outside_project', where, message: `'${ref}' is not a category of this project` });
+          }
+          return target.conceptId && memberIds.includes(target.conceptId) ? [target.conceptId] : [];
+        });
+      }
+      groupSelection = { factKey: fact, valueMap: resolved };
+    }
     const concept = finish(baseConcept(project.id, 'projects', {
       type: 'project', lens: 'project', name: project.name, description: project.description,
       synonyms: project.synonyms, customerPhrases: project.phrases,
@@ -322,6 +350,7 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
       broadQueryPolicy: {
         groupConceptIds: memberIds.slice(0, project.overviewGroups ?? generated.config.navigation.overviewGroups),
         maxItemsPerGroup: generated.config.navigation.maxItemsPerGroup, ...(project.facts[0] ? { questionRef: `q.${project.facts[0].fact}` } : {}), productRetrievalAllowed: true,
+        ...(groupSelection ? { groupSelection } : {}),
       },
     }), 'projects');
     authoredIds.set(`project:${project.id}`, concept.conceptId);

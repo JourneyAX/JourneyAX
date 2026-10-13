@@ -17,3 +17,4 @@ export * from './ingest';
 export * from './category-scope';
 export * from './insight';
 export * from './evaluation';
+export * from './card-answers';

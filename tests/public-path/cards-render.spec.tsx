@@ -63,6 +63,8 @@ async function main() {
       assert.ok(html.includes(product.title), `${product.title} is shown`);
       assert.match(html, /NZ\$|NZD|\$\s?\d/, 'a price is shown');
     }
+    assert.doesNotMatch(html, /Add all to/, 'alternatives in a product overview are not a ready-made basket');
+    assert.match(text(render('bundle', sampleFor('bundle'))), /Add all to/, 'a deliberately assembled bundle retains its bulk action');
     const accessories = [...seen.values()].find((card) => card.cardType === 'accessories')!;
     const accessoriesText = text(render('accessories', accessories.state));
     assert.match(accessoriesText, /Have you considered\?/);

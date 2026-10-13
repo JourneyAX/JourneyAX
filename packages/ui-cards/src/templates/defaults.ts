@@ -129,15 +129,13 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   products: spec('root', {
-    root: el('Box', { gap: 'md', pad: 'md' }, { children: ['head', 'grid', 'foot'] }),
+    root: el('Box', { gap: 'md', pad: 'md' }, { children: ['head', 'grid'] }),
     head: el('Box', { gap: 'xs' }, { children: ['eyebrow', 'title', 'intro'] }),
-    eyebrow: el('Text', { text: 'Recommended for you', variant: 'eyebrow' }),
+    eyebrow: el('Text', { text: 'From our range', variant: 'eyebrow' }),
     title: el('Text', { text: S('/heading'), variant: 'title' }, { visible: [S('/heading')] }),
     intro: el('Text', { text: S('/intro'), variant: 'body', tone: 'muted' }, { visible: [S('/intro')] }),
     grid: el('Grid', { minItemWidth: '170px', gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
     ...productTile('p', { cta: 'addToCart' }),
-    foot: el('Box', { direction: 'row', justify: 'end', gap: 'sm' }, { children: ['addall'] }),
-    addall: el('Button', { label: { $template: 'Add all to ${/closing}' }, variant: 'secondary', icon: 'cart' }, { on: { press: { action: 'addAllToCart', params: { items: S('/products') } } } }),
   }),
 
   productDetail: spec('root', {

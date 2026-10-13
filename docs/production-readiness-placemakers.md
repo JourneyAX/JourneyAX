@@ -4,6 +4,8 @@ Branch `JourneyAX-dev-v4`. Written 2026-10-13, updated the same day after the fi
 
 **Status update.** At the owner's explicit approval in chat, `scripts/okf/apply-tenant-release.ts` loaded the authored PlaceMakers release into the environment the owner's local services read (the `journeyax` cluster, environment `production`): OKF release `1.2.0` (475 concepts, 0 verified claims), the catalogue mapping, the default journey `placemakers_shop`, and Business Pack `1.3.12`, with the activation following it by checksum. The owner is the only tester. Everything before that was built on isolated in-memory stores. The first run found and fixed four defects that only the real database could show (see "Found by loading it" below). Nothing here has been seen by a real customer.
 
+**Later working-tree candidate (not loaded or activated).** The Claude/Codex combined changes add a cleaning family, dynamic project narrowing, pending-card answer handling and reply shaping. Its offline snapshot contains 476 concepts and passes 4,694/4,694 gate/basket scenarios; the hermetic public-path canary covers 19 scenarios. These numbers describe the uncommitted candidate, not the active `1.2.0` release. The snapshot also identifies 381 products with neither category path nor category ID: they are counted in coverage but cannot be selected by a category-scoped search. Neither those products nor real-model wording are resolved by the passing offline scenarios.
+
 ## Verdict
 
 **Not production-ready yet — and the remaining items are not engineering work I can finish alone.** The platform side is built and proved
@@ -22,7 +24,7 @@ people, the live environment, or a real database can supply:
 
 | Claim | Evidence |
 |---|---|
-| Every department and leaf category is reachable, scoped, priced under its commerce rules, safe, honest about claims, and works by SKU | Coverage matrix: [docs/coverage/placemakers/evaluation.md](coverage/placemakers/evaluation.md) — **4,653 of 4,653 scenarios hold, 0 gaps**, 10 families, 18 departments, 376 leaf categories, 475 concepts. Mutation tests prove each family fails when its rule is broken. |
+| Every department and leaf category is reachable, scoped, priced under its commerce rules, safe, honest about claims, and works by SKU | Active-release evidence was **4,653/4,653** scenarios for 475 concepts. The linked [candidate coverage matrix](coverage/placemakers/evaluation.md) now reports **4,694/4,694** scenarios for 476 concepts. These are offline gate/basket checks, not proof that the 381 unscoped products can be found or that real catalogue search and pricing work end to end. |
 | The tenant's own customer journeys behave | 46 customer-path scenarios in `scripts/okf/tenants/placemakers.scenarios.json`, run at publication as acceptance scenarios |
 | No business knowledge is in code | Questions, scopes, cards, next actions, wording, thresholds, lexicons, templates: all in the release, the tenant files, or the platform default JSON. `hardcoding-guard` passes; a test fails if the presentation port contains a customer sentence |
 | Nothing unverified is claimed | Verified-claims register below: **0 verified**, claim classes withheld; "Have you considered?" is unverified cross-sell, never proof of compatibility; a suitability question gets the listing plus a plain statement that it can't be confirmed |
@@ -30,7 +32,7 @@ people, the live environment, or a real database can supply:
 | The browser gets a customer view | Allow-listed events, no trace/decision/model route/knowledge ids, plain error bodies, `Retry-After` forwarded; the full stream only for a platform workload with the internal key |
 | The public path works end to end | `tests/public-path/public-path.spec.ts` (11): storefront route → gateway → commerce → runtime; auth, tenant isolation, throttling, oversize, prompt injection, conversation isolation |
 | Cards render and are themed | `tests/public-path/cards-render.spec.tsx` (5): every card sent renders, binds only declared fields, the stylesheet reads only theme variables (no hard-coded colour), a tenant theme reaches the markup |
-| Customers read plain language | Transcript: [docs/canary/placemakers-public-path-2026-10-13-hermetic.md](canary/placemakers-public-path-2026-10-13-hermetic.md) (17 scenarios, 0 violations, sanitised). Platform vocabulary is rejected in every notice (4,653 scenarios), every shipped message, and every canary reply |
+| Customers read plain language | The linked [candidate hermetic transcript](canary/placemakers-public-path-2026-10-13-hermetic.md) reports **19 scenarios, 0 violations**, sanitised. It uses a fixed stand-in model, so it does not prove real-model wording or deployed browser behaviour. |
 | Activation is checksum-bound and reversible | [docs/activation/release-lifecycle-evidence.md](activation/release-lifecycle-evidence.md) — wrong checksum / stale revision / wrong release / unknown release refused; tampered pack refused; rollback restores the original checksum; stop-the-line stops pinned and new conversations |
 
 ## Found by loading it

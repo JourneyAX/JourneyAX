@@ -38,10 +38,10 @@ async function main() {
 
   await suite.test('derived and authored layers are counted apart, and the authored concepts are listed by kind', () => {
     const coverage = analyzeKnowledgeCoverage(content);
-    assert.deepEqual(coverage.layers, { derived: content.concepts.length - 18, authored: 18, manual: 0 });
+    assert.deepEqual(coverage.layers, { derived: content.concepts.length - 19, authored: 19, manual: 0 });
     assert.deepEqual(
       { families: coverage.authored.families.length, projects: coverage.authored.projects.length, problems: coverage.authored.problems.length, care: coverage.authored.care.length },
-      { families: 2, projects: 8, problems: 6, care: 2 });
+      { families: 3, projects: 8, problems: 6, care: 2 });
     assert.ok(coverage.authored.projects.some((entry) => entry.name === 'Deck build'));
   });
 

@@ -71,7 +71,7 @@ async function main() {
     const bathrooms = coverage.departments.find((entry) => entry.name === 'Bathrooms & Plumbing')!;
     assert.equal(bathrooms.products, 4);
     assert.equal(bathrooms.productsCovered, 4);
-    assert.equal(coverage.layers.authored, 18);
+    assert.equal(coverage.layers.authored, 19);
     assert.equal(coverage.pack, null, 'nothing is published yet, so the journeys are reported as unknown');
     assert.ok(coverage.journeys.every((entry) => entry.existsInPack === null));
     assert.equal(coverage.verification.verifiedClaims, 0);

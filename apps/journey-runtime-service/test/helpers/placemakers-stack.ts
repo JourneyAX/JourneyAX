@@ -68,8 +68,12 @@ export const products: any[] = [
   product('CD-1', 'Composite decking board 140mm', 'Composite Decking', 62),
   product('WC-1', 'Decking oil 4L', 'Woodcare', 76),
   product('OC-1', 'Deck wash 2L', 'Outdoor Cleaners', 24),
+  product('IC-1', 'Indoor cleaner 1L', 'Indoor Cleaners', 14),
+  product('MB-1', 'Microfibre mop', 'Mops & Brooms', 28),
+  product('CC-1', 'Car wash 1L', 'Car Cleaning', 9),
   product('DR-1', 'Cordless drill 18V', 'Drills', 189),
   product('IP-1', 'Interior wall paint 4L', 'Interior Paint', 89),
+  product('EP-1', 'Exterior wall paint 4L', 'Exterior Paint', 99),
   product('BR-1', 'Paint roller kit', 'Brushes & Rollers', 24),
   product('MK-1', 'Masking tape 36mm', 'Masking', 6),
   // Filed by category name only (no hierarchy path), as 14 of the real categories are.
@@ -91,6 +95,8 @@ export class FixedGateway extends ModelGateway {
       if (message.includes('4x3')) candidateFacts.deck_size = { value: '4x3 m', confidence: 1 };
       if (message.includes('timber screws')) candidateFacts.fastener_substrate = { value: 'timber', confidence: 1 };
       if (message === 'renovation') candidateFacts.project_scope = { value: 'renovation', confidence: 1 };
+      if (message === 'indoor') candidateFacts.cleaning_task = { value: 'indoor', confidence: 1 };
+      if (message === 'inside walls') candidateFacts.paint_surface = { value: 'interior', confidence: 1 };
       content = JSON.stringify({ intent: 'product_search', candidateFacts });
     }
     return {

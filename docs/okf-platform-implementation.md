@@ -322,3 +322,34 @@ The outcome (`followed` / `unchanged` / `none`) is returned to the caller. Tests
 **Still true, and a product decision:** for an environment whose record is live, publishing carries the approval to the new release, so
 **"Publish Business Pack" in production is the go-live action** for a migrated tenant. Requiring a separate approval after publish for
 production (so a publish alone changes nothing for customers) is not implemented; it would change how Workwear Group publishes.
+
+## Conversation flow: the Cleaning pilot
+
+Found by reading real conversations: the knowledge routed correctly, but the words and cards around it were wrong. The pilot fixes the
+general mechanism and writes the Cleaning conversation as data; other departments follow the same pattern.
+
+- **Order on screen:** the question card first, then the examples, then the unverified "Have you considered?" extras.
+- **No false "Recommended":** category samples are examples. The badge needs a verified recommendation, and the card's default eyebrow is
+  "From our range". An ordinary product overview has individual add actions, not "Add all" across unrelated examples; an assembled bundle retains
+  its bulk action and uses the tenant's closing surface (or `closing_default`).
+- **The assistant's words are shaped, from data** (`defaults/interpretation-policy.json` → `replyStyle`, overridable per pack and validated):
+  the rules go to the model (one or two short sentences; no company name; no category names or "where to browse"; no questions, lists or
+  steps because a card asks them; no sales pitch), and the reply is **enforced** on the way out by `kernel/reply-shaper.ts`: sentences with an
+  internal id or backtick, a second question when a card asks one, a "head to / browse / tell me / let me know" phrase, the company's own name, bullet lines,
+  and anything past the limit are removed whole, never rewritten. A removed clarification reply uses the tenant's `clarify_lead_in`.
+  Ordinary product words such as "paint" and "vanities" are not treated as internal IDs. Every removal is logged.
+- **A tapped answer never waits on a model.** The web app sends a card answer as text ("What are you cleaning? → equipment"). Only questions
+  pending in that session are eligible; the release's own question and options are matched against it (`knowledge/src/card-answers.ts`),
+  the answer becomes a certain fact, and the open question continues
+  its concept. Before this, the answer depended on the slow model call; when it timed out, "equipment" was read as a new request and jumped to a
+  power-tool category.
+- **Cleaning in customer language** (authoring spec): "What are you cleaning?" with *Inside the house / Floors / Outside / The car / Household
+  things*, each routed to its shelf; "cleaning supply", "cleaning stuff", "something to clean with" reach it (the singular used to land on a category).
+  Tests: `placemakers-authored-e2e` (the customer's real reply as the fixture), `reply-shaper`, `okf-card-answers`, the canary scenario `cleaning-supply`.
+
+- **An empty catalogue result is not availability evidence.** If a successful search finds no items, the model cannot say "Here are";
+  the tenant's `nothing_to_show` message is used instead. An isolated regression test covers that case.
+
+Not done, and said plainly: **how-to-use guidance** for cleaning products. It is a care/usage claim, which needs a verified source; the worklist
+holds 2 candidate documents for Cleaning (neither is about use). The persona text in the live project still tells the model "EVERY journey ends at a
+real product… always show items"; it is the tenant's own wording, so it is flagged here rather than changed.

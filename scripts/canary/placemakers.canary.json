@@ -408,6 +408,34 @@
           }
         }
       ]
+    },
+    {
+      "id": "cleaning-supply",
+      "description": "A bare request for cleaning supplies is answered like a person would: the question first, in plain words, then a few examples, with no system ids, no brand name and no sending the customer elsewhere",
+      "turns": [
+        {
+          "message": "cleaning supply",
+          "expect": {
+            "cards": {
+              "require": [
+                "clarify",
+                "products"
+              ],
+              "first": "clarify"
+            },
+            "text": {
+              "mustNotMatch": [
+                "head to",
+                "`",
+                "category:",
+                "PlaceMakers",
+                "cleaners-and-cleaning",
+                "\\?"
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

@@ -1,12 +1,12 @@
 {
  "tenantId": "placemakers",
  "specVersion": "1.0.0",
- "startedAt": "2026-10-13T06:04:28.428Z",
- "durationMs": 242,
+ "startedAt": "2026-10-13T13:01:50.576Z",
+ "durationMs": 241,
  "passed": true,
  "totals": {
-  "scenarios": 18,
-  "turns": 18,
+  "scenarios": 19,
+  "turns": 19,
   "violations": 0,
   "warnings": 0
  },
@@ -19,11 +19,11 @@
     {
      "message": "screws",
      "status": 200,
-     "elapsedMs": 110,
+     "elapsedMs": 105,
      "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
      "cardTypes": [
-      "products",
-      "clarify"
+      "clarify",
+      "products"
      ],
      "capabilities": [
       "catalog.search"
@@ -43,7 +43,7 @@
        "data": {
         "sessionId": "session-1"
        },
-       "atMs": 110
+       "atMs": 105
       },
       {
        "event": "capability",
@@ -51,105 +51,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 110
-      },
-      {
-       "event": "uiAction",
-       "data": {
-        "name": "presentCard",
-        "arguments": {
-         "card": {
-          "id": "card_products_[phone]",
-          "cardType": "products",
-          "state": {
-           "heading": "Matching products",
-           "products": [
-            {
-             "sku": "1000100",
-             "title": "Exterior wood screw 8g x 50mm",
-             "imageUrl": null,
-             "price": 12.5,
-             "currency": "NZD",
-             "reason": "Category: Wood Screws",
-             "recommended": true
-            },
-            {
-             "sku": "1000101",
-             "title": "Decking screw 10g x 65mm",
-             "imageUrl": null,
-             "price": 18,
-             "currency": "NZD",
-             "reason": "Category: Wood Screws",
-             "recommended": false
-            },
-            {
-             "sku": "1000102",
-             "title": "Self drilling metal screw",
-             "imageUrl": null,
-             "price": 9,
-             "currency": "NZD",
-             "reason": "Category: Metal Screws",
-             "recommended": false
-            },
-            {
-             "sku": "1000103",
-             "title": "Concrete anchor 6mm",
-             "imageUrl": null,
-             "price": 21,
-             "currency": "NZD",
-             "reason": "Category: Masonry  Anchors",
-             "recommended": false
-            }
-           ]
-          }
-         }
-        },
-        "card": {
-         "cardType": "products",
-         "state": {
-          "heading": "Matching products",
-          "products": [
-           {
-            "sku": "1000100",
-            "title": "Exterior wood screw 8g x 50mm",
-            "imageUrl": null,
-            "price": 12.5,
-            "currency": "NZD",
-            "reason": "Category: Wood Screws",
-            "recommended": true
-           },
-           {
-            "sku": "1000101",
-            "title": "Decking screw 10g x 65mm",
-            "imageUrl": null,
-            "price": 18,
-            "currency": "NZD",
-            "reason": "Category: Wood Screws",
-            "recommended": false
-           },
-           {
-            "sku": "1000102",
-            "title": "Self drilling metal screw",
-            "imageUrl": null,
-            "price": 9,
-            "currency": "NZD",
-            "reason": "Category: Metal Screws",
-            "recommended": false
-           },
-           {
-            "sku": "1000103",
-            "title": "Concrete anchor 6mm",
-            "imageUrl": null,
-            "price": 21,
-            "currency": "NZD",
-            "reason": "Category: Masonry  Anchors",
-            "recommended": false
-           }
-          ]
-         }
-        }
-       },
-       "atMs": 110
+       "atMs": 105
       },
       {
        "event": "uiAction",
@@ -215,7 +117,107 @@
          }
         }
        },
-       "atMs": 110
+       "atMs": 105
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000100",
+             "title": "Exterior wood screw 8g x 50mm",
+             "imageUrl": null,
+             "price": 12.5,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": false
+            },
+            {
+             "sku": "1000101",
+             "title": "Decking screw 10g x 65mm",
+             "imageUrl": null,
+             "price": 18,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": false
+            },
+            {
+             "sku": "1000102",
+             "title": "Self drilling metal screw",
+             "imageUrl": null,
+             "price": 9,
+             "currency": "NZD",
+             "reason": "Category: Metal Screws",
+             "recommended": false
+            },
+            {
+             "sku": "1000103",
+             "title": "Concrete anchor 6mm",
+             "imageUrl": null,
+             "price": 21,
+             "currency": "NZD",
+             "reason": "Category: Masonry  Anchors",
+             "recommended": false
+            }
+           ],
+           "closing": "cart"
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000100",
+            "title": "Exterior wood screw 8g x 50mm",
+            "imageUrl": null,
+            "price": 12.5,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": false
+           },
+           {
+            "sku": "1000101",
+            "title": "Decking screw 10g x 65mm",
+            "imageUrl": null,
+            "price": 18,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": false
+           },
+           {
+            "sku": "1000102",
+            "title": "Self drilling metal screw",
+            "imageUrl": null,
+            "price": 9,
+            "currency": "NZD",
+            "reason": "Category: Metal Screws",
+            "recommended": false
+           },
+           {
+            "sku": "1000103",
+            "title": "Concrete anchor 6mm",
+            "imageUrl": null,
+            "price": 21,
+            "currency": "NZD",
+            "reason": "Category: Masonry  Anchors",
+            "recommended": false
+           }
+          ],
+          "closing": "cart"
+         }
+        }
+       },
+       "atMs": 105
       },
       {
        "event": "token",
@@ -223,7 +225,7 @@
         "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
         "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 110
+       "atMs": 105
       },
       {
        "event": "done",
@@ -237,7 +239,7 @@
          "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 110
+       "atMs": 105
       }
      ]
     }
@@ -251,7 +253,7 @@
     {
      "message": "wood screws",
      "status": 200,
-     "elapsedMs": 16,
+     "elapsedMs": 15,
      "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
      "cardTypes": [
       "products",
@@ -275,7 +277,7 @@
        "data": {
         "sessionId": "session-2"
        },
-       "atMs": 16
+       "atMs": 15
       },
       {
        "event": "capability",
@@ -283,7 +285,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 16
+       "atMs": 15
       },
       {
        "event": "uiAction",
@@ -303,7 +305,7 @@
              "price": 12.5,
              "currency": "NZD",
              "reason": "Category: Wood Screws",
-             "recommended": true
+             "recommended": false
             },
             {
              "sku": "1000101",
@@ -314,7 +316,8 @@
              "reason": "Category: Wood Screws",
              "recommended": false
             }
-           ]
+           ],
+           "closing": "cart"
           }
          }
         },
@@ -330,7 +333,7 @@
             "price": 12.5,
             "currency": "NZD",
             "reason": "Category: Wood Screws",
-            "recommended": true
+            "recommended": false
            },
            {
             "sku": "1000101",
@@ -341,11 +344,12 @@
             "reason": "Category: Wood Screws",
             "recommended": false
            }
-          ]
+          ],
+          "closing": "cart"
          }
         }
        },
-       "atMs": 16
+       "atMs": 15
       },
       {
        "event": "uiAction",
@@ -445,7 +449,7 @@
          }
         }
        },
-       "atMs": 16
+       "atMs": 15
       },
       {
        "event": "token",
@@ -453,7 +457,7 @@
         "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
         "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 16
+       "atMs": 15
       },
       {
        "event": "done",
@@ -467,7 +471,7 @@
          "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 16
+       "atMs": 15
       }
      ]
     }
@@ -484,9 +488,9 @@
      "elapsedMs": 11,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
+      "clarify",
       "products",
-      "accessories",
-      "clarify"
+      "accessories"
      ],
      "capabilities": [
       "catalog.search"
@@ -523,6 +527,80 @@
         "name": "presentCard",
         "arguments": {
          "card": {
+          "id": "card_okf_clarify_[phone]",
+          "cardType": "clarify",
+          "state": {
+           "questions": [
+            {
+             "id": "deck_material",
+             "text": "What decking are you considering?",
+             "options": [
+              {
+               "value": "composite",
+               "label": "Composite"
+              },
+              {
+               "value": "hardwood",
+               "label": "Hardwood"
+              },
+              {
+               "value": "radiata",
+               "label": "Radiata pine"
+              },
+              {
+               "value": "unsure",
+               "label": "Not sure yet"
+              }
+             ],
+             "multi": false,
+             "inputType": "single_select"
+            }
+           ],
+           "progress": "1 detail needed"
+          }
+         }
+        },
+        "card": {
+         "cardType": "clarify",
+         "state": {
+          "questions": [
+           {
+            "id": "deck_material",
+            "text": "What decking are you considering?",
+            "options": [
+             {
+              "value": "composite",
+              "label": "Composite"
+             },
+             {
+              "value": "hardwood",
+              "label": "Hardwood"
+             },
+             {
+              "value": "radiata",
+              "label": "Radiata pine"
+             },
+             {
+              "value": "unsure",
+              "label": "Not sure yet"
+             }
+            ],
+            "multi": false,
+            "inputType": "single_select"
+           }
+          ],
+          "progress": "1 detail needed"
+         }
+        }
+       },
+       "atMs": 11
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
@@ -535,9 +613,10 @@
              "price": 62,
              "currency": "NZD",
              "reason": "Category: Composite Decking",
-             "recommended": true
+             "recommended": false
             }
-           ]
+           ],
+           "closing": "cart"
           }
          }
         },
@@ -553,9 +632,10 @@
             "price": 62,
             "currency": "NZD",
             "reason": "Category: Composite Decking",
-            "recommended": true
+            "recommended": false
            }
-          ]
+          ],
+          "closing": "cart"
          }
         }
        },
@@ -690,80 +770,6 @@
        "atMs": 11
       },
       {
-       "event": "uiAction",
-       "data": {
-        "name": "presentCard",
-        "arguments": {
-         "card": {
-          "id": "card_okf_clarify_[phone]",
-          "cardType": "clarify",
-          "state": {
-           "questions": [
-            {
-             "id": "deck_material",
-             "text": "What decking are you considering?",
-             "options": [
-              {
-               "value": "composite",
-               "label": "Composite"
-              },
-              {
-               "value": "hardwood",
-               "label": "Hardwood"
-              },
-              {
-               "value": "radiata",
-               "label": "Radiata pine"
-              },
-              {
-               "value": "unsure",
-               "label": "Not sure yet"
-              }
-             ],
-             "multi": false,
-             "inputType": "single_select"
-            }
-           ],
-           "progress": "1 detail needed"
-          }
-         }
-        },
-        "card": {
-         "cardType": "clarify",
-         "state": {
-          "questions": [
-           {
-            "id": "deck_material",
-            "text": "What decking are you considering?",
-            "options": [
-             {
-              "value": "composite",
-              "label": "Composite"
-             },
-             {
-              "value": "hardwood",
-              "label": "Hardwood"
-             },
-             {
-              "value": "radiata",
-              "label": "Radiata pine"
-             },
-             {
-              "value": "unsure",
-              "label": "Not sure yet"
-             }
-            ],
-            "multi": false,
-            "inputType": "single_select"
-           }
-          ],
-          "progress": "1 detail needed"
-         }
-        }
-       },
-       "atMs": 11
-      },
-      {
        "event": "token",
        "data": {
         "token": "Here are options from the catalogue.",
@@ -849,7 +855,7 @@
              "price": 499,
              "currency": "NZD",
              "reason": "Category: Vanities",
-             "recommended": true
+             "recommended": false
             },
             {
              "sku": "1000108",
@@ -860,7 +866,8 @@
              "reason": "Category: Vanities",
              "recommended": false
             }
-           ]
+           ],
+           "closing": "cart"
           }
          }
         },
@@ -876,7 +883,7 @@
             "price": 499,
             "currency": "NZD",
             "reason": "Category: Vanities",
-            "recommended": true
+            "recommended": false
            },
            {
             "sku": "1000108",
@@ -887,7 +894,8 @@
             "reason": "Category: Vanities",
             "recommended": false
            }
-          ]
+          ],
+          "closing": "cart"
          }
         }
        },
@@ -1011,7 +1019,7 @@
     {
      "message": "renovate my bathroom",
      "status": 200,
-     "elapsedMs": 8,
+     "elapsedMs": 7,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "clarify"
@@ -1132,7 +1140,7 @@
     {
      "message": "my bathroom is leaking",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 7,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1148,7 +1156,7 @@
        "data": {
         "sessionId": "session-6"
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1156,7 +1164,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1170,7 +1178,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 6
+       "atMs": 7
       }
      ]
     }
@@ -1252,7 +1260,7 @@
        "data": {
         "sessionId": "session-8"
        },
-       "atMs": 6
+       "atMs": 5
       },
       {
        "event": "token",
@@ -1260,7 +1268,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 6
+       "atMs": 5
       },
       {
        "event": "done",
@@ -1274,7 +1282,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 6
+       "atMs": 5
       }
      ]
     }
@@ -1496,7 +1504,7 @@
     {
      "message": "is this wood screw suitable for a load bearing beam",
      "status": 200,
-     "elapsedMs": 8,
+     "elapsedMs": 7,
      "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
      "cardTypes": [
       "products",
@@ -1520,7 +1528,7 @@
        "data": {
         "sessionId": "session-13"
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "capability",
@@ -1528,7 +1536,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -1548,7 +1556,7 @@
              "price": 12.5,
              "currency": "NZD",
              "reason": "Category: Wood Screws",
-             "recommended": true
+             "recommended": false
             },
             {
              "sku": "1000101",
@@ -1559,7 +1567,8 @@
              "reason": "Category: Wood Screws",
              "recommended": false
             }
-           ]
+           ],
+           "closing": "cart"
           }
          }
         },
@@ -1575,7 +1584,7 @@
             "price": 12.5,
             "currency": "NZD",
             "reason": "Category: Wood Screws",
-            "recommended": true
+            "recommended": false
            },
            {
             "sku": "1000101",
@@ -1586,11 +1595,12 @@
             "reason": "Category: Wood Screws",
             "recommended": false
            }
-          ]
+          ],
+          "closing": "cart"
          }
         }
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -1690,7 +1700,7 @@
          }
         }
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1698,7 +1708,7 @@
         "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
         "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1712,7 +1722,7 @@
          "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
         }
        },
-       "atMs": 8
+       "atMs": 7
       }
      ]
     }
@@ -1778,7 +1788,7 @@
     {
      "message": "switchgear",
      "status": 200,
-     "elapsedMs": 8,
+     "elapsedMs": 6,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "products"
@@ -1800,7 +1810,7 @@
        "data": {
         "sessionId": "session-15"
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "capability",
@@ -1808,7 +1818,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "uiAction",
@@ -1828,9 +1838,10 @@
              "price": 340,
              "currency": "NZD",
              "reason": "Category: Switchgear",
-             "recommended": true
+             "recommended": false
             }
-           ]
+           ],
+           "closing": "cart"
           }
          }
         },
@@ -1846,13 +1857,14 @@
             "price": 340,
             "currency": "NZD",
             "reason": "Category: Switchgear",
-            "recommended": true
+            "recommended": false
            }
-          ]
+          ],
+          "closing": "cart"
          }
         }
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "token",
@@ -1860,7 +1872,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "done",
@@ -1874,7 +1886,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 7
+       "atMs": 6
       }
      ]
     }
@@ -1888,7 +1900,7 @@
     {
      "message": "interior paint",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 7,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "products",
@@ -1912,7 +1924,7 @@
        "data": {
         "sessionId": "session-16"
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "capability",
@@ -1920,7 +1932,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -1934,15 +1946,16 @@
            "heading": "Matching products",
            "products": [
             {
-             "sku": "1000117",
+             "sku": "1000120",
              "title": "Interior wall paint 4L",
              "imageUrl": null,
              "price": 89,
              "currency": "NZD",
              "reason": "Category: Interior Paint",
-             "recommended": true
+             "recommended": false
             }
-           ]
+           ],
+           "closing": "cart"
           }
          }
         },
@@ -1952,19 +1965,20 @@
           "heading": "Matching products",
           "products": [
            {
-            "sku": "1000117",
+            "sku": "1000120",
             "title": "Interior wall paint 4L",
             "imageUrl": null,
             "price": 89,
             "currency": "NZD",
             "reason": "Category: Interior Paint",
-            "recommended": true
+            "recommended": false
            }
-          ]
+          ],
+          "closing": "cart"
          }
         }
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -1983,7 +1997,7 @@
              "label": "Brushes & Rollers",
              "items": [
               {
-               "sku": "1000118",
+               "sku": "1000122",
                "title": "Paint roller kit",
                "imageUrl": null,
                "price": 24,
@@ -1997,7 +2011,7 @@
              "label": "Masking",
              "items": [
               {
-               "sku": "1000119",
+               "sku": "1000123",
                "title": "Masking tape 36mm",
                "imageUrl": null,
                "price": 6,
@@ -2021,7 +2035,7 @@
             "label": "Brushes & Rollers",
             "items": [
              {
-              "sku": "1000118",
+              "sku": "1000122",
               "title": "Paint roller kit",
               "imageUrl": null,
               "price": 24,
@@ -2035,7 +2049,7 @@
             "label": "Masking",
             "items": [
              {
-              "sku": "1000119",
+              "sku": "1000123",
               "title": "Masking tape 36mm",
               "imageUrl": null,
               "price": 6,
@@ -2048,7 +2062,7 @@
          }
         }
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "token",
@@ -2056,7 +2070,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "done",
@@ -2070,7 +2084,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 6
+       "atMs": 7
       }
      ]
     }
@@ -2134,9 +2148,10 @@
              "price": 24,
              "currency": "NZD",
              "reason": "Category: Outdoor Cleaners",
-             "recommended": true
+             "recommended": false
             }
-           ]
+           ],
+           "closing": "cart"
           }
          }
         },
@@ -2152,9 +2167,10 @@
             "price": 24,
             "currency": "NZD",
             "reason": "Category: Outdoor Cleaners",
-            "recommended": true
+            "recommended": false
            }
-          ]
+          ],
+          "closing": "cart"
          }
         }
        },
@@ -2194,7 +2210,7 @@
     {
      "message": "What moisture-resistant linings and waterproofing do I need for my wet area?",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 8,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "clarify"
@@ -2216,7 +2232,7 @@
        "data": {
         "sessionId": "session-18"
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "capability",
@@ -2224,7 +2240,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -2290,7 +2306,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "token",
@@ -2298,7 +2314,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "done",
@@ -2312,7 +2328,257 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 7
+       "atMs": 8
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cleaning-supply",
+   "description": "A bare request for cleaning supplies is answered like a person would: the question first, in plain words, then a few examples, with no system ids, no brand name and no sending the customer elsewhere",
+   "passed": true,
+   "turns": [
+    {
+     "message": "cleaning supply",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "clarify",
+      "products"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-19"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_clarify_[phone]",
+          "cardType": "clarify",
+          "state": {
+           "questions": [
+            {
+             "id": "cleaning_task",
+             "text": "What are you cleaning?",
+             "options": [
+              {
+               "value": "indoor",
+               "label": "Inside the house: kitchen, bathroom, general"
+              },
+              {
+               "value": "equipment",
+               "label": "Floors: mopping and sweeping"
+              },
+              {
+               "value": "outdoor",
+               "label": "Outside: decks, concrete, driveways"
+              },
+              {
+               "value": "car",
+               "label": "The car"
+              },
+              {
+               "value": "household",
+               "label": "Buckets, bins and other household things"
+              }
+             ],
+             "multi": false,
+             "inputType": "single_select"
+            }
+           ],
+           "progress": "1 detail needed"
+          }
+         }
+        },
+        "card": {
+         "cardType": "clarify",
+         "state": {
+          "questions": [
+           {
+            "id": "cleaning_task",
+            "text": "What are you cleaning?",
+            "options": [
+             {
+              "value": "indoor",
+              "label": "Inside the house: kitchen, bathroom, general"
+             },
+             {
+              "value": "equipment",
+              "label": "Floors: mopping and sweeping"
+             },
+             {
+              "value": "outdoor",
+              "label": "Outside: decks, concrete, driveways"
+             },
+             {
+              "value": "car",
+              "label": "The car"
+             },
+             {
+              "value": "household",
+              "label": "Buckets, bins and other household things"
+             }
+            ],
+            "multi": false,
+            "inputType": "single_select"
+           }
+          ],
+          "progress": "1 detail needed"
+         }
+        }
+       },
+       "atMs": 6
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000116",
+             "title": "Indoor cleaner 1L",
+             "imageUrl": null,
+             "price": 14,
+             "currency": "NZD",
+             "reason": "Category: Indoor Cleaners",
+             "recommended": false
+            },
+            {
+             "sku": "1000115",
+             "title": "Deck wash 2L",
+             "imageUrl": null,
+             "price": 24,
+             "currency": "NZD",
+             "reason": "Category: Outdoor Cleaners",
+             "recommended": false
+            },
+            {
+             "sku": "1000117",
+             "title": "Microfibre mop",
+             "imageUrl": null,
+             "price": 28,
+             "currency": "NZD",
+             "reason": "Category: Mops & Brooms",
+             "recommended": false
+            },
+            {
+             "sku": "1000118",
+             "title": "Car wash 1L",
+             "imageUrl": null,
+             "price": 9,
+             "currency": "NZD",
+             "reason": "Category: Car Cleaning",
+             "recommended": false
+            }
+           ],
+           "closing": "cart"
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000116",
+            "title": "Indoor cleaner 1L",
+            "imageUrl": null,
+            "price": 14,
+            "currency": "NZD",
+            "reason": "Category: Indoor Cleaners",
+            "recommended": false
+           },
+           {
+            "sku": "1000115",
+            "title": "Deck wash 2L",
+            "imageUrl": null,
+            "price": 24,
+            "currency": "NZD",
+            "reason": "Category: Outdoor Cleaners",
+            "recommended": false
+           },
+           {
+            "sku": "1000117",
+            "title": "Microfibre mop",
+            "imageUrl": null,
+            "price": 28,
+            "currency": "NZD",
+            "reason": "Category: Mops & Brooms",
+            "recommended": false
+           },
+           {
+            "sku": "1000118",
+            "title": "Car wash 1L",
+            "imageUrl": null,
+            "price": 9,
+            "currency": "NZD",
+            "reason": "Category: Car Cleaning",
+            "recommended": false
+           }
+          ],
+          "closing": "cart"
+         }
+        }
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-19",
+        "workspaceId": "session-19",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 6
       }
      ]
     }

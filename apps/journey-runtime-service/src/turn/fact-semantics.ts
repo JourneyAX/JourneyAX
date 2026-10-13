@@ -14,6 +14,20 @@ export interface InterpretationPolicy {
   grounding: { ignoredOptionWords: string[] };
   promptRules: string[];
   messages: Record<string, string>;
+  replyStyle: ReplyStyle;
+}
+
+export interface ReplyStyle {
+  /** The reply keeps at most this many sentences. */
+  maxSentences: number;
+  /** Bullet and numbered lines are removed: cards show options and steps. */
+  dropListLines: boolean;
+  /** A sentence that names the company is removed: the customer is already in its shop. */
+  dropCompanyName: boolean;
+  /** A sentence containing any of these (whole words, any case) is removed. */
+  forbiddenPhrases: string[];
+  /** Style rules sent to the model with every reply it writes. */
+  rules: string[];
 }
 
 const PLATFORM_POLICY = defaults as InterpretationPolicy;
@@ -32,6 +46,7 @@ export function resolveInterpretationPolicy(release?: BusinessPackRelease): Inte
     grounding: { ...PLATFORM_POLICY.grounding, ...(override.grounding || {}) },
     promptRules: Array.isArray(override.promptRules) ? override.promptRules : PLATFORM_POLICY.promptRules,
     messages: { ...PLATFORM_POLICY.messages, ...(override.messages || {}) },
+    replyStyle: { ...PLATFORM_POLICY.replyStyle, ...(override.replyStyle || {}) },
   };
   cache.set(override, merged);
   return merged;

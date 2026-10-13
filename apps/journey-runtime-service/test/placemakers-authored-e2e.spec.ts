@@ -51,7 +51,9 @@ async function main() {
     try {
       result = await (worded as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-guard', sessionId: 'ws-guard', turnId: 'ws-guard-t1', correlationId: 'ws-guard-c1', message: 'wood screws' }, pack);
     } finally { console.warn = original; }
-    assert.ok(result.assistantMessage.includes('Here are the wood screws we stock.') && result.assistantMessage.includes('Tell me the length you need.'), result.assistantMessage);
+    // The claim guard removes the sentence that asserts an installation claim; the shaper removes the one that asks the customer for more.
+    assert.ok(result.assistantMessage.startsWith('Here are the wood screws we stock.'), result.assistantMessage);
+    assert.ok(!/pilot hole|Tell me/.test(result.assistantMessage), 'neither the claim nor the request for more is shown');
     assert.ok(!/pilot hole/.test(result.assistantMessage), 'the sentence that asserts an installation claim is not shown');
     assert.ok(warnings.some((line) => line.includes('[ClaimGuard]') && line.includes('installation_step') && line.includes('pilot hole')), `the log says what was withheld: ${warnings.join(' | ')}`);
     assert.ok(cards(result, 'products').length > 0, 'the products are still shown');
@@ -72,6 +74,15 @@ async function main() {
     assert.ok(!everyShown.includes('PL-X') && !everyShown.includes('FOREIGN-1'));
   });
 
+  await suite.test('a normal product noun survives the reply guard on a customer-facing turn', async () => {
+    const result = await (stack.serviceFor({ reply: 'Here are vanities from our range.' }) as any).executeTurn({
+      tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-vanities-wording', sessionId: 'ws-vanities-wording',
+      turnId: 'ws-vanities-wording-t1', correlationId: 'ws-vanities-wording-c1', message: 'vanities',
+    }, pack);
+    assert.equal(result.assistantMessage, 'Here are vanities from our range.');
+    assert.deepEqual(skusOf(cards(result, 'products')[0]), ['VN-1', 'VN-2']);
+  });
+
   await suite.test('"screws": a grouped overview from the family members, with the merchant\'s question as the last card', async () => {
     const result = await run('ws-screws', 'screws');
     assert.equal(result.trace.knowledgeGate.mode, 'overview_then_ask');
@@ -80,8 +91,71 @@ async function main() {
     assert.ok(['WS-1', 'MS-1', 'MA-1'].every((sku) => shown.includes(sku)), `examples from each member category: ${shown}`);
     assert.ok(!shown.includes('FOREIGN-1'));
     const order = (result.uiInstructions as any[]).map((entry) => entry.component);
-    assert.equal(order[order.length - 1], 'clarify', 'the question is the customer\'s next step');
+    assert.equal(order[0], 'clarify', 'the question comes first; the examples follow it');
+    assert.ok(order.indexOf('products') > order.indexOf('clarify'));
     assert.equal(cards(result, 'clarify')[0].props.questions[0].id, 'fastener_substrate');
+  });
+
+  await suite.test('"cleaning supply", as a customer types it: the question first, then a few examples, in words a person would use', async () => {
+    // The reply a customer really received from the model: a system id, "head to the section", a second question of its own.
+    const bad = 'Sure — for cleaning supplies, head to the PlaceMakers **Cleaners & Cleaning Equipment** section:\n\n**Category:** `cleaners-and-cleaning-equipment`\n\nWhat are you looking for specifically — general cleaning products, site clean-up gear, consumables, or equipment? If you tell me the job you\u2019re doing, I can help narrow it down.';
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
+    let result: any;
+    const pilotService = stack.serviceFor({ reply: bad });
+    try {
+      result = await (pilotService as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-pilot', sessionId: 'ws-pilot', turnId: 'ws-pilot-t1', correlationId: 'ws-pilot-c1', message: 'cleaning supply' }, pack);
+    } finally { console.warn = original; }
+    assert.equal(result.trace.knowledgeGate.conceptId, 'concept://placemakers/families/cleaning-supplies', 'the authored family answers, not a category from the tree');
+    assert.equal(result.trace.knowledgeGate.mode, 'overview_then_ask');
+    const order = (result.uiInstructions as any[]).map((entry) => entry.component);
+    assert.deepEqual(order, ['clarify', 'products'], 'the question, then the examples (no cross-sell: nothing was chosen yet)');
+    const question = cards(result, 'clarify')[0].props.questions[0];
+    assert.equal(question.text, 'What are you cleaning?');
+    assert.deepEqual(question.options.map((option: any) => option.label), ['Inside the house: kitchen, bathroom, general', 'Floors: mopping and sweeping', 'Outside: decks, concrete, driveways', 'The car', 'Buckets, bins and other household things']);
+    assert.ok(!question.options.some((option: any) => /Cleaners & Cleaning Equipment|Indoor Cleaners/.test(option.label)), 'no category names as choices');
+    // Nothing from the model survived, so the tenant's own short lead-in is what the customer reads.
+    assert.equal(result.assistantMessage, 'A quick question first, so I can show you the right ones.');
+    assert.ok(!/`|cleaners-and-cleaning|head to|PlaceMakers|\?|section/i.test(result.assistantMessage), result.assistantMessage);
+    assert.ok(warnings.some((line) => line.includes('[ReplyShaper]') && line.includes('internal id')), 'the log says what was removed');
+    assert.ok(!cards(result, 'products')[0].props.products.some((product: any) => product.recommended), 'samples from a category are not badged "Recommended"');
+    assert.equal(cards(result, 'products')[0].props.closing, 'cart', 'the button never reads "Add all to"');
+    // A short, normal reply from the model is kept exactly.
+    const calm = await (stack.serviceFor({ reply: 'Happy to help with that.' }) as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-pilot2', sessionId: 'ws-pilot2', turnId: 'ws-pilot2-t1', correlationId: 'ws-pilot2-c1', message: 'cleaning supply' }, pack);
+    assert.equal(calm.assistantMessage, 'Happy to help with that.');
+    // The answer narrows to the right shelf without asking again. It arrives as the web app sends it (text, one "question → answer"
+    // line per card) and the stand-in model reads nothing from it: a tapped answer never depends on a model.
+    const floors = await (pilotService as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-pilot', sessionId: 'ws-pilot', turnId: 'ws-pilot-t2', correlationId: 'ws-pilot-c2', message: 'My answers:\nWhat are you cleaning? → equipment' }, pack);
+    assert.equal(floors.trace.knowledgeGate.conceptId, 'concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/mops-and-brooms');
+    assert.equal(floors.trace.knowledgeGate.mode, 'direct_results');
+    assert.equal(cards(floors, 'clarify').length, 0, 'the question is not asked twice');
+    assert.deepEqual(skusOf(cards(floors, 'products')[0]), ['MB-1']);
+    // The same answer by its label, and an answer that is a word which also names an unrelated category ("equipment" is a power-tool shelf).
+    await run('ws-pilot-b', 'cleaning supply', 1);
+    const car = await run('ws-pilot-b', 'My answers:\nWhat are you cleaning? → The car', 2);
+    assert.equal(car.trace.knowledgeGate.conceptId, 'concept://placemakers/cleaning-and-consumables/automotive/car-cleaning');
+    assert.deepEqual(skusOf(cards(car, 'products')[0]), ['CC-1']);
+    assert.equal(floors.trace.knowledgeGate.trace.matchedBy, 'pending_clarification', 'it is the answer to the open question, not a new request');
+  });
+
+  await suite.test('cleaning supplies and paint narrow across turns using authored facts, without leaking adjacent categories', async () => {
+    const cleaning = await run('ws-cleaning-supplies', 'cleaning supplies');
+    assert.equal(cleaning.trace.knowledgeGate.mode, 'overview_then_ask');
+    assert.equal(cards(cleaning, 'clarify')[0]?.props?.questions[0]?.id, 'cleaning_task');
+    const cleaningPreview = skusOf(cards(cleaning, 'products')[0]);
+    assert.ok(['IC-1', 'OC-1', 'MB-1'].every((sku) => cleaningPreview.includes(sku)), `cleaning categories: ${cleaningPreview}`);
+    const indoor = await run('ws-cleaning-supplies', 'indoor', 2);
+    assert.equal(indoor.trace.knowledgeGate.conceptId, 'concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/indoor-cleaners');
+    assert.deepEqual(skusOf(cards(indoor, 'products')[0]), ['IC-1']);
+
+    const paint = await run('ws-paint-project', 'paint a room');
+    assert.equal(paint.trace.knowledgeGate.mode, 'overview_then_ask');
+    assert.equal(cards(paint, 'clarify')[0]?.props?.questions[0]?.id, 'paint_surface');
+    const interior = await run('ws-paint-project', 'inside walls', 2);
+    assert.equal(interior.trace.knowledgeGate.conceptId, 'concept://placemakers/projects/paint-a-room');
+    assert.deepEqual(interior.trace.knowledgeGate.retrieval.groups.map((group: any) => group.label), ['Interior Paint']);
+    assert.deepEqual(skusOf(cards(interior, 'products')[0]), ['IP-1'], 'exterior paint is excluded after the fact answer');
   });
 
   await suite.test('a project is served by the gate: question first, then a grouped overview of its categories', async () => {
@@ -138,6 +212,17 @@ async function main() {
     assert.ok(skusOf(cards(result, 'products')[0]).includes('HM-1'));
     const foreign = await run('ws-sku-foreign', `SKU ${SKU_OF['FOREIGN-1']}`);
     assert.ok(!skusOf(cards(foreign, 'products')[0]).includes('FOREIGN-1'), 'another tenant\'s SKU is never shown');
+  });
+
+  await suite.test('an empty live catalogue result cannot become an invented availability claim', async () => {
+    const result = await (stack.serviceFor({ reply: 'Here are toilets from our range.' }) as any).executeTurn({
+      tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-empty-toilets', sessionId: 'ws-empty-toilets',
+      turnId: 'ws-empty-toilets-t1', correlationId: 'ws-empty-toilets-c1', message: 'toilets',
+    }, pack);
+    assert.equal(retrieved(result), true, 'the tenant catalogue was searched');
+    assert.equal(cards(result, 'products').length, 0, 'no item was found in the isolated catalogue');
+    assert.match(result.assistantMessage, /can't show products/i);
+    assert.doesNotMatch(result.assistantMessage, /here are toilets/i);
   });
 
   await suite.test('a concept the release does not cover is never answered from the catalogue by default', async () => {

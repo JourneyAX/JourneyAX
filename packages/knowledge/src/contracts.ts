@@ -235,6 +235,11 @@ export const ConceptSchema = z.object({
     maxItemsPerGroup: z.number().int().positive().max(10),
     questionRef: z.string().optional(),
     productRetrievalAllowed: z.boolean(),
+    /** Merchant-authored narrowing of a project overview after a declared fact is answered. */
+    groupSelection: z.object({
+      factKey: FactKeySchema,
+      valueMap: z.record(z.string(), z.array(ConceptIdSchema).min(1)),
+    }).strict().optional(),
   }).strict().optional(),
   commercePolicy: z.object({
     addToCart: z.enum(['allowed', 'allowed_with_warning', 'blocked']),

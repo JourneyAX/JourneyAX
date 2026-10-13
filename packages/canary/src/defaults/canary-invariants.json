@@ -138,7 +138,10 @@
       "\\bstage '",
       "\\btenant\\b",
       "\\bexecution outcome\\b",
-      "\\bunable to complete that action\\b"
+      "\\bunable to complete that action\\b",
+      "`",
+      "\\bhead (to|over to)\\b",
+      "\\bcategory:"
     ],
     "minRepeatedSentenceLength": 20
   }

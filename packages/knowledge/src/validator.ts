@@ -112,6 +112,7 @@ function validateOkfContent(input: unknown, tenantId: string, publication: boole
   const sources = new Map(content.sources.map((source) => [source.sourceId, source]));
   const verifications = new Map(content.verifications.map((record) => [record.recordId, record]));
   const facts = new Set(content.factRegistry.map((fact) => fact.factKey));
+  const factByKey = new Map(content.factRegistry.map((fact) => [fact.factKey, fact]));
   const policy = resolveOkfPolicy(content.policy);
 
   const assertUnique = (values: string[], path: string) => {
@@ -150,6 +151,18 @@ function validateOkfContent(input: unknown, tenantId: string, publication: boole
     }
     for (const target of [...concept.safety.stepRefs, ...(concept.broadQueryPolicy?.groupConceptIds || [])]) {
       if (!concepts.has(target)) issues.push({ code: 'unresolved_concept', path: concept.conceptId, message: `Concept target '${target}' does not resolve` });
+    }
+    const selection = concept.broadQueryPolicy?.groupSelection;
+    if (selection) {
+      if (!facts.has(selection.factKey)) issues.push({ code: 'unknown_fact', path: concept.conceptId, message: `Unknown group selection fact '${selection.factKey}'` });
+      const definition = factByKey.get(selection.factKey);
+      const allowed = new Set([...(definition?.options ?? []).map((option) => option.value), ...(definition?.allowedValues ?? [])]);
+      for (const value of Object.keys(selection.valueMap)) {
+        if (allowed.size && !allowed.has(value)) issues.push({ code: 'invalid_group_selection_value', path: concept.conceptId, message: `Group selection value '${value}' is not an option of '${selection.factKey}'` });
+      }
+      for (const target of Object.values(selection.valueMap).flat()) {
+        if (!concepts.has(target)) issues.push({ code: 'unresolved_concept', path: concept.conceptId, message: `Group selection target '${target}' does not resolve` });
+      }
     }
     for (const sourceRef of concept.evidenceRefs) {
       if (!sources.has(sourceRef)) issues.push({ code: 'unresolved_source', path: concept.conceptId, message: `Evidence source '${sourceRef}' does not resolve` });

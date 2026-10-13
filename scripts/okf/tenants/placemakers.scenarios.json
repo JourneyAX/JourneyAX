@@ -437,6 +437,20 @@
       }
     },
     {
+      "id": "paint-interior-project-narrowing",
+      "description": "Answering the painting surface limits the project overview to that surface, not exterior or timber paint",
+      "message": "paint a room",
+      "facts": {
+        "paint_surface": "interior"
+      },
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Painting project",
+        "retrieval": "allowed",
+        "noAsk": true
+      }
+    },
+    {
       "id": "paint-interior-products",
       "description": "Interior paint lists products and suggests applicators and prep, as unverified extras",
       "message": "interior paint",
@@ -488,6 +502,40 @@
         "concept": "Insulating a home",
         "ask": "insulation_area",
         "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "cleaning-supplies-broad",
+      "description": "A broad cleaning request shows relevant cleaning groups and asks one task question",
+      "message": "cleaning supplies",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Cleaning supplies",
+        "ask": "cleaning_task",
+        "retrieval": "allowed",
+        "claimsExcluded": [
+          "care_safety",
+          "compatibility",
+          "requirement"
+        ]
+      }
+    },
+    {
+      "id": "cleaning-supplies-indoor",
+      "description": "An answered cleaning task narrows to indoor cleaners without claiming surface compatibility",
+      "message": "cleaning supplies",
+      "facts": {
+        "cleaning_task": "indoor"
+      },
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Indoor Cleaners",
+        "retrieval": "allowed",
+        "claimsExcluded": [
+          "care_safety",
+          "compatibility",
+          "requirement"
+        ]
       }
     },
     {
@@ -803,6 +851,69 @@
         "mode": "direct_results",
         "concept": "Wrenches/Spanners/Sockets (Incl Sets)",
         "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "cleaning-supply-asks-what",
+      "description": "The singular, as a customer types it, reaches the cleaning family and asks what is being cleaned, in plain words",
+      "message": "cleaning supply",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Cleaning supplies",
+        "retrieval": "allowed",
+        "ask": "cleaning_task"
+      }
+    },
+    {
+      "id": "cleaning-floors",
+      "description": "Floors narrows to mops and brooms",
+      "message": "cleaning supply",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Mops & Brooms",
+        "retrieval": "allowed"
+      },
+      "facts": {
+        "cleaning_task": "equipment"
+      }
+    },
+    {
+      "id": "cleaning-inside",
+      "description": "Inside the house narrows to indoor cleaners",
+      "message": "cleaning supply",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Indoor Cleaners",
+        "retrieval": "allowed"
+      },
+      "facts": {
+        "cleaning_task": "indoor"
+      }
+    },
+    {
+      "id": "cleaning-outside",
+      "description": "Outside narrows to outdoor cleaners",
+      "message": "cleaning supply",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Outdoor Cleaners",
+        "retrieval": "allowed"
+      },
+      "facts": {
+        "cleaning_task": "outdoor"
+      }
+    },
+    {
+      "id": "cleaning-car",
+      "description": "The car narrows to car cleaning",
+      "message": "cleaning supply",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Car Cleaning",
+        "retrieval": "allowed"
+      },
+      "facts": {
+        "cleaning_task": "car"
       }
     }
   ]

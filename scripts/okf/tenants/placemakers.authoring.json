@@ -41,6 +41,10 @@
     { "factKey": "fence_length", "question": "Roughly how long is the fence line?", "uiInputType": "text", "type": "string", "role": "measurement" },
     { "factKey": "paint_surface", "question": "What are you painting or finishing?", "options": [
       { "value": "interior", "label": "Inside walls and ceilings" }, { "value": "exterior", "label": "Outside walls" }, { "value": "timber", "label": "Timber (deck, fence, furniture)" } ] },
+    { "factKey": "cleaning_task", "question": "What are you cleaning?", "options": [
+      { "value": "indoor", "label": "Inside the house: kitchen, bathroom, general" }, { "value": "equipment", "label": "Floors: mopping and sweeping" },
+      { "value": "outdoor", "label": "Outside: decks, concrete, driveways" }, { "value": "car", "label": "The car" },
+      { "value": "household", "label": "Buckets, bins and other household things" } ] },
     { "factKey": "insulation_area", "question": "Where is the insulation going?", "options": [
       { "value": "walls", "label": "Walls" }, { "value": "ceiling", "label": "Ceiling" }, { "value": "floor", "label": "Under the floor" }, { "value": "unsure", "label": "Not sure yet" } ] },
     { "factKey": "leak_location", "question": "Where is the water showing up?", "options": [
@@ -54,7 +58,12 @@
       "discriminator": { "fact": "fastener_substrate", "valueMap": { "timber": "Wood Screws", "metal": "Metal Screws", "masonry": "Masonry Anchors" } },
       "compatibilitySensitive": true },
     { "id": "nails", "name": "Nails", "description": "Hand-driven and gun-driven nails.", "synonyms": ["nail"], "phrases": ["nails for my nail gun"],
-      "members": ["Collated Nails", "Loose Nails"], "question": "Are the nails for a nail gun or for hand driving?" }
+      "members": ["Collated Nails", "Loose Nails"], "question": "Are the nails for a nail gun or for hand driving?" },
+    { "id": "cleaning_supplies", "name": "Cleaning supplies", "description": "Cleaning products and equipment grouped by task, without assuming chemical suitability for a surface.",
+      "synonyms": ["cleaning products", "cleaning equipment", "cleaning supply", "cleaning stuff", "cleaning gear", "cleaning materials"],
+      "phrases": ["i need cleaning supplies", "show me cleaning supplies", "something to clean with", "i need some cleaning gear"],
+      "members": ["Indoor Cleaners", "Outdoor Cleaners", "Mops & Brooms", "Car Cleaning", "Cleaning & Consumables > Household & Pets > Household"],
+      "discriminator": { "fact": "cleaning_task", "valueMap": { "indoor": "Indoor Cleaners", "outdoor": "Outdoor Cleaners", "equipment": "Mops & Brooms", "car": "Car Cleaning", "household": "Cleaning & Consumables > Household & Pets > Household" } } }
   ],
   "projects": [
     { "id": "bathroom_renovation", "name": "Bathroom renovation", "description": "Planning a new or renovated bathroom or ensuite.",
@@ -87,7 +96,9 @@
     { "id": "paint_a_room", "name": "Painting project", "description": "Painting or finishing walls, ceilings or timber.",
       "phrases": ["paint a room", "painting a room", "repaint my house", "paint my house", "painting project", "paint the walls", "paint my room", "painting my house", "repaint a room", "paint my walls", "painting a house"],
       "facts": [{ "fact": "paint_surface", "importance": "high" }],
-      "categories": ["Interior Paint", "Exterior Paint", "Woodcare", "Primers Sealers & Undercoats", "Brushes & Rollers", "Masking", "Protective Wear & Coverings"] },
+      "categories": ["Interior Paint", "Exterior Paint", "Woodcare", "Primers Sealers & Undercoats", "Brushes & Rollers", "Masking", "Protective Wear & Coverings"],
+      "categorySelection": { "fact": "paint_surface", "valueMap": {
+        "interior": ["Interior Paint"], "exterior": ["Exterior Paint"], "timber": ["Woodcare"] } } },
     { "id": "insulate_home", "name": "Insulating a home", "description": "Insulating walls, ceilings or floors.",
       "phrases": ["insulate my home", "insulate my house", "insulating a house", "add insulation", "insulation project", "insulating my home", "insulating my house", "insulate the house", "insulate a house"],
       "facts": [{ "fact": "insulation_area", "importance": "high" }],

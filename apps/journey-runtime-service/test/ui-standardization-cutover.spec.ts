@@ -475,7 +475,10 @@ async function runTests() {
     assert.equal(cardProducts[0].price, 99);
     assert.equal(cardProducts[0].currency, 'USD');
     assert.equal(cardProducts[0].imageUrl, 'https://example.com/alpha.jpg');
-    assert.equal(cardProducts[0].recommended, true);
+    assert.equal(cardProducts[0].recommended, false, 'a result nobody verified as a recommendation is not badged as one');
+    const verified = port.compose({ valid: true, outcome }, decision, mockWs, mockRelease, { recommendation: 'verified_recommendation' });
+    const verifiedProducts = (verified.uiInstructions.find((i) => i.component === 'products')?.envelope?.arguments.card.state as any).products;
+    assert.deepEqual(verifiedProducts.map((product: any) => product.recommended), [true, false], 'only a verified recommendation earns the badge, and only on the first');
     assert.equal(cardProducts[1].sku, 'SKU-REC-2');
     assert.equal(cardProducts[1].price, 149);
     console.log('✓ Grounded products card emitted strictly with grounded fields\n');

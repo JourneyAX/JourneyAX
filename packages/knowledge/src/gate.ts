@@ -489,6 +489,16 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
   const missingFacts = concept.discriminators
     .map((entry) => entry.factKey)
     .filter((factKey) => knownFacts[factKey] === undefined || knownFacts[factKey] === null || knownFacts[factKey] === '');
+  const groupSelection = concept.broadQueryPolicy?.groupSelection;
+  const groupSelectionValue = groupSelection && knownFacts[groupSelection.factKey] != null
+    ? String(knownFacts[groupSelection.factKey]) : undefined;
+  const validGroupSelection = groupSelection && groupSelectionValue !== undefined &&
+    Object.prototype.hasOwnProperty.call(groupSelection.valueMap, groupSelectionValue);
+  if (groupSelectionValue !== undefined && !validGroupSelection && groupSelection &&
+      !missingFacts.includes(groupSelection.factKey)) {
+    // A model-extracted value outside the merchant's options cannot silently select a broad or unrelated category.
+    missingFacts.push(groupSelection.factKey);
+  }
   const nextDiscriminator = concept.discriminators.find(
     (entry) => missingFacts.includes(entry.factKey) && !declined.has(entry.questionRef) && !declined.has(entry.factKey)
   );
@@ -633,8 +643,11 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     // a low-specificity query into a fully matched recommendation.
     base.mode = 'overview_then_ask';
     base.retrieval.permission = concept.broadQueryPolicy.productRetrievalAllowed ? 'allowed' : 'blocked';
-    base.retrieval.scope = concept.broadQueryPolicy.groupConceptIds;
-    base.retrieval.groups = concept.broadQueryPolicy.groupConceptIds.flatMap((conceptId) => {
+    const selected = validGroupSelection && groupSelectionValue !== undefined
+      ? groupSelection.valueMap[groupSelectionValue] : undefined;
+    const groupIds = selected?.length ? selected : concept.broadQueryPolicy.groupConceptIds;
+    base.retrieval.scope = groupIds;
+    base.retrieval.groups = groupIds.flatMap((conceptId) => {
       const group = concepts.get(conceptId);
       return group ? [{
         conceptId,
@@ -645,6 +658,12 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
         maxItems: concept.broadQueryPolicy!.maxItemsPerGroup,
       }] : [];
     });
+    if (selected?.length) {
+      base.retrieval.categoryIds = [...new Set(base.retrieval.groups.flatMap((group) => group.categoryIds))];
+      base.retrieval.categoryPaths = base.retrieval.groups.flatMap((group) => group.categoryPaths);
+      base.retrieval.excludeCategoryIds = [...new Set(base.retrieval.groups.flatMap((group) => group.excludeCategoryIds))];
+      base.trace.reasonCodes.push('group_narrowed_by_fact');
+    }
     base.retrieval.presentation = concept.broadQueryPolicy.productRetrievalAllowed ? 'grouped_overview' : 'none';
     base.retrieval.maxItemsPerGroup = concept.broadQueryPolicy.maxItemsPerGroup;
     base.recommendation = 'category_examples';

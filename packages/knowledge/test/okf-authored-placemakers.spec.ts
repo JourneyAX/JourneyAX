@@ -36,7 +36,7 @@ async function main() {
     for (const project of spec.projects) if (project.journey) assert.ok(packJourneys.includes(project.journey.journeyId));
     assert.deepEqual(
       { families: authored.authored.families, projects: authored.authored.projects, problems: authored.authored.problems, care: authored.authored.care },
-      { families: 2, projects: 8, problems: 6, care: 2 });
+      { families: 3, projects: 8, problems: 6, care: 2 });
     assert.deepEqual(authored.projectsWithoutJourney.sort(), ['deck_build', 'fence_build', 'insulate_home', 'paint_a_room', 'wet_area_lining']);
   });
 
@@ -73,6 +73,8 @@ async function main() {
   await suite.test('customer scenarios reach the right authored concept, question and next step', () => {
     const table: Array<[string, Record<string, unknown>, { mode: string; concept: string; ask?: string }]> = [
       ['screws', {}, { mode: 'overview_then_ask', concept: 'Screws', ask: 'fastener_substrate' }],
+      ['cleaning supplies', {}, { mode: 'overview_then_ask', concept: 'Cleaning supplies', ask: 'cleaning_task' }],
+      ['cleaning supplies', { cleaning_task: 'indoor' }, { mode: 'direct_results', concept: 'Indoor Cleaners' }],
       ['screws', { fastener_substrate: 'masonry' }, { mode: 'direct_results', concept: 'Masonry  Anchors' }],
       ['nails', {}, { mode: 'overview_then_ask', concept: 'Nails', ask: 'nav_family_nails' }],
       ['i want to build a deck', {}, { mode: 'overview_then_ask', concept: 'Deck build', ask: 'deck_material' }],
@@ -82,6 +84,7 @@ async function main() {
       ['renovate my bathroom', { project_scope: 'renovation' }, { mode: 'project_journey', concept: 'Bathroom renovation', ask: 'room_dimensions' }],
       ['laundry makeover', {}, { mode: 'project_journey', concept: 'Laundry makeover', ask: 'project_scope' }],
       ['painting a room', {}, { mode: 'overview_then_ask', concept: 'Painting project', ask: 'paint_surface' }],
+      ['painting a room', { paint_surface: 'interior' }, { mode: 'overview_then_ask', concept: 'Painting project' }],
       ['wet area lining', {}, { mode: 'overview_then_ask', concept: 'Wet area lining', ask: 'wet_area_room' }],
       ['build a fence', {}, { mode: 'overview_then_ask', concept: 'Fence build', ask: 'fence_type' }],
       ['insulate my house', { insulation_area: 'walls' }, { mode: 'overview_then_ask', concept: 'Insulating a home' }],
@@ -95,6 +98,28 @@ async function main() {
       assert.equal(name(decision.conceptId), expected.concept, label);
       assert.equal(decision.clarification?.factKey, expected.ask, label);
     }
+  });
+
+  await suite.test('answered merchant facts narrow project groups without hardcoded category behavior', () => {
+    const broad = gate('cleaning supplies');
+    assert.deepEqual(broad.retrieval.groups.map((group: any) => group.label), ['Indoor Cleaners', 'Outdoor Cleaners', 'Mops & Brooms', 'Car Cleaning']);
+    assert.ok(broad.retrieval.categoryPaths.some((path: string[]) => path.at(-1) === 'Household'), 'the group cap does not remove the household scope');
+    assert.ok(!broad.retrieval.categoryPaths.some((path: string[]) => path.at(-1) === 'Site Consumables'));
+
+    for (const [answer, wanted, excluded] of [
+      ['interior', 'Interior Paint', 'Exterior Paint'],
+      ['exterior', 'Exterior Paint', 'Interior Paint'],
+      ['timber', 'Woodcare', 'Interior Paint'],
+    ]) {
+      const decision = gate('paint a room', { paint_surface: answer });
+      assert.deepEqual(decision.retrieval.groups.map((group: any) => group.label), [wanted]);
+      assert.ok(decision.retrieval.categoryPaths.every((path: string[]) => path.at(-1) === wanted));
+      assert.ok(!decision.retrieval.categoryPaths.some((path: string[]) => path.at(-1) === excluded));
+      assert.equal(decision.clarification, undefined, 'the answered question is not repeated');
+    }
+    const invalid = gate('paint a room', { paint_surface: 'kitchen' });
+    assert.equal(invalid.clarification?.factKey, 'paint_surface', 'an unsupported answer asks again');
+    assert.ok(invalid.retrieval.groups.length > 1, 'an invalid answer does not assert a narrowed scope');
   });
 
   await suite.test('a customer\'s own words reach the right concept: a project beats a category that shares one word, and naming two of a project\'s categories describes the project', () => {

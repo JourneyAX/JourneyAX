@@ -74,13 +74,41 @@
     "bundle_summary_one": "Here is the item that fits what you've told me. The total is {total}.",
     "bundle_summary_many": "Here are {count} items that fit what you've told me. The total is {total}.",
     "products_heading": "Matching products",
-    "products_intro": "Here are some options. To narrow them down, please confirm a few details below.",
-    "products_intro_named": "Here are some options from the {companyName} catalogue. To narrow them down, please confirm a few details below.",
+    "products_intro": "Here are some options to start with.",
+    "products_intro_named": "Here are some options to start with.",
     "evidence_heading": "Verified guidance",
     "ask_fact_default_question": "Could you tell me your {fact}?",
     "welcome_default": "Hello! How can I help you today?",
     "item_category_reason": "Category: {category}",
     "no_verified_specs": "I don't have verified technical specifications for that. Could you tell me more about your project, such as the requirements or dimensions?",
-    "claim_withheld": "I can't confirm that detail, so I won't guess. These are the options that match what you've told me."
+    "claim_withheld": "I can't confirm that detail, so I won't guess. These are the options that match what you've told me.",
+    "clarify_lead_in": "A quick question first, so I can show you the right ones.",
+    "closing_default": "cart"
+  },
+  "replyStyle": {
+    "_comment": "How the assistant's own words are shaped before a customer reads them. The rules go to the model; the rest is enforced on what comes back, because a model cannot be trusted to follow style rules. A pack overrides any of it under extensions.interpretationPolicy.replyStyle.",
+    "maxSentences": 2,
+    "dropListLines": true,
+    "dropCompanyName": true,
+    "forbiddenPhrases": [
+      "head to",
+      "head over to",
+      "browse",
+      "check out the",
+      "next step",
+      "tell me",
+      "let me know",
+      "narrow it down",
+      "narrow them down",
+      "category:",
+      "section"
+    ],
+    "rules": [
+      "Write one or two short sentences in plain, friendly language, the way a helpful person at the counter would.",
+      "Do not say the company's name: the customer is already in its shop.",
+      "Do not mention category names, ids, section names or where to browse; the cards on screen show the range.",
+      "Do not ask the customer a question, and do not list options or steps: a card on screen asks anything that needs asking.",
+      "Do not sell or pitch. No 'perfect for', 'ideal' or 'recommended' language unless the verified information says so."
+    ]
   }
 }

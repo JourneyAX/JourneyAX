@@ -121,6 +121,7 @@ export function checkTurn(observation: TurnObservation, spec: CanarySpec, expect
 
   // ── What this scenario expects ──
   for (const required of expect.cards?.require ?? []) if (!summary.cardTypes.includes(required)) add('expected_card', `a '${required}' card was expected`);
+  if (expect.cards?.first && summary.cardTypes[0] !== expect.cards.first) add('card_order', `the first card was '${summary.cardTypes[0] ?? 'none'}', '${expect.cards.first}' was expected first`);
   for (const forbidden of expect.cards?.forbid ?? []) if (summary.cardTypes.includes(forbidden)) add('forbidden_card', `a '${forbidden}' card must not appear here`);
   for (const required of expect.capabilities?.require ?? []) if (!summary.capabilities.includes(required)) add('expected_capability', `the step '${required}' was expected to run`);
   if (expect.text?.matchesAny?.length && !expect.text.matchesAny.some((pattern) => new RegExp(pattern, 'i').test(summary.reply))) add('reply_text', `the reply matches none of: ${expect.text.matchesAny.join(' | ')}`);

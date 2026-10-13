@@ -38,12 +38,21 @@ export function validatePackSettings(dto: {
       set['extensions.interpretationPolicy'] = null;
     } else {
       if (typeof policy !== 'object' || Array.isArray(policy)) return { ok: false, message: 'Invalid interpretationPolicy: expected an object' };
-      const allowed = ['quantity', 'money', 'grounding', 'promptRules', 'messages'];
+      const allowed = ['quantity', 'money', 'grounding', 'promptRules', 'messages', 'replyStyle'];
       const unknown = Object.keys(policy).filter((key) => !allowed.includes(key));
       if (unknown.length) return { ok: false, message: `Invalid interpretationPolicy: unknown key(s) ${unknown.join(', ')}` };
       if (policy.promptRules !== undefined && !isStringArray(policy.promptRules)) return { ok: false, message: 'Invalid interpretationPolicy: promptRules must be a list of non-empty strings' };
       if (policy.messages !== undefined && (typeof policy.messages !== 'object' || Object.values(policy.messages).some((m) => typeof m !== 'string' || !m))) {
         return { ok: false, message: 'Invalid interpretationPolicy: messages must map ids to non-empty strings' };
+      }
+      if (policy.replyStyle !== undefined) {
+        const style = policy.replyStyle;
+        if (!style || typeof style !== 'object' || Array.isArray(style)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle must be an object' };
+        const unknownStyle = Object.keys(style).filter((key) => !['maxSentences', 'dropListLines', 'dropCompanyName', 'forbiddenPhrases', 'rules'].includes(key));
+        if (unknownStyle.length) return { ok: false, message: `Invalid interpretationPolicy: replyStyle has unknown key(s) ${unknownStyle.join(', ')}` };
+        if (style.maxSentences !== undefined && (!Number.isInteger(style.maxSentences) || style.maxSentences < 1 || style.maxSentences > 8)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxSentences must be a whole number from 1 to 8' };
+        for (const flag of ['dropListLines', 'dropCompanyName']) if (style[flag] !== undefined && typeof style[flag] !== 'boolean') return { ok: false, message: `Invalid interpretationPolicy: replyStyle.${flag} must be true or false` };
+        for (const list of ['forbiddenPhrases', 'rules']) if (style[list] !== undefined && !isStringArray(style[list])) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.${list} must be a list of non-empty strings` };
       }
       for (const key of MONEY_KEYS) {
         if (policy.money?.[key] !== undefined && !isStringArray(policy.money[key])) return { ok: false, message: `Invalid interpretationPolicy: money.${key} must be a list of non-empty strings` };

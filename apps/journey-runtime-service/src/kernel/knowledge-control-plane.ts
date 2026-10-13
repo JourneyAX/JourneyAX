@@ -3,6 +3,7 @@ import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
 import {
   loadActiveOkfRevocations,
   loadPinnedOkfRelease,
+  readCardAnswers,
   detectIntents,
   foldText,
   tokenizeText,
@@ -138,6 +139,16 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       }
 
       const policy = resolveOkfPolicy(content.policy, inputBase.locale);
+      // A tapped answer is read straight from the release's own question and options, so it never waits on, or depends on, a model.
+      const openQuestions = new Set(workspace?.openQuestions ?? []);
+      const cardAnswers = readCardAnswers(message, content.factRegistry.filter((fact) => openQuestions.has(fact.factKey)));
+      if (Object.keys(cardAnswers).length > 0) {
+        interpretation.candidateFacts = {
+          ...(interpretation.candidateFacts || {}),
+          ...Object.fromEntries(Object.entries(cardAnswers).map(([key, value]) => [key, { value, confidence: 1, source: 'card_answer' }])),
+        } as typeof interpretation.candidateFacts;
+        Object.assign(facts, cardAnswers);
+      }
       const candidateSku = extractExactSku(message, policy.sku);
       let exactSku: string | undefined;
       let exactProduct: any;
@@ -170,12 +181,20 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
         const definition = content.factRegistry.find((fact) => fact.factKey === discriminator.factKey);
         const normalizedMessage = message.trim().toLowerCase();
         if (detectIntents(message, policy).intents.includes('topic_switch')) return false;
-        const option = definition?.options?.some((entry) =>
-          normalizedMessage === entry.value.toLowerCase() || normalizedMessage === entry.label.toLowerCase()) ||
-          definition?.allowedValues?.some((value) => normalizedMessage === value.toLowerCase());
-        const candidateValue = interpretation.candidateFacts?.[discriminator.factKey]?.value;
-        return Boolean(option || (typeof candidateValue === 'string' &&
-          tokenizeText(normalizedMessage).includes(foldText(candidateValue))));
+        const candidate = interpretation.candidateFacts?.[discriminator.factKey];
+        if ((candidate as any)?.source === 'card_answer') return true;
+        const candidateValue = candidate?.value;
+        const messageWords = tokenizeText(normalizedMessage);
+        const option = definition?.options?.some((entry) => {
+          if (normalizedMessage === entry.value.toLowerCase() || normalizedMessage === entry.label.toLowerCase()) return true;
+          if (String(candidateValue) !== entry.value) return false;
+          const labelWords = tokenizeText(entry.label);
+          // A model may map customer wording to a canonical option, but that option must be grounded in the
+          // customer's answer. An adjacent label pair avoids treating a generic word such as "walls" as a choice.
+          return labelWords.some((word, index) => index + 1 < labelWords.length &&
+            messageWords.some((messageWord, at) => messageWord === word && messageWords[at + 1] === labelWords[index + 1]));
+        }) || definition?.allowedValues?.some((value) => normalizedMessage === value.toLowerCase());
+        return Boolean(option || (typeof candidateValue === 'string' && messageWords.includes(foldText(candidateValue))));
       });
       if (retainedConcept && pendingAnswer) {
         const continued = resolveOkfGate(content, {

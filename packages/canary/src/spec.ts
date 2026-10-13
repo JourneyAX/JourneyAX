@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const Expect = z.object({
-  cards: z.object({ require: z.array(z.string()).default([]), forbid: z.array(z.string()).default([]) }).strict().optional(),
+  cards: z.object({ require: z.array(z.string()).default([]), forbid: z.array(z.string()).default([]), /** The first card the customer sees must be of this type (a question card comes before examples). */ first: z.string().optional() }).strict().optional(),
   text: z.object({
     /** At least one of these (regular expressions, case-insensitive) must match the reply. */
     matchesAny: z.array(z.string()).default([]),

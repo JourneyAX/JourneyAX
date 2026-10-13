@@ -25,6 +25,7 @@ import { AgentRouter } from './agent.router';
 import { ModelGateway } from './model.gateway';
 import { CapabilityGateway } from './capability.gateway';
 import { validateOkfGeneratedClaims, withholdUnsupportedClaims } from './okf-claim-validator';
+import { shapeReply } from './reply-shaper';
 import { renderOkfMessage } from '@journeyax/knowledge';
 import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
@@ -1067,6 +1068,7 @@ export class TurnApplicationService {
         assistantMessage: groundedResponse.message,
         capability: presentationCapability,
         messages: knowledgeGate?.messages,
+        recommendation: knowledgeGate?.recommendation,
       }
     );
     if (basketWarnings.size > 0) {
@@ -1078,13 +1080,8 @@ export class TurnApplicationService {
       const missing = [...new Set(knowledgeGate.claims.notices)].filter((text) => text && !turnResult.assistantMessage.includes(text));
       if (missing.length > 0) turnResult.assistantMessage = [turnResult.assistantMessage, ...missing].filter(Boolean).join('\n\n');
     }
-    if (suggestionInstruction) {
-      const clarifyIndex = (turnResult.uiInstructions || []).findIndex((instruction) => instruction.component === 'clarify');
-      const instructions = [...(turnResult.uiInstructions || [])];
-      // The question stays last so the customer's next step is still the question, not the cross-sell.
-      instructions.splice(clarifyIndex === -1 ? instructions.length : clarifyIndex, 0, suggestionInstruction);
-      turnResult.uiInstructions = instructions;
-    }
+    // Order on screen: the question, then the examples, then the unverified "Have you considered?" extras.
+    if (suggestionInstruction) turnResult.uiInstructions = [...(turnResult.uiInstructions || []), suggestionInstruction];
 
     if (
       knowledgeGate?.clarification &&
@@ -1095,7 +1092,7 @@ export class TurnApplicationService {
         knowledgeGate.clarification,
         release
       );
-      if (instruction) turnResult.uiInstructions = [...(turnResult.uiInstructions || []), instruction];
+      if (instruction) turnResult.uiInstructions = [instruction, ...(turnResult.uiInstructions || [])];
       if (!workspace.openQuestions.includes(knowledgeGate.clarification.factKey)) {
         workspace.openQuestions.push(knowledgeGate.clarification.factKey);
       }
@@ -1502,7 +1499,18 @@ export class TurnApplicationService {
       }
     }
 
+    // A successful but empty live catalogue result cannot support "here are" or an
+    // availability claim from the model. Use the merchant's configured empty-result
+    // wording instead of asking the model to improvise products it did not see.
+    if (release.knowledgeModel?.type === 'okf_release' &&
+        knowledgeGate?.retrieval.permission === 'allowed' &&
+        catalogCaps.some((cap) => Array.isArray(cap.output?.items) && !cap.output?.error) &&
+        verifiedProducts.length === 0) {
+      return { message: renderOkfMessage(resolveInterpretationPolicy(release).messages, 'nothing_to_show') };
+    }
+
     const companyName = release.profile?.companyName || release.manifest?.name || 'Customer Consultant';
+    const replyPolicy = resolveInterpretationPolicy(release);
     // The prompt comes from the agent the router actually resolved for this workspace, never from list position.
     const resolvedAgent: any = resolvedAgentInfo?.agentId
       ? (release.agents || []).find((candidate: any) => candidate.agentId === resolvedAgentInfo.agentId)
@@ -1576,6 +1584,9 @@ export class TurnApplicationService {
           knowledgeGate
             ? `10. Enforce the structured knowledge decision: recommendation=${knowledgeGate.recommendation}; allowed claims=${knowledgeGate.claims.allowedClasses.join(', ') || 'none'}; disclaimers=${knowledgeGate.claims.disclaimers.join(' | ') || 'none'}. Do not make any claim class not listed.`
             : '',
+          release.knowledgeModel?.type === 'okf_release' && replyPolicy.replyStyle.rules.length
+            ? `Style (follow strictly):\n${replyPolicy.replyStyle.rules.map((rule) => `- ${rule}`).join('\n')}`
+            : '',
         ]
           .filter(Boolean)
           .join('\n\n');
@@ -1636,6 +1647,7 @@ export class TurnApplicationService {
           `Decision Type: ${decision.type}`,
           decision.payload?.question ? `Question: ${decision.payload.question}` : '',
           knowledgeGate ? `Knowledge response mode: ${knowledgeGate.mode}` : '',
+          knowledgeGate?.clarification ? `A question card on screen already asks the customer: "${knowledgeGate.clarification.question}". Lead into it in a few words; do not repeat, paraphrase or add to it.` : '',
           knowledgeGate ? `Allowed claim classes: ${knowledgeGate.claims.allowedClasses.join(', ') || 'none'}` : '',
           knowledgeGate?.claims.disclaimers.length ? `Required disclaimers: ${knowledgeGate.claims.disclaimers.join(' | ')}` : '',
           `\n--- VERIFIED TECHNICAL DOCUMENTS ---`,
@@ -1672,6 +1684,27 @@ export class TurnApplicationService {
         if (isAmbiguousMeasurement && !content.toLowerCase().includes('unit') && !content.toLowerCase().includes('measurement') && !content.toLowerCase().includes('clarify')) {
           content = `${renderOkfMessage(interpretationMessages, 'measurement_clarification')} ${content}`;
         }
+        // What the model wrote is shaped before anyone reads it: no internal ids, no second question, no "go and browse", short.
+        const shape = (text: string): string => {
+          if (release.knowledgeModel?.type !== 'okf_release') return text;
+          const idsOf = (conceptId?: string) => (conceptId ? conceptId.replace(/^concept:\/\//, '').split('/').slice(1) : []);
+          const shaped = shapeReply(text, {
+            style: replyPolicy.replyStyle,
+            companyNames: [release.profile?.companyName, release.manifest?.name].filter((name): name is string => Boolean(name)),
+            internalIds: [
+              ...idsOf(knowledgeGate?.conceptId),
+              ...(knowledgeGate?.retrieval?.scope ?? []).flatMap(idsOf),
+              ...(knowledgeGate?.retrieval?.groups ?? []).flatMap((group) => [...idsOf(group.conceptId), ...group.categoryIds]),
+              ...(knowledgeGate?.retrieval?.categoryIds ?? []),
+              ...(knowledgeGate?.clarification ? [knowledgeGate.clarification.factKey] : []),
+            ],
+            questionCardShown: Boolean(knowledgeGate?.clarification) || decision.type === 'ask_fact',
+          });
+          if (shaped.removed.length) {
+            console.warn(`[ReplyShaper] removed ${shaped.removed.length} sentence(s) from the model reply: ${shaped.removed.slice(0, 4).map((entry) => `${entry.reason} ("${entry.sentence.slice(0, 80)}")`).join('; ')}`);
+          }
+          return shaped.text || (knowledgeGate?.clarification ? renderOkfMessage(interpretationMessages, 'clarify_lead_in') : '');
+        };
         if (release.knowledgeModel?.type === 'okf_release') {
           const checked = validateOkfGeneratedClaims(content, knowledgeGate?.claims.allowedClasses || []);
           if (!checked.valid) {
@@ -1680,13 +1713,13 @@ export class TurnApplicationService {
             const withheld = withholdUnsupportedClaims(content, knowledgeGate?.claims.allowedClasses || []);
             console.warn(`[ClaimGuard] withheld ${withheld.removed.length} sentence(s) asserting ${[...new Set(withheld.removed.flatMap((entry) => entry.classes))].join(', ')} from the model reply; kept ${withheld.text ? 'the rest' : 'nothing'}. First withheld: "${withheld.removed[0]?.sentence.slice(0, 140)}"`);
             return {
-              message: withheld.text || decision.payload?.question || knowledgeGate?.clarification?.question || renderOkfMessage(interpretationMessages, 'claim_withheld'),
+              message: shape(withheld.text) || decision.payload?.question || knowledgeGate?.clarification?.question || renderOkfMessage(interpretationMessages, 'claim_withheld'),
               modelRoute: modelRes.route,
             };
           }
         }
         return {
-          message: content,
+          message: shape(content),
           modelRoute: modelRes.route,
         };
       }

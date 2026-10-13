@@ -1,6 +1,6 @@
 # placemakers public-path canary
 
-Spec 1.0.0, 2026-10-13T06:04:28.428Z, 242 ms. **PASS** — 18 scenarios, 18 turns, 0 violation(s), 0 warning(s).
+Spec 1.0.0, 2026-10-13T13:01:50.576Z, 241 ms. **PASS** — 19 scenarios, 19 turns, 0 violation(s), 0 warning(s).
 
 The transcript is sanitised: contact details, tokens, cookies and long identifiers are replaced and session ids are aliased.
 
@@ -10,9 +10,9 @@ The transcript is sanitised: contact details, tokens, cookies and long identifie
 
 | Scenario | Result | Turns | Cards shown |
 |---|---|---:|---|
-| fastenings-screws | pass | 1 | products, clarify |
+| fastenings-screws | pass | 1 | clarify, products |
 | fastenings-wood-screws | pass | 1 | products, accessories |
-| decking-project | pass | 1 | products, accessories, clarify |
+| decking-project | pass | 1 | clarify, products, accessories |
 | bathroom-vanities | pass | 1 | products, accessories |
 | bathroom-renovation | pass | 1 | clarify |
 | problem-leak | pass | 1 | — |
@@ -28,23 +28,24 @@ The transcript is sanitised: contact details, tokens, cookies and long identifie
 | paint-interior | pass | 1 | products, accessories |
 | cleaning-outdoor | pass | 1 | products |
 | wet-area-linings-and-waterproofing | pass | 1 | clarify |
+| cleaning-supply | pass | 1 | clarify, products |
 
 ## fastenings-screws
 
 A broad request for screws shows examples and asks what they will be fixed into
 
-**Turn 1** — customer: “screws” (110 ms, HTTP 200)
+**Turn 1** — customer: “screws” (105 ms, HTTP 200)
 
 > Here are options from the catalogue.
 > Please check compatibility before you buy.
 
-Events: session → capability → uiAction → uiAction → token → done. Cards: products, clarify. Steps: catalog.search.
+Events: session → capability → uiAction → uiAction → token → done. Cards: clarify, products. Steps: catalog.search.
 
 ## fastenings-wood-screws
 
 Wood screws list products and suggest bits as unverified extras
 
-**Turn 1** — customer: “wood screws” (16 ms, HTTP 200)
+**Turn 1** — customer: “wood screws” (15 ms, HTTP 200)
 
 > Here are options from the catalogue.
 > Please check compatibility before you buy.
@@ -59,7 +60,7 @@ Building a deck asks the material, then the size, then shows its categories
 
 > Here are options from the catalogue.
 
-Events: session → capability → uiAction → uiAction → uiAction → token → done. Cards: products, accessories, clarify. Steps: catalog.search.
+Events: session → capability → uiAction → uiAction → uiAction → token → done. Cards: clarify, products, accessories. Steps: catalog.search.
 
 ## bathroom-vanities
 
@@ -75,7 +76,7 @@ Events: session → capability → uiAction → uiAction → token → done. Car
 
 A renovation asks its first planning question and shows no products yet
 
-**Turn 1** — customer: “renovate my bathroom” (8 ms, HTTP 200)
+**Turn 1** — customer: “renovate my bathroom” (7 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
@@ -85,7 +86,7 @@ Events: session → uiAction → token → done. Cards: clarify. Steps: —.
 
 A leak is a problem: no products, cross-sell or checkout, and a professional is named
 
-**Turn 1** — customer: “my bathroom is leaking” (6 ms, HTTP 200)
+**Turn 1** — customer: “my bathroom is leaking” (7 ms, HTTP 200)
 
 > I can't give verified safety guidance for this. Please contact a qualified professional.
 
@@ -155,7 +156,7 @@ Events: session → token → done. Cards: —. Steps: —.
 
 A suitability question lists products but does not claim suitability
 
-**Turn 1** — customer: “is this wood screw suitable for a load bearing beam” (8 ms, HTTP 200)
+**Turn 1** — customer: “is this wood screw suitable for a load bearing beam” (7 ms, HTTP 200)
 
 > Here are options from the catalogue.
 > Please check compatibility before you buy.
@@ -177,7 +178,7 @@ Events: session → token → done. Cards: —. Steps: —.
 
 Switchgear lists products; the shop requires a professional at checkout
 
-**Turn 1** — customer: “switchgear” (8 ms, HTTP 200)
+**Turn 1** — customer: “switchgear” (6 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
@@ -187,7 +188,7 @@ Events: session → capability → uiAction → token → done. Cards: products.
 
 Interior paint lists products and suggests applicators
 
-**Turn 1** — customer: “interior paint” (6 ms, HTTP 200)
+**Turn 1** — customer: “interior paint” (7 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
@@ -207,9 +208,19 @@ Events: session → capability → uiAction → token → done. Cards: products.
 
 A question about linings and waterproofing for a wet area is helped as the wet-area project: it asks which room, and shows examples from its categories, not one category's products
 
-**Turn 1** — customer: “What moisture-resistant linings and waterproofing do I need for my wet area?” (7 ms, HTTP 200)
+**Turn 1** — customer: “What moisture-resistant linings and waterproofing do I need for my wet area?” (8 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
 Events: session → capability → uiAction → token → done. Cards: clarify. Steps: catalog.search.
+
+## cleaning-supply
+
+A bare request for cleaning supplies is answered like a person would: the question first, in plain words, then a few examples, with no system ids, no brand name and no sending the customer elsewhere
+
+**Turn 1** — customer: “cleaning supply” (6 ms, HTTP 200)
+
+> Here are options from the catalogue.
+
+Events: session → capability → uiAction → uiAction → token → done. Cards: clarify, products. Steps: catalog.search.
 

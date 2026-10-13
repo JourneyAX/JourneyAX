@@ -1,21 +1,21 @@
 # placemakers coverage evaluation
 
-Evaluated 2026-10-13T02:03:32.198Z. **4,676 of 4,676 scenarios hold**. Every scenario runs through the real gate and basket policy; none is stubbed.
+Evaluated 2026-10-13T02:03:32.198Z. **4,694 of 4,694 scenarios hold**. Every scenario runs through the real gate and basket policy; none is stubbed.
 
 ## By family
 
 | Family | Passed | Total |
 |---|---:|---:|
-| routing | 888 | 888 |
+| routing | 890 | 890 |
 | scope | 384 | 384 |
 | commerce | 384 | 384 |
-| safety | 1,092 | 1,092 |
-| technical_claims | 364 | 364 |
-| evidence | 1,092 | 1,092 |
-| exact_sku | 364 | 364 |
+| safety | 1,095 | 1,095 |
+| technical_claims | 365 | 365 |
+| evidence | 1,095 | 1,095 |
+| exact_sku | 365 | 365 |
 | cross_sell | 30 | 30 |
 | negative | 13 | 13 |
-| authored_path | 65 | 65 |
+| authored_path | 73 | 73 |
 
 ## By department
 
@@ -31,10 +31,10 @@ Evaluated 2026-10-13T02:03:32.198Z. **4,676 of 4,676 scenarios hold**. Every sce
 | Bathrooms & Plumbing | 20 | 228 | 228 |
 | Electrical & Heating/Cooling | 20 | 209 | 209 |
 | Safety & Ladders | 20 | 209 | 209 |
+| Cleaning & Consumables | 15 | 136 | 136 |
 | Kitchens & Laundry | 13 | 133 | 133 |
 | Adhesives & Sealants | 13 | 131 | 131 |
-| Cleaning & Consumables | 15 | 126 | 126 |
-| (cross-cutting) | 86 | 120 | 120 |
+| (cross-cutting) | 94 | 128 | 128 |
 | Wardrobes, Storage & Flooring | 12 | 112 | 112 |
 | Cladding | 12 | 99 | 99 |
 | Sheds & Buildings | 3 | 14 | 14 |

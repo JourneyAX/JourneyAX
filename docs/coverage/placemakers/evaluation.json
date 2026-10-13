@@ -2,15 +2,15 @@
  "tenantId": "placemakers",
  "evaluatedAt": "2026-10-13T02:03:32.198Z",
  "totals": {
-  "scenarios": 4676,
-  "passed": 4676,
+  "scenarios": 4694,
+  "passed": 4694,
   "failed": 0,
   "acceptedCollisions": 0
  },
  "families": {
   "routing": {
-   "passed": 888,
-   "total": 888
+   "passed": 890,
+   "total": 890
   },
   "scope": {
    "passed": 384,
@@ -21,20 +21,20 @@
    "total": 384
   },
   "safety": {
-   "passed": 1092,
-   "total": 1092
+   "passed": 1095,
+   "total": 1095
   },
   "technical_claims": {
-   "passed": 364,
-   "total": 364
+   "passed": 365,
+   "total": 365
   },
   "evidence": {
-   "passed": 1092,
-   "total": 1092
+   "passed": 1095,
+   "total": 1095
   },
   "exact_sku": {
-   "passed": 364,
-   "total": 364
+   "passed": 365,
+   "total": 365
   },
   "cross_sell": {
    "passed": 30,
@@ -45,8 +45,8 @@
    "total": 13
   },
   "authored_path": {
-   "passed": 65,
-   "total": 65
+   "passed": 73,
+   "total": 73
   }
  },
  "departments": [
@@ -13562,6 +13562,487 @@
    ]
   },
   {
+   "name": "Cleaning & Consumables",
+   "scenarios": 136,
+   "passed": 136,
+   "categories": [
+    {
+     "category": "Indoor Cleaners",
+     "path": [
+      "Cleaning & Consumables",
+      "Cleaners & Cleaning Equipment",
+      "Indoor Cleaners"
+     ],
+     "scenarios": 22,
+     "passed": 22,
+     "families": {
+      "routing": {
+       "passed": 4,
+       "total": 4
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 6,
+       "total": 6
+      },
+      "technical_claims": {
+       "passed": 2,
+       "total": 2
+      },
+      "evidence": {
+       "passed": 6,
+       "total": 6
+      },
+      "exact_sku": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "Battery Chargers & Accessories",
+     "path": [
+      "Cleaning & Consumables",
+      "Automotive",
+      "Battery Chargers & Accessories"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Car Cleaning",
+     "path": [
+      "Cleaning & Consumables",
+      "Automotive",
+      "Car Cleaning"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Food & Beverage",
+     "path": [
+      "Cleaning & Consumables",
+      "Site Consumables",
+      "Food & Beverage"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Household",
+     "path": [
+      "Cleaning & Consumables",
+      "Household & Pets",
+      "Household"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Mops & Brooms",
+     "path": [
+      "Cleaning & Consumables",
+      "Cleaners & Cleaning Equipment",
+      "Mops & Brooms"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Outdoor Cleaners",
+     "path": [
+      "Cleaning & Consumables",
+      "Cleaners & Cleaning Equipment",
+      "Outdoor Cleaners"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Personal Hygiene & Other Consumables",
+     "path": [
+      "Cleaning & Consumables",
+      "Site Consumables",
+      "Personal Hygiene & Other Consumables"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Pet Care",
+     "path": [
+      "Cleaning & Consumables",
+      "Household & Pets",
+      "Pet Care"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Petrol Cans",
+     "path": [
+      "Cleaning & Consumables",
+      "Automotive",
+      "Petrol Cans"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Cleaning & Consumables",
+     "path": [
+      "Cleaning & Consumables"
+     ],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "Automotive",
+     "path": [
+      "Cleaning & Consumables",
+      "Automotive"
+     ],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Cleaners & Cleaning Equipment",
+     "path": [
+      "Cleaning & Consumables",
+      "Cleaners & Cleaning Equipment"
+     ],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Household & Pets",
+     "path": [
+      "Cleaning & Consumables",
+      "Household & Pets"
+     ],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Site Consumables",
+     "path": [
+      "Cleaning & Consumables",
+      "Site Consumables"
+     ],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    }
+   ]
+  },
+  {
    "name": "Kitchens & Laundry",
    "scenarios": 133,
    "passed": 133,
@@ -14489,490 +14970,9 @@
    ]
   },
   {
-   "name": "Cleaning & Consumables",
-   "scenarios": 126,
-   "passed": 126,
-   "categories": [
-    {
-     "category": "Battery Chargers & Accessories",
-     "path": [
-      "Cleaning & Consumables",
-      "Automotive",
-      "Battery Chargers & Accessories"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Car Cleaning",
-     "path": [
-      "Cleaning & Consumables",
-      "Automotive",
-      "Car Cleaning"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Food & Beverage",
-     "path": [
-      "Cleaning & Consumables",
-      "Site Consumables",
-      "Food & Beverage"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Household",
-     "path": [
-      "Cleaning & Consumables",
-      "Household & Pets",
-      "Household"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Indoor Cleaners",
-     "path": [
-      "Cleaning & Consumables",
-      "Cleaners & Cleaning Equipment",
-      "Indoor Cleaners"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Mops & Brooms",
-     "path": [
-      "Cleaning & Consumables",
-      "Cleaners & Cleaning Equipment",
-      "Mops & Brooms"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Outdoor Cleaners",
-     "path": [
-      "Cleaning & Consumables",
-      "Cleaners & Cleaning Equipment",
-      "Outdoor Cleaners"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Personal Hygiene & Other Consumables",
-     "path": [
-      "Cleaning & Consumables",
-      "Site Consumables",
-      "Personal Hygiene & Other Consumables"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Pet Care",
-     "path": [
-      "Cleaning & Consumables",
-      "Household & Pets",
-      "Pet Care"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Petrol Cans",
-     "path": [
-      "Cleaning & Consumables",
-      "Automotive",
-      "Petrol Cans"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Cleaning & Consumables",
-     "path": [
-      "Cleaning & Consumables"
-     ],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "Automotive",
-     "path": [
-      "Cleaning & Consumables",
-      "Automotive"
-     ],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Cleaners & Cleaning Equipment",
-     "path": [
-      "Cleaning & Consumables",
-      "Cleaners & Cleaning Equipment"
-     ],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Household & Pets",
-     "path": [
-      "Cleaning & Consumables",
-      "Household & Pets"
-     ],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Site Consumables",
-     "path": [
-      "Cleaning & Consumables",
-      "Site Consumables"
-     ],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    }
-   ]
-  },
-  {
    "name": "(cross-cutting)",
-   "scenarios": 120,
-   "passed": 120,
+   "scenarios": 128,
+   "passed": 128,
    "categories": [
     {
      "category": "",
@@ -15333,6 +15333,102 @@
      "passed": 1,
      "families": {
       "routing": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
        "passed": 1,
        "total": 1
       }
