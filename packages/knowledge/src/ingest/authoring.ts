@@ -90,6 +90,16 @@ const SuggestionSchema = z.object({
   id: Id, from: Ref, to: z.array(Ref).min(1).max(12), rationale: Text, label: z.string().min(3).max(80).optional(),
 }).strict();
 
+/** Words customers use for a category that already exists ("gib" for plasterboard). They add customer phrases to that concept and nothing else. */
+const AliasSchema = z.object({
+  id: Id,
+  /** The existing category, or group, these words mean. */
+  concept: Ref,
+  phrases: z.array(Text).min(1).max(30),
+  /** Why a customer says it this way; shown to the reviewer. Not a claim about a product. */
+  reason: Text,
+}).strict();
+
 export const AuthoringSpecSchema = z.object({
   tenantId: z.string().regex(/^[a-z0-9-]+$/),
   version: z.string().min(1),
@@ -101,6 +111,7 @@ export const AuthoringSpecSchema = z.object({
   problems: z.array(ProblemSchema).default([]),
   care: z.array(CareSchema).default([]),
   overlays: z.array(OverlaySchema).default([]),
+  aliases: z.array(AliasSchema).default([]),
   suggestions: z.array(SuggestionSchema).default([]),
   /** Which kinds of crawled document could, once verified, support which claim class. */
   evidence: z.object({ kinds: z.record(z.string(), z.array(z.string().min(1)).min(1)) }).strict(),
@@ -125,7 +136,7 @@ export interface WorklistGap { conceptId: string; conceptName: string; claimClas
 export interface AuthoredKnowledge extends GeneratedKnowledge {
   spec: AuthoringSpec;
   errors: AuthoringError[];
-  authored: { facts: number; families: number; projects: number; problems: number; care: number; overlays: number; suggestions: number; removedDerivedPhrases: number; concepts: number; relationships: number };
+  authored: { facts: number; families: number; projects: number; problems: number; care: number; overlays: number; aliases: number; suggestions: number; removedDerivedPhrases: number; concepts: number; relationships: number };
   worklist: { entries: WorklistEntry[]; gaps: WorklistGap[] };
   /** Journeys referenced by projects that the active pack does not declare, or projects with no journey at all. */
   projectsWithoutJourney: string[];
@@ -392,6 +403,30 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
     });
   }
 
+  // ── Aliases: the words customers use for a category that already exists ──
+  // They add customer phrases to that concept (marked as an authored proposal) and nothing else: no claim, no commerce change.
+  const aliasOwner = new Map<string, string>();
+  for (const alias of spec.aliases) {
+    const where = `aliases.${alias.id}`;
+    const node = resolve(alias.concept, `${where}.concept`);
+    const current = node ? conceptOf(node) : undefined;
+    if (!current) continue;
+    const phrases = alias.phrases.map(normalizePhrase).filter(Boolean);
+    for (const phrase of phrases) {
+      const holder = aliasOwner.get(phrase);
+      if (holder && holder !== current.conceptId) errors.push({ code: 'ambiguous_alias', where, message: `'${phrase}' is already an alias of ${holder}` });
+      else aliasOwner.set(phrase, current.conceptId);
+    }
+    const customerPhrases = [...new Set([...current.customerPhrases, ...phrases])];
+    const next = rehash({
+      ...current, customerPhrases,
+      extensions: { ...(current.extensions ?? {}), [PROVENANCE_KEY]: { ...(current.extensions?.[PROVENANCE_KEY] ?? {}), [`alias_${alias.id}`]: mark(snapshotAt, { section: 'aliases', alias: alias.id, reason: alias.reason }) } },
+    });
+    draft.concepts[draft.concepts.indexOf(current)] = next;
+    byId.set(next.conceptId, next);
+    touched.add(next);
+  }
+
   // ── Phrase ownership: an authored phrase beats a derived one; two authored concepts may not share one ──
   const authoredConceptIds = new Set(authoredIds.values());
   const owner = new Map<string, string>();
@@ -406,11 +441,17 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
   for (const concept of draft.concepts.filter((entry: any) => !authoredConceptIds.has(entry.conceptId))) {
     const holder = owner.get(normalizePhrase(concept.name));
     if (holder) errors.push({ code: 'phrase_collides_with_name', where: holder, message: `'${concept.name}' is the name of ${concept.conceptId}` });
+    const aliasHolder = aliasOwner.get(normalizePhrase(concept.name));
+    if (aliasHolder && aliasHolder !== concept.conceptId) errors.push({ code: 'phrase_collides_with_name', where: aliasHolder, message: `alias '${concept.name}' is the name of ${concept.conceptId}` });
+  }
+  for (const [phrase, holder] of aliasOwner) {
+    if (owner.has(phrase) && owner.get(phrase) !== holder) errors.push({ code: 'ambiguous_phrase', where: holder, message: `alias '${phrase}' is also claimed by ${owner.get(phrase)}` });
   }
   let removed = 0;
   draft.concepts = draft.concepts.map((concept: any) => {
     if (authoredConceptIds.has(concept.conceptId)) return concept;
-    const keep = (phrase: string) => !owner.has(normalizePhrase(phrase));
+    // A derived phrase is dropped when an authored concept owns it, or when it is another concept's alias.
+    const keep = (phrase: string) => !owner.has(normalizePhrase(phrase)) && (aliasOwner.get(normalizePhrase(phrase)) ?? concept.conceptId) === concept.conceptId;
     const synonyms = concept.synonyms.filter(keep);
     const customerPhrases = concept.customerPhrases.filter(keep);
     const dropped = concept.synonyms.length - synonyms.length + concept.customerPhrases.length - customerPhrases.length;
@@ -463,7 +504,7 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
     spec, errors,
     authored: {
       facts: spec.facts.length, families: spec.families.length, projects: spec.projects.length, problems: spec.problems.length, care: spec.care.length,
-      overlays: spec.overlays.length, suggestions: spec.suggestions.length, removedDerivedPhrases: removed,
+      overlays: spec.overlays.length, aliases: spec.aliases.length, suggestions: spec.suggestions.length, removedDerivedPhrases: removed,
       concepts: authoredIds.size, relationships: authoredRelationshipCount,
     },
     worklist: { entries, gaps },

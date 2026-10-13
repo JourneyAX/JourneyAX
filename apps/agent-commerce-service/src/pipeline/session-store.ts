@@ -194,7 +194,9 @@ export class SessionStore {
     if (!col) return;
     const now = new Date();
     try {
-      const $set: any = { tenantId: input.tenantId, lastIntent: input.lastIntent, updatedAt: now };
+      // tenantId and sessionId are in the filter, so an upsert creates the document with them; naming tenantId in $set as well as
+      // $setOnInsert is a path conflict that MongoDB rejects, which made every save here fail.
+      const $set: any = { lastIntent: input.lastIntent, updatedAt: now };
       if (input.messages !== undefined) $set.messages = input.messages;
       if (input.journeyState !== undefined) $set.journeyState = input.journeyState;
       if (input.summary !== undefined) $set.summary = input.summary;

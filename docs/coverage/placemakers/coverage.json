@@ -6310,8 +6310,9 @@
    "problems": 6,
    "care": 2,
    "overlays": 2,
+   "aliases": 6,
    "suggestions": 15,
-   "removedDerivedPhrases": 5,
+   "removedDerivedPhrases": 7,
    "concepts": 18,
    "relationships": 43
   },

@@ -304,6 +304,53 @@ async function main() {
     assert.throws(() => applyAuthoring(generated, { ...baseSpec(), tenantId: 'other' }), /does not match/);
   });
 
+  await suite.test('an alias adds the words customers use to an existing category: a phrase, nothing else, unverified, and no other concept keeps it', () => {
+    const spec: any = baseSpec();
+    spec.aliases = [{ id: 'vanity_unit', concept: 'Vanities', phrases: ['vanity unit', 'basin cabinet'], reason: 'customers say vanity unit' }];
+    assert.equal(AuthoringSpecSchema.safeParse(spec).success, true);
+    // an alias has no field for a claim, a commerce change or a relationship
+    for (const extra of [{ claimClasses: ['compatibility'] }, { commerce: { addToCart: 'allowed' } }, { type: 'compatible_with' }]) {
+      assert.equal(AuthoringSpecSchema.safeParse({ ...spec, aliases: [{ ...spec.aliases[0], ...extra }] }).success, false, JSON.stringify(extra));
+    }
+    const before = find(author(), 'Vanities');
+    const authored = author(spec);
+    assert.deepEqual(authored.errors, []);
+    const vanities = find(authored, 'Vanities');
+    assert.deepEqual(vanities.customerPhrases.filter((phrase: string) => ['vanity unit', 'basin cabinet'].includes(phrase)).sort(), ['basin cabinet', 'vanity unit']);
+    assert.deepEqual({ ...vanities, customerPhrases: before.customerPhrases, extensions: undefined, contentHash: undefined }, { ...before, extensions: undefined, contentHash: undefined }, 'only the phrase list changed');
+    const mark = vanities.extensions[PROVENANCE_KEY].alias_vanity_unit;
+    assert.deepEqual([mark.kind, mark.verified], ['authored_proposal', false]);
+    assert.deepEqual(auditProvenance(authored.draft, authored.config).violations, []);
+    assert.equal(find(authored, 'Vanities').commercePolicy.checkout, before.commercePolicy.checkout);
+    const decision = gate(authored, 'vanity unit');
+    assert.equal(decision.conceptId, vanities.conceptId);
+    assert.equal(decision.trace.matchedBy, 'exact_phrase');
+    assert.equal(gate(authored, 'i need a basin cabinet').conceptId, vanities.conceptId, 'and inside a longer sentence');
+    assert.equal(authored.authored.aliases, 1);
+  });
+
+  await suite.test('an alias that cannot be honoured is an error, never a silent guess', () => {
+    const errorsOf = (aliases: unknown[]) => author({ ...baseSpec(), aliases } as any).errors.map((error) => error.code);
+    assert.deepEqual(errorsOf([{ id: 'x', concept: 'No Such Category', phrases: ['thing'], reason: 'r' }]), ['unresolved_ref']);
+    assert.ok(errorsOf([{ id: 'a', concept: 'Vanities', phrases: ['basin unit'], reason: 'r' }, { id: 'b', concept: 'Tapware', phrases: ['basin unit'], reason: 'r' }]).includes('ambiguous_alias'), 'two categories cannot claim one phrase');
+    assert.ok(errorsOf([{ id: 'c', concept: 'Vanities', phrases: ['tapware'], reason: 'r' }]).includes('phrase_collides_with_name'), 'an alias cannot take another concept\'s name');
+    assert.ok(errorsOf([{ id: 'd', concept: 'Vanities', phrases: ['fixing screws'], reason: 'r' }]).includes('ambiguous_phrase'), 'nor a phrase an authored concept owns');
+  });
+
+  await suite.test('when a customer\'s word is an alias, a derived keyword for another concept no longer competes with it', () => {
+    const spec: any = baseSpec();
+    // Give another concept a derived keyword equal to the alias, as the model-generated keywords sometimes do.
+    const generated = derived();
+    const tapware: any = generated.draft.concepts.find((entry: any) => entry.name === 'Tapware');
+    tapware.customerPhrases = [...tapware.customerPhrases, 'basin cabinet'];
+    spec.aliases = [{ id: 'vanity_unit', concept: 'Vanities', phrases: ['basin cabinet'], reason: 'customers say it' }];
+    const authored = applyAuthoring(generated, spec) as any;
+    assert.deepEqual(authored.errors, []);
+    assert.ok(!find(authored, 'Tapware').customerPhrases.includes('basin cabinet'), 'removed from the other concept');
+    assert.equal(gate(authored, 'basin cabinet').conceptId, find(authored, 'Vanities').conceptId);
+    assert.ok(authored.authored.removedDerivedPhrases >= 1);
+  });
+
   await suite.test('a project concept with no journey and no preview policy keeps the original hand-off', () => {
     const authored = author();
     const legacy = structuredClone(authored.draft) as any;

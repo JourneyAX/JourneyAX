@@ -2,8 +2,8 @@
  "tenantId": "placemakers",
  "evaluatedAt": "2026-10-13T02:03:32.198Z",
  "totals": {
-  "scenarios": 4658,
-  "passed": 4658,
+  "scenarios": 4662,
+  "passed": 4662,
   "failed": 0,
   "acceptedCollisions": 0
  },
@@ -45,8 +45,8 @@
    "total": 13
   },
   "authored_path": {
-   "passed": 51,
-   "total": 51
+   "passed": 55,
+   "total": 55
   }
  },
  "departments": [
@@ -15382,8 +15382,8 @@
   },
   {
    "name": "(cross-cutting)",
-   "scenarios": 106,
-   "passed": 106,
+   "scenarios": 110,
+   "passed": 110,
    "categories": [
     {
      "category": "",
@@ -15744,6 +15744,54 @@
      "passed": 1,
      "families": {
       "routing": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
        "passed": 1,
        "total": 1
       }

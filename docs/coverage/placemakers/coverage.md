@@ -50,7 +50,7 @@ Reconciliation: ✅ Every product in the snapshot is covered by a concept or exc
 
 ## Authored layer (proposal awaiting merchant review)
 
-Spec 1.0.0-proposal: 2 families, 8 projects, 6 problems, 2 care topics, 14 questions, 2 risk overlays, 15 cross-sell suggestion sets (43 authored relationships). 5 derived search phrases were handed to authored concepts.
+Spec 1.0.0-proposal: 2 families, 8 projects, 6 problems, 2 care topics, 14 questions, 2 risk overlays, 15 cross-sell suggestion sets (43 authored relationships). 7 derived search phrases were handed to authored concepts.
 
 Projects served directly by the gate (no authored journey yet): wet_area_lining, deck_build, fence_build, paint_a_room, insulate_home.
 

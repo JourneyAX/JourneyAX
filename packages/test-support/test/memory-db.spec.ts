@@ -87,6 +87,14 @@ async function main() {
     assert.equal(((await c.findOne({ k: 2 })) as any).when.getTime(), date.getTime(), 'dates survive');
   });
 
+  await suite.test('an update that names one path twice, or a path and its parent, is refused like MongoDB refuses it', async () => {
+    const c = new MemoryDb().collection('sessions');
+    await assert.rejects(() => c.updateOne({ k: 1 }, { $set: { tenantId: 'a' }, $setOnInsert: { tenantId: 'a' } }, { upsert: true }), /Updating the path 'tenantId' would create a conflict at 'tenantId'/);
+    await assert.rejects(() => c.updateOne({ k: 1 }, { $set: { a: { b: 1 } }, $inc: { 'a.b': 1 } }, { upsert: true }), /would create a conflict/);
+    await c.updateOne({ k: 1 }, { $set: { x: 1 }, $setOnInsert: { y: 2 }, $inc: { n: 1 } }, { upsert: true });
+    assert.deepEqual(await c.findOne({ k: 1 }), { _id: 'sessions_1', k: 1, x: 1, y: 2, n: 1 });
+  });
+
   await suite.test('stored documents are isolated copies', async () => {
     const c = new MemoryDb().collection('iso');
     const original = { k: 1, list: [1] };

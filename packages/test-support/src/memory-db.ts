@@ -198,7 +198,20 @@ export class MemoryCollection<T extends Doc = Doc> {
     return { acknowledged: true, insertedCount: docs.length };
   }
 
+  /** MongoDB refuses an update that names the same path, or a path and one of its parents, in two operators (or twice in one). */
+  private assertNoPathConflicts(update: Doc): void {
+    const seen: string[] = [];
+    for (const operator of ['$set', '$setOnInsert', '$unset', '$inc', '$push', '$addToSet']) {
+      for (const path of Object.keys(update[operator] || {})) {
+        const clash = seen.find((other) => other === path || other.startsWith(`${path}.`) || path.startsWith(`${other}.`));
+        if (clash) throw new Error(`Updating the path '${path}' would create a conflict at '${clash === path ? path : clash.length < path.length ? clash : path}'`);
+        seen.push(path);
+      }
+    }
+  }
+
   private applyUpdate(doc: Doc, update: Doc, inserting: boolean): void {
+    this.assertNoPathConflicts(update);
     if (update.$setOnInsert && inserting) for (const [k, v] of Object.entries(update.$setOnInsert)) setPath(doc, k, asStored(v));
     for (const [k, v] of Object.entries(update.$set || {})) setPath(doc, k, asStored(v));
     for (const k of Object.keys(update.$unset || {})) unsetPath(doc, k);

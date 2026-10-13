@@ -664,6 +664,46 @@
         "concept": "Waterproofing",
         "retrieval": "allowed"
       }
+    },
+    {
+      "id": "nz-word-gib",
+      "description": "GIB is what customers call plasterboard; the bare word reaches the plasterboard category and asks which kind",
+      "message": "gib",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Plasterboard",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-gib-in-a-sentence",
+      "description": "The same word inside a request",
+      "message": "I need some gib for the hallway",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Plasterboard",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-pink-batts",
+      "description": "Pink Batts reaches insulation",
+      "message": "how much are pink batts",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Insulation",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-skirting",
+      "description": "Skirting boards reach the mouldings",
+      "message": "skirting boards",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Square Dressed Boards & Mouldings",
+        "retrieval": "allowed"
+      }
     }
   ]
 }

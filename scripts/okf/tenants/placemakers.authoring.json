@@ -124,6 +124,20 @@
       "match": { "categories": ["Switchgear", "Cable & Data", "Gas Heating", "Solid Fuel", "Central Heating", "Heat Pumps", "Hot Water", "Passive Fire Penetrations"] },
       "set": { "checkout": "requires_professional_confirmation" } }
   ],
+  "aliases": [
+    { "id": "gib", "concept": "Building Products > Plasterboard", "reason": "GIB is the brand New Zealand customers use as the everyday word for plasterboard.",
+      "phrases": ["gib", "gibboard", "gib board", "gib sheet", "gib sheets", "gib plasterboard", "plasterboard sheets"] },
+    { "id": "pink_batts", "concept": "Building Products > Insulation", "reason": "Customers ask for insulation by brand and by the batt.",
+      "phrases": ["pink batts", "batts", "insulation batts", "ceiling batts", "wall batts"] },
+    { "id": "skirting", "concept": "Square Dressed Boards & Mouldings", "reason": "Skirting, architrave and scotia are the trade names for the mouldings.",
+      "phrases": ["skirting", "skirting board", "skirting boards", "architrave", "architraves", "scotia"] },
+    { "id": "ply", "concept": "Timber & Plywood > Plywood", "reason": "Customers shorten plywood to ply.",
+      "phrases": ["ply", "ply sheets", "plywood sheets"] },
+    { "id": "tek_screws", "concept": "Metal Screws", "reason": "Tek (self-drilling) screws are the usual name for screws into steel.",
+      "phrases": ["tek screws", "tek screw", "teks"] },
+    { "id": "stanley_knife", "concept": "Knifes & Blades", "reason": "Customers ask for a utility knife by the Stanley brand name.",
+      "phrases": ["stanley knife", "stanley knives", "box cutter", "utility knife", "craft knife"] }
+  ],
   "suggestions": [
     { "id": "deck_project_extras", "from": "project:deck_build", "to": ["Wood Screws", "Woodcare", "Outdoor Cleaners"], "rationale": "People building a deck often also need fixings and a finish." },
     { "id": "composite_decking_extras", "from": "Composite Decking", "to": ["Decking Accessories"], "rationale": "Decking accessories are sold alongside boards." },
