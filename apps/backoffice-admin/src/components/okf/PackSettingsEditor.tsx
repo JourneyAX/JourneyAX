@@ -5,7 +5,7 @@ import { Save, RotateCcw } from "lucide-react";
 import { projectApi, type Project } from "../../lib/api";
 import { CatalogMappingForm } from "./CatalogMappingForm";
 
-type SettingKey = "catalogMapping" | "interpretationPolicy" | "workspacePinPolicy";
+type SettingKey = "catalogMapping" | "routingPolicy" | "interpretationPolicy" | "workspacePinPolicy";
 
 const SETTINGS: Array<{ key: SettingKey; title: string; help: string; read: (project: Project) => unknown }> = [
   {
@@ -13,6 +13,12 @@ const SETTINGS: Array<{ key: SettingKey; title: string; help: string; read: (pro
     title: "Catalogue mapping",
     help: "Which product fields hold price, currency, stock, lifecycle status, attributes and category scope. Unset fields use platform defaults; a price without a declared currency is never quoted.",
     read: (project) => project.catalogMapping,
+  },
+  {
+    key: "routingPolicy",
+    title: "Default journey",
+    help: "The journey that answers a request no other journey matches, as {\"defaultJourneyId\": \"<journey id>\", \"fallbackOnCatalogSearch\": true}. A project with several journeys cannot be published until this is set; the platform never picks one for you.",
+    read: (project) => project.routingPolicy,
   },
   {
     key: "interpretationPolicy",

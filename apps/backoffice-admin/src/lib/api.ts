@@ -141,6 +141,7 @@ export interface Project {
   };
   /** Checksum-bound pack settings the back office owns (see PackSettingsEditor). */
   catalogMapping?: Record<string, unknown>;
+  routingPolicy?: { defaultJourneyId: string; fallbackOnCatalogSearch?: boolean };
   extensions?: { interpretationPolicy?: Record<string, unknown>; workspacePinPolicy?: { idleRepinAfterHours?: number }; [key: string]: unknown };
 }
 

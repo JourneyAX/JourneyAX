@@ -1,0 +1,7 @@
+{
+  "_comment": "Which PlaceMakers journey answers a request that no other journey matches. The live project states none, and a project with five journeys cannot be published without one (the publisher never guesses). 'placemakers_shop' is the journey whose stages run the catalogue search, so unmatched shopping requests land on product search; change defaultJourneyId here (or in Knowledge Base > Pack settings > Default journey) if the business wants another. Applied by scripts/okf/apply-tenant-release.ts only when the project has no routing policy of its own.",
+  "routingPolicy": {
+    "defaultJourneyId": "placemakers_shop",
+    "fallbackOnCatalogSearch": true
+  }
+}

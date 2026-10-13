@@ -149,6 +149,31 @@ async function main() {
     assert.equal(first.multiple, true);
     assert.equal(second.role, undefined, 'unknown roles are ignored');
   });
+  await suite.test('a default journey is a validated pack setting; a project with several journeys publishes only once it is set', async () => {
+    const good = validatePackSettings({ routingPolicy: { defaultJourneyId: ' intake ', fallbackOnCatalogSearch: false } });
+    assert.deepEqual(good.ok && good.set, { routingPolicy: { defaultJourneyId: 'intake', fallbackOnCatalogSearch: false } });
+    assert.deepEqual(validatePackSettings({ routingPolicy: null }), { ok: true, set: { routingPolicy: null } });
+    for (const bad of [[], 'intake', {}, { defaultJourneyId: '' }, { defaultJourneyId: 'a', extra: 1 }, { defaultJourneyId: 'a', fallbackOnCatalogSearch: 'yes' }]) {
+      assert.equal(validatePackSettings({ routingPolicy: bad }).ok, false, JSON.stringify(bad));
+    }
+    // Two journeys and no default: the publisher refuses to guess.
+    const { service, db } = await createService();
+    await db.collection('tenant_configs').updateOne({ projectId: TENANT }, { $set: { 'persona.journeyGraph.nodes': [
+      { id: 't1', data: { kind: 'trigger.intent', stageId: 'one_start', label: 'One' } },
+      { id: 't2', data: { kind: 'trigger.intent', stageId: 'two_start', label: 'Two' } },
+    ], 'persona.journeyGraph.edges': [] } });
+    const blocked: any = await service.publishConfig(TENANT, { environmentId: 'test' });
+    assert.equal(blocked.success, false);
+    assert.match(blocked.message, /default journey/i);
+    // The setting is stored through the ordinary update path and the next publication uses it.
+    const saved = await service.updateProject(TENANT, { routingPolicy: { defaultJourneyId: `${TENANT}_one`, fallbackOnCatalogSearch: true } } as any);
+    assert.equal(saved.success, true, saved.message);
+    const published: any = await service.publishConfig(TENANT, { environmentId: 'test' });
+    assert.equal(published.success, true, published.message);
+    assert.equal(db.dump('business_pack_releases').at(-1)!.routingPolicy.defaultJourneyId, `${TENANT}_one`);
+    const rejected = await service.updateProject(TENANT, { routingPolicy: { defaultJourneyId: '' } } as any);
+    assert.equal(rejected.success, false);
+  });
   await suite.test('the pack takes its currency from the project; a project that states none is not published with a guessed one', async () => {
     const { service, db } = await createService({ pricing: { currency: 'nzd', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' } });
     const published: any = await service.publishConfig(TENANT, { environmentId: 'test' });

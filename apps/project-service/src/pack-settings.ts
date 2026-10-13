@@ -18,6 +18,7 @@ export function validatePackSettings(dto: {
   catalogMapping?: unknown;
   interpretationPolicy?: unknown;
   workspacePinPolicy?: unknown;
+  routingPolicy?: unknown;
 }): PackSettingsResult {
   const set: Record<string, unknown | null> = {};
 
@@ -67,6 +68,29 @@ export function validatePackSettings(dto: {
         return { ok: false, message: 'Invalid workspacePinPolicy: idleRepinAfterHours must be a positive number of hours (at most one year)' };
       }
       set['extensions.workspacePinPolicy'] = { idleRepinAfterHours: hours };
+    }
+  }
+
+  // Which journey answers a request that matches none. A project with several journeys cannot be published without one, and the
+  // publisher never guesses it. Whether the id names a real journey is checked at publication, where the journeys are known.
+  if (dto.routingPolicy !== undefined) {
+    const policy = dto.routingPolicy as any;
+    if (policy === null) {
+      set.routingPolicy = null;
+    } else {
+      if (typeof policy !== 'object' || Array.isArray(policy)) return { ok: false, message: 'Invalid routingPolicy: expected an object' };
+      const unknown = Object.keys(policy).filter((key) => !['defaultJourneyId', 'fallbackOnCatalogSearch'].includes(key));
+      if (unknown.length) return { ok: false, message: `Invalid routingPolicy: unknown key(s) ${unknown.join(', ')}` };
+      if (typeof policy.defaultJourneyId !== 'string' || !policy.defaultJourneyId.trim()) {
+        return { ok: false, message: 'Invalid routingPolicy: defaultJourneyId must name a journey' };
+      }
+      if (policy.fallbackOnCatalogSearch !== undefined && typeof policy.fallbackOnCatalogSearch !== 'boolean') {
+        return { ok: false, message: 'Invalid routingPolicy: fallbackOnCatalogSearch must be true or false' };
+      }
+      set.routingPolicy = {
+        defaultJourneyId: policy.defaultJourneyId.trim(),
+        ...(policy.fallbackOnCatalogSearch === undefined ? {} : { fallbackOnCatalogSearch: policy.fallbackOnCatalogSearch }),
+      };
     }
   }
 

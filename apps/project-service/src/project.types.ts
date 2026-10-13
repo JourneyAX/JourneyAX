@@ -643,6 +643,8 @@ export interface UpdateProjectDto {
   catalogMapping?: Record<string, unknown> | null;
   interpretationPolicy?: Record<string, unknown> | null;
   workspacePinPolicy?: { idleRepinAfterHours?: number } | null;
+  /** The journey that answers a request matching none; required before a project with several journeys can be published. */
+  routingPolicy?: { defaultJourneyId: string; fallbackOnCatalogSearch?: boolean } | null;
   embed?: EmbedConfig;
   /** Per-project 3D product configurator (generic; sportswear kit, etc.). */
   configurator?: ConfiguratorConfig;
