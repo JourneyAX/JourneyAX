@@ -387,6 +387,16 @@ export class ProjectController {
     }
   }
 
+  @Get(':projectId/catalog-mapping')
+  @RequirePermission('project.read')
+  async catalogMappingState(@Param('projectId') projectId: string) {
+    try {
+      return await this.knowledgeInsight!.catalogMappingState(projectId);
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
   /** Reads a bounded, evenly spread sample of the tenant's products and reports what the mapping would make of them. Writes nothing. */
   @Post(':projectId/catalog-mapping/check')
   @RequirePermission('config.edit')

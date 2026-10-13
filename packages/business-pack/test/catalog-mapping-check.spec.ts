@@ -109,6 +109,20 @@ check('an empty catalogue is a warning, never a pass-through error', () => {
   assert.equal(result.issues[0].code, 'empty_sample');
 });
 
+check('the fields found on real products are listed with how often they occur, so nothing has to be guessed', () => {
+  const result = checkCatalogMapping(placemakers, [...catalogue, { ...product('1000009'), extra: { nested: 'x' }, legacyCode: 'L-1' }]);
+  const byPath = Object.fromEntries(result.fields.map((field) => [field.path, field]));
+  assert.equal(byPath.sku.type, 'string');
+  assert.equal(byPath.sku.seen, 1);
+  assert.equal(byPath['priceUSD.min'].type, 'number');
+  assert.equal(byPath['priceUSD.min'].example, '100');
+  assert.equal(byPath.categoryPath.type, 'array');
+  assert.ok(byPath['extra.nested'], 'objects are descended into');
+  assert.ok(byPath.legacyCode.seen < 0.2, 'a rare field is shown as rare');
+  assert.ok(result.fields.length <= 120);
+  assert.ok(!result.fields.some((field) => field.path.includes('$')), 'only plain field names are offered');
+});
+
 check('the check never mutates the products it is given', () => {
   const copy = structuredClone(catalogue);
   checkCatalogMapping(placemakers, catalogue);

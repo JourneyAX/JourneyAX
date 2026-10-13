@@ -4,11 +4,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Brain, CheckCircle2, GitBranch, Play, Save, ShieldCheck, UploadCloud } from "lucide-react";
 import {
   okfApi, projectApi,
+  type KnowledgeCoverage, type KnowledgeLifecycle,
   type OkfAnalysis, type OkfDraft, type OkfReleaseMeta, type OkfRevocationSummary, type Project,
 } from "../lib/api";
 import { ENVIRONMENTS, assignVerifier, type EnvironmentId } from "./okf/okf-model";
 import { ArtifactPolicyToggle } from "./okf/ArtifactPolicyToggle";
 import { ConceptEditor } from "./okf/ConceptEditor";
+import { CoveragePanel } from "./okf/CoveragePanel";
+import { DecisionPreview } from "./okf/DecisionPreview";
+import { LifecyclePanel } from "./okf/LifecyclePanel";
 import { ImportExportBar } from "./okf/ImportExportBar";
 import { ReadinessPanel } from "./okf/ReadinessPanel";
 import { RelationshipList } from "./okf/RelationshipList";
@@ -28,11 +32,24 @@ export function OkfStudio({ project }: { project: Project }) {
   const [raw, setRaw] = useState("");
   const [message, setMessage] = useState("I need help choosing the right option");
   const [preview, setPreview] = useState<any>(null);
+  const [previewFacts, setPreviewFacts] = useState<Record<string, unknown>>({});
+  const [coverage, setCoverage] = useState<KnowledgeCoverage | null>(null);
+  const [lifecycle, setLifecycle] = useState<KnowledgeLifecycle | null>(null);
   const [version, setVersion] = useState("1.0.0");
   const [busy, setBusy] = useState<string | null>(null);
   const [hasStagedRelease, setHasStagedRelease] = useState(Boolean(project.knowledgeModel));
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /** Where the knowledge stands and what it covers; refreshed after anything that changes either. */
+  const refreshInsight = useCallback(async () => {
+    const [nextCoverage, nextLifecycle] = await Promise.all([
+      okfApi.coverage(project.projectId, environmentId).catch(() => null),
+      okfApi.lifecycle(project.projectId, environmentId).catch(() => null),
+    ]);
+    setCoverage(nextCoverage);
+    setLifecycle(nextLifecycle);
+  }, [project.projectId, environmentId]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -47,7 +64,8 @@ export function OkfStudio({ project }: { project: Project }) {
     setAnalysis(nextAnalysis);
     setRevocations(nextRevocations);
     setRaw(nextDraft ? JSON.stringify(nextDraft.content, null, 2) : "");
-  }, [project.projectId, environmentId]);
+    await refreshInsight();
+  }, [project.projectId, environmentId, refreshInsight]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setHasStagedRelease(Boolean(project.knowledgeModel)); }, [project.projectId, project.knowledgeModel?.checksum]);
@@ -75,6 +93,7 @@ export function OkfStudio({ project }: { project: Project }) {
     setRaw(JSON.stringify(saved.content, null, 2));
     setNotice(successMessage || `Draft revision ${saved.revision} saved. ${saved.validation.valid ? "Validation passed." : `${saved.validation.issues.length} issue(s) remain.`}`);
     setAnalysis(await okfApi.analysis(project.projectId, environmentId).catch(() => null));
+    await refreshInsight();
   };
 
   const saveDraft = () => act("save", async () => { await persist(JSON.parse(raw)); });
@@ -86,8 +105,9 @@ export function OkfStudio({ project }: { project: Project }) {
     setNotice(result.valid ? "The draft satisfies the OKF publication contract." : `${result.issues.length} validation issue(s) must be resolved.`);
   });
 
-  const runPreview = () => act("preview", async () => {
-    setPreview(await okfApi.preview(project.projectId, message, {}, environmentId));
+  const runPreview = (facts: Record<string, unknown> = {}) => act("preview", async () => {
+    setPreviewFacts(facts);
+    setPreview(await okfApi.preview(project.projectId, message, facts, environmentId));
   });
 
   const publishKnowledge = () => act("publish", async () => {
@@ -103,12 +123,14 @@ export function OkfStudio({ project }: { project: Project }) {
   const activate = () => act("activate", async () => {
     await projectApi.publish(project.projectId, { note: `Activate OKF ${project.knowledgeModel?.version || version} (${environmentId})`, environmentId });
     setNotice(`Business Pack published to ${environmentId}. The pack and its exact OKF release are now one active unit.`);
+    await refreshInsight();
   });
 
   const stageRelease = (release: OkfReleaseMeta) => act(`stage:${release.releaseId}`, async () => {
     await okfApi.selectRelease(project.projectId, release, environmentId);
     setHasStagedRelease(true);
     setNotice(`Release ${release.version} is staged. Publish the Business Pack to activate it; use Config History for an atomic rollback.`);
+    await refreshInsight();
   });
 
   const importBundle = (file: File) => act("import", async () => {
@@ -195,6 +217,12 @@ export function OkfStudio({ project }: { project: Project }) {
       {notice && <div className="node" style={{ marginTop: 12, borderColor: "#52c41a", background: "#f6ffed" }}><CheckCircle2 size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />{notice}</div>}
       {error && <div className="node" style={{ marginTop: 12, borderColor: "var(--jx-destructive)", background: "#fff1f0" }}><AlertTriangle size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />{error}</div>}
 
+      <div style={{ marginTop: 14 }}><LifecyclePanel lifecycle={lifecycle} /></div>
+      <details open style={{ marginTop: 14 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700 }}>Coverage and what is missing</summary>
+        <div style={{ marginTop: 8 }}><CoveragePanel coverage={coverage} /></div>
+      </details>
+
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, .85fr)", gap: 14, marginTop: 14 }}>
         <div>
           <div className="between"><h4>Concepts</h4><span className="micro">{summary.relationships} typed relationships</span></div>
@@ -210,17 +238,8 @@ export function OkfStudio({ project }: { project: Project }) {
           <div>
             <h4>Conversation preview</h4>
             <textarea className="inp" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
-            <button className="btn" style={{ marginTop: 8 }} onClick={runPreview} disabled={!draft || busy === "preview"}><Play size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Preview decision</button>
-            {preview && (
-              <div className="node" style={{ marginTop: 10 }}>
-                {preview.previewable === false ? <><b>Blocked</b><div className="micro">Draft must validate before preview.</div></> : <>
-                  <div className="between"><b>{preview.decision?.mode}</b><span className="pill p-active">{preview.decision?.retrieval?.permission}</span></div>
-                  <div className="micro">Concept: {preview.decision?.conceptId || "No match"}</div>
-                  {preview.decision?.clarification?.question && <div style={{ marginTop: 6 }}>{preview.decision.clarification.question}</div>}
-                  {preview.decision?.safety?.blocksProducts && <div className="micro" style={{ color: "var(--jx-destructive)", marginTop: 6 }}>Products blocked until safety guidance is satisfied.</div>}
-                </>}
-              </div>
-            )}
+            <button className="btn" style={{ marginTop: 8 }} onClick={() => runPreview()} disabled={!draft || busy === "preview"}><Play size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />What would the assistant use?</button>
+            <DecisionPreview preview={preview} onAnswer={(factKey, value) => runPreview({ ...previewFacts, [factKey]: value })} />
           </div>
         </div>
       </div>

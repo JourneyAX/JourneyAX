@@ -212,3 +212,38 @@ verified without reading the live pack: `scripts/inventory/capture-pack-structur
 fallback is an explicit, per-release decision (`policy.coverage.uncoveredShopping`) that shows live facts only and carries no claim.
 A request that only partly matches ("garden gnomes" → Garden & Landscaping) asks that department's question and claims nothing.
 
+## Back-office Knowledge Base (Phase 6)
+
+The Studio now answers the questions a person actually has. The service computes every figure (`KnowledgeInsightService`, read-only);
+the screens only choose words and layout, so the UI and the publish gate cannot disagree.
+
+| Question | Where | Endpoint |
+|---|---|---|
+| Where does my knowledge stand — draft, released, staged, live — and what exactly differs? | *From draft to customers* (`LifecyclePanel`) | `GET /projects/:id/knowledge/lifecycle` |
+| What does it cover, by department, journey and kind of claim; what is missing? | *Coverage and what is missing* (`CoveragePanel`) | `GET /projects/:id/knowledge/coverage` |
+| What would the assistant use for this message? | *Conversation preview* (`DecisionPreview`) | `POST /projects/:id/knowledge/preview` (adds `live` products, cross-sell and concept name) |
+| Does my catalogue mapping read my real products? | *Pack settings → Catalogue mapping* (`CatalogMappingForm`) | `GET/POST /projects/:id/catalog-mapping[/check]` |
+
+**Lifecycle.** Draft → immutable release → staged (the release the project is bound to) → live (the release the active Business
+Pack runs, per environment). It states the next step to take, and names what a publish would change (draft vs staged, staged vs live)
+by concept, using stable identity and content hashes. A live pack that carries no knowledge is called out.
+
+**Coverage.** Departments come from the catalogue's own category paths, not from code. For each: listed products (through the
+tenant's mapping, hiding discontinued items), the share inside some concept's scope, concepts, authored concepts, concepts with
+candidate documents. It also reports products no scope can select, whether each journey a concept hands off to exists in the live pack,
+projects answered by knowledge alone, unverified claims by class, and every problem/care topic that still has no verified guidance.
+Nothing is shown as verified unless a current, matching verification record exists.
+
+**Catalogue mapping form.** Replaces raw JSON as the main path (JSON stays under *Advanced*). Fields are grouped (identity, categories,
+price and currency, stock, lifecycle, attributes); platform defaults show as placeholders; mistakes are flagged next to the field while typing
+using the same grammar as the service (a parity test compares the form's verdict with the schema's). *Check against my catalogue* reads a
+sample spread evenly across the tenant's products and reports, for the mapping as it is now: what could be read for the code, name, price,
+currency, stock, category and hierarchy; prices with no declared currency (an error when most of the sample is affected); mixed
+currencies (reported, never converted); lifecycle values in use and how each is treated; configured fields found on no product; and the
+products as the assistant would read them. *Fields found on your products* lists what the products really contain with how often, and lets
+a person say what each field means. Saving is enabled only after a current check with no errors; the service validates again on save.
+
+Not done in this phase: showing, for a past real conversation, which knowledge the assistant used (turn decisions are not persisted with
+the knowledge trace yet — the preview shows what it *would* use for a message); editing a concept's catalogue category paths in the concept
+editor (they are preserved on save, and visible in the Advanced JSON); an in-product guided *import* of the authoring spec.
+

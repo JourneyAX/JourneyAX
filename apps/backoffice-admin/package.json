@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3009",
     "lint": "eslint .",
-    "test": "tsx test/cross-tenant-authorization.spec.ts && tsx test/okf-model.spec.ts && tsx --tsconfig test/tsconfig.render.json test/okf-studio-render.spec.tsx"
+    "test": "tsx test/cross-tenant-authorization.spec.ts && tsx test/okf-model.spec.ts && tsx --tsconfig test/tsconfig.render.json test/okf-studio-render.spec.tsx && tsx test/insight-model.spec.ts && tsx test/catalog-mapping-form.spec.ts && tsx --tsconfig test/tsconfig.render.json test/insight-render.spec.tsx"
   },
   "dependencies": {
     "@journeyax/business-pack": "*",

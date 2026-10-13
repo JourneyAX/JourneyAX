@@ -186,9 +186,17 @@ async function main() {
     assert.deepEqual(leak.live.suggestions, []);
   });
 
+  await suite.test('the mapping state offers the saved mapping next to the platform defaults it overrides', async () => {
+    const { insight } = await setup();
+    const state: any = await insight.catalogMappingState(TENANT);
+    assert.deepEqual(state.saved, catalogMapping);
+    assert.deepEqual(state.defaults.identifierPaths, ['parentSku', 'sku', 'id']);
+    assert.equal(state.defaults.pricing.requireDeclaredCurrency, true);
+  });
+
   await suite.test('the new routes are permissioned', () => {
     const proto = ProjectController.prototype as any;
-    for (const [handler, permission] of [['knowledgeCoverage', 'knowledge.read'], ['knowledgeLifecycle', 'knowledge.read'], ['checkCatalogMapping', 'config.edit'], ['previewKnowledgeDraft', 'knowledge.read']] as const) {
+    for (const [handler, permission] of [['knowledgeCoverage', 'knowledge.read'], ['knowledgeLifecycle', 'knowledge.read'], ['checkCatalogMapping', 'config.edit'], ['previewKnowledgeDraft', 'knowledge.read'], ['catalogMappingState', 'project.read']] as const) {
       assert.equal(Reflect.getMetadata(PERMISSION_KEY, proto[handler]), permission, handler);
     }
   });

@@ -29,6 +29,15 @@ export interface MappingCheckRow {
   availability: 'available' | 'excluded' | 'unpriced';
 }
 
+/** A field found on real products, so a person can point a meaning at it instead of guessing its name. */
+export interface CatalogueField {
+  path: string;
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'mixed';
+  /** Share (0..1) of sampled products that carry a value at this path. */
+  seen: number;
+  example: string;
+}
+
 export interface MappingCheckResult {
   /** No error-level issue: the mapping is safe to save. */
   ok: boolean;
@@ -38,6 +47,8 @@ export interface MappingCheckResult {
   readable: Record<'identifier' | 'title' | 'description' | 'brand' | 'category' | 'categoryPath' | 'price' | 'currency' | 'stock' | 'image', number>;
   currencies: Record<string, number>;
   availability: Record<'available' | 'excluded' | 'unpriced', number>;
+  /** Every field found on the sampled products (objects are descended into, arrays are listed whole), most common first. */
+  fields: CatalogueField[];
   /** Lifecycle values found in the status fields, and how the mapping currently treats each. */
   statuses: Array<{ value: string; count: number; treatedAs: 'excluded' | 'unpriced' | 'available' }>;
   /** Configured paths that read nothing in any sampled product (per meaning). */
@@ -52,10 +63,42 @@ function emptyResult(mappingErrors: string[]): MappingCheckResult {
   return {
     ok: false, mappingErrors, sampleSize: 0,
     readable: { identifier: 0, title: 0, description: 0, brand: 0, category: 0, categoryPath: 0, price: 0, currency: 0, stock: 0, image: 0 },
-    currencies: {}, availability: { available: 0, excluded: 0, unpriced: 0 }, statuses: [], unusedPaths: [],
+    currencies: {}, availability: { available: 0, excluded: 0, unpriced: 0 }, fields: [], statuses: [], unusedPaths: [],
     issues: mappingErrors.map((message) => ({ severity: 'error' as const, code: 'mapping_invalid', field: 'catalogMapping', message, affected: 0, share: 0, examples: [] })),
     rows: [],
   };
+}
+
+const FIELD_LIMIT = 120;
+const MAX_DEPTH = 4;
+
+function describeFields(sample: unknown[]): CatalogueField[] {
+  const seen = new Map<string, { count: number; types: Set<string>; example: string }>();
+  const kind = (value: unknown): CatalogueField['type'] =>
+    Array.isArray(value) ? 'array' : value && typeof value === 'object' ? 'object' : typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'boolean' : 'string';
+  const show = (value: unknown) => {
+    const text = Array.isArray(value) ? JSON.stringify(value) : typeof value === 'object' ? '{…}' : String(value);
+    return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+  };
+  const visit = (value: unknown, prefix: string, depth: number, found: Set<string>) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || child === undefined || child === null || child === '') continue;
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (!found.has(path)) {
+        found.add(path);
+        const entry = seen.get(path) ?? { count: 0, types: new Set<string>(), example: show(child) };
+        entry.count++; entry.types.add(kind(child));
+        seen.set(path, entry);
+      }
+      if (child && typeof child === 'object' && !Array.isArray(child) && depth < MAX_DEPTH) visit(child, path, depth + 1, found);
+    }
+  };
+  for (const product of sample) visit(product, '', 0, new Set<string>());
+  return [...seen.entries()]
+    .sort((a, b) => b[1].count - a[1].count || (a[0] < b[0] ? -1 : 1))
+    .slice(0, FIELD_LIMIT)
+    .map(([path, entry]) => ({ path, type: (entry.types.size === 1 ? [...entry.types][0] : 'mixed') as CatalogueField['type'], seen: entry.count / Math.max(1, sample.length), example: entry.example }));
 }
 
 const present = (value: unknown): boolean => value !== undefined && value !== null && value !== '' && !(Array.isArray(value) && value.length === 0);
@@ -201,6 +244,6 @@ export function checkCatalogMapping(input: unknown, products: unknown[], options
   return {
     ok: !issues.some((issue) => issue.severity === 'error'), mappingErrors: [], sampleSize: total,
     readable: Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, ['price', 'currency', 'stock'].includes(key) ? share(count, sellable) : share(count)])) as MappingCheckResult['readable'],
-    currencies, availability, statuses, unusedPaths, issues, rows,
+    currencies, availability, fields: describeFields(sample), statuses, unusedPaths, issues, rows,
   };
 }

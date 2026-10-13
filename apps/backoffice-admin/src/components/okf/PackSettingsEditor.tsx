@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Save, RotateCcw } from "lucide-react";
 import { projectApi, type Project } from "../../lib/api";
+import { CatalogMappingForm } from "./CatalogMappingForm";
 
 type SettingKey = "catalogMapping" | "interpretationPolicy" | "workspacePinPolicy";
 
@@ -58,7 +59,12 @@ export function PackSettingsEditor({ project, onSaved }: { project: Project; onS
       <h3 style={{ margin: "4px 0" }}>Business rules the platform reads from your pack</h3>
       <p className="micro" style={{ color: "var(--jx-gray-600)" }}>Nothing here is built into the product. Each setting is validated by the service before it is stored and is part of the published, checksummed release.</p>
       {message && <div className="node" style={{ marginBottom: 8, borderColor: message.tone === "ok" ? "#52c41a" : "var(--jx-destructive)" }} role="status">{message.text}</div>}
-      {SETTINGS.map((setting) => (
+      <details style={{ marginBottom: 8 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700 }}>Catalogue mapping</summary>
+        <p className="micro" style={{ color: "var(--jx-gray-600)" }}>{SETTINGS[0].help}</p>
+        <CatalogMappingForm project={project} onSaved={onSaved} />
+      </details>
+      {SETTINGS.filter((setting) => setting.key !== "catalogMapping").map((setting) => (
         <details key={setting.key} style={{ marginBottom: 8 }}>
           <summary style={{ cursor: "pointer", fontWeight: 700 }}>{setting.title}</summary>
           <p className="micro" style={{ color: "var(--jx-gray-600)" }}>{setting.help}</p>

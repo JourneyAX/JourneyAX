@@ -182,6 +182,13 @@ export class KnowledgeInsightService {
     };
   }
 
+  /** The mapping saved on the project and the platform defaults it falls back to, field by field. */
+  async catalogMappingState(projectId: string) {
+    this.scope(projectId, 'production');
+    const project = await this.projectProvider(projectId);
+    return { saved: project?.catalogMapping ?? null, defaults: resolveCatalogMapping() };
+  }
+
   /**
    * Checks a catalogue mapping (the one being edited, or the saved one) against products spread evenly across the tenant's
    * catalogue, so a person sees what the mapping would read before it is saved.

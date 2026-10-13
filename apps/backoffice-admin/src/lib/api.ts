@@ -330,10 +330,86 @@ export interface OkfReleaseMeta {
   artifact?: { status: 'pending' | 'ready' | 'failed'; uri?: string; error?: string };
 }
 
+
+// ── Knowledge Base insight (read-only views the service computes) ──────────
+export interface ConceptRef { conceptId: string; name: string }
+
+export interface KnowledgeCoverage {
+  environmentId: string;
+  revision: number;
+  pack: { version: string; journeyIds: string[] } | null;
+  totals: { concepts: number; relationships: number; sources: number; evidenceChunks: number; verifications: number; facts: number };
+  layers: { derived: number; authored: number; manual: number };
+  lenses: Record<string, number>;
+  departments: Array<{ name: string; concepts: number; authoredConcepts: number; conceptsWithCandidateSources: number; products?: number; productsCovered?: number }>;
+  authored: { families: ConceptRef[]; projects: ConceptRef[]; problems: ConceptRef[]; care: ConceptRef[]; other: ConceptRef[] };
+  journeys: Array<{ journeyId: string; existsInPack: boolean | null; concepts: ConceptRef[] }>;
+  projectsWithoutJourney: ConceptRef[];
+  verification: {
+    verifiedClaims: number; unverifiedClaims: number; byClaimClass: Record<string, { verified: number; unverified: number }>;
+    conceptsWithCandidateSources: number; candidateSources: number; stale: number;
+    guidanceGaps: Array<ConceptRef & { kind: 'problem' | 'care'; reason: string }>;
+  };
+  catalogue?: { products: number; covered: number; uncovered: number; uncoveredCategories: Array<{ path: string[]; category?: string; products: number }> };
+}
+
+export interface KnowledgeDiff {
+  identical: boolean;
+  concepts: { added: ConceptRef[]; removed: ConceptRef[]; changed: ConceptRef[]; total: number };
+  relationships: { added: number; removed: number; changed: number };
+  facts: { added: string[]; removed: string[]; changed: string[] };
+  sources: { added: number; removed: number };
+  verifications: { added: number; removed: number; changed: number };
+}
+
+export interface KnowledgeLifecycle {
+  environmentId: string;
+  draft: { revision: number; valid: boolean; issues: number; checksum: string | null; updatedAt: string | null; updatedBy: string | null; concepts: number } | null;
+  releases: Array<{ releaseId: string; version: string; checksum: string; status: string; publishedAt: string | null; publishedBy: string | null }>;
+  staged: { releaseId: string; version: string; checksum: string; required: boolean; failurePolicy: string | null } | null;
+  active: { packVersion: string; publishedAt: string | null; publishedBy: string | null; currency: string | null; hasCatalogMapping: boolean;
+    knowledge: { releaseId: string; version: string; checksum: string; required: boolean } | null } | null;
+  state: { draftHasChanges: boolean | null; stagedIsLatestRelease: boolean | null; activeIsStaged: boolean | null; knowledgeRequiredByPack: boolean | null };
+  changes: { draftVsStaged: KnowledgeDiff | null; stagedVsActive: KnowledgeDiff | null };
+  nextStep: 'write_draft' | 'publish_release' | 'stage_release' | 'publish_pack' | 'none';
+}
+
+export interface MappingIssue { severity: 'error' | 'warning' | 'info'; code: string; field: string; message: string; affected: number; share: number; examples: string[] }
+export interface CatalogueField { path: string; type: string; seen: number; example: string }
+export interface MappingCheck {
+  ok: boolean;
+  mappingErrors: string[];
+  sampleSize: number;
+  catalogueProducts: number;
+  readable: Record<'identifier' | 'title' | 'description' | 'brand' | 'category' | 'categoryPath' | 'price' | 'currency' | 'stock' | 'image', number>;
+  currencies: Record<string, number>;
+  availability: Record<'available' | 'excluded' | 'unpriced', number>;
+  fields: CatalogueField[];
+  statuses: Array<{ value: string; count: number; treatedAs: 'excluded' | 'unpriced' | 'available' }>;
+  unusedPaths: Array<{ field: string; path: string }>;
+  issues: MappingIssue[];
+  rows: Array<{ sku: string; title: string; category: string; categoryPath: string[]; priceCents: number | null; currency?: string; currencyUndeclared: boolean; inStock?: boolean; availability: 'available' | 'excluded' | 'unpriced' }>;
+}
+
+export interface LiveProducts { products: number; sample: Array<{ sku: string; title: string; category: string; priceCents: number | null; currency?: string; inStock?: boolean }> }
+
+export const catalogMappingApi = {
+  state: (projectId: string) =>
+    req<{ saved: Record<string, any> | null; defaults: Record<string, any> }>(`${SERVICES.project}/api/v1/projects/${projectId}/catalog-mapping`),
+  check: (projectId: string, mapping: Record<string, unknown> | null, sample?: number) =>
+    req<MappingCheck>(`${SERVICES.project}/api/v1/projects/${projectId}/catalog-mapping/check`, {
+      method: 'POST', body: JSON.stringify({ mapping: mapping ?? {}, ...(sample ? { sample } : {}) }),
+    }),
+};
+
 const knowledgeUrl = (projectId: string, path: string) => `${SERVICES.project}/api/v1/projects/${projectId}/knowledge/${path}`;
 const withEnvironment = (url: string, environmentId: string) => `${url}${url.includes('?') ? '&' : '?'}environmentId=${encodeURIComponent(environmentId)}`;
 
 export const okfApi = {
+  coverage: (projectId: string, environmentId = 'production') =>
+    req<KnowledgeCoverage>(withEnvironment(knowledgeUrl(projectId, 'coverage'), environmentId)),
+  lifecycle: (projectId: string, environmentId = 'production') =>
+    req<KnowledgeLifecycle>(withEnvironment(knowledgeUrl(projectId, 'lifecycle'), environmentId)),
   analysis: (projectId: string, environmentId = 'production') =>
     req<OkfAnalysis>(withEnvironment(knowledgeUrl(projectId, 'analysis'), environmentId)),
   attest: (projectId: string, recordId: string, expectedRevision: number, environmentId = 'production') =>
