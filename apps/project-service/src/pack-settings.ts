@@ -25,6 +25,7 @@ const object = (fields: Record<string, Shape>): Shape => ({ kind: 'object', fiel
 const DIALOGUE_SHAPE = object({
   stopwords: texts, fillerWords: texts, genericProductWords: texts, answerPhrases: texts, howToPhrases: texts, usageCues: texts, browsePhrases: texts,
   howTo: object({ maxSentences: whole(1, 6), maxChars: whole(60, 800) }),
+  modelReading: object({ skipForTappedAnswers: bool, skipForBrowse: bool, browseMaxWords: whole(1, 30), maxHeaderWords: whole(0, 10) }),
   stem: object({ rules: { kind: 'pairs' }, minStem: whole(1, 8), keepEndings: texts }),
   relevance: object({ fieldWeights: object({ title: real(0, 20), features: real(0, 20), description: real(0, 20), brand: real(0, 20), category: real(0, 20) }), minIdf: real(0, 5) }),
   sufficiency: object({ minTopScore: real(0, 100), margin: real(0, 1), within: real(0, 1), maxRecommended: whole(1, 6), minNeedShare: real(0, 1) }),

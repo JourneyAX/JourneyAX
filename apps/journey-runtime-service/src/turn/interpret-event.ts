@@ -22,6 +22,8 @@ export interface InterpretationResult {
   candidateFacts: FactsMap;
   confidence: number;
   failure?: InterpretationFailure;
+  /** Set by the caller when the message was understood without the model that reads free text, and why. */
+  modelSkipped?: 'tapped_answer' | 'browse_request';
   modelRoute?: {
     policyId: string;
     provider: string;
@@ -141,7 +143,8 @@ export class TurnInterpreter {
   async interpret(
     command: TurnCommand,
     release: BusinessPackRelease,
-    workspace: WorkspaceState
+    workspace: WorkspaceState,
+    options: { model?: boolean } = {}
   ): Promise<InterpretationResult> {
     const rawMessage = command.message || (command as any).userInput || '';
     const policy = resolveInterpretationPolicy(release);
@@ -153,8 +156,8 @@ export class TurnInterpreter {
     let interpretationFailure: InterpretationFailure | undefined;
     let capturedModelRoute: InterpretationResult['modelRoute'];
 
-    // 1. Model Gateway Port Execution (if ModelGateway is injected)
-    if (this.modelGateway) {
+    // 1. Model Gateway Port Execution (if ModelGateway is injected, and the caller has not already understood the message without it)
+    if (this.modelGateway && options.model !== false) {
       try {
         const slotQuestions = {
           ...Object.fromEntries(Object.entries(registryFacts).map(([factKey, definition]: [string, any]) => [factKey, {

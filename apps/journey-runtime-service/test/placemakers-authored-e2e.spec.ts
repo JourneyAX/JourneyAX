@@ -368,6 +368,65 @@ async function main() {
     assert.ok(!JSON.stringify(narrowed.uiInstructions).includes('conversation_state'));
   });
 
+  await suite.test('the slow model read is skipped for a fully understood tap or a plain "show me", kept for everything else, and the log says which', async () => {
+    const calls: string[] = [];
+    const service = stack.serviceFor({ calls });
+    const reads = () => calls.filter((task) => task === 'fast_intent').length;
+    const logged: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logged.push(args.join(' ')); };
+    try {
+      const first = await turn(service, 'ws-skip', 'cleaning supply');
+      assert.equal(reads(), 1, 'free text is read by the model');
+      assert.equal(first.trace.diagnostics.modelRead, 'used');
+      const tap = await turn(service, 'ws-skip', 'My answers:\nWhat are you cleaning? → equipment', 2);
+      assert.equal(reads(), 1, 'the tap added no model read');
+      assert.equal(tap.trace.modelSkipped, 'tapped_answer');
+      assert.equal(tap.trace.modelRoute, undefined, 'no model was used, so none is claimed');
+      assert.equal(tap.trace.diagnostics.modelRead, 'skipped (tapped_answer)');
+      assert.equal(tap.trace.knowledgeGate.trace.matchedBy, 'pending_clarification');
+      assert.deepEqual(skusOf(cards(tap, 'products')[0]), ['MB-1'], 'the answer is the same as when the model read it');
+
+      // The question built from the products is read without the model too.
+      const hammers = await turn(service, 'ws-skip-h', 'hammers');
+      const question = cards(hammers, 'clarify')[0].props.questions[0];
+      const before = reads();
+      const narrowed = await turn(service, 'ws-skip-h', `My answers:\n${question.text} → ${question.options[0].value}`, 2);
+      assert.equal(reads(), before, 'no model read for the tap');
+      assert.equal(narrowed.trace.modelSkipped, 'tapped_answer');
+      assert.equal(cards(narrowed, 'products')[0].props.products.length, 3);
+
+      // A plain "show me" for a shelf, but not one with something more in it.
+      const browse = await turn(service, 'ws-skip-b', 'show me all hammers');
+      assert.equal(reads(), before, 'a plain "show me" needs no model read');
+      assert.equal(browse.trace.modelSkipped, 'browse_request');
+      assert.equal(cards(browse, 'products')[0].props.products.length, dialogue.show.maxItems);
+      await turn(service, 'ws-skip-b2', 'show me hammers for roofing');
+      assert.equal(reads(), before + 1, 'something else was said, so the model reads it');
+      // A tap that nothing on screen can read is not trusted to be understood.
+      await turn(service, 'ws-skip-t', 'My answers:\nHow many do you need? → 12');
+      assert.equal(reads(), before + 2);
+      // A tenant can keep the model in every turn.
+      const keepModel: any = { ...pack, extensions: { ...(pack.extensions ?? {}), dialoguePolicy: { modelReading: { skipForTappedAnswers: false, skipForBrowse: false } } } };
+      const kept = await turn(service, 'ws-skip-off', 'show me all hammers', 1, keepModel);
+      assert.equal(reads(), before + 3);
+      assert.equal(kept.trace.modelSkipped, undefined);
+    } finally { console.log = originalLog; }
+
+    // Every turn prints one plain line: pack, knowledge release, how it matched, what was decided and why, cards, model use.
+    const lines = logged.filter((line) => line.startsWith('[Turn] '));
+    assert.equal(lines.length, 8, 'every turn prints one line, including the one that ended early');
+    assert.ok(lines.some((line) => line.includes('no_match') && line.includes('ended early: no journey matched the request') && line.includes('cards: none')), 'a turn that matched nothing says so');
+    const tapLine = lines.find((line) => line.includes('mops-and-brooms'))!;
+    assert.match(tapLine, /^\[Turn\] pack \S+ \| knowledge okf-\S+@\w{12} \| direct_results · cleaners-and-cleaning-equipment\/mops-and-brooms \(pending_clarification\) \| decided show/);
+    assert.match(tapLine, /cards: products \| model read: skipped \(tapped_answer\)$/);
+    assert.ok(lines.some((line) => line.includes('decided ask [release question: cleaning_task]') && line.endsWith('model read: used')));
+    assert.ok(lines.some((line) => line.includes('decided ask [built from products: facet_brand]')));
+    const diagnostics = logged.find((line) => line.startsWith('[TurnDiagnostics]') && line.includes('facet_brand'))!;
+    assert.match(diagnostics, /"conversationAction":"ask"/);
+    assert.match(diagnostics, /"conversationQuestion":"facet:facet_brand"/);
+  });
+
   await suite.test('the release was published checksum-bound, and a different checksum cannot be used by the pack', async () => {
     const tampered = { ...structuredClone(pack), knowledgeModel: { ...reference, checksum: 'f'.repeat(64) } };
     const result = await (service as any).executeTurn({

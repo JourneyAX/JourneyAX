@@ -25,6 +25,11 @@ export interface ConversationPolicy {
   howTo: { maxSentences: number; maxChars: number };
   /** Phrases that ask to see what there is; with nothing more specific said, the answer is a short list, not a question. */
   browsePhrases: string[];
+  /**
+   * When the message is fully understood without the model that reads free text, that slow step is skipped: a tapped answer the
+   * release or the products' own question can read, and a plain "show me" for a shelf (nothing else said).
+   */
+  modelReading: { skipForTappedAnswers: boolean; skipForBrowse: boolean; browseMaxWords: number; maxHeaderWords: number };
   wording: 'template' | 'model';
   templates: {
     ask: string[]; askMany: string[]; recommendOne: string[]; recommendMany: string[]; show: string[]; showNeeds: string[];

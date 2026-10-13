@@ -390,6 +390,15 @@ the customer wants to look, and explain from the product itself.
   `defaults/conversation-policy.json`. A pack overrides any section with `extensions.dialoguePolicy` (Studio: Pack settings → Conversation flow),
   validated when saved: unknown keys, wrong types, out-of-range numbers and template placeholders the platform does not fill are refused.
   Nothing in the code names a department, product or brand.
+- **The slow model read is skipped when it would add nothing.** Reading free text with the model costs 6 to 10 seconds on every turn.
+  A tapped answer that the release's question or the products' question has already read exactly, and a plain short "show me…" for a shelf
+  (no number, nothing left once the shelf and "show me" are removed), are understood without it; anything else still goes to the model, as
+  before. The deterministic reading runs first and is kept only when complete (`modelReading` in the policy; a tenant can switch it off). The trace says
+  `modelSkipped`, and no model route is claimed for a model that was not used.
+- **One plain log line per turn**, including turns that end early:
+  `[Turn] pack 1.3.17 | knowledge okf-…@4b0e1c8d619c | overview_then_ask · building-products/plasterboard (exact_phrase) | decided ask [release question: …]: … | cards: clarify | model read: skipped (tapped_answer)`.
+  The knowledge release itself is logged once per process when it loads (a cached release prints nothing), so this line is the per-turn proof.
+  `[TurnDiagnostics]` also carries the decision, its reasons, the needs and each product's score.
 - **Remembered between turns** in the workspace (`conversation_state`: needs, constraints, what was asked, the question on screen); it is never
   shown to the customer or sent to the model, and a new shelf starts fresh.
 - **Trace.** Every turn's trace carries `conversation`: the action, the rules that decided it in order, the needs, and each product's score,

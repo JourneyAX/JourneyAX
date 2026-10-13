@@ -85,8 +85,10 @@ export const products: any[] = [
 
 /** Stands in for the language model: a fixed function of the message, so the run is repeatable. */
 export class FixedGateway extends ModelGateway {
-  constructor(private readonly reply = 'Here are options from the catalogue.') { super(); }
+  /** `calls` receives the task type of every request, so a test can say how many times the model was asked and for what. */
+  constructor(private readonly reply = 'Here are options from the catalogue.', private readonly calls?: string[]) { super(); }
   async execute(_release: any, request: ModelExecutionRequest): Promise<ModelExecutionResponse> {
+    this.calls?.push(request.taskType);
     let content = this.reply;
     if (request.taskType === 'fast_intent' && request.prompt.includes('<customer_message>')) {
       const message = request.prompt.match(/<customer_message>\s*([\s\S]*?)\s*<\/customer_message>/i)?.[1]?.trim().toLowerCase() || '';
@@ -141,7 +143,7 @@ export interface PlaceMakersStack {
   okf: any;
   authored: ReturnType<typeof applyAuthoring>;
   /** `servePacks: true` loads the active pack through the real repository and loader (checksum-verified) instead of being handed one. */
-  serviceFor: (options?: { servePacks?: boolean; reply?: string }) => TurnApplicationService;
+  serviceFor: (options?: { servePacks?: boolean; reply?: string; calls?: string[] }) => TurnApplicationService;
 }
 
 /** Draft + customer paths → immutable OKF release → project → Business Pack, exactly as the back office does it. */
@@ -175,8 +177,8 @@ export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | '
   assert.equal(pack.knowledgeModel.checksum, okf.release.checksum, 'the pack is bound to the exact checksum of the published release');
   assert.equal(pack.knowledgeModel.required, true);
 
-  const serviceFor = (options: { servePacks?: boolean; reply?: string } = {}) => {
-    const modelGateway = new FixedGateway(options.reply);
+  const serviceFor = (options: { servePacks?: boolean; reply?: string; calls?: string[] } = {}) => {
+    const modelGateway = new FixedGateway(options.reply, options.calls);
     const capabilityGateway = new CapabilityGateway();
     capabilityGateway.registerCustomAdapter('catalog.search', new CatalogSearchHandler(undefined, async () => db as any));
     return new TurnApplicationService(

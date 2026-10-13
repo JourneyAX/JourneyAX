@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
 import { decideConversation, type GateView } from '../src/conversation/decide';
 import { facetQuestion } from '../src/conversation/facets';
+import { describeTurn } from '../src/conversation/describe';
 import { howToAnswer } from '../src/conversation/howto';
+import { pendingReadingMode, readsWithoutModel } from '../src/conversation/model-reading';
 import { conceptWordsOf, extractNeeds } from '../src/conversation/needs';
 import { resolveConversationPolicy } from '../src/conversation/policy';
 import { rankProducts, reasonFor } from '../src/conversation/relevance';
@@ -283,6 +285,44 @@ async function main() {
     assert.equal(question!.options.length, 4);
     assert.match(question!.options[0].label, /^Under /);
     assert.equal(facetQuestion(priced, { needTerms: [], conceptWords: new Set(), asked: ['price'], policy }), undefined, 'each kind is asked once');
+  });
+
+  await suite.test('the slow model that reads free text is skipped only when it would add nothing: a fully read tap, or a plain "show me"', () => {
+    const tapped = 'My answers:\nWhat are you cleaning? → Floors';
+    assert.equal(pendingReadingMode(tapped, policy), 'tapped');
+    assert.equal(pendingReadingMode('What are you cleaning? → Floors', policy), 'tapped', 'a heading is optional');
+    assert.equal(pendingReadingMode('My answers:\nWhat are you cleaning? → Floors\nand I need it by Friday please', policy), undefined, 'a sentence of the customer\'s own goes to the model');
+    assert.equal(pendingReadingMode('show me all hammers', policy), 'browse');
+    assert.equal(pendingReadingMode('show me 90mm decking', policy), undefined, 'a number is something to read');
+    assert.equal(pendingReadingMode('show me everything you have for building a deck with a hot tub on it', policy), undefined, 'a long message has more in it');
+    assert.equal(pendingReadingMode('hammers', policy), undefined);
+    assert.equal(pendingReadingMode('   ', policy), undefined);
+    const off = resolveConversationPolicy({ extensions: { dialoguePolicy: { modelReading: { skipForTappedAnswers: false, skipForBrowse: false } } } } as any);
+    assert.equal(pendingReadingMode(tapped, off), undefined, 'a tenant can keep the model in every turn');
+    assert.equal(pendingReadingMode('show me all hammers', off), undefined);
+
+    // The first look only says it is worth trying; what the knowledge decision actually read confirms it.
+    const read = { cleaning_task: { source: 'card_answer' } };
+    assert.equal(readsWithoutModel('tapped', tapped, gate(), read, policy), true, 'the release read the answer');
+    assert.equal(readsWithoutModel('tapped', tapped, gate(), {}, policy), false, 'nothing read it, so the model must');
+    assert.equal(readsWithoutModel('tapped', tapped, gate({ trace: { reasonCodes: ['conversation_answer_continuity'] } }), {}, policy), true, 'read against the question built from the products');
+    assert.equal(readsWithoutModel('tapped', 'A → 1\nB → 2', gate(), read, policy), false, 'two answers, only one read');
+    assert.equal(readsWithoutModel('browse', 'show me all cleaning supplies', gate(), {}, policy), true);
+    assert.equal(readsWithoutModel('browse', 'show me cleaning supplies for roofing', gate(), {}, policy), false, 'something else was said');
+    assert.equal(readsWithoutModel('browse', 'show me all cleaning supplies', gate({ mode: 'safety_then_diagnose' }), {}, policy), false, 'only shopping shelves');
+    assert.equal(readsWithoutModel('browse', 'show me all cleaning supplies', gate({ conceptId: undefined }), {}, policy), false, 'no shelf matched');
+  });
+
+  await suite.test('the log line says what answered, what was decided and why, and whether the model was needed', () => {
+    const plan = decide('cleaning supply', CLEANING, { gate: gate({ mode: 'overview_then_ask', clarification: OKF_QUESTION }) });
+    assert.equal(
+      describeTurn({ packVersion: '1.3.17', okfRelease: 'okf-x@4b0e1c8d619c', knowledgeMode: 'overview_then_ask', conceptId: 'concept://acme/cleaning/cleaning-supplies', matchedBy: 'phrase', plan, cards: ['clarify'], modelRead: 'skipped (tapped_answer)' }),
+      `[Turn] pack 1.3.17 | knowledge okf-x@4b0e1c8d619c | overview_then_ask · cleaning/cleaning-supplies (phrase) | decided ask [release question: cleaning_task]: ${plan.because.join(' → ')} | cards: clarify | model read: skipped (tapped_answer)`,
+    );
+    const recommend = decide('something to clean oil stains off my driveway', CLEANING);
+    assert.match(describeTurn({ okfRelease: 'none', plan: recommend, cards: ['products'], modelRead: 'used' }), /decided recommend \[1 product, reason quoted\]/);
+    assert.match(describeTurn({ okfRelease: 'none', plan: decide('x', CLEANING, { gate: null }), cards: [], modelRead: 'used' }), /decision left to the existing flow: no knowledge decision.* \| cards: none \|/);
+    assert.match(describeTurn({ okfRelease: 'none', plan: null, cards: [], modelRead: 'failed (ModelTimeoutError)' }), /no conversation decision.*model read: failed \(ModelTimeoutError\)$/);
   });
 
   process.exitCode = suite.finish() ? 0 : 1;

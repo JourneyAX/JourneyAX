@@ -31,7 +31,7 @@ import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
 import { OutboxRepository } from './outbox.repository';
 import { PresentationPort } from './presentation.port';
-import { decideConversation, readState, resolveConversationPolicy, STATE_KEY, writeState } from '../conversation';
+import { decideConversation, describeTurn, pendingReadingMode, readState, readsWithoutModel, resolveConversationPolicy, STATE_KEY, writeState } from '../conversation';
 import type { ConversationPlan } from '../conversation';
 import { TurnInterpreter, isAmbiguousMeasurementAnswer } from '../turn/interpret-event';
 import { resolveFactRole, resolveInterpretationPolicy } from '../turn/fact-semantics';
@@ -189,13 +189,7 @@ export class TurnApplicationService {
       }
 
       // 4. Extract and reduce conversational facts through model-gateway & schema validation
-      const interpretation = await this.interpreter.interpret(command, release, workspace || ({} as any));
-      const knowledgeGate = await this.knowledgeControlPlane.evaluate(
-        release,
-        command,
-        workspace,
-        interpretation
-      );
+      const { interpretation, knowledgeGate } = await this.readTurn(command, release, workspace);
 
       // Terminal knowledge outcomes answer from tenant/platform wording and never reach journey routing, the model
       // composer or any capability:
@@ -234,6 +228,7 @@ export class TurnApplicationService {
         const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace, release, { messages: knowledgeGate.messages });
         (turnResult.trace as any).knowledgeGate = knowledgeGate;
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
+        this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the knowledge decision answers on its own (safety, nothing verified, or knowledge unavailable)');
         this.streamCommittedFinalEvents(command, turnResult, [], sink);
         return turnResult;
       }
@@ -249,6 +244,7 @@ export class TurnApplicationService {
         };
         const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
         sink('trace', { currentStage: workspace?.currentStage || 'initial', transitions: [] });
+        this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the journey resolver is unavailable');
         this.streamCommittedFinalEvents(command, turnResult, [], sink);
         return turnResult;
       }
@@ -336,6 +332,7 @@ export class TurnApplicationService {
         // Commit atomically before final success/confirmation
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         // Only after commit emit final confirmed events
+        this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the request matches more than one journey');
         this.streamCommittedFinalEvents(command, turnResult, [], sink);
         return turnResult;
       }
@@ -394,6 +391,7 @@ export class TurnApplicationService {
           currentStage: workspace?.currentStage || 'initial',
           transitions: [],
         });
+        this.logTurn(release, knowledgeGate, interpretation, turnResult, 'no journey matched the request');
         this.streamCommittedFinalEvents(command, turnResult, [], sink);
         return turnResult;
       }
@@ -1137,7 +1135,7 @@ export class TurnApplicationService {
         turnResult.trace.modelRoute = groundedResponse.modelRoute;
       } else if ((interpretation as any)?.modelRoute) {
         turnResult.trace.modelRoute = (interpretation as any).modelRoute;
-      } else if (release.modelPolicy) {
+      } else if (release.modelPolicy && !interpretation.modelSkipped) {
         try {
           const route = this.modelGateway.router.resolveModel('fast_intent', release, {
             policyRef: resolvedAgentInfo?.modelPolicyRef,
@@ -1157,6 +1155,7 @@ export class TurnApplicationService {
       if (interpretation.failure) {
         turnResult.trace.errors = [interpretation.failure];
       }
+      if (interpretation.modelSkipped) (turnResult.trace as any).modelSkipped = interpretation.modelSkipped;
       if (knowledgeGate) {
         (turnResult.trace as any).knowledgeGate = knowledgeGate;
       }
@@ -1192,12 +1191,28 @@ export class TurnApplicationService {
         groundedResponse.modelRoute?.policyId ||
         (interpretation as any)?.modelRoute?.policyId ||
         'default',
+      modelRead: interpretation.modelSkipped ? `skipped (${interpretation.modelSkipped})` : interpretation.failure ? `failed (${interpretation.failure.type})` : 'used',
+      conversationAction: conversationPlan?.action,
+      conversationQuestion: conversationPlan?.question ? `${conversationPlan.question.source}:${conversationPlan.question.factKey}` : undefined,
+      conversationNeeds: conversationPlan?.needs,
+      conversationBecause: conversationPlan?.because,
+      conversationProducts: conversationPlan?.products.map((entry) => ({ sku: entry.item.sku, score: Number(entry.score.toFixed(2)), matched: entry.matched, quoted: Boolean(entry.why?.excerpt) })),
     };
 
     if (turnResult.trace) {
       (turnResult.trace as any).diagnostics = diagnostics;
     }
     console.log(`[TurnDiagnostics] ${JSON.stringify(diagnostics)}`);
+    console.log(describeTurn({
+      packVersion: diagnostics.packVersion,
+      okfRelease: diagnostics.okfRelease,
+      knowledgeMode: diagnostics.knowledgeMode,
+      conceptId: diagnostics.knowledgeConceptId,
+      matchedBy: diagnostics.knowledgeMatchedBy,
+      plan: conversationPlan,
+      cards: diagnostics.emittedCardTypes,
+      modelRead: diagnostics.modelRead,
+    }));
 
     // 8. Commit updated workspace state and outbox events atomically BEFORE confirming outcome
     await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
@@ -1214,6 +1229,43 @@ export class TurnApplicationService {
       });
       throw err;
     }
+  }
+
+  /** The one-line summary of a turn that ended before the normal diagnostics, so no turn goes unlogged. */
+  private logTurn(release: BusinessPackRelease, gate: OkfGateDecision | null | undefined, interpretation: { modelSkipped?: string; failure?: { type: string } }, turnResult: TurnResult, endedBecause: string): void {
+    console.log(describeTurn({
+      packVersion: release.manifest?.version,
+      okfRelease: release.knowledgeModel?.type === 'okf_release' ? `${release.knowledgeModel.releaseId}@${release.knowledgeModel.checksum.slice(0, 12)}` : 'none',
+      knowledgeMode: gate?.mode,
+      conceptId: gate?.conceptId,
+      matchedBy: gate?.trace?.matchedBy,
+      endedBecause,
+      cards: (turnResult.uiInstructions || []).map((ui: any) => ui.component || ui.envelope?.arguments?.card?.cardType),
+      modelRead: interpretation.modelSkipped ? `skipped (${interpretation.modelSkipped})` : interpretation.failure ? `failed (${interpretation.failure.type})` : 'used',
+    }));
+  }
+
+  /**
+   * Reads the customer's message and asks the knowledge decision what it means. The model that reads free text is the slowest step
+   * of a turn (6 to 10 seconds), and for two kinds of message it has nothing to add: a tapped answer the release or the products'
+   * own question can read exactly, and a plain "show me" for a shelf. For those the deterministic reading is tried first and kept when
+   * it is complete; otherwise the model reads the message as it always did.
+   */
+  private async readTurn(command: TurnCommand, release: BusinessPackRelease, workspace: WorkspaceState | null) {
+    const policy = resolveConversationPolicy(release);
+    const message = (command.message || (command as any).userInput || '').trim();
+    const mode = pendingReadingMode(message, policy);
+    if (mode) {
+      const quick = await this.interpreter.interpret(command, release, workspace || ({} as any), { model: false });
+      const gate = await this.knowledgeControlPlane.evaluate(release, command, workspace, quick);
+      if (gate && readsWithoutModel(mode, message, gate, quick.candidateFacts as any, policy)) {
+        quick.modelSkipped = mode === 'tapped' ? 'tapped_answer' : 'browse_request';
+        return { interpretation: quick, knowledgeGate: gate };
+      }
+    }
+    const interpretation = await this.interpreter.interpret(command, release, workspace || ({} as any));
+    const knowledgeGate = await this.knowledgeControlPlane.evaluate(release, command, workspace, interpretation);
+    return { interpretation, knowledgeGate };
   }
 
   /**

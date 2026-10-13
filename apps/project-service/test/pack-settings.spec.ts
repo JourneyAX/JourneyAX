@@ -71,6 +71,9 @@ async function main() {
     assert.match(bad({ templates: { why: '' } }).message, /non-empty text/);
     assert.match(bad({ facets: { price: { minRatio: 0 } } }).message, /facets\.price\.minRatio/);
     assert.match(bad([]).message, /must be an object/);
+    assert.match(bad({ modelReading: { browseMaxWords: 0 } }).message, /modelReading\.browseMaxWords must be a whole number from 1 to 30/);
+    assert.match(bad({ modelReading: { skipForBrowse: 'yes' } }).message, /modelReading\.skipForBrowse must be true or false/);
+    assert.equal((validatePackSettings({ dialoguePolicy: { modelReading: { skipForTappedAnswers: false } } }) as any).ok, true, 'a tenant can keep the model in every turn');
     const policy = { ask: { maxPerConcept: 1 }, wording: 'template', templates: { recommendOne: ['For {needs}, try the {title}.'], why: 'Because {excerpt}' }, reason: { maxChars: 120, maxSentences: 2 } };
     const ok: any = validatePackSettings({ dialoguePolicy: policy });
     assert.equal(ok.ok, true);
