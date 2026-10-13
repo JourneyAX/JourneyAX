@@ -230,7 +230,7 @@ async function main() {
   log(`  currencies: ${JSON.stringify(check.currencies)}; availability: ${JSON.stringify(check.availability)}`);
   const priceFields = (check.fields as any[]).filter((field) => /price|msrp|cost|amount|rrp|sell/i.test(String(field.path))).slice(0, 8);
   if (priceFields.length) log(`  price-like fields found on these products: ${priceFields.map((field) => `${field.path} (${field.count ?? field.products ?? '?'})`).join(', ')}`);
-  for (const issue of check.issues) log(`  ${issue.severity === 'error' ? '✗' : '!'} [${issue.severity}] ${issue.message} (${issue.affected} products)`);
+  for (const issue of check.issues) log(`  ${issue.severity === 'error' ? '✗' : '!'} [${issue.severity}] ${issue.message} (${issue.affected} products${issue.examples?.length ? `; e.g. ${issue.examples.join(', ')}` : ''})`);
   if (check.ok) ok('the mapping has no error-level issue'); else block('the catalogue mapping has error-level issues');
 
   // ── 4. Rehearsal on a copy (in memory) ──────────────────────────────────────────────────────────────

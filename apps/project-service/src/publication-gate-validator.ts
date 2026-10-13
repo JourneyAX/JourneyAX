@@ -60,7 +60,14 @@ export class PublicationGateValidator implements ReleaseValidationPort {
     businessPack: any,
     version: string | number
   ): Promise<ReleaseValidationResult> {
-    const { db: isolatedDb, client: isolatedClient, cleanup } = await this.getStorage();
+    let storage: Awaited<ReturnType<PublicationGateValidator['getStorage']>>;
+    try {
+      storage = await this.getStorage();
+    } catch (storageErr: any) {
+      // No isolated store means no pre-flight; the publication is refused cleanly rather than failing with an exception.
+      return { passed: false, error: `Publication gate failed: ${storageErr.message}` };
+    }
+    const { db: isolatedDb, client: isolatedClient, cleanup } = storage;
 
     try {
       // 1. Stage baseline and candidate in isolated test storage with test environment
@@ -182,17 +189,30 @@ export class PublicationGateValidator implements ReleaseValidationPort {
         reason: 'Pre-flight rollback proof',
       });
 
+      // A live activation follows the rollback as a numbered revision, back to the baseline release by its checksum.
+      const followed = await cutoverRepo.getCutoverRecord(projectId, 'test');
+      if (
+        !followed || followed.status !== 'migrated' ||
+        followed.approvedReleaseVersion !== baselineVersion || followed.approvedReleaseChecksum !== basePubResult.checksum ||
+        followed.revision !== cutoverRecord.revision + 1
+      ) {
+        return {
+          passed: false,
+          error: `Pre-flight rollback proof failed: the activation did not follow the rollback (status=${followed?.status}, version=${followed?.approvedReleaseVersion}, rev=${followed?.revision})`,
+        };
+      }
+
       await cutoverRepo.promoteCutover(projectId, 'test' as any, {
         status: 'rollback',
         approvedReleaseVersion: baselineVersion,
         approvedReleaseChecksum: basePubResult.checksum,
-        expectedRevision: 1,
+        expectedRevision: followed.revision,
         approvedBy: 'publication-gate',
         notes: 'Pre-flight rollback CAS proof',
       });
 
       const postRollbackRecord = await cutoverRepo.getCutoverRecord(projectId, 'test');
-      if (!postRollbackRecord || postRollbackRecord.status !== 'rollback' || postRollbackRecord.revision !== 2) {
+      if (!postRollbackRecord || postRollbackRecord.status !== 'rollback' || postRollbackRecord.revision !== followed.revision + 1) {
         return {
           passed: false,
           error: `Pre-flight rollback proof failed: status=${postRollbackRecord?.status}, rev=${postRollbackRecord?.revision}`,
