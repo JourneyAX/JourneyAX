@@ -22,4 +22,10 @@ for (const text of ['A. Suitable for outdoor use.', 'Cheap. It requires a permit
   const kept = withholdUnsupportedClaims(text, ['suggestion']).text;
   assert.equal(validateOkfGeneratedClaims(kept, ['suggestion']).valid, true, `"${kept}" passes the validator`);
 }
-console.log('✅ OKF claim validator: 11 passed, 0 failed');
+// Instructions that tell a customer how to protect themselves are safety claims in any tense, not only the base form.
+assert.ok(validateOkfGeneratedClaims('Always wear a respirator and apply in a ventilated area.', ['suggestion']).forbidden.includes('safety_instruction'));
+assert.ok(validateOkfGeneratedClaims('Apply in a ventilated area.', ['suggestion']).forbidden.includes('care_safety'));
+assert.ok(validateOkfGeneratedClaims('Use diluted 1:4 with water.', ['suggestion']).forbidden.includes('care_safety'));
+assert.deepEqual(validateOkfGeneratedClaims('Spray on, leave to dry, then brush off.', ['suggestion']).forbidden, [], 'an ordinary usage step is not a safety claim');
+assert.deepEqual(validateOkfGeneratedClaims('Always wear a respirator and apply in a ventilated area.', ['suggestion', 'safety_instruction', 'care_safety']).forbidden, [], 'allowed once the release verifies safety guidance');
+console.log('✅ OKF claim validator: 16 passed, 0 failed');

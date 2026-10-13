@@ -58,6 +58,35 @@ async function main() {
     assert.equal(set['extensions.workspacePinPolicy'], null);
   });
 
+  await suite.test('dialoguePolicy: every key is checked, nothing is silently ignored, and a valid one is stored as an extension', async () => {
+    const bad = (value: unknown) => validatePackSettings({ dialoguePolicy: value } as any) as any;
+    assert.match(bad({ surprise: 1 }).message, /unknown key surprise/);
+    assert.match(bad({ ask: { maxPerConcept: 9 } }).message, /ask\.maxPerConcept must be a whole number from 0 to 5/);
+    assert.match(bad({ ask: { maxPerConcept: 1.5 } }).message, /whole number/);
+    assert.match(bad({ ask: { nope: 1 } }).message, /unknown key ask\.nope/);
+    assert.match(bad({ wording: 'chatty' }).message, /wording must be one of template, model/);
+    assert.match(bad({ stopwords: [''] }).message, /stopwords must be a list/);
+    assert.match(bad({ stem: { rules: [['s']] } }).message, /pairs/);
+    assert.match(bad({ templates: { recommendOne: ['I would go with {brand}.'] } }).message, /\{brand\}, which is not filled in/);
+    assert.match(bad({ templates: { why: '' } }).message, /non-empty text/);
+    assert.match(bad({ facets: { price: { minRatio: 0 } } }).message, /facets\.price\.minRatio/);
+    assert.match(bad([]).message, /must be an object/);
+    const policy = { ask: { maxPerConcept: 1 }, wording: 'template', templates: { recommendOne: ['For {needs}, try the {title}.'], why: 'Because {excerpt}' }, reason: { maxChars: 120, maxSentences: 2 } };
+    const ok: any = validatePackSettings({ dialoguePolicy: policy });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ok.set, { 'extensions.dialoguePolicy': policy });
+    assert.deepEqual((validatePackSettings({ dialoguePolicy: null }) as any).set, { 'extensions.dialoguePolicy': null });
+    // Stored through the service, and removed with null.
+    const { service, db } = await createService();
+    assert.equal((await service.updateProject(TENANT, { dialoguePolicy: policy } as any)).success, true);
+    assert.deepEqual(db.dump('tenant_configs')[0].extensions.dialoguePolicy, policy);
+    const refused = await service.updateProject(TENANT, { dialoguePolicy: { ask: { maxPerConcept: 99 } } } as any);
+    assert.equal(refused.success, false);
+    assert.deepEqual(db.dump('tenant_configs')[0].extensions.dialoguePolicy, policy, 'a refused change leaves the stored policy as it was');
+    assert.equal((await service.updateProject(TENANT, { dialoguePolicy: null } as any)).success, true);
+    assert.equal(db.dump('tenant_configs')[0].extensions?.dialoguePolicy, undefined);
+  });
+
   await suite.test('updateProject stores valid settings, rejects invalid ones and removes with null', async () => {
     const { service, db } = await createService();
     const bad = await service.updateProject(TENANT, { catalogMapping: { searchPaths: ['$where'] } } as any);

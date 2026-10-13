@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
 import { publishOkfRelease } from '@journeyax/knowledge';
 import { OkfKnowledgeControlPlane } from '../src/kernel/knowledge-control-plane';
-import { CODE_OF, ENVIRONMENT, SKU_OF, TENANT, buildPlaceMakersStack } from './helpers/placemakers-stack';
+import { resolveConversationPolicy } from '../src/conversation';
+import { CODE_OF, ENVIRONMENT, SKU_OF, TENANT, buildPlaceMakersStack, products as fixtureProducts } from './helpers/placemakers-stack';
 
 /**
  * End to end, on real PlaceMakers inputs, through the real publication chain (see helpers/placemakers-stack.ts): the authored
@@ -28,6 +29,15 @@ async function main() {
     }, pack) as Promise<any>;
   };
 
+  // The platform words the turn by default. A tenant may instead have the model word replies; the claim guard and the reply
+  // shaper then apply to what it says.
+  const dialogue = resolveConversationPolicy(pack);
+  const modelPack: any = { ...pack, extensions: { ...(pack.extensions ?? {}), dialoguePolicy: { wording: 'model' } } };
+  assert.equal(resolveConversationPolicy(modelPack).wording, 'model');
+  const turn = (svc: any, workspaceId: string, message: string, n = 1, forPack: any = pack) => svc.executeTurn({
+    tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId, sessionId: workspaceId, turnId: `${workspaceId}-t${n}`, correlationId: `${workspaceId}-c${n}`, message,
+  }, forPack) as Promise<any>;
+
   await suite.test('"wood screws": only wood-screw products, then unverified "Have you considered?" with live products', async () => {
     const result = await run('ws-wood-screws', 'wood screws');
     assert.equal(result.trace.knowledgeGate.mode, 'direct_results');
@@ -41,7 +51,7 @@ async function main() {
     assert.ok(!suggestion.props.groups.some((group: any) => ['required', 'recommended'].includes(group.key)), 'never presented as required or recommended');
   });
 
-  await suite.test('a model reply with one unsupported sentence keeps the rest; the withheld sentence is logged, never shown', async () => {
+  await suite.test('when a tenant has the model word the reply, one unsupported sentence costs only that sentence; it is logged, never shown', async () => {
     const reply = 'Here are the wood screws we stock. You should drill a pilot hole first. Tell me the length you need.';
     const worded = stack.serviceFor({ reply });
     const warnings: string[] = [];
@@ -49,7 +59,7 @@ async function main() {
     console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
     let result: any;
     try {
-      result = await (worded as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-guard', sessionId: 'ws-guard', turnId: 'ws-guard-t1', correlationId: 'ws-guard-c1', message: 'wood screws' }, pack);
+      result = await turn(worded, 'ws-guard', 'wood screws', 1, modelPack);
     } finally { console.warn = original; }
     // The claim guard removes the sentence that asserts an installation claim; the shaper removes the one that asks the customer for more.
     assert.ok(result.assistantMessage.startsWith('Here are the wood screws we stock.'), result.assistantMessage);
@@ -60,7 +70,7 @@ async function main() {
     const nothingLeft = stack.serviceFor({ reply: 'These are suitable for every job. They must be fitted by a professional.' });
     console.warn = () => undefined;
     try {
-      result = await (nothingLeft as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-guard2', sessionId: 'ws-guard2', turnId: 'ws-guard2-t1', correlationId: 'ws-guard2-c1', message: 'wood screws' }, pack);
+      result = await turn(nothingLeft, 'ws-guard2', 'wood screws', 1, modelPack);
     } finally { console.warn = original; }
     assert.ok(result.assistantMessage.includes("I can't confirm that detail"), `the tenant's own wording is used when nothing is left: ${result.assistantMessage}`);
     assert.ok(!/merchant guidance|published/i.test(result.assistantMessage), 'and it is plain language');
@@ -75,62 +85,65 @@ async function main() {
   });
 
   await suite.test('a normal product noun survives the reply guard on a customer-facing turn', async () => {
-    const result = await (stack.serviceFor({ reply: 'Here are vanities from our range.' }) as any).executeTurn({
-      tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-vanities-wording', sessionId: 'ws-vanities-wording',
-      turnId: 'ws-vanities-wording-t1', correlationId: 'ws-vanities-wording-c1', message: 'vanities',
-    }, pack);
+    const result = await turn(stack.serviceFor({ reply: 'Here are vanities from our range.' }), 'ws-vanities-wording', 'vanities', 1, modelPack);
     assert.equal(result.assistantMessage, 'Here are vanities from our range.');
     assert.deepEqual(skusOf(cards(result, 'products')[0]), ['VN-1', 'VN-2']);
   });
 
-  await suite.test('"screws": a grouped overview from the family members, with the merchant\'s question as the last card', async () => {
+  await suite.test('"screws": the merchant\'s question comes first and no products yet; "just show me" skips the question', async () => {
     const result = await run('ws-screws', 'screws');
     assert.equal(result.trace.knowledgeGate.mode, 'overview_then_ask');
     assert.ok(result.trace.knowledgeGate.retrieval.categoryPaths.length >= 3);
-    const shown = skusOf(cards(result, 'products')[0]);
+    assert.deepEqual((result.uiInstructions as any[]).map((entry) => entry.component), ['clarify'], 'a question first; nothing to look at until it is answered');
+    assert.equal(cards(result, 'clarify')[0].props.questions[0].id, 'fastener_substrate');
+    assert.equal(result.trace.conversation.action, 'ask');
+    assert.ok(dialogue.templates.ask.includes(result.assistantMessage), result.assistantMessage);
+    assert.ok(!/compatib/i.test(result.assistantMessage), 'a question claims nothing about a product, so it carries no notice about products');
+    const browse = await run('ws-screws-browse', 'just show me screws');
+    const shown = skusOf(cards(browse, 'products')[0]);
     assert.ok(['WS-1', 'MS-1', 'MA-1'].every((sku) => shown.includes(sku)), `examples from each member category: ${shown}`);
     assert.ok(!shown.includes('FOREIGN-1'));
-    const order = (result.uiInstructions as any[]).map((entry) => entry.component);
-    assert.equal(order[0], 'clarify', 'the question comes first; the examples follow it');
-    assert.ok(order.indexOf('products') > order.indexOf('clarify'));
-    assert.equal(cards(result, 'clarify')[0].props.questions[0].id, 'fastener_substrate');
+    assert.equal(browse.trace.conversation.action, 'show');
+    assert.equal(cards(browse, 'clarify').length, 0, 'asked to see them, so not asked a question');
+    assert.ok(!cards(browse, 'products')[0].props.products.some((product: any) => product.recommended || product.reason), 'a plain list gives no reason it cannot back up');
+    assert.match(String(browse.assistantMessage), /compatib/i, 'a turn that shows products carries the notice about them');
   });
 
-  await suite.test('"cleaning supply", as a customer types it: the question first, then a few examples, in words a person would use', async () => {
+  await suite.test('"cleaning supply", as a customer types it: the question first and alone, in words a person would use', async () => {
     // The reply a customer really received from the model: a system id, "head to the section", a second question of its own.
     const bad = 'Sure — for cleaning supplies, head to the PlaceMakers **Cleaners & Cleaning Equipment** section:\n\n**Category:** `cleaners-and-cleaning-equipment`\n\nWhat are you looking for specifically — general cleaning products, site clean-up gear, consumables, or equipment? If you tell me the job you\u2019re doing, I can help narrow it down.';
-    const warnings: string[] = [];
-    const original = console.warn;
-    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
-    let result: any;
     const pilotService = stack.serviceFor({ reply: bad });
-    try {
-      result = await (pilotService as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-pilot', sessionId: 'ws-pilot', turnId: 'ws-pilot-t1', correlationId: 'ws-pilot-c1', message: 'cleaning supply' }, pack);
-    } finally { console.warn = original; }
+    const result = await turn(pilotService, 'ws-pilot', 'cleaning supply');
     assert.equal(result.trace.knowledgeGate.conceptId, 'concept://placemakers/families/cleaning-supplies', 'the authored family answers, not a category from the tree');
     assert.equal(result.trace.knowledgeGate.mode, 'overview_then_ask');
-    const order = (result.uiInstructions as any[]).map((entry) => entry.component);
-    assert.deepEqual(order, ['clarify', 'products'], 'the question, then the examples (no cross-sell: nothing was chosen yet)');
+    assert.deepEqual((result.uiInstructions as any[]).map((entry) => entry.component), ['clarify'], 'the question, and nothing else yet');
     const question = cards(result, 'clarify')[0].props.questions[0];
     assert.equal(question.text, 'What are you cleaning?');
     assert.deepEqual(question.options.map((option: any) => option.label), ['Inside the house: kitchen, bathroom, general', 'Floors: mopping and sweeping', 'Outside: decks, concrete, driveways', 'The car', 'Buckets, bins and other household things']);
     assert.ok(!question.options.some((option: any) => /Cleaners & Cleaning Equipment|Indoor Cleaners/.test(option.label)), 'no category names as choices');
-    // Nothing from the model survived, so the tenant's own short lead-in is what the customer reads.
-    assert.equal(result.assistantMessage, 'A quick question first, so I can show you the right ones.');
-    assert.ok(!/`|cleaners-and-cleaning|head to|PlaceMakers|\?|section/i.test(result.assistantMessage), result.assistantMessage);
+    // The platform words the turn from the tenant\'s own sentences; the model is not asked, so nothing it said can reach the customer.
+    assert.ok(dialogue.templates.ask.includes(result.assistantMessage), result.assistantMessage);
+    assert.ok(!/`|cleaners-and-cleaning|head to|PlaceMakers|section/i.test(result.assistantMessage), result.assistantMessage);
+    assert.deepEqual(result.trace.conversation.question, { source: 'okf', factKey: 'cleaning_task' });
+    // A tenant that has the model word the reply still gets it cleaned: the id, the redirect and the second question are removed.
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
+    let modelled: any;
+    try { modelled = await turn(stack.serviceFor({ reply: bad }), 'ws-pilot-m', 'cleaning supply', 1, modelPack); } finally { console.warn = original; }
+    assert.deepEqual((modelled.uiInstructions as any[]).map((entry) => entry.component), ['clarify'], 'the cards are decided by the conversation, not by who words the reply');
+    assert.equal(modelled.assistantMessage, 'A quick question first, so I can show you the right ones.');
     assert.ok(warnings.some((line) => line.includes('[ReplyShaper]') && line.includes('internal id')), 'the log says what was removed');
-    assert.ok(!cards(result, 'products')[0].props.products.some((product: any) => product.recommended), 'samples from a category are not badged "Recommended"');
-    assert.equal(cards(result, 'products')[0].props.closing, 'cart', 'the button never reads "Add all to"');
-    // A short, normal reply from the model is kept exactly.
-    const calm = await (stack.serviceFor({ reply: 'Happy to help with that.' }) as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-pilot2', sessionId: 'ws-pilot2', turnId: 'ws-pilot2-t1', correlationId: 'ws-pilot2-c1', message: 'cleaning supply' }, pack);
+    const calm = await turn(stack.serviceFor({ reply: 'Happy to help with that.' }), 'ws-pilot2', 'cleaning supply', 1, modelPack);
     assert.equal(calm.assistantMessage, 'Happy to help with that.');
     // The answer narrows to the right shelf without asking again. It arrives as the web app sends it (text, one "question → answer"
     // line per card) and the stand-in model reads nothing from it: a tapped answer never depends on a model.
-    const floors = await (pilotService as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-pilot', sessionId: 'ws-pilot', turnId: 'ws-pilot-t2', correlationId: 'ws-pilot-c2', message: 'My answers:\nWhat are you cleaning? → equipment' }, pack);
+    const floors = await turn(pilotService, 'ws-pilot', 'My answers:\nWhat are you cleaning? → equipment', 2);
     assert.equal(floors.trace.knowledgeGate.conceptId, 'concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/mops-and-brooms');
     assert.equal(floors.trace.knowledgeGate.mode, 'direct_results');
     assert.equal(cards(floors, 'clarify').length, 0, 'the question is not asked twice');
     assert.deepEqual(skusOf(cards(floors, 'products')[0]), ['MB-1']);
+    assert.equal(floors.trace.conversation.action, 'show');
     // The same answer by its label, and an answer that is a word which also names an unrelated category ("equipment" is a power-tool shelf).
     await run('ws-pilot-b', 'cleaning supply', 1);
     const car = await run('ws-pilot-b', 'My answers:\nWhat are you cleaning? → The car', 2);
@@ -143,19 +156,57 @@ async function main() {
     const cleaning = await run('ws-cleaning-supplies', 'cleaning supplies');
     assert.equal(cleaning.trace.knowledgeGate.mode, 'overview_then_ask');
     assert.equal(cards(cleaning, 'clarify')[0]?.props?.questions[0]?.id, 'cleaning_task');
-    const cleaningPreview = skusOf(cards(cleaning, 'products')[0]);
-    assert.ok(['IC-1', 'OC-1', 'MB-1'].every((sku) => cleaningPreview.includes(sku)), `cleaning categories: ${cleaningPreview}`);
+    assert.equal(cards(cleaning, 'products').length, 0, 'the question comes before any product');
     const indoor = await run('ws-cleaning-supplies', 'indoor', 2);
     assert.equal(indoor.trace.knowledgeGate.conceptId, 'concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/indoor-cleaners');
     assert.deepEqual(skusOf(cards(indoor, 'products')[0]), ['IC-1']);
+    // A customer who would rather look first sees an example from each kind of cleaning supply.
+    const browse = await run('ws-cleaning-browse', 'show me cleaning supplies');
+    const cleaningPreview = skusOf(cards(browse, 'products')[0]);
+    assert.ok(['IC-1', 'OC-1', 'MB-1'].every((sku) => cleaningPreview.includes(sku)), `cleaning categories: ${cleaningPreview}`);
+    assert.equal(cards(browse, 'clarify').length, 0);
 
     const paint = await run('ws-paint-project', 'paint a room');
     assert.equal(paint.trace.knowledgeGate.mode, 'overview_then_ask');
     assert.equal(cards(paint, 'clarify')[0]?.props?.questions[0]?.id, 'paint_surface');
+    assert.equal(cards(paint, 'products').length, 0);
     const interior = await run('ws-paint-project', 'inside walls', 2);
     assert.equal(interior.trace.knowledgeGate.conceptId, 'concept://placemakers/projects/paint-a-room');
     assert.deepEqual(interior.trace.knowledgeGate.retrieval.groups.map((group: any) => group.label), ['Interior Paint']);
     assert.deepEqual(skusOf(cards(interior, 'products')[0]), ['IP-1'], 'exterior paint is excluded after the fact answer');
+  });
+
+  await suite.test('a customer who has said what they need gets one recommendation with the reason from the product\'s own words, and no model is asked', async () => {
+    const result = await turn(stack.serviceFor({ reply: 'MODEL WORDS' }), 'ws-recommend', 'wood screws for decking');
+    const shown = cards(result, 'products')[0].props.products;
+    assert.deepEqual(shown.map((entry: any) => CODE_OF[entry.sku]), ['WS-2'], 'the one that matches what was said, not a list');
+    assert.equal(shown[0].recommended, true);
+    const description = String(fixtureProducts.find((entry) => entry.sku === shown[0].sku)?.description);
+    assert.ok(shown[0].reason.startsWith('For decking: '), shown[0].reason);
+    assert.ok(description.includes(shown[0].reason.slice('For decking: '.length)), 'the reason is a sentence from the product itself');
+    assert.ok(result.assistantMessage.includes('Decking screw 10g x 65mm') && !result.assistantMessage.includes('MODEL WORDS'));
+    assert.equal(cards(result, 'clarify').length, 0, 'enough was said, so there is nothing to ask');
+    assert.equal(result.trace.conversation.action, 'recommend');
+    assert.deepEqual(result.trace.conversation.products.map((entry: any) => [CODE_OF[entry.sku], entry.quoted]), [['WS-2', true]]);
+    assert.equal(result.trace.conversation.needs.join(), 'decking');
+    // Said nothing more than the shelf: both are shown, neither is called the best, and no reason is invented.
+    const plain = await turn(stack.serviceFor(), 'ws-no-needs', 'wood screws');
+    const list = cards(plain, 'products')[0].props.products;
+    assert.deepEqual(list.map((entry: any) => CODE_OF[entry.sku]).sort(), ['WS-1', 'WS-2']);
+    assert.ok(list.every((entry: any) => !entry.recommended && !entry.reason));
+    assert.equal(plain.trace.conversation.action, 'show');
+  });
+
+  await suite.test('"how do I use…" is answered from the product\'s own details: no cards, no model, nothing the release has not verified', async () => {
+    const result = await turn(stack.serviceFor({ reply: 'Brush it on and rinse after twenty minutes.' }), 'ws-howto', 'how do I use deck wash');
+    assert.equal(result.trace.conversation.action, 'answer');
+    assert.equal(cards(result, 'products').length + cards(result, 'accessories').length + cards(result, 'clarify').length, 0);
+    assert.equal(result.assistantMessage, dialogue.templates.howTo.replace('{title}', 'Deck wash 2L').replace('{steps}', 'Brush on, leave for ten minutes, then rinse.'), 'the steps are the product\'s, word for word');
+    // A product with nothing about use on file: said plainly.
+    const none = await turn(stack.serviceFor({ reply: 'Pre-drill and screw it in.' }), 'ws-howto-none', 'how do I use the 10g x 65mm wood screw');
+    assert.ok(String(none.assistantMessage).startsWith(dialogue.templates.howToNone.replace('{title}', 'Decking screw 10g x 65mm')), none.assistantMessage);
+    assert.match(String(none.assistantMessage), /check compatibility/i, 'the release\'s required notice still accompanies a reply about a product');
+    assert.ok(!/pre-drill/i.test(String(none.assistantMessage)), 'a model\'s steps are never relayed');
   });
 
   await suite.test('a project is served by the gate: question first, then a grouped overview of its categories', async () => {
@@ -286,6 +337,35 @@ async function main() {
     // A "Plumbing" in the Outdoor department is covered by the Outdoor hierarchy, not by the bathroom or tools "Plumbing".
     const stray = await basket('PL-X');
     assert.ok(!stray?.reasonCodes.includes('missing_catalog_sku'));
+  });
+
+  await suite.test('a shelf with many products and nothing to tell them apart: one question built from the products themselves, then the narrowed list', async () => {
+    const base: any = fixtureProducts.find((entry) => entry.sku === SKU_OF['HM-1']);
+    const rows: Array<[string, string, number]> = [['Claw hammer 20oz', 'Stanley', 29], ['Rubber mallet 500g', 'Stanley', 14], ['Sledge hammer 4kg', 'Estwing', 69], ['Club hammer 2lb', 'Estwing', 33],
+      ['Framing hammer 22oz', 'Estwing', 79], ['Tack hammer 8oz', 'Spear', 12], ['Dead blow hammer 1kg', 'Spear', 38], ['Ball pein hammer 8oz', 'Spear', 22]];
+    await db.collection('products').insertMany(rows.map(([name, brand, price], index) => ({ ...base, _id: undefined, sku: `900${index}`, name, brand, priceUSD: { min: price } })).map(({ _id, ...rest }) => rest));
+    const first = await run('ws-hammers', 'hammers');
+    assert.deepEqual((first.uiInstructions as any[]).map((entry) => entry.component), ['clarify'], 'nine products and nothing to choose by: ask, do not dump them');
+    assert.equal(first.trace.conversation.question.source, 'facet');
+    const question = cards(first, 'clarify')[0].props.questions[0];
+    assert.equal(question.id, 'facet_brand');
+    assert.deepEqual(question.options.map((option: any) => option.label), ['Estwing', 'Spear', 'Stanley', 'No preference']);
+    assert.deepEqual(question.options.map((option: any) => option.value), question.options.map((option: any) => option.label), 'what is echoed back in the chat is plain words, not a code');
+    assert.ok(dialogue.templates.askMany.includes(first.assistantMessage), first.assistantMessage);
+    // The tap arrives as text, like every card answer, and continues the same shelf.
+    const narrowed = await run('ws-hammers', `My answers:\n${question.text} → ${question.options[0].value}`, 2);
+    assert.ok(narrowed.trace.knowledgeGate.trace.reasonCodes.includes('conversation_answer_continuity'));
+    assert.deepEqual(cards(narrowed, 'products')[0].props.products.map((entry: any) => entry.title).sort(), ['Club hammer 2lb', 'Framing hammer 22oz', 'Sledge hammer 4kg']);
+    assert.equal(cards(narrowed, 'clarify').length, 0, 'it is not asked again');
+    // Naming a brand in the first message is the answer already; asking to see them skips the question.
+    const named = await run('ws-hammers-brand', 'hammers by Estwing');
+    assert.equal(cards(named, 'clarify').length, 0);
+    assert.equal(cards(named, 'products')[0].props.products.length, 3);
+    const browse = await run('ws-hammers-browse', 'show me all hammers');
+    assert.equal(cards(browse, 'clarify').length, 0);
+    assert.equal(cards(browse, 'products')[0].props.products.length, dialogue.show.maxItems);
+    // The conversation state is internal: it never reaches the customer\'s view.
+    assert.ok(!JSON.stringify(narrowed.uiInstructions).includes('conversation_state'));
   });
 
   await suite.test('the release was published checksum-bound, and a different checksum cannot be used by the pack', async () => {

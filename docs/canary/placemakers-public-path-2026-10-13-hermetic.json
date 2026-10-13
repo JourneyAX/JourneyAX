@@ -1,29 +1,28 @@
 {
  "tenantId": "placemakers",
  "specVersion": "1.0.0",
- "startedAt": "2026-10-13T13:01:50.576Z",
- "durationMs": 241,
+ "startedAt": "2026-10-13T16:49:09.463Z",
+ "durationMs": 388,
  "passed": true,
  "totals": {
   "scenarios": 19,
-  "turns": 19,
+  "turns": 21,
   "violations": 0,
   "warnings": 0
  },
  "scenarios": [
   {
    "id": "fastenings-screws",
-   "description": "A broad request for screws shows examples and asks what they will be fixed into",
+   "description": "A broad request for screws asks what they will be fixed into first and shows no products yet; asking to see them shows examples, without asking",
    "passed": true,
    "turns": [
     {
      "message": "screws",
      "status": 200,
-     "elapsedMs": 105,
-     "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+     "elapsedMs": 133,
+     "reply": "One quick question so I get you the right thing.",
      "cardTypes": [
-      "clarify",
-      "products"
+      "clarify"
      ],
      "capabilities": [
       "catalog.search"
@@ -31,7 +30,6 @@
      "events": [
       "session",
       "capability",
-      "uiAction",
       "uiAction",
       "token",
       "done"
@@ -43,7 +41,7 @@
        "data": {
         "sessionId": "session-1"
        },
-       "atMs": 105
+       "atMs": 132
       },
       {
        "event": "capability",
@@ -51,7 +49,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 105
+       "atMs": 132
       },
       {
        "event": "uiAction",
@@ -117,7 +115,66 @@
          }
         }
        },
-       "atMs": 105
+       "atMs": 132
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "One quick question so I get you the right thing.",
+        "delta": "One quick question so I get you the right thing."
+       },
+       "atMs": 132
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-1",
+        "workspaceId": "session-1",
+        "response": "One quick question so I get you the right thing.",
+        "assistantMessage": "One quick question so I get you the right thing.",
+        "message": {
+         "role": "assistant",
+         "content": "One quick question so I get you the right thing."
+        }
+       },
+       "atMs": 132
+      }
+     ]
+    },
+    {
+     "message": "just show me screws",
+     "status": 200,
+     "elapsedMs": 24,
+     "reply": "Here's what we have.\n\nPlease check compatibility before you buy.",
+     "cardTypes": [
+      "products"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-1"
+       },
+       "atMs": 24
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 24
       },
       {
        "event": "uiAction",
@@ -128,7 +185,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000100",
@@ -136,7 +194,6 @@
              "imageUrl": null,
              "price": 12.5,
              "currency": "NZD",
-             "reason": "Category: Wood Screws",
              "recommended": false
             },
             {
@@ -145,7 +202,6 @@
              "imageUrl": null,
              "price": 18,
              "currency": "NZD",
-             "reason": "Category: Wood Screws",
              "recommended": false
             },
             {
@@ -154,7 +210,6 @@
              "imageUrl": null,
              "price": 9,
              "currency": "NZD",
-             "reason": "Category: Metal Screws",
              "recommended": false
             },
             {
@@ -163,7 +218,6 @@
              "imageUrl": null,
              "price": 21,
              "currency": "NZD",
-             "reason": "Category: Masonry  Anchors",
              "recommended": false
             }
            ],
@@ -174,7 +228,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000100",
@@ -182,7 +237,6 @@
             "imageUrl": null,
             "price": 12.5,
             "currency": "NZD",
-            "reason": "Category: Wood Screws",
             "recommended": false
            },
            {
@@ -191,7 +245,6 @@
             "imageUrl": null,
             "price": 18,
             "currency": "NZD",
-            "reason": "Category: Wood Screws",
             "recommended": false
            },
            {
@@ -200,7 +253,6 @@
             "imageUrl": null,
             "price": 9,
             "currency": "NZD",
-            "reason": "Category: Metal Screws",
             "recommended": false
            },
            {
@@ -209,7 +261,6 @@
             "imageUrl": null,
             "price": 21,
             "currency": "NZD",
-            "reason": "Category: Masonry  Anchors",
             "recommended": false
            }
           ],
@@ -217,29 +268,29 @@
          }
         }
        },
-       "atMs": 105
+       "atMs": 24
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
-        "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+        "token": "Here's what we have.\n\nPlease check compatibility before you buy.",
+        "delta": "Here's what we have.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 105
+       "atMs": 24
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-1",
         "workspaceId": "session-1",
-        "response": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
-        "assistantMessage": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "response": "Here's what we have.\n\nPlease check compatibility before you buy.",
+        "assistantMessage": "Here's what we have.\n\nPlease check compatibility before you buy.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+         "content": "Here's what we have.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 105
+       "atMs": 24
       }
      ]
     }
@@ -253,8 +304,8 @@
     {
      "message": "wood screws",
      "status": 200,
-     "elapsedMs": 15,
-     "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+     "elapsedMs": 19,
+     "reply": "Here's what we have.\n\nPlease check compatibility before you buy.",
      "cardTypes": [
       "products",
       "accessories"
@@ -277,7 +328,7 @@
        "data": {
         "sessionId": "session-2"
        },
-       "atMs": 15
+       "atMs": 19
       },
       {
        "event": "capability",
@@ -285,7 +336,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 15
+       "atMs": 19
       },
       {
        "event": "uiAction",
@@ -296,7 +347,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000100",
@@ -304,7 +356,6 @@
              "imageUrl": null,
              "price": 12.5,
              "currency": "NZD",
-             "reason": "Category: Wood Screws",
              "recommended": false
             },
             {
@@ -313,7 +364,6 @@
              "imageUrl": null,
              "price": 18,
              "currency": "NZD",
-             "reason": "Category: Wood Screws",
              "recommended": false
             }
            ],
@@ -324,7 +374,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000100",
@@ -332,7 +383,6 @@
             "imageUrl": null,
             "price": 12.5,
             "currency": "NZD",
-            "reason": "Category: Wood Screws",
             "recommended": false
            },
            {
@@ -341,7 +391,6 @@
             "imageUrl": null,
             "price": 18,
             "currency": "NZD",
-            "reason": "Category: Wood Screws",
             "recommended": false
            }
           ],
@@ -349,7 +398,7 @@
          }
         }
        },
-       "atMs": 15
+       "atMs": 19
       },
       {
        "event": "uiAction",
@@ -449,29 +498,29 @@
          }
         }
        },
-       "atMs": 15
+       "atMs": 19
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
-        "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+        "token": "Here's what we have.\n\nPlease check compatibility before you buy.",
+        "delta": "Here's what we have.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 15
+       "atMs": 19
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-2",
         "workspaceId": "session-2",
-        "response": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
-        "assistantMessage": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "response": "Here's what we have.\n\nPlease check compatibility before you buy.",
+        "assistantMessage": "Here's what we have.\n\nPlease check compatibility before you buy.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+         "content": "Here's what we have.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 15
+       "atMs": 19
       }
      ]
     }
@@ -485,12 +534,10 @@
     {
      "message": "i want to build a deck",
      "status": 200,
-     "elapsedMs": 11,
-     "reply": "Here are options from the catalogue.",
+     "elapsedMs": 17,
+     "reply": "One quick question so I get you the right thing.",
      "cardTypes": [
-      "clarify",
-      "products",
-      "accessories"
+      "clarify"
      ],
      "capabilities": [
       "catalog.search"
@@ -498,8 +545,6 @@
      "events": [
       "session",
       "capability",
-      "uiAction",
-      "uiAction",
       "uiAction",
       "token",
       "done"
@@ -511,7 +556,7 @@
        "data": {
         "sessionId": "session-3"
        },
-       "atMs": 11
+       "atMs": 16
       },
       {
        "event": "capability",
@@ -519,7 +564,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 11
+       "atMs": 16
       },
       {
        "event": "uiAction",
@@ -593,203 +638,29 @@
          }
         }
        },
-       "atMs": 11
-      },
-      {
-       "event": "uiAction",
-       "data": {
-        "name": "presentCard",
-        "arguments": {
-         "card": {
-          "id": "card_products_[phone]",
-          "cardType": "products",
-          "state": {
-           "heading": "Matching products",
-           "products": [
-            {
-             "sku": "1000113",
-             "title": "Composite decking board 140mm",
-             "imageUrl": null,
-             "price": 62,
-             "currency": "NZD",
-             "reason": "Category: Composite Decking",
-             "recommended": false
-            }
-           ],
-           "closing": "cart"
-          }
-         }
-        },
-        "card": {
-         "cardType": "products",
-         "state": {
-          "heading": "Matching products",
-          "products": [
-           {
-            "sku": "1000113",
-            "title": "Composite decking board 140mm",
-            "imageUrl": null,
-            "price": 62,
-            "currency": "NZD",
-            "reason": "Category: Composite Decking",
-            "recommended": false
-           }
-          ],
-          "closing": "cart"
-         }
-        }
-       },
-       "atMs": 11
-      },
-      {
-       "event": "uiAction",
-       "data": {
-        "name": "presentCard",
-        "arguments": {
-         "card": {
-          "id": "card_okf_suggestions_[phone]",
-          "cardType": "accessories",
-          "state": {
-           "heading": "Have you considered?",
-           "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
-           "groups": [
-            {
-             "key": "suggestion-1",
-             "label": "Wood Screws",
-             "items": [
-              {
-               "sku": "1000100",
-               "title": "Exterior wood screw 8g x 50mm",
-               "imageUrl": null,
-               "price": 12.5,
-               "currency": "NZD",
-               "category": "Wood Screws"
-              },
-              {
-               "sku": "1000101",
-               "title": "Decking screw 10g x 65mm",
-               "imageUrl": null,
-               "price": 18,
-               "currency": "NZD",
-               "category": "Wood Screws"
-              }
-             ]
-            },
-            {
-             "key": "suggestion-2",
-             "label": "Woodcare",
-             "items": [
-              {
-               "sku": "1000114",
-               "title": "Decking oil 4L",
-               "imageUrl": null,
-               "price": 76,
-               "currency": "NZD",
-               "category": "Woodcare"
-              }
-             ]
-            },
-            {
-             "key": "suggestion-3",
-             "label": "Outdoor Cleaners",
-             "items": [
-              {
-               "sku": "1000115",
-               "title": "Deck wash 2L",
-               "imageUrl": null,
-               "price": 24,
-               "currency": "NZD",
-               "category": "Outdoor Cleaners"
-              }
-             ]
-            }
-           ]
-          }
-         }
-        },
-        "card": {
-         "cardType": "accessories",
-         "state": {
-          "heading": "Have you considered?",
-          "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
-          "groups": [
-           {
-            "key": "suggestion-1",
-            "label": "Wood Screws",
-            "items": [
-             {
-              "sku": "1000100",
-              "title": "Exterior wood screw 8g x 50mm",
-              "imageUrl": null,
-              "price": 12.5,
-              "currency": "NZD",
-              "category": "Wood Screws"
-             },
-             {
-              "sku": "1000101",
-              "title": "Decking screw 10g x 65mm",
-              "imageUrl": null,
-              "price": 18,
-              "currency": "NZD",
-              "category": "Wood Screws"
-             }
-            ]
-           },
-           {
-            "key": "suggestion-2",
-            "label": "Woodcare",
-            "items": [
-             {
-              "sku": "1000114",
-              "title": "Decking oil 4L",
-              "imageUrl": null,
-              "price": 76,
-              "currency": "NZD",
-              "category": "Woodcare"
-             }
-            ]
-           },
-           {
-            "key": "suggestion-3",
-            "label": "Outdoor Cleaners",
-            "items": [
-             {
-              "sku": "1000115",
-              "title": "Deck wash 2L",
-              "imageUrl": null,
-              "price": 24,
-              "currency": "NZD",
-              "category": "Outdoor Cleaners"
-             }
-            ]
-           }
-          ]
-         }
-        }
-       },
-       "atMs": 11
+       "atMs": 17
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.",
-        "delta": "Here are options from the catalogue."
+        "token": "One quick question so I get you the right thing.",
+        "delta": "One quick question so I get you the right thing."
        },
-       "atMs": 11
+       "atMs": 17
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-3",
         "workspaceId": "session-3",
-        "response": "Here are options from the catalogue.",
-        "assistantMessage": "Here are options from the catalogue.",
+        "response": "One quick question so I get you the right thing.",
+        "assistantMessage": "One quick question so I get you the right thing.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue."
+         "content": "One quick question so I get you the right thing."
         }
        },
-       "atMs": 11
+       "atMs": 17
       }
      ]
     }
@@ -803,8 +674,8 @@
     {
      "message": "vanities",
      "status": 200,
-     "elapsedMs": 8,
-     "reply": "Here are options from the catalogue.",
+     "elapsedMs": 13,
+     "reply": "These are the closest matches.",
      "cardTypes": [
       "products",
       "accessories"
@@ -827,7 +698,7 @@
        "data": {
         "sessionId": "session-4"
        },
-       "atMs": 8
+       "atMs": 12
       },
       {
        "event": "capability",
@@ -835,7 +706,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 8
+       "atMs": 12
       },
       {
        "event": "uiAction",
@@ -846,7 +717,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000107",
@@ -854,7 +726,6 @@
              "imageUrl": null,
              "price": 499,
              "currency": "NZD",
-             "reason": "Category: Vanities",
              "recommended": false
             },
             {
@@ -863,7 +734,6 @@
              "imageUrl": null,
              "price": 399,
              "currency": "NZD",
-             "reason": "Category: Vanities",
              "recommended": false
             }
            ],
@@ -874,7 +744,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000107",
@@ -882,7 +753,6 @@
             "imageUrl": null,
             "price": 499,
             "currency": "NZD",
-            "reason": "Category: Vanities",
             "recommended": false
            },
            {
@@ -891,7 +761,6 @@
             "imageUrl": null,
             "price": 399,
             "currency": "NZD",
-            "reason": "Category: Vanities",
             "recommended": false
            }
           ],
@@ -899,7 +768,7 @@
          }
         }
        },
-       "atMs": 8
+       "atMs": 12
       },
       {
        "event": "uiAction",
@@ -983,29 +852,29 @@
          }
         }
        },
-       "atMs": 8
+       "atMs": 12
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.",
-        "delta": "Here are options from the catalogue."
+        "token": "These are the closest matches.",
+        "delta": "These are the closest matches."
        },
-       "atMs": 8
+       "atMs": 12
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-4",
         "workspaceId": "session-4",
-        "response": "Here are options from the catalogue.",
-        "assistantMessage": "Here are options from the catalogue.",
+        "response": "These are the closest matches.",
+        "assistantMessage": "These are the closest matches.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue."
+         "content": "These are the closest matches."
         }
        },
-       "atMs": 8
+       "atMs": 12
       }
      ]
     }
@@ -1019,7 +888,7 @@
     {
      "message": "renovate my bathroom",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 16,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "clarify"
@@ -1038,7 +907,7 @@
        "data": {
         "sessionId": "session-5"
        },
-       "atMs": 7
+       "atMs": 16
       },
       {
        "event": "uiAction",
@@ -1104,7 +973,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 16
       },
       {
        "event": "token",
@@ -1112,7 +981,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 7
+       "atMs": 16
       },
       {
        "event": "done",
@@ -1126,7 +995,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 7
+       "atMs": 16
       }
      ]
     }
@@ -1140,7 +1009,7 @@
     {
      "message": "my bathroom is leaking",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 14,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1156,7 +1025,7 @@
        "data": {
         "sessionId": "session-6"
        },
-       "atMs": 7
+       "atMs": 14
       },
       {
        "event": "token",
@@ -1164,7 +1033,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 7
+       "atMs": 14
       },
       {
        "event": "done",
@@ -1178,7 +1047,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 7
+       "atMs": 14
       }
      ]
     }
@@ -1192,7 +1061,7 @@
     {
      "message": "i can smell gas",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 12,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1208,7 +1077,7 @@
        "data": {
         "sessionId": "session-7"
        },
-       "atMs": 6
+       "atMs": 12
       },
       {
        "event": "token",
@@ -1216,7 +1085,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 6
+       "atMs": 12
       },
       {
        "event": "done",
@@ -1230,7 +1099,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 6
+       "atMs": 12
       }
      ]
     }
@@ -1244,7 +1113,7 @@
     {
      "message": "my appliance is sparking",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 9,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1260,7 +1129,7 @@
        "data": {
         "sessionId": "session-8"
        },
-       "atMs": 5
+       "atMs": 9
       },
       {
        "event": "token",
@@ -1268,7 +1137,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 5
+       "atMs": 9
       },
       {
        "event": "done",
@@ -1282,7 +1151,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 5
+       "atMs": 9
       }
      ]
     }
@@ -1296,7 +1165,7 @@
     {
      "message": "where is my order? my bathroom is leaking",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 12,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1312,7 +1181,7 @@
        "data": {
         "sessionId": "session-9"
        },
-       "atMs": 7
+       "atMs": 12
       },
       {
        "event": "token",
@@ -1320,7 +1189,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 7
+       "atMs": 12
       },
       {
        "event": "done",
@@ -1334,7 +1203,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 7
+       "atMs": 12
       }
      ]
     }
@@ -1348,7 +1217,7 @@
     {
      "message": "how do i install a vanity",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 9,
      "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
      "cardTypes": [],
      "capabilities": [],
@@ -1364,7 +1233,7 @@
        "data": {
         "sessionId": "session-10"
        },
-       "atMs": 6
+       "atMs": 9
       },
       {
        "event": "token",
@@ -1372,7 +1241,7 @@
         "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
         "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
        },
-       "atMs": 6
+       "atMs": 9
       },
       {
        "event": "done",
@@ -1386,7 +1255,7 @@
          "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
         }
        },
-       "atMs": 6
+       "atMs": 9
       }
      ]
     }
@@ -1400,7 +1269,7 @@
     {
      "message": "what is the warranty on this vanity",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 8,
      "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
      "cardTypes": [],
      "capabilities": [],
@@ -1416,7 +1285,7 @@
        "data": {
         "sessionId": "session-11"
        },
-       "atMs": 6
+       "atMs": 8
       },
       {
        "event": "token",
@@ -1424,7 +1293,7 @@
         "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
         "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
        },
-       "atMs": 6
+       "atMs": 8
       },
       {
        "event": "done",
@@ -1438,7 +1307,7 @@
          "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
         }
        },
-       "atMs": 6
+       "atMs": 8
       }
      ]
     }
@@ -1452,7 +1321,7 @@
     {
      "message": "clean my deck",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 8,
      "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
      "cardTypes": [],
      "capabilities": [],
@@ -1468,7 +1337,7 @@
        "data": {
         "sessionId": "session-12"
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1476,7 +1345,7 @@
         "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
         "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
        },
-       "atMs": 6
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1490,7 +1359,7 @@
          "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
         }
        },
-       "atMs": 6
+       "atMs": 7
       }
      ]
     }
@@ -1504,8 +1373,8 @@
     {
      "message": "is this wood screw suitable for a load bearing beam",
      "status": 200,
-     "elapsedMs": 7,
-     "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+     "elapsedMs": 14,
+     "reply": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
      "cardTypes": [
       "products",
       "accessories"
@@ -1528,7 +1397,7 @@
        "data": {
         "sessionId": "session-13"
        },
-       "atMs": 7
+       "atMs": 14
       },
       {
        "event": "capability",
@@ -1536,7 +1405,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 7
+       "atMs": 14
       },
       {
        "event": "uiAction",
@@ -1547,7 +1416,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000100",
@@ -1555,7 +1425,6 @@
              "imageUrl": null,
              "price": 12.5,
              "currency": "NZD",
-             "reason": "Category: Wood Screws",
              "recommended": false
             },
             {
@@ -1564,7 +1433,6 @@
              "imageUrl": null,
              "price": 18,
              "currency": "NZD",
-             "reason": "Category: Wood Screws",
              "recommended": false
             }
            ],
@@ -1575,7 +1443,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000100",
@@ -1583,7 +1452,6 @@
             "imageUrl": null,
             "price": 12.5,
             "currency": "NZD",
-            "reason": "Category: Wood Screws",
             "recommended": false
            },
            {
@@ -1592,7 +1460,6 @@
             "imageUrl": null,
             "price": 18,
             "currency": "NZD",
-            "reason": "Category: Wood Screws",
             "recommended": false
            }
           ],
@@ -1600,7 +1467,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 14
       },
       {
        "event": "uiAction",
@@ -1700,29 +1567,29 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 14
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
-        "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
+        "token": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+        "delta": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
        },
-       "atMs": 7
+       "atMs": 14
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-13",
         "workspaceId": "session-13",
-        "response": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
-        "assistantMessage": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+        "response": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+        "assistantMessage": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
+         "content": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
         }
        },
-       "atMs": 7
+       "atMs": 14
       }
      ]
     }
@@ -1736,7 +1603,7 @@
     {
      "message": "do you sell flux capacitors",
      "status": 200,
-     "elapsedMs": 6,
+     "elapsedMs": 8,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [],
      "capabilities": [],
@@ -1752,7 +1619,7 @@
        "data": {
         "sessionId": "session-14"
        },
-       "atMs": 6
+       "atMs": 8
       },
       {
        "event": "token",
@@ -1760,7 +1627,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 6
+       "atMs": 8
       },
       {
        "event": "done",
@@ -1774,7 +1641,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 6
+       "atMs": 8
       }
      ]
     }
@@ -1788,8 +1655,8 @@
     {
      "message": "switchgear",
      "status": 200,
-     "elapsedMs": 6,
-     "reply": "Here are options from the catalogue.",
+     "elapsedMs": 11,
+     "reply": "These are the closest matches.",
      "cardTypes": [
       "products"
      ],
@@ -1810,7 +1677,7 @@
        "data": {
         "sessionId": "session-15"
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "capability",
@@ -1818,7 +1685,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -1829,7 +1696,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000111",
@@ -1837,7 +1705,6 @@
              "imageUrl": null,
              "price": 340,
              "currency": "NZD",
-             "reason": "Category: Switchgear",
              "recommended": false
             }
            ],
@@ -1848,7 +1715,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000111",
@@ -1856,7 +1724,6 @@
             "imageUrl": null,
             "price": 340,
             "currency": "NZD",
-            "reason": "Category: Switchgear",
             "recommended": false
            }
           ],
@@ -1864,29 +1731,29 @@
          }
         }
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.",
-        "delta": "Here are options from the catalogue."
+        "token": "These are the closest matches.",
+        "delta": "These are the closest matches."
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-15",
         "workspaceId": "session-15",
-        "response": "Here are options from the catalogue.",
-        "assistantMessage": "Here are options from the catalogue.",
+        "response": "These are the closest matches.",
+        "assistantMessage": "These are the closest matches.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue."
+         "content": "These are the closest matches."
         }
        },
-       "atMs": 6
+       "atMs": 11
       }
      ]
     }
@@ -1900,8 +1767,8 @@
     {
      "message": "interior paint",
      "status": 200,
-     "elapsedMs": 7,
-     "reply": "Here are options from the catalogue.",
+     "elapsedMs": 11,
+     "reply": "These are the closest matches.",
      "cardTypes": [
       "products",
       "accessories"
@@ -1924,7 +1791,7 @@
        "data": {
         "sessionId": "session-16"
        },
-       "atMs": 7
+       "atMs": 11
       },
       {
        "event": "capability",
@@ -1932,7 +1799,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 7
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -1943,7 +1810,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000120",
@@ -1951,7 +1819,6 @@
              "imageUrl": null,
              "price": 89,
              "currency": "NZD",
-             "reason": "Category: Interior Paint",
              "recommended": false
             }
            ],
@@ -1962,7 +1829,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000120",
@@ -1970,7 +1838,6 @@
             "imageUrl": null,
             "price": 89,
             "currency": "NZD",
-            "reason": "Category: Interior Paint",
             "recommended": false
            }
           ],
@@ -1978,7 +1845,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -2062,29 +1929,29 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 11
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.",
-        "delta": "Here are options from the catalogue."
+        "token": "These are the closest matches.",
+        "delta": "These are the closest matches."
        },
-       "atMs": 7
+       "atMs": 11
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-16",
         "workspaceId": "session-16",
-        "response": "Here are options from the catalogue.",
-        "assistantMessage": "Here are options from the catalogue.",
+        "response": "These are the closest matches.",
+        "assistantMessage": "These are the closest matches.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue."
+         "content": "These are the closest matches."
         }
        },
-       "atMs": 7
+       "atMs": 11
       }
      ]
     }
@@ -2098,8 +1965,8 @@
     {
      "message": "outdoor cleaners",
      "status": 200,
-     "elapsedMs": 6,
-     "reply": "Here are options from the catalogue.",
+     "elapsedMs": 11,
+     "reply": "These are the closest matches.",
      "cardTypes": [
       "products"
      ],
@@ -2120,7 +1987,7 @@
        "data": {
         "sessionId": "session-17"
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "capability",
@@ -2128,7 +1995,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -2139,7 +2006,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000115",
@@ -2147,7 +2015,6 @@
              "imageUrl": null,
              "price": 24,
              "currency": "NZD",
-             "reason": "Category: Outdoor Cleaners",
              "recommended": false
             }
            ],
@@ -2158,7 +2025,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000115",
@@ -2166,7 +2034,6 @@
             "imageUrl": null,
             "price": 24,
             "currency": "NZD",
-            "reason": "Category: Outdoor Cleaners",
             "recommended": false
            }
           ],
@@ -2174,29 +2041,29 @@
          }
         }
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.",
-        "delta": "Here are options from the catalogue."
+        "token": "These are the closest matches.",
+        "delta": "These are the closest matches."
        },
-       "atMs": 6
+       "atMs": 11
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-17",
         "workspaceId": "session-17",
-        "response": "Here are options from the catalogue.",
-        "assistantMessage": "Here are options from the catalogue.",
+        "response": "These are the closest matches.",
+        "assistantMessage": "These are the closest matches.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue."
+         "content": "These are the closest matches."
         }
        },
-       "atMs": 6
+       "atMs": 11
       }
      ]
     }
@@ -2210,8 +2077,8 @@
     {
      "message": "What moisture-resistant linings and waterproofing do I need for my wet area?",
      "status": 200,
-     "elapsedMs": 8,
-     "reply": "Here are options from the catalogue.",
+     "elapsedMs": 10,
+     "reply": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
      "cardTypes": [
       "clarify"
      ],
@@ -2232,7 +2099,7 @@
        "data": {
         "sessionId": "session-18"
        },
-       "atMs": 8
+       "atMs": 10
       },
       {
        "event": "capability",
@@ -2240,7 +2107,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 8
+       "atMs": 10
       },
       {
        "event": "uiAction",
@@ -2306,29 +2173,29 @@
          }
         }
        },
-       "atMs": 8
+       "atMs": 10
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.",
-        "delta": "Here are options from the catalogue."
+        "token": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
+        "delta": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists."
        },
-       "atMs": 8
+       "atMs": 10
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-18",
         "workspaceId": "session-18",
-        "response": "Here are options from the catalogue.",
-        "assistantMessage": "Here are options from the catalogue.",
+        "response": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
+        "assistantMessage": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue."
+         "content": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists."
         }
        },
-       "atMs": 8
+       "atMs": 10
       }
      ]
     }
@@ -2336,17 +2203,16 @@
   },
   {
    "id": "cleaning-supply",
-   "description": "A bare request for cleaning supplies is answered like a person would: the question first, in plain words, then a few examples, with no system ids, no brand name and no sending the customer elsewhere",
+   "description": "A bare request for cleaning supplies is answered like a person would: only the question first, in plain words, with no products yet, no system ids, no brand name and no sending the customer elsewhere; asking to see them shows a few examples",
    "passed": true,
    "turns": [
     {
      "message": "cleaning supply",
      "status": 200,
-     "elapsedMs": 6,
-     "reply": "Here are options from the catalogue.",
+     "elapsedMs": 10,
+     "reply": "A quick question first, so I can point you to the right ones.",
      "cardTypes": [
-      "clarify",
-      "products"
+      "clarify"
      ],
      "capabilities": [
       "catalog.search"
@@ -2354,7 +2220,6 @@
      "events": [
       "session",
       "capability",
-      "uiAction",
       "uiAction",
       "token",
       "done"
@@ -2366,7 +2231,7 @@
        "data": {
         "sessionId": "session-19"
        },
-       "atMs": 6
+       "atMs": 10
       },
       {
        "event": "capability",
@@ -2374,7 +2239,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 6
+       "atMs": 10
       },
       {
        "event": "uiAction",
@@ -2456,7 +2321,66 @@
          }
         }
        },
-       "atMs": 6
+       "atMs": 10
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "A quick question first, so I can point you to the right ones.",
+        "delta": "A quick question first, so I can point you to the right ones."
+       },
+       "atMs": 10
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-19",
+        "workspaceId": "session-19",
+        "response": "A quick question first, so I can point you to the right ones.",
+        "assistantMessage": "A quick question first, so I can point you to the right ones.",
+        "message": {
+         "role": "assistant",
+         "content": "A quick question first, so I can point you to the right ones."
+        }
+       },
+       "atMs": 10
+      }
+     ]
+    },
+    {
+     "message": "show me cleaning supplies",
+     "status": 200,
+     "elapsedMs": 9,
+     "reply": "These are the closest matches.",
+     "cardTypes": [
+      "products"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-19"
+       },
+       "atMs": 9
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 9
       },
       {
        "event": "uiAction",
@@ -2467,7 +2391,8 @@
           "id": "card_products_[phone]",
           "cardType": "products",
           "state": {
-           "heading": "Matching products",
+           "eyebrow": "From our range",
+           "heading": "What we have",
            "products": [
             {
              "sku": "1000116",
@@ -2475,7 +2400,6 @@
              "imageUrl": null,
              "price": 14,
              "currency": "NZD",
-             "reason": "Category: Indoor Cleaners",
              "recommended": false
             },
             {
@@ -2484,7 +2408,6 @@
              "imageUrl": null,
              "price": 24,
              "currency": "NZD",
-             "reason": "Category: Outdoor Cleaners",
              "recommended": false
             },
             {
@@ -2493,7 +2416,6 @@
              "imageUrl": null,
              "price": 28,
              "currency": "NZD",
-             "reason": "Category: Mops & Brooms",
              "recommended": false
             },
             {
@@ -2502,7 +2424,6 @@
              "imageUrl": null,
              "price": 9,
              "currency": "NZD",
-             "reason": "Category: Car Cleaning",
              "recommended": false
             }
            ],
@@ -2513,7 +2434,8 @@
         "card": {
          "cardType": "products",
          "state": {
-          "heading": "Matching products",
+          "eyebrow": "From our range",
+          "heading": "What we have",
           "products": [
            {
             "sku": "1000116",
@@ -2521,7 +2443,6 @@
             "imageUrl": null,
             "price": 14,
             "currency": "NZD",
-            "reason": "Category: Indoor Cleaners",
             "recommended": false
            },
            {
@@ -2530,7 +2451,6 @@
             "imageUrl": null,
             "price": 24,
             "currency": "NZD",
-            "reason": "Category: Outdoor Cleaners",
             "recommended": false
            },
            {
@@ -2539,7 +2459,6 @@
             "imageUrl": null,
             "price": 28,
             "currency": "NZD",
-            "reason": "Category: Mops & Brooms",
             "recommended": false
            },
            {
@@ -2548,7 +2467,6 @@
             "imageUrl": null,
             "price": 9,
             "currency": "NZD",
-            "reason": "Category: Car Cleaning",
             "recommended": false
            }
           ],
@@ -2556,29 +2474,29 @@
          }
         }
        },
-       "atMs": 6
+       "atMs": 9
       },
       {
        "event": "token",
        "data": {
-        "token": "Here are options from the catalogue.",
-        "delta": "Here are options from the catalogue."
+        "token": "These are the closest matches.",
+        "delta": "These are the closest matches."
        },
-       "atMs": 6
+       "atMs": 9
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-19",
         "workspaceId": "session-19",
-        "response": "Here are options from the catalogue.",
-        "assistantMessage": "Here are options from the catalogue.",
+        "response": "These are the closest matches.",
+        "assistantMessage": "These are the closest matches.",
         "message": {
          "role": "assistant",
-         "content": "Here are options from the catalogue."
+         "content": "These are the closest matches."
         }
        },
-       "atMs": 6
+       "atMs": 9
       }
      ]
     }

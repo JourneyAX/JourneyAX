@@ -74,6 +74,7 @@
     "bundle_summary_one": "Here is the item that fits what you've told me. The total is {total}.",
     "bundle_summary_many": "Here are {count} items that fit what you've told me. The total is {total}.",
     "products_heading": "Matching products",
+    "products_eyebrow": "From our range",
     "products_intro": "Here are some options to start with.",
     "products_intro_named": "Here are some options to start with.",
     "evidence_heading": "Verified guidance",

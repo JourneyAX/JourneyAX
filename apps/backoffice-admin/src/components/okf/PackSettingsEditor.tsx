@@ -5,7 +5,7 @@ import { Save, RotateCcw } from "lucide-react";
 import { projectApi, type Project } from "../../lib/api";
 import { CatalogMappingForm } from "./CatalogMappingForm";
 
-type SettingKey = "catalogMapping" | "routingPolicy" | "interpretationPolicy" | "workspacePinPolicy";
+type SettingKey = "catalogMapping" | "routingPolicy" | "interpretationPolicy" | "workspacePinPolicy" | "dialoguePolicy";
 
 const SETTINGS: Array<{ key: SettingKey; title: string; help: string; read: (project: Project) => unknown }> = [
   {
@@ -25,6 +25,12 @@ const SETTINGS: Array<{ key: SettingKey; title: string; help: string; read: (pro
     title: "Interpretation policy",
     help: "Money and quantity wording, grounding words, prompt rules and fallback messages used when reading customer messages. Unset values use platform defaults.",
     read: (project) => project.extensions?.interpretationPolicy,
+  },
+  {
+    key: "dialoguePolicy",
+    title: "Conversation flow",
+    help: "How the assistant decides each turn: when it asks a question, when it recommends one product and says why, when it shows a short list, and the sentences it uses. Set only the sections you want to change (for example {\"ask\": {\"maxPerConcept\": 1}}); everything else keeps the platform defaults.",
+    read: (project) => project.extensions?.dialoguePolicy,
   },
   {
     key: "workspacePinPolicy",

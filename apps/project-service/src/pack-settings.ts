@@ -10,6 +10,74 @@ function isStringArray(value: unknown): boolean {
   return Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim() !== '');
 }
 
+/** A tiny shape language for the dialogue policy: every key is checked, unknown keys are refused, nothing is silently ignored. */
+type Shape =
+  | { kind: 'text' } | { kind: 'texts' } | { kind: 'bool' } | { kind: 'pairs' }
+  | { kind: 'number'; min: number; max: number; whole?: boolean }
+  | { kind: 'choice'; values: string[] }
+  | { kind: 'object'; fields: Record<string, Shape> };
+const text: Shape = { kind: 'text' };
+const texts: Shape = { kind: 'texts' };
+const bool: Shape = { kind: 'bool' };
+const whole = (min: number, max: number): Shape => ({ kind: 'number', min, max, whole: true });
+const real = (min: number, max: number): Shape => ({ kind: 'number', min, max });
+const object = (fields: Record<string, Shape>): Shape => ({ kind: 'object', fields });
+const DIALOGUE_SHAPE = object({
+  stopwords: texts, fillerWords: texts, genericProductWords: texts, answerPhrases: texts, howToPhrases: texts, usageCues: texts, browsePhrases: texts,
+  howTo: object({ maxSentences: whole(1, 6), maxChars: whole(60, 800) }),
+  stem: object({ rules: { kind: 'pairs' }, minStem: whole(1, 8), keepEndings: texts }),
+  relevance: object({ fieldWeights: object({ title: real(0, 20), features: real(0, 20), description: real(0, 20), brand: real(0, 20), category: real(0, 20) }), minIdf: real(0, 5) }),
+  sufficiency: object({ minTopScore: real(0, 100), margin: real(0, 1), within: real(0, 1), maxRecommended: whole(1, 6), minNeedShare: real(0, 1) }),
+  show: object({ maxItems: whole(1, 12) }),
+  ask: object({ maxPerConcept: whole(0, 5), noPreference: text }),
+  facets: object({
+    enabled: bool, minCandidatesToAsk: whole(2, 200), maxExpectedRemaining: real(0, 1), maxOptions: whole(2, 8), minShare: real(0, 1), maxTermShare: real(0, 1),
+    price: object({ minRatio: real(1, 100) }), priority: object({ term: real(0, 10), brand: real(0, 10), price: real(0, 10) }),
+    questions: object({ term: text, brand: text, price: text }), priceLabels: object({ under: text, between: text, over: text }),
+  }),
+  reason: object({ maxChars: whole(40, 400), maxSentences: whole(1, 3) }),
+  wording: { kind: 'choice', values: ['template', 'model'] },
+  templates: object({
+    ask: texts, askMany: texts, recommendOne: texts, recommendMany: texts, show: texts, showNeeds: texts,
+    why: text, whyNoExcerpt: text, howTo: text, howToNone: text, headingRecommend: text, headingShow: text, eyebrowRecommend: text, eyebrowShow: text,
+  }),
+});
+/** The only {placeholders} the platform fills in; any other would reach a customer as literal braces. */
+const PLACEHOLDERS = new Set(['needs', 'title', 'excerpt', 'steps']);
+
+function checkShape(value: unknown, shape: Shape, path: string): string | undefined {
+  switch (shape.kind) {
+    case 'text': return typeof value === 'string' && value.trim() ? checkPlaceholders(value, path) : `${path} must be non-empty text`;
+    case 'texts': {
+      if (!isStringArray(value)) return `${path} must be a list of non-empty text`;
+      for (const entry of value as string[]) { const bad = checkPlaceholders(entry, path); if (bad) return bad; }
+      return undefined;
+    }
+    case 'bool': return typeof value === 'boolean' ? undefined : `${path} must be true or false`;
+    case 'pairs': return Array.isArray(value) && value.every((pair) => Array.isArray(pair) && pair.length === 2 && typeof pair[0] === 'string' && typeof pair[1] === 'string' && pair[0] !== '')
+      ? undefined : `${path} must be a list of [ending, replacement] pairs`;
+    case 'number': {
+      const ok = typeof value === 'number' && Number.isFinite(value) && value >= shape.min && value <= shape.max && (!shape.whole || Number.isInteger(value));
+      return ok ? undefined : `${path} must be ${shape.whole ? 'a whole number' : 'a number'} from ${shape.min} to ${shape.max}`;
+    }
+    case 'choice': return typeof value === 'string' && shape.values.includes(value) ? undefined : `${path} must be one of ${shape.values.join(', ')}`;
+    case 'object': {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return `${path || 'dialoguePolicy'} must be an object`;
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        const field = shape.fields[key];
+        if (!field) return `unknown key ${path ? `${path}.` : ''}${key}`;
+        const bad = checkShape(entry, field, path ? `${path}.${key}` : key);
+        if (bad) return bad;
+      }
+      return undefined;
+    }
+  }
+}
+function checkPlaceholders(textValue: string, path: string): string | undefined {
+  const unknown = [...textValue.matchAll(/\{([A-Za-z]+)\}/g)].map((match) => match[1]).filter((name) => !PLACEHOLDERS.has(name));
+  return unknown.length ? `${path} uses {${unknown[0]}}, which is not filled in (use ${[...PLACEHOLDERS].map((name) => `{${name}}`).join(', ')})` : undefined;
+}
+
 /**
  * Validates tenant pack settings before they are stored. `null` removes a setting (back to platform defaults);
  * the returned map is keyed by the stored project-document path.
@@ -19,6 +87,7 @@ export function validatePackSettings(dto: {
   interpretationPolicy?: unknown;
   workspacePinPolicy?: unknown;
   routingPolicy?: unknown;
+  dialoguePolicy?: unknown;
 }): PackSettingsResult {
   const set: Record<string, unknown | null> = {};
 
@@ -77,6 +146,17 @@ export function validatePackSettings(dto: {
         return { ok: false, message: 'Invalid workspacePinPolicy: idleRepinAfterHours must be a positive number of hours (at most one year)' };
       }
       set['extensions.workspacePinPolicy'] = { idleRepinAfterHours: hours };
+    }
+  }
+
+  // How the assistant decides each turn. Sections replace the platform defaults one by one; anything unset stays default.
+  if (dto.dialoguePolicy !== undefined) {
+    if (dto.dialoguePolicy === null) {
+      set['extensions.dialoguePolicy'] = null;
+    } else {
+      const bad = checkShape(dto.dialoguePolicy, DIALOGUE_SHAPE, '');
+      if (bad) return { ok: false, message: `Invalid dialoguePolicy: ${bad}` };
+      set['extensions.dialoguePolicy'] = dto.dialoguePolicy;
     }
   }
 

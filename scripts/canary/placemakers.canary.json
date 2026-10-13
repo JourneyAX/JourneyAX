@@ -6,21 +6,37 @@
   "scenarios": [
     {
       "id": "fastenings-screws",
-      "description": "A broad request for screws shows examples and asks what they will be fixed into",
+      "description": "A broad request for screws asks what they will be fixed into first and shows no products yet; asking to see them shows examples, without asking",
       "turns": [
         {
           "message": "screws",
           "expect": {
             "cards": {
               "require": [
-                "products",
                 "clarify"
-              ]
+              ],
+              "forbid": [
+                "products"
+              ],
+              "first": "clarify"
             },
             "text": {
               "mustNotMatch": [
                 "suitable for",
                 "compatible with"
+              ]
+            }
+          }
+        },
+        {
+          "message": "just show me screws",
+          "expect": {
+            "cards": {
+              "require": [
+                "products"
+              ],
+              "forbid": [
+                "clarify"
               ]
             }
           }
@@ -411,14 +427,16 @@
     },
     {
       "id": "cleaning-supply",
-      "description": "A bare request for cleaning supplies is answered like a person would: the question first, in plain words, then a few examples, with no system ids, no brand name and no sending the customer elsewhere",
+      "description": "A bare request for cleaning supplies is answered like a person would: only the question first, in plain words, with no products yet, no system ids, no brand name and no sending the customer elsewhere; asking to see them shows a few examples",
       "turns": [
         {
           "message": "cleaning supply",
           "expect": {
             "cards": {
               "require": [
-                "clarify",
+                "clarify"
+              ],
+              "forbid": [
                 "products"
               ],
               "first": "clarify"
@@ -431,6 +449,27 @@
                 "PlaceMakers",
                 "cleaners-and-cleaning",
                 "\\?"
+              ]
+            }
+          }
+        },
+        {
+          "message": "show me cleaning supplies",
+          "expect": {
+            "cards": {
+              "require": [
+                "products"
+              ],
+              "forbid": [
+                "clarify"
+              ]
+            },
+            "text": {
+              "mustNotMatch": [
+                "head to",
+                "`",
+                "category:",
+                "cleaners-and-cleaning"
               ]
             }
           }

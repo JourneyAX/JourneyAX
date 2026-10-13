@@ -4,6 +4,9 @@ import { BusinessPackRelease } from '@journeyax/business-pack';
 import { CARD_TYPES } from '@journeyax/ui-cards';
 import { ModelGateway } from './model.gateway';
 import { resolveInterpretationPolicy } from '../turn/fact-semantics';
+import type { ConversationPlan } from '../conversation/types';
+import { resolveConversationPolicy } from '../conversation/policy';
+import { fill, listWords } from '../conversation/text';
 
 export interface ValidatedTurnOutcome {
   valid: boolean;
@@ -199,8 +202,15 @@ export class PresentationPort {
       messages?: Record<string, string>;
       /** What the knowledge decision allows to be called a recommendation. Category examples are examples, not recommendations. */
       recommendation?: string;
+      /**
+       * What the conversation decided this turn (ask, recommend, show, answer). When it is present and not 'defer', it alone says
+       * which products to show and why; the legacy "show whatever the search returned" behaviour applies only without it.
+       */
+      plan?: ConversationPlan;
     }
   ): TurnResult {
+    const plan = options?.plan && options.plan.action !== 'defer' ? options.plan : undefined;
+    const conversation = plan ? resolveConversationPolicy(release) : undefined;
     const uiInstructions: UIInstruction[] = [];
     let assistantMessage = (options?.assistantMessage || '').trim();
     // Wording order: the tenant's knowledge policy, then the pack's runtime messages, then the platform defaults.
@@ -593,9 +603,12 @@ export class PresentationPort {
       (isCatalogCapability && !validated.outcome?.bundle && decision.payload?.items) ||
       (isCatalogCapability && !validated.outcome?.bundle && Array.isArray(catalogFact) ? catalogFact : (catalogFact?.items || catalogFact?.products));
 
-    if (Array.isArray(searchItems) && searchItems.length > 0 && !validated.outcome?.bundle) {
+    const plannedBySku = new Map((plan?.products ?? []).map((entry) => [String(entry.item.sku || entry.item.id || '').trim(), entry]));
+    // With a plan, the plan alone decides whether products appear and which ones, in its order.
+    const cardItems: any = plan ? (plan.showCards.products ? plan.products.map((entry) => entry.item) : []) : searchItems;
+    if (Array.isArray(cardItems) && cardItems.length > 0 && !validated.outcome?.bundle) {
       const itemCurrencies = new Set(
-        searchItems
+        cardItems
           .map((item: any) => item?.currency || item?.price?.currency)
           .map((value: unknown) => String(value || '').trim().toUpperCase())
           .filter(Boolean)
@@ -633,8 +646,8 @@ export class PresentationPort {
       const validProducts: any[] = [];
       const seenSkus = new Set<string>();
 
-      for (let i = 0; i < searchItems.length; i++) {
-        const item = searchItems[i];
+      for (let i = 0; i < cardItems.length; i++) {
+        const item = cardItems[i];
         if (!item) continue;
         const sku = String(item.sku || item.id || '').trim();
         const title = String(item.title || item.name || '').trim();
@@ -667,6 +680,13 @@ export class PresentationPort {
 
         const imageUrl = item.imageUrl || item.image || null;
 
+        // A planned product's reason is its own words matched to what the customer said; a plain list gives no reason it cannot back up.
+        const planned = plannedBySku.get(sku);
+        const plannedReason = planned?.why
+          ? (planned.why.excerpt
+            ? fill(conversation!.templates.why, { needs: listWords(planned.why.needs), excerpt: planned.why.excerpt })
+            : fill(conversation!.templates.whyNoExcerpt, { needs: listWords(planned.why.needs) }))
+          : undefined;
         validProducts.push({
           sku,
           title,
@@ -674,8 +694,8 @@ export class PresentationPort {
           currency,
           imageUrl,
           // Only a verified recommendation earns the badge; the first sample from a category is not one.
-          recommended: options?.recommendation === 'verified_recommendation' && validProducts.length === 0,
-          reason: item.reason || item.description || (item.category ? say('item_category_reason', { category: item.category }) : undefined),
+          recommended: plan ? plan.action === 'recommend' && planned?.why !== undefined : options?.recommendation === 'verified_recommendation' && validProducts.length === 0,
+          reason: plan ? plannedReason : item.reason || item.description || (item.category ? say('item_category_reason', { category: item.category }) : undefined),
         });
       }
 
@@ -688,7 +708,8 @@ export class PresentationPort {
           say('products_heading');
 
         const productsState = {
-          heading,
+          eyebrow: plan?.eyebrow ?? say('products_eyebrow'),
+          heading: plan?.heading ?? heading,
           products: validProducts,
           // The word after "Add all to": the tenant's closing surface, else the platform's default; never a dangling "Add all to".
           closing: String((release.profile as any)?.closingSurface || say('closing_default')),

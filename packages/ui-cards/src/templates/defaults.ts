@@ -131,7 +131,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   products: spec('root', {
     root: el('Box', { gap: 'md', pad: 'md' }, { children: ['head', 'grid'] }),
     head: el('Box', { gap: 'xs' }, { children: ['eyebrow', 'title', 'intro'] }),
-    eyebrow: el('Text', { text: 'From our range', variant: 'eyebrow' }),
+    eyebrow: el('Text', { text: S('/eyebrow'), variant: 'eyebrow' }, { visible: [S('/eyebrow')] }),
     title: el('Text', { text: S('/heading'), variant: 'title' }, { visible: [S('/heading')] }),
     intro: el('Text', { text: S('/intro'), variant: 'body', tone: 'muted' }, { visible: [S('/intro')] }),
     grid: el('Grid', { minItemWidth: '170px', gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),

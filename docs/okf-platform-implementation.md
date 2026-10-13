@@ -350,6 +350,57 @@ general mechanism and writes the Cleaning conversation as data; other department
 - **An empty catalogue result is not availability evidence.** If a successful search finds no items, the model cannot say "Here are";
   the tenant's `nothing_to_show` message is used instead. An isolated regression test covers that case.
 
-Not done, and said plainly: **how-to-use guidance** for cleaning products. It is a care/usage claim, which needs a verified source; the worklist
-holds 2 candidate documents for Cleaning (neither is about use). The persona text in the live project still tells the model "EVERY journey ends at a
+How-to-use guidance is now answered from the product's own details (next section); a verified source is still needed for anything beyond them. The persona text in the live project still tells the model "EVERY journey ends at a
 real product… always show items"; it is the tenant's own wording, so it is flagged here rather than changed.
+
+## The conversation decision (every department)
+
+The pilot fixed one shelf. The next report said the assistant was still scenario-by-scenario: it always showed product cards, asked its
+question after them, and never said why a product fitted. One decision now runs every turn, for every department
+(`apps/journey-runtime-service/src/conversation/`). It acts like a counter salesperson: ask only when it helps, recommend when it knows, show when
+the customer wants to look, and explain from the product itself.
+
+| Action | When | What the customer gets |
+|---|---|---|
+| **ask** | not enough said to choose, and a question would help | the question card alone; no products yet; the question is the release's own (what are you cleaning?), or, on a shelf with many products and nothing to tell them apart, one built from the products (brand, a word the titles share, price bands) |
+| **recommend** | the customer's words clearly single out one product (or a few) | the best fit with its reason, badged; no question |
+| **show** | the customer asked to see them, named a product, declined questions, or there is nothing to narrow by | a short list with no invented reason |
+| **answer** | "how do I…", "difference between…" | words only, no cards; steps come from the product's own details (below) |
+| *defer* | safety, evidence, orders, projects, nothing matched | another part of the platform owns the reply, unchanged |
+
+- **Deterministic.** Needs are read from the customer's words (shelf names, filler and function words dropped; light stemmer). Each candidate is
+  scored on its own text (title > features > description), weighting rarer words more, so "clean" among cleaners says nothing and "oil",
+  "driveway" decide. A brand the customer names ("hammers by Estwing") is a brand answer. The same words give the same decision; only the
+  choice among equal sentences varies, by conversation and turn.
+- **A reason is the product's own words.** The best one or two sentences of its description, features or specification that match what the
+  customer said, quoted as written (cut with an ellipsis if long). A sentence that asserts a claim the release has not verified is never
+  used; with none, the reason says only which words matched. Nothing is written by a model.
+- **How-to is the product's own details or nothing.** The product must be clear from the customer's words (or the only one on the shelf);
+  a sentence counts as an instruction when it opens with, or has two of, the policy's usage words ("Spray on, leave to dry, then brush off");
+  safety and care wording (wear a respirator, ventilated area, dilute) is not relayed unless the release has verified it. With no steps on
+  file the assistant says so. The claim guard now also recognises these safety phrasings in any tense.
+- **It never interrogates.** At most `ask.maxPerConcept` questions per shelf (default 2); the release's question is asked once, a question
+  built from products once per kind, and "No preference" is always an option. A tapped answer arrives as text (the option's plain words, never a
+  code), is read against the question on screen, narrows the list, and continues the same shelf.
+- **Wording is the tenant's.** By default the platform fills the pack's own sentences (`templates`) with what the customer said and the product
+  chosen, so a turn needs no model call (the model remains for answers it must word, and for tenants who set `wording: "model"`, in which case the
+  claim guard and reply shaper apply as before). Notices the release requires accompany any turn that shows or describes a product; a question
+  carries none.
+- **Everything is data.** Thresholds, stop and filler words, stemming rules, answer/how-to/browse phrases, usage words and every sentence are in
+  `defaults/conversation-policy.json`. A pack overrides any section with `extensions.dialoguePolicy` (Studio: Pack settings → Conversation flow),
+  validated when saved: unknown keys, wrong types, out-of-range numbers and template placeholders the platform does not fill are refused.
+  Nothing in the code names a department, product or brand.
+- **Remembered between turns** in the workspace (`conversation_state`: needs, constraints, what was asked, the question on screen); it is never
+  shown to the customer or sent to the model, and a new shelf starts fresh.
+- **Trace.** Every turn's trace carries `conversation`: the action, the rules that decided it in order, the needs, and each product's score,
+  matched words and whether a reason was quoted.
+
+Tests: `conversation-policy` (18: rules across cleaning, paint, screws and decking fixtures), `placemakers-authored-e2e` (22, the real
+publication chain: question first and alone, recommend with a quoted reason and no model call, how-to from the product, many-products
+question and tapped answer, model-worded tenants still guarded), `pack-settings` (validation), `okf-claim-validator`, canary scenarios
+(`fastenings-screws`, `cleaning-supply`: question first, then "show me").
+
+Not done, and said plainly: the thresholds are defaults that have only been exercised on fixture catalogues and PlaceMakers' offline data,
+not on real customers or the real model's wording of an `answer`; real product descriptions will need their usage words and thresholds tuned
+through `dialoguePolicy`. Substitution/comparison questions are still worded by the model. A recommendation is "the best match to what you
+said", never "verified suitable": suitability still needs a verified claim.

@@ -1,3 +1,4 @@
+import { readDynamicAnswer, readState } from '../conversation/state';
 import { readPath, resolveCatalogMapping, type BusinessPackRelease, type ResolvedCatalogMapping } from '@journeyax/business-pack';
 import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
 import {
@@ -176,7 +177,13 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       const retainedConcept = retained?.releaseId === ref.releaseId && retained.checksum === ref.checksum
         ? content.concepts.find((concept) => concept.conceptId === retained.conceptId)
         : undefined;
-      const pendingAnswer = retainedConcept?.discriminators.some((discriminator) => {
+      // An answer to a question the platform built from the products ("which kind of paint?") is no release fact, but it is just as
+      // much an answer to the shelf the customer is standing at: it continues that shelf instead of starting a new request.
+      const conversation = readState(workspace?.facts as any);
+      const dynamicAnswer = retainedConcept && conversation?.conceptId === retainedConcept.conceptId
+        ? readDynamicAnswer(message, conversation)
+        : undefined;
+      const pendingAnswer = Boolean(dynamicAnswer) || retainedConcept?.discriminators.some((discriminator) => {
         if (!workspace?.openQuestions?.includes(discriminator.factKey)) return false;
         const definition = content.factRegistry.find((fact) => fact.factKey === discriminator.factKey);
         const normalizedMessage = message.trim().toLowerCase();
@@ -203,7 +210,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
           activeRevocations,
           knowledgeAvailability: { available: true, required, failurePolicy },
         });
-        continued.trace.reasonCodes.push('clarification_answer_continuity');
+        continued.trace.reasonCodes.push(dynamicAnswer ? 'conversation_answer_continuity' : 'clarification_answer_continuity');
         return continued;
       }
 

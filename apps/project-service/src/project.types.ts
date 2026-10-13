@@ -645,6 +645,8 @@ export interface UpdateProjectDto {
   catalogMapping?: Record<string, unknown> | null;
   interpretationPolicy?: Record<string, unknown> | null;
   workspacePinPolicy?: { idleRepinAfterHours?: number } | null;
+  /** How the assistant decides each turn (ask, recommend, show, answer): thresholds, word lists and wording. Unset sections use platform defaults. */
+  dialoguePolicy?: Record<string, unknown> | null;
   /** The journey that answers a request matching none; required before a project with several journeys can be published. */
   routingPolicy?: { defaultJourneyId: string; fallbackOnCatalogSearch?: boolean } | null;
   embed?: EmbedConfig;

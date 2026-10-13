@@ -69,6 +69,8 @@ export const CARD_TYPES = {
     title: 'Product recommendations',
     description: 'Three to six products with the recommended one first and a one-clause reason each.',
     state: z.object({
+      /** The small label above the heading ("Best fit", "From our range"): worded by the platform per turn, never by the template. */
+      eyebrow: z.string().optional(),
       heading: z.string().optional(),
       intro: z.string().optional(),
       products: z.array(ProductFact),

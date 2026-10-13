@@ -31,6 +31,8 @@ import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
 import { OutboxRepository } from './outbox.repository';
 import { PresentationPort } from './presentation.port';
+import { decideConversation, readState, resolveConversationPolicy, STATE_KEY, writeState } from '../conversation';
+import type { ConversationPlan } from '../conversation';
 import { TurnInterpreter, isAmbiguousMeasurementAnswer } from '../turn/interpret-event';
 import { resolveFactRole, resolveInterpretationPolicy } from '../turn/fact-semantics';
 import { formatCatalogPrice } from '../turn/price-format';
@@ -1019,11 +1021,15 @@ export class TurnApplicationService {
       outcomeStatus: validatedOutcome.valid && decision.type !== 'fail' ? 'success' : 'failure',
     });
 
-    // 7a. "Have you considered?" — unverified cross-sell from the matched concept. It is shown only next to real catalogue
+    // 7a. What a good salesperson does next: ask, recommend (with the reason), show, or answer in words. One decision for every
+    // department, made from the knowledge decision, the products found and what the customer has already said.
+    const conversationPlan = this.planConversation({ knowledgeGate, executedCapabilities, release, workspace, command, workspaceId, decision });
+
+    // 7b. "Have you considered?" — unverified cross-sell from the matched concept. It is shown only next to real catalogue
     // results, as live products found by the same governed catalogue capability, and it adds no claim and no requirement.
-    const suggestionInstruction = await this.resolveSuggestionInstruction({
-      knowledgeGate, executedCapabilities, release, tenantId, envId, workspace, workspaceId, command,
-    });
+    const suggestionInstruction = !conversationPlan || conversationPlan.showCards.suggestions
+      ? await this.resolveSuggestionInstruction({ knowledgeGate, executedCapabilities, release, tenantId, envId, workspace, workspaceId, command })
+      : null;
 
     // 8. Compose presentation & card envelope
     let resolvedAgentInfo: any = null;
@@ -1042,7 +1048,12 @@ export class TurnApplicationService {
     let groundedResponse: { message?: string; modelRoute?: any } = {};
     // Verified safety instructions are rendered deterministically from the
     // pinned OKF release. Never send them through a model phrasing step.
-    if (!decision.payload?.safetyGuidance) {
+    const templated = conversationPlan && conversationPlan.action !== 'defer' && conversationPlan.message &&
+      resolveConversationPolicy(release).wording === 'template';
+    if (templated) {
+      // The sentence is the tenant's own wording filled with what the customer said and the product chosen; no model call is needed.
+      groundedResponse = { message: conversationPlan!.message };
+    } else if (!decision.payload?.safetyGuidance) {
       try {
         groundedResponse = await this.composeGroundedCustomerResponse(
           command,
@@ -1069,6 +1080,7 @@ export class TurnApplicationService {
         capability: presentationCapability,
         messages: knowledgeGate?.messages,
         recommendation: knowledgeGate?.recommendation,
+        plan: conversationPlan ?? undefined,
       }
     );
     if (basketWarnings.size > 0) {
@@ -1076,14 +1088,34 @@ export class TurnApplicationService {
     }
     // Required notices are a guarantee, not a request to the model: any the composed message omitted are appended.
     // Only notices written for the customer are appended; the agent-facing disclaimers stay in the prompt and the trace.
-    if (knowledgeGate?.claims.notices.length && typeof turnResult.assistantMessage === 'string') {
+    // A question claims nothing about any product, so it carries no notice about products; every turn that shows or describes one does.
+    if (knowledgeGate?.claims.notices.length && typeof turnResult.assistantMessage === 'string' && conversationPlan?.action !== 'ask') {
       const missing = [...new Set(knowledgeGate.claims.notices)].filter((text) => text && !turnResult.assistantMessage.includes(text));
       if (missing.length > 0) turnResult.assistantMessage = [turnResult.assistantMessage, ...missing].filter(Boolean).join('\n\n');
     }
     // Order on screen: the question, then the examples, then the unverified "Have you considered?" extras.
     if (suggestionInstruction) turnResult.uiInstructions = [...(turnResult.uiInstructions || []), suggestionInstruction];
 
-    if (
+    if (conversationPlan && conversationPlan.action !== 'defer') {
+      // The plan alone decides whether a question is on screen: a question the customer has already answered in words is not asked again.
+      const rest = (turnResult.uiInstructions || []).filter((instruction) => instruction.component !== 'clarify');
+      const question = conversationPlan.showCards.question && conversationPlan.question
+        ? this.presentationPort.createKnowledgeClarificationInstruction(conversationPlan.question, release)
+        : null;
+      turnResult.uiInstructions = question ? [question, ...rest] : rest;
+      if (question && conversationPlan.question!.source === 'okf' && !workspace.openQuestions.includes(conversationPlan.question!.factKey)) {
+        workspace.openQuestions.push(conversationPlan.question!.factKey);
+      }
+      if (turnResult.trace) {
+        (turnResult.trace as any).conversation = {
+          action: conversationPlan.action,
+          because: conversationPlan.because,
+          needs: conversationPlan.needs,
+          question: conversationPlan.question ? { source: conversationPlan.question.source, factKey: conversationPlan.question.factKey } : undefined,
+          products: conversationPlan.products.map((entry) => ({ sku: entry.item.sku, score: Number(entry.score.toFixed(2)), matched: entry.matched, quoted: Boolean(entry.why?.excerpt) })),
+        };
+      }
+    } else if (
       knowledgeGate?.clarification &&
       knowledgeGate.mode === 'overview_then_ask' &&
       !(turnResult.uiInstructions || []).some((instruction) => instruction.component === 'clarify')
@@ -1182,6 +1214,37 @@ export class TurnApplicationService {
       });
       throw err;
     }
+  }
+
+  /**
+   * The conversation decision for this turn, and what it remembers for the next. Another part of the platform keeps the reply when
+   * the journey itself is asking a question, or the knowledge decision belongs to safety, evidence, orders or projects.
+   */
+  private planConversation(input: {
+    knowledgeGate: OkfGateDecision | null | undefined;
+    executedCapabilities: Array<{ toolId: string; status?: string; output?: any }>;
+    release: BusinessPackRelease;
+    workspace: WorkspaceState;
+    command: TurnCommand;
+    workspaceId: string;
+    decision: Decision;
+  }): ConversationPlan | null {
+    const { knowledgeGate: gate, executedCapabilities, release, workspace, command, decision } = input;
+    if (!gate) return null;
+    if (decision.type === 'ask_fact' && !decision.payload?.knowledgeMode) return null;
+    const primary = executedCapabilities.find((entry) =>
+      ['catalog.search', 'catalog-search', 'products'].includes(entry.toolId) && entry.status === 'success' && Array.isArray(entry.output?.items));
+    const plan = decideConversation({
+      message: (command.message || (command as any).userInput || '').trim(),
+      gate,
+      items: primary ? primary.output.items : [],
+      state: readState(workspace.facts),
+      policy: resolveConversationPolicy(release),
+      seed: `${input.workspaceId}:${workspace.decisions.length}`,
+    });
+    if (plan.action === 'defer') return plan;
+    writeState(workspace as { facts: Record<string, any> }, plan.nextState);
+    return plan;
   }
 
   /**
@@ -1525,7 +1588,7 @@ export class TurnApplicationService {
     const sanitizedFacts: Record<string, any> = {};
     if (workspace?.facts) {
       for (const [k, v] of Object.entries(workspace.facts)) {
-        if (v && v.value !== undefined && v.value !== null && v.value !== '') {
+        if (v && v.value !== undefined && v.value !== null && v.value !== '' && k !== STATE_KEY) {
           if (!['token', 'secret', 'password', 'key', 'auth'].some((s) => k.toLowerCase().includes(s))) {
             sanitizedFacts[k] = v.value;
           }

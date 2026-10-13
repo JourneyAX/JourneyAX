@@ -6,6 +6,8 @@ Branch `JourneyAX-dev-v4`. Written 2026-10-13, updated the same day after the fi
 
 **Later committed candidate (not loaded or activated).** The Claude/Codex combined changes add a cleaning family, dynamic project narrowing, pending-card answer handling and reply shaping. Its offline snapshot contains 476 concepts and passes 4,694/4,694 gate/basket scenarios; the hermetic public-path canary covers 19 scenarios. These numbers describe the branch candidate, not the active `1.2.0` release. The snapshot also identifies 381 products with neither category path nor category ID: they are counted in coverage but cannot be selected by a category-scoped search. Neither those products nor real-model wording are resolved by the passing offline scenarios.
 
+**Conversation decision (built after the above; not loaded or activated).** Each turn now decides whether to ask, recommend (with a reason quoted from the product's own text), show, or answer, instead of always posting a question plus product cards. See "The conversation decision" in [okf-platform-implementation.md](okf-platform-implementation.md). It needs no new release: it reads the live pack and catalogue, and `extensions.dialoguePolicy` is optional. It has been exercised only on test fixtures and offline data, never on the real model or a real customer.
+
 ## Verdict
 
 **Not production-ready yet — and the remaining items are not engineering work I can finish alone.** The platform side is built and proved
@@ -138,4 +140,6 @@ Nothing below has been done. Each production write needs your explicit approval 
 - Locale: only the platform's English messages ship; other locales are a tenant policy overlay that exists but is unused.
 - `agent-commerce-service` (legacy path) still contains domain code of its own; covered by the guard's rules, not refactored.
 - A past conversation's knowledge trace is not persisted (the preview shows what the assistant *would* use).
+- The conversation decision's thresholds and word lists are platform defaults tuned on fixtures. They need review against real PlaceMakers product descriptions and conversations; tune through `dialoguePolicy`, not code.
+- How-to answers quote only what the product's own description says; most descriptions say nothing about use, so the assistant will often say it has no instructions on file until a verified source is added.
 - Requiring an explicit approval after a production publish (so a publish alone changes nothing for customers) is not implemented.

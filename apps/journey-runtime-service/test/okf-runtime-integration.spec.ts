@@ -547,7 +547,7 @@ async function main() {
     assert.deepEqual(missingCart?.reasonCodes, ['authoritative_cart_unavailable']);
   });
 
-  await test('broad query scopes catalog retrieval and returns products before a merchant-authored clarification card', async () => {
+  await test('a broad query scopes catalog retrieval and asks the merchant-authored question first; asking to see them shows the scoped examples', async () => {
     const products = [
       { projectId: 'placemakers', sku: 'WOOD-001', name: 'Exterior wood screw', categoryId: 'fastenings.wood-screws', category: 'Fastenings Wood Screws', currency: 'NZD', priceCents: 1299 },
       { projectId: 'placemakers', sku: 'DRIVER-001', name: 'Screwdriver set', categoryId: 'tools.screwdrivers', category: 'Tools Screwdrivers', currency: 'NZD', priceCents: 1899 },
@@ -558,19 +558,28 @@ async function main() {
       turnId: 'turn-okf-broad-1', correlationId: 'corr-okf-broad-1', message: 'screws',
     } as any, buildPack(reference));
 
-    const productCard = result.uiInstructions.find((card) => card.component === 'products');
     const clarifyCard = result.uiInstructions.find((card) => card.component === 'clarify');
-    assert.ok(productCard, 'expected grounded product card');
-    assert.ok(clarifyCard, 'expected non-blocking clarification card');
-    assert.deepEqual((productCard as any).props.products.map((product: any) => product.sku), ['WOOD-001']);
+    assert.ok(clarifyCard, 'the merchant\'s question is asked');
+    assert.equal(result.uiInstructions.some((card) => card.component === 'products'), false, 'and no product is shown until the customer has had the chance to answer');
     assert.equal((clarifyCard as any).props.questions[0].id, 'substrate');
     assert.match((clarifyCard as any).props.questions[0].text, /fixing.*material/i);
     assert.equal((result.trace as any).knowledgeGate.mode, 'overview_then_ask');
+    assert.equal((result.trace as any).conversation.action, 'ask');
     assert.deepEqual((result.trace as any).knowledgeGate.journeyRef, {
       journeyId: 'journey_catalog',
       entryStageId: 'stage_catalog',
     });
     assert.deepEqual((result.trace as any).knowledgeGate.retrieval.excludeCategoryIds, ['tools.screwdrivers']);
+
+    // A customer who would rather look is not asked; the examples are still scoped to the concept.
+    const browse = await buildService(buildPack(reference), db, products).executeTurn({
+      tenantId: 'placemakers', environmentId: 'test', workspaceId: 'ws-okf-broad-2', sessionId: 'ws-okf-broad-2',
+      turnId: 'turn-okf-broad-2', correlationId: 'corr-okf-broad-2', message: 'just show me screws',
+    } as any, buildPack(reference));
+    const productCard = browse.uiInstructions.find((card) => card.component === 'products');
+    assert.ok(productCard, 'expected grounded product card');
+    assert.deepEqual((productCard as any).props.products.map((product: any) => product.sku), ['WOOD-001']);
+    assert.equal(browse.uiInstructions.some((card) => card.component === 'clarify'), false);
   });
 
   await test('response generation rejects a warranty claim outside the pinned claim allow-list', async () => {
