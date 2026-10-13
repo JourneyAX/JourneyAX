@@ -152,6 +152,45 @@ async function main() {
     assert.equal(built.evaluation.passed, true);
     assert.deepEqual((built.concepts.find((entry) => entry.conceptId === id('tools/plumbing')) as any).searchScope.catalogCategoryPaths, [toolPlumbing]);
   });
+  await suite.test('cross-sell offers only what can be bought; each suggestion names its target and bounds its live items', () => {
+    const release = content();
+    const target = (suffix: string, over: Record<string, any>) => concept({
+      conceptId: id(`suggest/${suffix}`), name: `Target ${suffix}`, description: 'Target',
+      searchScope: { catalogCategoryIds: [`Cat ${suffix}`], enrichmentFacets: [], excludeCategoryIds: [] }, ...over,
+    });
+    const targets = [
+      target('buyable', {}),
+      target('problem', { lens: 'problem', type: 'symptom', riskClass: 'safety_critical', commercePolicy: { addToCart: 'blocked', checkout: 'blocked' }, safety: { blocksProducts: true, stepRefs: [] } }),
+      target('care', { lens: 'care', type: 'care' }),
+      target('blocked', { commercePolicy: { addToCart: 'blocked', checkout: 'blocked' } }),
+      target('critical', { riskClass: 'safety_critical' }),
+    ];
+    const edge = (suffix: string) => ({
+      relationshipId: `rel-x-${suffix}`, from: id('legacy/vanities'), to: id(`suggest/${suffix}`), type: 'cross_sell', strength: 'optional', scope: 'category',
+      confidence: 'low', sourceRefs: [], claimClasses: [], contentHash: '0'.repeat(64),
+    });
+    const withTargets = { ...release, concepts: [...release.concepts, ...targets], relationships: targets.map((entry) => edge(entry.conceptId.split('/').pop()!)) };
+    const decision = resolveOkfGate(withTargets, { tenantId: TENANT, environmentId: 'test', releaseId: 'r', message: 'vanities' }) as any;
+    assert.deepEqual(decision.suggestions.map((entry: any) => entry.name), ['Target buyable']);
+    assert.equal(decision.suggestions[0].maxItems, 2, 'the platform default of live items per suggested category');
+    assert.deepEqual(decision.suggestions[0].categoryIds, ['Cat buyable']);
+    const tightened = { ...withTargets, policy: { suggestions: { max: 1, itemsPerGroup: 4 } } };
+    const tight = resolveOkfGate(tightened, { tenantId: TENANT, environmentId: 'test', releaseId: 'r', message: 'vanities' }) as any;
+    assert.equal(tight.suggestions[0].maxItems, 4, 'a release can set its own bound');
+    const silent = resolveOkfGate({ ...withTargets, policy: { suggestions: { max: 0 } } }, { tenantId: TENANT, environmentId: 'test', releaseId: 'r', message: 'vanities' }) as any;
+    assert.equal(silent.suggestions, undefined);
+  });
+
+  await suite.test('a technical question about a listed concept gets the listing plus an unverified-claim statement; a verified compatibility claim removes it', () => {
+    const release = content();
+    const asked = resolveOkfGate(release, { tenantId: TENANT, environmentId: 'test', releaseId: 'r', message: 'is plumbing supplies suitable for a load bearing beam' }) as any;
+    assert.equal(asked.retrieval.permission, 'allowed');
+    assert.ok(asked.trace.reasonCodes.includes('technical_requirement_unverified'));
+    assert.ok(asked.claims.disclaimers.some((text: string) => /can't confirm technical suitability/.test(text)));
+    assert.ok(!asked.claims.allowedClasses.includes('compatibility'));
+    const plain = resolveOkfGate(release, { tenantId: TENANT, environmentId: 'test', releaseId: 'r', message: 'plumbing supplies' }) as any;
+    assert.ok(!plain.trace.reasonCodes.includes('technical_requirement_unverified'), 'an ordinary request carries no such statement');
+  });
 }
 
 main().then(() => { suite.finish(); }).catch((error) => { console.error(error); process.exitCode = 1; });

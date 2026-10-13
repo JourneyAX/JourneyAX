@@ -82,9 +82,11 @@ const short = (value: unknown) => (typeof value === 'string' && value.length > 2
       ['factRegistry facts', Object.keys(project.factRegistry?.facts || {}).join(', ') || '—'],
       ['catalogMapping', project.catalogMapping ? 'present' : 'absent'],
       ['ai', project.ai ? `${project.ai.provider}/${project.ai.model}` : '—'],
+      ['pricing currency (the pack takes its currency from here)', project.pricing?.currency ?? '— (publication is blocked until stated)'],
+      ['profile (locale / extra currencies)', project.profile ? JSON.stringify(project.profile) : '—'],
       ['updatedAt', project.updatedAt],
     ]);
-    out.project = { version: project.version, activeVersion: project.activeVersion, packVersion: project.packVersion, knowledgeModel: project.knowledgeModel ?? null };
+    out.project = { version: project.version, activeVersion: project.activeVersion, packVersion: project.packVersion, knowledgeModel: project.knowledgeModel ?? null, pricingCurrency: project.pricing?.currency ?? null, profile: project.profile ?? null };
   } else p('No project record.');
 
   // ── OKF ──────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ function projectDoc(extra: Record<string, unknown> = {}) {
     projectId: TENANT,
     name: 'Env Tenant',
     companyName: 'Env Tenant Ltd',
+    pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
     ai: { provider: 'anthropic', model: 'claude-3-5-sonnet' },
     persona: {
       systemName: 'Env Agent',

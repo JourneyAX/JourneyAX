@@ -248,9 +248,10 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   accessories: spec('root', {
-    root: el('Box', { pad: 'md', gap: 'lg' }, { children: ['eyebrow', 'title', 'groups'] }),
-    eyebrow: el('Text', { text: 'Goes with it', variant: 'eyebrow' }),
-    title: el('Text', { text: 'Accessories & add-ons', variant: 'title' }),
+    root: el('Box', { pad: 'md', gap: 'lg' }, { children: ['eyebrow', 'title', 'note', 'groups'] }),
+    eyebrow: el('Text', { text: S('/eyebrow'), variant: 'eyebrow' }, { visible: [S('/eyebrow')] }),
+    title: el('Text', { text: S('/heading'), variant: 'title' }, { visible: [S('/heading')] }),
+    note: el('Text', { text: S('/note'), variant: 'small', tone: 'muted' }, { visible: [S('/note')] }),
     groups: el('Box', { gap: 'lg' }, { children: ['grp'], repeat: { statePath: '/groups', key: 'key' } }),
     grp: el('Box', { gap: 'sm' }, { children: ['gl', 'gh', 'gg'] }),
     gl: el('Text', { text: I('label'), variant: 'heading' }),

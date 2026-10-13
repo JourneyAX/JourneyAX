@@ -195,6 +195,11 @@ export const CARD_TYPES = {
     description: 'Companion items grouped as required / recommended / optional.',
     state: z.object({
       forSku: z.string().optional(),
+      /** Card wording supplied by the business (e.g. "Have you considered?"); the template shows only what is present. */
+      eyebrow: z.string().optional(),
+      heading: z.string().optional(),
+      /** A line under the heading, e.g. that the suggestions are not confirmed to be compatible. */
+      note: z.string().optional(),
       groups: z.array(z.object({ key: z.string(), label: z.string(), hint: z.string().optional(), items: z.array(ProductFact) })),
     }),
   },

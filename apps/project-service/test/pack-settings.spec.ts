@@ -14,7 +14,7 @@ async function createService(extra: Record<string, unknown> = {}) {
   await db.collection('business_pack_releases').createIndex({ tenantId: 1, environmentId: 1, version: 1 } as any, { unique: true });
   await db.collection('config_versions').createIndex({ projectId: 1, version: 1 } as any, { unique: true });
   await db.collection('tenant_configs').insertOne({
-    projectId: TENANT, name: 'T', companyName: 'T Ltd', ai: { provider: 'anthropic', model: 'claude-3-5-sonnet' },
+    projectId: TENANT, name: 'T', companyName: 'T Ltd', pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 }, ai: { provider: 'anthropic', model: 'claude-3-5-sonnet' },
     persona: {
       systemName: 'Agent', systemPromptOverrides: 'Guide.',
       journeyGraph: {
@@ -149,6 +149,22 @@ async function main() {
     assert.equal(first.multiple, true);
     assert.equal(second.role, undefined, 'unknown roles are ignored');
   });
+  await suite.test('the pack takes its currency from the project; a project that states none is not published with a guessed one', async () => {
+    const { service, db } = await createService({ pricing: { currency: 'nzd', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' } });
+    const published: any = await service.publishConfig(TENANT, { environmentId: 'test' });
+    assert.equal(published.success, true, published.message);
+    const profile = db.dump('business_pack_releases').at(-1)!.profile;
+    assert.equal(profile.primaryCurrency, 'NZD');
+    assert.deepEqual(profile.supportedCurrencies, ['NZD']);
+    assert.equal(profile.primaryLocale, 'en-NZ');
+    const missing = await createService({ pricing: undefined });
+    await missing.db.collection('tenant_configs').updateOne({ projectId: TENANT }, { $unset: { pricing: '' } });
+    const blocked: any = await missing.service.publishConfig(TENANT, { environmentId: 'test' });
+    assert.equal(blocked.success, false);
+    assert.match(blocked.message, /pricing currency/);
+    assert.equal(missing.db.dump('business_pack_releases').length, 0, 'nothing is published');
+  });
+
 }
 
 main().then(() => { suite.finish(); }).catch((error) => { console.error(error); process.exitCode = 1; });

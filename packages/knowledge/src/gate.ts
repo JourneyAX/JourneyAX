@@ -77,7 +77,7 @@ export interface OkfGateDecision {
    * compatibility, never marks an accessory as required, and adds no claim class.
    */
   suggestions?: Array<{
-    conceptId: string; relationshipId: string; label: string; note: string;
+    conceptId: string; relationshipId: string; /** The suggested concept's own name. */ name: string; label: string; note: string; maxItems: number;
     categoryIds: string[]; categoryPaths: string[][]; excludeCategoryIds: string[]; status: 'unverified_cross_sell';
   }>;
   catalogHandling: {
@@ -652,6 +652,15 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     base.commerce.addToCart = 'blocked';
     base.catalogHandling.nextAction = 'quote';
   }
+  // A suitability, compliance or compatibility question about something we can list is answered with the listing and a
+  // plain statement that no verified information supports the technical claim; the listing itself asserts nothing.
+  if (
+    intentInGroup(policy, 'technical', intents) && base.retrieval.permission === 'allowed' &&
+    !base.claims.allowedClasses.includes('compatibility')
+  ) {
+    base.claims.disclaimers.push(renderOkfMessage(policy.messages, 'technical_requirement_unverified'));
+    base.trace.reasonCodes.push('technical_requirement_unverified');
+  }
   if (servedByGate) base.trace.reasonCodes.push('project_served_by_gate');
   if (base.retrieval.permission === 'allowed') {
     const suggestions = suggestionsFor(content, concept, policy);
@@ -669,8 +678,10 @@ function suggestionsFor(content: OkfReleaseContent, concept: OkfConcept, policy:
     .flatMap((relationship) => {
       const target = concepts.get(relationship.to);
       if (!target || target.lifecycle.status === 'retired' || target.tenantId !== concept.tenantId) return [];
+      // Only something a customer could actually buy is worth suggesting: never a problem, care, service or professional-only item.
+      if (target.lens !== 'product' || target.riskClass === 'safety_critical' || target.commercePolicy.addToCart === 'blocked') return [];
       return [{
-        conceptId: target.conceptId, relationshipId: relationship.relationshipId,
+        conceptId: target.conceptId, relationshipId: relationship.relationshipId, name: target.name, maxItems: policy.suggestions.itemsPerGroup,
         label: relationship.customerLabel || renderOkfMessage(policy.messages, 'cross_sell_label'),
         note: renderOkfMessage(policy.messages, 'cross_sell_note'),
         categoryIds: target.searchScope.catalogCategoryIds, categoryPaths: target.searchScope.catalogCategoryPaths ?? [],

@@ -75,6 +75,57 @@ export class PresentationPort {
   }
 
   /**
+   * "Have you considered?" cross-sell as an `accessories` card. Every name and line of wording comes from the gate
+   * (tenant relationship label or policy message); every product is a live catalogue result. A suggestion never carries a
+   * required/recommended grouping, so it cannot read as a compatibility claim. Returns null when there is nothing real
+   * to show: no group is invented.
+   */
+  createSuggestionsInstruction(
+    suggestions: Array<{ conceptId: string; name: string; label: string; note: string }>,
+    groups: Array<{ conceptId: string; items: any[] }>,
+    release: BusinessPackRelease,
+    options: { excludeSkus?: Iterable<string> } = {},
+  ): UIInstruction | null {
+    if (!suggestions.length || !this.cardAllowed(release, 'accessories')) return null;
+    const exclude = new Set(options.excludeSkus ?? []);
+    const seen = new Set<string>();
+    const cardGroups: Array<{ key: string; label: string; items: any[] }> = [];
+    for (const suggestion of suggestions) {
+      const found = groups.find((group) => group.conceptId === suggestion.conceptId);
+      const items: any[] = [];
+      for (const item of found?.items ?? []) {
+        const sku = String(item?.sku || item?.id || '').trim();
+        const title = String(item?.title || item?.name || '').trim();
+        if (!sku || !title || exclude.has(sku) || seen.has(sku)) continue;
+        const currency = String(item.currency || '').trim().toUpperCase();
+        const priced = item.priceCents !== undefined && item.priceCents !== null && Number.isFinite(Number(item.priceCents));
+        // A price is shown only with the currency it was declared in; otherwise the product is listed unpriced.
+        items.push({
+          sku, title,
+          price: priced && currency ? Number(item.priceCents) / 100 : null,
+          ...(priced && currency ? { currency } : {}),
+          imageUrl: item.imageUrl || null,
+          ...(item.category ? { category: String(item.category) } : {}),
+        });
+        seen.add(sku);
+      }
+      if (items.length) cardGroups.push({ key: suggestion.conceptId, label: suggestion.name, items });
+    }
+    if (!cardGroups.length) return null;
+    const state = { heading: suggestions[0].label, note: suggestions[0].note, groups: cardGroups };
+    const parsed = CARD_TYPES.accessories.state.safeParse(state);
+    if (!parsed.success) return null;
+    const cardId = `card_okf_suggestions_${Date.now()}`;
+    return {
+      actionId: cardId,
+      component: 'accessories',
+      placement: 'inline',
+      props: parsed.data,
+      envelope: { name: 'presentCard', arguments: { card: { id: cardId, cardType: 'accessories', state: parsed.data } } },
+    };
+  }
+
+  /**
    * LLM phrasing step through Model Gateway over verified results without
    * hallucinating prices/SKUs; falls back safely to pack templates or deterministic stage copy.
    */

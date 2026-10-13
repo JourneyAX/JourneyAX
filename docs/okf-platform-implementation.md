@@ -74,6 +74,10 @@ These are data changes made through the back office (they cannot live in code an
 5. **Dev seeds.** Seed tenants are no longer created on startup. Set `PROJECT_SEED_ENABLED=true` (bundled dev seeds) or
    `PROJECT_SEED_DIR=<dir>` for local development only.
 6. **AI model.** A project must state `ai.provider` and `ai.model`; publication fails closed instead of assuming one.
+7. **Currency (and optionally locale).** A project must state `pricing.currency`; the pack's `profile.primaryCurrency` is taken from
+   it and publication is blocked when it is missing. Before this stage the pack silently took the schema default (`AUD`), which
+   made every NZD-priced product fail the runtime's currency filter. `profile.primaryLocale` / `supportedLocales` /
+   `supportedCurrencies` are optional project settings carried into the pack.
 
 ## Testing and logs
 
@@ -158,4 +162,53 @@ Known gaps carried forward: five projects (wet-area lining, deck, fence, paint, 
 they are answered by the gate only; care concepts with no verified evidence return no products (design question for the
 runtime phase); derived concepts' commerce ceiling is `allowed/allowed` (merchant decision); eleven category names occur in
 more than one department and need path-scoped matching in the catalogue mapping.
+
+## Runtime connection (Phase 5)
+
+The authored release now runs through the real chain — draft → immutable OKF release → attached to the project → Business Pack
+publisher → runtime turn service → gate → catalogue handler → presentation → basket policy — and
+`apps/journey-runtime-service/test/placemakers-authored-e2e.spec.ts` proves it on the committed snapshot, authoring spec and
+catalogue mapping (only the language model is a fixed function).
+
+**Category scope is a path.** `searchScope.catalogCategoryPaths` (optional; an absent field leaves existing entity hashes
+unchanged) names department → group → category. A product is in scope when its own path *starts with* the scope path, compared
+exactly, so a "Plumbing" in Tools never selects the "Plumbing" in Bathrooms. Names remain only for products that carry a
+category but no hierarchy path (14 PlaceMakers categories). The gate hands paths to the runtime for the concept, each overview
+group and each suggestion; the catalogue handler anchors every segment and treats them literally; a scope that was supplied but is
+unusable returns nothing rather than the whole catalogue; the basket governs a product by path and reads category fields through the
+tenant's catalogue mapping. Scope ambiguity fell from 11 to 0. 381 products that have neither a path nor a category are counted in
+"Other products" but no scope can select them (reported, not hidden).
+
+**Governed scope is not emptied by wording.** When knowledge chose the scope, the customer's words narrow it but never empty it
+(`scopeAuthoritative`): "screws" no longer drops Masonry Anchors because their names don't contain "screw".
+
+**"Have you considered?"** The gate's unverified cross-sell is resolved by the runtime into live products from the same governed
+catalogue capability and shown as an `accessories` card whose heading and note come from policy (`cross_sell_label` /
+`cross_sell_note`), with no required/recommended grouping. It appears only beside real results, only for buyable product
+targets, never beside a problem, care or evidence answer, and never marks anything as compatible. Adding to the basket still goes
+through the per-product commerce policy.
+
+**Disclaimers are guaranteed.** Any disclaimer the gate requires and the composed message omitted is appended
+deterministically. A suitability/compliance/compatibility question about a concept we can list returns the listing plus the
+`technical_requirement_unverified` statement and no claim class.
+
+**A bare SKU is governed.** An exact product code that names no concept in words resolves to the most specific concept its
+category belongs to (deepest path, then narrowest scope), so it gets the same commerce and claim rules as the product by name.
+
+**Defects found by running the real chain (all fixed, all with regression tests):**
+- The fact registry attached from an OKF release omitted each fact's `key`, so a Business Pack that referenced an OKF release
+  failed schema validation and could not be published.
+- The publisher never set the pack's currency or locale; the schema default (`AUD` / `en-AU`) applied silently. Currency now
+  comes from `pricing.currency` and publication fails without it (see tenant action 7).
+- The interpreter drops facts the pack does not declare; without the attached registry no authored question could ever be answered.
+
+**Journeys.** The five authored projects without a Business Pack journey (wet-area lining, deck, fence, paint, insulation) are
+served by the gate from the release alone — questions, grouped overview of their categories, live products, cross-sell, basket
+rules — and are tested that way. Bathroom, laundry and kitchen hand off to `placemakers_plan_your_space`; publication verifies
+that every journey a concept references exists in the pack. Whether the live journeys' stages collect those facts could not be
+verified without reading the live pack: `scripts/inventory/capture-pack-structure.ts` (read-only, run by a person) captures it.
+
+**Unmatched concepts.** With the default policy an uncovered request is never answered from the catalogue; catalogue-only
+fallback is an explicit, per-release decision (`policy.coverage.uncoveredShopping`) that shows live facts only and carries no claim.
+A request that only partly matches ("garden gnomes" → Garden & Landscaping) asks that department's question and claims nothing.
 

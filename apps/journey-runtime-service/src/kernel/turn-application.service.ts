@@ -9,6 +9,7 @@ import {
   Transition,
   FactsMap,
   WorkspaceReleasePins,
+  UIInstruction,
 } from '@journeyax/journey-core';
 import {
   BusinessPackRelease,
@@ -613,6 +614,9 @@ export class TurnApplicationService {
             categoryIds: knowledgeGate.retrieval.categoryIds,
             categoryPaths: knowledgeGate.retrieval.categoryPaths,
             excludeCategoryIds: knowledgeGate.retrieval.excludeCategoryIds,
+            // Governed knowledge chose this scope; the customer's wording narrows it but must not empty it.
+            scopeAuthoritative: knowledgeGate.retrieval.categoryIds.length + knowledgeGate.retrieval.categoryPaths.length > 0 ||
+              Boolean(knowledgeGate.retrieval.groups?.length),
             groups: knowledgeGate.retrieval.presentation === 'grouped_overview'
               ? knowledgeGate.retrieval.groups
               : undefined,
@@ -1001,6 +1005,12 @@ export class TurnApplicationService {
       outcomeStatus: validatedOutcome.valid ? 'success' : 'failure',
     });
 
+    // 7a. "Have you considered?" — unverified cross-sell from the matched concept. It is shown only next to real catalogue
+    // results, as live products found by the same governed catalogue capability, and it adds no claim and no requirement.
+    const suggestionInstruction = await this.resolveSuggestionInstruction({
+      knowledgeGate, executedCapabilities, release, tenantId, envId, workspace, workspaceId, command,
+    });
+
     // 8. Compose presentation & card envelope
     let resolvedAgentInfo: any = null;
     if (release.agents && release.agents.length > 0) {
@@ -1047,6 +1057,18 @@ export class TurnApplicationService {
     );
     if (basketWarnings.size > 0) {
       turnResult.assistantMessage = [turnResult.assistantMessage, ...basketWarnings].filter(Boolean).join('\n\n');
+    }
+    // Required disclaimers are a guarantee, not a request to the model: any the composed message omitted are appended.
+    if (knowledgeGate?.claims.disclaimers.length && typeof turnResult.assistantMessage === 'string') {
+      const missing = [...new Set(knowledgeGate.claims.disclaimers)].filter((text) => text && !turnResult.assistantMessage.includes(text));
+      if (missing.length > 0) turnResult.assistantMessage = [turnResult.assistantMessage, ...missing].filter(Boolean).join('\n\n');
+    }
+    if (suggestionInstruction) {
+      const clarifyIndex = (turnResult.uiInstructions || []).findIndex((instruction) => instruction.component === 'clarify');
+      const instructions = [...(turnResult.uiInstructions || [])];
+      // The question stays last so the customer's next step is still the question, not the cross-sell.
+      instructions.splice(clarifyIndex === -1 ? instructions.length : clarifyIndex, 0, suggestionInstruction);
+      turnResult.uiInstructions = instructions;
     }
 
     if (
@@ -1144,6 +1166,57 @@ export class TurnApplicationService {
         turnId: err.turnId,
       });
       throw err;
+    }
+  }
+
+  /**
+   * Resolves the gate's unverified cross-sell into live catalogue products through the same governed catalogue capability
+   * that produced the primary results. Nothing is shown unless real products came back; failures degrade to "no card".
+   */
+  private async resolveSuggestionInstruction(input: {
+    knowledgeGate: OkfGateDecision | null | undefined;
+    executedCapabilities: Array<{ toolId: string; status?: string; output?: any }>;
+    release: BusinessPackRelease;
+    tenantId: string;
+    envId: EnvironmentId;
+    workspace: WorkspaceState;
+    workspaceId: string;
+    command: TurnCommand;
+  }): Promise<UIInstruction | null> {
+    const { knowledgeGate: gate, executedCapabilities, release } = input;
+    if (!gate?.suggestions?.length || gate.retrieval.permission !== 'allowed') return null;
+    const primary = executedCapabilities.find((entry) =>
+      ['catalog.search', 'catalog-search', 'products'].includes(entry.toolId) && entry.status === 'success' &&
+      Array.isArray(entry.output?.items) && entry.output.items.length > 0);
+    if (!primary) return null;
+    const ctx: ExecutionContext = {
+      tenantId: input.tenantId,
+      environmentId: input.envId,
+      workspaceId: input.workspaceId,
+      sessionId: input.command.sessionId || input.workspaceId,
+      principalId: input.command.principalId || 'customer',
+      principalRole: input.command.principalRole || 'customer',
+      stageId: input.workspace.currentStage,
+      packVersionId: release.manifest.version || release.manifest.packId,
+      correlationId: input.command.correlationId,
+    };
+    try {
+      const response = await this.capabilityGateway.executeCapability(release, primary.toolId, {
+        query: '',
+        groups: gate.suggestions.map((suggestion) => ({
+          conceptId: suggestion.conceptId, label: suggestion.name, categoryIds: suggestion.categoryIds, categoryPaths: suggestion.categoryPaths,
+          excludeCategoryIds: suggestion.excludeCategoryIds, maxItems: suggestion.maxItems,
+        })),
+        currency: release.profile?.primaryCurrency,
+        maxResults: gate.suggestions.length * Math.max(...gate.suggestions.map((suggestion) => suggestion.maxItems)),
+      }, ctx);
+      if (response.status !== 'success') return null;
+      return this.presentationPort.createSuggestionsInstruction(
+        gate.suggestions, Array.isArray(response.output?.groups) ? response.output.groups : [], release,
+        { excludeSkus: primary.output.items.map((item: any) => String(item?.sku || item?.id || '')) },
+      );
+    } catch {
+      return null;
     }
   }
 

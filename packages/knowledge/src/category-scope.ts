@@ -30,10 +30,10 @@ export function mergeSearchScopes(scopes: Array<Pick<OkfSearchScope, 'catalogCat
  */
 export function scopeSelectsProduct(
   scope: Pick<OkfSearchScope, 'catalogCategoryIds' | 'catalogCategoryPaths'>,
-  product: { categoryId?: string; categoryPath?: readonly string[] },
+  product: { categoryId?: string; categoryNames?: readonly string[]; categoryPath?: readonly string[] },
 ): boolean {
   const path = Array.isArray(product.categoryPath) ? product.categoryPath.filter((segment): segment is string => typeof segment === 'string') : [];
-  const names = new Set([product.categoryId, ...path].filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).map(fold));
+  const names = new Set([product.categoryId, ...(product.categoryNames ?? []), ...path].filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).map(fold));
   return scope.catalogCategoryIds.some((id) => names.has(fold(id))) ||
     (scope.catalogCategoryPaths ?? []).some((candidate) => categoryPathCovers(candidate, path));
 }

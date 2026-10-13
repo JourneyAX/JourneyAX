@@ -27,6 +27,11 @@ export interface CatalogSearchInput {
   requireAuthoritativePrice?: boolean;
   /** Every query word must match (instead of any), for existence probes such as classifying a bare noun. */
   matchAllTokens?: boolean;
+  /**
+   * The category scope was chosen by governed knowledge, so the customer's wording must not empty it: the query still
+   * narrows the scope, but when it matches nothing the scope's own products are returned instead (`queryRelaxed`).
+   */
+  scopeAuthoritative?: boolean;
   groups?: Array<{
     conceptId: string;
     label: string;
@@ -130,6 +135,13 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         groups.push({ conceptId: group.conceptId, label: group.label, items, total: items.length });
       }
       return { items: flattened, total: flattened.length, groups };
+    }
+
+    if (input.scopeAuthoritative && input.query && !input.matchAllTokens &&
+      ((input.categoryIds?.length ?? 0) > 0 || cleanPaths(input.categoryPaths).length > 0)) {
+      const narrowed = await this.execute({ ...input, scopeAuthoritative: false }, ctx);
+      if (narrowed.total > 0 || narrowed.error) return narrowed;
+      return { ...(await this.execute({ ...input, query: '', scopeAuthoritative: false }, ctx)), queryRelaxed: true };
     }
 
     let mapping: ResolvedCatalogMapping;

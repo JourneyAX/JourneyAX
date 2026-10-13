@@ -154,6 +154,7 @@ async function runProjectPublishingSuite() {
         projectId: 'tenant-no-journey',
         name: 'Tenant No Journey',
         companyName: 'No Journey Corp',
+        pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
         ai: {
           provider: 'openai',
           model: 'gpt-4o',
@@ -210,6 +211,7 @@ async function runProjectPublishingSuite() {
         projectId: 'caroma-studio',
         name: 'Caroma Studio Pro',
         companyName: 'Caroma Industries Ltd',
+        pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
         ai: {
           provider: 'openai',
           model: 'gpt-4o',
@@ -366,6 +368,7 @@ async function runProjectPublishingSuite() {
         projectId: 'graph-project',
         name: 'Graph Project',
         companyName: 'Graph Flow Inc',
+        pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
         ai: {
           provider: 'anthropic',
           model: 'claude-3-5-sonnet',
@@ -426,6 +429,7 @@ async function runProjectPublishingSuite() {
           projectId: 'studio-pub-tenant',
           name: 'Studio Published Brand',
           companyName: 'Studio Brand Corp',
+          pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: {
             provider: 'openai',
             model: 'gpt-4o',
@@ -603,6 +607,7 @@ async function runProjectPublishingSuite() {
           projectId: 'corrupt-studio-tenant',
           name: 'Corrupt Tenant',
           companyName: 'Corrupt Corp',
+          pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: {
             provider: 'openai',
             model: 'gpt-4o',
@@ -655,6 +660,7 @@ async function runProjectPublishingSuite() {
           projectId: 'pm-test-missing-sku',
           name: 'PlaceMakers Test',
           companyName: 'PlaceMakers NZ',
+          pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: { provider: 'openai', model: 'gpt-4o' },
           persona: {
             systemName: 'PM Assistant',
@@ -754,6 +760,7 @@ async function runProjectPublishingSuite() {
           projectId: 'pm-test-category-mismatch',
           name: 'PlaceMakers Test',
           companyName: 'PlaceMakers NZ',
+          pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: { provider: 'openai', model: 'gpt-4o' },
           // The category semantics are tenant data (they used to be built into the service).
           catalogMapping: { componentCategoryRules: { overhead: { deny: ['tapware'], allow: ['mirror', 'cabinet', 'cupboard'] } } },
@@ -848,6 +855,7 @@ async function runProjectPublishingSuite() {
           projectId: 'pm-test-valid-pack',
           name: 'PlaceMakers Test',
           companyName: 'PlaceMakers NZ',
+          pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: { provider: 'openai', model: 'gpt-4o' },
           persona: {
             systemName: 'PM Assistant',
@@ -1012,6 +1020,7 @@ async function runProjectPublishingSuite() {
         {
           projectId: 'card-invalid-test',
           companyName: 'Card Invalid Test',
+          pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
           journeys: [
             {
@@ -1081,6 +1090,7 @@ async function runProjectPublishingSuite() {
     memoryProjects.set('card-invalid-test', {
       projectId: 'card-invalid-test',
       companyName: 'Card Invalid Test',
+      pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
       ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
       journeys: [
         {
@@ -1115,6 +1125,7 @@ async function runProjectPublishingSuite() {
         {
           projectId: 'card-valid-test',
           companyName: 'Card Valid Test',
+          pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
           persona: {
             systemName: 'Card Assistant',
@@ -1230,6 +1241,7 @@ async function runProjectPublishingSuite() {
       projectId,
       name: projectId,
       companyName: `${projectId} Co`,
+      pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
       ai: { provider: 'openai', model: 'gpt-4o', temperature: 0.2 },
       persona: { systemName: 'Bot', systemPromptOverrides: 'Help users.' },
       agents: [

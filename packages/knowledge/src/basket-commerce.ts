@@ -1,7 +1,8 @@
 import type { OkfReleaseContent, OkfRevocationEvent } from './contracts';
 import { resolveOkfGate, type OkfGateDecision } from './gate';
 import { renderOkfMessage, resolveOkfPolicy } from './policy';
-import { scopeSelectsProduct } from './category-scope';
+import { categoryPathCovers, scopeSelectsProduct } from './category-scope';
+import type { OkfConcept } from './contracts';
 
 type CommercePolicy = OkfGateDecision['commerce'];
 
@@ -12,6 +13,8 @@ export interface OkfBasketCatalogProduct {
   parentSku?: string;
   partCode?: string;
   categoryId?: string;
+  /** Every category label the product carries, as read by the tenant's catalogue mapping. */
+  categoryNames?: string[];
   categoryPath?: string[];
   status?: string;
   discontinued?: boolean;
@@ -64,9 +67,25 @@ function strictest(a: CommercePolicy, b: CommercePolicy): CommercePolicy {
 }
 
 function categoryIds(product: OkfBasketCatalogProduct): Set<string> {
-  return new Set([product.categoryId, ...(Array.isArray(product.categoryPath) ? product.categoryPath : [])]
+  return new Set([product.categoryId, ...(Array.isArray(product.categoryNames) ? product.categoryNames : []), ...(Array.isArray(product.categoryPath) ? product.categoryPath : [])]
     .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
     .map((value) => value.trim().toLowerCase()));
+}
+
+/**
+ * Every concept whose scope selects the product, most specific first: the deepest hierarchy path that covers it, then the
+ * narrowest scope (a leaf category before a family that spans several), then a stable order.
+ */
+export function governingConceptsForProduct(content: OkfReleaseContent, tenantId: string, product: OkfBasketCatalogProduct): OkfConcept[] {
+  const names = categoryIds(product);
+  const path = Array.isArray(product.categoryPath) ? product.categoryPath.filter((segment): segment is string => typeof segment === 'string') : [];
+  const depth = (concept: OkfConcept) => Math.max(0, ...(concept.searchScope.catalogCategoryPaths ?? []).filter((scope) => categoryPathCovers(scope, path)).map((scope) => scope.length));
+  const breadth = (concept: OkfConcept) => concept.searchScope.catalogCategoryIds.length + (concept.searchScope.catalogCategoryPaths ?? []).length;
+  return content.concepts
+    .filter((concept) => concept.tenantId === tenantId && concept.lifecycle.status !== 'retired' &&
+      scopeSelectsProduct(concept.searchScope, product) &&
+      !concept.searchScope.excludeCategoryIds.some((id) => names.has(id.trim().toLowerCase())))
+    .sort((a, b) => depth(b) - depth(a) || breadth(a) - breadth(b) || (a.conceptId < b.conceptId ? -1 : a.conceptId > b.conceptId ? 1 : 0));
 }
 
 function readPath(doc: unknown, path: string): unknown {
@@ -123,12 +142,7 @@ export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfB
       continue;
     }
 
-    const productCategories = categoryIds(product);
-    const governing = content.concepts.filter((concept) =>
-      concept.tenantId === input.tenantId &&
-      concept.lifecycle.status !== 'retired' &&
-      scopeSelectsProduct(concept.searchScope, product) &&
-      !concept.searchScope.excludeCategoryIds.some((id) => productCategories.has(id.trim().toLowerCase())));
+    const governing = governingConceptsForProduct(content, input.tenantId, product);
     if (governing.length === 0) {
       // Only an explicit, release-level opt-in lets an uncovered category into the basket, and then only with the
       // restricted commerce policy the merchant configured. The product has already passed availability above.

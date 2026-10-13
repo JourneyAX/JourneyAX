@@ -48,6 +48,7 @@ type DbProvider = () => any;
 type AttachedFactRegistry = {
   version: string;
   facts: Record<string, {
+    key: string;
     description: string;
     type: 'string' | 'number' | 'boolean' | 'array' | 'enum';
     allowedValues?: string[];
@@ -107,6 +108,7 @@ export class OkfAuthoringService {
     return {
       version: content.schemaVersion,
       facts: Object.fromEntries(content.factRegistry.map((fact) => [fact.factKey, {
+        key: fact.factKey,
         description: fact.question,
         type: fact.type,
         ...(fact.allowedValues || fact.options?.map((option) => option.value)

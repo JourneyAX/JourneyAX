@@ -73,7 +73,11 @@ export const CoveragePolicySchema = z.object({
 }).strict();
 export type CoveragePolicy = z.infer<typeof CoveragePolicySchema>;
 
-export const SuggestionPolicySchema = z.object({ max: z.number().int().min(0).max(10) }).strict();
+export const SuggestionPolicySchema = z.object({
+  max: z.number().int().min(0).max(10),
+  /** Live products shown under each suggested category. */
+  itemsPerGroup: z.number().int().min(1).max(10).optional(),
+}).strict();
 
 const MessageMapSchema = z.record(IdentifierSchema, z.string().min(1).max(MAX_MESSAGE_LENGTH));
 
@@ -233,7 +237,7 @@ export interface ResolvedOkfPolicy {
   claimEvidence: Record<string, string[]>;
   evidenceClaims: Array<{ intent?: string; lens?: string; claimClass: ClaimClass }>;
   coverage: CoveragePolicy;
-  suggestions: { max: number };
+  suggestions: { max: number; itemsPerGroup: number };
   messages: Record<string, string>;
 }
 
@@ -299,7 +303,7 @@ export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null, locale?: strin
     claimEvidence: PLATFORM.claimEvidence,
     evidenceClaims: tenant?.evidenceClaims || PLATFORM.evidenceClaims,
     coverage: tenant?.coverage || PLATFORM.coverage,
-    suggestions: tenant?.suggestions || PLATFORM.suggestions,
+    suggestions: { ...PLATFORM.suggestions, ...(tenant?.suggestions || {}) } as { max: number; itemsPerGroup: number },
     messages: { ...PLATFORM.messages, ...(tenant?.messages || {}), ...(overlay?.messages || {}) },
   };
   perLocale.set(localeKey, resolved);

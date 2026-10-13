@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { MemoryDb, createSuite } from '@journeyax/test-support';
 import { applyAuthoring, buildTaxonomyDraft, computeKnowledgeEntityHash, hydrateOkfReleaseEnvelope } from '../../../packages/knowledge/src';
+import { FactRegistrySchema } from '@journeyax/business-pack';
 import { OkfAuthoringService } from '../src/okf-authoring.service';
 
 const suite = createSuite('project-service: generated PlaceMakers coverage draft');
@@ -69,6 +70,10 @@ async function main() {
     const release = await hydrateOkfReleaseEnvelope(db as any, await db.collection('okf_releases').findOne({ releaseId: result.release.releaseId }));
     assert.equal(release.content.evaluation.passed, true);
     assert.equal(attached[0].knowledgeModel.checksum, result.release.checksum);
+    // Regression: the attached registry must be a valid Business Pack fact registry (each fact carries its own key),
+    // otherwise no pack that references an OKF release could ever be published.
+    const parsed = FactRegistrySchema.parse(attached[0].factRegistry);
+    for (const [factKey, fact] of Object.entries(parsed.facts ?? {})) assert.equal(fact.key, factKey);
     const facts = attached[0].factRegistry.facts;
     for (const key of ['room_dimensions', 'deck_size', 'fence_length']) assert.equal(facts[key].role, 'measurement', `${key} is a measurement`);
     for (const key of ['bathroom_features', 'laundry_features', 'kitchen_features']) assert.equal(facts[key].multiple, true, `${key} holds several values`);

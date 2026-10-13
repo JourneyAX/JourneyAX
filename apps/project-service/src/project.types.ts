@@ -412,6 +412,8 @@ export interface ProjectConfig {
   // Empty/undefined = synthesised from scope.rooms (a "space" dimension) for back-compat.
   contextDimensions?: ContextDimension[];
   pricing: ProjectPricing;
+  /** Optional business profile settings carried into the Business Pack (currency comes from `pricing.currency`). */
+  profile?: { primaryCurrency?: string; supportedCurrencies?: string[]; primaryLocale?: string; supportedLocales?: string[] };
   persona: ProjectPersona;
   theme: ProjectTheme;
   channels: ProjectChannels;

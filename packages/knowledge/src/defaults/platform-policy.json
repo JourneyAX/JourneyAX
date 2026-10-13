@@ -311,6 +311,7 @@
     "basket_warning_merchant_review": "Merchant review is required for {conceptName} before purchase.",
     "basket_warning_compatibility": "Compatibility must be confirmed for {conceptName} before checkout.",
     "basket_warning_professional": "A qualified professional must confirm {conceptName} before checkout.",
+    "technical_requirement_unverified": "I can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
     "uncovered_technical_unverified": "I can't confirm technical suitability, compatibility or compliance from verified information. Tell me more about what you need, or speak with a qualified specialist.",
     "uncovered_catalogue_only": "Here is what the catalogue lists. I can't confirm compatibility, installation or compliance for these items yet.",
     "cross_sell_label": "Have you considered?",
@@ -326,6 +327,7 @@
     }
   },
   "suggestions": {
-    "max": 3
+    "max": 3,
+    "itemsPerGroup": 2
   }
 }

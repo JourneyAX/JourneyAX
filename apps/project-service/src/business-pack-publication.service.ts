@@ -457,6 +457,19 @@ export class BusinessPackPublicationService {
       throw err;
     }
 
+    // Currency and locale are the business's own settings; the pack never falls back to a platform default.
+    const primaryCurrency = String(doc.pricing?.currency ?? doc.profile?.primaryCurrency ?? '').trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(primaryCurrency)) {
+      return {
+        success: false,
+        message: 'Publish blocked: the project must state its pricing currency (pricing.currency, a three-letter code). The pack does not assume one.',
+      };
+    }
+    const supportedCurrencies = [...new Set([primaryCurrency, ...(doc.profile?.supportedCurrencies ?? []).map((value: string) => String(value).trim().toUpperCase())])];
+    const statedLocales = doc.profile?.primaryLocale
+      ? { primaryLocale: doc.profile.primaryLocale, supportedLocales: [...new Set([doc.profile.primaryLocale, ...(doc.profile.supportedLocales ?? [])])] }
+      : {};
+
     const businessPack = {
       manifest: {
         packId: `pack_${pid}`,
@@ -472,7 +485,9 @@ export class BusinessPackPublicationService {
         companyName: doc.companyName || doc.name || pid,
         industry,
         primaryGoals: doc.scope?.categories || ['customer_service'],
-        locales: ['en-AU', 'en-US'],
+        primaryCurrency,
+        supportedCurrencies,
+        ...statedLocales,
       },
       routingPolicy: resolvedRoutingPolicy,
       vocabulary: {

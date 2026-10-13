@@ -6,5 +6,9 @@
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true
   },
-  "include": ["./**/*", "../src/**/*"]
+  "include": [
+    "./**/*",
+    "../src/**/*",
+    "../../project-service/src/**/*"
+  ]
 }

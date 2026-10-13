@@ -1,4 +1,4 @@
-import { resolveCatalogMapping, type BusinessPackRelease } from '@journeyax/business-pack';
+import { readPath, resolveCatalogMapping, type BusinessPackRelease, type ResolvedCatalogMapping } from '@journeyax/business-pack';
 import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
 import {
   loadActiveOkfRevocations,
@@ -10,6 +10,7 @@ import {
   resolveOkfGate,
   resolveOkfPolicy,
   type SkuPolicy,
+  governingConceptsForProduct,
   resolveOkfBasketCommerce,
   type OkfBasketCommerceDecision,
   type OkfGateDecision,
@@ -38,6 +39,21 @@ export interface KnowledgeControlPlanePort {
 /** Candidate identifier in a message; shape rules come from the resolved policy. */
 export function extractExactSku(message: string, sku: SkuPolicy = resolveOkfPolicy().sku): string | undefined {
   return extractSkuCandidate(message, sku);
+}
+
+/**
+ * The basket policy reasons about a product's category labels and hierarchy path. Which fields hold them is the tenant's
+ * catalogue mapping, so they are read through it here and handed to the policy in one neutral shape.
+ */
+export function withCategoryFields(product: any, mapping: ResolvedCatalogMapping): any {
+  const labels = (value: unknown): string[] =>
+    (Array.isArray(value) ? value : [value]).filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+  const hierarchy = mapping.categoryHierarchyPaths.map((path) => readPath(product, path)).find((value) => Array.isArray(value) && value.length > 0);
+  return {
+    ...product,
+    ...(hierarchy ? { categoryPath: labels(hierarchy) } : {}),
+    categoryNames: [...new Set(mapping.categoryScopePaths.flatMap((path) => labels(readPath(product, path))))],
+  };
 }
 
 export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
@@ -118,6 +134,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       const policy = resolveOkfPolicy(content.policy, inputBase.locale);
       const candidateSku = extractExactSku(message, policy.sku);
       let exactSku: string | undefined;
+      let exactProduct: any;
       if (candidateSku) {
         const candidates = [candidateSku, candidateSku.toUpperCase(), candidateSku.toLowerCase()];
         const identifiers = [...new Set(candidates)];
@@ -126,7 +143,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
             ...scope,
             $or: identifiers.flatMap((value) => [{ sku: value }, { parentSku: value }, { partCode: value }]),
           });
-          if (product) { exactSku = candidateSku; break; }
+          if (product) { exactSku = candidateSku; exactProduct = product; break; }
         }
       }
 
@@ -171,6 +188,21 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
         activeRevocations,
         knowledgeAvailability: { available: true, required, failurePolicy },
       });
+
+      // A stated SKU that names no concept in words is governed by the concept its product's category belongs to, so a
+      // bare product code gets the same commerce and claim rules as asking for that product by name.
+      if (decision.mode === 'no_match' && exactProduct) {
+        const governing = governingConceptsForProduct(content, command.tenantId, withCategoryFields(exactProduct, resolveCatalogMapping((release as any).catalogMapping)))[0];
+        if (governing) {
+          decision = resolveOkfGate(content, {
+            ...inputBase, exactSku,
+            matchedConcepts: [{ id: governing.conceptId, score: 1, matchedBy: 'catalog_category' }],
+            activeRevocations,
+            knowledgeAvailability: { available: true, required, failurePolicy },
+          });
+          decision.trace.reasonCodes.push('exact_sku_category');
+        }
+      }
 
       // Short clarification answers frequently do not repeat the product,
       // room, or problem phrase that selected the concept. Reuse only the
@@ -276,7 +308,7 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       }).toArray();
       return resolveOkfBasketCommerce(pinned.content, {
         tenantId: command.tenantId, environmentId, releaseId: ref.releaseId,
-        items: basketItems, products, activeRevocations,
+        items: basketItems, products: products.map((product: any) => withCategoryFields(product, mapping)), activeRevocations,
         availability: {
           excludeFlagPaths: mapping.availability.excludeFlagPaths,
           statusPaths: mapping.availability.statusPaths,

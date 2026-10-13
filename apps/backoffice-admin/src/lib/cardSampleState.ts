@@ -64,7 +64,7 @@ export const SAMPLE_STATE: Record<CardType, Record<string, unknown>> = {
     products: PRODUCTS.slice(0, 1),
   },
   plan: { heading: 'Deck build — 4m × 3m', steps: [{ title: 'Vitex decking boards × 24', detail: 'Primary decking surface.', products: PRODUCTS.slice(0, 1) }, { title: 'Joist hangers × 12' }, { title: 'NZ Building code', detail: 'Check local council consent requirements before starting.' }], totals: { subtotal: 2400, total: 2400, currency: 'USD' } },
-  accessories: { groups: [
+  accessories: { eyebrow: 'Goes with it', heading: 'Accessories & add-ons', groups: [
     { key: 'required', label: 'Required', items: PRODUCTS.slice(1, 2) },
     { key: 'recommended', label: 'Recommended', items: PRODUCTS.slice(2, 3) },
   ] },
