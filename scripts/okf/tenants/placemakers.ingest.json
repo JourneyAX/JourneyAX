@@ -1,0 +1,118 @@
+{
+  "tenantId": "placemakers",
+  "modelId": "placemakers-business-knowledge",
+  "minProductsForConcept": 1,
+  "unassignedDepartment": "Other products",
+  "exclusions": [],
+  "navigation": {
+    "questionTemplate": "Which type of {name} are you looking for?",
+    "uiInputType": "card_choice",
+    "maxOptions": 20,
+    "overviewGroups": 4,
+    "maxItemsPerGroup": 2
+  },
+  "commerce": {
+    "addToCart": "allowed",
+    "checkout": "allowed"
+  },
+  "keywords": {
+    "maxPerConcept": 8,
+    "minLength": 4
+  },
+  "sources": {
+    "maxPerConcept": 3
+  },
+  "documents": {
+    "kinds": [
+      {
+        "kind": "installation_guide",
+        "anyOf": [
+          "installation guide",
+          "installation instructions",
+          "install guide",
+          "installation manual"
+        ]
+      },
+      {
+        "kind": "warranty",
+        "anyOf": [
+          "warranty",
+          "guarantee"
+        ]
+      },
+      {
+        "kind": "safety_data_sheet",
+        "anyOf": [
+          "safety data sheet",
+          "sds",
+          "msds"
+        ]
+      },
+      {
+        "kind": "care_guide",
+        "anyOf": [
+          "care guide",
+          "care instructions",
+          "maintenance guide",
+          "cleaning guide"
+        ]
+      },
+      {
+        "kind": "specification",
+        "anyOf": [
+          "spec",
+          "specification",
+          "data sheet",
+          "datasheet",
+          "technical data"
+        ]
+      },
+      {
+        "kind": "brochure",
+        "anyOf": [
+          "brochure",
+          "catalogue",
+          "catalog",
+          "product guide"
+        ]
+      }
+    ],
+    "maxCandidatesPerCategory": 8
+  },
+  "descriptions": {
+    "leaf": "{name}: {products} products in the catalogue. Derived from the catalogue taxonomy ({date}); not merchant-verified.",
+    "parent": "{name}: {products} products across {children} areas. Derived from the catalogue taxonomy ({date}); not merchant-verified."
+  },
+  "synonyms": {
+    "splitOn": [
+      " & ",
+      " and ",
+      ",",
+      "/"
+    ],
+    "pluralise": "english",
+    "minLength": 3,
+    "headNouns": true,
+    "ignoreTerms": [
+      "other",
+      "others",
+      "accessory",
+      "accessories",
+      "general",
+      "misc",
+      "miscellaneous",
+      "kit",
+      "kits",
+      "set",
+      "sets",
+      "product",
+      "products",
+      "item",
+      "items",
+      "range",
+      "pack",
+      "packs"
+    ],
+    "dominanceThreshold": 0.6
+  }
+}

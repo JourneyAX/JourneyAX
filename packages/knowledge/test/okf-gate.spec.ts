@@ -27,7 +27,7 @@ function scenario(name: string, input: OkfGateInput, verify: (decision: ReturnTy
   }
 }
 
-console.log('🧪 Running 66 deterministic OKF gate scenarios...');
+console.log('🧪 Running 70 deterministic OKF gate scenarios...');
 
 scenario('broad screws gives grouped overview and a non-blocking substrate card', { ...base, message: 'screws' }, (d) => {
   assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.retrieval.presentation, 'grouped_overview'); assert.equal(d.clarification?.factKey, 'substrate'); assert.equal(d.clarification?.blocking, false);
@@ -297,5 +297,29 @@ uncovered('governed concepts are unaffected by the coverage setting', 'screw', {
   });
 }
 
-assert.equal(passed, 45 + 17 + 4);
+// ── A product concept never answers a problem or hazard message ───────────────────────────────────────────────
+{
+  const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${passed}. ${name}`); };
+  const product = (message: string, extra: Partial<OkfGateInput> = {}) => resolveOkfGate(content, { ...base, message, matchedConcepts: matched(conceptId('fastenings/screws')), ...extra }) as any;
+  check('a matched product concept with a hazard message escalates instead of listing products', () => {
+    const d = product('my screws are sparking');
+    assert.equal(d.mode, 'safety_then_diagnose'); assert.equal(d.safety.guidanceUnavailable, true);
+    assert.equal(d.retrieval.permission, 'blocked'); assert.equal(d.commerce.addToCart, 'blocked'); assert.deepEqual(d.claims.allowedClasses, []);
+    assert.ok(d.trace.reasonCodes.includes('problem_without_problem_concept'));
+  });
+  check('the same concept without a problem intent is unaffected', () => {
+    assert.equal(product('i need screws').mode, 'overview_then_ask');
+  });
+  check('a problem-lens concept still handles its own problem', () => {
+    const d = resolveOkfGate(content, { ...base, message: 'my bathroom is leaking', matchedConcepts: matched(conceptId('problems/bathroom-leak')) }) as any;
+    assert.equal(d.mode, 'safety_then_diagnose'); assert.ok(!d.trace.reasonCodes.includes('problem_without_problem_concept'));
+    assert.equal(d.conceptId, conceptId('problems/bathroom-leak'));
+  });
+  check('an exact SKU cannot smuggle a hazard past the gate', () => {
+    const d = product('sku 4400123 is sparking', { exactSku: '4400123' });
+    assert.equal(d.mode, 'safety_then_diagnose'); assert.equal(d.retrieval.permission, 'blocked');
+  });
+}
+
+assert.equal(passed, 45 + 17 + 4 + 4);
 console.log(`✅ OKF gate suite: ${passed} passed, 0 failed`);

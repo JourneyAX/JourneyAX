@@ -101,7 +101,10 @@
         "gas leak*",
         "exposed wiring|wires",
         "shock*|electrocut*",
-        "carbon monoxide"
+        "carbon monoxide",
+        "is|are|was|started|keeps|keep sparking|smoking|burning|overheating|melting|sparked|smoked|burnt",
+        "caught fire|on fire",
+        "burning smell|smell* burning|smell* smoke"
       ],
       "suppressedBy": [
         "no|not a? problem|fault|leak|damage"

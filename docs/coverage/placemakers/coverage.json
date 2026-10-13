@@ -1,0 +1,6870 @@
+{
+ "tenantId": "placemakers",
+ "snapshotAt": "2026-10-13T02:03:32.198Z",
+ "source": "journeyx.products / journeyx.documents / journeyx.placemakers_domain_keywords",
+ "generator": "okf-taxonomy-ingest/1",
+ "totals": {
+  "snapshotProducts": 42436,
+  "productsInRows": 42436,
+  "productsCovered": 42436,
+  "productsExcluded": 0,
+  "productsWithoutDepartment": 0,
+  "departments": 18,
+  "groups": 64,
+  "leafCategories": 376,
+  "leafCategoriesWithOwnConcept": 376,
+  "leafCategoriesCoveredByAncestor": 0,
+  "concepts": 457,
+  "relationships": 439,
+  "navigationFacts": 70,
+  "documentSources": 514
+ },
+ "reconciliation": {
+  "ok": true,
+  "unaccountedProducts": 0,
+  "note": "Every product in the snapshot is covered by a concept or excluded with a stated reason."
+ },
+ "departments": [
+  {
+   "name": "Bathrooms & Plumbing",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing",
+   "products": 15256,
+   "groups": 2,
+   "categories": 17,
+   "categoriesWithOwnConcept": 17,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 48
+  },
+  {
+   "name": "Tools",
+   "conceptId": "concept://placemakers/tools",
+   "products": 8089,
+   "groups": 4,
+   "categories": 72,
+   "categoriesWithOwnConcept": 72,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 120
+  },
+  {
+   "name": "Fastenings & General Hardware",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware",
+   "products": 3122,
+   "groups": 2,
+   "categories": 22,
+   "categoriesWithOwnConcept": 22,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 24
+  },
+  {
+   "name": "Outdoor & Landscaping",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping",
+   "products": 2763,
+   "groups": 5,
+   "categories": 27,
+   "categoriesWithOwnConcept": 27,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 27
+  },
+  {
+   "name": "Building Products",
+   "conceptId": "concept://placemakers/building-products",
+   "products": 1977,
+   "groups": 17,
+   "categories": 64,
+   "categoriesWithOwnConcept": 64,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 97
+  },
+  {
+   "name": "Safety & Ladders",
+   "conceptId": "concept://placemakers/safety-and-ladders",
+   "products": 1919,
+   "groups": 2,
+   "categories": 17,
+   "categoriesWithOwnConcept": 17,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 27
+  },
+  {
+   "name": "Kitchens & Laundry",
+   "conceptId": "concept://placemakers/kitchens-and-laundry",
+   "products": 1567,
+   "groups": 2,
+   "categories": 10,
+   "categoriesWithOwnConcept": 10,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 17
+  },
+  {
+   "name": "Timber & Plywood",
+   "conceptId": "concept://placemakers/timber-and-plywood",
+   "products": 1550,
+   "groups": 11,
+   "categories": 38,
+   "categoriesWithOwnConcept": 38,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 28
+  },
+  {
+   "name": "Doors, Windows & Joinery Hardware",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware",
+   "products": 1458,
+   "groups": 4,
+   "categories": 20,
+   "categoriesWithOwnConcept": 20,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 25
+  },
+  {
+   "name": "Paint & Decorating",
+   "conceptId": "concept://placemakers/paint-and-decorating",
+   "products": 1347,
+   "groups": 2,
+   "categories": 18,
+   "categoriesWithOwnConcept": 18,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 20
+  },
+  {
+   "name": "Electrical & Heating/Cooling",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling",
+   "products": 1130,
+   "groups": 2,
+   "categories": 17,
+   "categoriesWithOwnConcept": 17,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 36
+  },
+  {
+   "name": "Sheds & Buildings",
+   "conceptId": "concept://placemakers/sheds-and-buildings",
+   "products": 571,
+   "groups": 1,
+   "categories": 1,
+   "categoriesWithOwnConcept": 1,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 3
+  },
+  {
+   "name": "Adhesives & Sealants",
+   "conceptId": "concept://placemakers/adhesives-and-sealants",
+   "products": 430,
+   "groups": 1,
+   "categories": 11,
+   "categoriesWithOwnConcept": 11,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 21
+  },
+  {
+   "name": "Other products",
+   "conceptId": "concept://placemakers/other-products",
+   "products": 395,
+   "groups": 0,
+   "categories": 14,
+   "categoriesWithOwnConcept": 14,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 0
+  },
+  {
+   "name": "Cladding",
+   "conceptId": "concept://placemakers/cladding",
+   "products": 327,
+   "groups": 3,
+   "categories": 8,
+   "categoriesWithOwnConcept": 8,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 10
+  },
+  {
+   "name": "Cleaning & Consumables",
+   "conceptId": "concept://placemakers/cleaning-and-consumables",
+   "products": 262,
+   "groups": 4,
+   "categories": 10,
+   "categoriesWithOwnConcept": 10,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 5
+  },
+  {
+   "name": "Wardrobes, Storage & Flooring",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring",
+   "products": 253,
+   "groups": 2,
+   "categories": 9,
+   "categoriesWithOwnConcept": 9,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 6
+  },
+  {
+   "name": "specials",
+   "conceptId": "concept://placemakers/specials",
+   "products": 20,
+   "groups": 0,
+   "categories": 0,
+   "categoriesWithOwnConcept": 0,
+   "categoriesCoveredByAncestor": 0,
+   "documentSources": 0
+  }
+ ],
+ "nodes": [
+  {
+   "level": "department",
+   "path": [
+    "Bathrooms & Plumbing"
+   ],
+   "products": 15256,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing",
+   "navigationFact": "nav_bathrooms_and_plumbing",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "group",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories"
+   ],
+   "products": 13478,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories",
+   "navigationFact": "nav_bathrooms_and_plumbing_bathrooms_and_accessories",
+   "documentSources": 3,
+   "searchPhrases": 4
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Tapware & Showering"
+   ],
+   "products": 4547,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/tapware-and-showering",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Vanities"
+   ],
+   "products": 3540,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/vanities",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Showers"
+   ],
+   "products": 2764,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/showers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Bathroom Accessories"
+   ],
+   "products": 1264,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/bathroom-accessories",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Basins"
+   ],
+   "products": 414,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/basins",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Baths"
+   ],
+   "products": 301,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/baths",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Toilets"
+   ],
+   "products": 300,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/toilets",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Heated Towel Rails"
+   ],
+   "products": 183,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/heated-towel-rails",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Bathrooms & Accessories",
+    "Mirrors"
+   ],
+   "products": 165,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/mirrors",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing"
+   ],
+   "products": 1778,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing",
+   "navigationFact": "nav_bathrooms_and_plumbing_plumbing",
+   "documentSources": 3,
+   "searchPhrases": 2
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "Pumps, Tanks & Filtration"
+   ],
+   "products": 684,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/pumps-tanks-and-filtration",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "PVC Pipe & Fittings"
+   ],
+   "products": 342,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/pvc-pipe-and-fittings",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "Traps & Wastes"
+   ],
+   "products": 284,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/traps-and-wastes",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "Piping Systems & Fittings"
+   ],
+   "products": 229,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/piping-systems-and-fittings",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "Surface Drainage"
+   ],
+   "products": 96,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/surface-drainage",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "Valves"
+   ],
+   "products": 71,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/valves",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "Spare Parts"
+   ],
+   "products": 49,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/spare-parts",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Bathrooms & Plumbing",
+    "Plumbing",
+    "Hot Water"
+   ],
+   "products": 23,
+   "status": "concept",
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/hot-water",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Tools"
+   ],
+   "products": 8089,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools",
+   "navigationFact": "nav_tools",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Tools",
+    "Power Tool Accessories"
+   ],
+   "products": 3614,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories",
+   "navigationFact": "nav_tools_power_tool_accessories",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Drill Bits"
+   ],
+   "products": 1412,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/drill-bits",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Sockets"
+   ],
+   "products": 575,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/sockets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Saw Blades"
+   ],
+   "products": 400,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/saw-blades",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Screwdriver Bits"
+   ],
+   "products": 348,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/screwdriver-bits",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Cutting And Grinding"
+   ],
+   "products": 222,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/cutting-and-grinding",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Sanding And Polishing"
+   ],
+   "products": 169,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/sanding-and-polishing",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Power Tool Parts & Accessories"
+   ],
+   "products": 146,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/power-tool-parts-and-accessories",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Multitool Blades"
+   ],
+   "products": 132,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/multitool-blades",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Vacuum/Dust Extraction"
+   ],
+   "products": 109,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/vacuum-dust-extraction",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Router Accessories & Spare Parts"
+   ],
+   "products": 46,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/router-accessories-and-spare-parts",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Pnuematic Accessories"
+   ],
+   "products": 34,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/pnuematic-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Nail Gun Accessories"
+   ],
+   "products": 11,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/nail-gun-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Concrete"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/concrete",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Welding"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/welding",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Caulking Gun"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/caulking-gun",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tool Accessories",
+    "Engraving"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/engraving",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Tools",
+    "Hand Tools"
+   ],
+   "products": 2960,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools",
+   "navigationFact": "nav_tools_hand_tools",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Measuring Tools"
+   ],
+   "products": 588,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/measuring-tools",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Tool Storage"
+   ],
+   "products": 331,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/tool-storage",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Wrenches/Spanners/Sockets (Incl Sets)"
+   ],
+   "products": 312,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/wrenches-spanners-sockets-incl-sets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Plastering/Concrete/Brick Tools"
+   ],
+   "products": 303,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/plastering-concrete-brick-tools",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Pliers"
+   ],
+   "products": 196,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/pliers",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Knifes & Blades"
+   ],
+   "products": 183,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/knifes-and-blades",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Hammers & Mallets"
+   ],
+   "products": 179,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/hammers-and-mallets",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Landscape & Gardening"
+   ],
+   "products": 160,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/landscape-and-gardening",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Screwdrivers"
+   ],
+   "products": 124,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/screwdrivers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Clamps"
+   ],
+   "products": 115,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/clamps",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Chisels"
+   ],
+   "products": 96,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/chisels",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Saws"
+   ],
+   "products": 71,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/saws",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Files & Planers"
+   ],
+   "products": 62,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/files-and-planers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Other Hand Tools"
+   ],
+   "products": 56,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/other-hand-tools",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Workbenches"
+   ],
+   "products": 50,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/workbenches",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Cutting / Bending"
+   ],
+   "products": 48,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/cutting-bending",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Plumbing Tools"
+   ],
+   "products": 47,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/plumbing-tools",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Staple Guns/Hand Tackers"
+   ],
+   "products": 26,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/staple-guns-hand-tackers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Punches"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/punches",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Hand Tools",
+    "Vices"
+   ],
+   "products": 3,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/hand-tools/vices",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Tools",
+    "Power Tools"
+   ],
+   "products": 1224,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools",
+   "navigationFact": "nav_tools_power_tools",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Drills"
+   ],
+   "products": 237,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/drills",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Battery & Charger"
+   ],
+   "products": 110,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/battery-and-charger",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Machinery"
+   ],
+   "products": 98,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/machinery",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Combo Kits"
+   ],
+   "products": 97,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/combo-kits",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Nailers/Bradders & Concrete Guns/Staplers"
+   ],
+   "products": 94,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/nailers-bradders-and-concrete-guns-staplers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Angle Grinders"
+   ],
+   "products": 72,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/angle-grinders",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Circular Saws"
+   ],
+   "products": 72,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/circular-saws",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Vacuum Cleaners/Dust Extraction"
+   ],
+   "products": 65,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/vacuum-cleaners-dust-extraction",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Work Lights"
+   ],
+   "products": 52,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/work-lights",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Bench Saws/Mitre Saws"
+   ],
+   "products": 46,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/bench-saws-mitre-saws",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Sanders"
+   ],
+   "products": 41,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/sanders",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Reciprocating Saws"
+   ],
+   "products": 30,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/reciprocating-saws",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Laminate Trimmers/Routers"
+   ],
+   "products": 24,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/laminate-trimmers-routers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Welding & Soldering"
+   ],
+   "products": 24,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/welding-and-soldering",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Jig Saws"
+   ],
+   "products": 18,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/jig-saws",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Screwdrivers & Screw Guns"
+   ],
+   "products": 18,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/screwdrivers-and-screw-guns",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Planers"
+   ],
+   "products": 17,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/planers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Multi Tools"
+   ],
+   "products": 16,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/multi-tools",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Radio"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/radio",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Nibblers & Shears"
+   ],
+   "products": 13,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/nibblers-and-shears",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Heat Gun/Paint Stripper"
+   ],
+   "products": 12,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/heat-gun-paint-stripper",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Metal Cut Off Saws"
+   ],
+   "products": 12,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/metal-cut-off-saws",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Grease/Caulking Guns"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/grease-caulking-guns",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Light Construction Machinery"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/light-construction-machinery",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Band Saws"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/band-saws",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Plumbing"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/plumbing",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Thermal Imaging & Inspection Cameras"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/thermal-imaging-and-inspection-cameras",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Power Tools",
+    "Compressor"
+   ],
+   "products": 3,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/power-tools/compressor",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment"
+   ],
+   "products": 291,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment",
+   "navigationFact": "nav_tools_outdoor_power_equipment",
+   "documentSources": 3,
+   "searchPhrases": 5
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Line Trimmers"
+   ],
+   "products": 66,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/line-trimmers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Chain Saws"
+   ],
+   "products": 64,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/chain-saws",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Hedge Trimmers"
+   ],
+   "products": 59,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/hedge-trimmers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Blower/Vacuums"
+   ],
+   "products": 43,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/blower-vacuums",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Lawn Mowers"
+   ],
+   "products": 34,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/lawn-mowers",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Waterblasters"
+   ],
+   "products": 14,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/waterblasters",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Brushcutters"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/brushcutters",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Tools",
+    "Outdoor Power Equipment",
+    "Garden Shredders"
+   ],
+   "products": 3,
+   "status": "concept",
+   "conceptId": "concept://placemakers/tools/outdoor-power-equipment/garden-shredders",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Fastenings & General Hardware"
+   ],
+   "products": 3122,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware",
+   "navigationFact": "nav_fastenings_and_general_hardware",
+   "documentSources": 3,
+   "searchPhrases": 5
+  },
+  {
+   "level": "group",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings"
+   ],
+   "products": 2625,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings",
+   "navigationFact": "nav_fastenings_and_general_hardware_fastenings",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Wood Screws"
+   ],
+   "products": 991,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/wood-screws",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Masonry  Anchors"
+   ],
+   "products": 412,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/masonry-anchors",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Bolts & Nut"
+   ],
+   "products": 310,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/bolts-and-nut",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Collated Nails"
+   ],
+   "products": 277,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/collated-nails",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Timber Connectors"
+   ],
+   "products": 179,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/timber-connectors",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Loose Nails"
+   ],
+   "products": 175,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/loose-nails",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Building Brackets"
+   ],
+   "products": 114,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/building-brackets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Metal Screws"
+   ],
+   "products": 78,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/metal-screws",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Power Actuated"
+   ],
+   "products": 43,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/power-actuated",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Rivets"
+   ],
+   "products": 31,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/rivets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Fastenings",
+    "Ties, Soakers"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/ties-soakers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware"
+   ],
+   "products": 497,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware",
+   "navigationFact": "nav_fastenings_and_general_hardware_hardware",
+   "documentSources": 3,
+   "searchPhrases": 3
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Gate Hardware"
+   ],
+   "products": 206,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/gate-hardware",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Rope & Chain Accessories"
+   ],
+   "products": 83,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/rope-and-chain-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Packers, Wedges, Pods"
+   ],
+   "products": 78,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/packers-wedges-pods",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Padlocks"
+   ],
+   "products": 38,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/padlocks",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Tie Down"
+   ],
+   "products": 33,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/tie-down",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Rope & Wire"
+   ],
+   "products": 29,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/rope-and-wire",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Hooks"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/hooks",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Vents (Except Concrete)"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/vents-except-concrete",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "General Hardware"
+   ],
+   "products": 6,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/general-hardware",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Chain"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/chain",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Fastenings & General Hardware",
+    "Hardware",
+    "Tarps & Accessories"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/tarps-and-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Outdoor & Landscaping"
+   ],
+   "products": 2763,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping",
+   "navigationFact": "nav_outdoor_and_landscaping",
+   "documentSources": 3,
+   "searchPhrases": 2
+  },
+  {
+   "level": "group",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping"
+   ],
+   "products": 1303,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping",
+   "navigationFact": "nav_outdoor_and_landscaping_garden_and_landscaping",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Paving"
+   ],
+   "products": 320,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/paving",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Watering Systems"
+   ],
+   "products": 291,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/watering-systems",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Letterboxes"
+   ],
+   "products": 191,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/letterboxes",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Plant & Pest Control"
+   ],
+   "products": 94,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/plant-and-pest-control",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Underlay & Textiles"
+   ],
+   "products": 87,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/underlay-and-textiles",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Garden Containers"
+   ],
+   "products": 55,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/garden-containers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Plant & Garden Care"
+   ],
+   "products": 53,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/plant-and-garden-care",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Clotheslines"
+   ],
+   "products": 44,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/clotheslines",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Garden Sprayers"
+   ],
+   "products": 36,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/garden-sprayers",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Wheelbarrows & Trolleys"
+   ],
+   "products": 36,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/wheelbarrows-and-trolleys",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Decorative Aggregates"
+   ],
+   "products": 34,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/decorative-aggregates",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Non-Timber Retaining Walls"
+   ],
+   "products": 32,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/non-timber-retaining-walls",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Plants & Seeds"
+   ],
+   "products": 19,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/plants-and-seeds",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Kerbs & Edging"
+   ],
+   "products": 6,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/kerbs-and-edging",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Garden & Landscaping",
+    "Waste"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/waste",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Outdoor & Landscaping",
+    "Fencing & Netting (Non Timber)"
+   ],
+   "products": 1252,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber",
+   "navigationFact": "nav_outdoor_and_landscaping_fencing_and_netting_non_timber",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Fencing & Netting (Non Timber)",
+    "Fence Panels"
+   ],
+   "products": 408,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/fence-panels",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Fencing & Netting (Non Timber)",
+    "Fencing Accessories"
+   ],
+   "products": 309,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/fencing-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Fencing & Netting (Non Timber)",
+    "Metal Gates"
+   ],
+   "products": 240,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/metal-gates",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Fencing & Netting (Non Timber)",
+    "Posts"
+   ],
+   "products": 130,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/posts",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Fencing & Netting (Non Timber)",
+    "Fencing Wire"
+   ],
+   "products": 95,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/fencing-wire",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Fencing & Netting (Non Timber)",
+    "Netting & Mesh"
+   ],
+   "products": 70,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/netting-and-mesh",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Outdoor & Landscaping",
+    "Translucent Roofing"
+   ],
+   "products": 145,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/translucent-roofing",
+   "navigationFact": "nav_outdoor_and_landscaping_translucent_roofing",
+   "documentSources": 3,
+   "searchPhrases": 2
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Translucent Roofing",
+    "Polycarb Roofing"
+   ],
+   "products": 128,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/translucent-roofing/polycarb-roofing",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Translucent Roofing",
+    "Translucent Roofing Accessories"
+   ],
+   "products": 13,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/translucent-roofing/translucent-roofing-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Translucent Roofing",
+    "PVC Roofing"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/translucent-roofing/pvc-roofing",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Outdoor & Landscaping",
+    "BBQs, Furniture & Sun Shade"
+   ],
+   "products": 49,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/bbqs-furniture-and-sun-shade",
+   "navigationFact": "nav_outdoor_and_landscaping_bbqs_furniture_and_sun_shade",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "BBQs, Furniture & Sun Shade",
+    "Barbecues"
+   ],
+   "products": 48,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/bbqs-furniture-and-sun-shade/barbecues",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "BBQs, Furniture & Sun Shade",
+    "Furniture"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/bbqs-furniture-and-sun-shade/furniture",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Outdoor & Landscaping",
+    "Leisure Products"
+   ],
+   "products": 14,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/leisure-products",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Outdoor & Landscaping",
+    "Leisure Products",
+    "Leisure Items"
+   ],
+   "products": 14,
+   "status": "concept",
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/leisure-products/leisure-items",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Building Products"
+   ],
+   "products": 1977,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products",
+   "navigationFact": "nav_building_products",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Insulation"
+   ],
+   "products": 467,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/insulation",
+   "navigationFact": "nav_building_products_insulation",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Insulation",
+    "Polystyrene"
+   ],
+   "products": 168,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/insulation/polystyrene",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Insulation",
+    "Other Insulation"
+   ],
+   "products": 130,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/insulation/other-insulation",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Insulation",
+    "Polyester"
+   ],
+   "products": 94,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/insulation/polyester",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Insulation",
+    "Fibreglass"
+   ],
+   "products": 58,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/insulation/fibreglass",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Insulation",
+    "Wool"
+   ],
+   "products": 17,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/insulation/wool",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes"
+   ],
+   "products": 259,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes",
+   "navigationFact": "nav_building_products_building_wraps_barriers_underlay_and_tapes",
+   "documentSources": 3,
+   "searchPhrases": 3
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Flashing & Sealing Tapes"
+   ],
+   "products": 67,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/flashing-and-sealing-tapes",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Accessories"
+   ],
+   "products": 43,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/accessories",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Building Papers, Wraps & Barriers"
+   ],
+   "products": 37,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/building-papers-wraps-and-barriers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Damp Proof Course (DPC)"
+   ],
+   "products": 32,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/damp-proof-course-dpc",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Roof Underlays"
+   ],
+   "products": 28,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/roof-underlays",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Rigid Air Barriers"
+   ],
+   "products": 24,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/rigid-air-barriers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Moisture Control"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/moisture-control",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Concrete Underlays"
+   ],
+   "products": 7,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/concrete-underlays",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Flexible Air Barriers"
+   ],
+   "products": 6,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/flexible-air-barriers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Building Wraps Accessories"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/building-wraps-accessories",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Building Wraps,Barriers,Underlay & Tapes",
+    "Foils"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/foils",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Wet Wall Linings"
+   ],
+   "products": 242,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings",
+   "navigationFact": "nav_building_products_wet_wall_linings",
+   "documentSources": 3,
+   "searchPhrases": 2
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Wet Wall Linings",
+    "Accessories & Special Order Lining"
+   ],
+   "products": 195,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/accessories-and-special-order-lining",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Wet Wall Linings",
+    "High Pressure Laminates"
+   ],
+   "products": 23,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/high-pressure-laminates",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Wet Wall Linings",
+    "Paint Surface Hardboard Backing"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/paint-surface-hardboard-backing",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Wet Wall Linings",
+    "Paint Finish Fibre Cement Backing"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/paint-finish-fibre-cement-backing",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Panels"
+   ],
+   "products": 241,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels",
+   "navigationFact": "nav_building_products_panels",
+   "documentSources": 3,
+   "searchPhrases": 4
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "MDF"
+   ],
+   "products": 72,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/mdf",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "Veneer Pre-Cut Panels"
+   ],
+   "products": 69,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/veneer-pre-cut-panels",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "Other Pre-Cut  Panels"
+   ],
+   "products": 46,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/other-pre-cut-panels",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "Melamine"
+   ],
+   "products": 31,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/melamine",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "Hardboard & Hessian Full Sheets"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/hardboard-and-hessian-full-sheets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "Medium Density Particle Board"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/medium-density-particle-board",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "Other Panels"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/other-panels",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Panels",
+    "Strandboard"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/panels/strandboard",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories"
+   ],
+   "products": 206,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories",
+   "navigationFact": "nav_building_products_fibre_cement_and_accessories",
+   "documentSources": 3,
+   "searchPhrases": 7
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Fibre Cement Accessories"
+   ],
+   "products": 138,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/fibre-cement-accessories",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Other Fibre Cement Flat Sheet"
+   ],
+   "products": 27,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/other-fibre-cement-flat-sheet",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Hardipanel"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardipanel",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Villaboard"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/villaboard",
+   "documentSources": 3,
+   "searchPhrases": 6
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Hardiflex"
+   ],
+   "products": 7,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardiflex",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Hardigroove"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardigroove",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Hardisoffit"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardisoffit",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Fibre Cement & Accessories",
+    "Tile & Slate"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/tile-and-slate",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Roofing"
+   ],
+   "products": 111,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/roofing",
+   "navigationFact": "nav_building_products_roofing",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Roofing",
+    "Roof Windows"
+   ],
+   "products": 64,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/roofing/roof-windows",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Roofing",
+    "Longrun"
+   ],
+   "products": 41,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/roofing/longrun",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Roofing",
+    "Passive Ventilation"
+   ],
+   "products": 6,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/roofing/passive-ventilation",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Plasterboard Compounds & Accessories"
+   ],
+   "products": 101,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard-compounds-and-accessories",
+   "navigationFact": "nav_building_products_plasterboard_compounds_and_accessories",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Plasterboard Compounds & Accessories",
+    "Compounds & Plasters"
+   ],
+   "products": 50,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard-compounds-and-accessories/compounds-and-plasters",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Plasterboard Compounds & Accessories",
+    "Trims & Moulds"
+   ],
+   "products": 34,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard-compounds-and-accessories/trims-and-moulds",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Plasterboard Compounds & Accessories",
+    "Drywall Tapes"
+   ],
+   "products": 12,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard-compounds-and-accessories/drywall-tapes",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Plasterboard Compounds & Accessories",
+    "Plasterboard Accessories"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard-compounds-and-accessories/plasterboard-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Reinforcing"
+   ],
+   "products": 87,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/reinforcing",
+   "navigationFact": "nav_building_products_reinforcing",
+   "documentSources": 2,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Reinforcing",
+    "Reinforcing Accessories"
+   ],
+   "products": 50,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/reinforcing/reinforcing-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Reinforcing",
+    "Reinforcing"
+   ],
+   "products": 33,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/reinforcing/reinforcing",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Plasterboard"
+   ],
+   "products": 80,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard",
+   "navigationFact": "nav_building_products_plasterboard",
+   "documentSources": 0,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Plasterboard",
+    "Specialist Board"
+   ],
+   "products": 65,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard/specialist-board",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Plasterboard",
+    "Standard Board"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/plasterboard/standard-board",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Concrete & Mortars"
+   ],
+   "products": 76,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars",
+   "navigationFact": "nav_building_products_concrete_and_mortars",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete & Mortars",
+    "Concrete Additives"
+   ],
+   "products": 35,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars/concrete-additives",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete & Mortars",
+    "Bagged Mortars"
+   ],
+   "products": 25,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars/bagged-mortars",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete & Mortars",
+    "Bagged Concrete"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars/bagged-concrete",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete & Mortars",
+    "Cement"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars/cement",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete & Mortars",
+    "Lime"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars/lime",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Masonry"
+   ],
+   "products": 40,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/masonry",
+   "navigationFact": "nav_building_products_masonry",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Masonry",
+    "Concrete Blocks - Grey Masonry"
+   ],
+   "products": 32,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/masonry/concrete-blocks-grey-masonry",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Masonry",
+    "Bricks & Stone"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/masonry/bricks-and-stone",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Aggregates"
+   ],
+   "products": 27,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/aggregates",
+   "navigationFact": "nav_building_products_aggregates",
+   "documentSources": 0,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Aggregates",
+    "Bagged"
+   ],
+   "products": 25,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/aggregates/bagged",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Aggregates",
+    "Bulk"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/aggregates/bulk",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Ceilings"
+   ],
+   "products": 21,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/ceilings",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Ceilings",
+    "Access Panels"
+   ],
+   "products": 21,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/ceilings/access-panels",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Steel Framing"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/steel-framing",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Steel Framing",
+    "Steel Framing"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/steel-framing/steel-framing",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Concrete"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete",
+   "navigationFact": "nav_building_products_concrete",
+   "documentSources": 1,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete",
+    "Formwork"
+   ],
+   "products": 3,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete/formwork",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete",
+    "Concrete Flooring Systems"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete/concrete-flooring-systems",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Concrete",
+    "Readymix Concrete"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/concrete/readymix-concrete",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Structural Flooring"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/structural-flooring",
+   "navigationFact": "nav_building_products_structural_flooring",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Structural Flooring",
+    "Strandboard Floor Sheets"
+   ],
+   "products": 3,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/structural-flooring/strandboard-floor-sheets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Structural Flooring",
+    "Particle Board Floor Sheets"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/structural-flooring/particle-board-floor-sheets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Building Products",
+    "Passive Fire"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/passive-fire",
+   "documentSources": 2,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Building Products",
+    "Passive Fire",
+    "Passive Fire Penetrations"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/building-products/passive-fire/passive-fire-penetrations",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Safety & Ladders"
+   ],
+   "products": 1919,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders",
+   "navigationFact": "nav_safety_and_ladders",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Safety & Ladders",
+    "Safety"
+   ],
+   "products": 1640,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety",
+   "navigationFact": "nav_safety_and_ladders_safety",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Apparel"
+   ],
+   "products": 761,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/apparel",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Footwear"
+   ],
+   "products": 288,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/footwear",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Hand Protection"
+   ],
+   "products": 218,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/hand-protection",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Eye Protection"
+   ],
+   "products": 108,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/eye-protection",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Personal Safety"
+   ],
+   "products": 59,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/personal-safety",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Respiratory Protection"
+   ],
+   "products": 52,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/respiratory-protection",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Site Safety"
+   ],
+   "products": 51,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/site-safety",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Head Protection"
+   ],
+   "products": 27,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/head-protection",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Signage"
+   ],
+   "products": 26,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/signage",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Hearing Protection"
+   ],
+   "products": 23,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/hearing-protection",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Height Protection"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/height-protection",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Sun & Skin Protection"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/sun-and-skin-protection",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Safety",
+    "Traffic Safety"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/traffic-safety",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Safety & Ladders",
+    "Ladders & Scaffolding"
+   ],
+   "products": 279,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding",
+   "navigationFact": "nav_safety_and_ladders_ladders_and_scaffolding",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Ladders & Scaffolding",
+    "Scaffold"
+   ],
+   "products": 146,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding/scaffold",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Ladders & Scaffolding",
+    "Ladders"
+   ],
+   "products": 103,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding/ladders",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Ladders & Scaffolding",
+    "Platforms & Stools"
+   ],
+   "products": 16,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding/platforms-and-stools",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Safety & Ladders",
+    "Ladders & Scaffolding",
+    "Attic Access"
+   ],
+   "products": 14,
+   "status": "concept",
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding/attic-access",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Kitchens & Laundry"
+   ],
+   "products": 1567,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry",
+   "navigationFact": "nav_kitchens_and_laundry",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Kitchens & Laundry",
+    "Kitchens"
+   ],
+   "products": 1371,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens",
+   "navigationFact": "nav_kitchens_and_laundry_kitchens",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Kitchens",
+    "Kitchen Hardware & Accessories"
+   ],
+   "products": 488,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-hardware-and-accessories",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Kitchens",
+    "Kitchen Tapware"
+   ],
+   "products": 421,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-tapware",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Kitchens",
+    "Kitchen Appliances"
+   ],
+   "products": 199,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-appliances",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Kitchens",
+    "Kitchen Sinks"
+   ],
+   "products": 170,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-sinks",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Kitchens",
+    "Kitchen Splashbacks"
+   ],
+   "products": 58,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-splashbacks",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Kitchens",
+    "Kitchen Benchtops"
+   ],
+   "products": 35,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-benchtops",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Kitchens & Laundry",
+    "Laundry"
+   ],
+   "products": 196,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/laundry",
+   "navigationFact": "nav_kitchens_and_laundry_laundry",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Laundry",
+    "Laundry Cabinetry"
+   ],
+   "products": 126,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/laundry/laundry-cabinetry",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Laundry",
+    "Laundry Appliances & Accessories"
+   ],
+   "products": 37,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/laundry/laundry-appliances-and-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Laundry",
+    "Laundry Tubs"
+   ],
+   "products": 29,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/laundry/laundry-tubs",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Kitchens & Laundry",
+    "Laundry",
+    "Laundry Sinkware"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/kitchens-and-laundry/laundry/laundry-sinkware",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Timber & Plywood"
+   ],
+   "products": 1550,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood",
+   "navigationFact": "nav_timber_and_plywood",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Plywood"
+   ],
+   "products": 404,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood",
+   "navigationFact": "nav_timber_and_plywood_plywood",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Structural Plywood Treated"
+   ],
+   "products": 108,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/structural-plywood-treated",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Structural Plywood Untreated"
+   ],
+   "products": 107,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/structural-plywood-untreated",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Non Structural Plywood"
+   ],
+   "products": 61,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/non-structural-plywood",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Flooring Plywood"
+   ],
+   "products": 53,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/flooring-plywood",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Lining Plywood Interior"
+   ],
+   "products": 46,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/lining-plywood-interior",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Roofing Plywood"
+   ],
+   "products": 11,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/roofing-plywood",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Formply"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/formply",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Plywood",
+    "Plywood Other"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/plywood-other",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Engineered Timber"
+   ],
+   "products": 356,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/engineered-timber",
+   "navigationFact": "nav_timber_and_plywood_engineered_timber",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Engineered Timber",
+    "Laminated Posts And Beams (Gluelam)"
+   ],
+   "products": 307,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/engineered-timber/laminated-posts-and-beams-gluelam",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Engineered Timber",
+    "Engineered Timber Other"
+   ],
+   "products": 48,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/engineered-timber/engineered-timber-other",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Engineered Timber",
+    "Laminated Veneer Lumber (LVL)"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/engineered-timber/laminated-veneer-lumber-lvl",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Timber Fencing"
+   ],
+   "products": 345,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-fencing",
+   "navigationFact": "nav_timber_and_plywood_timber_fencing",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Timber Fencing",
+    "Fence Accessories"
+   ],
+   "products": 224,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-fencing/fence-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Timber Fencing",
+    "Fence Trellis & Panels"
+   ],
+   "products": 56,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-fencing/fence-trellis-and-panels",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Timber Fencing",
+    "Fence Palings"
+   ],
+   "products": 38,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-fencing/fence-palings",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Timber Fencing",
+    "Fence Posts"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-fencing/fence-posts",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Timber Fencing",
+    "Fence Rails"
+   ],
+   "products": 12,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-fencing/fence-rails",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Square Dressed Boards & Mouldings"
+   ],
+   "products": 167,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/square-dressed-boards-and-mouldings",
+   "navigationFact": "nav_timber_and_plywood_square_dressed_boards_and_mouldings",
+   "documentSources": 3,
+   "searchPhrases": 5
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Square Dressed Boards & Mouldings",
+    "Mouldings Finger Joint"
+   ],
+   "products": 81,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/square-dressed-boards-and-mouldings/mouldings-finger-joint",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Square Dressed Boards & Mouldings",
+    "Mouldings Mdf"
+   ],
+   "products": 44,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/square-dressed-boards-and-mouldings/mouldings-mdf",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Square Dressed Boards & Mouldings",
+    "Dowel"
+   ],
+   "products": 14,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/square-dressed-boards-and-mouldings/dowel",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Square Dressed Boards & Mouldings",
+    "Mouldings Clear"
+   ],
+   "products": 12,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/square-dressed-boards-and-mouldings/mouldings-clear",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Square Dressed Boards & Mouldings",
+    "D4S Clear"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/square-dressed-boards-and-mouldings/d4s-clear",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Square Dressed Boards & Mouldings",
+    "Door Jambs"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/square-dressed-boards-and-mouldings/door-jambs",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Structural Grade Timber Kiln Dried"
+   ],
+   "products": 107,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/structural-grade-timber-kiln-dried",
+   "navigationFact": "nav_timber_and_plywood_structural_grade_timber_kiln_dried",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Structural Grade Timber Kiln Dried",
+    "SG H1.2 Radiata KD"
+   ],
+   "products": 61,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/structural-grade-timber-kiln-dried/sg-h1-2-radiata-kd",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Structural Grade Timber Kiln Dried",
+    "SG H3.2 Radiata KD"
+   ],
+   "products": 38,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/structural-grade-timber-kiln-dried/sg-h3-2-radiata-kd",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Structural Grade Timber Kiln Dried",
+    "SG H1.2 Douglas Fir KD"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/structural-grade-timber-kiln-dried/sg-h1-2-douglas-fir-kd",
+   "documentSources": 0,
+   "searchPhrases": 5
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Decking"
+   ],
+   "products": 82,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/decking",
+   "navigationFact": "nav_timber_and_plywood_decking",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Decking",
+    "Composite Decking"
+   ],
+   "products": 41,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/decking/composite-decking",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Decking",
+    "Radiata Decking"
+   ],
+   "products": 17,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/decking/radiata-decking",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Decking",
+    "Hardwood Decking"
+   ],
+   "products": 13,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/decking/hardwood-decking",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Decking",
+    "Decking Accessories"
+   ],
+   "products": 11,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/decking/decking-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Timber Retaining"
+   ],
+   "products": 26,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-retaining",
+   "navigationFact": "nav_timber_and_plywood_timber_retaining",
+   "documentSources": 0,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Timber Retaining",
+    "Retaining Timber Radiata"
+   ],
+   "products": 16,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-retaining/retaining-timber-radiata",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Timber Retaining",
+    "Sleepers"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/timber-retaining/sleepers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Non Structural Timber - All Grades"
+   ],
+   "products": 25,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/non-structural-timber-all-grades",
+   "navigationFact": "nav_timber_and_plywood_non_structural_timber_all_grades",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Non Structural Timber - All Grades",
+    "Timber Battens"
+   ],
+   "products": 20,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/non-structural-timber-all-grades/timber-battens",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Non Structural Timber - All Grades",
+    "NST Merch, Boxing & Battens"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/non-structural-timber-all-grades/nst-merch-boxing-and-battens",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Non Structural Timber - All Grades",
+    "NST Treated"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/non-structural-timber-all-grades/nst-treated",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Non Structural Timber - All Grades",
+    "Non-Structural Grades Other"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/non-structural-timber-all-grades/non-structural-grades-other",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Structural Grade Timber Wet"
+   ],
+   "products": 23,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/structural-grade-timber-wet",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Structural Grade Timber Wet",
+    "SG H3.2 Radiata Wet"
+   ],
+   "products": 23,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/structural-grade-timber-wet/sg-h3-2-radiata-wet",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Poles, Posts & Piles"
+   ],
+   "products": 13,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/poles-posts-and-piles",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Poles, Posts & Piles",
+    "House Piles"
+   ],
+   "products": 13,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/poles-posts-and-piles/house-piles",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Timber & Plywood",
+    "Panels"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/panels",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Timber & Plywood",
+    "Panels",
+    "Plywood Pre-Cut Panels"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/timber-and-plywood/panels/plywood-pre-cut-panels",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Doors, Windows & Joinery Hardware"
+   ],
+   "products": 1458,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware",
+   "navigationFact": "nav_doors_windows_and_joinery_hardware",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "group",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware"
+   ],
+   "products": 1401,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware",
+   "navigationFact": "nav_doors_windows_and_joinery_hardware_joinery_hardware",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Door Furniture"
+   ],
+   "products": 582,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-furniture",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Handles & Pulls"
+   ],
+   "products": 144,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/handles-and-pulls",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Door Locks, Latches & Spares"
+   ],
+   "products": 129,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-locks-latches-and-spares",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Window Hardware"
+   ],
+   "products": 101,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/window-hardware",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Door Track"
+   ],
+   "products": 100,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-track",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Door Stops"
+   ],
+   "products": 79,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-stops",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Hinge"
+   ],
+   "products": 75,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/hinge",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Bolts & Cabin Hooks"
+   ],
+   "products": 57,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/bolts-and-cabin-hooks",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Seals"
+   ],
+   "products": 40,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/seals",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Bannister Brackets"
+   ],
+   "products": 24,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/bannister-brackets",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Keys"
+   ],
+   "products": 21,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/keys",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Catch"
+   ],
+   "products": 19,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/catch",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Keyless Entry"
+   ],
+   "products": 19,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/keyless-entry",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Joinery Hardware",
+    "Door Closer"
+   ],
+   "products": 11,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-closer",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Doors"
+   ],
+   "products": 45,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/doors",
+   "navigationFact": "nav_doors_windows_and_joinery_hardware_doors",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Doors",
+    "Interior Doors"
+   ],
+   "products": 25,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/doors/interior-doors",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Doors",
+    "Entrance Doors"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/doors/entrance-doors",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Doors",
+    "Cavity Slider"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/doors/cavity-slider",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Doors",
+    "Exterior Doors"
+   ],
+   "products": 3,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/doors/exterior-doors",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Window Furnishings & Hardware"
+   ],
+   "products": 7,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/window-furnishings-and-hardware",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Window Furnishings & Hardware",
+    "Tracks, Rods & Fittings"
+   ],
+   "products": 7,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/window-furnishings-and-hardware/tracks-rods-and-fittings",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Windows"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/windows",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Doors, Windows & Joinery Hardware",
+    "Windows",
+    "Window Accessories"
+   ],
+   "products": 5,
+   "status": "concept",
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/windows/window-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Paint & Decorating"
+   ],
+   "products": 1347,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating",
+   "navigationFact": "nav_paint_and_decorating",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Paint & Decorating",
+    "Paint"
+   ],
+   "products": 716,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint",
+   "navigationFact": "nav_paint_and_decorating_paint",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint",
+    "Interior Paint"
+   ],
+   "products": 181,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/interior-paint",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint",
+    "Woodcare"
+   ],
+   "products": 176,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/woodcare",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint",
+    "Aerosol Paint"
+   ],
+   "products": 117,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/aerosol-paint",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint",
+    "Exterior Paint"
+   ],
+   "products": 113,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/exterior-paint",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint",
+    "Protective Coatings"
+   ],
+   "products": 96,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/protective-coatings",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint",
+    "Primers Sealers & Undercoats"
+   ],
+   "products": 32,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/primers-sealers-and-undercoats",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint",
+    "Tinters"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/tinters",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories"
+   ],
+   "products": 631,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories",
+   "navigationFact": "nav_paint_and_decorating_paint_accessories",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Brushes & Rollers"
+   ],
+   "products": 248,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/brushes-and-rollers",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Masking"
+   ],
+   "products": 101,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/masking",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Thinners & Cleanup"
+   ],
+   "products": 76,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/thinners-and-cleanup",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Scrapers & Knives"
+   ],
+   "products": 61,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/scrapers-and-knives",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Abrasives"
+   ],
+   "products": 60,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/abrasives",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Protective Wear & Coverings"
+   ],
+   "products": 24,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/protective-wear-and-coverings",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Mixers, Cleaners & Brush Care"
+   ],
+   "products": 19,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/mixers-cleaners-and-brush-care",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Other Painting Accessories"
+   ],
+   "products": 18,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/other-painting-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Spraying Equipment"
+   ],
+   "products": 12,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/spraying-equipment",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Extension Poles"
+   ],
+   "products": 10,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/extension-poles",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Paint & Decorating",
+    "Paint Accessories",
+    "Wallpaper & Accessories"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/wallpaper-and-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Electrical & Heating/Cooling"
+   ],
+   "products": 1130,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling",
+   "navigationFact": "nav_electrical_and_heating_cooling",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "group",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling"
+   ],
+   "products": 787,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling",
+   "navigationFact": "nav_electrical_and_heating_cooling_heating_ventilation_and_cooling",
+   "documentSources": 3,
+   "searchPhrases": 3
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling",
+    "Ventilation"
+   ],
+   "products": 227,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/ventilation",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling",
+    "Solid Fuel"
+   ],
+   "products": 215,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/solid-fuel",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling",
+    "Electric Heating"
+   ],
+   "products": 121,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/electric-heating",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling",
+    "Heat Pumps"
+   ],
+   "products": 69,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/heat-pumps",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling",
+    "Central Heating"
+   ],
+   "products": 65,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/central-heating",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling",
+    "Gas Heating"
+   ],
+   "products": 59,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/gas-heating",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Heating, Ventilation & Cooling",
+    "Outdoor Heating"
+   ],
+   "products": 31,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/outdoor-heating",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical"
+   ],
+   "products": 343,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical",
+   "navigationFact": "nav_electrical_and_heating_cooling_electrical",
+   "documentSources": 3,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Switchgear"
+   ],
+   "products": 75,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/switchgear",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Electrical Consumables"
+   ],
+   "products": 67,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/electrical-consumables",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Portable Lighting"
+   ],
+   "products": 57,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/portable-lighting",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Smoke Alarms"
+   ],
+   "products": 37,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/smoke-alarms",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Security"
+   ],
+   "products": 25,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/security",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Lighting"
+   ],
+   "products": 21,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/lighting",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Extension Leads"
+   ],
+   "products": 20,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/extension-leads",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Cable & Data"
+   ],
+   "products": 18,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/cable-and-data",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Light Bulbs"
+   ],
+   "products": 14,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/light-bulbs",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Electrical & Heating/Cooling",
+    "Electrical",
+    "Phone Accessories"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/phone-accessories",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Sheds & Buildings"
+   ],
+   "products": 571,
+   "status": "concept",
+   "conceptId": "concept://placemakers/sheds-and-buildings",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Sheds & Buildings",
+    "Garden & Landscaping"
+   ],
+   "products": 571,
+   "status": "concept",
+   "conceptId": "concept://placemakers/sheds-and-buildings/garden-and-landscaping",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Sheds & Buildings",
+    "Garden & Landscaping",
+    "Garden Sheds"
+   ],
+   "products": 571,
+   "status": "concept",
+   "conceptId": "concept://placemakers/sheds-and-buildings/garden-and-landscaping/garden-sheds",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Adhesives & Sealants"
+   ],
+   "products": 430,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants",
+   "navigationFact": "nav_adhesives_and_sealants",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants"
+   ],
+   "products": 420,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants",
+   "navigationFact": "nav_adhesives_and_sealants_adhesives_and_sealants",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants",
+    "Caulks And Sealants"
+   ],
+   "products": 130,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/caulks-and-sealants",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants",
+    "Adhesives"
+   ],
+   "products": 94,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/adhesives",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants",
+    "Repair Products"
+   ],
+   "products": 68,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/repair-products",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants",
+    "Foam Products"
+   ],
+   "products": 55,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/foam-products",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants",
+    "Grouting & Anchoring"
+   ],
+   "products": 39,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/grouting-and-anchoring",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants",
+    "Waterproofing"
+   ],
+   "products": 26,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/waterproofing",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives & Sealants",
+    "Solvents And Strippers"
+   ],
+   "products": 8,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/solvents-and-strippers",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Caulks And Sealants"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/caulks-and-sealants",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Repair Products"
+   ],
+   "products": 3,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/repair-products",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Foam Products"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/foam-products",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Adhesives & Sealants",
+    "Adhesives"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "department",
+   "path": [
+    "Other products"
+   ],
+   "products": 395,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products",
+   "navigationFact": "nav_other_products",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Bathrooms > Tapware > Basin Mixers"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/bathrooms-tapware-basin-mixers",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Bathrooms > Vanities & Basins > Wall Hung Vanities"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/bathrooms-vanities-and-basins-wall-hung-vanities",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Building Products > Plasterboard > GIB Aqualine"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/building-products-plasterboard-gib-aqualine",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Building Products > Waterproofing"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/building-products-waterproofing",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Fixings & Fasteners > Screws > Decking Screws"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/fixings-and-fasteners-screws-decking-screws",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Laundry Accessories & Storage"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/laundry-accessories-and-storage",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Laundry Cabinetry & Modular Units"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/laundry-cabinetry-and-modular-units",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Laundry Tapware & Plumbing"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/laundry-tapware-and-plumbing",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Services & Packages > Room Solutions > Bathroom Packages"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/services-and-packages-room-solutions-bathroom-packages",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Services & Packages > Room Solutions > Laundry Packages"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/services-and-packages-room-solutions-laundry-packages",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Services > Design Consultations > Bathroom Design"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/services-design-consultations-bathroom-design",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Services > Installed Solutions > Trade Installation"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/services-installed-solutions-trade-installation",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Timber & Plywood > Structural Timber"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/timber-and-plywood-structural-timber",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Other products",
+    "Tools > Tool Kits > Installation Tools"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/other-products/tools-tool-kits-installation-tools",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "department",
+   "path": [
+    "Cladding"
+   ],
+   "products": 327,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding",
+   "navigationFact": "nav_cladding",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Cladding",
+    "Timber Cladding"
+   ],
+   "products": 126,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/timber-cladding",
+   "navigationFact": "nav_cladding_timber_cladding",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Timber Cladding",
+    "Weatherboard Radiata"
+   ],
+   "products": 75,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/timber-cladding/weatherboard-radiata",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Timber Cladding",
+    "Fascia Radiata"
+   ],
+   "products": 23,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/timber-cladding/fascia-radiata",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Timber Cladding",
+    "Cladding Plywood Exterior"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/timber-cladding/cladding-plywood-exterior",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Timber Cladding",
+    "Timber Cladding Other"
+   ],
+   "products": 13,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/timber-cladding/timber-cladding-other",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Cladding",
+    "Prefinished Cladding & Facades"
+   ],
+   "products": 125,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/prefinished-cladding-and-facades",
+   "navigationFact": "nav_cladding_prefinished_cladding_and_facades",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Prefinished Cladding & Facades",
+    "Panelised Cladding Systems"
+   ],
+   "products": 71,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/prefinished-cladding-and-facades/panelised-cladding-systems",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Prefinished Cladding & Facades",
+    "PVC"
+   ],
+   "products": 54,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/prefinished-cladding-and-facades/pvc",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Cladding",
+    "Fibre Cement & Accessories"
+   ],
+   "products": 76,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/fibre-cement-and-accessories",
+   "navigationFact": "nav_cladding_fibre_cement_and_accessories",
+   "documentSources": 1,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Fibre Cement & Accessories",
+    "Fibre Cement Weatherboard"
+   ],
+   "products": 74,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/fibre-cement-and-accessories/fibre-cement-weatherboard",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cladding",
+    "Fibre Cement & Accessories",
+    "Other Fibre Cement Cladding"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cladding/fibre-cement-and-accessories/other-fibre-cement-cladding",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Cleaning & Consumables"
+   ],
+   "products": 262,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables",
+   "navigationFact": "nav_cleaning_and_consumables",
+   "documentSources": 3,
+   "searchPhrases": 4
+  },
+  {
+   "level": "group",
+   "path": [
+    "Cleaning & Consumables",
+    "Cleaners & Cleaning Equipment"
+   ],
+   "products": 168,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment",
+   "navigationFact": "nav_cleaning_and_consumables_cleaners_and_cleaning_equipment",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Cleaners & Cleaning Equipment",
+    "Indoor Cleaners"
+   ],
+   "products": 82,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/indoor-cleaners",
+   "documentSources": 1,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Cleaners & Cleaning Equipment",
+    "Mops & Brooms"
+   ],
+   "products": 75,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/mops-and-brooms",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Cleaners & Cleaning Equipment",
+    "Outdoor Cleaners"
+   ],
+   "products": 11,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/outdoor-cleaners",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Cleaning & Consumables",
+    "Automotive"
+   ],
+   "products": 41,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/automotive",
+   "navigationFact": "nav_cleaning_and_consumables_automotive",
+   "documentSources": 2,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Automotive",
+    "Car Cleaning"
+   ],
+   "products": 35,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/automotive/car-cleaning",
+   "documentSources": 2,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Automotive",
+    "Petrol Cans"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/automotive/petrol-cans",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Automotive",
+    "Battery Chargers & Accessories"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/automotive/battery-chargers-and-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Cleaning & Consumables",
+    "Household & Pets"
+   ],
+   "products": 40,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/household-and-pets",
+   "navigationFact": "nav_cleaning_and_consumables_household_and_pets",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Household & Pets",
+    "Household"
+   ],
+   "products": 39,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/household-and-pets/household",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Household & Pets",
+    "Pet Care"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/household-and-pets/pet-care",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Cleaning & Consumables",
+    "Site Consumables"
+   ],
+   "products": 13,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/site-consumables",
+   "navigationFact": "nav_cleaning_and_consumables_site_consumables",
+   "documentSources": 0,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Site Consumables",
+    "Food & Beverage"
+   ],
+   "products": 9,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/site-consumables/food-and-beverage",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Cleaning & Consumables",
+    "Site Consumables",
+    "Personal Hygiene & Other Consumables"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/cleaning-and-consumables/site-consumables/personal-hygiene-and-other-consumables",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "Wardrobes, Storage & Flooring"
+   ],
+   "products": 253,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring",
+   "navigationFact": "nav_wardrobes_storage_and_flooring",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "group",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Decorative Flooring"
+   ],
+   "products": 212,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring",
+   "navigationFact": "nav_wardrobes_storage_and_flooring_decorative_flooring",
+   "documentSources": 3,
+   "searchPhrases": 0
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Decorative Flooring",
+    "Flooring Tools & Accessories"
+   ],
+   "products": 99,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/flooring-tools-and-accessories",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Decorative Flooring",
+    "Flooring Prep & Finishing"
+   ],
+   "products": 77,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/flooring-prep-and-finishing",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Decorative Flooring",
+    "Laminate Flooring"
+   ],
+   "products": 31,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/laminate-flooring",
+   "documentSources": 3,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Decorative Flooring",
+    "Timber Flooring"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/timber-flooring",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Decorative Flooring",
+    "Underlay"
+   ],
+   "products": 2,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/underlay",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Decorative Flooring",
+    "Bamboo Flooring"
+   ],
+   "products": 1,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/bamboo-flooring",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "group",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Wardrobes & Storage"
+   ],
+   "products": 41,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/wardrobes-and-storage",
+   "navigationFact": "nav_wardrobes_storage_and_flooring_wardrobes_and_storage",
+   "documentSources": 0,
+   "searchPhrases": 1
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Wardrobes & Storage",
+    "Shelving"
+   ],
+   "products": 22,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/wardrobes-and-storage/shelving",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Wardrobes & Storage",
+    "Wardrobe"
+   ],
+   "products": 15,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/wardrobes-and-storage/wardrobe",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "category",
+   "path": [
+    "Wardrobes, Storage & Flooring",
+    "Wardrobes & Storage",
+    "Storage"
+   ],
+   "products": 4,
+   "status": "concept",
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/wardrobes-and-storage/storage",
+   "documentSources": 0,
+   "searchPhrases": 8
+  },
+  {
+   "level": "department",
+   "path": [
+    "specials"
+   ],
+   "products": 20,
+   "status": "concept",
+   "conceptId": "concept://placemakers/specials",
+   "documentSources": 0,
+   "searchPhrases": 8
+  }
+ ],
+ "excluded": [],
+ "documents": {
+  "documents": 10274,
+  "mappedToProduct": 10204,
+  "byKind": {
+   "installation_guide": 5866,
+   "warranty": 1605,
+   "document": 1101,
+   "specification": 1614,
+   "safety_data_sheet": 44,
+   "brochure": 42,
+   "care_guide": 2
+  },
+  "categoriesWithCandidates": 194
+ },
+ "warnings": {
+  "duplicateNames": [
+   {
+    "name": "Plumbing",
+    "paths": [
+     [
+      "Bathrooms & Plumbing",
+      "Plumbing"
+     ],
+     [
+      "Tools",
+      "Power Tools",
+      "Plumbing"
+     ]
+    ]
+   },
+   {
+    "name": "Concrete",
+    "paths": [
+     [
+      "Tools",
+      "Power Tool Accessories",
+      "Concrete"
+     ],
+     [
+      "Building Products",
+      "Concrete"
+     ]
+    ]
+   },
+   {
+    "name": "Garden & Landscaping",
+    "paths": [
+     [
+      "Outdoor & Landscaping",
+      "Garden & Landscaping"
+     ],
+     [
+      "Sheds & Buildings",
+      "Garden & Landscaping"
+     ]
+    ]
+   },
+   {
+    "name": "Panels",
+    "paths": [
+     [
+      "Building Products",
+      "Panels"
+     ],
+     [
+      "Timber & Plywood",
+      "Panels"
+     ]
+    ]
+   },
+   {
+    "name": "Fibre Cement & Accessories",
+    "paths": [
+     [
+      "Building Products",
+      "Fibre Cement & Accessories"
+     ],
+     [
+      "Building Products",
+      "Fibre Cement & Accessories",
+      "Fibre Cement Accessories"
+     ],
+     [
+      "Cladding",
+      "Fibre Cement & Accessories"
+     ]
+    ]
+   },
+   {
+    "name": "Reinforcing",
+    "paths": [
+     [
+      "Building Products",
+      "Reinforcing"
+     ],
+     [
+      "Building Products",
+      "Reinforcing",
+      "Reinforcing"
+     ]
+    ]
+   },
+   {
+    "name": "Steel Framing",
+    "paths": [
+     [
+      "Building Products",
+      "Steel Framing"
+     ],
+     [
+      "Building Products",
+      "Steel Framing",
+      "Steel Framing"
+     ]
+    ]
+   },
+   {
+    "name": "Adhesives & Sealants",
+    "paths": [
+     [
+      "Adhesives & Sealants"
+     ],
+     [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants"
+     ]
+    ]
+   },
+   {
+    "name": "Caulks And Sealants",
+    "paths": [
+     [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Caulks And Sealants"
+     ],
+     [
+      "Adhesives & Sealants",
+      "Caulks And Sealants"
+     ]
+    ]
+   },
+   {
+    "name": "Adhesives",
+    "paths": [
+     [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Adhesives"
+     ],
+     [
+      "Adhesives & Sealants",
+      "Adhesives"
+     ]
+    ]
+   },
+   {
+    "name": "Repair Products",
+    "paths": [
+     [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Repair Products"
+     ],
+     [
+      "Adhesives & Sealants",
+      "Repair Products"
+     ]
+    ]
+   },
+   {
+    "name": "Foam Products",
+    "paths": [
+     [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Foam Products"
+     ],
+     [
+      "Adhesives & Sealants",
+      "Foam Products"
+     ]
+    ]
+   }
+  ],
+  "droppedAmbiguousPhrases": 10,
+  "droppedAmbiguousSynonyms": 53,
+  "phrasesResolvedToParent": 689,
+  "phrasesResolvedByDominance": 173,
+  "truncatedOptions": [
+   {
+    "concept": "Power Tools",
+    "offered": 20,
+    "available": 28
+   }
+  ],
+  "scopeAmbiguity": [
+   {
+    "identifier": "Laundry Cabinetry & Modular Units",
+    "concept": "Tapware & Showering",
+    "alsoIn": [
+     "Other products"
+    ]
+   },
+   {
+    "identifier": "Plumbing",
+    "concept": "Plumbing (Bathrooms & Plumbing)",
+    "alsoIn": [
+     "Tools"
+    ]
+   },
+   {
+    "identifier": "Concrete",
+    "concept": "Concrete (Power Tool Accessories)",
+    "alsoIn": [
+     "Building Products"
+    ]
+   },
+   {
+    "identifier": "Plumbing",
+    "concept": "Plumbing (Power Tools)",
+    "alsoIn": [
+     "Bathrooms & Plumbing"
+    ]
+   },
+   {
+    "identifier": "Garden & Landscaping",
+    "concept": "Garden & Landscaping (Outdoor & Landscaping)",
+    "alsoIn": [
+     "Sheds & Buildings"
+    ]
+   },
+   {
+    "identifier": "Panels",
+    "concept": "Panels (Building Products)",
+    "alsoIn": [
+     "Timber & Plywood"
+    ]
+   },
+   {
+    "identifier": "Fibre Cement & Accessories",
+    "concept": "Fibre Cement & Accessories (Building Products)",
+    "alsoIn": [
+     "Cladding"
+    ]
+   },
+   {
+    "identifier": "Concrete",
+    "concept": "Concrete (Building Products)",
+    "alsoIn": [
+     "Tools"
+    ]
+   },
+   {
+    "identifier": "Panels",
+    "concept": "Panels (Timber & Plywood)",
+    "alsoIn": [
+     "Building Products"
+    ]
+   },
+   {
+    "identifier": "Garden & Landscaping",
+    "concept": "Garden & Landscaping (Sheds & Buildings)",
+    "alsoIn": [
+     "Outdoor & Landscaping"
+    ]
+   },
+   {
+    "identifier": "Fibre Cement & Accessories",
+    "concept": "Fibre Cement & Accessories (Cladding)",
+    "alsoIn": [
+     "Building Products"
+    ]
+   }
+  ]
+ },
+ "familySuggestions": [
+  {
+   "term": "accessory",
+   "categories": [
+    "Accessories",
+    "Bathroom Accessories",
+    "Battery Chargers & Accessories",
+    "Building Wraps Accessories",
+    "Decking Accessories",
+    "Fence Accessories",
+    "Fencing Accessories",
+    "Fibre Cement Accessories",
+    "Flooring Tools & Accessories",
+    "Kitchen Hardware & Accessories",
+    "Laundry Appliances & Accessories",
+    "Nail Gun Accessories",
+    "Other Painting Accessories",
+    "Phone Accessories",
+    "Plasterboard Accessories",
+    "Pnuematic Accessories",
+    "Power Tool Parts & Accessories",
+    "Reinforcing Accessories",
+    "Rope & Chain Accessories",
+    "Tarps & Accessories",
+    "Translucent Roofing Accessories",
+    "Wallpaper & Accessories",
+    "Window Accessories"
+   ]
+  },
+  {
+   "term": "saw",
+   "categories": [
+    "Band Saws",
+    "Bench Saws/Mitre Saws",
+    "Chain Saws",
+    "Circular Saws",
+    "Jig Saws",
+    "Metal Cut Off Saws",
+    "Reciprocating Saws",
+    "Saws"
+   ]
+  },
+  {
+   "term": "panel",
+   "categories": [
+    "Access Panels",
+    "Fence Panels",
+    "Fence Trellis & Panels",
+    "Other Panels",
+    "Other Pre-Cut  Panels",
+    "Plywood Pre-Cut Panels",
+    "Veneer Pre-Cut Panels"
+   ]
+  },
+  {
+   "term": "protection",
+   "categories": [
+    "Eye Protection",
+    "Hand Protection",
+    "Head Protection",
+    "Hearing Protection",
+    "Height Protection",
+    "Respiratory Protection",
+    "Sun & Skin Protection"
+   ]
+  },
+  {
+   "term": "tool",
+   "categories": [
+    "Measuring Tools",
+    "Multi Tools",
+    "Other Hand Tools",
+    "Plastering/Concrete/Brick Tools",
+    "Plumbing Tools",
+    "Tools > Tool Kits > Installation Tools"
+   ]
+  },
+  {
+   "term": "radiata",
+   "categories": [
+    "Fascia Radiata",
+    "Retaining Timber Radiata",
+    "SG H1.2 Radiata KD",
+    "SG H3.2 Radiata KD",
+    "Weatherboard Radiata"
+   ]
+  },
+  {
+   "term": "concrete",
+   "categories": [
+    "Bagged Concrete",
+    "Concrete",
+    "Readymix Concrete",
+    "Vents (Except Concrete)"
+   ]
+  },
+  {
+   "term": "heating",
+   "categories": [
+    "Central Heating",
+    "Electric Heating",
+    "Gas Heating",
+    "Outdoor Heating"
+   ]
+  },
+  {
+   "term": "other",
+   "categories": [
+    "Engineered Timber Other",
+    "Non-Structural Grades Other",
+    "Plywood Other",
+    "Timber Cladding Other"
+   ]
+  },
+  {
+   "term": "sheet",
+   "categories": [
+    "Hardboard & Hessian Full Sheets",
+    "Other Fibre Cement Flat Sheet",
+    "Particle Board Floor Sheets",
+    "Strandboard Floor Sheets"
+   ]
+  },
+  {
+   "term": "barrier",
+   "categories": [
+    "Building Papers, Wraps & Barriers",
+    "Flexible Air Barriers",
+    "Rigid Air Barriers"
+   ]
+  },
+  {
+   "term": "blade",
+   "categories": [
+    "Knifes & Blades",
+    "Multitool Blades",
+    "Saw Blades"
+   ]
+  },
+  {
+   "term": "board",
+   "categories": [
+    "Medium Density Particle Board",
+    "Specialist Board",
+    "Standard Board"
+   ]
+  },
+  {
+   "term": "care",
+   "categories": [
+    "Mixers, Cleaners & Brush Care",
+    "Pet Care",
+    "Plant & Garden Care"
+   ]
+  },
+  {
+   "term": "decking",
+   "categories": [
+    "Composite Decking",
+    "Hardwood Decking",
+    "Radiata Decking"
+   ]
+  },
+  {
+   "term": "door",
+   "categories": [
+    "Entrance Doors",
+    "Exterior Doors",
+    "Interior Doors"
+   ]
+  },
+  {
+   "term": "fitting",
+   "categories": [
+    "PVC Pipe & Fittings",
+    "Piping Systems & Fittings",
+    "Tracks, Rods & Fittings"
+   ]
+  },
+  {
+   "term": "flooring",
+   "categories": [
+    "Bamboo Flooring",
+    "Laminate Flooring",
+    "Timber Flooring"
+   ]
+  },
+  {
+   "term": "gun",
+   "categories": [
+    "Caulking Gun",
+    "Grease/Caulking Guns",
+    "Screwdrivers & Screw Guns"
+   ]
+  },
+  {
+   "term": "hardware",
+   "categories": [
+    "Gate Hardware",
+    "General Hardware",
+    "Window Hardware"
+   ]
+  },
+  {
+   "term": "paint",
+   "categories": [
+    "Aerosol Paint",
+    "Exterior Paint",
+    "Interior Paint"
+   ]
+  },
+  {
+   "term": "plywood",
+   "categories": [
+    "Flooring Plywood",
+    "Non Structural Plywood",
+    "Roofing Plywood"
+   ]
+  },
+  {
+   "term": "safety",
+   "categories": [
+    "Personal Safety",
+    "Site Safety",
+    "Traffic Safety"
+   ]
+  },
+  {
+   "term": "screw",
+   "categories": [
+    "Fixings & Fasteners > Screws > Decking Screws",
+    "Metal Screws",
+    "Wood Screws"
+   ]
+  },
+  {
+   "term": "storage",
+   "categories": [
+    "Laundry Accessories & Storage",
+    "Storage",
+    "Tool Storage"
+   ]
+  },
+  {
+   "term": "system",
+   "categories": [
+    "Concrete Flooring Systems",
+    "Panelised Cladding Systems",
+    "Watering Systems"
+   ]
+  },
+  {
+   "term": "underlay",
+   "categories": [
+    "Concrete Underlays",
+    "Roof Underlays",
+    "Underlay"
+   ]
+  },
+  {
+   "term": "backing",
+   "categories": [
+    "Paint Finish Fibre Cement Backing",
+    "Paint Surface Hardboard Backing"
+   ]
+  },
+  {
+   "term": "batten",
+   "categories": [
+    "NST Merch, Boxing & Battens",
+    "Timber Battens"
+   ]
+  },
+  {
+   "term": "bit",
+   "categories": [
+    "Drill Bits",
+    "Screwdriver Bits"
+   ]
+  },
+  {
+   "term": "bracket",
+   "categories": [
+    "Bannister Brackets",
+    "Building Brackets"
+   ]
+  },
+  {
+   "term": "cleaner",
+   "categories": [
+    "Indoor Cleaners",
+    "Outdoor Cleaners"
+   ]
+  },
+  {
+   "term": "clear",
+   "categories": [
+    "D4S Clear",
+    "Mouldings Clear"
+   ]
+  },
+  {
+   "term": "consumable",
+   "categories": [
+    "Electrical Consumables",
+    "Personal Hygiene & Other Consumables"
+   ]
+  },
+  {
+   "term": "control",
+   "categories": [
+    "Moisture Control",
+    "Plant & Pest Control"
+   ]
+  },
+  {
+   "term": "extraction",
+   "categories": [
+    "Vacuum Cleaners/Dust Extraction",
+    "Vacuum/Dust Extraction"
+   ]
+  },
+  {
+   "term": "furniture",
+   "categories": [
+    "Door Furniture",
+    "Furniture"
+   ]
+  },
+  {
+   "term": "hook",
+   "categories": [
+    "Bolts & Cabin Hooks",
+    "Hooks"
+   ]
+  },
+  {
+   "term": "lighting",
+   "categories": [
+    "Lighting",
+    "Portable Lighting"
+   ]
+  },
+  {
+   "term": "machinery",
+   "categories": [
+    "Light Construction Machinery",
+    "Machinery"
+   ]
+  },
+  {
+   "term": "mdf",
+   "categories": [
+    "MDF",
+    "Mouldings Mdf"
+   ]
+  },
+  {
+   "term": "nail",
+   "categories": [
+    "Collated Nails",
+    "Loose Nails"
+   ]
+  },
+  {
+   "term": "package",
+   "categories": [
+    "Services & Packages > Room Solutions > Bathroom Packages",
+    "Services & Packages > Room Solutions > Laundry Packages"
+   ]
+  },
+  {
+   "term": "part",
+   "categories": [
+    "Router Accessories & Spare Parts",
+    "Spare Parts"
+   ]
+  },
+  {
+   "term": "planer",
+   "categories": [
+    "Files & Planers",
+    "Planers"
+   ]
+  },
+  {
+   "term": "plumbing",
+   "categories": [
+    "Laundry Tapware & Plumbing",
+    "Plumbing"
+   ]
+  },
+  {
+   "term": "post",
+   "categories": [
+    "Fence Posts",
+    "Posts"
+   ]
+  },
+  {
+   "term": "product",
+   "categories": [
+    "Foam Products",
+    "Repair Products"
+   ]
+  },
+  {
+   "term": "rail",
+   "categories": [
+    "Fence Rails",
+    "Heated Towel Rails"
+   ]
+  },
+  {
+   "term": "roofing",
+   "categories": [
+    "PVC Roofing",
+    "Polycarb Roofing"
+   ]
+  },
+  {
+   "term": "stripper",
+   "categories": [
+    "Heat Gun/Paint Stripper",
+    "Solvents And Strippers"
+   ]
+  },
+  {
+   "term": "tape",
+   "categories": [
+    "Drywall Tapes",
+    "Flashing & Sealing Tapes"
+   ]
+  },
+  {
+   "term": "treated",
+   "categories": [
+    "NST Treated",
+    "Structural Plywood Treated"
+   ]
+  },
+  {
+   "term": "trimmer",
+   "categories": [
+    "Hedge Trimmers",
+    "Line Trimmers"
+   ]
+  },
+  {
+   "term": "vanity",
+   "categories": [
+    "Bathrooms > Vanities & Basins > Wall Hung Vanities",
+    "Vanities"
+   ]
+  },
+  {
+   "term": "ventilation",
+   "categories": [
+    "Passive Ventilation",
+    "Ventilation"
+   ]
+  },
+  {
+   "term": "waste",
+   "categories": [
+    "Traps & Wastes",
+    "Waste"
+   ]
+  },
+  {
+   "term": "waterproofing",
+   "categories": [
+    "Building Products > Waterproofing",
+    "Waterproofing"
+   ]
+  },
+  {
+   "term": "wire",
+   "categories": [
+    "Fencing Wire",
+    "Rope & Wire"
+   ]
+  }
+ ],
+ "claims": {
+  "verifiedClaims": 0,
+  "derivedConcepts": 457,
+  "note": "Generated material is derived structure only. Compatibility, safety, installation, care and warranty claims are authored and verified separately."
+ }
+}

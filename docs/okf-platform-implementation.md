@@ -94,3 +94,27 @@ Each run writes `summary.md`/`summary.json`, one `<suite>.log` per suite and str
 - The Studio's fact-role editing is via the advanced JSON editor (OKF `extensions.role`); a form is a follow-up.
 - Mixed-currency catalogues are filtered, not converted; the platform never converts currencies.
 - Pre-existing lint errors in `ConfiguratorPanel` (react-hooks/refs) are unrelated and untouched.
+
+## Taxonomy ingestion (Phase 3)
+
+`packages/knowledge/src/ingest` builds a navigable OKF draft from a tenant's real catalogue taxonomy. It is
+domain-neutral: the input is a dated snapshot plus a tenant config (`scripts/okf/tenants/<tenant>.ingest.json`) that holds every
+question template, threshold, commerce ceiling and wording choice.
+
+```bash
+npm run okf:snapshot -- placemakers scripts/okf/tenants/placemakers.ingest.json   # read-only capture → docs/inventory/…snapshot.json
+npm run okf:ingest -- docs/inventory/placemakers-taxonomy-snapshot-2026-10-13.json scripts/okf/tenants/placemakers.ingest.json logs/okf/placemakers
+```
+
+Outputs (`logs/okf/<tenant>/`): `draft.json`, `coverage.{md,json}`, `departments/<slug>.md`, `bundle.zip` (department
+indexes for review). The committed review copy is `docs/coverage/<tenant>/`.
+
+What it generates: one concept per department, group and category (not per SKU) with exact catalogue category
+identifiers, `child_of` relationships, a navigation question per parent (from the config template), name-derived
+synonyms, model-generated search phrases and candidate document sources. What it never generates: any claim class, any
+verification, any evidence chunk. Every generated item carries `x-journeyax-provenance`, and `auditProvenance` rejects a
+draft where derived material is marked verified, asserts a claim, or exceeds the configured commerce ceiling.
+
+Known limitations (see the coverage report warnings): some category names occur in more than one department, so an
+identifier can also select products elsewhere (needs path-scoped matching in the catalogue mapping); customer terms
+spanning categories resolve to a common parent concept and are listed as "family suggestions" for the authored layer.

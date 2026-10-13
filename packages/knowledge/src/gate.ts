@@ -394,6 +394,13 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
 
   const { concept: initialConcept, matchedBy } = findConcept(content, input, policy);
   if (!initialConcept) return uncoveredDecision(input, policy, intents);
+  // A product or project concept never answers a problem or hazard message ("my heater is smoking" must not become a
+  // heater listing). Only a concept authored for the problem lens may handle it; otherwise the request escalates.
+  if (initialConcept.lens !== 'problem' && intentInGroup(policy, 'problem', intents)) {
+    const escalation = uncoveredDecision({ ...input, exactSku: undefined, catalogueMatch: false }, policy, intents);
+    escalation.trace.reasonCodes.push('problem_without_problem_concept');
+    return escalation;
+  }
   if (initialConcept.tenantId !== input.tenantId || tenantFromConceptId(initialConcept.conceptId) !== input.tenantId) {
     return noMatch(input, 'cross_tenant_concept_rejected', 'no_match', policy);
   }
