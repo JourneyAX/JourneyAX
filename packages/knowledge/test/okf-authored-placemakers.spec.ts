@@ -97,6 +97,21 @@ async function main() {
     }
   });
 
+  await suite.test('a customer\'s own words reach the right concept: a project beats a category that shares one word, and naming two of a project\'s categories describes the project', () => {
+    const route = (message: string) => { const decision: any = gate(message); return { concept: name(decision.conceptId), mode: decision.mode, matchedBy: decision.trace.matchedBy }; };
+    // The wording that was sent to the live shop: two categories of the wet-area project in one question.
+    assert.deepEqual(route('What moisture-resistant linings and waterproofing do I need for my wet area?'), { concept: 'Wet area lining', mode: 'overview_then_ask', matchedBy: 'project_categories' });
+    assert.equal(route('I need wet wall linings and waterproofing').concept, 'Wet area lining', 'two of its categories named');
+    // One shared word must not decide it: "wet" belongs to a timber grade and "walls" to retaining walls.
+    assert.equal(route('what do I need to line a wet area').concept, 'Wet area lining');
+    assert.equal(route('I want to waterproof my bathroom').concept, 'Wet area lining');
+    assert.equal(route('how do I waterproof my bathroom walls').concept, 'Wet area lining', 'the project\'s own phrasing, not "walls"');
+    // Nothing is taken from a customer who names exactly one category, or exactly one concept.
+    assert.deepEqual(route('waterproofing'), { concept: 'Waterproofing', mode: 'direct_results', matchedBy: 'exact_phrase' });
+    assert.equal(route('wood screws').concept, 'Wood Screws');
+    assert.equal(route('wet area lining').matchedBy, 'exact_phrase');
+  });
+
   await suite.test('problem-first requests escalate: products paused, no invented guidance, a professional is named', () => {
     for (const [message, concept] of [
       ['my bathroom is leaking', 'Bathroom leak'], ['there is a gas leak', 'Gas hazard'], ['dripping tap', 'Leaking tap or pipe'],

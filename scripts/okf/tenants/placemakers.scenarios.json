@@ -610,6 +610,60 @@
           "technical_requirement_unverified"
         ]
       }
+    },
+    {
+      "id": "wet-area-linings-and-waterproofing",
+      "description": "A customer asking what linings and waterproofing a wet area needs is helped with the wet-area project (its question and its categories), not a single category's products",
+      "message": "What moisture-resistant linings and waterproofing do I need for my wet area?",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Wet area lining",
+        "ask": "wet_area_room",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "wet-area-two-categories-named",
+      "description": "Naming two categories of one project describes the project, even without its own words",
+      "message": "I need wet wall linings and waterproofing",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Wet area lining",
+        "ask": "wet_area_room",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "wet-area-line-a-wet-area",
+      "description": "'Line a wet area' reaches the wet-area project, not a timber category that happens to contain the word wet",
+      "message": "what do I need to line a wet area",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Wet area lining",
+        "ask": "wet_area_room",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "wet-area-bathroom-waterproofing",
+      "description": "Waterproofing a bathroom is a wet-area job",
+      "message": "I want to waterproof my bathroom",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Wet area lining",
+        "ask": "wet_area_room",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "waterproofing-alone-is-the-category",
+      "description": "The single word waterproofing still lists the waterproofing category (nothing is taken from a customer who names exactly one category)",
+      "message": "waterproofing",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Waterproofing",
+        "retrieval": "allowed"
+      }
     }
   ]
 }

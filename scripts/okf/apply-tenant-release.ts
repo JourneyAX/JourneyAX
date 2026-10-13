@@ -233,7 +233,7 @@ async function main() {
   const liveDraft: any = await runtimeDb.collection('okf_drafts').findOne({ tenantId: TENANT, environmentId: ENVIRONMENT });
   if (liveDraft) {
     const names = (liveDraft.content?.concepts ?? []).map((concept: any) => concept.name);
-    log(`  OKF draft now: revision ${liveDraft.revision}, ${names.length} concepts (${names.join(', ')}), ${liveDraft.content?.verifications?.length ?? 0} verification records, last edited by ${liveDraft.updatedBy}`);
+    log(`  OKF draft now: revision ${liveDraft.revision}, ${names.length} concepts (${names.slice(0, 6).join(', ')}${names.length > 6 ? `, and ${names.length - 6} more` : ''}), ${liveDraft.content?.verifications?.length ?? 0} verification records, last edited by ${liveDraft.updatedBy}`);
     if ((liveDraft.content?.verifications ?? []).length) block('the live draft holds verification records written by people; replacing it would discard them');
   } else log('  OKF draft now: none');
   const releases: any[] = await runtimeDb.collection('okf_releases').find({ tenantId: TENANT, environmentId: ENVIRONMENT }).toArray();

@@ -1,6 +1,6 @@
 # placemakers coverage evaluation
 
-Evaluated 2026-10-13T02:03:32.198Z. **4,653 of 4,653 scenarios hold**. Every scenario runs through the real gate and basket policy; none is stubbed.
+Evaluated 2026-10-13T02:03:32.198Z. **4,658 of 4,658 scenarios hold**. Every scenario runs through the real gate and basket policy; none is stubbed.
 
 ## By family
 
@@ -15,7 +15,7 @@ Evaluated 2026-10-13T02:03:32.198Z. **4,653 of 4,653 scenarios hold**. Every sce
 | exact_sku | 364 | 364 |
 | cross_sell | 30 | 30 |
 | negative | 13 | 13 |
-| authored_path | 46 | 46 |
+| authored_path | 51 | 51 |
 
 ## By department
 
@@ -35,7 +35,7 @@ Evaluated 2026-10-13T02:03:32.198Z. **4,653 of 4,653 scenarios hold**. Every sce
 | Adhesives & Sealants | 13 | 127 | 127 |
 | Cleaning & Consumables | 15 | 126 | 126 |
 | Wardrobes, Storage & Flooring | 12 | 112 | 112 |
-| (cross-cutting) | 67 | 101 | 101 |
+| (cross-cutting) | 72 | 106 | 106 |
 | Cladding | 12 | 99 | 99 |
 | Sheds & Buildings | 3 | 14 | 14 |
 | (negative) | 5 | 13 | 13 |

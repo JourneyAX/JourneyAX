@@ -386,6 +386,28 @@
           }
         }
       ]
+    },
+    {
+      "id": "wet-area-linings-and-waterproofing",
+      "description": "A question about linings and waterproofing for a wet area is helped as the wet-area project: it asks which room, and shows examples from its categories, not one category's products",
+      "turns": [
+        {
+          "message": "What moisture-resistant linings and waterproofing do I need for my wet area?",
+          "expect": {
+            "cards": {
+              "require": [
+                "clarify"
+              ]
+            },
+            "text": {
+              "mustNotMatch": [
+                "retaining wall",
+                "basement"
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

@@ -1,12 +1,12 @@
 {
  "tenantId": "placemakers",
  "specVersion": "1.0.0",
- "startedAt": "2026-10-13T04:46:47.348Z",
- "durationMs": 228,
+ "startedAt": "2026-10-13T06:04:28.428Z",
+ "durationMs": 242,
  "passed": true,
  "totals": {
-  "scenarios": 17,
-  "turns": 17,
+  "scenarios": 18,
+  "turns": 18,
   "violations": 0,
   "warnings": 0
  },
@@ -19,7 +19,7 @@
     {
      "message": "screws",
      "status": 200,
-     "elapsedMs": 105,
+     "elapsedMs": 110,
      "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
      "cardTypes": [
       "products",
@@ -43,7 +43,7 @@
        "data": {
         "sessionId": "session-1"
        },
-       "atMs": 105
+       "atMs": 110
       },
       {
        "event": "capability",
@@ -51,7 +51,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 105
+       "atMs": 110
       },
       {
        "event": "uiAction",
@@ -149,7 +149,7 @@
          }
         }
        },
-       "atMs": 105
+       "atMs": 110
       },
       {
        "event": "uiAction",
@@ -215,7 +215,7 @@
          }
         }
        },
-       "atMs": 105
+       "atMs": 110
       },
       {
        "event": "token",
@@ -223,7 +223,7 @@
         "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
         "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 105
+       "atMs": 110
       },
       {
        "event": "done",
@@ -237,7 +237,7 @@
          "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 105
+       "atMs": 110
       }
      ]
     }
@@ -251,7 +251,7 @@
     {
      "message": "wood screws",
      "status": 200,
-     "elapsedMs": 15,
+     "elapsedMs": 16,
      "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
      "cardTypes": [
       "products",
@@ -275,7 +275,7 @@
        "data": {
         "sessionId": "session-2"
        },
-       "atMs": 15
+       "atMs": 16
       },
       {
        "event": "capability",
@@ -283,7 +283,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 15
+       "atMs": 16
       },
       {
        "event": "uiAction",
@@ -345,7 +345,7 @@
          }
         }
        },
-       "atMs": 15
+       "atMs": 16
       },
       {
        "event": "uiAction",
@@ -445,7 +445,7 @@
          }
         }
        },
-       "atMs": 15
+       "atMs": 16
       },
       {
        "event": "token",
@@ -453,7 +453,7 @@
         "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
         "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 15
+       "atMs": 16
       },
       {
        "event": "done",
@@ -467,7 +467,7 @@
          "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 15
+       "atMs": 16
       }
      ]
     }
@@ -481,7 +481,7 @@
     {
      "message": "i want to build a deck",
      "status": 200,
-     "elapsedMs": 12,
+     "elapsedMs": 11,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "products",
@@ -515,7 +515,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 12
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -559,7 +559,7 @@
          }
         }
        },
-       "atMs": 12
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -687,7 +687,7 @@
          }
         }
        },
-       "atMs": 12
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -761,7 +761,7 @@
          }
         }
        },
-       "atMs": 12
+       "atMs": 11
       },
       {
        "event": "token",
@@ -769,7 +769,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 12
+       "atMs": 11
       },
       {
        "event": "done",
@@ -783,7 +783,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 12
+       "atMs": 11
       }
      ]
     }
@@ -797,7 +797,7 @@
     {
      "message": "vanities",
      "status": 200,
-     "elapsedMs": 9,
+     "elapsedMs": 8,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "products",
@@ -821,7 +821,7 @@
        "data": {
         "sessionId": "session-4"
        },
-       "atMs": 9
+       "atMs": 8
       },
       {
        "event": "capability",
@@ -829,7 +829,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 9
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -891,7 +891,7 @@
          }
         }
        },
-       "atMs": 9
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -975,7 +975,7 @@
          }
         }
        },
-       "atMs": 9
+       "atMs": 8
       },
       {
        "event": "token",
@@ -983,7 +983,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 9
+       "atMs": 8
       },
       {
        "event": "done",
@@ -997,7 +997,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 9
+       "atMs": 8
       }
      ]
     }
@@ -1030,7 +1030,7 @@
        "data": {
         "sessionId": "session-5"
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -1096,7 +1096,7 @@
          }
         }
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1104,7 +1104,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1118,7 +1118,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 8
+       "atMs": 7
       }
      ]
     }
@@ -1340,7 +1340,7 @@
     {
      "message": "how do i install a vanity",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 6,
      "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
      "cardTypes": [],
      "capabilities": [],
@@ -1356,7 +1356,7 @@
        "data": {
         "sessionId": "session-10"
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "token",
@@ -1364,7 +1364,7 @@
         "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
         "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "done",
@@ -1378,7 +1378,7 @@
          "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
         }
        },
-       "atMs": 7
+       "atMs": 6
       }
      ]
     }
@@ -1496,7 +1496,7 @@
     {
      "message": "is this wood screw suitable for a load bearing beam",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 8,
      "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
      "cardTypes": [
       "products",
@@ -1520,7 +1520,7 @@
        "data": {
         "sessionId": "session-13"
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "capability",
@@ -1528,7 +1528,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -1590,7 +1590,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -1690,7 +1690,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "token",
@@ -1698,7 +1698,7 @@
         "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
         "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
        },
-       "atMs": 7
+       "atMs": 8
       },
       {
        "event": "done",
@@ -1712,7 +1712,7 @@
          "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
         }
        },
-       "atMs": 7
+       "atMs": 8
       }
      ]
     }
@@ -1778,7 +1778,7 @@
     {
      "message": "switchgear",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 8,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "products"
@@ -1888,7 +1888,7 @@
     {
      "message": "interior paint",
      "status": 200,
-     "elapsedMs": 7,
+     "elapsedMs": 6,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "products",
@@ -1912,7 +1912,7 @@
        "data": {
         "sessionId": "session-16"
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "capability",
@@ -1920,7 +1920,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "uiAction",
@@ -1964,7 +1964,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "uiAction",
@@ -2048,7 +2048,7 @@
          }
         }
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "token",
@@ -2056,7 +2056,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "done",
@@ -2070,7 +2070,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 7
+       "atMs": 6
       }
      ]
     }
@@ -2181,6 +2181,138 @@
         }
        },
        "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "wet-area-linings-and-waterproofing",
+   "description": "A question about linings and waterproofing for a wet area is helped as the wet-area project: it asks which room, and shows examples from its categories, not one category's products",
+   "passed": true,
+   "turns": [
+    {
+     "message": "What moisture-resistant linings and waterproofing do I need for my wet area?",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "clarify"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-18"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_clarify_[phone]",
+          "cardType": "clarify",
+          "state": {
+           "questions": [
+            {
+             "id": "wet_area_room",
+             "text": "Which room is the wet area?",
+             "options": [
+              {
+               "value": "bathroom",
+               "label": "Bathroom or ensuite"
+              },
+              {
+               "value": "laundry",
+               "label": "Laundry"
+              },
+              {
+               "value": "other",
+               "label": "Somewhere else"
+              }
+             ],
+             "multi": false,
+             "inputType": "single_select"
+            }
+           ],
+           "progress": "1 detail needed"
+          }
+         }
+        },
+        "card": {
+         "cardType": "clarify",
+         "state": {
+          "questions": [
+           {
+            "id": "wet_area_room",
+            "text": "Which room is the wet area?",
+            "options": [
+             {
+              "value": "bathroom",
+              "label": "Bathroom or ensuite"
+             },
+             {
+              "value": "laundry",
+              "label": "Laundry"
+             },
+             {
+              "value": "other",
+              "label": "Somewhere else"
+             }
+            ],
+            "multi": false,
+            "inputType": "single_select"
+           }
+          ],
+          "progress": "1 detail needed"
+         }
+        }
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-18",
+        "workspaceId": "session-18",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 7
       }
      ]
     }

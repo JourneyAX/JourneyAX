@@ -1,6 +1,6 @@
 # placemakers public-path canary
 
-Spec 1.0.0, 2026-10-13T04:46:47.348Z, 228 ms. **PASS** — 17 scenarios, 17 turns, 0 violation(s), 0 warning(s).
+Spec 1.0.0, 2026-10-13T06:04:28.428Z, 242 ms. **PASS** — 18 scenarios, 18 turns, 0 violation(s), 0 warning(s).
 
 The transcript is sanitised: contact details, tokens, cookies and long identifiers are replaced and session ids are aliased.
 
@@ -27,12 +27,13 @@ The transcript is sanitised: contact details, tokens, cookies and long identifie
 | trade-switchgear | pass | 1 | products |
 | paint-interior | pass | 1 | products, accessories |
 | cleaning-outdoor | pass | 1 | products |
+| wet-area-linings-and-waterproofing | pass | 1 | clarify |
 
 ## fastenings-screws
 
 A broad request for screws shows examples and asks what they will be fixed into
 
-**Turn 1** — customer: “screws” (105 ms, HTTP 200)
+**Turn 1** — customer: “screws” (110 ms, HTTP 200)
 
 > Here are options from the catalogue.
 > Please check compatibility before you buy.
@@ -43,7 +44,7 @@ Events: session → capability → uiAction → uiAction → token → done. Car
 
 Wood screws list products and suggest bits as unverified extras
 
-**Turn 1** — customer: “wood screws” (15 ms, HTTP 200)
+**Turn 1** — customer: “wood screws” (16 ms, HTTP 200)
 
 > Here are options from the catalogue.
 > Please check compatibility before you buy.
@@ -54,7 +55,7 @@ Events: session → capability → uiAction → uiAction → token → done. Car
 
 Building a deck asks the material, then the size, then shows its categories
 
-**Turn 1** — customer: “i want to build a deck” (12 ms, HTTP 200)
+**Turn 1** — customer: “i want to build a deck” (11 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
@@ -64,7 +65,7 @@ Events: session → capability → uiAction → uiAction → uiAction → token 
 
 Vanities show products and suggest tapware and mirrors, in the shop's currency
 
-**Turn 1** — customer: “vanities” (9 ms, HTTP 200)
+**Turn 1** — customer: “vanities” (8 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
@@ -124,7 +125,7 @@ Events: session → token → done. Cards: —. Steps: —.
 
 How to install something is answered only from verified information; with none, nothing is shown
 
-**Turn 1** — customer: “how do i install a vanity” (7 ms, HTTP 200)
+**Turn 1** — customer: “how do i install a vanity” (6 ms, HTTP 200)
 
 > I don't have a verified source to answer that, so I won't guess. One of our specialists can help.
 
@@ -154,7 +155,7 @@ Events: session → token → done. Cards: —. Steps: —.
 
 A suitability question lists products but does not claim suitability
 
-**Turn 1** — customer: “is this wood screw suitable for a load bearing beam” (7 ms, HTTP 200)
+**Turn 1** — customer: “is this wood screw suitable for a load bearing beam” (8 ms, HTTP 200)
 
 > Here are options from the catalogue.
 > Please check compatibility before you buy.
@@ -176,7 +177,7 @@ Events: session → token → done. Cards: —. Steps: —.
 
 Switchgear lists products; the shop requires a professional at checkout
 
-**Turn 1** — customer: “switchgear” (7 ms, HTTP 200)
+**Turn 1** — customer: “switchgear” (8 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
@@ -186,7 +187,7 @@ Events: session → capability → uiAction → token → done. Cards: products.
 
 Interior paint lists products and suggests applicators
 
-**Turn 1** — customer: “interior paint” (7 ms, HTTP 200)
+**Turn 1** — customer: “interior paint” (6 ms, HTTP 200)
 
 > Here are options from the catalogue.
 
@@ -201,4 +202,14 @@ Outdoor cleaners list products
 > Here are options from the catalogue.
 
 Events: session → capability → uiAction → token → done. Cards: products. Steps: catalog.search.
+
+## wet-area-linings-and-waterproofing
+
+A question about linings and waterproofing for a wet area is helped as the wet-area project: it asks which room, and shows examples from its categories, not one category's products
+
+**Turn 1** — customer: “What moisture-resistant linings and waterproofing do I need for my wet area?” (7 ms, HTTP 200)
+
+> Here are options from the catalogue.
+
+Events: session → capability → uiAction → token → done. Cards: clarify. Steps: catalog.search.
 

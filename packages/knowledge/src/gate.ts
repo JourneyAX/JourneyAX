@@ -162,7 +162,12 @@ function findConcept(
   const messageSet = new Set(messageWords);
   const messageNormalized = messageWords.join(' ');
   const { exact: exactScore, phrase: phraseScore, tokens: tokenScore, minimum, minPhraseLength } = policy.matching;
-  let best: { concept: OkfConcept; score: number; specificity: number; depth: number; matchedBy: string } | undefined;
+  interface Hit { concept: OkfConcept; score: number; specificity: number; depth: number; matchedBy: string }
+  // Better = higher score, then the longer phrase, then the deeper concept.
+  const better = (a: Hit, b: Hit | undefined) => !b || a.score > b.score ||
+    (a.score === b.score && (a.specificity > b.specificity || (a.specificity === b.specificity && a.depth > b.depth)));
+  const hits = new Map<string, Hit>();
+  let best: Hit | undefined;
   for (const concept of content.concepts) {
     const phrases = [concept.name, ...concept.synonyms, ...concept.customerPhrases];
     for (const phrase of phrases) {
@@ -175,22 +180,36 @@ function findConcept(
       const included = normalized.length >= minPhraseLength && containsSequence(messageWords, words);
       const coverage = words.length ? words.filter((word) => messageSet.has(word)).length / words.length : 0;
       const score = exact ? exactScore : included ? phraseScore : coverage === 1 && words.length > 0 ? tokenScore : 0;
-      const candidate = {
-        concept,
-        score,
-        specificity: words.length,
-        depth: conceptDepth(concept.conceptId),
-        matchedBy: exact ? 'exact_phrase' : included ? 'phrase' : 'tokens',
+      if (!(score > 0 && score >= minimum)) continue;
+      const candidate: Hit = {
+        concept, score, specificity: words.length,
+        depth: conceptDepth(concept.conceptId), matchedBy: exact ? 'exact_phrase' : included ? 'phrase' : 'tokens',
       };
-      if (
-        score > 0 && score >= minimum &&
-        (!best || score > best.score ||
-          (score === best.score && candidate.specificity > best.specificity) ||
-          (score === best.score && candidate.specificity === best.specificity && candidate.depth > best.depth))
-      ) best = candidate;
+      if (better(candidate, hits.get(concept.conceptId))) hits.set(concept.conceptId, candidate);
+      if (better(candidate, best)) best = candidate;
     }
   }
-  return best ? { concept: best.concept, matchedBy: best.matchedBy } : { matchedBy: 'none' };
+  if (!best) return { matchedBy: 'none' };
+
+  // A customer who names two or more of a project's categories in one message is describing the project ("moisture-resistant linings
+  // and waterproofing" is a wet-area job), so the project answers, with its questions and its overview, not one category alone.
+  // A message that is exactly one concept's name or phrase is never overridden.
+  if (best.matchedBy !== 'exact_phrase') {
+    const named = new Set([...hits.values()].filter((hit) => hit.matchedBy === 'phrase').map((hit) => hit.concept.conceptId));
+    if (named.size >= 2) {
+      let chosen: { concept: OkfConcept; overlap: number; size: number } | undefined;
+      for (const concept of content.concepts) {
+        const groups = concept.broadQueryPolicy?.groupConceptIds;
+        const projectLike = concept.lens === 'project' || concept.type === 'project' || concept.type === 'room';
+        if (!projectLike || !groups?.length) continue;
+        const overlap = groups.filter((id) => named.has(id)).length;
+        if (overlap < 2) continue;
+        if (!chosen || overlap > chosen.overlap || (overlap === chosen.overlap && groups.length < chosen.size)) chosen = { concept, overlap, size: groups.length };
+      }
+      if (chosen) return { concept: chosen.concept, matchedBy: 'project_categories' };
+    }
+  }
+  return { concept: best.concept, matchedBy: best.matchedBy };
 }
 
 function descendantsOf(content: OkfReleaseContent, parentId: string): Set<string> {
