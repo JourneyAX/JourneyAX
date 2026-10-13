@@ -198,6 +198,15 @@ async function main() {
     row.name = 'Tampered';
     await assert.rejects(() => hydrateOkfReleaseEnvelope(db as any, stored), /integrity|checksum/i);
   });
+  await suite.test('every concept name is unique, so a customer\'s words reach exactly one concept (duplicate leaf names under repeated parents are qualified by their whole ancestry)', () => {
+    const names = generated.draft.concepts.map((entry: any) => entry.name.toLowerCase().replace(/\s+/g, ' ').trim());
+    const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+    assert.deepEqual(duplicates, []);
+    const adhesives = generated.draft.concepts.filter((entry: any) => /^adhesives \(/i.test(entry.name)).map((entry: any) => entry.name).sort();
+    assert.ok(adhesives.length >= 2 && new Set(adhesives).size === adhesives.length, `the repeated "Adhesives" leaves are told apart: ${adhesives.join(' | ')}`);
+    assert.ok(adhesives.some((name) => name.includes('›')), 'at least one is qualified by its whole ancestry');
+  });
+
 }
 
 main().then(() => { suite.finish(); }).catch((error) => { console.error(error); process.exitCode = 1; });

@@ -320,6 +320,9 @@ export const AcceptanceScenarioSchema = z.object({
       checkout: z.enum(['allowed', 'requires_compatibility_resolution', 'requires_professional_confirmation', 'blocked']).optional(),
     }).strict().optional(),
     reasonCodesInclude: z.array(z.string().min(1)).max(10).optional(),
+    /** Concepts that must be among the unverified "Have you considered?" suggestions. */
+    suggestsConceptIds: z.array(ConceptIdSchema).max(10).optional(),
+    noSuggestions: z.boolean().optional(),
   }).strict(),
 }).strict();
 export type OkfAcceptanceScenario = z.infer<typeof AcceptanceScenarioSchema>;

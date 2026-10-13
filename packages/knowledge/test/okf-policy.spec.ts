@@ -370,7 +370,7 @@ test('coverage rejects unwarned add-to-cart, unknown modes and any attempt to op
 test('the platform lexicon recognises hazards, technical questions and shopping requests', () => {
   const policy = resolveOkfPolicy();
   const intents = (text: string) => detectIntents(text, policy).intents;
-  for (const text of ['my appliance is sparking', 'there is water near the power points', 'i can smell gas', 'gas leak in the garage', 'my heater is smoking']) {
+  for (const text of ['my appliance is sparking', 'there is water near the power points', 'i can smell gas', 'gas leak in the garage', 'my heater is smoking', 'there is smoke coming from the heater', 'sparks flying from the switch', 'fumes pouring out of the garage', 'there is a fire in the shed']) {
     assert.ok(intents(text).includes('problem'), text);
   }
   for (const text of ['is it suitable for outdoor use', 'does this comply with the building code', 'is it load bearing']) {
@@ -383,6 +383,9 @@ test('the platform lexicon recognises hazards, technical questions and shopping 
     assert.equal(intents(text).includes('technical_requirement'), false, `${text} must not read as technical`);
   }
   assert.equal(intents('water the garden').includes('problem'), false, 'ordinary water is not a hazard');
+  for (const text of ['i want a fire pit', 'fire retardant paint', 'smoke alarm batteries', 'fireplace surround', 'smoked glass door']) {
+    assert.equal(intents(text).includes('problem'), false, `${text} is shopping, not a hazard`);
+  }
 });
 
 console.log(`✅ OKF policy suite: ${passed} passed, 0 failed`);

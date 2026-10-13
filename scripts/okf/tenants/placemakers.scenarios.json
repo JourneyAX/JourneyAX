@@ -1,0 +1,615 @@
+{
+  "tenantId": "placemakers",
+  "version": "1.0.0",
+  "scenarios": [
+    {
+      "id": "fastenings-screws-ask-substrate",
+      "description": "A broad request for screws asks what they will be fixed into and shows examples",
+      "message": "screws",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Screws",
+        "ask": "fastener_substrate",
+        "retrieval": "allowed",
+        "claimsExcluded": [
+          "compatibility"
+        ]
+      }
+    },
+    {
+      "id": "fastenings-screws-timber",
+      "description": "An answer of timber narrows to wood screws, with drill and driver bits suggested as unverified extras",
+      "message": "screws",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Wood Screws",
+        "retrieval": "allowed",
+        "suggests": [
+          "Drill Bits",
+          "Screwdriver Bits"
+        ],
+        "claimsExcluded": [
+          "compatibility",
+          "requirement"
+        ]
+      },
+      "facts": {
+        "fastener_substrate": "timber"
+      }
+    },
+    {
+      "id": "fastenings-screws-masonry",
+      "description": "An answer of masonry narrows to masonry anchors",
+      "message": "screws",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Masonry  Anchors",
+        "retrieval": "allowed"
+      },
+      "facts": {
+        "fastener_substrate": "masonry"
+      }
+    },
+    {
+      "id": "fastenings-nails-ask",
+      "description": "Nails ask whether they are for a nail gun or for hand driving",
+      "message": "nails",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Nails",
+        "ask": "nav_family_nails",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "fastenings-skip-questions",
+      "description": "A customer who declines questions still gets a safe grouped overview, not a recommendation",
+      "message": "just show me screws",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Screws",
+        "retrieval": "allowed",
+        "recommendation": "category_examples"
+      }
+    },
+    {
+      "id": "fastenings-install-needs-evidence",
+      "description": "How to install screws is answered only from verified evidence; with none, nothing is shown",
+      "message": "how do i install wood screws",
+      "expect": {
+        "mode": "evidence_answer",
+        "retrieval": "blocked",
+        "claimsExcluded": [
+          "installation_step"
+        ]
+      }
+    },
+    {
+      "id": "fastenings-suitability-unverified",
+      "description": "A suitability question lists the screws but states plainly that nothing verified supports the claim",
+      "message": "is this wood screw suitable for a load bearing beam",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Wood Screws",
+        "claimsExcluded": [
+          "compatibility",
+          "requirement"
+        ],
+        "reasonCodes": [
+          "technical_requirement_unverified"
+        ]
+      }
+    },
+    {
+      "id": "decking-start",
+      "description": "Building a deck asks for the decking material first",
+      "message": "i want to build a deck",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Deck build",
+        "ask": "deck_material",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "decking-size",
+      "description": "Once the material is known the deck size is asked next",
+      "message": "i want to build a deck",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Deck build",
+        "ask": "deck_size",
+        "retrieval": "allowed"
+      },
+      "facts": {
+        "deck_material": "composite"
+      }
+    },
+    {
+      "id": "decking-ready",
+      "description": "With material and size known the deck shows its categories and suggests screws, woodcare and cleaners",
+      "message": "i want to build a deck",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Deck build",
+        "noAsk": true,
+        "retrieval": "allowed",
+        "suggests": [
+          "Wood Screws",
+          "Woodcare",
+          "Outdoor Cleaners"
+        ],
+        "claimsExcluded": [
+          "compatibility",
+          "requirement"
+        ]
+      },
+      "facts": {
+        "deck_material": "composite",
+        "deck_size": "4x3 m"
+      }
+    },
+    {
+      "id": "decking-composite-products",
+      "description": "Composite decking lists boards and suggests accessories",
+      "message": "composite decking",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Composite Decking",
+        "retrieval": "allowed",
+        "suggests": [
+          "Decking Accessories"
+        ]
+      }
+    },
+    {
+      "id": "decking-care-needs-evidence",
+      "description": "Cleaning a deck is care guidance: nothing is invented without a verified source",
+      "message": "clean my deck",
+      "expect": {
+        "mode": "evidence_answer",
+        "concept": "Deck care",
+        "retrieval": "blocked",
+        "claimsExcluded": [
+          "care_safety"
+        ],
+        "noSuggestions": true
+      }
+    },
+    {
+      "id": "decking-oil-needs-evidence",
+      "description": "Oiling a deck is care guidance too",
+      "message": "oil my deck",
+      "expect": {
+        "mode": "evidence_answer",
+        "concept": "Deck care",
+        "retrieval": "blocked",
+        "claimsExcluded": [
+          "care_safety"
+        ]
+      }
+    },
+    {
+      "id": "bathroom-renovation-scope",
+      "description": "A bathroom renovation hands off to the planning journey and asks the project scope first",
+      "message": "renovate my bathroom",
+      "expect": {
+        "mode": "project_journey",
+        "concept": "Bathroom renovation",
+        "ask": "project_scope",
+        "retrieval": "blocked"
+      }
+    },
+    {
+      "id": "bathroom-renovation-dimensions",
+      "description": "Then the room dimensions are asked",
+      "message": "renovate my bathroom",
+      "expect": {
+        "mode": "project_journey",
+        "concept": "Bathroom renovation",
+        "ask": "room_dimensions",
+        "retrieval": "blocked"
+      },
+      "facts": {
+        "project_scope": "renovation"
+      }
+    },
+    {
+      "id": "bathroom-vanities",
+      "description": "Vanities list products and suggest tapware and mirrors, never as a compatibility claim",
+      "message": "vanities",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Vanities",
+        "retrieval": "allowed",
+        "suggests": [
+          "Tapware & Showering",
+          "Mirrors"
+        ],
+        "claimsExcluded": [
+          "compatibility",
+          "requirement",
+          "substitution"
+        ],
+        "commerce": {
+          "addToCart": "allowed",
+          "checkout": "allowed"
+        }
+      }
+    },
+    {
+      "id": "wet-area-lining-room",
+      "description": "Lining a wet area asks which room it is for",
+      "message": "wet wall lining",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Wet area lining",
+        "ask": "wet_area_room",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "bathroom-install-needs-evidence",
+      "description": "Installing a vanity is answered only from verified evidence",
+      "message": "how do i install a vanity",
+      "expect": {
+        "mode": "evidence_answer",
+        "retrieval": "blocked",
+        "claimsExcluded": [
+          "installation_step"
+        ]
+      }
+    },
+    {
+      "id": "bathroom-warranty-needs-evidence",
+      "description": "A warranty question is answered only from a verified source",
+      "message": "what is the warranty on this vanity",
+      "expect": {
+        "mode": "evidence_answer",
+        "retrieval": "blocked",
+        "claimsExcluded": [
+          "warranty"
+        ]
+      }
+    },
+    {
+      "id": "tapware-care-needs-evidence",
+      "description": "Caring for taps is care guidance and is not invented",
+      "message": "clean my taps",
+      "expect": {
+        "mode": "evidence_answer",
+        "concept": "Tapware care",
+        "retrieval": "blocked",
+        "claimsExcluded": [
+          "care_safety"
+        ]
+      }
+    },
+    {
+      "id": "problem-bathroom-leak",
+      "description": "A bathroom leak is a problem: no products, no checkout, no unverified advice",
+      "message": "my bathroom is leaking",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "concept": "Bathroom leak",
+        "retrieval": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        },
+        "claimsExcluded": [
+          "safety_instruction"
+        ],
+        "noSuggestions": true
+      }
+    },
+    {
+      "id": "problem-leak-beats-order",
+      "description": "A hazard outranks an order question in the same message",
+      "message": "where is my order? my bathroom is leaking",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "retrieval": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        }
+      }
+    },
+    {
+      "id": "problem-dripping-tap",
+      "description": "A dripping tap is a plumbing problem",
+      "message": "dripping tap",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "concept": "Leaking tap or pipe",
+        "retrieval": "blocked"
+      }
+    },
+    {
+      "id": "problem-blocked-drain",
+      "description": "A blocked drain is a plumbing problem",
+      "message": "blocked drain",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "concept": "Blocked drain",
+        "retrieval": "blocked"
+      }
+    },
+    {
+      "id": "problem-mould",
+      "description": "Mould and damp is a problem, not a product search",
+      "message": "mouldy walls",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "concept": "Mould and damp",
+        "retrieval": "blocked"
+      }
+    },
+    {
+      "id": "problem-water-near-power",
+      "description": "Water near power points is an electrical hazard",
+      "message": "water near power points",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "concept": "Electrical hazard",
+        "retrieval": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        }
+      }
+    },
+    {
+      "id": "problem-gas-smell",
+      "description": "A gas smell is a hazard",
+      "message": "i can smell gas",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "concept": "Gas hazard",
+        "retrieval": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        }
+      }
+    },
+    {
+      "id": "problem-unknown-appliance",
+      "description": "A hazard no concept names still escalates, without products or checkout",
+      "message": "my appliance is sparking",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "retrieval": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        },
+        "claimsExcluded": [
+          "safety_instruction"
+        ]
+      }
+    },
+    {
+      "id": "problem-smoke-from-heater",
+      "description": "Smoke from a heater escalates",
+      "message": "there is smoke coming from the heater",
+      "expect": {
+        "mode": "safety_then_diagnose",
+        "retrieval": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        }
+      }
+    },
+    {
+      "id": "laundry-makeover-scope",
+      "description": "A laundry makeover hands off to the planning journey and asks the project scope first",
+      "message": "laundry makeover",
+      "expect": {
+        "mode": "project_journey",
+        "concept": "Laundry makeover",
+        "ask": "project_scope",
+        "retrieval": "blocked"
+      }
+    },
+    {
+      "id": "kitchen-update-scope",
+      "description": "A kitchen update hands off to the planning journey",
+      "message": "renovate my kitchen",
+      "expect": {
+        "mode": "project_journey",
+        "concept": "Kitchen update",
+        "ask": "project_scope",
+        "retrieval": "blocked"
+      }
+    },
+    {
+      "id": "paint-room-surface",
+      "description": "Painting a room asks which surface",
+      "message": "paint a room",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Painting project",
+        "ask": "paint_surface",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "paint-interior-products",
+      "description": "Interior paint lists products and suggests applicators and prep, as unverified extras",
+      "message": "interior paint",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Interior Paint",
+        "retrieval": "allowed",
+        "suggests": [
+          "Brushes & Rollers",
+          "Masking"
+        ],
+        "claimsExcluded": [
+          "compatibility",
+          "requirement"
+        ]
+      }
+    },
+    {
+      "id": "paint-brushes-extras",
+      "description": "Brushes and rollers suggest masking and cleanup",
+      "message": "brushes and rollers",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Brushes & Rollers",
+        "retrieval": "allowed",
+        "suggests": [
+          "Masking",
+          "Thinners & Cleanup"
+        ]
+      }
+    },
+    {
+      "id": "fence-type",
+      "description": "Building a fence asks the fence type",
+      "message": "build a fence",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Fence build",
+        "ask": "fence_type",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "insulation-area",
+      "description": "Insulating a home asks which part of the house",
+      "message": "insulate my house",
+      "expect": {
+        "mode": "overview_then_ask",
+        "concept": "Insulating a home",
+        "ask": "insulation_area",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "cleaning-outdoor-cleaners",
+      "description": "Outdoor cleaners list products",
+      "message": "outdoor cleaners",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Outdoor Cleaners",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "maintenance-woodcare",
+      "description": "Woodcare lists products",
+      "message": "woodcare",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Woodcare",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "trade-switchgear-checkout",
+      "description": "Switchgear needs a qualified professional to confirm at checkout",
+      "message": "switchgear",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Switchgear",
+        "retrieval": "allowed",
+        "commerce": {
+          "addToCart": "allowed",
+          "checkout": "requires_professional_confirmation"
+        }
+      }
+    },
+    {
+      "id": "trade-gas-heating-checkout",
+      "description": "Gas heating needs a qualified professional to confirm at checkout",
+      "message": "gas heating",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Gas Heating",
+        "commerce": {
+          "checkout": "requires_professional_confirmation"
+        }
+      }
+    },
+    {
+      "id": "trade-heat-pumps-checkout",
+      "description": "Heat pumps need a qualified professional to confirm at checkout",
+      "message": "heat pumps",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Heat Pumps",
+        "commerce": {
+          "checkout": "requires_professional_confirmation"
+        }
+      }
+    },
+    {
+      "id": "trade-hot-water-checkout",
+      "description": "Hot water needs a qualified professional to confirm at checkout",
+      "message": "hot water",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Hot Water",
+        "commerce": {
+          "checkout": "requires_professional_confirmation"
+        }
+      }
+    },
+    {
+      "id": "plain-hammers-open",
+      "description": "An ordinary hand tool has no restriction",
+      "message": "hammers",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Hammers & Mallets",
+        "retrieval": "allowed",
+        "commerce": {
+          "addToCart": "allowed",
+          "checkout": "allowed"
+        }
+      }
+    },
+    {
+      "id": "operational-order-status",
+      "description": "An order question goes to the operational journey and shows no products",
+      "message": "where is my order",
+      "expect": {
+        "mode": "operational_journey",
+        "retrieval": "blocked"
+      }
+    },
+    {
+      "id": "uncovered-unknown-product",
+      "description": "A product nobody covers is not answered from the catalogue",
+      "message": "do you sell flux capacitors",
+      "expect": {
+        "mode": "no_match",
+        "retrieval": "blocked",
+        "commerce": {
+          "addToCart": "blocked",
+          "checkout": "blocked"
+        }
+      }
+    },
+    {
+      "id": "uncovered-unknown-technical",
+      "description": "An unknown technical requirement is answered with no claim and a plain statement that nothing verified supports it",
+      "message": "will this meet the building code for a six storey structure",
+      "expect": {
+        "claimsExcluded": [
+          "compatibility",
+          "requirement",
+          "safety_instruction"
+        ],
+        "reasonCodes": [
+          "technical_requirement_unverified"
+        ]
+      }
+    }
+  ]
+}

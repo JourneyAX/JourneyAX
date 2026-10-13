@@ -8,3 +8,4 @@ export * from './documents';
 export * from './variants';
 export * from './authoring';
 export * from './worklist';
+export * from './scenarios';

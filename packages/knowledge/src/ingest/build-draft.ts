@@ -83,6 +83,21 @@ export function buildTaxonomyDraft(snapshotInput: unknown, configInput: unknown)
       if (same[0] === node) warnings.duplicateNames.push({ name: node.name, paths: same.map((entry) => entry.path) });
     } else displayName.set(node, node.name);
   }
+  // A parent's name may be the same too ("Adhesives" under "Adhesives & Sealants" twice, at different depths). Names are how a
+  // customer reaches a concept, so they must be unique: such a name is qualified with its whole ancestry instead.
+  const taken = new Map<string, TaxonomyNode[]>();
+  for (const node of conceptNodes) {
+    const key = normalizePhrase(displayName.get(node)!);
+    taken.set(key, [...(taken.get(key) || []), node]);
+  }
+  for (const group of taken.values()) {
+    if (group.length < 2) continue;
+    for (const node of group) {
+      const ancestry: string[] = [];
+      for (let cursor = node.parent; cursor; cursor = cursor.parent) ancestry.unshift(cursor.name);
+      displayName.set(node, ancestry.length ? `${node.name} (${ancestry.join(' › ')})` : node.name);
+    }
+  }
 
   // ── Sources ──────────────────────────────────────────────────────────────
   const sources: any[] = [{

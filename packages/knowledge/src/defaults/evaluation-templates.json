@@ -1,0 +1,43 @@
+{
+  "version": "1.0.0",
+  "locale": "en",
+  "_comment": "Wording the coverage evaluation uses to probe each category. {name} is the category's own name. A tenant may supply its own file for another language or vocabulary; nothing here is a business fact.",
+  "hazards": [
+    "my {name} is sparking",
+    "there is a gas leak near the {name}",
+    "there is water near the power points by the {name}"
+  ],
+  "technical": [
+    "is the {name} suitable for a load bearing wall"
+  ],
+  "evidence": [
+    { "template": "how do i install the {name}", "claimClass": "installation_step" },
+    { "template": "what is the warranty on the {name}", "claimClass": "warranty" },
+    { "template": "how do i clean and care for the {name}", "claimClass": "care_safety" }
+  ],
+  "negative": {
+    "hazardWithoutProduct": [
+      "my appliance is sparking",
+      "water is leaking near the power points",
+      "i can smell gas in the kitchen",
+      "the extension cord is melting",
+      "there is smoke coming from the heater"
+    ],
+    "hazardWithOperational": [
+      "where is my order? my appliance is sparking",
+      "track my order, there is a gas leak in my kitchen"
+    ],
+    "unknownTechnical": [
+      "is the flux capacitor rated for a load bearing span",
+      "will this meet the building code for a six storey structure"
+    ],
+    "unmatchedShopping": [
+      "do you sell flux capacitors",
+      "purple monkey dishwasher"
+    ],
+    "operational": [
+      "where is my order",
+      "i want to return my purchase"
+    ]
+  }
+}

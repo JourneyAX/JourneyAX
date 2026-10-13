@@ -104,7 +104,9 @@
         "carbon monoxide",
         "is|are|was|started|keeps|keep sparking|smoking|burning|overheating|melting|sparked|smoked|burnt",
         "caught fire|on fire",
-        "burning smell|smell* burning|smell* smoke"
+        "burning smell|smell* burning|smell* smoke",
+        "smoke|fumes|sparks|flames|steam coming|pouring|rising|billowing|flying|shooting",
+        "fire in|at|near|under|behind|inside|around the|my|our"
       ],
       "suppressedBy": [
         "no|not a? problem|fault|leak|damage"

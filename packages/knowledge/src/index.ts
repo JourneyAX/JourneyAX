@@ -16,3 +16,4 @@ export * from './authoring';
 export * from './ingest';
 export * from './category-scope';
 export * from './insight';
+export * from './evaluation';

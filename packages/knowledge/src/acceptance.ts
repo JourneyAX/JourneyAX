@@ -41,6 +41,10 @@ export function compareAcceptanceExpectation(
   if (expect.commerce?.checkout && decision.commerce.checkout !== expect.commerce.checkout) {
     failures.push(`checkout expected '${expect.commerce.checkout}' but was '${decision.commerce.checkout}'`);
   }
+  for (const conceptId of expect.suggestsConceptIds || []) {
+    if (!(decision.suggestions || []).some((entry) => entry.conceptId === conceptId)) failures.push(`'${conceptId}' expected among the suggestions`);
+  }
+  if (expect.noSuggestions && decision.suggestions?.length) failures.push('no suggestions expected');
   for (const code of expect.reasonCodesInclude || []) {
     if (!decision.trace.reasonCodes.includes(code)) failures.push(`reason code '${code}' expected`);
   }
