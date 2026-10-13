@@ -7,3 +7,5 @@ export type { ConversationPlan, ConversationState, PlannedProduct, Product } fro
 export { describeTurn } from './describe';
 export { pendingReadingMode, readsWithoutModel } from './model-reading';
 export type { ReadingMode } from './model-reading';
+export { catalogOutcome } from './search';
+export type { CatalogOutcome } from './search';

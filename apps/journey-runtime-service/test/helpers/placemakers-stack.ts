@@ -143,7 +143,8 @@ export interface PlaceMakersStack {
   okf: any;
   authored: ReturnType<typeof applyAuthoring>;
   /** `servePacks: true` loads the active pack through the real repository and loader (checksum-verified) instead of being handed one. */
-  serviceFor: (options?: { servePacks?: boolean; reply?: string; calls?: string[] }) => TurnApplicationService;
+  /** `searchError` makes the catalogue search fail the way a broken connection would, with that message. */
+  serviceFor: (options?: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string }) => TurnApplicationService;
 }
 
 /** Draft + customer paths → immutable OKF release → project → Business Pack, exactly as the back office does it. */
@@ -177,10 +178,12 @@ export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | '
   assert.equal(pack.knowledgeModel.checksum, okf.release.checksum, 'the pack is bound to the exact checksum of the published release');
   assert.equal(pack.knowledgeModel.required, true);
 
-  const serviceFor = (options: { servePacks?: boolean; reply?: string; calls?: string[] } = {}) => {
+  const serviceFor = (options: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string } = {}) => {
     const modelGateway = new FixedGateway(options.reply, options.calls);
     const capabilityGateway = new CapabilityGateway();
-    capabilityGateway.registerCustomAdapter('catalog.search', new CatalogSearchHandler(undefined, async () => db as any));
+    capabilityGateway.registerCustomAdapter('catalog.search', options.searchError
+      ? ({ execute: async () => ({ items: [], total: 0, error: options.searchError }) } as any)
+      : new CatalogSearchHandler(undefined, async () => db as any));
     return new TurnApplicationService(
       options.servePacks ? new PackRepository(db) : new PackRepository(), new WorkspaceRepository(new WorkspaceStore({ forceInMemory: true })), new JourneyResolver(), undefined,
       modelGateway, capabilityGateway, undefined, new ExecutionRepository(), new OutboxRepository({ forceInMemory: true }),

@@ -31,7 +31,7 @@ import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
 import { OutboxRepository } from './outbox.repository';
 import { PresentationPort } from './presentation.port';
-import { decideConversation, describeTurn, pendingReadingMode, readState, readsWithoutModel, resolveConversationPolicy, STATE_KEY, writeState } from '../conversation';
+import { catalogOutcome, decideConversation, describeTurn, pendingReadingMode, readState, readsWithoutModel, resolveConversationPolicy, STATE_KEY, writeState } from '../conversation';
 import type { ConversationPlan } from '../conversation';
 import { TurnInterpreter, isAmbiguousMeasurementAnswer } from '../turn/interpret-event';
 import { resolveFactRole, resolveInterpretationPolicy } from '../turn/fact-semantics';
@@ -1046,12 +1046,14 @@ export class TurnApplicationService {
     let groundedResponse: { message?: string; modelRoute?: any } = {};
     // Verified safety instructions are rendered deterministically from the
     // pinned OKF release. Never send them through a model phrasing step.
+    // "Nothing to show" is always the tenant's sentence, whoever words the rest of the reply.
     const templated = conversationPlan && conversationPlan.action !== 'defer' && conversationPlan.message &&
-      resolveConversationPolicy(release).wording === 'template';
+      (conversationPlan.action === 'empty' || resolveConversationPolicy(release).wording === 'template');
     if (templated) {
       // The sentence is the tenant's own wording filled with what the customer said and the product chosen; no model call is needed.
       groundedResponse = { message: conversationPlan!.message };
-    } else if (!decision.payload?.safetyGuidance) {
+    } else if (!decision.payload?.safetyGuidance && !(decision.type === 'fail' && decision.payload?.customerMessage === true)) {
+      // (A refusal written for the customer by the tenant's policy is shown exactly as written, so there is nothing for a model to word.)
       try {
         groundedResponse = await this.composeGroundedCustomerResponse(
           command,
@@ -1086,8 +1088,8 @@ export class TurnApplicationService {
     }
     // Required notices are a guarantee, not a request to the model: any the composed message omitted are appended.
     // Only notices written for the customer are appended; the agent-facing disclaimers stay in the prompt and the trace.
-    // A question claims nothing about any product, so it carries no notice about products; every turn that shows or describes one does.
-    if (knowledgeGate?.claims.notices.length && typeof turnResult.assistantMessage === 'string' && conversationPlan?.action !== 'ask') {
+    // A question, or a plain "nothing to show", claims nothing about any product, so it carries no notice about products; every turn that shows or describes one does.
+    if (knowledgeGate?.claims.notices.length && typeof turnResult.assistantMessage === 'string' && conversationPlan?.action !== 'ask' && conversationPlan?.action !== 'empty') {
       const missing = [...new Set(knowledgeGate.claims.notices)].filter((text) => text && !turnResult.assistantMessage.includes(text));
       if (missing.length > 0) turnResult.assistantMessage = [turnResult.assistantMessage, ...missing].filter(Boolean).join('\n\n');
     }
@@ -1192,6 +1194,7 @@ export class TurnApplicationService {
         (interpretation as any)?.modelRoute?.policyId ||
         'default',
       modelRead: interpretation.modelSkipped ? `skipped (${interpretation.modelSkipped})` : interpretation.failure ? `failed (${interpretation.failure.type})` : 'used',
+      catalogSearch: (({ ran, failed, items, error }) => ({ ran, failed, items: items.length, ...(error ? { error } : {}) }))(catalogOutcome(executedCapabilities)),
       conversationAction: conversationPlan?.action,
       conversationQuestion: conversationPlan?.question ? `${conversationPlan.question.source}:${conversationPlan.question.factKey}` : undefined,
       conversationNeeds: conversationPlan?.needs,
@@ -1211,6 +1214,7 @@ export class TurnApplicationService {
       matchedBy: diagnostics.knowledgeMatchedBy,
       plan: conversationPlan,
       cards: diagnostics.emittedCardTypes,
+      search: catalogOutcome(executedCapabilities),
       modelRead: diagnostics.modelRead,
     }));
 
@@ -1284,12 +1288,13 @@ export class TurnApplicationService {
     const { knowledgeGate: gate, executedCapabilities, release, workspace, command, decision } = input;
     if (!gate) return null;
     if (decision.type === 'ask_fact' && !decision.payload?.knowledgeMode) return null;
-    const primary = executedCapabilities.find((entry) =>
-      ['catalog.search', 'catalog-search', 'products'].includes(entry.toolId) && entry.status === 'success' && Array.isArray(entry.output?.items));
+    const search = catalogOutcome(executedCapabilities);
     const plan = decideConversation({
       message: (command.message || (command as any).userInput || '').trim(),
       gate,
-      items: primary ? primary.output.items : [],
+      items: search.items,
+      search,
+      messages: { ...resolveInterpretationPolicy(release).messages, ...(gate.messages ?? {}) },
       state: readState(workspace.facts),
       policy: resolveConversationPolicy(release),
       seed: `${input.workspaceId}:${workspace.decisions.length}`,

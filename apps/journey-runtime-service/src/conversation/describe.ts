@@ -1,3 +1,4 @@
+import type { CatalogOutcome } from './search';
 import type { ConversationPlan } from './types';
 
 /**
@@ -15,6 +16,8 @@ export function describeTurn(input: {
   /** Set when the turn ended before a conversation decision was possible (a safety outcome, no matching journey…). */
   endedBecause?: string;
   cards: string[];
+  /** What the live catalogue search did, so an empty answer can be told apart from a search that never ran or failed. */
+  search?: CatalogOutcome;
   modelRead: string;
 }): string {
   const concept = input.conceptId ? input.conceptId.replace(/^concept:\/\//, '').split('/').slice(-2).join('/') : 'no concept';
@@ -30,6 +33,9 @@ export function describeTurn(input: {
     parts.push(`decided ${plan.action}${question}${shown}: ${plan.because.join(' → ')}`);
   } else {
     parts.push(plan ? `decision left to the existing flow: ${plan.because.join(' → ')}` : input.endedBecause ? `ended early: ${input.endedBecause}` : 'no conversation decision');
+  }
+  if (input.search) {
+    parts.push(!input.search.ran ? 'catalogue search: not run' : input.search.failed ? `catalogue search: failed${input.search.error ? ` (${input.search.error})` : ''}` : `catalogue search: ${input.search.items.length} product${input.search.items.length === 1 ? '' : 's'}`);
   }
   parts.push(`cards: ${input.cards.length ? input.cards.join(', ') : 'none'}`);
   parts.push(`model read: ${input.modelRead}`);

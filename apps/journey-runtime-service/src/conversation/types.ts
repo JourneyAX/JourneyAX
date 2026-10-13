@@ -45,7 +45,7 @@ export interface PlannedProduct {
   why?: { needs: string[]; excerpt?: string };
 }
 
-export type ConversationAction = 'ask' | 'recommend' | 'show' | 'answer' | 'defer';
+export type ConversationAction = 'ask' | 'recommend' | 'show' | 'answer' | 'empty' | 'defer';
 
 export interface ConversationPlan {
   action: ConversationAction;

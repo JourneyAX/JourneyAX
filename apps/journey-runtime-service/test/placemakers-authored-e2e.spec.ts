@@ -248,6 +248,24 @@ async function main() {
     }
   });
 
+  await suite.test('a leak is a problem however it is worded: the same safe answer, no products, no model asked to improvise', async () => {
+    const platform = 'I can\'t give verified safety guidance for this. Please contact a qualified professional.';
+    for (const message of ['toilet is leaking', 'my toilet is leaking', 'leaky toilet', 'toilet leak', 'leaking tap', 'the tap leaks', 'we have a leaky shower']) {
+      const calls: string[] = [];
+      const result = await turn(stack.serviceFor({ calls, reply: 'Turn off the isolation tap and avoid using it until the leak is checked.' }), `ws-leak-${message.replace(/\W/g, '')}`, message);
+      assert.equal(result.trace.knowledgeGate.mode, 'safety_then_diagnose', message);
+      assert.equal(retrieved(result), false, `${message}: no catalogue call`);
+      assert.equal(cards(result, 'products').length + cards(result, 'accessories').length + cards(result, 'clarify').length, 0, message);
+      assert.equal(result.assistantMessage, platform, `${message}: the platform\'s sentence, not a model\'s steps`);
+      assert.ok(!calls.includes('response_generation'), `${message}: no model was asked to word a refusal that is already written`);
+    }
+    // Leak products are still shopping.
+    for (const message of ['do you sell leak sealant', 'leak proof container']) {
+      const result = await run(`ws-leak-product-${message.length}`, message);
+      assert.notEqual(result.trace.knowledgeGate.mode, 'safety_then_diagnose', message);
+    }
+  });
+
   await suite.test('installation, warranty and care questions fail safely: nothing retrieved, nothing shown, nothing claimed', async () => {
     for (const message of ['how do i install a vanity', 'what is the warranty on this vanity', 'clean my deck']) {
       const result = await run(`ws-evidence-${message.length}`, message);
@@ -444,6 +462,41 @@ async function main() {
     const budgetFirst: any = { ...pack, extensions: { ...(pack.extensions ?? {}), dialoguePolicy: { facets: { price: { askFirst: true } } } } };
     const asked = await turn(stack.serviceFor(), 'ws-price-first', 'drills', 1, budgetFirst);
     assert.equal(cards(asked, 'clarify')[0].props.questions[0].id, 'facet_price');
+  });
+
+  await suite.test('when the shop has nothing to show, or its search is broken, the shelf is not handed to a model: the question, then the tenant\'s plain sentence', async () => {
+    const plain = 'I can\'t show products for that yet. Tell me a little more about what you need, or ask one of our specialists.';
+    const error = 'Database connection required for catalog search';
+    const calls: string[] = [];
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { lines.push(args.join(' ')); };
+    try {
+      const service = stack.serviceFor({ calls, searchError: error, reply: 'Thanks — I have set this to interior paint. The results on screen will now focus on that range.' });
+      const first = await turn(service, 'ws-broken', 'paint');
+      assert.deepEqual((first.uiInstructions as any[]).map((entry) => entry.component), ['clarify'], 'the release\'s question needs no products, so it is still asked');
+      assert.ok(dialogue.templates.ask.includes(first.assistantMessage), first.assistantMessage);
+      const question = cards(first, 'clarify')[0].props.questions[0];
+      const tap = await turn(service, 'ws-broken', `My answers:\n${question.text} → ${question.options.find((option: any) => /interior/i.test(option.label)).value}`, 2);
+      assert.equal(tap.assistantMessage, plain, 'plain words, not "the results on screen"');
+      assert.equal(cards(tap, 'products').length, 0);
+      assert.equal(tap.trace.conversation.action, 'empty');
+      assert.ok(!calls.includes('response_generation'), 'no model was asked to word either turn');
+      // A search that simply found nothing is answered the same way.
+      const empty = await turn(stack.serviceFor({ calls }), 'ws-empty-shelf', 'toilet');
+      assert.equal(empty.assistantMessage, plain);
+      assert.equal(empty.trace.conversation.action, 'empty');
+      assert.ok(!calls.includes('response_generation'));
+      // A tenant that has the model word replies still gets the plain sentence for an empty shelf.
+      const modelled = await turn(stack.serviceFor({ calls, reply: 'MODEL-IMPROVISED' }), 'ws-empty-model', 'toilet', 1, modelPack);
+      assert.equal(modelled.assistantMessage, plain);
+    } finally { console.log = originalLog; }
+    // The log says why, in one line.
+    const failing = lines.filter((line) => line.startsWith('[Turn] ') && line.includes('catalogue search: failed'));
+    assert.equal(failing.length, 2);
+    assert.ok(failing.every((line) => line.includes(error)));
+    assert.ok(failing[1].includes('decided empty'));
+    assert.ok(lines.some((line) => line.startsWith('[Turn] ') && line.includes('catalogue search: 0 products') && line.includes('decided empty')));
   });
 
   await suite.test('the release was published checksum-bound, and a different checksum cannot be used by the pack', async () => {

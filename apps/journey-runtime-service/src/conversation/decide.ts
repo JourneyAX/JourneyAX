@@ -1,4 +1,5 @@
-import type { ClaimClass } from '@journeyax/knowledge';
+import { renderOkfMessage, type ClaimClass } from '@journeyax/knowledge';
+import type { CatalogOutcome } from './search';
 import { facetQuestion, satisfies } from './facets';
 import { conceptWordsOf, extractNeeds, isCardAnswerLine } from './needs';
 import type { ConversationPolicy } from './policy';
@@ -17,6 +18,7 @@ export interface GateView {
   clarification?: { factKey: string; question: string; uiInputType: string; options: Array<{ value: string; label: string }> };
   claims: { allowedClasses: ClaimClass[] };
   trace: { reasonCodes: string[] };
+  messages?: Record<string, string>;
 }
 
 export interface DecideInput {
@@ -24,6 +26,10 @@ export interface DecideInput {
   gate: GateView | null | undefined;
   /** What the catalogue search returned this turn. */
   items: Product[];
+  /** Whether the search ran at all, and whether it failed; an empty list from a search that ran is an answer, not a reason to ask a model. */
+  search?: Pick<CatalogOutcome, 'ran' | 'failed' | 'error'>;
+  /** The tenant's wording, already layered (knowledge policy over pack messages over platform defaults). */
+  messages?: Record<string, string>;
   state?: ConversationState;
   policy: ConversationPolicy;
   /** Makes the choice among equal wordings stable for one conversation and turn. */
@@ -40,6 +46,7 @@ const OWNED_ELSEWHERE = new Set(['safety_then_diagnose', 'evidence_answer', 'ope
  *   recommend  the customer has said enough: the best fit, with the reason for each, taken from the product's own text
  *   show       the customer wants to browse (or there is nothing to narrow by): a short list, no pretended reasons
  *   answer     a how-to or comparison question: words only, no cards
+ *   empty      the shop looked and has nothing to show: said plainly in the tenant's words, never improvised by a model
  *   defer      another part of the platform owns this reply
  *
  * Every threshold and every sentence comes from the policy. Nothing here knows what a department or a product is.
@@ -114,10 +121,19 @@ export function decideConversation(input: DecideInput): ConversationPlan {
 
   if (gate.mode === 'clarify_then_search' && okf) { because.push('the release needs this answer before any product is chosen'); return ask(okf, false); }
 
-  const candidates = input.items.filter((item) => satisfies(item, state.constraints));
+  let candidates = input.items.filter((item) => satisfies(item, state.constraints));
+  if (candidates.length === 0 && input.items.length > 0) {
+    // The answers so far leave nothing (the range changed since they were given): start again rather than leave a dead end.
+    state.constraints = { brands: [] };
+    candidates = input.items;
+    because.push('the answers so far leave no product: starting again from the whole range');
+  }
   if (candidates.length === 0) {
-    because.push(input.items.length ? 'the answers so far leave no product: the existing flow runs' : 'the search returned nothing: the existing flow runs');
-    return plan('defer');
+    if (!input.search?.ran) { because.push('no catalogue search ran: the existing flow runs'); return plan('defer'); }
+    because.push(input.search.failed ? `the catalogue search failed${input.search.error ? ` (${input.search.error})` : ''}` : 'the catalogue search found no product');
+    // A question needs no products, so the release's own question is still asked; otherwise the shop says plainly it has nothing to show.
+    if (okf && !forceShow && !state.asked.includes(askedKind(okf))) { because.push('the release has a question that does not need products'); return ask(okf, false); }
+    return plan('empty', { message: renderOkfMessage(input.messages ?? gate.messages ?? {}, 'nothing_to_show') });
   }
 
   const { ranked, informative } = rankProducts(candidates, state.terms, policy);

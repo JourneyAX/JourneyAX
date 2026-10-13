@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
 import { decideConversation, type GateView } from '../src/conversation/decide';
 import { facetQuestion } from '../src/conversation/facets';
+import { renderOkfMessage } from '@journeyax/knowledge';
 import { describeTurn } from '../src/conversation/describe';
+import { catalogOutcome } from '../src/conversation/search';
 import { howToAnswer } from '../src/conversation/howto';
 import { pendingReadingMode, readsWithoutModel } from '../src/conversation/model-reading';
 import { conceptWordsOf, extractNeeds } from '../src/conversation/needs';
@@ -333,6 +335,58 @@ async function main() {
     assert.match(describeTurn({ okfRelease: 'none', plan: recommend, cards: ['products'], modelRead: 'used' }), /decided recommend \[1 product, reason quoted\]/);
     assert.match(describeTurn({ okfRelease: 'none', plan: decide('x', CLEANING, { gate: null }), cards: [], modelRead: 'used' }), /decision left to the existing flow: no knowledge decision.* \| cards: none \|/);
     assert.match(describeTurn({ okfRelease: 'none', plan: null, cards: [], modelRead: 'failed (ModelTimeoutError)' }), /no conversation decision.*model read: failed \(ModelTimeoutError\)$/);
+  });
+
+  await suite.test('a search that ran and found nothing is an answer, never a handover to a model that will improvise', () => {
+    const ran = { ran: true, failed: false };
+    const shelf = gate({ conceptId: 'concept://acme/tools/drills', mode: 'direct_results' });
+    const empty = decide('drills', [], { gate: shelf, search: ran });
+    assert.equal(empty.action, 'empty');
+    assert.deepEqual(empty.showCards, { question: false, products: false, suggestions: false });
+    assert.equal(empty.message, renderOkfMessage({}, 'nothing_to_show'));
+    assert.equal(decide('drills', [], { gate: shelf, search: ran, messages: { nothing_to_show: 'Nothing on that shelf right now.' } }).message, 'Nothing on that shelf right now.', 'the tenant\'s own sentence');
+
+    // A question needs no products, so the release's question is still asked, once.
+    const overview = gate({ mode: 'overview_then_ask', clarification: OKF_QUESTION });
+    const asked = decide('paint', [], { gate: overview, search: ran });
+    assert.equal(asked.action, 'ask');
+    assert.equal(asked.question!.source, 'okf');
+    assert.ok(asked.because.some((line) => line.includes('does not need products')));
+    assert.equal(decide('paint', [], { gate: overview, search: ran, state: asked.nextState }).action, 'empty', 'not asked twice');
+    assert.equal(decide('paint', [], { gate: gate({ mode: 'overview_then_ask', clarification: OKF_QUESTION, trace: { reasonCodes: ['customer_declined_questions'] } }), search: ran }).action, 'empty', 'asked to see them, so not asked');
+
+    // A search that failed is told apart in the reasons, and answered the same way.
+    const failed = decide('drills', [], { gate: shelf, search: { ran: true, failed: true, error: 'Database connection required' } });
+    assert.equal(failed.action, 'empty');
+    assert.ok(failed.because.some((line) => line.includes('failed (Database connection required)')));
+
+    // No search at all is not an empty shelf: the existing flow decides.
+    assert.equal(decide('drills', [], { gate: shelf }).action, 'defer');
+    assert.equal(decide('drills', [], { gate: shelf, search: { ran: false, failed: false } }).action, 'defer');
+
+    // Answers that now leave nothing (the range changed) start again instead of leaving a dead end.
+    const stale = { ...emptyState('concept://acme/cleaning/cleaning-supplies'), constraints: { brands: ['nobody'] } };
+    const relaxed = decide('cleaning', CLEANING, { gate: gate(), state: stale });
+    assert.notEqual(relaxed.action, 'empty');
+    assert.ok(relaxed.because.some((line) => line.includes('starting again')));
+    assert.deepEqual(relaxed.nextState.constraints.brands, []);
+  });
+
+  await suite.test('what the catalogue search did is read the same way everywhere: not run, failed, or a list (possibly empty)', () => {
+    const search = (over: object) => ({ toolId: 'catalog.search', status: 'success', ...over });
+    assert.deepEqual(catalogOutcome([]), { ran: false, failed: false, items: [] });
+    assert.deepEqual(catalogOutcome([{ toolId: 'knowledge.search', status: 'success', output: { items: [{ sku: 'x' }] } }]), { ran: false, failed: false, items: [] }, 'other capabilities are not the catalogue');
+    assert.deepEqual(catalogOutcome([search({ output: { items: [{ sku: 'a' }, { sku: 'b' }] } })]), { ran: true, failed: false, items: [{ sku: 'a' }, { sku: 'b' }] });
+    assert.deepEqual(catalogOutcome([search({ output: { items: [] } })]), { ran: true, failed: false, items: [] }, 'an empty list is a result');
+    assert.deepEqual(catalogOutcome([search({ output: { items: [], error: 'invalid_category_scope' } })]), { ran: true, failed: true, items: [], error: 'invalid_category_scope' });
+    assert.deepEqual(catalogOutcome([search({ status: 'failed', error: { message: 'boom' } })]), { ran: true, failed: true, items: [], error: 'boom' });
+    assert.equal(catalogOutcome([search({ status: 'failed' })]).error, 'status failed');
+    assert.equal(catalogOutcome([search({ output: { items: [], error: 'x' } }), search({ output: { items: [{ sku: 'ok' }] } })]).failed, false, 'a usable search wins over a failed one');
+    const line = (outcome: any) => describeTurn({ okfRelease: 'none', plan: null, cards: [], search: outcome, modelRead: 'used' });
+    assert.match(line(catalogOutcome([])), /catalogue search: not run \| cards: none/);
+    assert.match(line(catalogOutcome([search({ output: { items: [{ sku: 'a' }] } })])), /catalogue search: 1 product \|/);
+    assert.match(line(catalogOutcome([search({ output: { items: [] } })])), /catalogue search: 0 products \|/);
+    assert.match(line(catalogOutcome([search({ output: { items: [], error: 'Database connection required' } })])), /catalogue search: failed \(Database connection required\) \|/);
   });
 
   process.exitCode = suite.finish() ? 0 : 1;
