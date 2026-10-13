@@ -1,0 +1,917 @@
+{
+  "tenant": "placemakers",
+  "snapshotAt": "2026-10-13T01:41:44.770Z",
+  "pointers": [
+    {
+      "db": "journeyx",
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "activeVersion": "1.0.38",
+      "activeVersionId": "1.0.38",
+      "status": "active",
+      "previousVersion": "1.0.37",
+      "revision": 29,
+      "rollbackAvailable": true,
+      "promotedAt": "2026-10-08T14:12:42.827Z",
+      "promotedBy": "admin",
+      "checksum": "86e58016c7355ef3cb07b07e422f6e4bee754f70b31d12b1efd7c1f4f7a4676e",
+      "notes": "Studio published version 38",
+      "history": [
+        {
+          "version": "1.0.9",
+          "checksum": "85c85da1c6dda179179f11e4b29b40e1296d50596fb5a8905d9f7503df2ce258",
+          "revision": 10,
+          "action": "promoted",
+          "promotedAt": "2026-10-01T11:44:57.010Z",
+          "promotedBy": "platform-closure",
+          "notes": "PlaceMakers laundry multi-turn clarification release 1.0.6"
+        },
+        {
+          "version": "1.1.0",
+          "checksum": "83c521093e5abf4f751eb07a9450b521da4db59619c1e51f8b9b33e5825f1503",
+          "revision": 11,
+          "action": "promoted",
+          "promotedAt": "2026-10-01T18:53:41.226Z",
+          "promotedBy": "system-fix-gemini-purge",
+          "notes": "Purged all Gemini models; unified OpenAI fast_intent and complex_reasoning"
+        },
+        {
+          "version": "1.2.0",
+          "checksum": "21771ead4549a68becf9017a14c13860f155dc4c38bfa9d034df1661425c1972",
+          "revision": 12,
+          "action": "promoted",
+          "promotedAt": "2026-10-01T20:52:55.759Z",
+          "promotedBy": "platform-closure",
+          "notes": "PlaceMakers laundry multi-turn clarification release 1.0.6"
+        },
+        {
+          "version": "1.2.1",
+          "checksum": "24178d2d44602e49661cce69d16bdf265c4b77755ed3381b805426267eff6f65",
+          "revision": 13,
+          "action": "promoted",
+          "promotedAt": "2026-10-02T15:46:33.483Z",
+          "promotedBy": "platform-closure",
+          "notes": "PlaceMakers laundry multi-turn clarification release 1.0.6"
+        },
+        {
+          "version": "1.3.0",
+          "checksum": "88071e97df35ff4c53d5a3561385aa60bc1736beeee9049baa6b44c99814cfb5",
+          "revision": 14,
+          "action": "promoted",
+          "promotedAt": "2026-10-03T12:10:15.844Z",
+          "promotedBy": "platform-closure",
+          "notes": "PlaceMakers materials, fasteners, and hardware release 1.3.0"
+        },
+        {
+          "version": "1.3.1",
+          "checksum": "e16a6da4b2528f081c5d3c4c968eddac3ff30184195e37f1d1963c6731130c48",
+          "revision": 15,
+          "action": "promoted",
+          "promotedAt": "2026-10-03T17:44:04.673Z",
+          "promotedBy": "platform-closure",
+          "notes": "PlaceMakers materials, fasteners, and hardware release 1.3.1"
+        },
+        {
+          "version": "1.3.2",
+          "checksum": "b856dd6aec2167a4849fcc5869c36750b8b634a0232f5850f7e1ab45fe51ed19",
+          "revision": 16,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T15:08:09.892Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic pack-level routingPolicy and conditionalFacts for multi-tenant trade consultant"
+        },
+        {
+          "version": "1.3.2",
+          "checksum": "32db3ff9996da8c7788ecf17a4c78a492a1259170ba6275464a60e0d74916777",
+          "revision": 17,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T15:09:34.380Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic pack-level routingPolicy and conditionalFacts for multi-tenant trade consultant"
+        },
+        {
+          "version": "1.3.3",
+          "checksum": "15f01d4d4144f692ca7e42e53f393b0b65287697284ba73f8a37d081f4ae7822",
+          "revision": 18,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T15:10:32.969Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic pack-level routingPolicy and conditionalFacts for multi-tenant trade consultant"
+        },
+        {
+          "version": "1.3.4",
+          "checksum": "7329d41998f1bfadcd469f325466acea9ecf0d9bc1e32743c9b72137241d8d0c",
+          "revision": 19,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T15:37:05.805Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic pack-level routingPolicy and conditionalFacts for multi-tenant trade consultant"
+        },
+        {
+          "version": "1.3.4",
+          "checksum": "7329d41998f1bfadcd469f325466acea9ecf0d9bc1e32743c9b72137241d8d0c",
+          "revision": 20,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T15:38:57.132Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic pack-level routingPolicy and conditionalFacts for multi-tenant trade consultant"
+        },
+        {
+          "version": "1.3.4",
+          "checksum": "75e7037fa2ee5644e93a267b94a22d6768351c28b468f4273a6a4f50128a59bf",
+          "revision": 21,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T15:40:44.639Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic pack-level routingPolicy and conditionalFacts for multi-tenant trade consultant"
+        },
+        {
+          "version": "1.3.5",
+          "checksum": "2c0604ff008438ca2ac8b780399827f443d809677f204fbac1f9785e9317233d",
+          "revision": 22,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T18:57:02.191Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic multi-stage materials & hardware journey with consultative intake and targeted recommendation"
+        },
+        {
+          "version": "1.3.6",
+          "checksum": "13507e8808dad16e2a85719d711bc08a376bc8fe3abd996059fcb521d8d7c4e4",
+          "revision": 23,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T19:05:39.988Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic multi-stage materials & hardware journey with consultative intake and targeted recommendation"
+        },
+        {
+          "version": "1.3.7",
+          "checksum": "7d8371dd2f56d5241ae673b110cb8fa82c5beef8f90fb8b96da632652e4ede41",
+          "revision": 24,
+          "action": "promoted",
+          "promotedAt": "2026-10-05T19:46:55.046Z",
+          "promotedBy": "dynamic-pack-migration",
+          "notes": "Dynamic multi-stage materials & hardware journey with consultative intake and targeted recommendation"
+        },
+        {
+          "version": "1.3.8",
+          "checksum": "bd63c52b00f6be0ebc81392f2133e57d03fdd51237a92ca46752c9b0432da3b1",
+          "revision": 25,
+          "action": "promoted",
+          "promotedAt": "2026-10-06T11:23:06.567Z",
+          "promotedBy": "tester",
+          "notes": "Studio published version 1.3.8 (34)"
+        },
+        {
+          "version": "1.3.9",
+          "checksum": "a44451fe6c11bf2d0e8cc97e5d0c5cafcd6185cc21d09b36a16457305da17a07",
+          "revision": 26,
+          "action": "promoted",
+          "promotedAt": "2026-10-06T11:23:20.403Z",
+          "promotedBy": "studio",
+          "notes": "Studio published version 1.3.9 (35)"
+        },
+        {
+          "version": "1.3.10",
+          "checksum": "a188ad4fd4bff12ba764733dfd15e9808fad040701de27cdc83e157702a1ad53",
+          "revision": 27,
+          "action": "promoted",
+          "promotedAt": "2026-10-07T19:45:38.697Z",
+          "promotedBy": "studio",
+          "notes": "Studio published version 1.3.10 (36)"
+        },
+        {
+          "version": "1.0.37",
+          "checksum": "048ade2aba2a7ae2dd8ec3ffd5ce4f2f71ea6592d1b654ee84917ddc9c4e6516",
+          "revision": 28,
+          "action": "promoted",
+          "promotedAt": "2026-10-08T14:12:18.625Z",
+          "promotedBy": "admin",
+          "notes": "Studio published version 37"
+        },
+        {
+          "version": "1.0.38",
+          "checksum": "86e58016c7355ef3cb07b07e422f6e4bee754f70b31d12b1efd7c1f4f7a4676e",
+          "revision": 29,
+          "action": "promoted",
+          "promotedAt": "2026-10-08T14:12:42.827Z",
+          "promotedBy": "admin",
+          "notes": "Studio published version 38"
+        }
+      ]
+    },
+    {
+      "db": "journeyax",
+      "tenantId": "placemakers",
+      "environmentId": "production",
+      "activeVersion": "1.0.33",
+      "activeVersionId": "1.0.33",
+      "status": "active",
+      "previousVersion": null,
+      "revision": 1,
+      "rollbackAvailable": false,
+      "promotedAt": "2026-10-06T11:16:33.699Z",
+      "promotedBy": "studio",
+      "checksum": "99b1d67bbc4b5dcab027927a696190b290cc3f08a659abbca9c6f91ff553c27b",
+      "notes": "Studio published version 33",
+      "history": [
+        {
+          "version": "1.0.33",
+          "checksum": "99b1d67bbc4b5dcab027927a696190b290cc3f08a659abbca9c6f91ff553c27b",
+          "revision": 1,
+          "action": "initial_publish",
+          "promotedAt": "2026-10-06T11:16:33.699Z",
+          "promotedBy": "studio",
+          "notes": "Studio published version 33"
+        }
+      ]
+    }
+  ],
+  "activePack": {
+    "version": "1.0.38",
+    "checksum": "86e58016c7355ef3cb07b07e422f6e4bee754f70b31d12b1efd7c1f4f7a4676e",
+    "journeys": [
+      "placemakers_shop",
+      "placemakers_plan_your_space",
+      "placemakers_services",
+      "placemakers_tools___guides",
+      "placemakers_customer_service"
+    ],
+    "knowledgeModel": null
+  },
+  "project": {
+    "version": 31,
+    "activeVersion": 38,
+    "packVersion": "1.3.10",
+    "knowledgeModel": {
+      "type": "okf_release",
+      "modelId": "placemakers-trade-knowledge",
+      "releaseId": "okf-placemakers-production-1.0.0",
+      "version": "1.0.0",
+      "checksum": "b105bf65de7282283e656deb2ea975b2ff592fd1da93002ed2609356ded35db0",
+      "required": true,
+      "failurePolicy": "fail_closed"
+    }
+  },
+  "okf": {
+    "releases": [
+      {
+        "releaseId": "okf-placemakers-production-1.0.0",
+        "environmentId": "production",
+        "version": "1.0.0",
+        "checksum": "b105bf65de7282283e656deb2ea975b2ff592fd1da93002ed2609356ded35db0",
+        "status": "ready",
+        "artifact": {
+          "status": "failed",
+          "error": "OKF_ARTIFACT_BUCKET is required to export OKF releases"
+        }
+      }
+    ],
+    "drafts": [
+      {
+        "environmentId": "staging",
+        "revision": 1,
+        "checksum": "3c20961a8447edfabdeebd2d93ef75b5cd5e7cf11143ee9947b2686603f32435"
+      },
+      {
+        "environmentId": "production",
+        "revision": 1,
+        "checksum": "3c20961a8447edfabdeebd2d93ef75b5cd5e7cf11143ee9947b2686603f32435"
+      }
+    ],
+    "counts": {
+      "okf_concepts": 6,
+      "okf_relationships": 1,
+      "okf_sources": 1,
+      "okf_evidence_chunks": 1,
+      "okf_verification_records": 0,
+      "okf_fact_definitions": 2,
+      "okf_revocation_events": 0
+    }
+  },
+  "catalogue": {
+    "collectionTotal": 49938,
+    "tenantTotal": 42436,
+    "ownership": [
+      {
+        "projectId": "placemakers",
+        "n": 42413
+      },
+      {
+        "tenantId": "placemakers",
+        "n": 1
+      },
+      {
+        "projectId": "placemakers",
+        "tenantId": "placemakers",
+        "n": 22
+      }
+    ]
+  },
+  "taxonomy": {
+    "departments": [
+      {
+        "name": "Tools",
+        "products": 8089,
+        "groups": [
+          "Power Tool Accessories",
+          "Hand Tools",
+          "Power Tools",
+          "Outdoor Power Equipment"
+        ],
+        "categories": [
+          "Saw Blades",
+          "Wrenches/Spanners/Sockets (Incl Sets)",
+          "Band Saws",
+          "Pnuematic Accessories",
+          "Nail Gun Accessories",
+          "Lawn Mowers",
+          "Punches",
+          "Router Accessories & Spare Parts",
+          "Circular Saws",
+          "Chain Saws",
+          "Multi Tools",
+          "Sanders",
+          "Radio",
+          "Plumbing",
+          "Garden Shredders",
+          "Hedge Trimmers",
+          "Files & Planers",
+          "Drills",
+          "Plastering/Concrete/Brick Tools",
+          "Workbenches",
+          "Saws",
+          "Other Hand Tools",
+          "Jig Saws",
+          "Work Lights",
+          "Welding",
+          "Blower/Vacuums",
+          "Vices",
+          "Reciprocating Saws",
+          "Sockets",
+          "Concrete",
+          "Hammers & Mallets",
+          "Plumbing Tools",
+          "Measuring Tools",
+          "Landscape & Gardening",
+          "Angle Grinders",
+          "Caulking Gun",
+          "Chisels",
+          "Staple Guns/Hand Tackers",
+          "Bench Saws/Mitre Saws",
+          "Knifes & Blades",
+          "Sanding And Polishing",
+          "Brushcutters",
+          "Screwdrivers",
+          "Screwdrivers & Screw Guns",
+          "Planers",
+          "Laminate Trimmers/Routers",
+          "Screwdriver Bits",
+          "Waterblasters",
+          "Vacuum Cleaners/Dust Extraction",
+          "Grease/Caulking Guns",
+          "Machinery",
+          "Metal Cut Off Saws",
+          "Drill Bits",
+          "Pliers",
+          "Light Construction Machinery",
+          "Nailers/Bradders & Concrete Guns/Staplers",
+          "Clamps",
+          "Cutting / Bending",
+          "Thermal Imaging & Inspection Cameras",
+          "Welding & Soldering",
+          "Compressor",
+          "Cutting And Grinding",
+          "Vacuum/Dust Extraction",
+          "Heat Gun/Paint Stripper",
+          "Engraving",
+          "Tool Storage",
+          "Line Trimmers",
+          "Multitool Blades",
+          "Power Tool Parts & Accessories",
+          "Combo Kits",
+          "Battery & Charger",
+          "Nibblers & Shears"
+        ]
+      },
+      {
+        "name": "Cladding",
+        "products": 327,
+        "groups": [
+          "Timber Cladding",
+          "Fibre Cement & Accessories",
+          "Prefinished Cladding & Facades"
+        ],
+        "categories": [
+          "Timber Cladding Other",
+          "Other Fibre Cement Cladding",
+          "Fascia Radiata",
+          "Weatherboard Radiata",
+          "PVC",
+          "Cladding Plywood Exterior",
+          "Panelised Cladding Systems",
+          "Fibre Cement Weatherboard"
+        ]
+      },
+      {
+        "name": "Bathrooms & Plumbing",
+        "products": 15256,
+        "groups": [
+          "Bathrooms & Accessories",
+          "Plumbing"
+        ],
+        "categories": [
+          "Laundry Cabinetry & Modular Units",
+          "PVC Pipe & Fittings",
+          "Baths",
+          "Showers",
+          "Piping Systems & Fittings",
+          "Mirrors",
+          "Bathroom Accessories",
+          "Toilets",
+          "Tapware & Showering",
+          "Laundry Tubs & Sinkware",
+          "Traps & Wastes",
+          "Basins",
+          "Surface Drainage",
+          "Spare Parts",
+          "Hot Water",
+          "Pumps, Tanks & Filtration",
+          "Valves",
+          "Vanities",
+          "Heated Towel Rails",
+          "Kitchens & Laundry > Laundry > Cabinetry"
+        ]
+      },
+      {
+        "name": "Adhesives & Sealants",
+        "products": 430,
+        "groups": [
+          "Caulks And Sealants",
+          "Repair Products",
+          "Foam Products",
+          "Adhesives & Sealants",
+          "Adhesives"
+        ],
+        "categories": [
+          "Caulks And Sealants",
+          "Repair Products",
+          "Foam Products",
+          "Grouting & Anchoring",
+          "Waterproofing",
+          "Adhesives",
+          "Solvents And Strippers"
+        ]
+      },
+      {
+        "name": "Doors, Windows & Joinery Hardware",
+        "products": 1458,
+        "groups": [
+          "Joinery Hardware",
+          "Doors",
+          "Windows",
+          "Window Furnishings & Hardware"
+        ],
+        "categories": [
+          "Door Track",
+          "Interior Doors",
+          "Window Accessories",
+          "Door Closer",
+          "Catch",
+          "Door Stops",
+          "Tracks, Rods & Fittings",
+          "Window Hardware",
+          "Handles & Pulls",
+          "Door Locks, Latches & Spares",
+          "Entrance Doors",
+          "Seals",
+          "Cavity Slider",
+          "Bolts & Cabin Hooks",
+          "Keyless Entry",
+          "Exterior Doors",
+          "Keys",
+          "Bannister Brackets",
+          "Hinge",
+          "Door Furniture"
+        ]
+      },
+      {
+        "name": "Timber & Plywood",
+        "products": 1550,
+        "groups": [
+          "Timber Fencing",
+          "Non Structural Timber - All Grades",
+          "Decking",
+          "Plywood",
+          "Timber Retaining",
+          "Engineered Timber",
+          "Square Dressed Boards & Mouldings",
+          "Structural Grade Timber Wet",
+          "Structural Grade Timber Kiln Dried",
+          "Poles, Posts & Piles",
+          "Panels"
+        ],
+        "categories": [
+          "Fence Accessories",
+          "Non-Structural Grades Other",
+          "Timber Battens",
+          "Hardwood Decking",
+          "Composite Decking",
+          "Structural Plywood Untreated",
+          "Retaining Timber Radiata",
+          "Engineered Timber Other",
+          "Laminated Posts And Beams (Gluelam)",
+          "NST Merch, Boxing & Battens",
+          "Door Jambs",
+          "Decking Accessories",
+          "Mouldings Clear",
+          "Formply",
+          "SG H3.2 Radiata Wet",
+          "Mouldings Mdf",
+          "Structural Plywood Treated",
+          "D4S Clear",
+          "Non Structural Plywood",
+          "SG H1.2 Douglas Fir KD",
+          "Radiata Decking",
+          "Fence Palings",
+          "Fence Trellis & Panels",
+          "SG H3.2 Radiata KD",
+          "House Piles",
+          "NST Treated",
+          "Fence Posts",
+          "Flooring Plywood",
+          "SG H1.2 Radiata KD",
+          "Plywood Other",
+          "Fence Rails",
+          "Laminated Veneer Lumber (LVL)",
+          "Timber & Plywood > Decking > Hardwood Decking",
+          "Roofing Plywood",
+          "Sleepers",
+          "Mouldings Finger Joint",
+          "Dowel",
+          "Plywood Pre-Cut Panels",
+          "Lining Plywood Interior"
+        ]
+      },
+      {
+        "name": "Outdoor & Landscaping",
+        "products": 2763,
+        "groups": [
+          "Garden & Landscaping",
+          "Translucent Roofing",
+          "BBQs, Furniture & Sun Shade",
+          "Fencing & Netting (Non Timber)",
+          "Leisure Products"
+        ],
+        "categories": [
+          "Letterboxes",
+          "Polycarb Roofing",
+          "Translucent Roofing Accessories",
+          "Kerbs & Edging",
+          "Furniture",
+          "Non-Timber Retaining Walls",
+          "Watering Systems",
+          "Fence Panels",
+          "Decorative Aggregates",
+          "Wheelbarrows & Trolleys",
+          "Fencing Accessories",
+          "Paving",
+          "Fencing Wire",
+          "Plant & Garden Care",
+          "Underlay & Textiles",
+          "PVC Roofing",
+          "Garden Containers",
+          "Clotheslines",
+          "Waste",
+          "Plant & Pest Control",
+          "Leisure Items",
+          "Plants & Seeds",
+          "Netting & Mesh",
+          "Garden Sprayers",
+          "Metal Gates",
+          "Posts",
+          "Barbecues"
+        ]
+      },
+      {
+        "name": "Building Products",
+        "products": 1977,
+        "groups": [
+          "Concrete & Mortars",
+          "Panels",
+          "Fibre Cement & Accessories",
+          "Roofing",
+          "Plasterboard",
+          "Building Wraps,Barriers,Underlay & Tapes",
+          "Aggregates",
+          "Concrete",
+          "Reinforcing",
+          "Wet Wall Linings",
+          "Ceilings",
+          "Structural Flooring",
+          "Plasterboard Compounds & Accessories",
+          "Masonry",
+          "Insulation",
+          "Passive Fire",
+          "Steel Framing"
+        ],
+        "categories": [
+          "Bagged Concrete",
+          "Melamine",
+          "Hardiflex",
+          "Roof Windows",
+          "Hardisoffit",
+          "Concrete Additives",
+          "Specialist Board",
+          "Accessories",
+          "Bulk",
+          "Readymix Concrete",
+          "Concrete Flooring Systems",
+          "Reinforcing Accessories",
+          "Building Wraps Accessories",
+          "Paint Surface Hardboard Backing",
+          "Accessories & Special Order Lining",
+          "Roof Underlays",
+          "Foils",
+          "Cement",
+          "Access Panels",
+          "Lime",
+          "Longrun",
+          "Particle Board Floor Sheets",
+          "Trims & Moulds",
+          "Concrete Blocks - Grey Masonry",
+          "Building Papers, Wraps & Barriers",
+          "Plasterboard Accessories",
+          "Fibre Cement Accessories",
+          "Rigid Air Barriers",
+          "Formwork",
+          "MDF",
+          "Polyester",
+          "Flexible Air Barriers",
+          "Bagged",
+          "Other Insulation",
+          "Drywall Tapes",
+          "Bagged Mortars",
+          "Villaboard",
+          "High Pressure Laminates",
+          "Veneer Pre-Cut Panels",
+          "Hardboard & Hessian Full Sheets",
+          "Passive Ventilation",
+          "Hardipanel",
+          "Moisture Control",
+          "Concrete Underlays",
+          "Paint Finish Fibre Cement Backing",
+          "Passive Fire Penetrations",
+          "Other Fibre Cement Flat Sheet",
+          "Tile & Slate",
+          "Bricks & Stone",
+          "Strandboard Floor Sheets",
+          "Flashing & Sealing Tapes",
+          "Strandboard",
+          "Reinforcing",
+          "Other Pre-Cut  Panels",
+          "Steel Framing",
+          "Standard Board",
+          "Hardigroove",
+          "Wool",
+          "Fibreglass",
+          "Other Panels",
+          "Medium Density Particle Board",
+          "Compounds & Plasters",
+          "Damp Proof Course (DPC)",
+          "Polystyrene"
+        ]
+      },
+      {
+        "name": "specials",
+        "products": 20,
+        "groups": [],
+        "categories": [
+          "specials"
+        ]
+      },
+      {
+        "name": "Paint & Decorating",
+        "products": 1347,
+        "groups": [
+          "Paint",
+          "Paint Accessories"
+        ],
+        "categories": [
+          "Primers Sealers & Undercoats",
+          "Mixers, Cleaners & Brush Care",
+          "Tinters",
+          "Abrasives",
+          "Extension Poles",
+          "Woodcare",
+          "Spraying Equipment",
+          "Scrapers & Knives",
+          "Thinners & Cleanup",
+          "Interior Paint",
+          "Masking",
+          "Other Painting Accessories",
+          "Aerosol Paint",
+          "Exterior Paint",
+          "Wallpaper & Accessories",
+          "Protective Coatings",
+          "Protective Wear & Coverings",
+          "Brushes & Rollers"
+        ]
+      },
+      {
+        "name": "(no department)",
+        "products": 395,
+        "groups": [],
+        "categories": [
+          "Services > Design Consultations > Bathroom Design",
+          "Building Products > Waterproofing",
+          "Timber & Plywood > Structural Timber",
+          "Bathrooms > Tapware > Basin Mixers",
+          "Laundry Tapware & Plumbing",
+          "Services & Packages > Room Solutions > Bathroom Packages",
+          "Fixings & Fasteners > Screws > Decking Screws",
+          "Services & Packages > Room Solutions > Laundry Packages",
+          "Laundry Cabinetry & Modular Units",
+          "Laundry Accessories & Storage",
+          "Bathrooms > Vanities & Basins > Wall Hung Vanities",
+          "Services > Installed Solutions > Trade Installation",
+          "Tools > Tool Kits > Installation Tools",
+          "Building Products > Plasterboard > GIB Aqualine"
+        ]
+      },
+      {
+        "name": "Fastenings & General Hardware",
+        "products": 3122,
+        "groups": [
+          "Fastenings",
+          "Hardware"
+        ],
+        "categories": [
+          "Masonry  Anchors",
+          "Rope & Chain Accessories",
+          "Metal Screws",
+          "General Hardware",
+          "Collated Nails",
+          "Rope & Wire",
+          "Timber Connectors",
+          "Packers, Wedges, Pods",
+          "Hooks",
+          "Ties, Soakers",
+          "Padlocks",
+          "Tarps & Accessories",
+          "Building Brackets",
+          "Rivets",
+          "Chain",
+          "Wood Screws",
+          "Vents (Except Concrete)",
+          "Loose Nails",
+          "Power Actuated",
+          "Gate Hardware",
+          "Tie Down",
+          "Bolts & Nut"
+        ]
+      },
+      {
+        "name": "Safety & Ladders",
+        "products": 1919,
+        "groups": [
+          "Safety",
+          "Ladders & Scaffolding"
+        ],
+        "categories": [
+          "Eye Protection",
+          "Respiratory Protection",
+          "Scaffold",
+          "Head Protection",
+          "Hand Protection",
+          "Height Protection",
+          "Apparel",
+          "Signage",
+          "Ladders",
+          "Footwear",
+          "Hearing Protection",
+          "Platforms & Stools",
+          "Personal Safety",
+          "Attic Access",
+          "Traffic Safety",
+          "Site Safety",
+          "Sun & Skin Protection"
+        ]
+      },
+      {
+        "name": "Kitchens & Laundry",
+        "products": 1567,
+        "groups": [
+          "Laundry",
+          "Kitchens"
+        ],
+        "categories": [
+          "Kitchens & Laundry > Laundry > Cabinetry",
+          "Kitchen Benchtops",
+          "Kitchen Appliances",
+          "Laundry Cabinetry",
+          "Laundry Tubs",
+          "Laundry Sinkware",
+          "Kitchen Sinks",
+          "Kitchen Hardware & Accessories",
+          "Laundry Appliances & Accessories",
+          "Kitchens & Laundry > Laundry > Laundry Tubs",
+          "Kitchen Splashbacks",
+          "Kitchen Tapware"
+        ]
+      },
+      {
+        "name": "Cleaning & Consumables",
+        "products": 262,
+        "groups": [
+          "Site Consumables",
+          "Household & Pets",
+          "Cleaners & Cleaning Equipment",
+          "Automotive"
+        ],
+        "categories": [
+          "Personal Hygiene & Other Consumables",
+          "Pet Care",
+          "Food & Beverage",
+          "Indoor Cleaners",
+          "Outdoor Cleaners",
+          "Battery Chargers & Accessories",
+          "Household",
+          "Mops & Brooms",
+          "Car Cleaning",
+          "Petrol Cans"
+        ]
+      },
+      {
+        "name": "Electrical & Heating/Cooling",
+        "products": 1130,
+        "groups": [
+          "Heating, Ventilation & Cooling",
+          "Electrical"
+        ],
+        "categories": [
+          "Central Heating",
+          "Security",
+          "Electric Heating",
+          "Gas Heating",
+          "Light Bulbs",
+          "Lighting",
+          "Phone Accessories",
+          "Extension Leads",
+          "Portable Lighting",
+          "Smoke Alarms",
+          "Solid Fuel",
+          "Ventilation",
+          "Switchgear",
+          "Electrical Consumables",
+          "Cable & Data",
+          "Heat Pumps",
+          "Outdoor Heating"
+        ]
+      },
+      {
+        "name": "Wardrobes, Storage & Flooring",
+        "products": 253,
+        "groups": [
+          "Decorative Flooring",
+          "Wardrobes & Storage"
+        ],
+        "categories": [
+          "Underlay",
+          "Flooring Tools & Accessories",
+          "Laminate Flooring",
+          "Flooring Prep & Finishing",
+          "Storage",
+          "Timber Flooring",
+          "Shelving",
+          "Wardrobe",
+          "Bamboo Flooring"
+        ]
+      },
+      {
+        "name": "Sheds & Buildings",
+        "products": 571,
+        "groups": [
+          "Garden & Landscaping"
+        ],
+        "categories": [
+          "Garden Sheds"
+        ]
+      }
+    ]
+  },
+  "catalogueQuality": {
+    "priced via priceUSD.min > 0": 39720,
+    "priced via variants[0].msrpUSD > 0": 36780,
+    "priced via priceCents > 0": 0,
+    "declares a currency": 42436,
+    "discontinued = true": 1684,
+    "has stock.availableBranchCount": 32189,
+    "availability = true": 42422,
+    "has images": 42128
+  },
+  "documents": {
+    "chunks": 113403,
+    "distinctUrls": 94107,
+    "collectionTotal": 134696
+  }
+}

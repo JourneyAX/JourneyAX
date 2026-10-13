@@ -88,6 +88,18 @@ async function main() {
     assert.equal(release.extensions.workspacePinPolicy.idleRepinAfterHours, 6);
   });
 
+  await suite.test('regression: an empty cardTemplates object does not silence every card at runtime', async () => {
+    const { service, db } = await createService({ cardTemplates: {} });
+    const result: any = await service.publishConfig(TENANT, { publishedBy: 'human:alice' });
+    assert.equal(result.success, true, result.message);
+    const cards = db.dump('business_pack_releases')[0].experience.cards;
+    assert.ok(cards.allowedCardTypes.length > 0, 'an empty allow-list would suppress products, clarify, quote and every other card');
+    assert.ok(cards.allowedCardTypes.includes('products') && cards.allowedCardTypes.includes('clarify'));
+    const narrowed = await createService({ cardTemplates: { products: { type: 'x' } } });
+    await narrowed.service.publishConfig(TENANT, { publishedBy: 'human:alice' });
+    assert.deepEqual(narrowed.db.dump('business_pack_releases')[0].experience.cards.allowedCardTypes, ['products'], 'a real override still narrows the set');
+  });
+
   await suite.test('component category rules are tenant data: deny wins, allow narrows, no rule means unconstrained', () => {
     const rules = resolveCatalogMapping({ componentCategoryRules: {
       lining: { allow: ['plasterboard', 'lining'] },

@@ -338,8 +338,11 @@ export class BusinessPackPublicationService {
     // Compile Experience (Cards & Themes)
     const themeFromDoc = (doc.uiTheme as any)?.theme || doc.theme;
     const tokens = doc.uiTheme?.tokens;
-    const allowedCardTypes = doc.experience?.cards?.allowedCardTypes
-      || (doc.cardTemplates ? Object.keys(doc.cardTemplates) : undefined)
+    // An empty `cardTemplates: {}` means "no overrides", not "allow no cards": an explicit empty allow-list suppresses
+    // every card at runtime, so only a non-empty set narrows the platform defaults.
+    const templateTypes = doc.cardTemplates ? Object.keys(doc.cardTemplates) : [];
+    const allowedCardTypes = (doc.experience?.cards?.allowedCardTypes?.length ? doc.experience.cards.allowedCardTypes : undefined)
+      || (templateTypes.length > 0 ? templateTypes : undefined)
       || [...DEFAULT_PLATFORM_CARD_TYPES];
 
     const compiledExperience = {
