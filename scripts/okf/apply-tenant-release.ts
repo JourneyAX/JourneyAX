@@ -10,6 +10,8 @@
  * result by reading it back: the stored release, the pack the runtime would load, the activation record, and the full coverage
  * evaluation run on the stored release.
  *
+ * `--rollback <config version> [--apply]` points the environment back at an earlier published version (plan without `--apply`).
+ *
  * Inputs are the tenant's committed files: scripts/okf/tenants/<tenant>.{ingest,authoring,scenarios}.json, the newest
  * docs/inventory/<tenant>-taxonomy-snapshot-*.json and docs/migrations/<tenant>-{catalog-mapping,component-category-rules}.json.
  */
@@ -42,6 +44,11 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const log = (line = '') => console.log(line);
 const section = (title: string) => log(`\n── ${title} ${'─'.repeat(Math.max(2, 78 - title.length))}`);
 
+/** Every write made to the live databases, in order, so a failure can say exactly what is and is not changed. */
+const written: string[] = [];
+/** True only once the sequence runs against the live databases; the in-memory rehearsal writes nothing that counts. */
+let liveWrites = false;
+const wrote = (line: string) => { if (liveWrites) written.push(line); };
 const blockers: string[] = [];
 const warnings: string[] = [];
 const block = (message: string) => { blockers.push(message); log(`  ✗ BLOCKER: ${message}`); };
@@ -123,13 +130,17 @@ async function release(services: Services, version: string, mapping: Record<stri
   const { projects, authoring } = services;
   const existing = await authoring.getDraft(TENANT, ENVIRONMENT);
   const saved = await authoring.saveDraft({ projectId: TENANT, environmentId: ENVIRONMENT, expectedRevision: existing?.revision ?? 0, content: draft, updatedBy: ACTOR });
+  wrote(`OKF draft saved as revision ${saved.revision} (it replaces revision ${existing?.revision ?? 'none'}; customers are not served from a draft)`);
   if (!saved.validation.valid) throw new Error(`draft is not valid: ${JSON.stringify(saved.validation.issues.slice(0, 3))}`);
   const okf = await authoring.publishDraft({ projectId: TENANT, environmentId: ENVIRONMENT, expectedRevision: saved.revision, version, publishedBy: ACTOR, notes: NOTE });
+  wrote(`OKF release ${okf.release.releaseId} ${version} published and attached to the project draft (the live Business Pack does not use it until the pack is published)`);
   // The mapping is saved last, immediately before the publication that consumes it, so a failure earlier leaves the project untouched.
   const mapped = await projects.updateProject(TENANT, { catalogMapping: mapping, ...(routingPolicy ? { routingPolicy } : {}) } as any);
   if (!mapped.success) throw new Error(`catalogue mapping / default journey were not saved: ${mapped.message}`);
+  wrote('catalogue mapping and default journey saved on the project draft (the live pack does not use them until the pack is published)');
   const publication = await projects.publishConfig(TENANT, { environmentId: ENVIRONMENT, publishedBy: ACTOR, note: NOTE });
   if (!publication.success) throw new Error(`Business Pack was not published: ${publication.message}`);
+  wrote(`Business Pack published as config version ${publication.version}; the live pack and its activation now follow it`);
   return { saved, okf, publication };
 }
 
@@ -167,8 +178,32 @@ async function verify(services: Services, expected: { releaseChecksum: string },
   return { pack, packChecksum, activation };
 }
 
+/** `--rollback <config version>`: points the environment back at an earlier published version (the pointer, Studio state and, by checksum, the activation move together). */
+async function rollBack(version: number, projectDb: any, runtimeDb: any, runtimeClient: any) {
+  section(`Roll back to config version ${version}`);
+  const services = wire(projectDb, runtimeDb, runtimeClient, memoryGate());
+  const versions: any[] = await services.projects.listVersions(TENANT);
+  const target = versions.find((entry) => entry.version === version);
+  if (!target) throw new Error(`config version ${version} does not exist; published versions: ${versions.map((entry) => entry.version).join(', ')}`);
+  const pointer: any = await runtimeDb.collection('business_pack_pointers').findOne({ tenantId: TENANT, environmentId: ENVIRONMENT });
+  const activation = await new ReleaseActivationRepository(async () => ({ db: runtimeDb, client: runtimeClient })).getReleaseActivation(TENANT, ENVIRONMENT);
+  log(`  now: pack ${pointer?.activeVersion}, activation ${activation?.status} for ${activation?.approvedReleaseVersion}`);
+  log(`  target: config version ${version} (pack ${target.packVersion ?? `1.0.${version}`}), published ${target.publishedAt ?? ''}`);
+  const dir = path.join(root, 'logs', 'backups', `${TENANT}-${ENVIRONMENT}-${stamp}-rollback`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'before.json'), `${JSON.stringify(redact({ takenAt: new Date().toISOString(), pointer, activation }), null, 1)}\n`);
+  if (!APPLY) { log('\n  Nothing was written. Re-run with --apply to roll back.'); return; }
+  const result = await services.projects.rollbackConfig(TENANT, version, ACTOR, ENVIRONMENT);
+  if (!result.success) throw new Error(`rollback failed: ${result.message}`);
+  const after: any = await runtimeDb.collection('business_pack_pointers').findOne({ tenantId: TENANT, environmentId: ENVIRONMENT });
+  const activationAfter = await new ReleaseActivationRepository(async () => ({ db: runtimeDb, client: runtimeClient })).getReleaseActivation(TENANT, ENVIRONMENT);
+  ok(`the environment now runs pack ${after.activeVersion}; activation is ${activationAfter?.status} for ${activationAfter?.approvedReleaseVersion} (revision ${activationAfter?.revision})`);
+  if (activationAfter?.approvedReleaseVersion !== after.activeVersion) warn('the activation does not name the active pack: approve it explicitly before testing');
+  log('  A running service may keep the previous pack for a few minutes (its cache); restart it to see the change at once.');
+}
+
 async function main() {
-  log(`apply-tenant-release  tenant=${TENANT}  environment=${ENVIRONMENT}  mode=${APPLY ? 'APPLY (writes)' : 'PLAN (reads only; rehearsal in memory)'}`);
+  log(`apply-tenant-release  tenant=${TENANT}  environment=${ENVIRONMENT}  mode=${option('rollback') ? 'ROLLBACK' : ''}${APPLY ? ' APPLY (writes)' : ' PLAN (reads only; rehearsal in memory)'}`);
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error('MONGODB_URI is required');
   const { connectToDatabase } = await import('@journeyax/database');
@@ -177,6 +212,8 @@ async function main() {
   const { db: projectDb } = await connectToDatabase(uri, projectName);
   const { db: runtimeDb, client: runtimeClient } = await connectToDatabase(uri, runtimeName);
   log(`databases: project=${projectName}  runtime=${runtimeName}  (cluster host: ${uri.match(/@([^/?]+)/)?.[1] ?? 'unknown'})`);
+
+  if (option('rollback')) { await rollBack(Number(option('rollback')), projectDb, runtimeDb, runtimeClient); return; }
 
   // ── 1. What is there now (read-only) ───────────────────────────────────────────────────────────────
   section('1. What is live now');
@@ -272,6 +309,7 @@ async function main() {
 
   // ── 6. Apply ───────────────────────────────────────────────────────────────────────────────────────
   section('6. Apply to the live databases');
+  liveWrites = true;
   const live = wire(projectDb, runtimeDb, runtimeClient, memoryGate());
   const result = await release(live, version, mapping, draft, routingPolicy);
   ok(`saved the draft (revision ${result.saved.revision}), published OKF release ${result.okf.release.releaseId} ${version} (${result.okf.release.checksum.slice(0, 12)}…)`);
@@ -282,9 +320,19 @@ async function main() {
   section('Done');
   log(`  Backup and result: ${path.relative(root, backupDir)}/`);
   log(`  A running service may keep the previous pack for a few minutes (its cache); restart it to see the change at once.`);
-  log(`  To undo: roll the project back to config version ${rollbackTarget ?? '(previous)'} in the Studio (Versions → Roll back), or run`);
-  log(`    projects.rollbackConfig('${TENANT}', ${rollbackTarget ?? '<previous>'}, '<you>', '${ENVIRONMENT}')`);
+  log(`  To undo, point the environment back at config version ${rollbackTarget ?? '<previous>'} (Studio: Versions → Roll back, or this script):`);
+  log(`    npx tsx --env-file=.env --tsconfig tests/public-path/tsconfig.json scripts/okf/apply-tenant-release.ts ${TENANT} --rollback ${rollbackTarget ?? '<previous>'} --apply`);
   if (blockers.length) process.exitCode = 1;
 }
 
-main().then(() => process.exit(process.exitCode ?? 0)).catch((error) => { console.error(`\n✗ ${error.message}`); process.exit(1); });
+main().then(() => process.exit(process.exitCode ?? 0)).catch((error) => {
+  console.error(`\n✗ ${error.message}`);
+  if (APPLY && written.length) {
+    console.error('\nWritten to the live databases before it stopped:');
+    for (const line of written) console.error(`  - ${line}`);
+    console.error(written.some((line) => line.startsWith('Business Pack published'))
+      ? '\nThe live pack changed. Check the app; to undo, use --rollback <config version> --apply.'
+      : '\nThe live Business Pack and its activation did not change, so customers see exactly what they saw before. Nothing needs rolling back.');
+  } else if (APPLY) console.error('\nNothing was written to the live databases.');
+  process.exit(1);
+});

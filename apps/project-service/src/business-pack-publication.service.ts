@@ -790,8 +790,8 @@ export class BusinessPackPublicationService {
       await this.getProjectsCol().updateOne(
         { projectId: pid },
         environmentId === 'production'
-          ? { $set: { activeVersion: version, packVersion: (snap as any).packVersion, updatedAt: now } }
-          : { $set: { [`environmentVersions.${environmentId}`]: { version, packVersion: (snap as any).packVersion, publishedAt: now }, updatedAt: now } },
+          ? { $set: { activeVersion: version, ...((snap as any).packVersion ? { packVersion: (snap as any).packVersion } : {}), updatedAt: now } }
+          : { $set: { [`environmentVersions.${environmentId}`]: { version, ...((snap as any).packVersion ? { packVersion: (snap as any).packVersion } : {}), publishedAt: now }, updatedAt: now } },
         sessionOpts
       );
     };

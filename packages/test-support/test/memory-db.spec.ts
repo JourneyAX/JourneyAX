@@ -73,6 +73,20 @@ async function main() {
     assert.equal(ran, true);
   });
 
+  await suite.test('undefined is stored as null, as the real driver does, on insert, update, replace and push', async () => {
+    const c = new MemoryDb().collection('docs');
+    await c.insertOne({ k: 1, a: undefined, nested: { b: undefined, keep: 'x' }, list: [1, undefined] } as any);
+    assert.deepEqual((await c.findOne({ k: 1 }))!, { _id: 'docs_1', k: 1, a: null, nested: { b: null, keep: 'x' }, list: [1, null] });
+    await c.updateOne({ k: 1 }, { $set: { later: undefined, 'nested.c': undefined }, $push: { list: { v: undefined } } } as any);
+    const updated: any = await c.findOne({ k: 1 });
+    assert.deepEqual([updated.later, updated.nested.c, updated.list[2]], [null, null, { v: null }]);
+    await c.replaceOne({ k: 1 }, { k: 1, z: undefined } as any);
+    assert.deepEqual(await c.findOne({ k: 1 }), { _id: 'docs_1', k: 1, z: null });
+    const date = new Date('2026-01-01');
+    await c.insertOne({ k: 2, when: date } as any);
+    assert.equal(((await c.findOne({ k: 2 })) as any).when.getTime(), date.getTime(), 'dates survive');
+  });
+
   await suite.test('stored documents are isolated copies', async () => {
     const c = new MemoryDb().collection('iso');
     const original = { k: 1, list: [1] };

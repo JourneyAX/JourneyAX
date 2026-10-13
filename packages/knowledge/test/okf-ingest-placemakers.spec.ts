@@ -5,7 +5,7 @@ import { MemoryDb, createSuite } from '@journeyax/test-support';
 import {
   OKF_LIMITS, auditProvenance, buildCoverageReport, buildServerOwnedOkfContent, buildTaxonomyDraft, computeKnowledgeChecksum,
   exportOkfBundle, hydrateOkfReleaseEnvelope, importOkfBundle, loadPinnedOkfRelease, publishOkfRelease, resolveOkfGate,
-  validateOkfDraftContent, TaxonomySnapshotSchema,
+  validateOkfDraftContent, TaxonomySnapshotSchema, dropUndefined,
 } from '../src';
 
 /**
@@ -205,6 +205,27 @@ async function main() {
     const adhesives = generated.draft.concepts.filter((entry: any) => /^adhesives \(/i.test(entry.name)).map((entry: any) => entry.name).sort();
     assert.ok(adhesives.length >= 2 && new Set(adhesives).size === adhesives.length, `the repeated "Adhesives" leaves are told apart: ${adhesives.join(' | ')}`);
     assert.ok(adhesives.some((name) => name.includes('›')), 'at least one is qualified by its whole ancestry');
+  });
+
+  await suite.test('a generated draft is plain data: no undefined field, so it survives storage with its hashes intact', () => {
+    const undefinedPaths: string[] = [];
+    const walk = (value: any, trail: string) => {
+      if (Array.isArray(value)) return value.forEach((entry, index) => walk(entry, `${trail}[${index}]`));
+      if (value && typeof value === 'object') for (const [key, entry] of Object.entries(value)) { if (entry === undefined) undefinedPaths.push(`${trail}.${key}`); else walk(entry, `${trail}.${key}`); }
+    };
+    walk(generated.draft, 'draft');
+    assert.deepEqual(undefinedPaths.slice(0, 3), [], 'the real database stores undefined as null, which changes a content hash');
+    // What the driver does to the draft: undefined becomes null. Nothing may change about its validity.
+    const viaDriver = new MemoryDb();
+    return viaDriver.collection('okf_drafts').insertOne({ content: generated.draft } as any).then(async () => {
+      const stored: any = await viaDriver.collection('okf_drafts').findOne({});
+      assert.equal(validateOkfDraftContent(stored.content, 'placemakers').valid, true);
+    });
+  });
+
+  await suite.test('dropUndefined removes undefined fields and keeps every other value', () => {
+    const date = new Date('2026-01-01');
+    assert.deepEqual(dropUndefined({ a: 1, b: undefined, c: { d: undefined, e: null, f: [1, undefined] }, g: date, h: '' }), { a: 1, c: { e: null, f: [1, null] }, g: date, h: '' });
   });
 
 }

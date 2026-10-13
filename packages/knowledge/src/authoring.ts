@@ -3,6 +3,19 @@ import { computeKnowledgeEntityHash } from './checksum';
 const HASHED_COLLECTIONS = ['concepts', 'relationships', 'evidenceChunks'] as const;
 
 /**
+ * Content is stored as plain data. A field holding `undefined` is the same as an absent field to every hash in this package, but the
+ * database driver stores it as `null`, which hashes differently: a draft that carried one would validate in memory and then fail
+ * integrity checks after a round trip through storage. Dropping them first makes what is hashed identical to what is stored.
+ */
+export function dropUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((entry) => (entry === undefined ? null : dropUndefined(entry))) as unknown as T;
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, entry]) => entry !== undefined).map(([key, entry]) => [key, dropUndefined(entry)])) as T;
+  }
+  return value;
+}
+
+/**
  * Draft hashes are server-owned. An editor (form, JSON, import) changes claim-bearing content and the
  * server rebinds each entity's contentHash to it. Verification records are NOT touched: an edited entity
  * no longer matches the hash its verification covers, so it surfaces as stale and needs re-attestation.

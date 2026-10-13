@@ -174,6 +174,19 @@ async function main() {
     const rejected = await service.updateProject(TENANT, { routingPolicy: { defaultJourneyId: '' } } as any);
     assert.equal(rejected.success, false);
   });
+  await suite.test('a draft carrying undefined fields is stored as plain data and still validates after the database round trip', async () => {
+    const { service, db } = await createService();
+    const authoring = new OkfAuthoringService(async () => db as any, (pid, update) => service.updateProject(pid, update as any));
+    const content: any = buildOkfContent();
+    // A generator that leaves a field undefined: the driver would store null, which hashes differently from an absent field.
+    content.concepts[0].extensions = { ...(content.concepts[0].extensions ?? {}), note: { detail: undefined, other: 'x' } };
+    const saved = await authoring.saveDraft({ projectId: TENANT, environmentId: 'test', expectedRevision: 0, content, updatedBy: 'author-1' });
+    assert.equal(saved.validation.valid, true);
+    const stored: any = await authoring.getDraft(TENANT, 'test');
+    assert.deepEqual(stored.content.concepts[0].extensions.note, { other: 'x' }, 'the undefined field is not stored at all');
+    const checked: any = await authoring.validateDraft(TENANT, 'test');
+    assert.equal(checked.valid ?? checked.validation?.valid, true, JSON.stringify(checked.issues ?? checked.validation?.issues ?? []).slice(0, 200));
+  });
   await suite.test('the pack takes its currency from the project; a project that states none is not published with a guessed one', async () => {
     const { service, db } = await createService({ pricing: { currency: 'nzd', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' } });
     const published: any = await service.publishConfig(TENANT, { environmentId: 'test' });

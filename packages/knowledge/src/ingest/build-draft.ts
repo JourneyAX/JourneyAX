@@ -270,7 +270,9 @@ export function buildTaxonomyDraft(snapshotInput: unknown, configInput: unknown)
     }
     if ((customerPhrases.get(node) || []).length) {
       const meta = hintMeta.get(node);
-      marks.customerPhrases = provenance('model_generated_keywords', snapshot.snapshotAt, { model: meta?.model, generatedAt: meta?.generatedAt });
+      marks.customerPhrases = provenance('model_generated_keywords', snapshot.snapshotAt, {
+        ...(meta?.model !== undefined ? { model: meta.model } : {}), ...(meta?.generatedAt !== undefined ? { generatedAt: meta.generatedAt } : {}),
+      });
     }
     if ((documentSourcesByNode.get(node) || []).length) {
       marks.evidenceRefs = provenance('crawl_document_candidate', snapshot.snapshotAt, { note: 'Candidate documents; not verified and not evidence for any claim until a qualified person confirms applicability.' });

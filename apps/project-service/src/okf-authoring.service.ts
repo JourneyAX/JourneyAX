@@ -10,6 +10,7 @@ import {
   evaluateOkfDraft,
   assertDraftSize,
   bindDraftEntityHashes,
+  dropUndefined,
   findStaleVerifications,
   resolveOkfPolicy,
   assertOkfReferenceReady,
@@ -145,7 +146,7 @@ export class OkfAuthoringService {
       (input.content && typeof input.content === 'object' && !Array.isArray(input.content))
         ? input.content as Record<string, unknown>
         : {};
-    const parsed = OkfDraftContentSchema.safeParse(bindDraftEntityHashes(editable));
+    const parsed = OkfDraftContentSchema.safeParse(bindDraftEntityHashes(dropUndefined(editable)));
     if (!parsed.success) throw new Error(`Invalid OKF draft structure: ${parsed.error.message}`);
     assertDraftSize(parsed.data, this.limits);
     const db = await this.dbProvider();

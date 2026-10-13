@@ -17,6 +17,20 @@ export class DuplicateKeyError extends Error {
   }
 }
 
+/**
+ * What the real MongoDB driver stores for a value: `undefined` becomes `null` (the driver's default `ignoreUndefined: false`),
+ * in objects and in arrays, and everything else is copied. Writes go through this so a test cannot pass on a document the
+ * database would have changed (a content hash computed before a round trip no longer matches the one after).
+ */
+export function asStored<T>(value: T): T {
+  if (value === undefined) return null as unknown as T;
+  if (Array.isArray(value)) return value.map((entry) => asStored(entry)) as unknown as T;
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, asStored(entry)])) as T;
+  }
+  return structuredClone(value);
+}
+
 const getPath = (doc: Doc, path: string): any =>
   path.split('.').reduce((value: any, part) => (value == null ? undefined : value[part]), doc);
 
@@ -172,7 +186,7 @@ export class MemoryCollection<T extends Doc = Doc> {
   }
 
   async insertOne(doc: T, _options?: { session?: unknown }): Promise<{ acknowledged: boolean; insertedId: any }> {
-    const copy: Doc = structuredClone(doc);
+    const copy: Doc = asStored(doc);
     if (copy._id === undefined) copy._id = `${this.name}_${this.docs.length + 1}`;
     this.assertUnique(copy);
     this.docs.push(copy as T);
@@ -185,21 +199,21 @@ export class MemoryCollection<T extends Doc = Doc> {
   }
 
   private applyUpdate(doc: Doc, update: Doc, inserting: boolean): void {
-    if (update.$setOnInsert && inserting) for (const [k, v] of Object.entries(update.$setOnInsert)) setPath(doc, k, structuredClone(v));
-    for (const [k, v] of Object.entries(update.$set || {})) setPath(doc, k, structuredClone(v));
+    if (update.$setOnInsert && inserting) for (const [k, v] of Object.entries(update.$setOnInsert)) setPath(doc, k, asStored(v));
+    for (const [k, v] of Object.entries(update.$set || {})) setPath(doc, k, asStored(v));
     for (const k of Object.keys(update.$unset || {})) unsetPath(doc, k);
     for (const [k, v] of Object.entries(update.$inc || {})) setPath(doc, k, (getPath(doc, k) || 0) + (v as number));
     for (const [k, v] of Object.entries(update.$push || {})) {
       const current: any[] = getPath(doc, k) || [];
       const spec: any = v;
       const additions = spec && typeof spec === 'object' && '$each' in spec ? spec.$each : [spec];
-      let next = [...current, ...structuredClone(additions)];
+      let next = [...current, ...asStored(additions)];
       if (spec && typeof spec === 'object' && typeof spec.$slice === 'number') next = spec.$slice < 0 ? next.slice(spec.$slice) : next.slice(0, spec.$slice);
       setPath(doc, k, next);
     }
     for (const [k, v] of Object.entries(update.$addToSet || {})) {
       const current: any[] = getPath(doc, k) || [];
-      if (!current.some((entry) => same(entry, v))) setPath(doc, k, [...current, structuredClone(v)]);
+      if (!current.some((entry) => same(entry, v))) setPath(doc, k, [...current, asStored(v)]);
     }
   }
 
@@ -226,7 +240,7 @@ export class MemoryCollection<T extends Doc = Doc> {
   async replaceOne(filter: Doc, replacement: Doc) {
     const target = this.docs.find((doc) => matches(doc, filter));
     if (!target) return { matchedCount: 0, modifiedCount: 0 };
-    const copy = structuredClone(replacement);
+    const copy = asStored(replacement);
     copy._id = (target as any)._id;
     this.assertUnique(copy, target);
     Object.keys(target).forEach((key) => delete (target as any)[key]);
