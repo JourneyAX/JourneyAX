@@ -289,7 +289,11 @@ export const CLARIFY_QUESTIONS: ClarifyQuestion[] = [
 export interface DynamicQuestion {
   id: string;
   title: string;
-  options: string[];
+  options: Array<string | { value: string; label: string }>;
+  inputType?: 'single_select' | 'multi_select' | 'number' | 'measurement' | 'text';
+  multi?: boolean;
+  placeholder?: string;
+  unit?: string;
 }
 
 // ── Message types ──────────────────────────────────────────────────────

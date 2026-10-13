@@ -6,9 +6,11 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "tsx test/public-projection.spec.ts"
   },
   "devDependencies": {
-    "typescript": "^5"
+    "typescript": "^5",
+    "@journeyax/test-support": "*"
   }
 }

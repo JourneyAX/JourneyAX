@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "ES2021",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": "../../",
+    "paths": {
+      "@journeyax/knowledge": [
+        "packages/knowledge/src"
+      ],
+      "@/*": [
+        "apps/journeyax-web/src/*"
+      ]
+    },
+    "moduleResolution": "bundler"
+  },
+  "include": [
+    "./**/*",
+    "../../apps/api-gateway/src/**/*",
+    "../../apps/agent-commerce-service/src/**/*",
+    "../../apps/journey-runtime-service/src/**/*",
+    "../../apps/project-service/src/**/*",
+    "../../apps/journeyax-web/src/app/api/chat/**/*",
+    "../../apps/journeyax-web/src/lib/**/*",
+    "../../apps/journey-runtime-service/test/helpers/**/*"
+  ]
+}

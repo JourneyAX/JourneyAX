@@ -1,0 +1,2190 @@
+{
+ "tenantId": "placemakers",
+ "specVersion": "1.0.0",
+ "startedAt": "2026-10-13T04:46:47.348Z",
+ "durationMs": 228,
+ "passed": true,
+ "totals": {
+  "scenarios": 17,
+  "turns": 17,
+  "violations": 0,
+  "warnings": 0
+ },
+ "scenarios": [
+  {
+   "id": "fastenings-screws",
+   "description": "A broad request for screws shows examples and asks what they will be fixed into",
+   "passed": true,
+   "turns": [
+    {
+     "message": "screws",
+     "status": 200,
+     "elapsedMs": 105,
+     "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+     "cardTypes": [
+      "products",
+      "clarify"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-1"
+       },
+       "atMs": 105
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 105
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000100",
+             "title": "Exterior wood screw 8g x 50mm",
+             "imageUrl": null,
+             "price": 12.5,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": true
+            },
+            {
+             "sku": "1000101",
+             "title": "Decking screw 10g x 65mm",
+             "imageUrl": null,
+             "price": 18,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": false
+            },
+            {
+             "sku": "1000102",
+             "title": "Self drilling metal screw",
+             "imageUrl": null,
+             "price": 9,
+             "currency": "NZD",
+             "reason": "Category: Metal Screws",
+             "recommended": false
+            },
+            {
+             "sku": "1000103",
+             "title": "Concrete anchor 6mm",
+             "imageUrl": null,
+             "price": 21,
+             "currency": "NZD",
+             "reason": "Category: Masonry  Anchors",
+             "recommended": false
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000100",
+            "title": "Exterior wood screw 8g x 50mm",
+            "imageUrl": null,
+            "price": 12.5,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": true
+           },
+           {
+            "sku": "1000101",
+            "title": "Decking screw 10g x 65mm",
+            "imageUrl": null,
+            "price": 18,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": false
+           },
+           {
+            "sku": "1000102",
+            "title": "Self drilling metal screw",
+            "imageUrl": null,
+            "price": 9,
+            "currency": "NZD",
+            "reason": "Category: Metal Screws",
+            "recommended": false
+           },
+           {
+            "sku": "1000103",
+            "title": "Concrete anchor 6mm",
+            "imageUrl": null,
+            "price": 21,
+            "currency": "NZD",
+            "reason": "Category: Masonry  Anchors",
+            "recommended": false
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 105
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_clarify_[phone]",
+          "cardType": "clarify",
+          "state": {
+           "questions": [
+            {
+             "id": "fastener_substrate",
+             "text": "What are you screwing into?",
+             "options": [
+              {
+               "value": "timber",
+               "label": "Timber"
+              },
+              {
+               "value": "metal",
+               "label": "Metal"
+              },
+              {
+               "value": "masonry",
+               "label": "Concrete, brick or block"
+              }
+             ],
+             "multi": false,
+             "inputType": "single_select"
+            }
+           ],
+           "progress": "1 detail needed"
+          }
+         }
+        },
+        "card": {
+         "cardType": "clarify",
+         "state": {
+          "questions": [
+           {
+            "id": "fastener_substrate",
+            "text": "What are you screwing into?",
+            "options": [
+             {
+              "value": "timber",
+              "label": "Timber"
+             },
+             {
+              "value": "metal",
+              "label": "Metal"
+             },
+             {
+              "value": "masonry",
+              "label": "Concrete, brick or block"
+             }
+            ],
+            "multi": false,
+            "inputType": "single_select"
+           }
+          ],
+          "progress": "1 detail needed"
+         }
+        }
+       },
+       "atMs": 105
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+       },
+       "atMs": 105
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-1",
+        "workspaceId": "session-1",
+        "response": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "assistantMessage": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+        }
+       },
+       "atMs": 105
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fastenings-wood-screws",
+   "description": "Wood screws list products and suggest bits as unverified extras",
+   "passed": true,
+   "turns": [
+    {
+     "message": "wood screws",
+     "status": 200,
+     "elapsedMs": 15,
+     "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+     "cardTypes": [
+      "products",
+      "accessories"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-2"
+       },
+       "atMs": 15
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 15
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000100",
+             "title": "Exterior wood screw 8g x 50mm",
+             "imageUrl": null,
+             "price": 12.5,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": true
+            },
+            {
+             "sku": "1000101",
+             "title": "Decking screw 10g x 65mm",
+             "imageUrl": null,
+             "price": 18,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": false
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000100",
+            "title": "Exterior wood screw 8g x 50mm",
+            "imageUrl": null,
+            "price": 12.5,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": true
+           },
+           {
+            "sku": "1000101",
+            "title": "Decking screw 10g x 65mm",
+            "imageUrl": null,
+            "price": 18,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": false
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 15
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_suggestions_[phone]",
+          "cardType": "accessories",
+          "state": {
+           "heading": "Have you considered?",
+           "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+           "groups": [
+            {
+             "key": "suggestion-1",
+             "label": "Drill Bits",
+             "items": [
+              {
+               "sku": "1000104",
+               "title": "HSS drill bit set",
+               "imageUrl": null,
+               "price": 30,
+               "currency": "NZD",
+               "category": "Drill Bits"
+              },
+              {
+               "sku": "1000105",
+               "title": "Masonry drill bit",
+               "imageUrl": null,
+               "price": 8,
+               "currency": "NZD",
+               "category": "Drill Bits"
+              }
+             ]
+            },
+            {
+             "key": "suggestion-2",
+             "label": "Screwdriver Bits",
+             "items": [
+              {
+               "sku": "1000106",
+               "title": "Screwdriver bit set",
+               "imageUrl": null,
+               "price": 14,
+               "currency": "NZD",
+               "category": "Screwdriver Bits"
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "accessories",
+         "state": {
+          "heading": "Have you considered?",
+          "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+          "groups": [
+           {
+            "key": "suggestion-1",
+            "label": "Drill Bits",
+            "items": [
+             {
+              "sku": "1000104",
+              "title": "HSS drill bit set",
+              "imageUrl": null,
+              "price": 30,
+              "currency": "NZD",
+              "category": "Drill Bits"
+             },
+             {
+              "sku": "1000105",
+              "title": "Masonry drill bit",
+              "imageUrl": null,
+              "price": 8,
+              "currency": "NZD",
+              "category": "Drill Bits"
+             }
+            ]
+           },
+           {
+            "key": "suggestion-2",
+            "label": "Screwdriver Bits",
+            "items": [
+             {
+              "sku": "1000106",
+              "title": "Screwdriver bit set",
+              "imageUrl": null,
+              "price": 14,
+              "currency": "NZD",
+              "category": "Screwdriver Bits"
+             }
+            ]
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 15
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+       },
+       "atMs": 15
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-2",
+        "workspaceId": "session-2",
+        "response": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "assistantMessage": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy."
+        }
+       },
+       "atMs": 15
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "decking-project",
+   "description": "Building a deck asks the material, then the size, then shows its categories",
+   "passed": true,
+   "turns": [
+    {
+     "message": "i want to build a deck",
+     "status": 200,
+     "elapsedMs": 12,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "products",
+      "accessories",
+      "clarify"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-3"
+       },
+       "atMs": 11
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 12
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000113",
+             "title": "Composite decking board 140mm",
+             "imageUrl": null,
+             "price": 62,
+             "currency": "NZD",
+             "reason": "Category: Composite Decking",
+             "recommended": true
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000113",
+            "title": "Composite decking board 140mm",
+            "imageUrl": null,
+            "price": 62,
+            "currency": "NZD",
+            "reason": "Category: Composite Decking",
+            "recommended": true
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 12
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_suggestions_[phone]",
+          "cardType": "accessories",
+          "state": {
+           "heading": "Have you considered?",
+           "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+           "groups": [
+            {
+             "key": "suggestion-1",
+             "label": "Wood Screws",
+             "items": [
+              {
+               "sku": "1000100",
+               "title": "Exterior wood screw 8g x 50mm",
+               "imageUrl": null,
+               "price": 12.5,
+               "currency": "NZD",
+               "category": "Wood Screws"
+              },
+              {
+               "sku": "1000101",
+               "title": "Decking screw 10g x 65mm",
+               "imageUrl": null,
+               "price": 18,
+               "currency": "NZD",
+               "category": "Wood Screws"
+              }
+             ]
+            },
+            {
+             "key": "suggestion-2",
+             "label": "Woodcare",
+             "items": [
+              {
+               "sku": "1000114",
+               "title": "Decking oil 4L",
+               "imageUrl": null,
+               "price": 76,
+               "currency": "NZD",
+               "category": "Woodcare"
+              }
+             ]
+            },
+            {
+             "key": "suggestion-3",
+             "label": "Outdoor Cleaners",
+             "items": [
+              {
+               "sku": "1000115",
+               "title": "Deck wash 2L",
+               "imageUrl": null,
+               "price": 24,
+               "currency": "NZD",
+               "category": "Outdoor Cleaners"
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "accessories",
+         "state": {
+          "heading": "Have you considered?",
+          "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+          "groups": [
+           {
+            "key": "suggestion-1",
+            "label": "Wood Screws",
+            "items": [
+             {
+              "sku": "1000100",
+              "title": "Exterior wood screw 8g x 50mm",
+              "imageUrl": null,
+              "price": 12.5,
+              "currency": "NZD",
+              "category": "Wood Screws"
+             },
+             {
+              "sku": "1000101",
+              "title": "Decking screw 10g x 65mm",
+              "imageUrl": null,
+              "price": 18,
+              "currency": "NZD",
+              "category": "Wood Screws"
+             }
+            ]
+           },
+           {
+            "key": "suggestion-2",
+            "label": "Woodcare",
+            "items": [
+             {
+              "sku": "1000114",
+              "title": "Decking oil 4L",
+              "imageUrl": null,
+              "price": 76,
+              "currency": "NZD",
+              "category": "Woodcare"
+             }
+            ]
+           },
+           {
+            "key": "suggestion-3",
+            "label": "Outdoor Cleaners",
+            "items": [
+             {
+              "sku": "1000115",
+              "title": "Deck wash 2L",
+              "imageUrl": null,
+              "price": 24,
+              "currency": "NZD",
+              "category": "Outdoor Cleaners"
+             }
+            ]
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 12
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_clarify_[phone]",
+          "cardType": "clarify",
+          "state": {
+           "questions": [
+            {
+             "id": "deck_material",
+             "text": "What decking are you considering?",
+             "options": [
+              {
+               "value": "composite",
+               "label": "Composite"
+              },
+              {
+               "value": "hardwood",
+               "label": "Hardwood"
+              },
+              {
+               "value": "radiata",
+               "label": "Radiata pine"
+              },
+              {
+               "value": "unsure",
+               "label": "Not sure yet"
+              }
+             ],
+             "multi": false,
+             "inputType": "single_select"
+            }
+           ],
+           "progress": "1 detail needed"
+          }
+         }
+        },
+        "card": {
+         "cardType": "clarify",
+         "state": {
+          "questions": [
+           {
+            "id": "deck_material",
+            "text": "What decking are you considering?",
+            "options": [
+             {
+              "value": "composite",
+              "label": "Composite"
+             },
+             {
+              "value": "hardwood",
+              "label": "Hardwood"
+             },
+             {
+              "value": "radiata",
+              "label": "Radiata pine"
+             },
+             {
+              "value": "unsure",
+              "label": "Not sure yet"
+             }
+            ],
+            "multi": false,
+            "inputType": "single_select"
+           }
+          ],
+          "progress": "1 detail needed"
+         }
+        }
+       },
+       "atMs": 12
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 12
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-3",
+        "workspaceId": "session-3",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 12
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "bathroom-vanities",
+   "description": "Vanities show products and suggest tapware and mirrors, in the shop's currency",
+   "passed": true,
+   "turns": [
+    {
+     "message": "vanities",
+     "status": 200,
+     "elapsedMs": 9,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "products",
+      "accessories"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-4"
+       },
+       "atMs": 9
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 9
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000107",
+             "title": "Vanity unit 750mm",
+             "imageUrl": null,
+             "price": 499,
+             "currency": "NZD",
+             "reason": "Category: Vanities",
+             "recommended": true
+            },
+            {
+             "sku": "1000108",
+             "title": "Wall hung vanity 600mm",
+             "imageUrl": null,
+             "price": 399,
+             "currency": "NZD",
+             "reason": "Category: Vanities",
+             "recommended": false
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000107",
+            "title": "Vanity unit 750mm",
+            "imageUrl": null,
+            "price": 499,
+            "currency": "NZD",
+            "reason": "Category: Vanities",
+            "recommended": true
+           },
+           {
+            "sku": "1000108",
+            "title": "Wall hung vanity 600mm",
+            "imageUrl": null,
+            "price": 399,
+            "currency": "NZD",
+            "reason": "Category: Vanities",
+            "recommended": false
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 9
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_suggestions_[phone]",
+          "cardType": "accessories",
+          "state": {
+           "heading": "Have you considered?",
+           "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+           "groups": [
+            {
+             "key": "suggestion-1",
+             "label": "Tapware & Showering",
+             "items": [
+              {
+               "sku": "1000109",
+               "title": "Basin mixer",
+               "imageUrl": null,
+               "price": 89,
+               "currency": "NZD",
+               "category": "Tapware & Showering"
+              }
+             ]
+            },
+            {
+             "key": "suggestion-2",
+             "label": "Mirrors",
+             "items": [
+              {
+               "sku": "1000110",
+               "title": "LED bathroom mirror",
+               "imageUrl": null,
+               "price": 129,
+               "currency": "NZD",
+               "category": "Mirrors"
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "accessories",
+         "state": {
+          "heading": "Have you considered?",
+          "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+          "groups": [
+           {
+            "key": "suggestion-1",
+            "label": "Tapware & Showering",
+            "items": [
+             {
+              "sku": "1000109",
+              "title": "Basin mixer",
+              "imageUrl": null,
+              "price": 89,
+              "currency": "NZD",
+              "category": "Tapware & Showering"
+             }
+            ]
+           },
+           {
+            "key": "suggestion-2",
+            "label": "Mirrors",
+            "items": [
+             {
+              "sku": "1000110",
+              "title": "LED bathroom mirror",
+              "imageUrl": null,
+              "price": 129,
+              "currency": "NZD",
+              "category": "Mirrors"
+             }
+            ]
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 9
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 9
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-4",
+        "workspaceId": "session-4",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 9
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "bathroom-renovation",
+   "description": "A renovation asks its first planning question and shows no products yet",
+   "passed": true,
+   "turns": [
+    {
+     "message": "renovate my bathroom",
+     "status": 200,
+     "elapsedMs": 8,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "clarify"
+     ],
+     "capabilities": [],
+     "events": [
+      "session",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-5"
+       },
+       "atMs": 8
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_clarify_[phone]",
+          "cardType": "clarify",
+          "state": {
+           "questions": [
+            {
+             "id": "project_scope",
+             "text": "Are you renovating, building new, or repairing?",
+             "options": [
+              {
+               "value": "renovation",
+               "label": "Renovating"
+              },
+              {
+               "value": "new_build",
+               "label": "Building new"
+              },
+              {
+               "value": "repair",
+               "label": "Repairing"
+              }
+             ],
+             "multi": false,
+             "inputType": "single_select"
+            }
+           ],
+           "progress": "1 detail needed"
+          }
+         }
+        },
+        "card": {
+         "cardType": "clarify",
+         "state": {
+          "questions": [
+           {
+            "id": "project_scope",
+            "text": "Are you renovating, building new, or repairing?",
+            "options": [
+             {
+              "value": "renovation",
+              "label": "Renovating"
+             },
+             {
+              "value": "new_build",
+              "label": "Building new"
+             },
+             {
+              "value": "repair",
+              "label": "Repairing"
+             }
+            ],
+            "multi": false,
+            "inputType": "single_select"
+           }
+          ],
+          "progress": "1 detail needed"
+         }
+        }
+       },
+       "atMs": 8
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 8
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-5",
+        "workspaceId": "session-5",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 8
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "problem-leak",
+   "description": "A leak is a problem: no products, cross-sell or checkout, and a professional is named",
+   "passed": true,
+   "turns": [
+    {
+     "message": "my bathroom is leaking",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-6"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-6",
+        "workspaceId": "session-6",
+        "response": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "assistantMessage": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "message": {
+         "role": "assistant",
+         "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "problem-gas",
+   "description": "A gas smell is a hazard",
+   "passed": true,
+   "turns": [
+    {
+     "message": "i can smell gas",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-7"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-7",
+        "workspaceId": "session-7",
+        "response": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "assistantMessage": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "message": {
+         "role": "assistant",
+         "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "problem-unknown-appliance",
+   "description": "A hazard nobody named still escalates",
+   "passed": true,
+   "turns": [
+    {
+     "message": "my appliance is sparking",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-8"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-8",
+        "workspaceId": "session-8",
+        "response": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "assistantMessage": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "message": {
+         "role": "assistant",
+         "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "problem-leak-beats-order",
+   "description": "A hazard outranks an order question in the same message",
+   "passed": true,
+   "turns": [
+    {
+     "message": "where is my order? my bathroom is leaking",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-9"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-9",
+        "workspaceId": "session-9",
+        "response": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "assistantMessage": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "message": {
+         "role": "assistant",
+         "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
+        }
+       },
+       "atMs": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evidence-install",
+   "description": "How to install something is answered only from verified information; with none, nothing is shown",
+   "passed": true,
+   "turns": [
+    {
+     "message": "how do i install a vanity",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-10"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-10",
+        "workspaceId": "session-10",
+        "response": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "assistantMessage": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "message": {
+         "role": "assistant",
+         "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
+        }
+       },
+       "atMs": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "evidence-warranty",
+   "description": "A warranty question is answered only from a verified source",
+   "passed": true,
+   "turns": [
+    {
+     "message": "what is the warranty on this vanity",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-11"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-11",
+        "workspaceId": "session-11",
+        "response": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "assistantMessage": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "message": {
+         "role": "assistant",
+         "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "care-deck",
+   "description": "Caring for a deck is guidance that is not invented",
+   "passed": true,
+   "turns": [
+    {
+     "message": "clean my deck",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-12"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-12",
+        "workspaceId": "session-12",
+        "response": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "assistantMessage": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+        "message": {
+         "role": "assistant",
+         "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "technical-suitability",
+   "description": "A suitability question lists products but does not claim suitability",
+   "passed": true,
+   "turns": [
+    {
+     "message": "is this wood screw suitable for a load bearing beam",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+     "cardTypes": [
+      "products",
+      "accessories"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-13"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000100",
+             "title": "Exterior wood screw 8g x 50mm",
+             "imageUrl": null,
+             "price": 12.5,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": true
+            },
+            {
+             "sku": "1000101",
+             "title": "Decking screw 10g x 65mm",
+             "imageUrl": null,
+             "price": 18,
+             "currency": "NZD",
+             "reason": "Category: Wood Screws",
+             "recommended": false
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000100",
+            "title": "Exterior wood screw 8g x 50mm",
+            "imageUrl": null,
+            "price": 12.5,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": true
+           },
+           {
+            "sku": "1000101",
+            "title": "Decking screw 10g x 65mm",
+            "imageUrl": null,
+            "price": 18,
+            "currency": "NZD",
+            "reason": "Category: Wood Screws",
+            "recommended": false
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 7
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_suggestions_[phone]",
+          "cardType": "accessories",
+          "state": {
+           "heading": "Have you considered?",
+           "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+           "groups": [
+            {
+             "key": "suggestion-1",
+             "label": "Drill Bits",
+             "items": [
+              {
+               "sku": "1000104",
+               "title": "HSS drill bit set",
+               "imageUrl": null,
+               "price": 30,
+               "currency": "NZD",
+               "category": "Drill Bits"
+              },
+              {
+               "sku": "1000105",
+               "title": "Masonry drill bit",
+               "imageUrl": null,
+               "price": 8,
+               "currency": "NZD",
+               "category": "Drill Bits"
+              }
+             ]
+            },
+            {
+             "key": "suggestion-2",
+             "label": "Screwdriver Bits",
+             "items": [
+              {
+               "sku": "1000106",
+               "title": "Screwdriver bit set",
+               "imageUrl": null,
+               "price": 14,
+               "currency": "NZD",
+               "category": "Screwdriver Bits"
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "accessories",
+         "state": {
+          "heading": "Have you considered?",
+          "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+          "groups": [
+           {
+            "key": "suggestion-1",
+            "label": "Drill Bits",
+            "items": [
+             {
+              "sku": "1000104",
+              "title": "HSS drill bit set",
+              "imageUrl": null,
+              "price": 30,
+              "currency": "NZD",
+              "category": "Drill Bits"
+             },
+             {
+              "sku": "1000105",
+              "title": "Masonry drill bit",
+              "imageUrl": null,
+              "price": 8,
+              "currency": "NZD",
+              "category": "Drill Bits"
+             }
+            ]
+           },
+           {
+            "key": "suggestion-2",
+            "label": "Screwdriver Bits",
+            "items": [
+             {
+              "sku": "1000106",
+              "title": "Screwdriver bit set",
+              "imageUrl": null,
+              "price": 14,
+              "currency": "NZD",
+              "category": "Screwdriver Bits"
+             }
+            ]
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+        "delta": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-13",
+        "workspaceId": "session-13",
+        "response": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+        "assistantMessage": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
+        }
+       },
+       "atMs": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "uncovered-product",
+   "description": "A product nobody covers is not answered from the catalogue",
+   "passed": true,
+   "turns": [
+    {
+     "message": "do you sell flux capacitors",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-14"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-14",
+        "workspaceId": "session-14",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "trade-switchgear",
+   "description": "Switchgear lists products; the shop requires a professional at checkout",
+   "passed": true,
+   "turns": [
+    {
+     "message": "switchgear",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "products"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-15"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000111",
+             "title": "Main switchboard 12 way",
+             "imageUrl": null,
+             "price": 340,
+             "currency": "NZD",
+             "reason": "Category: Switchgear",
+             "recommended": true
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000111",
+            "title": "Main switchboard 12 way",
+            "imageUrl": null,
+            "price": 340,
+            "currency": "NZD",
+            "reason": "Category: Switchgear",
+            "recommended": true
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-15",
+        "workspaceId": "session-15",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "paint-interior",
+   "description": "Interior paint lists products and suggests applicators",
+   "passed": true,
+   "turns": [
+    {
+     "message": "interior paint",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "products",
+      "accessories"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-16"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000117",
+             "title": "Interior wall paint 4L",
+             "imageUrl": null,
+             "price": 89,
+             "currency": "NZD",
+             "reason": "Category: Interior Paint",
+             "recommended": true
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000117",
+            "title": "Interior wall paint 4L",
+            "imageUrl": null,
+            "price": 89,
+            "currency": "NZD",
+            "reason": "Category: Interior Paint",
+            "recommended": true
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 7
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_suggestions_[phone]",
+          "cardType": "accessories",
+          "state": {
+           "heading": "Have you considered?",
+           "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+           "groups": [
+            {
+             "key": "suggestion-1",
+             "label": "Brushes & Rollers",
+             "items": [
+              {
+               "sku": "1000118",
+               "title": "Paint roller kit",
+               "imageUrl": null,
+               "price": 24,
+               "currency": "NZD",
+               "category": "Brushes & Rollers"
+              }
+             ]
+            },
+            {
+             "key": "suggestion-2",
+             "label": "Masking",
+             "items": [
+              {
+               "sku": "1000119",
+               "title": "Masking tape 36mm",
+               "imageUrl": null,
+               "price": 6,
+               "currency": "NZD",
+               "category": "Masking"
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "accessories",
+         "state": {
+          "heading": "Have you considered?",
+          "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+          "groups": [
+           {
+            "key": "suggestion-1",
+            "label": "Brushes & Rollers",
+            "items": [
+             {
+              "sku": "1000118",
+              "title": "Paint roller kit",
+              "imageUrl": null,
+              "price": 24,
+              "currency": "NZD",
+              "category": "Brushes & Rollers"
+             }
+            ]
+           },
+           {
+            "key": "suggestion-2",
+            "label": "Masking",
+            "items": [
+             {
+              "sku": "1000119",
+              "title": "Masking tape 36mm",
+              "imageUrl": null,
+              "price": 6,
+              "currency": "NZD",
+              "category": "Masking"
+             }
+            ]
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-16",
+        "workspaceId": "session-16",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cleaning-outdoor",
+   "description": "Outdoor cleaners list products",
+   "passed": true,
+   "turns": [
+    {
+     "message": "outdoor cleaners",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "Here are options from the catalogue.",
+     "cardTypes": [
+      "products"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-17"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "heading": "Matching products",
+           "products": [
+            {
+             "sku": "1000115",
+             "title": "Deck wash 2L",
+             "imageUrl": null,
+             "price": 24,
+             "currency": "NZD",
+             "reason": "Category: Outdoor Cleaners",
+             "recommended": true
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "heading": "Matching products",
+          "products": [
+           {
+            "sku": "1000115",
+            "title": "Deck wash 2L",
+            "imageUrl": null,
+            "price": 24,
+            "currency": "NZD",
+            "reason": "Category: Outdoor Cleaners",
+            "recommended": true
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here are options from the catalogue.",
+        "delta": "Here are options from the catalogue."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-17",
+        "workspaceId": "session-17",
+        "response": "Here are options from the catalogue.",
+        "assistantMessage": "Here are options from the catalogue.",
+        "message": {
+         "role": "assistant",
+         "content": "Here are options from the catalogue."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

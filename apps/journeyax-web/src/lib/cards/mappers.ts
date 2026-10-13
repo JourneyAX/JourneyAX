@@ -247,7 +247,10 @@ export function mapClarifyCard(questions: DynamicQuestion[], answers: Record<str
         ? 'Pick one to continue.'
         : `${answered} of ${total} answered — pick the ${left === 1 ? 'last one' : 'rest'} whenever you're ready, nothing sends until then.`;
   return {
-    questions: qs.map((q) => ({ id: q.id, text: q.title, options: q.options, answer: answers[q.id] })),
+    questions: qs.map((q) => ({
+      id: q.id, text: q.title, options: q.options, answer: answers[q.id],
+      inputType: q.inputType, multi: q.multi, placeholder: q.placeholder, unit: q.unit,
+    })),
     progress,
   };
 }

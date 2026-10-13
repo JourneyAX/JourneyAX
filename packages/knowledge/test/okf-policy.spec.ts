@@ -9,6 +9,7 @@ import {
   exportOkfBundle,
   extractSkuCandidate,
   importOkfBundle,
+  internalWording,
   renderOkfMessage,
   resolveOkfGate,
   resolveOkfPolicy,
@@ -107,7 +108,7 @@ const spanish: OkfTenantPolicy = {
   ],
   messages: {
     guidance_temporarily_unavailable: 'La orientacion no esta disponible por ahora. Contacte a un profesional.',
-    safety_guidance_unavailable: 'No hay orientacion de seguridad verificada. Contacte a un profesional.',
+    safety_unavailable_customer: 'No hay orientacion de seguridad verificada. Contacte a un profesional.',
   },
 };
 
@@ -131,6 +132,8 @@ test('tenant messages reach the gate decision and runtime message rendering', ()
   });
   assert.equal(decision.mode, 'safety_then_diagnose');
   assert.ok(decision.claims.disclaimers.some((text) => text.includes('seguridad verificada')));
+  assert.ok(decision.claims.notices.some((text) => text.includes('seguridad verificada')), 'customer notices carry the tenant wording');
+  assert.ok(decision.claims.notices.every((text) => !text.includes('rel-')), 'internal identifiers never reach a notice');
   assert.equal(decision.messages.guidance_temporarily_unavailable, spanish.messages!.guidance_temporarily_unavailable);
   assert.equal(renderOkfMessage(decision.messages, 'safety_heading'), 'Safety first', 'untouched keys fall back to platform text');
 });
@@ -386,6 +389,28 @@ test('the platform lexicon recognises hazards, technical questions and shopping 
   for (const text of ['i want a fire pit', 'fire retardant paint', 'smoke alarm batteries', 'fireplace surround', 'smoked glass door']) {
     assert.equal(intents(text).includes('problem'), false, `${text} is shopping, not a hazard`);
   }
+});
+
+test('every message written for a customer is plain language: no internal vocabulary, ids or unrendered placeholders', () => {
+  const agentOnly = new Set(OKF_PLATFORM_POLICY.agentMessages);
+  const unrendered = /\{[A-Za-z0-9_]+\}/g;
+  for (const [key, template] of Object.entries(OKF_PLATFORM_POLICY.messages)) {
+    if (agentOnly.has(key)) continue;
+    // Placeholders are filled with the customer's own words (a product name, a source title) before display.
+    const hits = internalWording(template.replace(unrendered, 'item'));
+    assert.deepEqual(hits, [], `message '${key}' exposes internal wording: ${template}`);
+  }
+  assert.ok(agentOnly.has('relationship_unverified'), 'the relationship message stays agent-facing');
+  for (const key of agentOnly) assert.ok(key in OKF_PLATFORM_POLICY.messages, `agent message '${key}' must exist`);
+});
+
+test('a decision separates what the agent must respect from what the customer may read', () => {
+  const content = buildOkfContent();
+  const decision = resolveOkfGate(content, {
+    ...base, message: 'mi cocina tiene fuga', matchedConcepts: [{ id: conceptId('problems/toilet-fault'), score: 1 }],
+  });
+  for (const text of decision.claims.notices) assert.ok(decision.claims.disclaimers.includes(text), 'a notice is always also a disclaimer');
+  assert.ok(decision.claims.notices.every((text) => !/rel-|Relationship '/.test(text)), 'relationship ids never become customer notices');
 });
 
 console.log(`✅ OKF policy suite: ${passed} passed, 0 failed`);

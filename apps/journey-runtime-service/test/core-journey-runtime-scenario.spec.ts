@@ -964,6 +964,9 @@ async function runCoreJourneyRuntimeScenario() {
       environmentId: 'test',
       principalId: 'pilot-boundary-01',
       principalRole: 'customer',
+      // This scenario inspects the decision and the capability stream, so it speaks as a platform workload (the commerce
+      // service). The customer-facing view of the same calls is proved in runtime-public-view.spec.ts.
+      isInternal: true,
     },
   };
 

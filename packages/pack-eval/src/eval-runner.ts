@@ -363,6 +363,9 @@ export class EvaluationRunner {
             'Content-Type': 'application/json',
             'X-Tenant-ID': command.tenantId,
             'X-Environment-ID': command.environmentId || 'production',
+            // An evaluation is a platform workload: it reads the full turn (decision, facts, capabilities), which the runtime
+            // withholds from any caller that is not authenticated as one.
+            ...(process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {}),
           },
           body: JSON.stringify(command),
           signal: controller.signal,

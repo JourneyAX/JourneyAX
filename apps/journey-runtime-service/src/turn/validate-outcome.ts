@@ -7,7 +7,10 @@ export interface ValidatedOutcome {
   outcome: any;
   appliedRules: string[];
   remediationApplied?: boolean;
+  /** Diagnostic text for logs and traces. It may name tools, fields or rules and is never shown to a customer. */
   notes?: string;
+  /** The rule author's own customer wording (`remediationMessage`); the only validator text a customer may read. */
+  customerMessage?: string;
 }
 
 function resolvePath(obj: any, path: string): any {
@@ -201,6 +204,7 @@ export class OutcomeValidator {
                 rule.remediationMessage ||
                 rule.description ||
                 `Capability outcome violated business rule '${rule.ruleId || rule.name}'.`,
+              ...(rule.remediationMessage ? { customerMessage: rule.remediationMessage } : {}),
             };
           } else if (action === 'require_approval') {
             return {
@@ -212,6 +216,7 @@ export class OutcomeValidator {
                 rule.remediationMessage ||
                 rule.description ||
                 `Capability outcome requires business approval per rule '${rule.ruleId || rule.name}'.`,
+              ...(rule.remediationMessage ? { customerMessage: rule.remediationMessage } : {}),
             };
           } else if (action === 'warn') {
             const warningMsg =

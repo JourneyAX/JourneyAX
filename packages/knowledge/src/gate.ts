@@ -86,7 +86,11 @@ export interface OkfGateDecision {
     alternativeLanguage?: 'verified_equivalent' | 'possible_alternatives';
     nextAction?: 'quote';
   };
-  claims: { allowedClasses: ClaimClass[]; disclaimers: string[] };
+  /**
+   * `disclaimers` is everything the agent must respect, including internal reasons. `notices` is the subset written for the
+   * customer in plain language; it is the only part the runtime may show verbatim, and it never carries internal identifiers.
+   */
+  claims: { allowedClasses: ClaimClass[]; disclaimers: string[]; notices: string[] };
   evidence?: {
     conceptIds: string[];
     sourceRefs: string[];
@@ -304,6 +308,13 @@ function verifiedEvidenceRefs(content: OkfReleaseContent, concept: OkfConcept, n
   return [...refs];
 }
 
+/** Records a policy message for the agent and, because policy messages are customer-written, for the customer too. */
+function addNotice(claims: OkfGateDecision['claims'], policy: ResolvedOkfPolicy, key: string): void {
+  const text = renderOkfMessage(policy.messages, key);
+  claims.disclaimers.push(text);
+  if (text && !claims.notices.includes(text)) claims.notices.push(text);
+}
+
 function noMatch(input: OkfGateInput, reason: string, mode: OkfResponseMode = 'no_match', policy: ResolvedOkfPolicy = resolveOkfPolicy()): OkfGateDecision {
   return {
     mode,
@@ -322,6 +333,7 @@ function noMatch(input: OkfGateInput, reason: string, mode: OkfResponseMode = 'n
     claims: {
       allowedClasses: mode === 'legacy_search' ? ['catalog_fact'] : [],
       disclaimers: mode === 'legacy_search' ? [renderOkfMessage(policy.messages, 'legacy_catalog_only')] : [],
+      notices: mode === 'legacy_search' ? [renderOkfMessage(policy.messages, 'legacy_catalog_only')] : [],
     },
     messages: policy.messages,
     trace: {
@@ -361,23 +373,27 @@ function uncoveredDecision(input: OkfGateInput, policy: ResolvedOkfPolicy, inten
   if (kind === 'problem') {
     const decision = noMatch(input, 'concept_not_found', 'safety_then_diagnose', policy);
     decision.safety = { steps: [], blocksProducts: true, guidanceUnavailable: true, guidance: [] };
-    decision.claims = { allowedClasses: [], disclaimers: [] };
+    decision.claims = { allowedClasses: [], disclaimers: [], notices: [] };
     return tag(decision, 'uncovered_problem');
   }
   if (kind === 'operational') {
     const decision = noMatch(input, 'operational_intent', 'operational_journey', policy);
     decision.claims.disclaimers = [];
+    decision.claims.notices = [];
     return decision;
   }
   if (kind === 'technical') {
     const decision = noMatch(input, 'concept_not_found', 'no_match', policy);
-    decision.claims.disclaimers = [renderOkfMessage(policy.messages, 'uncovered_technical_unverified')];
+    decision.claims.disclaimers = [];
+    decision.claims.notices = [];
+    addNotice(decision.claims, policy, 'uncovered_technical_unverified');
     return tag(decision, 'uncovered_technical');
   }
   if (kind === 'shopping' && policy.coverage.uncoveredShopping.mode === 'catalogue_only') {
     const decision = noMatch(input, 'concept_not_found', 'legacy_search', policy);
     decision.commerce = { ...policy.coverage.uncoveredShopping.commerce };
-    decision.claims = { allowedClasses: ['catalog_fact'], disclaimers: [renderOkfMessage(policy.messages, 'uncovered_catalogue_only')] };
+    decision.claims = { allowedClasses: ['catalog_fact'], disclaimers: [], notices: [] };
+    addNotice(decision.claims, policy, 'uncovered_catalogue_only');
     return tag(decision, 'uncovered_shopping_catalogue_only');
   }
   return tag(noMatch(input, 'concept_not_found', 'no_match', policy), kind === 'shopping' ? 'uncovered_shopping_blocked' : 'uncovered_unknown');
@@ -400,6 +416,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
   const operationalDecision = () => {
     const decision = noMatch(input, 'operational_intent', 'operational_journey', policy);
     decision.claims.disclaimers = [];
+    decision.claims.notices = [];
     return decision;
   };
   if (operational && !intentInGroup(policy, 'problem', intents)) return operationalDecision();
@@ -480,7 +497,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
       requiresLiveValidation: true,
       productStatus: input.commerceContext?.productStatus,
     },
-    claims: { allowedClasses: claims.allowed, disclaimers: claims.disclaimers },
+    claims: { allowedClasses: claims.allowed, disclaimers: claims.disclaimers, notices: [] },
     messages: policy.messages,
     trace: {
       matchedBy,
@@ -501,7 +518,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     }
     if (suppressClaims) {
       base.claims.allowedClasses = [];
-      base.claims.disclaimers.push(renderOkfMessage(policy.messages, 'guidance_temporarily_unavailable'));
+      addNotice(base.claims, policy, 'guidance_temporarily_unavailable');
     }
     base.safety = { steps: [], blocksProducts: suppressRetrieval, guidanceUnavailable: suppressClaims };
     base.trace.reasonCodes.push('concept_revoked');
@@ -526,7 +543,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
       base.commerce = blockedCommerce();
     }
     if (base.safety.guidanceUnavailable) {
-      base.claims.disclaimers.push(renderOkfMessage(policy.messages, 'safety_guidance_unavailable'));
+      addNotice(base.claims, policy, 'safety_unavailable_customer');
     }
     base.trace.reasonCodes.push('safety_or_problem');
     return base;
@@ -555,7 +572,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     base.retrieval.presentation = sourceRefs.length > 0 ? 'list' : 'none';
     base.recommendation = 'blocked';
     if (sourceRefs.length === 0) {
-      base.claims.disclaimers.push(renderOkfMessage(policy.messages, 'evidence_unavailable'));
+      addNotice(base.claims, policy, 'evidence_unavailable');
       base.trace.reasonCodes.push('verified_evidence_unavailable');
     } else {
       base.trace.reasonCodes.push('evidence_request');
@@ -636,7 +653,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
   }
 
   if (concept.riskClass === 'compatibility' && base.recommendation !== 'blocked') {
-    base.claims.disclaimers.push(renderOkfMessage(policy.messages, 'compatibility_unverified'));
+    addNotice(base.claims, policy, 'compatibility_unverified');
   }
   if (concept.riskClass === 'safety_critical') {
     if (base.commerce.checkout !== 'blocked') {
@@ -658,7 +675,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     intentInGroup(policy, 'technical', intents) && base.retrieval.permission === 'allowed' &&
     !base.claims.allowedClasses.includes('compatibility')
   ) {
-    base.claims.disclaimers.push(renderOkfMessage(policy.messages, 'technical_requirement_unverified'));
+    addNotice(base.claims, policy, 'technical_requirement_unverified');
     base.trace.reasonCodes.push('technical_requirement_unverified');
   }
   if (servedByGate) base.trace.reasonCodes.push('project_served_by_gate');

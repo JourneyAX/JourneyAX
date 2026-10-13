@@ -562,6 +562,17 @@ export class GatewayService {
       body: method !== 'GET' && body ? JSON.stringify(body) : undefined,
     });
 
+    // A refusal or a failure upstream is not a stream: it keeps its status and its JSON body. Declaring it text/event-stream
+    // with a 200 would hand the browser a body it cannot parse and hide the failure from every monitor.
+    if (!upstream.ok) {
+      res.status(upstream.status);
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
+      const retryAfter = upstream.headers.get('retry-after');
+      if (retryAfter) res.setHeader('Retry-After', retryAfter);
+      res.end(await upstream.text().catch(() => ''));
+      return;
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');

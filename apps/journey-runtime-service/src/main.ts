@@ -8,6 +8,7 @@ import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(RuntimeModule);
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
 
   // Enforce 1MB payload limits
   app.use(express.json({ limit: '1mb' }));

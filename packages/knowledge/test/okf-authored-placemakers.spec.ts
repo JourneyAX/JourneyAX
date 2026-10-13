@@ -5,7 +5,7 @@ import { MemoryDb, createSuite } from '@journeyax/test-support';
 import {
   OKF_LIMITS, PROVENANCE_KEY, applyAuthoring, auditProvenance, buildCoverageReport, buildServerOwnedOkfContent, buildTaxonomyDraft,
   computeKnowledgeChecksum, exportOkfBundle, loadPinnedOkfRelease, publishOkfRelease, resolveOkfBasketCommerce, resolveOkfGate,
-  summarizeWorklist, validateOkfDraftContent,
+  renderOkfMessage, summarizeWorklist, validateOkfDraftContent,
 } from '../src';
 
 /**
@@ -148,7 +148,9 @@ async function main() {
     }
     const screws = built.concepts.find((entry) => entry.name === 'Wood Screws')!;
     assert.deepEqual([screws.riskClass, screws.compatibilitySensitive], ['compatibility', true]);
-    assert.ok(gate('wood screws').claims.disclaimers.some((text: string) => /Compatibility must be verified/.test(text)));
+    const screwDecision = gate('wood screws');
+    const compatibilityNotice = renderOkfMessage(screwDecision.messages, 'compatibility_unverified');
+    assert.ok(screwDecision.claims.disclaimers.includes(compatibilityNotice) && screwDecision.claims.notices.includes(compatibilityNotice));
     assert.deepEqual(gate('hammers').commerce, { addToCart: 'allowed', checkout: 'allowed' });
   });
 
@@ -159,7 +161,7 @@ async function main() {
     const run = (items: string[], products: any[]) => resolveOkfBasketCommerce(built, { ...base, items: items.map((sku) => ({ sku })), products });
     const switchgear = run(['S1'], [product('S1', ['Electrical & Heating/Cooling', 'Electrical', 'Switchgear'])]);
     assert.equal(switchgear.commerce.checkout, 'requires_professional_confirmation');
-    assert.match(switchgear.warnings.join(' '), /qualified professional must confirm/);
+    assert.ok(switchgear.warnings.includes(renderOkfMessage({}, 'basket_warning_professional', { conceptName: 'Switchgear' })), 'the warning is the policy message, naming the concept');
     const hammer = run(['H1'], [product('H1', ['Tools', 'Hand Tools', 'Hammers & Mallets'])]);
     assert.deepEqual(hammer.commerce, { addToCart: 'allowed', checkout: 'allowed' });
     const mixed = run(['H1', 'S1'], [product('H1', ['Tools', 'Hand Tools', 'Hammers & Mallets']), product('S1', ['Electrical & Heating/Cooling', 'Electrical', 'Switchgear'])]);

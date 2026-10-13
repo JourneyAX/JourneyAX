@@ -11,6 +11,7 @@ import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(GatewayModule);
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
 
   // Allow large payloads (chat history can be verbose)
   app.use(bodyParser.json({ limit: '10mb' }));

@@ -289,35 +289,35 @@
     }
   ],
   "messages": {
-    "legacy_catalog_only": "Knowledge guidance is unavailable; only live catalog facts may be shown.",
+    "legacy_catalog_only": "I can show you what the catalogue lists, but I can't offer product guidance on this right now.",
     "relationship_unverified": "Relationship '{relationshipId}' is {status}; compatibility, requirement, safety, and equivalence claims are not permitted.",
-    "guidance_temporarily_unavailable": "Guidance for this topic is temporarily unavailable. Please contact a qualified professional.",
-    "safety_guidance_unavailable": "Verified safety guidance is unavailable. Escalate to a qualified professional.",
-    "evidence_unavailable": "No verified source is linked to this concept in the pinned knowledge release.",
-    "compatibility_unverified": "Compatibility must be verified before checkout.",
+    "guidance_temporarily_unavailable": "I can't give guidance on this topic right now. Please speak with a qualified professional.",
+    "evidence_unavailable": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
+    "compatibility_unverified": "Please check compatibility before you buy.",
     "safety_heading": "Safety first",
-    "knowledge_unavailable": "Verified business guidance is temporarily unavailable. Please try again or contact a specialist.",
-    "safety_unavailable_customer": "Verified safety guidance is temporarily unavailable. Please contact a qualified professional.",
-    "safety_guidance_reason": "Verified safety guidance must be followed before product selection or commerce can continue.",
-    "cart_blocked": "This item cannot be added to cart until the merchant knowledge policy requirements are resolved.",
-    "checkout_blocked": "Checkout is blocked by the merchant knowledge policy.",
-    "checkout_requires_professional": "A qualified professional must confirm this selection before checkout.",
-    "checkout_requires_compatibility": "Product compatibility must be confirmed before checkout.",
-    "basket_policy_unavailable": "The merchant knowledge policy for this basket could not be confirmed.",
+    "knowledge_unavailable": "I can't answer that reliably right now. Please try again shortly or speak with one of our specialists.",
+    "safety_unavailable_customer": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+    "safety_guidance_reason": "Safety guidance comes first, before any product choice.",
+    "cart_blocked": "This item can't be added to your cart yet.",
+    "checkout_blocked": "Checkout isn't available for this selection.",
+    "checkout_requires_professional": "A qualified professional needs to confirm this selection before checkout.",
+    "checkout_requires_compatibility": "Please confirm these products are compatible before checkout.",
+    "basket_policy_unavailable": "I can't confirm this basket is ready for checkout right now.",
     "default_goal": "Answer only from verified business information.",
     "default_journey_label": "General assistance",
-    "safety_products_paused": "Product recommendations and commerce are paused until this safety issue is resolved.",
+    "safety_products_paused": "Product suggestions and checkout are paused until this safety issue is dealt with.",
     "verified_source_label": "Verified source: {sources}",
-    "safety_render_failed": "Verified safety guidance could not be rendered.",
-    "cart_verification_unavailable": "Authoritative cart verification is unavailable for this commerce binding.",
-    "basket_warning_merchant_review": "Merchant review is required for {conceptName} before purchase.",
-    "basket_warning_compatibility": "Compatibility must be confirmed for {conceptName} before checkout.",
-    "basket_warning_professional": "A qualified professional must confirm {conceptName} before checkout.",
+    "safety_render_failed": "I can't show the safety guidance right now. Please contact a qualified professional.",
+    "cart_verification_unavailable": "I can't confirm your cart right now. Please try again shortly.",
+    "basket_warning_merchant_review": "{conceptName} needs a check by our team before purchase.",
+    "basket_warning_compatibility": "Please confirm compatibility for {conceptName} before checkout.",
+    "basket_warning_professional": "A qualified professional needs to confirm {conceptName} before checkout.",
     "technical_requirement_unverified": "I can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
     "uncovered_technical_unverified": "I can't confirm technical suitability, compatibility or compliance from verified information. Tell me more about what you need, or speak with a qualified specialist.",
     "uncovered_catalogue_only": "Here is what the catalogue lists. I can't confirm compatibility, installation or compliance for these items yet.",
     "cross_sell_label": "Have you considered?",
-    "cross_sell_note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection."
+    "cross_sell_note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+    "nothing_to_show": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists."
   },
   "coverage": {
     "uncoveredShopping": {
@@ -331,5 +331,18 @@
   "suggestions": {
     "max": 3,
     "itemsPerGroup": 2
-  }
+  },
+  "messageVariables": [
+    "relationshipId",
+    "status",
+    "conceptId",
+    "conceptName",
+    "reason",
+    "sources"
+  ],
+  "agentMessages": [
+    "relationship_unverified",
+    "default_goal",
+    "default_journey_label"
+  ]
 }

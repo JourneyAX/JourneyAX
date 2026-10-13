@@ -266,7 +266,8 @@ export class CanonicalRuntimeAdapter {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new Error(`Canonical runtime /chat/stream failed with status ${response.status}: ${errText}`);
+      // The detail is for logs; `upstreamStatus` tells the edge this was the runtime refusing or failing, not the customer's mistake.
+      throw Object.assign(new Error(`Canonical runtime /chat/stream failed with status ${response.status}: ${errText}`), { upstreamStatus: response.status });
     }
 
     const reader = response.body?.getReader();

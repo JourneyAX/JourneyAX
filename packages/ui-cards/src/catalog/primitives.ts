@@ -195,14 +195,28 @@ export const primitives = {
     props: z.object({ size: spacing.optional(), grow: z.boolean().optional() }),
   },
   Chips: {
-    description: 'Row of tappable suggestion chips; tapping emits `select` with the chip text. Bind `selected` to show which chip is currently chosen.',
+    description: 'Row of tappable suggestion chips; strings emit their text, value/label options emit the canonical value.',
     props: z.object({
       ...valueAction,
-      items: dyn(z.array(z.string())),
+      items: dyn(z.array(z.union([z.string(), z.object({ value: z.string(), label: z.string() })]))),
       selected: dyn(z.string()).optional(),
       tone: tone.optional(),
       wrap: z.boolean().optional(),
       className: z.string().optional(),
+    }),
+  },
+  QuestionInput: {
+    description: 'Answer a clarification question with one option, several options, or a free-text/number response.',
+    props: z.object({
+      ...valueAction,
+      questionId: dyn(z.string()),
+      label: dyn(z.string()).optional(),
+      options: dyn(z.array(z.union([z.string(), z.object({ value: z.string(), label: z.string() })]))),
+      selected: dyn(z.union([z.string(), z.number()])).optional(),
+      multi: dyn(z.boolean()).optional(),
+      inputType: dyn(z.enum(['single_select', 'multi_select', 'number', 'measurement', 'text'])).optional(),
+      placeholder: dyn(z.string()).optional(),
+      unit: dyn(z.string()).optional(),
     }),
   },
   KeyValue: {

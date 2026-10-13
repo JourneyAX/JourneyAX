@@ -118,7 +118,11 @@ export function buildCoverageScenarios(content: OkfReleaseContent, options: Eval
   const templates = options.templates ?? (templatesDefault as unknown as EvalTemplates);
   const tenantId = options.tenantId;
   const base = { tenantId, environmentId: options.environmentId ?? 'evaluation', releaseId: options.releaseId ?? 'evaluation', now: options.now ?? new Date(), knowledgeAvailability: { available: true, required: true, failurePolicy: 'fail_closed' as const } };
-  const gate = (message: string, extra: Record<string, unknown> = {}) => resolveOkfGate(content, { ...base, message, ...extra } as any) as OkfGateDecision;
+  const gate = (message: string, extra: Record<string, unknown> = {}) => {
+    const decision = resolveOkfGate(content, { ...base, message, ...extra } as any) as OkfGateDecision;
+    for (const text of decision.claims.notices) wordingViolations.push(...internalWording(text).map((hit) => `customer notice exposes internal wording '${hit}': ${text}`));
+    return decision;
+  };
   const policy = resolveOkfPolicy((content as any).policy);
   const accepted = new Set((options.acceptedRoutingCollisions ?? []).map((name) => name.toLowerCase()));
 
@@ -411,10 +415,19 @@ function compareScenario(expect: any, decision: OkfGateDecision): string[] {
   return failures;
 }
 
+const INTERNAL_VOCABULARY = ((templatesDefault as any).internalVocabulary as string[]).map((source) => new RegExp(source, 'i'));
+/** Words that describe how the platform works, found in text meant for a customer. */
+export function internalWording(text: string): string[] {
+  return INTERNAL_VOCABULARY.flatMap((pattern) => { const match = pattern.exec(text); return match ? [match[0]] : []; });
+}
+let wordingViolations: string[] = [];
+
 export function runCoverageScenarios(content: OkfReleaseContent, scenarios: EvalScenario[]): EvalResult[] {
   return scenarios.map((scenario) => {
     let failures: string[];
+    wordingViolations = [];
     try { failures = scenario.run(content); } catch (error: any) { failures = [`the scenario threw: ${error?.message ?? error}`]; }
+    failures = [...failures, ...new Set(wordingViolations)];
     return {
       id: scenario.id, family: scenario.family, department: scenario.department, category: scenario.category, path: scenario.path,
       ...(scenario.conceptId ? { conceptId: scenario.conceptId } : {}), ...(scenario.message ? { message: scenario.message } : {}),

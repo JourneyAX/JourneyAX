@@ -1,0 +1,145 @@
+{
+  "version": "1.0.0",
+  "_comment": "What a customer's browser may see on the public chat path, and what it must never see. Every rule is data; a tenant's canary can add to it.",
+  "stream": {
+    "contentType": "text/event-stream",
+    "allowedEvents": [
+      "session",
+      "capability",
+      "token",
+      "uiAction",
+      "done",
+      "error"
+    ],
+    "firstEvent": "session",
+    "terminalEvents": [
+      "done",
+      "error"
+    ]
+  },
+  "headers": {
+    "forbid": [
+      "x-powered-by",
+      "x-internal-key",
+      "x-gateway-assertion"
+    ],
+    "requireCacheControl": [
+      "no-cache",
+      "no-store"
+    ]
+  },
+  "leakPatterns": [
+    {
+      "id": "internal_concept_id",
+      "pattern": "concept://"
+    },
+    {
+      "id": "knowledge_trace",
+      "pattern": "knowledgeGate"
+    },
+    {
+      "id": "release_reference",
+      "pattern": "releaseId|okfRelease|okf_release|okfChecksum|knowledgeModel"
+    },
+    {
+      "id": "checksum",
+      "pattern": "\\b[a-f0-9]{64}\\b"
+    },
+    {
+      "id": "model_route",
+      "pattern": "modelRoute|dataResidency|modelPolicy"
+    },
+    {
+      "id": "credential",
+      "pattern": "Bearer\\s+[A-Za-z0-9._~+/=-]{12,}|\\bsk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{20,}"
+    },
+    {
+      "id": "datastore",
+      "pattern": "mongodb(\\+srv)?://|MongoServerError|MongoNetworkError"
+    },
+    {
+      "id": "stack_trace",
+      "pattern": "\\n\\s+at\\s+\\S+\\s+\\(.*:\\d+:\\d+\\)"
+    },
+    {
+      "id": "platform_wording",
+      "pattern": "Stage '|Capability '|requires input"
+    },
+    {
+      "id": "service_secret",
+      "pattern": "INTERNAL_API_KEY|GATEWAY_ASSERTION_SECRET|x-internal-key"
+    }
+  ],
+  "sanitize": [
+    {
+      "id": "email",
+      "pattern": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+      "replace": "[email]"
+    },
+    {
+      "id": "bearer",
+      "pattern": "Bearer\\s+[A-Za-z0-9._~+/=-]+",
+      "replace": "Bearer [redacted]"
+    },
+    {
+      "id": "cookie",
+      "pattern": "(jxs_at|jxs_rt)=[^;\\s]+",
+      "replace": "$1=[redacted]"
+    },
+    {
+      "id": "long_hex",
+      "pattern": "\\b[a-f0-9]{32,}\\b",
+      "replace": "[hash]"
+    },
+    {
+      "id": "uuid",
+      "pattern": "\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b",
+      "replace": "[id]"
+    },
+    {
+      "id": "phone",
+      "pattern": "\\+?\\d[\\d\\s().-]{8,}\\d",
+      "replace": "[phone]"
+    }
+  ],
+  "forbiddenCapabilities": [
+    "order.commit",
+    "cart.update",
+    "cart-update",
+    "quote.create",
+    "trade-quote-create",
+    "order-commit"
+  ],
+  "forbiddenCardTypes": [
+    "order_confirmation"
+  ],
+  "maxTextChars": 1500,
+  "defaultMaxLatencyMs": 30000,
+  "replyWording": {
+    "_comment": "What the customer reads must not describe how the platform works, and must not say the same thing twice.",
+    "internalVocabulary": [
+      "\\brel-[a-z0-9_-]+",
+      "\\bconcepts?\\b",
+      "\\breleases?\\b",
+      "\\bpinned\\b",
+      "\\bpolic(y|ies)\\b",
+      "\\bchecksums?\\b",
+      "\\bcapabilit(y|ies)\\b",
+      "\\bescalate\\b",
+      "\\bworkspace\\b",
+      "\\bmerchant\\b",
+      "\\bclaims?\\b",
+      "\\bvalidat(e|ed|ion)\\b",
+      "\\bfail[- ]closed\\b",
+      "\\bundefined\\b",
+      "\\bnull\\b",
+      "\\[object",
+      "\\{[A-Za-z0-9_]+\\}",
+      "\\bstage '",
+      "\\btenant\\b",
+      "\\bexecution outcome\\b",
+      "\\bunable to complete that action\\b"
+    ],
+    "minRepeatedSentenceLength": 20
+  }
+}

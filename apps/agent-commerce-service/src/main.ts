@@ -15,6 +15,7 @@ async function bootstrap() {
   // payload carries the full journey state (recommended products + specs/images)
   // and conversation history, which easily exceeds 100kb on the quote turn.
   const app = await NestFactory.create(AgentModule, { bodyParser: false });
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
   // Preserve the raw body so the Stripe webhook can verify X-Signature over the
   // exact bytes Stripe signed (P0-04). Parsed JSON is still available as req.body.
   app.use(bodyParser.json({

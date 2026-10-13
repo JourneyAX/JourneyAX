@@ -173,7 +173,7 @@ export const CARD_TYPES = {
         z.object({
           id: z.string(),
           text: z.string(),
-          options: z.array(z.string()).default([]),
+          options: z.array(z.union([z.string(), z.object({ value: z.string(), label: z.string() })])).default([]),
           multi: z.boolean().optional(),
           inputType: z.enum(['single_select', 'multi_select', 'number', 'measurement', 'text']).optional(),
           unit: z.string().optional(),

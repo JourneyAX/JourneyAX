@@ -223,12 +223,12 @@ export class TurnApplicationService {
         const decision: Decision = {
           decisionId: `dec_${Date.now()}`,
           type: 'fail',
-          payload: { error: renderOkfMessage(knowledgeGate.messages, terminalMessageKey) },
+          payload: { error: renderOkfMessage(knowledgeGate.messages, terminalMessageKey), customerMessage: true },
           reason: renderOkfMessage(knowledgeGate.messages, terminalMessageKey),
           createdAt: new Date().toISOString(),
         };
         workspace.decisions.push({ ...decision, executedAt: new Date().toISOString(), outcomeStatus: 'failure' });
-        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace, release);
+        const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace, release, { messages: knowledgeGate.messages });
         (turnResult.trace as any).knowledgeGate = knowledgeGate;
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         this.streamCommittedFinalEvents(command, turnResult, [], sink);
@@ -466,6 +466,7 @@ export class TurnApplicationService {
     // into the existing domain-neutral Decision contract.
     if (knowledgeGate?.clarification && (
       knowledgeGate.mode === 'clarify_then_search' ||
+      knowledgeGate.mode === 'project_journey' ||
       decision.type === 'ask_fact'
     )) {
       decision = this.knowledgeClarificationDecision(knowledgeGate);
@@ -476,7 +477,7 @@ export class TurnApplicationService {
       decision = {
         decisionId: `dec_${Date.now()}`,
         type: 'fail',
-        payload: { error: renderOkfMessage(knowledgeGate.messages, 'safety_unavailable_customer') },
+        payload: { error: renderOkfMessage(knowledgeGate.messages, 'safety_unavailable_customer'), customerMessage: true },
         reason: renderOkfMessage(knowledgeGate.messages, 'safety_unavailable_customer'),
         createdAt: new Date().toISOString(),
       };
@@ -599,6 +600,16 @@ export class TurnApplicationService {
         console.log(
           `[TurnApplicationService] Retrieval capability '${toolId}' blocked by OKF mode '${knowledgeGate.mode}'.`
         );
+        // Nothing was executed, so there is no outcome to validate; the customer is told in the tenant's own wording.
+        executedToolId = null;
+        const blockedNotice = knowledgeGate.claims.notices.join(' ') || renderOkfMessage(knowledgeGate.messages, 'nothing_to_show');
+        decision = {
+          decisionId: `dec_${Date.now()}`,
+          type: 'fail',
+          payload: { error: blockedNotice, customerMessage: true, blockedBy: knowledgeGate.mode },
+          reason: blockedNotice,
+          createdAt: new Date().toISOString(),
+        };
         break;
       }
 
@@ -980,11 +991,13 @@ export class TurnApplicationService {
         : { valid: true, outcome: null, appliedRules: [] };
 
     if (!validatedOutcome.valid && decision.type !== 'ask_fact' && decision.type !== 'requires_approval') {
+      // Only the rule author's own wording may reach the customer; engine diagnostics stay in the decision and the logs.
+      const ruleMessage = (validatedOutcome as { customerMessage?: string }).customerMessage;
       decision = {
         decisionId: `dec_${Date.now()}`,
         type: 'fail',
-        payload: { error: validatedOutcome.notes, violations: validatedOutcome.appliedRules },
-        reason: validatedOutcome.notes || 'Outcome failed business validation rules',
+        payload: { error: ruleMessage ?? validatedOutcome.notes, violations: validatedOutcome.appliedRules, ...(ruleMessage ? { customerMessage: true } : {}) },
+        reason: ruleMessage ?? validatedOutcome.notes ?? 'Outcome failed business validation rules',
         createdAt: new Date().toISOString(),
       };
     }
@@ -1002,7 +1015,7 @@ export class TurnApplicationService {
     workspace.decisions.push({
       ...decision,
       executedAt: new Date().toISOString(),
-      outcomeStatus: validatedOutcome.valid ? 'success' : 'failure',
+      outcomeStatus: validatedOutcome.valid && decision.type !== 'fail' ? 'success' : 'failure',
     });
 
     // 7a. "Have you considered?" — unverified cross-sell from the matched concept. It is shown only next to real catalogue
@@ -1053,14 +1066,16 @@ export class TurnApplicationService {
       {
         assistantMessage: groundedResponse.message,
         capability: presentationCapability,
+        messages: knowledgeGate?.messages,
       }
     );
     if (basketWarnings.size > 0) {
       turnResult.assistantMessage = [turnResult.assistantMessage, ...basketWarnings].filter(Boolean).join('\n\n');
     }
-    // Required disclaimers are a guarantee, not a request to the model: any the composed message omitted are appended.
-    if (knowledgeGate?.claims.disclaimers.length && typeof turnResult.assistantMessage === 'string') {
-      const missing = [...new Set(knowledgeGate.claims.disclaimers)].filter((text) => text && !turnResult.assistantMessage.includes(text));
+    // Required notices are a guarantee, not a request to the model: any the composed message omitted are appended.
+    // Only notices written for the customer are appended; the agent-facing disclaimers stay in the prompt and the trace.
+    if (knowledgeGate?.claims.notices.length && typeof turnResult.assistantMessage === 'string') {
+      const missing = [...new Set(knowledgeGate.claims.notices)].filter((text) => text && !turnResult.assistantMessage.includes(text));
       if (missing.length > 0) turnResult.assistantMessage = [turnResult.assistantMessage, ...missing].filter(Boolean).join('\n\n');
     }
     if (suggestionInstruction) {
@@ -1245,7 +1260,7 @@ export class TurnApplicationService {
         questions: [{
           id: clarification.factKey,
           text: clarification.question,
-          options: clarification.options.map((option) => option.label || option.value),
+          options: clarification.options,
           inputType: inputTypeMap[clarification.uiInputType] || 'text',
           multi: clarification.uiInputType === 'multi_select',
         }],
@@ -1737,7 +1752,7 @@ export class TurnApplicationService {
       }
 
       return {
-        message: `I don't have verified technical specifications for that inquiry. Could you tell me more about your project requirements or dimensions?`,
+        message: renderOkfMessage(fallbackMessages, 'no_verified_specs'),
       };
     }
 

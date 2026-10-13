@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     const data = await resp.json().catch(() => ({}));
     return new Response(JSON.stringify(data), {
       status: resp.status,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(resp.headers.get('retry-after') ? { 'Retry-After': resp.headers.get('retry-after') as string } : {}) },
     });
   } catch (err: any) {
     return new Response(

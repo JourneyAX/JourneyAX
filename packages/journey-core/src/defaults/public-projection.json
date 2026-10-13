@@ -1,0 +1,27 @@
+{
+  "version": "1.0.0",
+  "_comment": "What a customer's browser may receive on the chat stream. Everything else (decision internals, knowledge trace, release ids and checksums, policy wording, model routes, capability inputs) stays inside the platform. A field not listed here is not sent.",
+  "events": {
+    "session": { "fields": ["sessionId"] },
+    "capability": { "fields": ["toolId", "name", "status"] },
+    "token": { "fields": ["token", "delta"] },
+    "uiAction": { "fields": ["name", "arguments", "card"] },
+    "done": { "fields": ["sessionId", "workspaceId", "response", "assistantMessage", "message", "uiActions", "conversation"] },
+    "error": { "fields": ["code"], "message": "from_code" }
+  },
+  "dropEvents": ["trace", "data"],
+  "unknownEvents": "drop",
+  "errorMessages": {
+    "default": "Something went wrong. Please try again.",
+    "byCode": {
+      "DUPLICATE_TURN": "That message was already received.",
+      "knowledge_unavailable": "I can't answer that right now. Please try again shortly."
+    }
+  },
+  "turnResult": {
+    "fields": ["assistantMessage", "uiInstructions", "workspace", "decision"],
+    "workspace": ["workspaceId", "sessionId", "currentStage"],
+    "decision": ["type"],
+    "uiInstruction": ["actionId", "component", "placement", "props", "envelope"]
+  }
+}

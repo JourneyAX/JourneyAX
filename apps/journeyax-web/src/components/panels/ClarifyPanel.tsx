@@ -1,10 +1,14 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useJourney } from '@/context/JourneyContext';
 
 export default function ClarifyPanel() {
   const { state, dispatch, isDynamicClarifyComplete } = useJourney();
   const { dynamicQuestions, dynamicAnswers } = state;
+  const [typedAnswers, setTypedAnswers] = useState<Record<string, string>>({});
+  const questionSet = dynamicQuestions.map(q => `${q.id}:${q.title}`).join('|');
+  useEffect(() => setTypedAnswers({}), [questionSet]);
 
   // Build a summary of selected answers to show as chips
   const selectedSummary = dynamicQuestions
@@ -12,10 +16,20 @@ export default function ClarifyPanel() {
     .map(q => ({ label: q.title.replace('?', ''), value: dynamicAnswers[q.id] }));
 
   const handleSubmit = () => {
+    const pending = dynamicQuestions.filter(q => q.options.length === 0 && typedAnswers[q.id]?.trim() && !dynamicAnswers[q.id]);
+    if (pending.length) {
+      for (const question of pending) {
+        dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId: question.id, value: typedAnswers[question.id].trim() });
+      }
+      // ChatPanel submits once the committed answers are complete; reading state
+      // synchronously here would send the previous render's answers.
+      return;
+    }
     // Call the ChatPanel's submit handler via the window bridge
     const fn = (window as any).__handleClarifySubmit;
     if (fn) fn();
   };
+  const ready = isDynamicClarifyComplete || dynamicQuestions.every(q => Boolean(dynamicAnswers[q.id] || typedAnswers[q.id]?.trim()));
 
   if (dynamicQuestions.length === 0) {
     return (
@@ -60,17 +74,32 @@ export default function ClarifyPanel() {
           {dynamicQuestions.map(q => (
             <div key={q.id} className="clarify-question">
               <div className="clarify-question__title">{q.title}</div>
-              <div className="clarify-question__options">
-                {q.options.map(opt => (
-                  <button
-                    key={opt}
-                    className={`clarify-pill ${dynamicAnswers[q.id] === opt ? 'clarify-pill--selected' : ''}`}
-                    onClick={() => dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId: q.id, value: opt })}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
+              {q.options.length ? (
+                <div className="clarify-question__options">
+                  {q.options.map(opt => {
+                    const value = typeof opt === 'string' ? opt : opt.value;
+                    const label = typeof opt === 'string' ? opt : opt.label;
+                    return (
+                      <button
+                        key={value}
+                        className={`clarify-pill ${dynamicAnswers[q.id] === value ? 'clarify-pill--selected' : ''}`}
+                        onClick={() => dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId: q.id, value })}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <input
+                  className="clarify-question__input"
+                  type={q.inputType === 'number' ? 'number' : 'text'}
+                  value={typedAnswers[q.id] ?? dynamicAnswers[q.id] ?? ''}
+                  placeholder={q.placeholder || (q.inputType === 'measurement' ? 'Enter the measurement and unit' : 'Type your answer')}
+                  aria-label={q.title}
+                  onChange={event => setTypedAnswers(current => ({ ...current, [q.id]: event.target.value }))}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -80,7 +109,7 @@ export default function ClarifyPanel() {
       <div className="clarify-panel__footer">
         <button
           className="clarify-build-btn"
-          disabled={!isDynamicClarifyComplete || state.isThinking}
+          disabled={!ready || state.isThinking}
           onClick={handleSubmit}
         >
           {state.isThinking ? (

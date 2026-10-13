@@ -74,12 +74,12 @@ export class ChatThrottleGuard implements CanActivate {
     // ── 2. Rate limits (per-IP, then per-session) ─────────────────────────
     const ip = clientIp(req);
     const ipDecision = ipLimiter.hit(`ip:${ip}`, now);
-    if (!ipDecision.allowed) throw tooMany(ipDecision.retryAfterMs);
+    if (!ipDecision.allowed) throw tooMany(ipDecision.retryAfterMs, context.switchToHttp().getResponse());
 
     const tenantId = (req.params?.projectId || body.tenantId || 'unknown').toLowerCase();
     const sessionId = body.sessionId || `ip:${ip}`;
     const sessDecision = sessionLimiter.hit(`sess:${tenantId}:${sessionId}`, now);
-    if (!sessDecision.allowed) throw tooMany(sessDecision.retryAfterMs);
+    if (!sessDecision.allowed) throw tooMany(sessDecision.retryAfterMs, context.switchToHttp().getResponse());
 
     return true;
   }
@@ -99,8 +99,10 @@ function graceful(reason: string) {
   };
 }
 
-function tooMany(retryAfterMs: number): HttpException {
+function tooMany(retryAfterMs: number, response?: { setHeader?: (name: string, value: string) => unknown }): HttpException {
   const secs = Math.ceil(retryAfterMs / 1000) || 1;
+  // The hint must actually be sent: a guard's exception is answered by the framework, so the header is set here.
+  response?.setHeader?.('Retry-After', String(secs));
   const ex = new HttpException(
     graceful(`You're sending messages a little too quickly.`),
     HttpStatus.TOO_MANY_REQUESTS,

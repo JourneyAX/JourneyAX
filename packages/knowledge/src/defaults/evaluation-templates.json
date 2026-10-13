@@ -11,9 +11,18 @@
     "is the {name} suitable for a load bearing wall"
   ],
   "evidence": [
-    { "template": "how do i install the {name}", "claimClass": "installation_step" },
-    { "template": "what is the warranty on the {name}", "claimClass": "warranty" },
-    { "template": "how do i clean and care for the {name}", "claimClass": "care_safety" }
+    {
+      "template": "how do i install the {name}",
+      "claimClass": "installation_step"
+    },
+    {
+      "template": "what is the warranty on the {name}",
+      "claimClass": "warranty"
+    },
+    {
+      "template": "how do i clean and care for the {name}",
+      "claimClass": "care_safety"
+    }
   ],
   "negative": {
     "hazardWithoutProduct": [
@@ -39,5 +48,29 @@
       "where is my order",
       "i want to return my purchase"
     ]
-  }
+  },
+  "internalVocabulary": [
+    "\\brel-[a-z0-9_-]+",
+    "\\bconcepts?\\b",
+    "\\breleases?\\b",
+    "\\bpinned\\b",
+    "\\bpolic(y|ies)\\b",
+    "\\bchecksums?\\b",
+    "\\bcapabilit(y|ies)\\b",
+    "\\bescalate\\b",
+    "\\bworkspace\\b",
+    "\\bjourneys?\\b",
+    "\\bmerchant\\b",
+    "\\bclaims?\\b",
+    "\\bvalidat(e|ed|ion)\\b",
+    "\\bfail[- ]closed\\b",
+    "\\bundefined\\b",
+    "\\bnull\\b",
+    "\\[object",
+    "\\{[A-Za-z0-9_]+\\}",
+    "\\bstage '",
+    "\\btenant\\b",
+    "\\bunverified (relationship|link)\\b"
+  ],
+  "_internalVocabulary_comment": "Words and shapes that describe how the platform works. They must never appear in wording shown to a customer."
 }

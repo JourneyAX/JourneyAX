@@ -10,6 +10,7 @@ import { ProjectModule } from './project.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(ProjectModule);
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
   app.enableCors();
   const port = process.env.PORT || process.env.PROJECT_SERVICE_PORT || 8082;
   await app.listen(port);

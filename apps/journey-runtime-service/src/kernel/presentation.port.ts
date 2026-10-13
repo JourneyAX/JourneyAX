@@ -3,6 +3,7 @@ import { TurnResult, UIInstruction, WorkspaceState, Decision } from '@journeyax/
 import { BusinessPackRelease } from '@journeyax/business-pack';
 import { CARD_TYPES } from '@journeyax/ui-cards';
 import { ModelGateway } from './model.gateway';
+import { resolveInterpretationPolicy } from '../turn/fact-semantics';
 
 export interface ValidatedTurnOutcome {
   valid: boolean;
@@ -47,7 +48,7 @@ export class PresentationPort {
       questions: [{
         id: clarification.factKey,
         text: clarification.question,
-        options: clarification.options.map((option) => option.label || option.value),
+        options: clarification.options,
         multi: clarification.uiInputType === 'multi_select',
         inputType: inputTypeMap[clarification.uiInputType] || 'text',
       }],
@@ -109,7 +110,8 @@ export class PresentationPort {
         });
         seen.add(sku);
       }
-      if (items.length) cardGroups.push({ key: suggestion.conceptId, label: suggestion.name, items });
+      // The key is for the card's own list; a customer's browser never receives an internal concept id.
+      if (items.length) cardGroups.push({ key: `suggestion-${cardGroups.length + 1}`, label: suggestion.name, items });
     }
     if (!cardGroups.length) return null;
     const state = { heading: suggestions[0].label, note: suggestions[0].note, groups: cardGroups };
@@ -193,10 +195,16 @@ export class PresentationPort {
        * its scoped input payload.
        */
       capability?: { toolId: string; payload?: Record<string, unknown> };
+      /** The tenant's resolved policy messages. Every sentence this port writes itself comes from here, never from code. */
+      messages?: Record<string, string>;
     }
   ): TurnResult {
     const uiInstructions: UIInstruction[] = [];
     let assistantMessage = (options?.assistantMessage || '').trim();
+    // Wording order: the tenant's knowledge policy, then the pack's runtime messages, then the platform defaults.
+    const wording = { ...resolveInterpretationPolicy(release).messages, ...(options?.messages ?? {}) };
+    const say = (key: string, vars: Record<string, string | number> = {}) => renderOkfMessage(wording, key, vars);
+    const factLabel = (key: string) => String(key).replace(/_/g, ' ');
 
     // ── 0. VERIFIED OKF SAFETY GUIDE ─────────────────────────────────────
     // Safety prose reaches this boundary only after the OKF gate verifies the
@@ -278,9 +286,7 @@ export class PresentationPort {
     // ── 1. ASK FACT / CLARIFICATION CARD ──────────────────────────────────
     if (decision.type === 'ask_fact') {
       const targetFact = decision.payload.targetFact || decision.payload.missingFacts?.[0] || 'fact';
-      const questionText =
-        decision.payload.question ||
-        `To assist you with your request, could you please specify: ${targetFact.replace(/_/g, ' ')}?`;
+      const questionText = decision.payload.question || say('ask_fact_default_question', { fact: factLabel(targetFact) });
       const targetOptions: string[] = Array.isArray(decision.payload.options) ? decision.payload.options : [];
       const multi = Boolean(decision.payload.multi);
 
@@ -301,7 +307,7 @@ export class PresentationPort {
 
       const questionsList = rawQuestions.map((q: any) => ({
         id: q.id || q.key || targetFact,
-        text: q.text || q.question || `Could you please specify your ${(q.id || targetFact).replace(/_/g, ' ')}?`,
+        text: q.text || q.question || say('ask_fact_default_question', { fact: factLabel(q.id || targetFact) }),
         options: Array.isArray(q.options) ? q.options : [],
         multi: Boolean(q.multi),
         inputType: q.inputType || 'single_select',
@@ -367,37 +373,30 @@ export class PresentationPort {
 
     // ── 2. FAILURE / DENIAL / INVALID OUTCOME COMPOSITION ──────────────────
     if (decision.type === 'fail' || !validated.valid) {
-      let failReason =
-        decision.reason ||
-        decision.payload?.error ||
-        validated.notes ||
-        'The requested action could not be completed safely.';
-      if (failReason.includes("Stage '") || failReason.includes("Capability '") || failReason.includes("requires input")) {
-        failReason = 'Please clarify your project details or speak with a specialist.';
-      }
-      if (failReason.includes('No matching journey found') || failReason.includes('No active journey matched')) {
-        const companyName = release.profile?.companyName || release.manifest?.name || 'our';
-        const industry = release.profile?.industry || 'building supplies, trade materials, and home renovations';
+      const failReason = String(decision.reason || decision.payload?.error || validated.notes || '');
+      const noJourney = failReason.includes('No matching journey found') || failReason.includes('No active journey matched');
+      const needsDetails = failReason.includes("Stage '") || failReason.includes("Capability '") || failReason.includes('requires input');
+      if (decision.payload?.customerMessage === true && failReason) {
+        // Written for the customer by the tenant's policy: shown exactly as written.
+        assistantMessage = failReason;
+      } else if (noJourney) {
+        const companyName = release.profile?.companyName || release.manifest?.name || '';
         const customerQuery = (options as any)?.customerQuery?.trim();
         if (assistantMessage) {
           // Keep LLM generated out-of-scope response if provided!
         } else if (customerQuery) {
-          const configuredJourneys = release.journeys
-            .map((journey) => journey.displayName)
-            .filter(Boolean)
-            .join(', ');
-          assistantMessage = `I'm your ${companyName} consultant. That request is outside our configured ${industry} offering. ${
-            configuredJourneys ? `I can help with: ${configuredJourneys}.` : 'How can I help with one of our configured products or services?'
-          }`;
+          const journeys = release.journeys.map((journey) => journey.displayName).filter(Boolean).join(', ');
+          const offering = journeys ? say('out_of_scope_offering', { journeys }) : say('out_of_scope_offering_default');
+          assistantMessage = companyName ? say('out_of_scope_named', { companyName, offering }) : say('out_of_scope', { offering });
         } else {
-          const defaultGreeting =
+          assistantMessage =
             (release as any).persona?.greeting ||
             (release.agents && (release.agents[0] as any)?.greeting) ||
-            `Hello! I'm your ${companyName} consultant. How can I help you with your project today?`;
-          assistantMessage = defaultGreeting;
+            (companyName ? say('greeting_named', { companyName }) : say('greeting_default'));
         }
       } else {
-        assistantMessage = `I was unable to complete that action safely. ${failReason}`;
+        // Internal reasons (validator notes, stage and capability ids) stay in the decision trace; the customer never sees them.
+        assistantMessage = needsDetails ? say('clarify_project_details') : say('action_not_completed');
       }
 
       return {
@@ -416,20 +415,21 @@ export class PresentationPort {
 
     // ── 3. REQUIRES APPROVAL (ACTION BUTTON GROUP) ─────────────────────────
     if (decision.type === 'requires_approval') {
-      const toolName = decision.payload.displayName || decision.payload.toolId || 'the requested capability';
-      assistantMessage = `⚠️ **Approval Required**: Please confirm if you would like to execute **${toolName}**.`;
+      const toolName = decision.payload.displayName || decision.payload.toolId || '';
+      const actionLabels = { confirm: say('approval_confirm'), cancel: say('approval_cancel') };
+      assistantMessage = say('approval_required', { toolName });
 
       const cardId = `card_approval_${Date.now()}`;
       const btnProps = {
-        heading: 'Approval Required',
-        description: `Please confirm if you would like to execute ${toolName}.`,
+        heading: say('approval_heading'),
+        description: assistantMessage,
         actions: [
-          { id: 'confirm_execution', label: 'Approve & Proceed', primary: true, variant: 'primary' as const },
-          { id: 'cancel_execution', label: 'Cancel', primary: false, variant: 'secondary' as const },
+          { id: 'confirm_execution', label: actionLabels.confirm, primary: true, variant: 'primary' as const },
+          { id: 'cancel_execution', label: actionLabels.cancel, primary: false, variant: 'secondary' as const },
         ],
         buttons: [
-          { id: 'confirm_execution', label: 'Approve & Proceed', primary: true, variant: 'primary' as const },
-          { id: 'cancel_execution', label: 'Cancel', primary: false, variant: 'secondary' as const },
+          { id: 'confirm_execution', label: actionLabels.confirm, primary: true, variant: 'primary' as const },
+          { id: 'cancel_execution', label: actionLabels.cancel, primary: false, variant: 'secondary' as const },
         ],
       };
 
@@ -466,7 +466,7 @@ export class PresentationPort {
         return {
           workspace,
           decision,
-          assistantMessage: 'Unable to present recommendation: grounded currency is not specified in bundle or release profile.',
+          assistantMessage: say('prices_unavailable'),
           uiInstructions: [],
           executedCapabilities: [],
           trace: {
@@ -507,7 +507,7 @@ export class PresentationPort {
         return {
           workspace,
           decision,
-          assistantMessage: 'Unable to present recommendation: bundle contains ungrounded or missing item identifiers.',
+          assistantMessage: say('recommendation_unavailable'),
           uiInstructions: [],
           executedCapabilities: [],
           trace: {
@@ -554,7 +554,9 @@ export class PresentationPort {
       const parsed = CARD_TYPES.bundle.state.safeParse(state);
       if (parsed.success && this.cardAllowed(release, 'bundle')) {
         const cardId = `card_bundle_${Date.now()}`;
-        assistantMessage = `Verified options: ${items.length} item(s) matching criteria. Total: **${formattedTotal}**.`;
+        assistantMessage = items.length === 1
+          ? say('bundle_summary_one', { total: formattedTotal })
+          : say('bundle_summary_many', { count: items.length, total: formattedTotal });
         uiInstructions.push({
           actionId: cardId,
           component: 'bundle',
@@ -599,7 +601,7 @@ export class PresentationPort {
         return {
           workspace,
           decision,
-          assistantMessage: 'Unable to present catalog items because the verified results contain mixed currencies.',
+          assistantMessage: say('prices_unavailable'),
           uiInstructions: [],
           executedCapabilities: [],
           trace: {
@@ -615,7 +617,7 @@ export class PresentationPort {
         return {
           workspace,
           decision,
-          assistantMessage: 'Unable to present catalog items because the published configuration has no currency.',
+          assistantMessage: say('prices_unavailable'),
           uiInstructions: [],
           executedCapabilities: [],
           trace: {
@@ -669,7 +671,7 @@ export class PresentationPort {
           currency,
           imageUrl,
           recommended: validProducts.length === 0,
-          reason: item.reason || item.description || (item.category ? `Category: ${item.category}` : undefined),
+          reason: item.reason || item.description || (item.category ? say('item_category_reason', { category: item.category }) : undefined),
         });
       }
 
@@ -679,7 +681,7 @@ export class PresentationPort {
           validated.outcome?.heading ||
           capabilityPayload.heading ||
           (release.experience as any)?.cards?.heading ||
-          'Matching Products';
+          say('products_heading');
 
         const productsState = {
           heading,
@@ -688,10 +690,9 @@ export class PresentationPort {
 
         const parsed = CARD_TYPES.products.state.safeParse(productsState);
         if (parsed.success && this.cardAllowed(release, 'products')) {
-          if (!assistantMessage || assistantMessage.includes('Could you please specify')) {
+          if (!assistantMessage) {
             const companyName = release.profile?.companyName || release.manifest?.name || '';
-            const companySuffix = companyName ? ` from the ${companyName} catalog` : '';
-            assistantMessage = `Here are our recommended options${companySuffix}. To help plan your project and ensure everything fits seamlessly, could you please confirm a few details below?`;
+            assistantMessage = companyName ? say('products_intro_named', { companyName }) : say('products_intro');
           }
           const productInst: UIInstruction = {
             actionId: cardId,
@@ -756,7 +757,7 @@ export class PresentationPort {
         }
       } else if (uniqueEvidence.length > 0) {
         const state = {
-          heading: String(validated.outcome?.heading || uniqueEvidence[0].title || 'Verified guidance'),
+          heading: String(validated.outcome?.heading || uniqueEvidence[0].title || say('evidence_heading')),
           sections: uniqueEvidence.map((item: any) => ({
             title: String(item.title || item.id).trim(),
             body: String(item.content || item.summary || '').trim(),
@@ -970,14 +971,15 @@ export class PresentationPort {
       if ((decision as any).type === 'ask_fact' && (decision as any).payload?.question) {
         assistantMessage = (decision as any).payload.question;
       } else {
-        const rawMsg = decision.reason || '';
-        if (rawMsg && !rawMsg.includes("Stage '") && !rawMsg.includes("Capability '") && !rawMsg.includes("requires input") && !rawMsg.includes("policyId")) {
+        // A decision's reason is an engine diagnostic unless it was written for the customer; only the latter is ever shown.
+        const rawMsg = decision.payload?.customerMessage === true ? String(decision.reason || '') : '';
+        if (rawMsg) {
           assistantMessage = rawMsg;
         } else {
           assistantMessage =
             (release.experience as any)?.welcomeMessage ||
             (release.vocabulary as any)?.welcomeMessage ||
-            `Kia ora! How can I assist you with your project today?`;
+            say('welcome_default');
         }
       }
     }

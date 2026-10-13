@@ -1,3 +1,4 @@
+import { publicErrorMessage } from '@journeyax/journey-core';
 import assert from 'node:assert/strict';
 import { HttpException, HttpStatus, ServiceUnavailableException, BadRequestException } from '@nestjs/common';
 import { JourneyAXController } from '../src/agent.controller';
@@ -129,7 +130,7 @@ async function runControllerErrorSemanticsSuite() {
       },
     } as any;
 
-    await controller.chatStream('', '', { message: 'hello' }, res);
+    await controller.chatStream('', '', undefined, { message: 'hello' }, res);
     assert.equal(recordedStatus, 400, 'Must return HTTP 400 for missing tenant');
     assert.equal(recordedJson?.error, 'Bad Request');
     console.log('   ✅ PASS: /chat/stream returns 400 on missing tenantId');
@@ -179,9 +180,11 @@ async function runControllerErrorSemanticsSuite() {
       },
     } as any;
 
-    await controller.chatStream('test-tenant', 'test-tenant', { message: 'hello' }, res);
+    await controller.chatStream('test-tenant', 'test-tenant', undefined, { message: 'hello' }, res);
     assert.equal(recordedStatus, 503, 'Must return HTTP 503 on activation failure');
-    assert.ok(recordedJson?.message?.includes('Cutover repository failure'));
+    // A server-side failure never shows the customer what failed inside; the status still tells a client it is a server fault.
+    assert.ok(!JSON.stringify(recordedJson).includes('Cutover repository failure'), 'the internal reason is not shown');
+    assert.equal(recordedJson?.message, publicErrorMessage(undefined), 'the customer gets the platform\'s plain message');
     assert.equal(headers['Content-Type'], undefined, 'Must not flush SSE headers on pre-flight activation error');
     console.log('   ✅ PASS: Pre-stream activation failure in /chat/stream returns 503 without SSE header leakage');
   }

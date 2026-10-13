@@ -65,6 +65,8 @@ export async function POST(req: Request) {
         status: upstream.status,
         headers: {
           'Content-Type': upstream.headers.get('content-type') || 'application/json',
+          // A throttled customer is told how long to wait.
+          ...(upstream.headers.get('retry-after') ? { 'Retry-After': upstream.headers.get('retry-after') as string } : {}),
         },
       });
     }

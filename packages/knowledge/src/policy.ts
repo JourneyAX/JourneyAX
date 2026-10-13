@@ -99,6 +99,10 @@ export const PlatformPolicySchema = z.object({
   coverage: CoveragePolicySchema,
   suggestions: SuggestionPolicySchema,
   messages: MessageMapSchema,
+  /** Message keys written for the agent, not the customer; they are exempt from the customer-wording checks. */
+  agentMessages: z.array(z.string().min(1)).max(50),
+  /** The named placeholders a message template may use, in addition to those its own platform default already uses. */
+  messageVariables: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/)).max(50),
 }).strict();
 
 const LocaleKeySchema = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/);
@@ -241,6 +245,8 @@ export interface ResolvedOkfPolicy {
   messages: Record<string, string>;
 }
 
+const placeholdersOf = (template: string): string[] => [...template.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map((match) => match[1]);
+
 const PLATFORM: PlatformPolicy = PlatformPolicySchema.parse(platformDefaults);
 const resolvedCache = new WeakMap<object, Map<string, ResolvedOkfPolicy>>();
 const NO_TENANT_POLICY = {};
@@ -336,7 +342,7 @@ export function validateOkfTenantPolicy(input: unknown): string[] {
     }
   }
   const unknownPlaceholders = (template: string, key: string) => {
-    const allowed = new Set(['relationshipId', 'status', 'conceptId', 'conceptName', 'reason', 'sources']);
+    const allowed = new Set([...PLATFORM.messageVariables, ...placeholdersOf(PLATFORM.messages[key.split('.').pop() as string] ?? '')]);
     for (const match of template.matchAll(/\{([A-Za-z0-9_]+)\}/g)) {
       if (!allowed.has(match[1])) problems.push(`policy.messages.${key}: unknown placeholder {${match[1]}}`);
     }

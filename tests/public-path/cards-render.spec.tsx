@@ -1,0 +1,108 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createSuite } from '@journeyax/test-support';
+import { CARD_TYPES, DEFAULT_TEMPLATES, DEFAULT_TOKENS, getDefaultTemplate, mergeTokens, tokensToCssVars, cssVarsToString } from '@journeyax/ui-cards';
+import { CardRenderer } from '@journeyax/ui-cards/react';
+import { runCanary } from '../../packages/canary/src';
+import { sampleStateFor } from '../../apps/backoffice-admin/src/lib/cardSampleState';
+import { startPublicPath } from './harness';
+
+/**
+ * Every card a customer can be sent renders, and renders through the tenant's theme: the cards the real public path produced for
+ * the canary scenarios, and a sample of every platform card type, go through the real card renderer with the platform templates.
+ */
+const suite = createSuite('cards: every card the public path sends renders, themed');
+const canarySpec = JSON.parse(readFileSync(path.resolve(__dirname, '../../scripts/canary/placemakers.canary.json'), 'utf8'));
+
+const render = (cardType: string, state: any, tokens = DEFAULT_TOKENS, template: any = DEFAULT_TEMPLATES[cardType as keyof typeof DEFAULT_TEMPLATES]) =>
+  renderToStaticMarkup(<div style={tokensToCssVars(tokens) as any}><CardRenderer template={template} state={state} /></div>);
+
+const text = (html: string) => html.replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
+
+async function main() {
+  const quiet = console.log;
+  console.log = () => undefined;
+  const publicPath = await startPublicPath();
+  const report = await runCanary({ url: publicPath.chatStreamUrl, headers: publicPath.customerHeaders }, canarySpec);
+  const pack: any = publicPath.stack.pack;
+  await publicPath.stop();
+  console.log = quiet;
+
+  const seen = new Map<string, any>();
+  for (const scenario of report.scenarios) for (const turn of scenario.turns) for (const frame of turn.transcript as any[]) {
+    const card = frame.event === 'uiAction' ? frame.data?.arguments?.card : undefined;
+    if (card) seen.set(`${card.cardType}:${scenario.id}`, card);
+  }
+
+  await suite.test('the pack the public path served allows exactly the cards it sent, and every one is a platform card with a template', () => {
+    const sent = new Set([...seen.values()].map((card) => card.cardType));
+    assert.ok(sent.size >= 3, `card types sent: ${[...sent].join(', ')}`);
+    const allowed: string[] = pack.experience.cards.allowedCardTypes;
+    for (const cardType of sent) {
+      assert.ok(allowed.includes(cardType), `${cardType} is allowed by the pack`);
+      assert.ok((CARD_TYPES as any)[cardType] && DEFAULT_TEMPLATES[cardType as keyof typeof DEFAULT_TEMPLATES], `${cardType} has a schema and a template`);
+    }
+  });
+
+  await suite.test('every card the canary received renders without error and without broken text', () => {
+    for (const [key, card] of seen) {
+      const html = render(card.cardType, card.state);
+      const plain = text(html);
+      assert.ok(plain.trim().length > 0, `${key} rendered something`);
+      assert.doesNotMatch(plain, /undefined|NaN|\[object Object\]|null/, `${key}: ${plain.slice(0, 160)}`);
+    }
+  });
+
+  await suite.test('product cards show the name and a price in the shop\'s currency; the cross-sell card carries its heading and its not-confirmed note', () => {
+    const products = [...seen.values()].find((card) => card.cardType === 'products')!;
+    const html = text(render('products', products.state));
+    for (const product of products.state.products.slice(0, 3)) {
+      assert.ok(html.includes(product.title), `${product.title} is shown`);
+      assert.match(html, /NZ\$|NZD|\$\s?\d/, 'a price is shown');
+    }
+    const accessories = [...seen.values()].find((card) => card.cardType === 'accessories')!;
+    const accessoriesText = text(render('accessories', accessories.state));
+    assert.match(accessoriesText, /Have you considered\?/);
+    assert.match(accessoriesText, /not confirmed to be compatible/);
+    assert.ok(!/Goes with it|Accessories & add-ons/.test(accessoriesText), 'no template wording competes with the tenant\'s own heading');
+    const clarify = [...seen.values()].find((card) => card.cardType === 'clarify')!;
+    for (const question of clarify.state.questions) assert.ok(text(render('clarify', clarify.state)).includes(question.text), 'the question is shown');
+  });
+
+  await suite.test('theming: the card stylesheet reads only theme variables, every one a tenant theme defines, with no hard-coded colour; a tenant theme reaches the markup', () => {
+    const css = readFileSync(path.resolve(__dirname, '../../packages/ui-cards/styles.css'), 'utf8');
+    const defined = new Set(Object.keys(tokensToCssVars(DEFAULT_TOKENS)));
+    const referenced = new Set([...css.matchAll(/var\((--jx-[a-z0-9-]+)/g)].map((match) => match[1]));
+    assert.deepEqual([...referenced].filter((name) => !defined.has(name) && !name.startsWith('--jx-x-')), [], 'a tenant theme cannot style a variable no token defines');
+    assert.ok(referenced.size >= 20, `the stylesheet is driven by ${referenced.size} theme variables`);
+    // A colour literal is allowed only as the fallback inside var(--jx-…, <fallback>); everywhere else it would ignore the theme.
+    const withoutFallbacks = css.replace(/var\(--jx-[a-z0-9-]+,[^)]*\)/g, 'var(--x)');
+    assert.deepEqual(withoutFallbacks.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) ?? [], [], 'no hard-coded colour outside a theme variable');
+    for (const cardType of Object.keys(CARD_TYPES)) {
+      assert.doesNotMatch(render(cardType, sampleFor(cardType)).replace(/--jx-[a-z0-9-]+:[^;"]+/g, ''), /#[0-9a-f]{3,8}\b|rgba?\(/i, `${cardType} has a hard-coded colour in its markup`);
+    }
+    const branded = mergeTokens({ colors: { brand: '#0B5FFF', accent: '#FF6A00' } } as any);
+    assert.match(cssVarsToString(tokensToCssVars(branded)), /--jx-color-brand:#0B5FFF/);
+    assert.match(render('products', [...seen.values()].find((card) => card.cardType === 'products')!.state, branded), /--jx-color-brand:#0B5FFF/);
+  });
+
+  await suite.test('every platform card type has a valid sample, renders, and its default template only binds fields its schema declares', () => {
+    for (const [cardType, definition] of Object.entries(CARD_TYPES as Record<string, any>)) {
+      const sample = sampleFor(cardType);
+      const parsed = definition.state.safeParse(sample);
+      assert.ok(parsed.success, `${cardType} sample: ${parsed.success ? '' : parsed.error.issues[0]?.message}`);
+      assert.ok(getDefaultTemplate(cardType as any), `${cardType} has a default template`);
+      assert.doesNotMatch(text(render(cardType, parsed.data)), /undefined|NaN|\[object Object\]/, cardType);
+    }
+  });
+}
+
+/** The catalogue's own sample for each card type (the same states the Cards & Theme studio previews with). */
+function sampleFor(cardType: string): any {
+  return sampleStateFor(cardType as any);
+}
+
+main().then(() => { suite.finish(); process.exit(process.exitCode ?? 0); }).catch((error) => { console.error(error); process.exit(1); });

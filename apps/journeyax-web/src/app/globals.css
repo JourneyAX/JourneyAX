@@ -861,6 +861,20 @@ body {
   gap: 10px;
 }
 
+.clarify-question__input {
+  width: min(100%, 440px);
+  padding: 11px 14px;
+  border: 1.5px solid var(--border-input);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.clarify-question__input:focus-visible {
+  outline: 2px solid var(--dark);
+  outline-offset: 2px;
+}
+
 .clarify-pill {
   display: inline-flex;
   align-items: center;

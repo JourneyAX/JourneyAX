@@ -12,6 +12,7 @@ import { BranchStockService } from './commerce/branch-stock.service';
 import { ConfigLoader } from './pipeline/config-loader';
 import { SessionStore } from './pipeline/session-store';
 import { BusinessPackLoader } from '@journeyax/business-pack';
+import { publicEmitter, publicErrorMessage } from '@journeyax/journey-core';
 
 @Controller('api/v1/:projectId/commerce')
 export class JourneyAXController {
@@ -368,6 +369,7 @@ export class JourneyAXController {
   async chatStream(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-internal-key') internalKey: string | undefined,
     @Body() body: {
       message?: string;
       messages?: any[];
@@ -418,7 +420,10 @@ export class JourneyAXController {
       }
     };
 
-    const emit = (event: string, data: any) => {
+    // A customer's browser receives the customer-facing view of each event only. The full events (decision, knowledge trace,
+    // model route…) go to authenticated platform callers (the evaluation harness) that present the internal key.
+    const isPlatformCaller = Boolean(process.env.INTERNAL_API_KEY) && internalKey === process.env.INTERNAL_API_KEY;
+    const write = (event: string, data: any) => {
       ensureHeaders();
       try {
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -427,6 +432,7 @@ export class JourneyAXController {
         /* client disconnected */
       }
     };
+    const emit = isPlatformCaller ? write : publicEmitter(write);
 
     try {
       await this.agentService.processChatStream(
@@ -457,6 +463,9 @@ export class JourneyAXController {
         const status =
           error instanceof HttpException
             ? error.getStatus()
+            // The runtime refusing or failing is the platform being unavailable to this customer, whatever its own status was.
+            : typeof error?.upstreamStatus === 'number'
+            ? HttpStatus.SERVICE_UNAVAILABLE
             : typeof error?.status === 'number' && error.status >= 400 && error.status < 600
             ? error.status
             : error.message?.includes('BLOCKED') || error.message?.includes('503')
@@ -464,14 +473,18 @@ export class JourneyAXController {
             : error.message?.includes('required')
             ? HttpStatus.BAD_REQUEST
             : HttpStatus.INTERNAL_SERVER_ERROR;
+        // Client mistakes (bad request, too large, throttled) keep their message; a server-side failure never shows the customer
+        // what failed inside (hosts, release checksums, upstream bodies).
+        // Only an error this service raised for the customer (a bad request, too large, throttled) keeps its own words.
+        const clientError = error instanceof HttpException && status >= 400 && status < 500;
         res.status(status).json({
           statusCode: status,
-          message: error.message || 'Stream error',
-          error: error.name || 'Error',
+          message: clientError || isPlatformCaller ? (error.message || 'Stream error') : publicErrorMessage(error?.code),
+          error: clientError || isPlatformCaller ? (error.name || 'Error') : 'Error',
         });
         return;
       }
-      emit('error', { message: error.message || 'stream error' });
+      emit('error', { code: error?.code, message: error.message || 'stream error' });
     } finally {
       if (heartbeat) clearInterval(heartbeat);
       if (!res.writableEnded) {

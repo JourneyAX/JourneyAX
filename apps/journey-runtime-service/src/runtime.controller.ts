@@ -17,10 +17,11 @@ import {
   PipeTransform,
   ArgumentMetadata,
   HttpCode,
+  HttpException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { RuntimeService } from './runtime.service';
-import { TurnCommand, TurnResult, WorkspaceState, FactSource, DuplicateTurnError, ChannelEvent } from '@journeyax/journey-core';
+import { TurnCommand, TurnResult, WorkspaceState, FactSource, DuplicateTurnError, ChannelEvent, projectPublicTurnResult, publicEmitter } from '@journeyax/journey-core';
 import { DurableCutoverRecord, ReleaseActivationRecord } from '@journeyax/database';
 import { RuntimeAuthGuard, InternalOnly, Public } from './auth/auth.guard';
 import {
@@ -77,7 +78,9 @@ export class RuntimeController {
     };
 
     try {
-      return await this.runtimeService.runTurn(command);
+      const result = await this.runtimeService.runTurn(command);
+      // A caller that is not a platform workload (a customer's token via the gateway) gets the customer-facing view only.
+      return authContext?.isInternal ? result : (projectPublicTurnResult(result) as unknown as TurnResult);
     } catch (err: any) {
       if (err instanceof DuplicateTurnError) {
         throw new BadRequestException({
@@ -140,26 +143,34 @@ export class RuntimeController {
       environment: dto.environment || env,
     };
 
-    // Set SSE headers
-    if (typeof res.status === 'function') {
-      res.status(200);
-    }
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
+    // The stream starts with the first event, not before: a refusal that happens before anything is sent (no approved release,
+    // an unavailable pack, a bad request) is a real HTTP error a gateway and a monitor can see, not a 200 with an error inside.
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      if (typeof res.status === 'function') res.status(200);
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+    };
 
     let errorEmitted = false;
-    const emit = (event: string, data: any) => {
+    const write = (event: string, data: any) => {
+      start();
       if (event === 'error') {
         errorEmitted = true;
       }
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
+    // Platform workloads (the commerce service, presenting the internal key) receive every event; anyone else the public view.
+    const emit = authContext?.isInternal ? write : publicEmitter(write);
 
     try {
       await this.runtimeService.streamTurn(command, emit);
     } catch (err: any) {
+      if (!started && err instanceof HttpException && !(err instanceof DuplicateTurnError)) throw err;
       if (!errorEmitted) {
         if (err instanceof DuplicateTurnError) {
           emit('error', {
@@ -172,7 +183,7 @@ export class RuntimeController {
         }
       }
     } finally {
-      res.end();
+      if (started) res.end();
     }
   }
 

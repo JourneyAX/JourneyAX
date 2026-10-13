@@ -217,17 +217,82 @@ const components = {
   Divider: ({ props }: RP) => <hr className={cls('jx-divider', toneCls(props.tone))} style={{ margin: `${sp(props.spacing ?? 'sm')} 0` }} />,
   Spacer: ({ props }: RP) => <div className="jx-spacer" style={{ flex: props.grow ? 1 : undefined, height: sp(props.size), width: sp(props.size) }} />,
   Chips: ({ props }: RP) => {
-    const items: string[] = Array.isArray(props.items) ? props.items : [];
+    const items: Array<string | { value: string; label: string }> = Array.isArray(props.items) ? props.items : [];
     const fire = useEmitValue({ action: 'sendMessage', valueKey: 'text', ...props });
     return (
       <div className={cls('jx-chips', props.wrap !== false && 'jx-wrap', props.className)}>
         {items.map((c, i) => {
-          const on = props.selected !== undefined && props.selected !== null && String(props.selected) === c;
+          const value = typeof c === 'string' ? c : c.value;
+          const label = typeof c === 'string' ? c : c.label;
+          const on = props.selected !== undefined && props.selected !== null && String(props.selected) === value;
           return (
-            <button key={i} type="button" className={cls('jx-chip', toneCls(props.tone), on && 'jx-selected')} aria-pressed={on} onClick={(e) => { e.stopPropagation(); fire(c); }}>{c}</button>
+            <button key={`${value}-${i}`} type="button" className={cls('jx-chip', toneCls(props.tone), on && 'jx-selected')} aria-pressed={on} onClick={(e) => { e.stopPropagation(); fire(value); }}>{label}</button>
           );
         })}
       </div>
+    );
+  },
+  QuestionInput: ({ props }: RP) => {
+    const options: Array<{ value: string; label: string }> = Array.isArray(props.options)
+      ? props.options.flatMap((option: unknown) => {
+          if (typeof option === 'string') return [{ value: option, label: option }];
+          if (option && typeof option === 'object' && typeof (option as any).value === 'string' && typeof (option as any).label === 'string') {
+            return [{ value: (option as any).value, label: (option as any).label }];
+          }
+          return [];
+        })
+      : [];
+    const mode = props.inputType || (props.multi ? 'multi_select' : options.length ? 'single_select' : 'text');
+    const [draft, setDraft] = useState(() => String(props.selected ?? ''));
+    const [selected, setSelected] = useState<string[]>(() => {
+      if (typeof props.selected !== 'string') return [];
+      try {
+        const parsed = JSON.parse(props.selected);
+        return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+      } catch { return []; }
+    });
+    const fire = useEmitValue({ action: 'chooseOption', valueKey: 'value', ...props, params: { ...(props.params || {}), questionId: props.questionId } });
+
+    if (mode === 'multi_select' && options.length) {
+      const toggle = (value: string) => setSelected((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+      return (
+        <div className="jx-question-input">
+          <div className="jx-chips jx-wrap" role="group" aria-label={props.label || 'Choose all that apply'}>
+            {options.map((option, index) => (
+              <button key={`${option.value}-${index}`} type="button" className={cls('jx-chip', selected.includes(option.value) && 'jx-selected')}
+                aria-pressed={selected.includes(option.value)} onClick={(event) => { event.stopPropagation(); toggle(option.value); }}>{option.label}</button>
+            ))}
+          </div>
+          <button type="button" className="jx-btn jx-btn-primary jx-size-sm" disabled={selected.length === 0}
+            onClick={(event) => { event.stopPropagation(); fire(JSON.stringify(selected)); }}>Continue</button>
+        </div>
+      );
+    }
+
+    if (mode === 'single_select' && options.length) {
+      return (
+        <div className="jx-chips jx-wrap" role="group" aria-label={props.label || 'Choose an answer'}>
+          {options.map((option, index) => (
+            <button key={`${option.value}-${index}`} type="button" className={cls('jx-chip', String(props.selected ?? '') === option.value && 'jx-selected')}
+              aria-pressed={String(props.selected ?? '') === option.value} onClick={(event) => { event.stopPropagation(); fire(option.value); }}>{option.label}</button>
+          ))}
+        </div>
+      );
+    }
+
+    const numeric = mode === 'number';
+    const valid = draft.trim() !== '' && (!numeric || Number.isFinite(Number(draft)));
+    return (
+      <form className="jx-question-input" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); if (valid) fire(draft.trim()); }}>
+        <div className="jx-question-entry">
+          <input type={numeric ? 'number' : 'text'} value={draft} maxLength={500}
+            inputMode={numeric ? 'decimal' : undefined} aria-label={props.label || 'Your answer'}
+            placeholder={props.placeholder || (mode === 'measurement' ? 'Enter the measurement and unit' : 'Type your answer')}
+            className="jx-question-field" onChange={(event) => setDraft(event.target.value)} />
+          {props.unit ? <span className="jx-question-unit">{props.unit}</span> : null}
+          <button type="submit" className="jx-btn jx-btn-primary jx-size-sm" disabled={!valid}>Continue</button>
+        </div>
+      </form>
     );
   },
   KeyValue: ({ props }: RP) => (

@@ -163,6 +163,9 @@ async function streamChat(
                 title: q.text || q.title || q.id,
                 options: q.options || [],
                 multi: !!q.multi,
+                inputType: q.inputType,
+                placeholder: q.placeholder,
+                unit: q.unit,
               })),
             });
           } else if (c.cardType === 'products' && Array.isArray(c.state?.products)) {
