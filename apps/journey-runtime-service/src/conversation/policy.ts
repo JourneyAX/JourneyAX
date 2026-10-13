@@ -13,7 +13,8 @@ export interface ConversationPolicy {
   ask: { maxPerConcept: number; noPreference: string };
   facets: {
     enabled: boolean; minCandidatesToAsk: number; maxExpectedRemaining: number; maxOptions: number; minShare: number; maxTermShare: number;
-    price: { minRatio: number }; priority: { term: number; brand: number; price: number };
+    /** `askFirst: false` keeps a budget question from opening the conversation: it is asked only after another question has been asked on the shelf. */
+    price: { minRatio: number; askFirst: boolean }; priority: { term: number; brand: number; price: number };
     questions: { term: string; brand: string; price: string }; priceLabels: { under: string; between: string; over: string };
   };
   reason: { maxChars: number; maxSentences: number };

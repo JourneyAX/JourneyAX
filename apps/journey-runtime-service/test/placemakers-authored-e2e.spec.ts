@@ -427,6 +427,25 @@ async function main() {
     assert.match(diagnostics, /"conversationQuestion":"facet:facet_brand"/);
   });
 
+  await suite.test('a shelf that only price can split is shown as a list: a budget question never opens the conversation', async () => {
+    const base: any = fixtureProducts.find((entry) => entry.sku === SKU_OF['DR-1']);
+    const names = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India'];
+    const prices = [15, 35, 60, 90, 130, 180, 240, 310, 400];
+    await db.collection('products').insertMany(names.map((name, index) => {
+      const { _id, ...rest } = { ...base, _id: undefined };
+      return { ...rest, sku: `910${index}`, name: `Model ${name}`, priceUSD: { min: prices[index] } };
+    }));
+    const result = await turn(stack.serviceFor(), 'ws-price-only', 'drills');
+    assert.equal(cards(result, 'clarify').length, 0, 'no budget question to start with');
+    assert.equal(result.trace.conversation.action, 'show');
+    assert.equal(cards(result, 'products')[0].props.products.length, dialogue.show.maxItems);
+    assert.ok(result.trace.conversation.because.some((line: string) => line.includes('nothing to narrow by')));
+    // A tenant that wants the budget asked first can say so.
+    const budgetFirst: any = { ...pack, extensions: { ...(pack.extensions ?? {}), dialoguePolicy: { facets: { price: { askFirst: true } } } } };
+    const asked = await turn(stack.serviceFor(), 'ws-price-first', 'drills', 1, budgetFirst);
+    assert.equal(cards(asked, 'clarify')[0].props.questions[0].id, 'facet_price');
+  });
+
   await suite.test('the release was published checksum-bound, and a different checksum cannot be used by the pack', async () => {
     const tampered = { ...structuredClone(pack), knowledgeModel: { ...reference, checksum: 'f'.repeat(64) } };
     const result = await (service as any).executeTurn({

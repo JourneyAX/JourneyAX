@@ -70,6 +70,7 @@ async function main() {
     assert.match(bad({ templates: { recommendOne: ['I would go with {brand}.'] } }).message, /\{brand\}, which is not filled in/);
     assert.match(bad({ templates: { why: '' } }).message, /non-empty text/);
     assert.match(bad({ facets: { price: { minRatio: 0 } } }).message, /facets\.price\.minRatio/);
+    assert.match(bad({ facets: { price: { askFirst: 'no' } } }).message, /facets\.price\.askFirst must be true or false/);
     assert.match(bad([]).message, /must be an object/);
     assert.match(bad({ modelReading: { browseMaxWords: 0 } }).message, /modelReading\.browseMaxWords must be a whole number from 1 to 30/);
     assert.match(bad({ modelReading: { skipForBrowse: 'yes' } }).message, /modelReading\.skipForBrowse must be true or false/);

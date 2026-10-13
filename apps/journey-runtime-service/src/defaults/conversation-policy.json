@@ -16,7 +16,7 @@
     "maxOptions": 4,
     "minShare": 0.12,
     "maxTermShare": 0.6,
-    "price": { "minRatio": 2 },
+    "price": { "minRatio": 2, "askFirst": false },
     "priority": { "term": 0, "brand": 0.05, "price": 0.1 },
     "questions": { "term": "Which of these is closest to what you need?", "brand": "Is there a brand you prefer?", "price": "Roughly what budget are you working to?" },
     "priceLabels": { "under": "Under {a}", "between": "{a} to {b}", "over": "Over {b}" }

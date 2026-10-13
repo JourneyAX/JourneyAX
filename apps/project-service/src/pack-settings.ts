@@ -33,7 +33,7 @@ const DIALOGUE_SHAPE = object({
   ask: object({ maxPerConcept: whole(0, 5), noPreference: text }),
   facets: object({
     enabled: bool, minCandidatesToAsk: whole(2, 200), maxExpectedRemaining: real(0, 1), maxOptions: whole(2, 8), minShare: real(0, 1), maxTermShare: real(0, 1),
-    price: object({ minRatio: real(1, 100) }), priority: object({ term: real(0, 10), brand: real(0, 10), price: real(0, 10) }),
+    price: object({ minRatio: real(1, 100), askFirst: bool }), priority: object({ term: real(0, 10), brand: real(0, 10), price: real(0, 10) }),
     questions: object({ term: text, brand: text, price: text }), priceLabels: object({ under: text, between: text, over: text }),
   }),
   reason: object({ maxChars: whole(40, 400), maxSentences: whole(1, 3) }),

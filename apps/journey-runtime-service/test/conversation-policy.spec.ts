@@ -280,11 +280,21 @@ async function main() {
     const same = Array.from({ length: 10 }, (_, index) => p(`Z${index}`, 'Plain Widget', 10, '', 'Acme'));
     assert.equal(facetQuestion(same, { needTerms: [], conceptWords: new Set(), asked: [], policy }), undefined, 'ten identical products cannot be told apart');
     const priced = Array.from({ length: 12 }, (_, index) => p(`Y${index}`, `Item ${index}`, 10 + index * 12));
-    const question = facetQuestion(priced, { needTerms: [], conceptWords: new Set(), asked: [], policy });
-    assert.equal(question?.factKey, 'facet_price');
+    // A budget question never opens the conversation: when price is the only thing that tells them apart, the answer is the list.
+    assert.equal(facetQuestion(priced, { needTerms: [], conceptWords: new Set(), asked: [], policy }), undefined, 'price alone does not start the questions');
+    const question = facetQuestion(priced, { needTerms: [], conceptWords: new Set(), asked: ['okf:cleaning_task'], policy });
+    assert.equal(question?.factKey, 'facet_price', 'but it may follow another question on the same shelf');
     assert.equal(question!.options.length, 4);
     assert.match(question!.options[0].label, /^Under /);
     assert.equal(facetQuestion(priced, { needTerms: [], conceptWords: new Set(), asked: ['price'], policy }), undefined, 'each kind is asked once');
+    const budgetFirst = resolveConversationPolicy({ extensions: { dialoguePolicy: { facets: { price: { askFirst: true } } } } } as any);
+    assert.equal(facetQuestion(priced, { needTerms: [], conceptWords: new Set(), asked: [], policy: budgetFirst })?.factKey, 'facet_price', 'a tenant can choose to ask the budget first');
+    // In the conversation: a shelf split only by price shows the list.
+    const shelf = decide('drills', priced, { gate: gate({ conceptId: 'concept://acme/tools/drills', mode: 'direct_results' }) });
+    assert.equal(shelf.action, 'show');
+    assert.equal(shelf.question, undefined);
+    assert.equal(shelf.products.length, policy.show.maxItems);
+    assert.ok(shelf.because.some((line) => line.includes('nothing to narrow by')));
   });
 
   await suite.test('the slow model that reads free text is skipped only when it would add nothing: a fully read tap, or a plain "show me"', () => {

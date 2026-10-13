@@ -380,7 +380,7 @@ the customer wants to look, and explain from the product itself.
   safety and care wording (wear a respirator, ventilated area, dilute) is not relayed unless the release has verified it. With no steps on
   file the assistant says so. The claim guard now also recognises these safety phrasings in any tense.
 - **It never interrogates.** At most `ask.maxPerConcept` questions per shelf (default 2); the release's question is asked once, a question
-  built from products once per kind, and "No preference" is always an option. A tapped answer arrives as text (the option's plain words, never a
+  built from products once per kind, and "No preference" is always an option. A budget question never opens a shelf: if price is the only thing that tells the products apart, the answer is the list (it may follow another question; `facets.price.askFirst` lets a tenant ask it first). A tapped answer arrives as text (the option's plain words, never a
   code), is read against the question on screen, narrows the list, and continues the same shelf.
 - **Wording is the tenant's.** By default the platform fills the pack's own sentences (`templates`) with what the customer said and the product
   chosen, so a turn needs no model call (the model remains for answers it must word, and for tenants who set `wording: "model"`, in which case the

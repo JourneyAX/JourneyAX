@@ -84,7 +84,7 @@ export function facetQuestion(items: Product[], ctx: FacetContext): QuestionPlan
     }
   }
 
-  if (!ctx.asked.includes('price')) {
+  if (!ctx.asked.includes('price') && (f.price.askFirst || ctx.asked.length > 0)) {
     const priced = items.map((item, index) => ({ price: Number(item.price), index })).filter((entry) => Number.isFinite(entry.price) && entry.price > 0).sort((a, b) => a.price - b.price);
     if (priced.length >= 4 && priced[priced.length - 1].price / priced[0].price >= f.price.minRatio) {
       const c1 = nice(priced[Math.floor(priced.length / 3)].price);
