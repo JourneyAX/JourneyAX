@@ -1,5 +1,6 @@
 import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
+import { categoryPathCovers } from '@journeyax/knowledge';
 import {
   classifyAvailability,
   normalizeCatalogProduct,
@@ -13,6 +14,8 @@ export interface CatalogSearchInput {
   query?: string;
   category?: string;
   categoryIds?: string[];
+  /** Hierarchy scopes (department → group → category); a product matches when its category path starts with one. */
+  categoryPaths?: string[][];
   excludeCategoryIds?: string[];
   maxResults?: number;
   minPriceCents?: number;
@@ -28,6 +31,7 @@ export interface CatalogSearchInput {
     conceptId: string;
     label: string;
     categoryIds: string[];
+    categoryPaths?: string[][];
     excludeCategoryIds?: string[];
     maxItems?: number;
   }>;
@@ -88,6 +92,14 @@ function scoreDocumentRelevance(doc: any, tokens: QueryToken[], mapping: Resolve
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** Only well-formed paths (non-empty string segments) are honoured; anything else is ignored, never widened. */
+function cleanPaths(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((path): path is string[] => Array.isArray(path) && path.length > 0 && path.every((segment) => typeof segment === 'string' && segment.trim().length > 0))
+    .map((path) => path.map((segment) => segment.trim()));
+}
+
 export class CatalogSearchHandler implements NativeCapabilityHandler {
   constructor(
     private readonly inMemoryProducts?: any[],
@@ -105,6 +117,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           ...input,
           groups: undefined,
           categoryIds: group.categoryIds,
+          categoryPaths: group.categoryPaths || [],
           excludeCategoryIds: group.excludeCategoryIds || [],
           maxResults: group.maxItems || Math.min(input.maxResults || 2, 10),
         }, ctx);
@@ -131,6 +144,11 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const query = input.query || '';
     const category = input.category || '';
     const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
+    const categoryPaths = cleanPaths(input.categoryPaths);
+    // A scope that was supplied but is unusable must narrow to nothing, never silently widen to the whole catalogue.
+    if (Array.isArray(input.categoryPaths) && input.categoryPaths.length > 0 && categoryPaths.length === 0 && categoryIds.length === 0) {
+      return { items: [], total: 0, error: 'invalid_category_scope' };
+    }
     const excludeCategoryIds = Array.isArray(input.excludeCategoryIds) ? input.excludeCategoryIds.filter(Boolean) : [];
     const limit = Math.min(input.maxResults || 10, 50);
 
@@ -158,7 +176,14 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         if (classifyAvailability(p, mapping) === 'excluded') return false;
         if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
         const categoryText = textOf(p, mapping.categoryScopePaths);
-        if (categoryIds.length > 0 && !categoryIds.some((id) => categoryText.includes(id.toLowerCase()))) return false;
+        if (categoryIds.length > 0 || categoryPaths.length > 0) {
+          const byName = categoryIds.some((id) => categoryText.includes(id.toLowerCase()));
+          const byPath = mapping.categoryHierarchyPaths.some((hierarchy) => {
+            const value = readPath(p, hierarchy);
+            return Array.isArray(value) && categoryPaths.some((scope) => categoryPathCovers(scope, value.map(String)));
+          });
+          if (!byName && !byPath) return false;
+        }
         if (excludeCategoryIds.some((id) => categoryText.includes(id.toLowerCase()))) return false;
         if (query) {
           const text = textOf(p, mapping.searchPaths);
@@ -202,9 +227,12 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           const regex = new RegExp(escapeRegex(category), 'i');
           and.push({ $or: anyOf(mapping.categoryPaths, regex) });
         }
-        if (categoryIds.length > 0) {
+        if (categoryIds.length > 0 || categoryPaths.length > 0) {
           const scoped = categoryIds.map((value) => new RegExp(escapeRegex(value), 'i'));
-          and.push({ $or: anyOf(mapping.categoryScopePaths, { $in: scoped }) });
+          // A path scope is an exact, anchored match on each hierarchy segment, so a same-named category elsewhere is not selected.
+          const byPath = categoryPaths.flatMap((scope) => mapping.categoryHierarchyPaths.map((hierarchy) => Object.fromEntries(
+            scope.map((segment, index) => [`${hierarchy}.${index}`, new RegExp(`^${escapeRegex(segment)}$`, 'i')]))));
+          and.push({ $or: [...(scoped.length ? anyOf(mapping.categoryScopePaths, { $in: scoped }) : []), ...byPath] });
         }
         if (excludeCategoryIds.length > 0) {
           const excludedCategories = excludeCategoryIds.map((value) => new RegExp(escapeRegex(value), 'i'));

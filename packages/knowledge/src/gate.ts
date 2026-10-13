@@ -55,8 +55,10 @@ export interface OkfGateDecision {
     permission: 'allowed' | 'blocked';
     scope: string[];
     categoryIds: string[];
+    /** Hierarchy scopes (department → group → category); a product is in scope when its path starts with one. */
+    categoryPaths: string[][];
     excludeCategoryIds: string[];
-    groups?: Array<{ conceptId: string; label: string; categoryIds: string[]; excludeCategoryIds: string[]; maxItems: number }>;
+    groups?: Array<{ conceptId: string; label: string; categoryIds: string[]; categoryPaths: string[][]; excludeCategoryIds: string[]; maxItems: number }>;
     presentation: 'grouped_overview' | 'list' | 'none';
     maxItemsPerGroup?: number;
   };
@@ -76,7 +78,7 @@ export interface OkfGateDecision {
    */
   suggestions?: Array<{
     conceptId: string; relationshipId: string; label: string; note: string;
-    categoryIds: string[]; excludeCategoryIds: string[]; status: 'unverified_cross_sell';
+    categoryIds: string[]; categoryPaths: string[][]; excludeCategoryIds: string[]; status: 'unverified_cross_sell';
   }>;
   catalogHandling: {
     requiresLiveValidation: true;
@@ -309,6 +311,7 @@ function noMatch(input: OkfGateInput, reason: string, mode: OkfResponseMode = 'n
       permission: mode === 'legacy_search' ? 'allowed' : 'blocked',
       scope: [],
       categoryIds: [],
+      categoryPaths: [],
       excludeCategoryIds: [],
       groups: [],
       presentation: mode === 'legacy_search' ? 'list' : 'none',
@@ -466,6 +469,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
       permission: 'blocked',
       scope: [],
       categoryIds: concept.searchScope.catalogCategoryIds,
+      categoryPaths: concept.searchScope.catalogCategoryPaths ?? [],
       excludeCategoryIds: concept.searchScope.excludeCategoryIds,
       groups: [],
       presentation: 'none',
@@ -600,6 +604,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
         conceptId,
         label: group.name,
         categoryIds: group.searchScope.catalogCategoryIds,
+        categoryPaths: group.searchScope.catalogCategoryPaths ?? [],
         excludeCategoryIds: group.searchScope.excludeCategoryIds,
         maxItems: concept.broadQueryPolicy!.maxItemsPerGroup,
       }] : [];
@@ -668,7 +673,8 @@ function suggestionsFor(content: OkfReleaseContent, concept: OkfConcept, policy:
         conceptId: target.conceptId, relationshipId: relationship.relationshipId,
         label: relationship.customerLabel || renderOkfMessage(policy.messages, 'cross_sell_label'),
         note: renderOkfMessage(policy.messages, 'cross_sell_note'),
-        categoryIds: target.searchScope.catalogCategoryIds, excludeCategoryIds: target.searchScope.excludeCategoryIds,
+        categoryIds: target.searchScope.catalogCategoryIds, categoryPaths: target.searchScope.catalogCategoryPaths ?? [],
+        excludeCategoryIds: target.searchScope.excludeCategoryIds,
         status: 'unverified_cross_sell' as const,
       }];
     })

@@ -5,7 +5,8 @@ import type { OkfDraftContent } from '../contracts';
 import type { GeneratedKnowledge } from './build-draft';
 import { GENERATOR, PROVENANCE_KEY, type Provenance, type ProvenanceMap } from './types';
 import { normalizePhrase, slugify } from './slug';
-import type { TaxonomyNode } from './taxonomy';
+import { nodeScope, type TaxonomyNode } from './taxonomy';
+import { mergeSearchScopes } from '../category-scope';
 
 /**
  * Authoring layer. A tenant-reviewed specification adds the parts a catalogue cannot know — families of categories,
@@ -223,7 +224,15 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
     draft.concepts.push(done);
     return done;
   };
-  const scopeOf = (nodes: TaxonomyNode[]) => [...new Set(nodes.flatMap((node) => node.identifiers))];
+  /** The union of several scopes; hierarchy paths are kept as paths so a family never degrades to by-name matching. */
+  const unionScope = (scopes: Array<{ catalogCategoryIds: string[]; catalogCategoryPaths?: string[][] }>) => {
+    const merged = mergeSearchScopes(scopes);
+    return {
+      catalogCategoryIds: merged.categoryIds,
+      ...(merged.categoryPaths.length ? { catalogCategoryPaths: merged.categoryPaths } : {}),
+      enrichmentFacets: [] as string[], excludeCategoryIds: [] as string[],
+    };
+  };
   const authoredIds = new Map<string, string>(); // "family:id" → concept id
 
   // ── Families: a customer word that names several categories ──
@@ -259,7 +268,7 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
       type: 'product_family', lens: 'product', name: family.name, description: family.description,
       synonyms: family.synonyms, customerPhrases: family.phrases, requiredFacts, discriminators,
       compatibilitySensitive: family.compatibilitySensitive, riskClass: family.compatibilitySensitive ? 'compatibility' : 'standard',
-      searchScope: { catalogCategoryIds: scopeOf(members), enrichmentFacets: [], excludeCategoryIds: [] },
+      searchScope: unionScope(members.map(nodeScope)),
       broadQueryPolicy: {
         groupConceptIds: memberConcepts.slice(0, generated.config.navigation.overviewGroups).map((c: any) => c.conceptId),
         maxItemsPerGroup: generated.config.navigation.maxItemsPerGroup, questionRef: discriminators[0].questionRef, productRetrievalAllowed: true,
@@ -278,7 +287,7 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
     const node = resolve(ref, where);
     return node ? { nodes: [node], conceptId: generated.conceptIdByNode.get(node) } : { nodes: [] };
   };
-  const identifiersOf = (conceptId: string) => (byId.get(conceptId)?.searchScope.catalogCategoryIds ?? []) as string[];
+  const scopeOfConcept = (conceptId: string) => (byId.get(conceptId)?.searchScope ?? { catalogCategoryIds: [] }) as { catalogCategoryIds: string[]; catalogCategoryPaths?: string[][] };
 
   // ── Projects ──
   const projectsWithoutJourney: string[] = [];
@@ -298,7 +307,7 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
       ...(project.journey ? { journeyRef: project.journey } : {}),
       requiredFacts: project.facts.map((entry) => ({ factKey: entry.fact, importance: entry.importance })),
       discriminators: project.facts.map((entry) => ({ factKey: entry.fact, questionRef: `q.${entry.fact}`, clarifyFirst: false, valueMap: {} })),
-      searchScope: { catalogCategoryIds: [...new Set(memberIds.flatMap(identifiersOf))], enrichmentFacets: [], excludeCategoryIds: [] },
+      searchScope: unionScope(memberIds.map(scopeOfConcept)),
       broadQueryPolicy: {
         groupConceptIds: memberIds.slice(0, project.overviewGroups ?? generated.config.navigation.overviewGroups),
         maxItemsPerGroup: generated.config.navigation.maxItemsPerGroup, ...(project.facts[0] ? { questionRef: `q.${project.facts[0].fact}` } : {}), productRetrievalAllowed: true,
@@ -325,7 +334,7 @@ export function applyAuthoring(generated: GeneratedKnowledge, specInput: unknown
     const targets = care.appliesTo.map((ref, index) => refToNodesAndConcepts(ref, `${where}.appliesTo[${index}]`)).filter((entry) => entry.conceptId);
     const concept = finish(baseConcept(care.id, 'care', {
       type: 'care', lens: 'care', name: care.name, description: care.description, synonyms: care.synonyms, customerPhrases: care.phrases,
-      searchScope: { catalogCategoryIds: [...new Set(targets.flatMap((entry) => identifiersOf(entry.conceptId!)))], enrichmentFacets: [], excludeCategoryIds: [] },
+      searchScope: unionScope(targets.map((entry) => scopeOfConcept(entry.conceptId!))),
     }), 'care');
     authoredIds.set(`care:${care.id}`, concept.conceptId);
     for (const target of targets) {

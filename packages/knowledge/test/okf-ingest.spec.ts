@@ -116,7 +116,12 @@ async function main() {
 
   await suite.test('scope uses exact catalogue identifiers, including a leaf-category alias, and commerce follows the config ceiling', () => {
     const aliased = buildTaxonomyDraft(snapshot({ rows: [{ path: ['Dept', 'Group', 'Toilet Suites'], category: 'Toilets', productCount: 4 }], totalProducts: 4 }), config());
-    assert.deepEqual(concept(aliased, 'Toilet Suites').searchScope.catalogCategoryIds, ['Toilet Suites', 'Toilets']);
+    // A product with a catalogue path is selected by that path (an alias cannot widen it); names are for path-less products only.
+    assert.deepEqual(concept(aliased, 'Toilet Suites').searchScope.catalogCategoryPaths, [['Dept', 'Group', 'Toilet Suites']]);
+    assert.deepEqual(concept(aliased, 'Toilet Suites').searchScope.catalogCategoryIds, []);
+    const pathless = buildTaxonomyDraft(snapshot({ rows: [{ path: [], category: 'Loose Fittings', productCount: 3 }], totalProducts: 3 }), config());
+    assert.deepEqual(concept(pathless, 'Loose Fittings').searchScope.catalogCategoryIds, ['Loose Fittings']);
+    assert.equal(concept(pathless, 'Loose Fittings').searchScope.catalogCategoryPaths, undefined, 'no invented hierarchy for a path-less product');
     const strict = build({}, { commerce: { addToCart: 'allowed_with_warning', checkout: 'requires_compatibility_resolution' } });
     assert.ok(strict.draft.concepts.every((entry: any) => entry.commercePolicy.checkout === 'requires_compatibility_resolution'));
   });
@@ -248,7 +253,7 @@ async function main() {
     assert.equal(broad.clarification.question, 'Which type of Tools do you need?');
     const specific = ask('hammers');
     assert.equal(specific.mode, 'direct_results');
-    assert.deepEqual(specific.retrieval.categoryIds, ['Hammers & Mallets']);
+    assert.deepEqual(specific.retrieval.categoryPaths, [['Tools', 'Hand Tools', 'Hammers & Mallets']]);
     assert.deepEqual(specific.commerce, { addToCart: 'allowed', checkout: 'allowed' });
     const hazard = ask('my vanity is sparking');
     assert.equal(hazard.mode, 'safety_then_diagnose', 'a product concept never answers a hazard');

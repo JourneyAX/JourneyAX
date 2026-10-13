@@ -5,7 +5,7 @@ import {
   GENERATOR, IngestConfigSchema, PROVENANCE_KEY, TaxonomySnapshotSchema,
   type IngestConfig, type Provenance, type ProvenanceMap, type TaxonomySnapshot,
 } from './types';
-import { buildTaxonomyTree, conceptOwner, type TaxonomyNode, type TaxonomyTree } from './taxonomy';
+import { buildTaxonomyTree, conceptOwner, nodeScope, type TaxonomyNode, type TaxonomyTree } from './taxonomy';
 import { normalizePhrase } from './slug';
 import { pluralVariants, splitName } from './variants';
 
@@ -248,7 +248,7 @@ export function buildTaxonomyDraft(snapshotInput: unknown, configInput: unknown)
     const factKey = navigationFactByNode.get(node);
     const sourceRefs = [TAXONOMY_SOURCE_ID, ...(documentSourcesByNode.get(node) || [])];
     const marks: ProvenanceMap = {
-      structure: provenance('catalogue_taxonomy', snapshot.snapshotAt, { path: node.path, products: node.products, identifiers: node.identifiers }),
+      structure: provenance('catalogue_taxonomy', snapshot.snapshotAt, { path: node.path, products: node.products, identifiers: node.identifiers, scopedBy: node.placed ? 'path' : 'name' }),
     };
     if ((synonyms.get(node) || []).length) {
       marks.synonyms = provenance('catalogue_taxonomy', snapshot.snapshotAt, { derivedFrom: 'category name' });
@@ -278,7 +278,7 @@ export function buildTaxonomyDraft(snapshotInput: unknown, configInput: unknown)
         factKey, questionRef: `q.${factKey}`, clarifyFirst: false,
         valueMap: Object.fromEntries(children.slice(0, config.navigation.maxOptions).map((child) => [child.slug, conceptIdByNode.get(child)!])),
       }] : [],
-      searchScope: { catalogCategoryIds: [...node.identifiers], enrichmentFacets: [], excludeCategoryIds: [] },
+      searchScope: nodeScope(node),
       commercePolicy: { ...config.commerce },
       safety: { blocksProducts: false, stepRefs: [] },
       evidenceRefs: sourceRefs,
@@ -323,7 +323,7 @@ export function buildTaxonomyDraft(snapshotInput: unknown, configInput: unknown)
     }
   }
   for (const node of conceptNodes) {
-    for (const identifier of node.identifiers) {
+    for (const identifier of nodeScope(node).catalogCategoryIds) {
       const others = [...(departmentsByIdentifier.get(identifier.toLowerCase()) || [])].filter((department) => department !== node.path[0]);
       if (others.length) warnings.scopeAmbiguity.push({ identifier, concept: displayName.get(node)!, alsoIn: others.sort() });
     }

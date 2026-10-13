@@ -16,6 +16,13 @@ export interface TaxonomyNode {
   products: number;
   /** Exact catalogue identifiers that scope products to this node: its name plus any leaf-category alias. */
   identifiers: string[];
+  /** True when `path` is a real catalogue hierarchy path (some product carries it), not one assembled for filing. */
+  placed: boolean;
+  /**
+   * Category names that can only be matched by name: products filed under this node (or below it) that carry a
+   * category but no hierarchy path. Empty for a node whose products are all reachable by `path`.
+   */
+  unplacedIdentifiers: string[];
   slug: string;
   /** Stable identifier path, e.g. department/group/category. */
   slugPath: string[];
@@ -33,6 +40,11 @@ export interface TaxonomyTree {
   rowProductTotal: number;
   /** Products carrying neither a path nor a category, and not filed under an unassigned department. */
   unplacedProducts: number;
+  /**
+   * Products filed under the unassigned department that carry neither a path nor a category: they are counted in that
+   * department but no catalogue scope can select them.
+   */
+  unscopableProducts: number;
 }
 
 const keyOf = (path: string[]) => path.join('\u0000');
@@ -43,15 +55,16 @@ export function buildTaxonomyTree(snapshot: Pick<TaxonomySnapshot, 'rows'>, conf
   const excluded: ExcludedRow[] = [];
   let rowProductTotal = 0;
   let unplacedProducts = 0;
+  let unscopableProducts = 0;
 
-  const ensure = (path: string[]): TaxonomyNode => {
+  const ensure = (path: string[], placed: boolean): TaxonomyNode => {
     const key = keyOf(path);
     const existing = byKey.get(key);
-    if (existing) return existing;
-    const parent = path.length > 1 ? ensure(path.slice(0, -1)) : undefined;
+    if (existing) { if (placed) existing.placed = true; return existing; }
+    const parent = path.length > 1 ? ensure(path.slice(0, -1), placed) : undefined;
     const node: TaxonomyNode = {
       path, name: path[path.length - 1], level: path.length - 1, parent, children: [], ownProducts: 0, products: 0,
-      identifiers: [path[path.length - 1]], slug: '', slugPath: [], status: 'concept',
+      identifiers: [path[path.length - 1]], placed, unplacedIdentifiers: [], slug: '', slugPath: [], status: 'concept',
     };
     byKey.set(key, node);
     parent?.children.push(node);
@@ -61,6 +74,7 @@ export function buildTaxonomyTree(snapshot: Pick<TaxonomySnapshot, 'rows'>, conf
   for (const row of snapshot.rows) {
     rowProductTotal += row.productCount;
     let path = row.path;
+    const placed = path.length > 0;
     if (path.length === 0) {
       if (config.unassignedDepartment) path = row.category ? [config.unassignedDepartment, row.category] : [config.unassignedDepartment];
       else { excluded.push({ row, reason: 'no_department' }); unplacedProducts += row.productCount; continue; }
@@ -68,9 +82,16 @@ export function buildTaxonomyTree(snapshot: Pick<TaxonomySnapshot, 'rows'>, conf
     const rule = config.exclusions.find((entry) =>
       (!entry.department || entry.department === path[0]) && (!entry.category || entry.category === (row.category ?? path[path.length - 1])));
     if (rule) { excluded.push({ row, reason: rule.reason }); continue; }
-    const node = ensure(path);
+    const node = ensure(path, placed);
+    if (!placed && !row.category) unscopableProducts += row.productCount;
     node.ownProducts += row.productCount;
     if (row.category && row.category !== node.name && !node.identifiers.includes(row.category)) node.identifiers.push(row.category);
+    if (!placed && row.category) {
+      // Reachable only by category name: remember it on the node and every ancestor so a department can scope its children.
+      for (let cursor: TaxonomyNode | undefined = node; cursor; cursor = cursor.parent) {
+        if (!cursor.unplacedIdentifiers.includes(row.category)) cursor.unplacedIdentifiers.push(row.category);
+      }
+    }
   }
 
   // Aggregate counts upward, order children (largest first, then name), assign stable slugs.
@@ -101,7 +122,7 @@ export function buildTaxonomyTree(snapshot: Pick<TaxonomySnapshot, 'rows'>, conf
   for (const node of all) {
     if (node.level > 0 && node.products < config.minProductsForConcept) node.status = 'covered_by_ancestor';
   }
-  return { roots, nodes: all, excluded, rowProductTotal, unplacedProducts };
+  return { roots, nodes: all, excluded, rowProductTotal, unplacedProducts, unscopableProducts };
 }
 
 /** The nearest ancestor that owns a concept (the node itself when it does). */
@@ -110,4 +131,18 @@ export function conceptOwner(node: TaxonomyNode): TaxonomyNode | undefined {
     if (cursor.status === 'concept') return cursor;
   }
   return undefined;
+}
+
+/**
+ * What a node selects in the catalogue. A node whose path is real selects by path (exact hierarchy prefix); names are used
+ * only for products that carry a category but no path. Empty `catalogCategoryPaths` is omitted so the entity hash of a
+ * name-scoped concept is the same as it always was.
+ */
+export function nodeScope(node: TaxonomyNode): { catalogCategoryIds: string[]; catalogCategoryPaths?: string[][]; enrichmentFacets: string[]; excludeCategoryIds: string[] } {
+  return {
+    catalogCategoryIds: [...node.unplacedIdentifiers],
+    ...(node.placed ? { catalogCategoryPaths: [[...node.path]] } : {}),
+    enrichmentFacets: [],
+    excludeCategoryIds: [],
+  };
 }

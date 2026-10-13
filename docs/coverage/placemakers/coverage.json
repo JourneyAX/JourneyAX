@@ -9,6 +9,7 @@
   "productsCovered": 42436,
   "productsExcluded": 0,
   "productsWithoutDepartment": 0,
+  "productsWithoutScope": 381,
   "departments": 18,
   "groups": 64,
   "leafCategories": 376,
@@ -6298,85 +6299,7 @@
     "available": 28
    }
   ],
-  "scopeAmbiguity": [
-   {
-    "identifier": "Laundry Cabinetry & Modular Units",
-    "concept": "Tapware & Showering",
-    "alsoIn": [
-     "Other products"
-    ]
-   },
-   {
-    "identifier": "Plumbing",
-    "concept": "Plumbing (Bathrooms & Plumbing)",
-    "alsoIn": [
-     "Tools"
-    ]
-   },
-   {
-    "identifier": "Concrete",
-    "concept": "Concrete (Power Tool Accessories)",
-    "alsoIn": [
-     "Building Products"
-    ]
-   },
-   {
-    "identifier": "Plumbing",
-    "concept": "Plumbing (Power Tools)",
-    "alsoIn": [
-     "Bathrooms & Plumbing"
-    ]
-   },
-   {
-    "identifier": "Garden & Landscaping",
-    "concept": "Garden & Landscaping (Outdoor & Landscaping)",
-    "alsoIn": [
-     "Sheds & Buildings"
-    ]
-   },
-   {
-    "identifier": "Panels",
-    "concept": "Panels (Building Products)",
-    "alsoIn": [
-     "Timber & Plywood"
-    ]
-   },
-   {
-    "identifier": "Fibre Cement & Accessories",
-    "concept": "Fibre Cement & Accessories (Building Products)",
-    "alsoIn": [
-     "Cladding"
-    ]
-   },
-   {
-    "identifier": "Concrete",
-    "concept": "Concrete (Building Products)",
-    "alsoIn": [
-     "Tools"
-    ]
-   },
-   {
-    "identifier": "Panels",
-    "concept": "Panels (Timber & Plywood)",
-    "alsoIn": [
-     "Building Products"
-    ]
-   },
-   {
-    "identifier": "Garden & Landscaping",
-    "concept": "Garden & Landscaping (Sheds & Buildings)",
-    "alsoIn": [
-     "Outdoor & Landscaping"
-    ]
-   },
-   {
-    "identifier": "Fibre Cement & Accessories",
-    "concept": "Fibre Cement & Accessories (Cladding)",
-    "alsoIn": [
-     "Building Products"
-    ]
-   }
-  ]
+  "scopeAmbiguity": []
  },
  "authoring": {
   "specVersion": "1.0.0-proposal",

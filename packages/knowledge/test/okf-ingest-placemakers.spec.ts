@@ -64,11 +64,15 @@ async function main() {
         assert.ok(factKeys.has(discriminator.factKey));
         for (const target of Object.values(discriminator.valueMap) as string[]) assert.ok(ids.has(target));
       }
-      assert.ok(entry.searchScope.catalogCategoryIds.length >= 1, `${entry.conceptId} has an exact catalogue scope`);
+      const scope = entry.searchScope;
+      assert.ok(scope.catalogCategoryIds.length + (scope.catalogCategoryPaths ?? []).length >= 1, `${entry.conceptId} has an exact catalogue scope`);
     }
-    const leafNames = new Set(generated.tree.nodes.filter((node) => node.children.length === 0).flatMap((node) => node.identifiers));
-    const scoped = new Set(generated.draft.concepts.flatMap((entry: any) => entry.searchScope.catalogCategoryIds));
-    for (const name of leafNames) assert.ok(scoped.has(name), `${name} is in some concept's scope`);
+    // Every real catalogue path is selected by exactly its own concept and the ancestors above it.
+    const scopedPaths = new Set(generated.draft.concepts.flatMap((entry: any) => (entry.searchScope.catalogCategoryPaths ?? []).map((path: string[]) => path.join('\u0000'))));
+    for (const row of snapshot.rows.filter((entry: any) => entry.path.length > 0)) assert.ok(scopedPaths.has(row.path.join('\u0000')), `${row.path.join(' > ')} is selected by path`);
+    // Path-less products stay reachable by their category name.
+    const scopedNames = new Set(generated.draft.concepts.flatMap((entry: any) => entry.searchScope.catalogCategoryIds));
+    for (const row of snapshot.rows.filter((entry: any) => entry.path.length === 0 && entry.category)) assert.ok(scopedNames.has(row.category), `${row.category} is selected by name`);
   });
 
   await suite.test('the draft validates, passes the server publication evaluation and fits the draft ceiling with room to spare', () => {

@@ -221,6 +221,12 @@ export const ConceptSchema = z.object({
   }).strict()),
   searchScope: z.object({
     catalogCategoryIds: z.array(z.string()),
+    /**
+     * Hierarchy scopes: each entry is a catalogue category path from the top (department → group → category). A product
+     * is in scope when its own path starts with the entry, compared exactly (case-insensitive). Unlike a name in
+     * `catalogCategoryIds`, a path cannot also select a same-named category in another department.
+     */
+    catalogCategoryPaths: z.array(z.array(z.string().min(1)).min(1).max(8)).optional(),
     enrichmentFacets: z.array(z.string()),
     excludeCategoryIds: z.array(z.string()),
   }).strict(),

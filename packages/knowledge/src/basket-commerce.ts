@@ -1,6 +1,7 @@
 import type { OkfReleaseContent, OkfRevocationEvent } from './contracts';
 import { resolveOkfGate, type OkfGateDecision } from './gate';
 import { renderOkfMessage, resolveOkfPolicy } from './policy';
+import { scopeSelectsProduct } from './category-scope';
 
 type CommercePolicy = OkfGateDecision['commerce'];
 
@@ -126,7 +127,7 @@ export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfB
     const governing = content.concepts.filter((concept) =>
       concept.tenantId === input.tenantId &&
       concept.lifecycle.status !== 'retired' &&
-      concept.searchScope.catalogCategoryIds.some((id) => productCategories.has(id.trim().toLowerCase())) &&
+      scopeSelectsProduct(concept.searchScope, product) &&
       !concept.searchScope.excludeCategoryIds.some((id) => productCategories.has(id.trim().toLowerCase())));
     if (governing.length === 0) {
       // Only an explicit, release-level opt-in lets an uncovered category into the basket, and then only with the

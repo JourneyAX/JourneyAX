@@ -9,6 +9,7 @@ Snapshot **2026-10-13T02:03:32.198Z** · source: journeyx.products / journeyx.do
 | Products in snapshot | 42,436 |
 | Products covered by a concept | 42,436 |
 | Products excluded (with reason) | 0 |
+| Products no scope can select (no path, no category) | 381 |
 | Departments / groups / leaf categories | 18 / 64 / 376 |
 | Leaf categories with their own concept | 376 |
 | Leaf categories covered by a parent concept | 0 |
@@ -62,7 +63,8 @@ Verification worklist: 194 items across 149 concepts, 8 claims with no candidate
 - Name-derived synonyms dropped because another concept owns the phrase: 53
 - Phrases several concepts claimed, handed to their common parent: 689 (173 by department dominance)
 - Navigation questions truncated at the option limit: 1
-- Scope identifiers that also match another department: 11
+- Scope identifiers that also match another department: 0
+- Products carrying neither a catalogue path nor a category (counted in a concept, but unreachable by any scope): 381
 
 ## Family suggestions (for the authored layer)
 

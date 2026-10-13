@@ -27,6 +27,8 @@ export interface CoverageReport {
     productsCovered: number;
     productsExcluded: number;
     productsWithoutDepartment: number;
+    /** Counted in a concept but carrying neither a catalogue path nor a category, so no scope can select them. */
+    productsWithoutScope: number;
     departments: number;
     groups: number;
     leafCategories: number;
@@ -112,6 +114,7 @@ export function buildCoverageReport(generated: GeneratedKnowledge | AuthoredKnow
       productsCovered,
       productsExcluded: excludedProducts,
       productsWithoutDepartment: tree.unplacedProducts,
+      productsWithoutScope: tree.unscopableProducts,
       departments: tree.roots.length,
       groups: tree.nodes.filter((node) => levelName(node) === 'group').length,
       leafCategories: leaves.length,
@@ -160,6 +163,7 @@ export function renderCoverageMarkdown(report: CoverageReport): string {
     `| Products in snapshot | ${n(t.snapshotProducts)} |`,
     `| Products covered by a concept | ${n(t.productsCovered)} |`,
     `| Products excluded (with reason) | ${n(t.productsExcluded)} |`,
+    `| Products no scope can select (no path, no category) | ${n(t.productsWithoutScope)} |`,
     `| Departments / groups / leaf categories | ${t.departments} / ${t.groups} / ${t.leafCategories} |`,
     `| Leaf categories with their own concept | ${t.leafCategoriesWithOwnConcept} |`,
     `| Leaf categories covered by a parent concept | ${t.leafCategoriesCoveredByAncestor} |`,
@@ -198,7 +202,8 @@ export function renderCoverageMarkdown(report: CoverageReport): string {
     `- Name-derived synonyms dropped because another concept owns the phrase: ${w.droppedAmbiguousSynonyms}`,
     `- Phrases several concepts claimed, handed to their common parent: ${w.phrasesResolvedToParent} (${w.phrasesResolvedByDominance} by department dominance)`,
     `- Navigation questions truncated at the option limit: ${w.truncatedOptions.length}`,
-    `- Scope identifiers that also match another department: ${w.scopeAmbiguity.length}`, '',
+    `- Scope identifiers that also match another department: ${w.scopeAmbiguity.length}`,
+    `- Products carrying neither a catalogue path nor a category (counted in a concept, but unreachable by any scope): ${n(t.productsWithoutScope)}`, '',
   );
   if (report.familySuggestions.length) {
     lines.push('## Family suggestions (for the authored layer)', '', 'Customer terms that name several categories. A family concept would let "screws" reach all of them.', '');

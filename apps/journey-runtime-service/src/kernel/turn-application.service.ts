@@ -611,6 +611,7 @@ export class TurnApplicationService {
             ...decision.payload,
             query: decision.payload?.query || command.message || '',
             categoryIds: knowledgeGate.retrieval.categoryIds,
+            categoryPaths: knowledgeGate.retrieval.categoryPaths,
             excludeCategoryIds: knowledgeGate.retrieval.excludeCategoryIds,
             groups: knowledgeGate.retrieval.presentation === 'grouped_overview'
               ? knowledgeGate.retrieval.groups
