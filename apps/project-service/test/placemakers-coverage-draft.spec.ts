@@ -49,6 +49,26 @@ async function main() {
     assert.equal(attached[0].knowledgeModel.checksum, result.release.checksum);
   });
 
+  await suite.test('the list for a person is what they can act on, and outstanding checks never make a release "not ready"', async () => {
+    const { service } = setup();
+    const saved = await service.saveDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: 0, content: authored.draft, updatedBy: 'process:okf-authoring' });
+    assert.equal(saved.validation.valid, true);
+    const before = await service.analyzeDraft('placemakers', 'test');
+    const relationships = new Map(saved.content.relationships.map((entry: any) => [entry.relationshipId, entry]));
+    const listed = before.staleness.filter((entry) => entry.targetType === 'relationship').map((entry) => relationships.get(entry.targetId) as any);
+    assert.ok(listed.length > 0 && listed.every((entry) => entry.claimClasses.length > 0), 'a relationship is listed only if it carries a claim');
+    assert.ok(before.staleness.length < (saved.content.concepts.length + saved.content.relationships.length) / 2, `${before.staleness.length} listed`);
+    assert.ok(before.staleness.some((entry) => entry.targetId.includes('/problems/')), 'a problem needs a person');
+    const check = before.checks.find((entry) => entry.id === 'verifications_current')!;
+    assert.equal(check.ok, false);
+    assert.equal(check.advisory, true);
+    assert.equal(before.ready, false, 'not ready yet: nothing is published');
+    await service.publishDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: saved.revision, version: '1.0.0', publishedBy: 'human:reviewer' });
+    const after = await service.analyzeDraft('placemakers', 'test');
+    assert.equal(after.checks.find((entry) => entry.id === 'verifications_current')?.ok, false, 'the advice is still waiting for a person');
+    assert.equal(after.ready, true, 'but the release is ready: its unconfirmed advice is withheld');
+  });
+
   await suite.test('a hand edit to one concept is visible as an edit, not silently accepted', async () => {
     const { service } = setup();
     const saved = await service.saveDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: 0, content: generated.draft, updatedBy: 'process:okf-taxonomy-ingest' });

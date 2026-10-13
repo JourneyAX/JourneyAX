@@ -11,7 +11,7 @@ import {
   assertDraftSize,
   bindDraftEntityHashes,
   dropUndefined,
-  findStaleVerifications,
+  findVerificationWork,
   resolveOkfPolicy,
   assertOkfReferenceReady,
   resolveOkfLimits,
@@ -234,11 +234,13 @@ export class OkfAuthoringService {
     const releases = await this.listReleases(projectId, scope.environmentId);
     const policy = await this.getArtifactPolicy(projectId, scope.environmentId);
     const latestReady = releases.find((release: any) => release.status === 'ready');
-    const staleness = draft ? findStaleVerifications(draft.content) : [];
-    const checks = [
+    // Only what a person can act on: the category tree and suggestions make no claim, so they are never "waiting to be verified".
+    const staleness = draft ? findVerificationWork(draft.content) : [];
+    const checks: Array<{ id: string; ok: boolean; detail?: string; advisory?: boolean }> = [
       { id: 'draft_present', ok: Boolean(draft) },
       { id: 'draft_valid', ok: Boolean(draft?.validation?.valid), detail: draft?.validation?.issues?.length ? `${draft.validation.issues.length} issue(s)` : undefined },
-      { id: 'verifications_current', ok: Boolean(draft) && staleness.length === 0, detail: staleness.length ? `${staleness.length} item(s) need verification` : undefined },
+      // Advisory: a release ships with its unconfirmed advice withheld, so outstanding checks never make it "not ready".
+      { id: 'verifications_current', ok: Boolean(draft) && staleness.length === 0, detail: staleness.length ? `${staleness.length} item(s) need verification` : undefined, advisory: true },
       { id: 'release_published', ok: Boolean(latestReady), detail: latestReady?.version },
       ...(policy.artifactRequired
         ? [{ id: 'artifact_exported', ok: latestReady?.artifact?.status === 'ready', detail: latestReady?.artifact?.status || 'none' }]
@@ -253,7 +255,7 @@ export class OkfAuthoringService {
       verifierRoles,
       staleness,
       checks,
-      ready: checks.every((check) => check.ok),
+      ready: checks.filter((check) => !check.advisory).every((check) => check.ok),
     };
   }
 

@@ -58,3 +58,65 @@ export function findStaleVerifications(content: any, now = new Date()): DraftSta
   for (const relationship of content?.relationships || []) consider('relationship', relationship.relationshipId, relationship.contentHash);
   return entries;
 }
+
+/** What a person's check would be about, in plain terms. */
+export type VerificationTopic = 'safety' | 'compatibility' | 'care' | 'documents';
+
+export interface VerificationWorkEntry extends DraftStalenessEntry {
+  about: VerificationTopic;
+}
+
+/** The plain topic a claim class belongs to; a closed platform list, so every claim class is placed. */
+const TOPIC_OF_CLAIM: Record<string, VerificationTopic> = {
+  safety_instruction: 'safety',
+  care_safety: 'care',
+  compatibility: 'compatibility',
+  requirement: 'compatibility',
+  substitution: 'compatibility',
+  installation_step: 'documents',
+  legal_requirement: 'documents',
+  warranty: 'documents',
+  catalog_fact: 'documents',
+  suggestion: 'documents',
+};
+
+/**
+ * The part of the verification list a person can actually act on. {@link findStaleVerifications} lists every concept and every
+ * relationship without a current verification, which for a catalogue-shaped release is almost all of it: a category's place in the tree
+ * ("Wood Screws is inside Fastenings") and a "Have you considered?" suggestion make no claim, so there is nothing for anyone to verify.
+ * A check matters when it could change what the assistant may say:
+ *
+ *   - a relationship that carries a claim class (for example a care instruction),
+ *   - a topic about a problem or about care, or one marked safety-critical or compatibility-sensitive,
+ *   - a topic that has candidate manufacturer documents waiting to be reviewed,
+ *   - anything already verified that has since been edited or has expired.
+ */
+export function findVerificationWork(content: any, now = new Date()): VerificationWorkEntry[] {
+  const concepts = new Map<string, any>((content?.concepts || []).map((concept: any) => [concept.conceptId, concept]));
+  const relationships = new Map<string, any>((content?.relationships || []).map((relationship: any) => [relationship.relationshipId, relationship]));
+  const candidateSources = new Set<string>((content?.sources || []).filter((source: any) => source?.kind === 'crawl').map((source: any) => source.sourceId));
+
+  const topicOfConcept = (concept: any): VerificationTopic | undefined => {
+    if (!concept) return undefined;
+    if (concept.lens === 'problem' || concept.riskClass === 'safety_critical') return 'safety';
+    if (concept.lens === 'care') return 'care';
+    if (concept.riskClass === 'compatibility' || concept.compatibilitySensitive === true) return 'compatibility';
+    if ((concept.evidenceRefs || []).some((id: string) => candidateSources.has(id))) return 'documents';
+    return undefined;
+  };
+  const topicOfRelationship = (relationship: any): VerificationTopic | undefined => {
+    const classes: string[] = relationship?.claimClasses || [];
+    if (classes.length === 0) return undefined;
+    const topics = classes.map((claimClass) => TOPIC_OF_CLAIM[claimClass] ?? 'documents');
+    return (['safety', 'compatibility', 'care', 'documents'] as const).find((topic) => topics.includes(topic));
+  };
+
+  const work: VerificationWorkEntry[] = [];
+  for (const entry of findStaleVerifications(content, now)) {
+    const topic = entry.targetType === 'concept' ? topicOfConcept(concepts.get(entry.targetId)) : topicOfRelationship(relationships.get(entry.targetId));
+    // Something already verified that went stale matters whatever it is; something never verified matters only if it can carry a claim.
+    if (entry.reason === 'unverified' && !topic) continue;
+    work.push({ ...entry, about: topic ?? 'documents' });
+  }
+  return work;
+}

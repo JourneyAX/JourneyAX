@@ -5,7 +5,7 @@ import { MemoryDb, createSuite } from '@journeyax/test-support';
 import {
   OKF_LIMITS, PROVENANCE_KEY, applyAuthoring, auditProvenance, buildCoverageReport, buildServerOwnedOkfContent, buildTaxonomyDraft,
   computeKnowledgeChecksum, exportOkfBundle, loadPinnedOkfRelease, publishOkfRelease, resolveOkfBasketCommerce, resolveOkfGate,
-  renderOkfMessage, summarizeWorklist, validateOkfDraftContent,
+  renderOkfMessage, summarizeWorklist, validateOkfDraftContent, findStaleVerifications, findVerificationWork, analyzeKnowledgeCoverage,
 } from '../src';
 
 /**
@@ -255,6 +255,30 @@ async function main() {
     assert.match(text('problems/bathroom-leak.md'), /authored_proposal/);
     assert.match(text('families/screws.md'), /Screws/);
     assert.equal(JSON.stringify(Object.keys(files).filter((file) => file.startsWith('projects/') && file !== 'projects/index.md').length), String(spec.projects.length));
+  });
+
+  await suite.test('the list for a person holds only what could carry a claim: the category tree and suggestions are not on it', () => {
+    const everything = findStaleVerifications(built);
+    const work = findVerificationWork(built);
+    assert.equal(everything.length, built.concepts.length + built.relationships.length, 'nothing is verified yet, so the raw list is everything');
+    const relationships = new Map(built.relationships.map((entry: any) => [entry.relationshipId, entry]));
+    const concepts = new Map(built.concepts.map((entry: any) => [entry.conceptId, entry]));
+    const listedRelationships = work.filter((entry) => entry.targetType === 'relationship').map((entry) => relationships.get(entry.targetId) as any);
+    assert.ok(listedRelationships.length > 0 && listedRelationships.every((entry) => entry.claimClasses.length > 0), 'a relationship is work only if it carries a claim');
+    assert.ok(!listedRelationships.some((entry) => ['child_of', 'cross_sell'].includes(entry.type)), 'tree links and suggestions make no claim');
+    // Every problem, every care guide and every concept with candidate documents is there; no ordinary category without documents is.
+    const candidateIds = new Set((built.sources as any[]).filter((source) => source.kind === 'crawl').map((source) => source.sourceId));
+    const expected = built.concepts.filter((entry: any) => entry.lens === 'problem' || entry.lens === 'care' || entry.riskClass !== 'standard' || entry.compatibilitySensitive || (entry.evidenceRefs || []).some((id: string) => candidateIds.has(id)));
+    assert.deepEqual(work.filter((entry) => entry.targetType === 'concept').map((entry) => entry.targetId).sort(), expected.map((entry: any) => entry.conceptId).sort());
+    assert.ok(work.length <= everything.length / 3, `${work.length} of ${everything.length}`);
+    const topics = (topic: string) => work.filter((entry) => entry.about === topic).length;
+    // What matters first is small and specific; the long tail is documents a person may review when there is time.
+    assert.deepEqual({ safety: topics('safety'), care: topics('care'), compatibility: topics('compatibility') }, { safety: 6, care: 2 + 8, compatibility: 10 });
+    assert.ok(topics('documents') > topics('safety') + topics('care') + topics('compatibility'));
+    assert.ok(work.every((entry) => ['safety', 'compatibility', 'care', 'documents'].includes(entry.about)));
+    // It agrees with the coverage figures that already existed: the same concepts have candidate documents, the same relationships carry claims.
+    const coverage = analyzeKnowledgeCoverage(built);
+    assert.equal(listedRelationships.length, coverage.verification.unverifiedClaims);
   });
 
   await suite.test('it publishes checksum-bound and the authored concepts keep their provenance through storage', async () => {
