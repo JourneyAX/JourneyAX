@@ -112,6 +112,29 @@ async function main() {
     assert.equal(route('wet area lining').matchedBy, 'exact_phrase');
   });
 
+  await suite.test('every alias the merchant listed reaches the category it names, claims nothing, and changes no commerce rule', () => {
+    const aliased = built.concepts.filter((entry: any) => Object.keys(entry.extensions?.[PROVENANCE_KEY] ?? {}).some((key) => key.startsWith('alias_')));
+    assert.ok(aliased.length >= 50, `the alias layer is broad (${aliased.length} categories)`);
+    const misses: string[] = [];
+    let phrases = 0;
+    for (const concept of aliased as any[]) {
+      for (const key of Object.keys(concept.extensions[PROVENANCE_KEY]).filter((entry) => entry.startsWith('alias_'))) {
+        assert.deepEqual([concept.extensions[PROVENANCE_KEY][key].kind, concept.extensions[PROVENANCE_KEY][key].verified], ['authored_proposal', false]);
+      }
+      const aliasPhrases: string[] = spec.aliases.filter((alias: any) => concept.extensions[PROVENANCE_KEY][`alias_${alias.id}`]).flatMap((alias: any) => alias.phrases);
+      for (const phrase of aliasPhrases) {
+        phrases++;
+        const decision: any = gate(phrase);
+        if (decision.conceptId !== concept.conceptId) misses.push(`"${phrase}" → ${name(decision.conceptId) ?? 'nothing'} (wanted ${concept.name})`);
+      }
+      // An alias adds words and nothing else: the concept still asserts no claim and keeps its commerce ceiling.
+      assert.deepEqual(concept.safety.stepRefs, []);
+      assert.equal(built.relationships.filter((entry: any) => entry.from === concept.conceptId && entry.claimClasses.length > 0 && entry.type !== 'care_for').length, 0, concept.name);
+    }
+    assert.deepEqual(misses, [], `${misses.length} of ${phrases} alias phrases miss their category`);
+    assert.ok(phrases >= 400, `${phrases} alias phrases checked`);
+  });
+
   await suite.test('problem-first requests escalate: products paused, no invented guidance, a professional is named', () => {
     for (const [message, concept] of [
       ['my bathroom is leaking', 'Bathroom leak'], ['there is a gas leak', 'Gas hazard'], ['dripping tap', 'Leaking tap or pipe'],

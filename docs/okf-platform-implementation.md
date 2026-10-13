@@ -137,7 +137,12 @@ What the spec can express: **facts** (question, options, `role: measurement`, `t
 (customer-level groupings over several categories, e.g. *Screws*), **projects** (deck, bathroom renovation, laundry, fence,
 paint, wet-area lining, insulation — each with ordered questions and optionally the Business Pack journey that runs it),
 **problems** (leak, blocked drain, mould, electrical, gas), **care** topics, **risk overlays** that can only *tighten*
-commerce, and **"Have you considered?" cross-sell suggestions**.
+commerce, **"Have you considered?" cross-sell suggestions**, and **aliases**: the everyday words, brands and slang customers use for a
+category that already exists ("gib" for plasterboard, "dunny" for toilets, "gurney" for a pressure washer). An alias adds customer phrases to
+that one concept, marked as an unverified authored proposal; it has no field for a claim, a commerce change or a relationship, it may not
+take another concept's name or a phrase two categories both claim, and it removes the same phrase from other concepts' derived keywords so
+they do not compete. PlaceMakers has 87 (563 phrases); every one is tested to reach its category. They show the *shelf* for a word,
+not proof the shop stocks the item, and PlaceMakers staff should extend them from real conversations.
 
 What it cannot express (enforced by the schema, so a spec cannot smuggle it in): claims, compatibility/requirement/
 substitution relationships, safety steps, instructions, warranty terms, or anything marked verified. Authored material is

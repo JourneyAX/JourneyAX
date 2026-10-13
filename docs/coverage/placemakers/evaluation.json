@@ -2,15 +2,15 @@
  "tenantId": "placemakers",
  "evaluatedAt": "2026-10-13T02:03:32.198Z",
  "totals": {
-  "scenarios": 4662,
-  "passed": 4662,
+  "scenarios": 4676,
+  "passed": 4676,
   "failed": 0,
   "acceptedCollisions": 0
  },
  "families": {
   "routing": {
-   "passed": 884,
-   "total": 884
+   "passed": 888,
+   "total": 888
   },
   "scope": {
    "passed": 384,
@@ -45,8 +45,8 @@
    "total": 13
   },
   "authored_path": {
-   "passed": 55,
-   "total": 55
+   "passed": 65,
+   "total": 65
   }
  },
  "departments": [
@@ -3017,8 +3017,8 @@
   },
   {
    "name": "Building Products",
-   "scenarios": 803,
-   "passed": 803,
+   "scenarios": 804,
+   "passed": 804,
    "categories": [
     {
      "category": "Access Panels",
@@ -5727,6 +5727,21 @@
      }
     },
     {
+     "category": "Roofing",
+     "path": [
+      "Building Products",
+      "Roofing"
+     ],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
      "category": "Ceilings",
      "path": [
       "Building Products",
@@ -5806,21 +5821,6 @@
      "path": [
       "Building Products",
       "Plasterboard Compounds & Accessories"
-     ],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Roofing",
-     "path": [
-      "Building Products",
-      "Roofing"
      ],
      "scenarios": 1,
      "passed": 1,
@@ -12101,8 +12101,8 @@
   },
   {
    "name": "Electrical & Heating/Cooling",
-   "scenarios": 210,
-   "passed": 210,
+   "scenarios": 209,
+   "passed": 209,
    "categories": [
     {
      "category": "Cable & Data",
@@ -12785,21 +12785,6 @@
      }
     },
     {
-     "category": "Electrical",
-     "path": [
-      "Electrical & Heating/Cooling",
-      "Electrical"
-     ],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
      "category": "Electrical & Heating/Cooling",
      "path": [
       "Electrical & Heating/Cooling"
@@ -12825,6 +12810,21 @@
       "routing": {
        "passed": 2,
        "total": 2
+      }
+     }
+    },
+    {
+     "category": "Electrical",
+     "path": [
+      "Electrical & Heating/Cooling",
+      "Electrical"
+     ],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
       }
      }
     }
@@ -14018,15 +14018,175 @@
   },
   {
    "name": "Adhesives & Sealants",
-   "scenarios": 127,
-   "passed": 127,
+   "scenarios": 131,
+   "passed": 131,
    "categories": [
+    {
+     "category": "Adhesives",
+     "path": [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Adhesives"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Caulks And Sealants",
+     "path": [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Caulks And Sealants"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Foam Products",
+     "path": [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Foam Products"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
     {
      "category": "Grouting & Anchoring",
      "path": [
       "Adhesives & Sealants",
       "Adhesives & Sealants",
       "Grouting & Anchoring"
+     ],
+     "scenarios": 12,
+     "passed": 12,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "Repair Products",
+     "path": [
+      "Adhesives & Sealants",
+      "Adhesives & Sealants",
+      "Repair Products"
      ],
      "scenarios": 12,
      "passed": 12,
@@ -14145,87 +14305,7 @@
      "category": "Adhesives",
      "path": [
       "Adhesives & Sealants",
-      "Adhesives & Sealants",
       "Adhesives"
-     ],
-     "scenarios": 11,
-     "passed": 11,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Adhesives",
-     "path": [
-      "Adhesives & Sealants",
-      "Adhesives"
-     ],
-     "scenarios": 11,
-     "passed": 11,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Caulks And Sealants",
-     "path": [
-      "Adhesives & Sealants",
-      "Adhesives & Sealants",
-      "Caulks And Sealants"
      ],
      "scenarios": 11,
      "passed": 11,
@@ -14303,87 +14383,7 @@
      "category": "Foam Products",
      "path": [
       "Adhesives & Sealants",
-      "Adhesives & Sealants",
       "Foam Products"
-     ],
-     "scenarios": 11,
-     "passed": 11,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Foam Products",
-     "path": [
-      "Adhesives & Sealants",
-      "Foam Products"
-     ],
-     "scenarios": 11,
-     "passed": 11,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Repair Products",
-     "path": [
-      "Adhesives & Sealants",
-      "Adhesives & Sealants",
-      "Repair Products"
      ],
      "scenarios": 11,
      "passed": 11,
@@ -14970,6 +14970,1157 @@
    ]
   },
   {
+   "name": "(cross-cutting)",
+   "scenarios": 120,
+   "passed": 120,
+   "categories": [
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 3,
+     "passed": 3,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 2,
+     "passed": 2,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "routing": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    },
+    {
+     "category": "",
+     "path": [],
+     "scenarios": 1,
+     "passed": 1,
+     "families": {
+      "authored_path": {
+       "passed": 1,
+       "total": 1
+      }
+     }
+    }
+   ]
+  },
+  {
    "name": "Wardrobes, Storage & Flooring",
    "scenarios": 112,
    "passed": 112,
@@ -15373,1037 +16524,6 @@
      "passed": 1,
      "families": {
       "routing": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    }
-   ]
-  },
-  {
-   "name": "(cross-cutting)",
-   "scenarios": 110,
-   "passed": 110,
-   "categories": [
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 3,
-     "passed": 3,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "routing": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "",
-     "path": [],
-     "scenarios": 1,
-     "passed": 1,
-     "families": {
-      "authored_path": {
        "passed": 1,
        "total": 1
       }

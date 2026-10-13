@@ -704,6 +704,106 @@
         "concept": "Square Dressed Boards & Mouldings",
         "retrieval": "allowed"
       }
+    },
+    {
+      "id": "nz-word-gurney",
+      "description": "Gurney is what customers call a pressure washer",
+      "message": "do you sell a gurney",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Waterblasters",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-dunny",
+      "description": "Dunny reaches toilets",
+      "message": "I need a new dunny",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Toilets",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-dynabolts",
+      "description": "Dynabolts reach masonry anchors",
+      "message": "dynabolts",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Masonry  Anchors",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-liquid-nails",
+      "description": "Liquid Nails reaches adhesives",
+      "message": "liquid nails",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Adhesives (Adhesives & Sealants › Adhesives & Sealants)",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-whipper-snipper",
+      "description": "Whipper snipper reaches line trimmers",
+      "message": "whipper snipper",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Line Trimmers",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-hi-vis",
+      "description": "Hi vis reaches work apparel",
+      "message": "hi vis",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Apparel",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-ratchet-straps",
+      "description": "Ratchet straps reach tie-downs",
+      "message": "ratchet straps",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Tie Down",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-kwila",
+      "description": "Kwila reaches hardwood decking",
+      "message": "kwila",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Hardwood Decking",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-globes",
+      "description": "Globes reach light bulbs",
+      "message": "led globes",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Light Bulbs",
+        "retrieval": "allowed"
+      }
+    },
+    {
+      "id": "nz-word-shifter",
+      "description": "Shifter reaches spanners",
+      "message": "shifter",
+      "expect": {
+        "mode": "direct_results",
+        "concept": "Wrenches/Spanners/Sockets (Incl Sets)",
+        "retrieval": "allowed"
+      }
     }
   ]
 }
