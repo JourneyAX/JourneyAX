@@ -9,8 +9,8 @@ import { INTERNAL_KEY, startPublicPath } from './harness';
 /**
  * Release lifecycle, proved on the real path with the real repositories and an isolated in-memory store:
  *
- *   publish v1 → approve v1 → serve → publish v2 → (nothing changes for customers until a person approves it)
- *   → wrong approvals refused → approve v2 as a canary → approve v2 fully → roll back to v1 → stop the line → restore
+ *   publish v1 → approve v1 → serve → publish v2 (a live approval follows it, as a numbered, audited revision)
+ *   → wrong approvals refused → canary → roll back to v1 → stop the line → a publish cannot restart it → explicit approval restores it
  *
  * Nothing here touches a real environment; `production` only names the environment inside the isolated store, because that is the
  * environment a customer's request lands in when it names none. Set LIFECYCLE_EVIDENCE_DIR to write the step-by-step evidence.
@@ -73,7 +73,8 @@ async function main() {
       record('1', `approve v${v1.version} (migrated) and chat`, 'customer served by v1', `served; conversation pinned to ${v1.checksum.slice(0, 12)}…`);
     });
 
-    await suite.test('publishing v2 is the go-live action for a migrated environment: new conversations run v2, an existing one stays on v1', async () => {
+    await suite.test('publishing v2 while v1 is live carries the live approval to v2; new conversations run v2, an existing one stays on v1', async () => {
+      const first = await current();
       await stack.db.collection('tenant_configs').updateOne({ projectId: TENANT }, { $set: { 'persona.systemName': 'PlaceMakers assistant (second release)' } });
       const published: any = await silently(() => stack.projects.publishConfig(TENANT, { environmentId: ENV, publishedBy: 'human:publisher', note: 'lifecycle proof' }));
       assert.equal(published.success, true, published.message);
@@ -85,6 +86,12 @@ async function main() {
       const followed = await current();
       assert.equal(followed.approvedReleaseVersion, v2.version, 'the activation record follows the publication');
       assert.equal(followed.approvedReleaseChecksum, v2.checksum, 'and it is bound to the new release\'s checksum');
+      assert.equal(followed.revision, first.revision! + 1, 'as a numbered revision, so an approval based on the old record is refused');
+      assert.equal(followed.approvedBy, first.approvedBy, 'without claiming that a new person approved it');
+      assert.equal(((await stack.db.collection('tenant_cutovers').findOne({ tenantId: TENANT, environmentId: ENV })) as any).promotedBy, 'human:publisher', 'and the publisher is on the record');
+      const logged: any[] = stack.db.dump('cutover_audit_logs');
+      assert.equal(logged.at(-1)?.approvedBy, 'human:publisher');
+      assert.equal(logged.at(-1)?.newRevision, followed.revision);
       const session = `lc-new-${Date.now()}`;
       assert.equal((await asCustomer('vanities', session)).served, true);
       assert.equal((await path_.pinsOf(session))?.packChecksum, v2.checksum, 'a new conversation is bound to v2');
@@ -156,22 +163,37 @@ async function main() {
       record('7', 'read the record', 'attributed, checksum-bound, monotonic revision', `revision ${final.revision}, approved by ${final.approvedBy}`);
     });
 
-    await suite.test('KNOWN RISK (characterised, not endorsed): a publish or rollback re-points the activation record without an approver, and revives a stopped line', async () => {
-      // This documents what the publisher does today so the behaviour is visible and any change is deliberate: it follows the
-      // publication into the activation record without a new approval, keeps the old revision, and turns a stopped line
-      // (status 'rollback') back into 'migrated'. See the Phase 8 report: this is the one place a release goes live without an
-      // explicit approval step, and the production checklist treats "Publish Business Pack" as the go-live action because of it.
+    await suite.test('a publish or rollback never restarts a stopped line: only an explicit, attributed approval does', async () => {
       const before = await current();
-      await approve('rollback', v1.version, v1.checksum, before.revision!, { notes: 'stop the line before a publish' });
+      const stopped = await approve('rollback', v1.version, v1.checksum, before.revision!, { notes: 'stop the line before a publish' });
       await stack.db.collection('tenant_configs').updateOne({ projectId: TENANT }, { $set: { 'persona.systemName': 'PlaceMakers assistant (third release)' } });
       const published: any = await silently(() => stack.projects.publishConfig(TENANT, { environmentId: ENV, publishedBy: 'human:publisher' }));
       assert.equal(published.success, true, published.message);
       path_.invalidatePackCache();
-      const after = await current();
-      assert.equal(after.status, 'migrated', 'today a publish restarts a stopped line');
-      assert.equal(after.revision, before.revision! + 1, 'the numbered revision is not advanced by the publication itself');
-      assert.equal(after.approvedBy, APPROVER, 'the approver on the record is still the earlier person');
-      record('8', 'stop the line, then publish', 'KNOWN RISK: the stopped line is restarted by the publish', `status ${after.status}; approver unchanged (${after.approvedBy}); revision ${after.revision}`);
+      const pointer: any = await stack.db.collection('business_pack_pointers').findOne({ tenantId: TENANT, environmentId: ENV });
+      const afterPublish = await current();
+      assert.equal(afterPublish.status, 'rollback', 'the line is still stopped');
+      assert.equal(afterPublish.revision, (stopped as any).revision, 'the record did not change');
+      assert.equal(afterPublish.approvedReleaseChecksum, v1.checksum, 'it still names the release a person approved');
+      assert.notEqual(pointer.activeVersion, v1.version, 'the new release is published');
+      for (const session of [undefined, conversationOnV1]) {
+        const result = await asCustomer('vanities', session);
+        assert.ok(!result.served && result.status >= 400, 'nobody is served after a publish while stopped');
+        assert.ok(refusal(result));
+      }
+      // Rolling the project back while stopped does not restart it either.
+      const versions: any[] = await stack.projects.listVersions(TENANT);
+      const v1Config = versions.find((entry) => entry.packVersion === v1.version)?.version ?? 1;
+      assert.equal((await silently(() => stack.projects.rollbackConfig(TENANT, v1Config, 'human:release-manager', ENV))).success, true);
+      path_.invalidatePackCache();
+      assert.equal((await current()).status, 'rollback');
+      assert.ok(!(await asCustomer('vanities')).served);
+      // An explicit approval of the exact release restores service.
+      const now = await current();
+      await approve('migrated', v1.version, v1.checksum, now.revision!, { notes: 'restored by a person' });
+      path_.invalidatePackCache();
+      assert.equal((await asCustomer('vanities')).served, true);
+      record('8', 'stop the line, publish, roll back, then approve v1', 'a publish and a rollback leave the line stopped; the explicit approval restores it', 'status stayed rollback and nobody was served until the approval');
     });
   } finally {
     await path_.stop();

@@ -30,6 +30,78 @@ const COLLECTION_BUSINESS_PACK_RELEASES = 'business_pack_releases';
 const COLLECTION_BUSINESS_PACK_POINTERS = 'business_pack_pointers';
 const COLLECTION_OUTBOX_EVENTS = 'outbox_events';
 const COLLECTION_TENANT_CUTOVERS = 'tenant_cutovers';
+const COLLECTION_CUTOVER_AUDIT_LOGS = 'cutover_audit_logs';
+
+/**
+ * What a publication or rollback did to the environment's release activation record.
+ *  - `followed`: the record was already live (`migrated` or `canary`), so its approved version and checksum moved with the
+ *    publication, keeping its status. The change is a numbered revision with an audit row naming who published.
+ *  - `unchanged`: the record exists but is not live (`rollback` = stop-the-line, `unmigrated` = legacy path, or anything else).
+ *    A publication never restarts a stopped line or migrates a tenant; only an explicit, attributed approval does.
+ *  - `none`: the environment has no activation record, so nothing follows.
+ */
+export interface ActivationOutcome {
+  outcome: 'followed' | 'unchanged' | 'none';
+  status?: string;
+  revision?: number;
+}
+
+/** Statuses in which customers are being served, so a publication may carry the approval to the release it just made active. */
+const LIVE_ACTIVATION_STATUSES = new Set(['migrated', 'canary']);
+
+async function followActivation(
+  db: Db,
+  sessionOpts: { session: any } | undefined,
+  change: { tenantId: string; environmentId: string; version: string; checksum: string; actor: string; action: 'published' | 'rolled_back'; now: Date }
+): Promise<ActivationOutcome> {
+  const cutoversCol = db.collection(COLLECTION_TENANT_CUTOVERS);
+  const existing = await cutoversCol.findOne({ tenantId: change.tenantId, environmentId: change.environmentId }, sessionOpts);
+  if (!existing) return { outcome: 'none' };
+  if (!LIVE_ACTIVATION_STATUSES.has(existing.status)) return { outcome: 'unchanged', status: existing.status, revision: existing.revision };
+
+  const previousRevision = typeof existing.revision === 'number' ? existing.revision : 0;
+  const nextRevision = previousRevision + 1;
+  // Compare-and-swap on the revision read above, like an explicit approval, so a concurrent approval is never overwritten.
+  const filter: Record<string, unknown> = { tenantId: change.tenantId, environmentId: change.environmentId };
+  if (typeof existing.revision === 'number') filter.revision = existing.revision;
+  const updated = await cutoversCol.updateOne(
+    filter,
+    {
+      $set: {
+        approvedReleaseVersion: change.version,
+        approvedReleaseChecksum: change.checksum,
+        revision: nextRevision,
+        promotedAt: change.now,
+        promotedBy: change.actor,
+        updatedAt: change.now,
+      },
+    },
+    sessionOpts
+  );
+  if (updated.matchedCount === 0) {
+    throw new Error(
+      `[BusinessPackPublisher] Release activation for tenant '${change.tenantId}' (${change.environmentId}) was modified concurrently; the ${change.action === 'published' ? 'publication' : 'rollback'} was not applied`
+    );
+  }
+  await db.collection(COLLECTION_CUTOVER_AUDIT_LOGS).insertOne(
+    {
+      tenantId: change.tenantId,
+      environmentId: change.environmentId,
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      previousRevision,
+      newRevision: nextRevision,
+      approvedReleaseVersion: change.version,
+      approvedReleaseChecksum: change.checksum,
+      canaryPercentage: existing.canaryPercentage ?? 0,
+      approvedBy: change.actor,
+      notes: `Followed a ${change.action === 'published' ? 'publication' : 'rollback'} to ${change.version}; status unchanged`,
+      timestamp: change.now,
+    },
+    sessionOpts
+  );
+  return { outcome: 'followed', status: existing.status, revision: nextRevision };
+}
 
 export interface PublishOptions {
   publishedBy?: string;
@@ -105,7 +177,7 @@ export async function publishBusinessPack(
   db: Db,
   packData: unknown,
   options: PublishOptions = {}
-): Promise<{ release: BusinessPackRelease; checksum: string; revision: number }> {
+): Promise<{ release: BusinessPackRelease; checksum: string; revision: number; activation?: ActivationOutcome }> {
   // 1. Strict schema validation
   const parsed = BusinessPackReleaseSchema.safeParse(packData);
   if (!parsed.success) {
@@ -286,25 +358,8 @@ export async function publishBusinessPack(
       );
     }
 
-    // 5b. Synchronize durable release activation record (tenant_cutovers) if present
-    const cutoversCol = db.collection(COLLECTION_TENANT_CUTOVERS);
-    const existingCutover = await cutoversCol.findOne({ tenantId, environmentId }, sessionOpts);
-    if (existingCutover) {
-      await cutoversCol.updateOne(
-        { tenantId, environmentId },
-        {
-          $set: {
-            approvedReleaseVersion: version,
-            approvedReleaseChecksum: checksum,
-            status: existingCutover.status === 'canary' ? 'canary' : 'migrated',
-            promotedAt: now,
-            promotedBy: publishedBy,
-            updatedAt: now,
-          },
-        },
-        sessionOpts
-      );
-    }
+    // 5b. A live activation record follows the publication (see followActivation); a stopped or legacy one never does.
+    const activation = await followActivation(db, sessionOpts, { tenantId, environmentId, version, checksum, actor: publishedBy, action: 'published', now });
 
     // 6. Enqueue outbox event for audit and subscribers
     const outboxCol = db.collection(COLLECTION_OUTBOX_EVENTS);
@@ -335,7 +390,7 @@ export async function publishBusinessPack(
     // Invalidate any cached packs for this tenant and environment across the system
     BusinessPackLoader.invalidateAll(tenantId, environmentId);
 
-    return { release: pack, checksum, revision };
+    return { release: pack, checksum, revision, activation };
   });
 }
 
@@ -347,7 +402,7 @@ export async function rollbackBusinessPack(
   tenantId: string,
   environmentId = 'production',
   options: RollbackOptions = {}
-): Promise<{ activeVersion: string; previousVersion: string; revision: number }> {
+): Promise<{ activeVersion: string; previousVersion: string; revision: number; activation?: ActivationOutcome }> {
   return runWithTransaction(db, options, async (session) => {
     const sessionOpts = session ? { session } : undefined;
 
@@ -437,25 +492,8 @@ export async function rollbackBusinessPack(
       );
     }
 
-    // Synchronize durable release activation record (tenant_cutovers) on rollback if present
-    const cutoversCol = db.collection(COLLECTION_TENANT_CUTOVERS);
-    const existingCutover = await cutoversCol.findOne({ tenantId, environmentId }, sessionOpts);
-    if (existingCutover) {
-      await cutoversCol.updateOne(
-        { tenantId, environmentId },
-        {
-          $set: {
-            approvedReleaseVersion: targetVersion,
-            approvedReleaseChecksum: verifiedChecksum,
-            status: existingCutover.status === 'canary' ? 'canary' : 'migrated',
-            promotedAt: now,
-            promotedBy: rolledBackBy,
-            updatedAt: now,
-          },
-        },
-        sessionOpts
-      );
-    }
+    // A live activation record follows the rollback; a stopped or legacy one never does (see followActivation).
+    const activation = await followActivation(db, sessionOpts, { tenantId, environmentId, version: targetVersion, checksum: verifiedChecksum, actor: rolledBackBy, action: 'rolled_back', now });
 
     const outboxCol = db.collection(COLLECTION_OUTBOX_EVENTS);
     await outboxCol.insertOne(
@@ -489,6 +527,7 @@ export async function rollbackBusinessPack(
       activeVersion: targetVersion,
       previousVersion: pointer.activeVersion,
       revision: nextRevision,
+      activation,
     };
   });
 }

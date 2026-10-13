@@ -305,11 +305,15 @@ over an isolated in-memory store: `tests/public-path/release-lifecycle.spec.ts`,
 - `status: rollback` stops every conversation, pinned or not, until an explicit approval of the exact checksum.
 - Rolling the project back restores the earlier release by its original checksum.
 
-**Finding — publishing is the go-live action (decision needed).** `publishBusinessPack` and `rollbackBusinessPack` rewrite the
-activation record (`tenant_cutovers`) of an environment that already has one: version and checksum follow the publication, status
-becomes `migrated` (or stays `canary`), with no new approver and no revision increment — so a stopped line (`rollback`) is restarted by
-the next publish, and an `unmigrated` record is flipped to `migrated`. This predates this work and had no test; it is characterised in
-step 8 of the lifecycle spec. A fix was proposed as a separate task (follow only live statuses, bump the revision, audit the publisher,
-optionally require explicit approval in production). Until it is decided, the production checklist treats **"Publish Business Pack" in
-production as the go-live action.**
+**Finding, fixed — a publication used to rewrite the activation record without an approver.** `publishBusinessPack` and
+`rollbackBusinessPack` rewrote the activation record (`tenant_cutovers`) of any environment that had one: no new approver, no revision
+increment, status forced to `migrated` — so a stopped line (`rollback`) was restarted by the next publish and a legacy (`unmigrated`)
+record was migrated by one. The publisher now follows the publication only while the record is already live (`migrated`, `canary`),
+keeps its status and canary percentage, advances the numbered revision with a compare-and-swap, and writes an audit row naming the
+publisher; a stopped or legacy record is never touched, and a concurrent approval makes the publication fail instead of being overwritten.
+The outcome (`followed` / `unchanged` / `none`) is returned to the caller. Tests: `packages/business-pack/test/activation-follow.spec.ts`
+(7, six of which fail on the old code) and step 8 of the lifecycle spec.
 
+**Still true, and a product decision:** for an environment whose record is live, publishing carries the approval to the new release, so
+**"Publish Business Pack" in production is the go-live action** for a migrated tenant. Requiring a separate approval after publish for
+production (so a publish alone changes nothing for customers) is not implemented; it would change how Workwear Group publishes.

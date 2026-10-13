@@ -14,7 +14,7 @@ people, the live environment, or a real database can supply:
 | 1 | **0 verified claims.** Every installation, warranty, care and safety answer is withheld; customers are referred to a specialist. 194 candidate items and 8 authoring gaps are waiting. | A safety/compatibility/installation/warranty claim needs an applicable manufacturer document or a qualified person. I cannot supply that and will not invent it. | PlaceMakers product/safety experts |
 | 2 | **The live project has no catalogue mapping, fact registry or authored release.** The live pack (1.0.38 at inventory time) has no OKF reference, no fact registry and no mapping; the staged OKF release has 6 concepts. | None of the 475 authored concepts is live; prices cannot be read without a declared currency path. | Release owner (production write, needs approval) |
 | 3 | **Never run against real MongoDB or the live URL.** Transactions, indexes and the activation store were exercised through an in-memory fake; the canary ran on loopback with a stand-in model. | The public-path claim is proved for the code, not for the deployment. | Whoever holds a customer session / DB access |
-| 4 | **Publishing is the go-live action** (see Finding below). | There is no separate approval between "publish" and "customers see it" for an environment that already has an activation record. | Product decision |
+| 4 | **Publishing is still the go-live action for a live tenant** (see Finding below). | There is no separate approval between "publish" and "customers see it" when the environment's activation is already `migrated` or `canary`. A stopped line is no longer restarted by a publish. | Product decision |
 | 5 | **The real language model was never exercised.** All turns used a fixed stand-in; the claim validator and prompt rules are tested, the model's wording is not. | Model-composed replies are unmeasured. | Run `packages/pack-eval` / the live canary with the real model |
 
 ## What is demonstrated
@@ -61,21 +61,25 @@ Source of truth: `docs/coverage/placemakers/verification-worklist.{md,json}` (re
 - Mechanism: verification is attested by a person holding a verifier role for that claim class; editing a verified concept makes its
   verification stale; a revocation withdraws a concept immediately (all exercised in the knowledge suite).
 
-## Finding — publishing is the go-live action
+## Finding — publishing and activation
 
-`publishBusinessPack` / `rollbackBusinessPack` (`packages/business-pack/src/publisher.ts`) rewrite the activation record of an environment
-that already has one: version and checksum follow the publication, status becomes `migrated` (or stays `canary`), with **no new approver
-and no revision increment**. So for an environment with a record: (1) publishing puts the release in front of customers; (2) a stopped
-line (`rollback`) is restarted by the next publish; (3) an `unmigrated` (legacy) record is flipped to `migrated`. This predates this work and
-had no test; step 8 of the lifecycle spec characterises it. A fix is proposed as a separate task (not applied, because Workwear Group may
-rely on publish == go-live). **Until decided, treat "Publish Business Pack" in production as the go-live action.**
+`publishBusinessPack` / `rollbackBusinessPack` used to rewrite the environment's activation record on every publication: no new approver,
+no revision increment, status forced to `migrated`, so a publish restarted a stopped line and migrated a legacy tenant. **Fixed**
+(`packages/business-pack/src/publisher.ts`): the activation follows a publication only while it is already live (`migrated` / `canary`),
+keeps its status, advances the numbered revision with a compare-and-swap and logs the publisher; a stopped (`rollback`) or legacy
+(`unmigrated`) record is never touched, and a concurrent approval is never overwritten. Tests: `activation-follow.spec.ts` (7) and the
+lifecycle spec.
+
+**Remaining decision.** For an environment whose activation is live, a publish still puts the new release in front of customers
+(checksum-bound, audited, but not separately approved). **Treat "Publish Business Pack" in production as the go-live action** unless you
+decide production should require an explicit approval after publish; that would change Workwear Group's flow, so it is not applied.
 
 ## Production activation checklist
 
 Nothing below has been done. Each production write needs your explicit approval at the time.
 
 **A. Decisions (people)**
-1. Decide the publish/activation semantics (above). Recommended: production requires an explicit, attributed activation after publish.
+1. Decide whether production should require an explicit, attributed activation after publish (above). Recommended: yes for PlaceMakers; it changes Workwear Group's flow, so it needs their sign-off.
 2. Commerce ceilings for derived concepts (today `allowed/allowed`; authored overlays already tighten trade categories to
    professional confirmation and fixings to compatibility confirmation). Confirm or tighten.
 3. Whether an uncovered shopping request may fall back to the catalogue (`policy.coverage.uncoveredShopping`). Default and recommendation: off.
@@ -100,12 +104,12 @@ Nothing below has been done. Each production write needs your explicit approval 
 **D. Production (explicit approval for each step)**
 1. Record the current production pack version and checksum and the current activation record (rollback target).
 2. Apply the same catalogue mapping and facts to production; publish the OKF release; stage it.
-3. Publish the Business Pack to production — **this is the go-live** until decision A1 is made. Someone watches the canary and error rate.
+3. Publish the Business Pack to production — **this is the go-live** if the production activation is `migrated` (or no record exists and you then approve it); until decision A1, treat the publish as the go-live. Someone watches the canary and error rate.
 4. Run the live canary immediately and again after an hour.
 
 **E. Rollback**
 - Fast: in Studio roll the project back to the recorded version (pointer, Studio state and — by checksum — the activation record move together); confirm with the canary.
-- Stop-the-line: set the activation to `rollback` with `promoteReleaseActivation` (a numbered, attributed approval); every conversation stops. **Do not publish while stopped** (finding above) — restore with an explicit approval of the exact checksum.
+- Stop-the-line: set the activation to `rollback` with `promoteReleaseActivation` (a numbered, attributed approval); every conversation stops. A publish or rollback no longer restarts it; restore with an explicit approval of the exact checksum.
 - Drill both in staging before production.
 
 **F. After go-live**
@@ -121,4 +125,4 @@ Nothing below has been done. Each production write needs your explicit approval 
 - Locale: only the platform's English messages ship; other locales are a tenant policy overlay that exists but is unused.
 - `agent-commerce-service` (legacy path) still contains domain code of its own; covered by the guard's rules, not refactored.
 - A past conversation's knowledge trace is not persisted (the preview shows what the assistant *would* use).
-- The proposal to stop publish/rollback from re-approving activation is a separate task, not applied.
+- Requiring an explicit approval after a production publish (so a publish alone changes nothing for customers) is not implemented.
