@@ -41,6 +41,29 @@ async function main() {
     assert.ok(!suggestion.props.groups.some((group: any) => ['required', 'recommended'].includes(group.key)), 'never presented as required or recommended');
   });
 
+  await suite.test('a model reply with one unsupported sentence keeps the rest; the withheld sentence is logged, never shown', async () => {
+    const reply = 'Here are the wood screws we stock. You should drill a pilot hole first. Tell me the length you need.';
+    const worded = stack.serviceFor({ reply });
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
+    let result: any;
+    try {
+      result = await (worded as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-guard', sessionId: 'ws-guard', turnId: 'ws-guard-t1', correlationId: 'ws-guard-c1', message: 'wood screws' }, pack);
+    } finally { console.warn = original; }
+    assert.ok(result.assistantMessage.includes('Here are the wood screws we stock.') && result.assistantMessage.includes('Tell me the length you need.'), result.assistantMessage);
+    assert.ok(!/pilot hole/.test(result.assistantMessage), 'the sentence that asserts an installation claim is not shown');
+    assert.ok(warnings.some((line) => line.includes('[ClaimGuard]') && line.includes('installation_step') && line.includes('pilot hole')), `the log says what was withheld: ${warnings.join(' | ')}`);
+    assert.ok(cards(result, 'products').length > 0, 'the products are still shown');
+    const nothingLeft = stack.serviceFor({ reply: 'These are suitable for every job. They must be fitted by a professional.' });
+    console.warn = () => undefined;
+    try {
+      result = await (nothingLeft as any).executeTurn({ tenantId: TENANT, environmentId: ENVIRONMENT, workspaceId: 'ws-guard2', sessionId: 'ws-guard2', turnId: 'ws-guard2-t1', correlationId: 'ws-guard2-c1', message: 'wood screws' }, pack);
+    } finally { console.warn = original; }
+    assert.ok(result.assistantMessage.includes("I can't confirm that detail"), `the tenant's own wording is used when nothing is left: ${result.assistantMessage}`);
+    assert.ok(!/merchant guidance|published/i.test(result.assistantMessage), 'and it is plain language');
+  });
+
   await suite.test('"vanities": bathroom products only, with tapware and mirrors suggested; nothing from other departments', async () => {
     const result = await run('ws-vanities', 'vanities');
     assert.deepEqual(skusOf(cards(result, 'products')[0]), ['VN-1', 'VN-2']);

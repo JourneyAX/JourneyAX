@@ -20,6 +20,7 @@ import {
   rollbackBusinessPack,
   compileGraphToJourneyDefinition,
   compileModelPolicy,
+  validatePolicyOverrides,
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { PublicationGateValidator } from './publication-gate-validator';
@@ -559,6 +560,10 @@ export class ProjectService {
     ]) {
       if ((dto as any)[k] !== undefined) $set[k] = (dto as any)[k];
     }
+
+    // Model policy overrides are checked when they are saved, so a bad value is refused here instead of failing a later publication.
+    const overrideProblems = validatePolicyOverrides((dto as any).ai?.policyOverrides);
+    if (overrideProblems.length) return { success: false, message: `Invalid ai settings: ${overrideProblems.join('; ')}` };
 
     // Deep-merge sub-documents (only update provided keys)
     for (const [k, v] of Object.entries(dto.scope    || {})) $set[`scope.${k}`]    = v;

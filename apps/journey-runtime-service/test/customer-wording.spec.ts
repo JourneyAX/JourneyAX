@@ -141,6 +141,10 @@ async function main() {
     for (const phrase of ['I was unable to complete', 'Approval Required', 'Kia ora', 'Matching Products', 'Unable to present', 'Verified options']) {
       assert.ok(!source.includes(phrase), `'${phrase}' must come from data`);
     }
+    const turnSource = readFileSync(new URL('../src/kernel/turn-application.service.ts', import.meta.url), 'utf8');
+    for (const phrase of ['I cannot verify that detail', 'published merchant guidance', "I don't have verified technical specifications"]) {
+      assert.ok(!turnSource.includes(phrase), `'${phrase}' must come from data`);
+    }
   });
 
   process.exitCode = suite.finish() ? 0 : 1;

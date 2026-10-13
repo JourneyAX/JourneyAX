@@ -24,7 +24,7 @@ import { JourneyResolver } from './journey.resolver';
 import { AgentRouter } from './agent.router';
 import { ModelGateway } from './model.gateway';
 import { CapabilityGateway } from './capability.gateway';
-import { validateOkfGeneratedClaims } from './okf-claim-validator';
+import { validateOkfGeneratedClaims, withholdUnsupportedClaims } from './okf-claim-validator';
 import { renderOkfMessage } from '@journeyax/knowledge';
 import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
@@ -1154,8 +1154,11 @@ export class TurnApplicationService {
       retrievalExecuted: executedCapabilities.some((c: any) =>
         ['catalog.search', 'products', 'knowledge.search', 'installGuide', 'searchKnowledge'].includes(c.toolId)
       ),
+      packVersion: release.manifest?.version,
+      okfRelease: release.knowledgeModel?.type === 'okf_release' ? `${release.knowledgeModel.releaseId}@${release.knowledgeModel.checksum.slice(0, 12)}` : 'none',
       knowledgeMode: knowledgeGate?.mode,
       knowledgeConceptId: knowledgeGate?.conceptId,
+      knowledgeMatchedBy: knowledgeGate?.trace?.matchedBy,
       modelTaskPolicyId:
         groundedResponse.modelRoute?.policyId ||
         (interpretation as any)?.modelRoute?.policyId ||
@@ -1672,11 +1675,12 @@ export class TurnApplicationService {
         if (release.knowledgeModel?.type === 'okf_release') {
           const checked = validateOkfGeneratedClaims(content, knowledgeGate?.claims.allowedClasses || []);
           if (!checked.valid) {
-            // Never stream the rejected text. The question/card can still be
-            // shown without repeating an unsupported model-generated claim.
+            // Never stream a sentence that asserts an unsupported claim. The rest of the reply is kept; if nothing is left, the question
+            // or card still goes out with the tenant's own wording for "I can't confirm that".
+            const withheld = withholdUnsupportedClaims(content, knowledgeGate?.claims.allowedClasses || []);
+            console.warn(`[ClaimGuard] withheld ${withheld.removed.length} sentence(s) asserting ${[...new Set(withheld.removed.flatMap((entry) => entry.classes))].join(', ')} from the model reply; kept ${withheld.text ? 'the rest' : 'nothing'}. First withheld: "${withheld.removed[0]?.sentence.slice(0, 140)}"`);
             return {
-              message: decision.payload?.question || knowledgeGate?.clarification?.question ||
-                'I cannot verify that detail from the published merchant guidance. Please review the options shown or tell me what you would like to clarify.',
+              message: withheld.text || decision.payload?.question || knowledgeGate?.clarification?.question || renderOkfMessage(interpretationMessages, 'claim_withheld'),
               modelRoute: modelRes.route,
             };
           }

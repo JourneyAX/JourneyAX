@@ -120,6 +120,12 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
           checksum: ref.checksum,
         });
         content = loaded.release.content;
+        // Logged once per release per process (a cache hit is silent), so the log shows exactly which knowledge a service is running.
+        console.log(
+          `[OkfControlPlane] Loaded OKF release ${ref.releaseId} v${ref.version} (checksum ${ref.checksum.slice(0, 12)}…) for tenant='${command.tenantId}' env='${environmentId}': ` +
+          `${content.concepts.length} concepts, ${content.relationships.length} relationships, ${content.verifications.length} verification records, ` +
+          `${loaded.activeRevocations.length} active revocation(s); ${ref.required ? 'required' : 'optional'}, ${ref.failurePolicy}`
+        );
         if (this.releaseCache.size >= this.maxReleaseCacheEntries) {
           const oldest = this.releaseCache.keys().next().value;
           if (oldest) this.releaseCache.delete(oldest);

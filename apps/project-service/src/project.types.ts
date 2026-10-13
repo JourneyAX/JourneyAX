@@ -197,6 +197,8 @@ export interface ProjectAiConfig {
    *  tenant then spends nothing on OpenAI for classification. A model name =
    *  that model on the platform key. */
   intentModel?: string;
+  /** Overrides of the platform's model policies for this project: { fast_intent: { model?, provider?, timeoutMs? }, … }. */
+  policyOverrides?: Record<string, { provider?: string; model?: string; timeoutMs?: number }>;
   embeddingModel?: string;     // "text-embedding-3-small" | "voyage-3-large"
   /** Model used for bulk INGESTION work (product narratives, catalogue
    *  extraction). Separate from the conversational `model` so heavy offline jobs

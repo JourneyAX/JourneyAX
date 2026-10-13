@@ -1,0 +1,10 @@
+{
+  "_comment": "Platform defaults for the four conversational model policies compiled into a Business Pack. A project overrides any of them under ai.policyOverrides.<policyId> ({ provider?, model?, timeoutMs? }); nothing else about a policy is tenant-editable in simple mode. 'temperature' is 'zero' (deterministic steps) or 'configured' (the project's own setting).",
+  "limits": { "minTimeoutMs": 1000, "maxTimeoutMs": 120000 },
+  "policies": [
+    { "policyId": "fast_intent", "description": "Fast intent and slot extraction policy for {projectId}", "temperature": "zero", "timeoutMs": 5000, "maxInputTokens": 8000, "maxOutputTokens": 1000 },
+    { "policyId": "complex_reasoning", "description": "Complex multi-trade reasoning policy for {projectId}", "temperature": "configured", "timeoutMs": 15000, "maxInputTokens": 20000, "maxOutputTokens": 2500 },
+    { "policyId": "tool_selection", "description": "Tool and capability selection policy for {projectId}", "temperature": "zero", "timeoutMs": 5000, "maxInputTokens": 8000, "maxOutputTokens": 1000 },
+    { "policyId": "response_generation", "description": "Grounded customer response composition policy for {projectId}", "temperature": "configured", "timeoutMs": 15000, "maxInputTokens": 20000, "maxOutputTokens": 2500 }
+  ]
+}

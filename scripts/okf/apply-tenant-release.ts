@@ -86,6 +86,7 @@ const authoringSpec = read(`scripts/okf/tenants/${TENANT}.authoring.json`);
 const scenarioFile = read(`scripts/okf/tenants/${TENANT}.scenarios.json`);
 const mappingFile = existsSync(path.join(root, `docs/migrations/${TENANT}-catalog-mapping.json`)) ? read(`docs/migrations/${TENANT}-catalog-mapping.json`) : { catalogMapping: {} };
 const rulesFile = existsSync(path.join(root, `docs/migrations/${TENANT}-component-category-rules.json`)) ? read(`docs/migrations/${TENANT}-component-category-rules.json`) : { catalogMapping: {} };
+const aiFile: { ai?: { policyOverrides?: Record<string, Record<string, unknown>> } } = existsSync(path.join(root, `docs/migrations/${TENANT}-ai-policy.json`)) ? read(`docs/migrations/${TENANT}-ai-policy.json`) : {};
 const routingFile: { routingPolicy?: { defaultJourneyId: string; fallbackOnCatalogSearch?: boolean } } = existsSync(path.join(root, `docs/migrations/${TENANT}-routing-policy.json`)) ? read(`docs/migrations/${TENANT}-routing-policy.json`) : {};
 
 function authoredDraft() {
@@ -126,7 +127,7 @@ const memoryGate = () => new PublicationGateValidator(async () => {
 });
 
 /** The sequence a person would follow in the back office. The same function rehearses and applies. */
-async function release(services: Services, version: string, mapping: Record<string, unknown>, draft: any, routingPolicy?: Record<string, unknown>) {
+async function release(services: Services, version: string, mapping: Record<string, unknown>, draft: any, routingPolicy?: Record<string, unknown>, policyOverrides?: Record<string, Record<string, unknown>>) {
   const { projects, authoring } = services;
   const existing = await authoring.getDraft(TENANT, ENVIRONMENT);
   const saved = await authoring.saveDraft({ projectId: TENANT, environmentId: ENVIRONMENT, expectedRevision: existing?.revision ?? 0, content: draft, updatedBy: ACTOR });
@@ -135,7 +136,7 @@ async function release(services: Services, version: string, mapping: Record<stri
   const okf = await authoring.publishDraft({ projectId: TENANT, environmentId: ENVIRONMENT, expectedRevision: saved.revision, version, publishedBy: ACTOR, notes: NOTE });
   wrote(`OKF release ${okf.release.releaseId} ${version} published and attached to the project draft (the live Business Pack does not use it until the pack is published)`);
   // The mapping is saved last, immediately before the publication that consumes it, so a failure earlier leaves the project untouched.
-  const mapped = await projects.updateProject(TENANT, { catalogMapping: mapping, ...(routingPolicy ? { routingPolicy } : {}) } as any);
+  const mapped = await projects.updateProject(TENANT, { catalogMapping: mapping, ...(routingPolicy ? { routingPolicy } : {}), ...(policyOverrides ? { ai: { policyOverrides } } : {}) } as any);
   if (!mapped.success) throw new Error(`catalogue mapping / default journey were not saved: ${mapped.message}`);
   wrote('catalogue mapping and default journey saved on the project draft (the live pack does not use them until the pack is published)');
   const publication = await projects.publishConfig(TENANT, { environmentId: ENVIRONMENT, publishedBy: ACTOR, note: NOTE });
@@ -252,6 +253,12 @@ async function main() {
   if (project.routingPolicy?.defaultJourneyId) ok(`the project already states its default journey (${project.routingPolicy.defaultJourneyId}); it is kept`);
   else if (routingPolicy) warn(`the project states no default journey; this will set it to '${routingPolicy.defaultJourneyId}' from docs/migrations/${TENANT}-routing-policy.json — requests no other journey matches go there. Edit that file first if you want a different one.`);
   else log('  the project states no default journey and the tenant has no routing-policy file: publication will be refused if it has several journeys');
+  // Model policy overrides the project already states win; the tenant's file only fills the policies it has not overridden.
+  const existingOverrides = (project.ai?.policyOverrides ?? {}) as Record<string, Record<string, unknown>>;
+  const mergedOverrides = { ...(aiFile.ai?.policyOverrides ?? {}), ...existingOverrides };
+  const policyOverrides = Object.keys(mergedOverrides).length && JSON.stringify(mergedOverrides) !== JSON.stringify(existingOverrides) ? mergedOverrides : undefined;
+  if (policyOverrides) warn(`this will set model policy overrides ${JSON.stringify(policyOverrides)} from docs/migrations/${TENANT}-ai-policy.json (the fast steps currently time out after 5 s)`);
+  else if (Object.keys(existingOverrides).length) ok(`the project already states model policy overrides (${Object.keys(existingOverrides).join(', ')}); they are kept`);
   log(`  catalogue mapping: ${Object.keys(mapping).join(', ')} (merged with the saved mapping, the repo's price/currency mapping and category rules)`);
   log(`  authored draft: ${draft.concepts.length} concepts, ${draft.relationships.length} relationships, ${draft.factRegistry.length} facts, ${draft.acceptanceScenarios.length} acceptance scenarios, 0 verified claims`);
   const replaced = (liveDraft?.content?.concepts ?? []).map((concept: any) => concept.name);
@@ -281,7 +288,7 @@ async function main() {
   await copyProject.collection('tenant_configs').insertOne(JSON.parse(JSON.stringify(projectCopy)));
   const rehearsal = wire(copyProject, copyRuntime, (copyRuntime as any).client, memoryGate());
   try {
-    const rehearsed = await release(rehearsal, version, mapping, draft, routingPolicy);
+    const rehearsed = await release(rehearsal, version, mapping, draft, routingPolicy, policyOverrides);
     ok(`published OKF release ${rehearsed.okf.release.releaseId} (${rehearsed.okf.release.checksum.slice(0, 12)}…) and Business Pack through the real publication gate`);
     await verify(rehearsal, { releaseChecksum: rehearsed.okf.release.checksum }, 'the rehearsal');
   } catch (error: any) {
@@ -311,7 +318,7 @@ async function main() {
   section('6. Apply to the live databases');
   liveWrites = true;
   const live = wire(projectDb, runtimeDb, runtimeClient, memoryGate());
-  const result = await release(live, version, mapping, draft, routingPolicy);
+  const result = await release(live, version, mapping, draft, routingPolicy, policyOverrides);
   ok(`saved the draft (revision ${result.saved.revision}), published OKF release ${result.okf.release.releaseId} ${version} (${result.okf.release.checksum.slice(0, 12)}…)`);
   ok(`published the Business Pack as config version ${result.publication.version}`);
   blockers.length = 0;

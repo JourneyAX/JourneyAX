@@ -32,3 +32,29 @@ export function validateOkfGeneratedClaims(text: string, allowedClasses: ClaimCl
   }
   return { valid: forbidden.size === 0, forbidden: [...forbidden] };
 }
+
+export interface WithheldSentence { sentence: string; classes: ClaimClass[] }
+
+/**
+ * The same check, applied one sentence at a time. A reply that makes one unsupported claim keeps its other sentences, because a single
+ * ordinary word ("fastening timber" in a product description) should not cost the customer the whole answer; the sentences that do
+ * assert a claim class the release does not allow are removed, never rewritten. A reply that is nothing but such sentences comes back
+ * empty and the caller says so in the tenant's own wording.
+ */
+export function withholdUnsupportedClaims(text: string, allowedClasses: ClaimClass[]): { text: string; removed: WithheldSentence[] } {
+  const allowed = new Set(allowedClasses);
+  const removed: WithheldSentence[] = [];
+  const lines = text.split(/\n+/).map((line) => {
+    const kept = line.split(/(?<=[.!?])\s+/).filter((sentence) => {
+      const trimmed = sentence.trim();
+      if (!trimmed) return false;
+      if (trimmed.endsWith('?')) return true;
+      const classes = CLAIM_PATTERNS.filter(([claim, pattern]) => !allowed.has(claim) && pattern.test(trimmed)).map(([claim]) => claim);
+      if (classes.length === 0) return true;
+      removed.push({ sentence: trimmed, classes });
+      return false;
+    });
+    return kept.join(' ').trim();
+  }).filter(Boolean);
+  return { text: lines.join('\n'), removed };
+}

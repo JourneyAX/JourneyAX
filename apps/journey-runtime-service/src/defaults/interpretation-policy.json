@@ -80,6 +80,7 @@
     "ask_fact_default_question": "Could you tell me your {fact}?",
     "welcome_default": "Hello! How can I help you today?",
     "item_category_reason": "Category: {category}",
-    "no_verified_specs": "I don't have verified technical specifications for that. Could you tell me more about your project, such as the requirements or dimensions?"
+    "no_verified_specs": "I don't have verified technical specifications for that. Could you tell me more about your project, such as the requirements or dimensions?",
+    "claim_withheld": "I can't confirm that detail, so I won't guess. These are the options that match what you've told me."
   }
 }

@@ -1,4 +1,5 @@
 import { ModelPolicy, ModelPolicySchema, ModelPolicyItem, ModelCandidateSchema } from './schemas/model-policy.schema';
+import policyDefaults from './defaults/model-policies.json';
 
 export interface CompileModelPolicyInput {
   projectId: string;
@@ -10,6 +11,8 @@ export interface CompileModelPolicyInput {
     temperature?: number;
     fallbackProvider?: string;
     fallbackModel?: string;
+    /** Per-policy overrides of the platform defaults (see defaults/model-policies.json). */
+    policyOverrides?: Record<string, { provider?: string; model?: string; timeoutMs?: number }> | null;
   } | null;
   dataResidency?: string;
 }
@@ -26,6 +29,28 @@ export function normalizeProvider(raw?: string): 'openai' | 'anthropic' | 'googl
     return p as any;
   }
   return 'custom';
+}
+
+const KNOWN_POLICY_IDS: string[] = policyDefaults.policies.map((policy) => policy.policyId);
+
+/** Problems with a project's `ai.policyOverrides`; empty means valid. Checked when the setting is saved and again when the pack is compiled. */
+export function validatePolicyOverrides(overrides: unknown): string[] {
+  if (overrides === undefined || overrides === null) return [];
+  if (typeof overrides !== 'object' || Array.isArray(overrides)) return ['ai.policyOverrides must be an object keyed by policy id'];
+  const { minTimeoutMs, maxTimeoutMs } = policyDefaults.limits;
+  const problems: string[] = [];
+  for (const [policyId, override] of Object.entries(overrides as Record<string, any>)) {
+    if (!KNOWN_POLICY_IDS.includes(policyId)) { problems.push(`ai.policyOverrides.${policyId}: unknown policy (expected one of ${KNOWN_POLICY_IDS.join(', ')})`); continue; }
+    if (!override || typeof override !== 'object' || Array.isArray(override)) { problems.push(`ai.policyOverrides.${policyId} must be an object`); continue; }
+    const unknown = Object.keys(override).filter((key) => !['provider', 'model', 'timeoutMs'].includes(key));
+    if (unknown.length) problems.push(`ai.policyOverrides.${policyId}: unknown key(s) ${unknown.join(', ')}`);
+    if (override.model !== undefined && (typeof override.model !== 'string' || !override.model.trim())) problems.push(`ai.policyOverrides.${policyId}.model must be a non-empty string`);
+    if (override.provider !== undefined && (typeof override.provider !== 'string' || !override.provider.trim())) problems.push(`ai.policyOverrides.${policyId}.provider must be a non-empty string`);
+    if (override.timeoutMs !== undefined && (!Number.isInteger(override.timeoutMs) || override.timeoutMs < minTimeoutMs || override.timeoutMs > maxTimeoutMs)) {
+      problems.push(`ai.policyOverrides.${policyId}.timeoutMs must be a whole number of milliseconds between ${minTimeoutMs} and ${maxTimeoutMs}`);
+    }
+  }
+  return problems;
 }
 
 /**
@@ -106,70 +131,38 @@ export function compileModelPolicy(input: CompileModelPolicyInput): ModelPolicy 
       }
     : null;
 
-  const buildCandidates = (policyId: string, temp?: number) => {
-    const list = [
-      {
-        provider: primaryProvider,
-        model: primaryModel,
-        priority: 1,
-        temperature: temp,
-      },
-    ];
-    if (fallbackCandidate) {
-      list.push({
-        ...fallbackCandidate,
-        temperature: temp !== undefined ? temp : fallbackCandidate.temperature,
-      });
-    }
-    return list;
+  /** The policy's candidates: the project's primary model (or this policy's override of it), then the explicit fallback if there is one. */
+  const buildCandidates = (temp: number | undefined, override?: { provider?: string; model?: string }) => {
+    const primary = {
+      provider: override?.provider ? normalizeProvider(override.provider) : primaryProvider,
+      model: override?.model ? override.model.trim() : primaryModel,
+      priority: 1,
+      temperature: temp,
+    };
+    return fallbackCandidate
+      ? [primary, { ...fallbackCandidate, temperature: temp !== undefined ? temp : fallbackCandidate.temperature }]
+      : [primary];
   };
 
-  const policies: ModelPolicyItem[] = [
-    {
-      policyId: 'fast_intent',
-      description: `Fast intent and slot extraction policy for ${projectId}`,
-      candidates: buildCandidates('fast_intent', 0.0),
+  const overrideProblems = validatePolicyOverrides(aiConfig.policyOverrides);
+  if (overrideProblems.length) throw new Error(`[compileModelPolicy] ${overrideProblems.join('; ')}`);
+
+  const policies: ModelPolicyItem[] = policyDefaults.policies.map((defaults) => {
+    const override = aiConfig.policyOverrides?.[defaults.policyId];
+    const temperature = defaults.temperature === 'zero' ? 0.0 : configuredTemp;
+    const candidates = buildCandidates(temperature, override);
+    return {
+      policyId: defaults.policyId,
+      description: defaults.description.replace('{projectId}', projectId),
+      candidates,
       dataResidency,
       acceptedResidencies: [dataResidency, 'au', 'us', 'global'],
-      timeoutMs: 5000,
+      timeoutMs: override?.timeoutMs ?? defaults.timeoutMs,
       fallbackAllowed: hasExplicitFallback,
-      maxInputTokens: 8000,
-      maxOutputTokens: 1000,
-    },
-    {
-      policyId: 'complex_reasoning',
-      description: `Complex multi-trade reasoning policy for ${projectId}`,
-      candidates: buildCandidates('complex_reasoning', configuredTemp),
-      dataResidency,
-      acceptedResidencies: [dataResidency, 'au', 'us', 'global'],
-      timeoutMs: 15000,
-      fallbackAllowed: hasExplicitFallback,
-      maxInputTokens: 20000,
-      maxOutputTokens: 2500,
-    },
-    {
-      policyId: 'tool_selection',
-      description: `Tool and capability selection policy for ${projectId}`,
-      candidates: buildCandidates('tool_selection', 0.0),
-      dataResidency,
-      acceptedResidencies: [dataResidency, 'au', 'us', 'global'],
-      timeoutMs: 5000,
-      fallbackAllowed: hasExplicitFallback,
-      maxInputTokens: 8000,
-      maxOutputTokens: 1000,
-    },
-    {
-      policyId: 'response_generation',
-      description: `Grounded customer response composition policy for ${projectId}`,
-      candidates: buildCandidates('response_generation', configuredTemp),
-      dataResidency,
-      acceptedResidencies: [dataResidency, 'au', 'us', 'global'],
-      timeoutMs: 15000,
-      fallbackAllowed: hasExplicitFallback,
-      maxInputTokens: 20000,
-      maxOutputTokens: 2500,
-    },
-  ];
+      maxInputTokens: defaults.maxInputTokens,
+      maxOutputTokens: defaults.maxOutputTokens,
+    };
+  });
 
   const compiled: ModelPolicy = {
     version: '1.0.0',

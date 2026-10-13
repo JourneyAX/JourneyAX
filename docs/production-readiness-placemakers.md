@@ -1,7 +1,8 @@
 # PlaceMakers — production readiness report
 
-Branch `JourneyAX-dev-v4`. Written 2026-10-13. Everything below was built and proved on isolated, in-memory stores. **No production-backed
-data was read or written after the initial read-only inventory, and no production release was activated.**
+Branch `JourneyAX-dev-v4`. Written 2026-10-13, updated the same day after the first load.
+
+**Status update.** At the owner's explicit approval in chat, `scripts/okf/apply-tenant-release.ts` loaded the authored PlaceMakers release into the environment the owner's local services read (the `journeyax` cluster, environment `production`): OKF release `1.2.0` (475 concepts, 0 verified claims), the catalogue mapping, the default journey `placemakers_shop`, and Business Pack `1.3.12`, with the activation following it by checksum. The owner is the only tester. Everything before that was built on isolated in-memory stores. The first run found and fixed four defects that only the real database could show (see "Found by loading it" below). Nothing here has been seen by a real customer.
 
 ## Verdict
 
@@ -12,8 +13,8 @@ people, the live environment, or a real database can supply:
 | # | Blocker | Why it stops the claim | Who |
 |---|---|---|---|
 | 1 | **0 verified claims.** Every installation, warranty, care and safety answer is withheld; customers are referred to a specialist. 194 candidate items and 8 authoring gaps are waiting. | A safety/compatibility/installation/warranty claim needs an applicable manufacturer document or a qualified person. I cannot supply that and will not invent it. | PlaceMakers product/safety experts |
-| 2 | **The live project has no catalogue mapping, fact registry or authored release.** The live pack (1.0.38 at inventory time) has no OKF reference, no fact registry and no mapping; the staged OKF release has 6 concepts. | None of the 475 authored concepts is live; prices cannot be read without a declared currency path. | Release owner (production write, needs approval) |
-| 3 | **Never run against real MongoDB or the live URL.** Transactions, indexes and the activation store were exercised through an in-memory fake; the canary ran on loopback with a stand-in model. | The public-path claim is proved for the code, not for the deployment. | Whoever holds a customer session / DB access |
+| 2 | **Loaded, but only the owner has tested it.** The release, mapping and pack are in the owner's environment; one customer conversation was reviewed (wet-area question, fixed) and a screws conversation (reply guard, fixed). Routing quality across real customer wording is unmeasured beyond that. | Natural phrasing is the long tail: the gate depends on authored phrases, and a customer can word anything. | PlaceMakers staff: keep adding phrases from real conversations |
+| 3 | **The public URL and a real browser were never exercised.** The load ran against real MongoDB (draft, release, pack, activation all written and read back), but the canary ran on loopback with a stand-in model and nobody has run it against the deployed storefront. | The public-path claim is proved for the code and the data, not for the deployment. | Whoever holds a customer session |
 | 4 | **Publishing is still the go-live action for a live tenant** (see Finding below). | There is no separate approval between "publish" and "customers see it" when the environment's activation is already `migrated` or `canary`. A stopped line is no longer restarted by a publish. | Product decision |
 | 5 | **The real language model was never exercised.** All turns used a fixed stand-in; the claim validator and prompt rules are tested, the model's wording is not. | Model-composed replies are unmeasured. | Run `packages/pack-eval` / the live canary with the real model |
 
@@ -31,6 +32,16 @@ people, the live environment, or a real database can supply:
 | Cards render and are themed | `tests/public-path/cards-render.spec.tsx` (5): every card sent renders, binds only declared fields, the stylesheet reads only theme variables (no hard-coded colour), a tenant theme reaches the markup |
 | Customers read plain language | Transcript: [docs/canary/placemakers-public-path-2026-10-13-hermetic.md](canary/placemakers-public-path-2026-10-13-hermetic.md) (17 scenarios, 0 violations, sanitised). Platform vocabulary is rejected in every notice (4,653 scenarios), every shipped message, and every canary reply |
 | Activation is checksum-bound and reversible | [docs/activation/release-lifecycle-evidence.md](activation/release-lifecycle-evidence.md) — wrong checksum / stale revision / wrong release / unknown release refused; tampered pack refused; rollback restores the original checksum; stop-the-line stops pinned and new conversations |
+
+## Found by loading it
+
+The first real load found defects no hermetic test could, because the test database differed from the real one. All are fixed with tests:
+1. **`undefined` stored as `null`.** 40 generated concepts carried optional fields set to `undefined`; the real driver stores `null`, which changes a content hash, so the release failed its own integrity check. The generator no longer emits them, saving strips them, and the in-memory test database now stores `undefined` as `null` like the driver (an existing test now fails on the old code).
+2. **A regression in my own activation fix.** The publication gate's rollback drill assumed a fixed activation revision; the fix made a rollback advance it, so every Studio publish would have failed. The gate now reads the revision, and a new test runs the real gate.
+3. **No way to set a default journey.** A project with several journeys cannot be published without one, and the product had no setting for it. It is now a validated pack setting (Studio: Pack settings → Default journey).
+4. **Rollback blanked the project's `packVersion`.** The old rollback wrote an undefined value; it no longer does.
+
+Then, from the owner's first conversations: wet-area wording routed to a retaining-wall category (project phrases and a "two categories of one project" rule fixed it); the reply guard threw away whole replies for one ordinary word like "fastening" (it now removes only the offending sentence, logs it, and uses the tenant's own wording if nothing is left); the log never said which OKF release a service was running (it now logs each release load and names the pack and release in every turn's diagnostics); and the 5-second limit on the two fast model steps was hard-coded and shorter than the project's model needs (model policies are now platform data with validated per-project overrides; PlaceMakers is set to 10 s).
 
 ## Test results
 

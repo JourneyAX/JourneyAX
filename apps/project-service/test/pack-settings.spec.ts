@@ -174,6 +174,18 @@ async function main() {
     const rejected = await service.updateProject(TENANT, { routingPolicy: { defaultJourneyId: '' } } as any);
     assert.equal(rejected.success, false);
   });
+  await suite.test('model policy overrides are validated when saved and carried into the published pack', async () => {
+    const { service, db } = await createService();
+    const refused = await service.updateProject(TENANT, { ai: { policyOverrides: { fast_intent: { timeoutMs: 5 } } } } as any);
+    assert.equal(refused.success, false);
+    assert.match(refused.message!, /timeoutMs/);
+    const saved = await service.updateProject(TENANT, { ai: { policyOverrides: { fast_intent: { timeoutMs: 12000 }, tool_selection: { timeoutMs: 12000 } } } } as any);
+    assert.equal(saved.success, true, saved.message);
+    const published: any = await service.publishConfig(TENANT, { environmentId: 'test' });
+    assert.equal(published.success, true, published.message);
+    const policies = db.dump('business_pack_releases').at(-1)!.modelPolicy.policies;
+    assert.deepEqual(policies.map((entry: any) => [entry.policyId, entry.timeoutMs]), [['fast_intent', 12000], ['complex_reasoning', 15000], ['tool_selection', 12000], ['response_generation', 15000]]);
+  });
   await suite.test('a draft carrying undefined fields is stored as plain data and still validates after the database round trip', async () => {
     const { service, db } = await createService();
     const authoring = new OkfAuthoringService(async () => db as any, (pid, update) => service.updateProject(pid, update as any));

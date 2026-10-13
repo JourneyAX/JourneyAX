@@ -1,0 +1,9 @@
+{
+  "_comment": "Model policy overrides for PlaceMakers (ai.policyOverrides). The platform's 5-second limit for the two fast steps (reading the customer's intent, choosing a tool) is shorter than the project's answer model, openai/gpt-5.5, usually takes, so the step timed out and fell back. 10 seconds lets it finish. A faster model for those two steps is the better fix: add \"model\": \"<a smaller model your account can use>\" to each. Applied by scripts/okf/apply-tenant-release.ts only for policies the project has not overridden itself.",
+  "ai": {
+    "policyOverrides": {
+      "fast_intent": { "timeoutMs": 10000 },
+      "tool_selection": { "timeoutMs": 10000 }
+    }
+  }
+}
