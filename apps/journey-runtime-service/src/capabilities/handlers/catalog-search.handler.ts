@@ -1,7 +1,10 @@
 import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
-import { categoryPathCovers } from '@journeyax/knowledge';
 import {
+  buildCatalogueBaseFilter,
+  buildCategoryScopeClauses,
+  categoryScopeMatches,
+  cleanCategoryPaths,
   classifyAvailability,
   normalizeCatalogProduct,
   readAttribute,
@@ -97,14 +100,6 @@ function scoreDocumentRelevance(doc: any, tokens: QueryToken[], mapping: Resolve
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Only well-formed paths (non-empty string segments) are honoured; anything else is ignored, never widened. */
-function cleanPaths(value: unknown): string[][] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((path): path is string[] => Array.isArray(path) && path.length > 0 && path.every((segment) => typeof segment === 'string' && segment.trim().length > 0))
-    .map((path) => path.map((segment) => segment.trim()));
-}
-
 export class CatalogSearchHandler implements NativeCapabilityHandler {
   constructor(
     private readonly inMemoryProducts?: any[],
@@ -138,7 +133,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     }
 
     if (input.scopeAuthoritative && input.query && !input.matchAllTokens &&
-      ((input.categoryIds?.length ?? 0) > 0 || cleanPaths(input.categoryPaths).length > 0)) {
+      ((input.categoryIds?.length ?? 0) > 0 || cleanCategoryPaths(input.categoryPaths).length > 0)) {
       const narrowed = await this.execute({ ...input, scopeAuthoritative: false }, ctx);
       if (narrowed.total > 0 || narrowed.error) return narrowed;
       return { ...(await this.execute({ ...input, query: '', scopeAuthoritative: false }, ctx)), queryRelaxed: true };
@@ -156,7 +151,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const query = input.query || '';
     const category = input.category || '';
     const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
-    const categoryPaths = cleanPaths(input.categoryPaths);
+    const categoryPaths = cleanCategoryPaths(input.categoryPaths);
     // A scope that was supplied but is unusable must narrow to nothing, never silently widen to the whole catalogue.
     if (Array.isArray(input.categoryPaths) && input.categoryPaths.length > 0 && categoryPaths.length === 0 && categoryIds.length === 0) {
       return { items: [], total: 0, error: 'invalid_category_scope' };
@@ -187,16 +182,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         if (owner !== undefined && owner !== tenantId) return false;
         if (classifyAvailability(p, mapping) === 'excluded') return false;
         if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
-        const categoryText = textOf(p, mapping.categoryScopePaths);
-        if (categoryIds.length > 0 || categoryPaths.length > 0) {
-          const byName = categoryIds.some((id) => categoryText.includes(id.toLowerCase()));
-          const byPath = mapping.categoryHierarchyPaths.some((hierarchy) => {
-            const value = readPath(p, hierarchy);
-            return Array.isArray(value) && categoryPaths.some((scope) => categoryPathCovers(scope, value.map(String)));
-          });
-          if (!byName && !byPath) return false;
-        }
-        if (excludeCategoryIds.some((id) => categoryText.includes(id.toLowerCase()))) return false;
+        if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
         if (query) {
           const text = textOf(p, mapping.searchPaths);
           if (tokens.length > 0) {
@@ -223,33 +209,14 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           ? await this.dbProvider()
           : (await connectToDatabase(uri!, process.env.MONGODB_DB_NAME || 'journeyx')).db;
 
-        const excluded = [
-          ...mapping.availability.excludeFlagPaths.map((path) => ({ [path]: true })),
-          ...mapping.availability.statusPaths.flatMap((path) =>
-            mapping.availability.excludedStatuses.map((status) => ({ [path]: new RegExp(`^${escapeRegex(status)}$`, 'i') }))),
-        ];
-        const filter: Record<string, any> = {
-          $or: mapping.tenantFields.map((path) => ({ [path]: tenantId })),
-          $and: excluded.length > 0 ? [{ $nor: excluded }] : [],
-        };
-        const and: any[] = filter.$and;
+        const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
         const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
 
         if (category) {
           const regex = new RegExp(escapeRegex(category), 'i');
           and.push({ $or: anyOf(mapping.categoryPaths, regex) });
         }
-        if (categoryIds.length > 0 || categoryPaths.length > 0) {
-          const scoped = categoryIds.map((value) => new RegExp(escapeRegex(value), 'i'));
-          // A path scope is an exact, anchored match on each hierarchy segment, so a same-named category elsewhere is not selected.
-          const byPath = categoryPaths.flatMap((scope) => mapping.categoryHierarchyPaths.map((hierarchy) => Object.fromEntries(
-            scope.map((segment, index) => [`${hierarchy}.${index}`, new RegExp(`^${escapeRegex(segment)}$`, 'i')]))));
-          and.push({ $or: [...(scoped.length ? anyOf(mapping.categoryScopePaths, { $in: scoped }) : []), ...byPath] });
-        }
-        if (excludeCategoryIds.length > 0) {
-          const excludedCategories = excludeCategoryIds.map((value) => new RegExp(escapeRegex(value), 'i'));
-          and.push({ $nor: anyOf(mapping.categoryScopePaths, { $in: excludedCategories }) });
-        }
+        and.push(...buildCategoryScopeClauses(mapping, { categoryIds, categoryPaths, excludeCategoryIds }));
         if (query) {
           const matchers = tokens.length > 0
             ? tokens.map((t) => t.regex)

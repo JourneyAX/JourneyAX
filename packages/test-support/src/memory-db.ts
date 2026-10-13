@@ -241,6 +241,57 @@ export class MemoryCollection<T extends Doc = Doc> {
   }
 
   async countDocuments(filter: Doc = {}) { return this.docs.filter((doc) => matches(doc, filter)).length; }
+
+  /**
+   * The aggregation subset the platform uses: `$match`, `$group` (keys of `$field` references; `$sum` of 1 or a number),
+   * `$sort` and `$limit`. Anything else throws, so a test cannot pass on a pipeline the fake silently ignores.
+   */
+  aggregate(pipeline: Doc[]): { toArray: () => Promise<Doc[]> } {
+    return {
+      toArray: async () => {
+        let rows: Doc[] = this.docs.map((doc) => structuredClone(doc));
+        for (const stage of pipeline) {
+          const [op] = Object.keys(stage);
+          const arg = stage[op];
+          if (op === '$match') rows = rows.filter((doc) => matches(doc, arg));
+          else if (op === '$sort') {
+            const entries = Object.entries(arg as Record<string, 1 | -1>);
+            rows.sort((a, b) => {
+              for (const [key, direction] of entries) {
+                const av = getPath(a, key), bv = getPath(b, key);
+                if (av === bv) continue;
+                return (av > bv ? 1 : -1) * direction;
+              }
+              return 0;
+            });
+          } else if (op === '$limit') rows = rows.slice(0, arg as number);
+          else if (op === '$group') {
+            const resolve = (doc: Doc, expression: unknown): unknown => {
+              if (typeof expression === 'string' && expression.startsWith('$')) return getPath(doc, expression.slice(1));
+              if (expression && typeof expression === 'object') return Object.fromEntries(Object.entries(expression).map(([k, v]) => [k, resolve(doc, v)]));
+              return expression;
+            };
+            const groups = new Map<string, Doc>();
+            for (const doc of rows) {
+              const id = resolve(doc, (arg as Doc)._id);
+              const key = JSON.stringify(id ?? null);
+              const group = groups.get(key) ?? { _id: id };
+              for (const [field, accumulator] of Object.entries(arg as Doc)) {
+                if (field === '_id') continue;
+                const spec = accumulator as Doc;
+                if (!('$sum' in spec)) throw new Error(`MemoryDb.aggregate: unsupported accumulator for ${field}`);
+                const amount = typeof spec.$sum === 'number' ? spec.$sum : Number(resolve(doc, spec.$sum) ?? 0);
+                group[field] = (Number(group[field]) || 0) + amount;
+              }
+              groups.set(key, group);
+            }
+            rows = [...groups.values()];
+          } else throw new Error(`MemoryDb.aggregate: unsupported stage ${op}`);
+        }
+        return rows;
+      },
+    };
+  }
 }
 
 export class MemorySession {

@@ -10,3 +10,5 @@ export * from './model-policy-compiler';
 export * from './checksum';
 export * from './release-verifier';
 export * from './catalog-mapping';
+export * from './catalog-scope';
+export * from './catalog-mapping-check';

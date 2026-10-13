@@ -15,3 +15,4 @@ export * from './limits';
 export * from './authoring';
 export * from './ingest';
 export * from './category-scope';
+export * from './insight';

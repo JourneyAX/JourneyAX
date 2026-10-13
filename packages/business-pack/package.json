@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsx test/pack-control-plane.spec.ts && tsx test/pack-canonical-content.spec.ts && tsx test/pack-hardening.spec.ts && tsx test/pack-release-verifier.spec.ts && tsx test/catalog-mapping.spec.ts"
+    "test": "tsx test/pack-control-plane.spec.ts && tsx test/pack-canonical-content.spec.ts && tsx test/pack-hardening.spec.ts && tsx test/pack-release-verifier.spec.ts && tsx test/catalog-mapping.spec.ts && tsx test/catalog-mapping-check.spec.ts"
   },
   "dependencies": {
     "@journeyax/journey-core": "*",

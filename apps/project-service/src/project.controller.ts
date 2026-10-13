@@ -18,6 +18,7 @@ import {
 } from './project.types';
 import { OKF_LIMITS, OkfIntegrityError } from '@journeyax/knowledge';
 import { OkfAuthoringService, OkfDraftConflictError } from './okf-authoring.service';
+import { KnowledgeInsightService } from './knowledge-insight.service';
 
 /**
  * Internal runtime services (agent, WhatsApp sender) present this shared key to
@@ -62,6 +63,7 @@ export class ProjectController {
     @Inject(ProjectService) private readonly projectService: ProjectService,
     @Optional() @Inject(BusinessPackPublicationService) private readonly publicationService?: BusinessPackPublicationService,
     @Optional() @Inject(OkfAuthoringService) private readonly okfAuthoring?: OkfAuthoringService,
+    @Optional() @Inject(KnowledgeInsightService) private readonly knowledgeInsight?: KnowledgeInsightService,
   ) {}
 
   // ── Health ────────────────────────────────────────────────────
@@ -355,7 +357,45 @@ export class ProjectController {
     @Param('projectId') projectId: string,
     @Body() body: { environmentId?: string; message: string; knownFacts?: Record<string, unknown>; intentCandidates?: string[]; forceShowResults?: boolean },
   ) {
-    return this.okfAuthoring!.previewDraft(projectId, body, body.environmentId || 'production');
+    try {
+      // With the insight service the preview also reports the live products each scope would select.
+      return this.knowledgeInsight
+        ? await this.knowledgeInsight.previewWithCatalogue(projectId, body, body.environmentId || 'production')
+        : await this.okfAuthoring!.previewDraft(projectId, body, body.environmentId || 'production');
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Get(':projectId/knowledge/coverage')
+  @RequirePermission('knowledge.read')
+  async knowledgeCoverage(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
+    try {
+      return await this.knowledgeInsight!.coverage(projectId, environmentId || 'production');
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Get(':projectId/knowledge/lifecycle')
+  @RequirePermission('knowledge.read')
+  async knowledgeLifecycle(@Param('projectId') projectId: string, @Query('environmentId') environmentId?: string) {
+    try {
+      return await this.knowledgeInsight!.lifecycle(projectId, environmentId || 'production');
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /** Reads a bounded, evenly spread sample of the tenant's products and reports what the mapping would make of them. Writes nothing. */
+  @Post(':projectId/catalog-mapping/check')
+  @RequirePermission('config.edit')
+  async checkCatalogMapping(@Param('projectId') projectId: string, @Body() body: { mapping?: unknown; sample?: number }) {
+    try {
+      return await this.knowledgeInsight!.checkCatalogMapping(projectId, body?.mapping, { sample: body?.sample });
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   @Post(':projectId/knowledge/publish')

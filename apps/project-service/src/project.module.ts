@@ -10,6 +10,7 @@ import { NotificationConfigurationService } from './notification-configuration.s
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { PublicationGateValidator } from './publication-gate-validator';
 import { OkfAuthoringService } from './okf-authoring.service';
+import { KnowledgeInsightService } from './knowledge-insight.service';
 
 @Module({
   controllers: [ProjectController],
@@ -25,6 +26,15 @@ import { OkfAuthoringService } from './okf-authoring.service';
         (pid, update) => projectService.updateProject(pid, update as any)
       ),
       inject: [ProjectService],
+    },
+    {
+      provide: KnowledgeInsightService,
+      useFactory: (projectService: ProjectService, authoring: OkfAuthoringService) => new KnowledgeInsightService(
+        () => projectService.getRuntimeDb(),
+        (pid) => projectService.getProject(pid),
+        authoring,
+      ),
+      inject: [ProjectService, OkfAuthoringService],
     },
     {
       provide: BusinessPackPublicationService,
