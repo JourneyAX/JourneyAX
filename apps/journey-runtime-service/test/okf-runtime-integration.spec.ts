@@ -724,6 +724,62 @@ async function main() {
     assert.equal(installation.workspace.facts.room_dimensions.value, '3x2 m');
   });
 
+  // ── Uncovered requests through a full turn: what the customer actually receives ──────────────────────────────
+  const OPEN_COVERAGE = { coverage: { uncoveredShopping: { mode: 'catalogue_only', commerce: { addToCart: 'allowed_with_warning', checkout: 'requires_compatibility_resolution' } } } };
+  const uncoveredProducts = [
+    { projectId: 'placemakers', sku: 'PB-1', name: 'Paint Brush Synthetic 50mm', category: 'Brushes', currency: 'NZD', priceCents: 1299 },
+    { projectId: 'placemakers', sku: 'H-1', name: 'Fan Heater 2kW', category: 'Heaters', currency: 'NZD', priceCents: 8900 },
+  ];
+  async function uncoveredTurn(policy: unknown, message: string, id: string) {
+    const coverageDb = new MemoryDb();
+    const withPolicy = structuredClone(content);
+    if (policy) (withPolicy as any).policy = policy;
+    const coverageRelease = await publishOkfRelease(coverageDb as any, {
+      releaseId: `okf-coverage-${id}`, tenantId: 'placemakers', environmentId: 'test', version: '1.0.0', content: withPolicy, publishedBy: 'runtime-integration-test',
+    });
+    const coverageRef = { ...reference, releaseId: coverageRelease.releaseId, version: coverageRelease.version, checksum: coverageRelease.checksum };
+    const pack = buildPack(coverageRef);
+    const service = buildService(pack, coverageDb, uncoveredProducts);
+    return service.executeTurn({
+      tenantId: 'placemakers', environmentId: 'test', workspaceId: `ws-${id}`, sessionId: `ws-${id}`,
+      turnId: `turn-${id}`, correlationId: `corr-${id}`, message,
+    } as any, pack);
+  }
+  const cardTypes = (result: any) => result.uiInstructions.map((card: any) => card.component);
+
+  await test('end to end: "my heater is smoking" escalates with no product, cart or checkout card, even when shopping is open', async () => {
+    const result: any = await uncoveredTurn(OPEN_COVERAGE, 'my heater is smoking', 'hazard');
+    assert.equal(result.trace.knowledgeGate.mode, 'safety_then_diagnose');
+    assert.ok(result.trace.knowledgeGate.trace.reasonCodes.includes('uncovered_problem'));
+    for (const forbidden of ['products', 'cart', 'quote', 'productDetail', 'bundle']) {
+      assert.ok(!cardTypes(result).includes(forbidden), `${forbidden} card must not appear`);
+    }
+    assert.match(String(result.assistantMessage), /qualified professional/i);
+  });
+
+  await test('end to end: an uncovered shopping request is blocked by default', async () => {
+    const result: any = await uncoveredTurn(undefined, 'i need some paint brushes', 'closed');
+    assert.equal(result.trace.knowledgeGate.mode, 'no_match');
+    assert.ok(!cardTypes(result).includes('products'));
+  });
+
+  await test('end to end: with the opt-in, uncovered shopping shows live catalogue products only', async () => {
+    const result: any = await uncoveredTurn(OPEN_COVERAGE, 'i need some paint brushes', 'open');
+    assert.equal(result.trace.knowledgeGate.mode, 'legacy_search');
+    assert.ok(result.trace.knowledgeGate.trace.reasonCodes.includes('uncovered_shopping_catalogue_only'));
+    const products = result.uiInstructions.find((card: any) => card.component === 'products');
+    assert.ok(products, 'a products card is produced from the live catalogue');
+    assert.ok(products.props.products.every((item: any) => uncoveredProducts.some((live) => live.sku === item.sku)), 'only live catalogue SKUs');
+    assert.equal(products.props.products.find((item: any) => item.sku === 'PB-1').currency, 'NZD');
+  });
+
+  await test('end to end: an unknown technical requirement gets neither claims nor products', async () => {
+    const result: any = await uncoveredTurn(OPEN_COVERAGE, 'is the fan heater suitable for a workshop', 'technical');
+    assert.equal(result.trace.knowledgeGate.mode, 'no_match');
+    assert.ok(result.trace.knowledgeGate.trace.reasonCodes.includes('uncovered_technical'));
+    assert.ok(!cardTypes(result).includes('products'));
+  });
+
   console.log(`\nCanonical OKF runtime integration: ${passed} passed, ${failed} failed.`);
   if (failed > 0) process.exit(1);
 }

@@ -193,9 +193,19 @@ export class TurnApplicationService {
         interpretation
       );
 
-      // A pack that declares required fail-closed knowledge must never continue
-      // into an LLM or retrieval fallback when that exact pinned release cannot load.
-      if (knowledgeGate?.trace.reasonCodes.includes('knowledge_required_unavailable')) {
+      // Terminal knowledge outcomes answer from tenant/platform wording and never reach journey routing, the model
+      // composer or any capability:
+      //  - a required release that cannot load (fail closed)
+      //  - an uncovered hazard: nothing governs it, so it escalates to a qualified professional
+      //  - an uncovered technical requirement: nothing verified supports a claim
+      const terminalMessageKey = knowledgeGate?.trace.reasonCodes.includes('knowledge_required_unavailable')
+        ? 'knowledge_unavailable'
+        : knowledgeGate?.trace.reasonCodes.includes('uncovered_problem')
+        ? 'safety_unavailable_customer'
+        : knowledgeGate?.trace.reasonCodes.includes('uncovered_technical')
+        ? 'uncovered_technical_unverified'
+        : undefined;
+      if (knowledgeGate && terminalMessageKey) {
         if (!workspace) {
           workspace = await this.workspaceRepo.getOrCreate(
             tenantId,
@@ -212,8 +222,8 @@ export class TurnApplicationService {
         const decision: Decision = {
           decisionId: `dec_${Date.now()}`,
           type: 'fail',
-          payload: { error: renderOkfMessage(knowledgeGate.messages, 'knowledge_unavailable') },
-          reason: renderOkfMessage(knowledgeGate.messages, 'knowledge_unavailable'),
+          payload: { error: renderOkfMessage(knowledgeGate.messages, terminalMessageKey) },
+          reason: renderOkfMessage(knowledgeGate.messages, terminalMessageKey),
           createdAt: new Date().toISOString(),
         };
         workspace.decisions.push({ ...decision, executedAt: new Date().toISOString(), outcomeStatus: 'failure' });
@@ -239,10 +249,13 @@ export class TurnApplicationService {
         return turnResult;
       }
 
-      const routingInterpretation = knowledgeGate?.conceptId && ![
-        'no_match',
-        'operational_journey',
-      ].includes(knowledgeGate.mode)
+      // Governed concepts establish the verified domain; so does an explicit catalogue-only shopping fallback, which
+      // routes to the pack's default journey (its own catalogue step decides what is retrieved).
+      const establishesDomain = Boolean(
+        (knowledgeGate?.conceptId && !['no_match', 'operational_journey'].includes(knowledgeGate.mode)) ||
+        knowledgeGate?.trace.reasonCodes.includes('uncovered_shopping_catalogue_only'),
+      );
+      const routingInterpretation = establishesDomain
         ? {
             ...interpretation,
             // Routing-only marker: establishes that the query is in the pack's
@@ -348,7 +361,8 @@ export class TurnApplicationService {
               null,
               decision,
               [],
-              null
+              null,
+              knowledgeGate
             );
           } catch (e: any) {}
         }
@@ -370,6 +384,7 @@ export class TurnApplicationService {
           } else if ((interpretation as any)?.modelRoute) {
             turnResult.trace.modelRoute = (interpretation as any).modelRoute;
           }
+          if (knowledgeGate) (turnResult.trace as any).knowledgeGate = knowledgeGate;
         }
         sink('trace', {
           currentStage: workspace?.currentStage || 'initial',

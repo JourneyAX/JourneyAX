@@ -27,7 +27,7 @@ function scenario(name: string, input: OkfGateInput, verify: (decision: ReturnTy
   }
 }
 
-console.log('🧪 Running 45 deterministic OKF gate scenarios...');
+console.log('🧪 Running 66 deterministic OKF gate scenarios...');
 
 scenario('broad screws gives grouped overview and a non-blocking substrate card', { ...base, message: 'screws' }, (d) => {
   assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.retrieval.presentation, 'grouped_overview'); assert.equal(d.clarification?.factKey, 'substrate'); assert.equal(d.clarification?.blocking, false);
@@ -89,7 +89,9 @@ scenario('mixed operational + safety message cannot bypass safety', { ...base, m
   assert.equal(d.mode, 'safety_then_diagnose'); assert.equal(d.safety?.blocksProducts, true);
 });
 scenario('purely operational message still routes to the operational journey', { ...base, message: 'Where is my order?', matchedConcepts: matched(conceptId('problems/bathroom-leak')) }, (d) => assert.equal(d.mode, 'operational_journey'));
-scenario('mixed message with no matched safety concept stays operational', { ...base, message: 'Where is my order? My appliance is sparking' }, (d) => assert.equal(d.mode, 'operational_journey'));
+scenario('mixed message with no matched safety concept still escalates (safety outranks operational)', { ...base, message: 'Where is my order? My appliance is sparking' }, (d) => {
+  assert.equal(d.mode, 'safety_then_diagnose'); assert.ok(d.trace.reasonCodes.includes('uncovered_problem'));
+});
 scenario('electrical mould problem is safety first', { ...base, message: 'mould near an electrical outlet', matchedConcepts: matched(conceptId('problems/bathroom-leak')) }, (d) => assert.equal(d.mode, 'safety_then_diagnose'));
 scenario('cleaner gives task-group overview', { ...base, message: 'cleaner' }, (d) => {
   assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.retrieval.scope.length, 3);
@@ -204,5 +206,96 @@ assert.equal(resolveOkfBasketCommerce(content, { ...basketInput, products: [{ pr
   console.log(`  ✓ ${passed}. basket lifecycle vocabulary is caller-supplied data`);
 }
 
-assert.equal(passed, 45);
+
+// ── Uncovered requests: classify first; never a blanket allow ─────────────────────────────────────────────────
+function covered(coverage: any) { const c: any = structuredClone(content); c.policy = coverage ? { coverage } : undefined; return c; }
+const OPEN_BROWSE = { uncoveredShopping: { mode: 'catalogue_only', commerce: { addToCart: 'allowed_with_warning', checkout: 'requires_compatibility_resolution' } } };
+function uncovered(name: string, message: string, extra: Partial<OkfGateInput>, coverage: any, verify: (d: ReturnType<typeof resolveOkfGate>) => void) {
+  const decision = resolveOkfGate(covered(coverage), { ...base, message, ...extra });
+  try { verify(decision); passed++; console.log(`  ✓ ${passed}. ${name}`); }
+  catch (error) { console.error(`  ✗ ${passed + 1}. ${name}`); throw error; }
+}
+const noProductsNoCheckout = (d: ReturnType<typeof resolveOkfGate>) => {
+  assert.equal(d.retrieval.permission, 'blocked'); assert.equal(d.commerce.addToCart, 'blocked'); assert.equal(d.commerce.checkout, 'blocked');
+  assert.deepEqual(d.claims.allowedClasses, []);
+};
+const escalates = (d: ReturnType<typeof resolveOkfGate>) => {
+  assert.equal(d.mode, 'safety_then_diagnose'); assert.equal(d.safety?.guidanceUnavailable, true); assert.equal(d.safety?.blocksProducts, true);
+  assert.equal(d.safety?.guidance?.length, 0, 'no guidance is invented'); noProductsNoCheckout(d); assert.ok(d.trace.reasonCodes.includes('uncovered_problem'));
+};
+for (const [name, message] of [
+  ['"my appliance is sparking" escalates even when shopping is open', 'my appliance is sparking'],
+  ['water near the power points escalates', 'there is water near the power points in my laundry'],
+  ['a gas smell escalates', 'i can smell gas in the kitchen'],
+  ['smoke from a heater escalates', 'my heater is smoking'],
+  ['a safety problem inside a purchase request still escalates', 'i want to buy a new plug my socket is sparking'],
+]) uncovered(name, message, {}, OPEN_BROWSE, escalates);
+
+uncovered('an unknown technical requirement gets no claims, no products and no checkout', 'is this timber suitable for a load bearing deck', {}, OPEN_BROWSE, (d) => {
+  assert.equal(d.mode, 'no_match'); noProductsNoCheckout(d); assert.ok(d.trace.reasonCodes.includes('uncovered_technical'));
+  assert.match(d.claims.disclaimers[0], /can't confirm technical/);
+});
+uncovered('"does this comply with the building code" is technical, not shopping', 'do you sell something that complies with the building code', {}, OPEN_BROWSE, (d) => {
+  assert.ok(d.trace.reasonCodes.includes('uncovered_technical')); noProductsNoCheckout(d);
+});
+uncovered('ordinary broad shopping is blocked unless the release opts in', 'i need some paint brushes', {}, undefined, (d) => {
+  assert.equal(d.mode, 'no_match'); noProductsNoCheckout(d); assert.ok(d.trace.reasonCodes.includes('uncovered_shopping_blocked'));
+});
+uncovered('opted-in shopping shows only catalogue facts with the configured, restricted commerce policy', 'i need some paint brushes', {}, OPEN_BROWSE, (d) => {
+  assert.equal(d.mode, 'legacy_search'); assert.equal(d.retrieval.permission, 'allowed');
+  assert.deepEqual(d.claims.allowedClasses, ['catalog_fact']);
+  assert.deepEqual(d.commerce, { addToCart: 'allowed_with_warning', checkout: 'requires_compatibility_resolution' });
+  assert.equal(d.catalogHandling.requiresLiveValidation, true); assert.deepEqual(d.retrieval.categoryIds, []);
+  assert.match(d.claims.disclaimers[0], /can't confirm compatibility/);
+});
+uncovered('an exact SKU is shopping; blocked by default, catalogue-only when opted in', 'sku 4400123', { exactSku: '4400123' }, undefined, (d) => noProductsNoCheckout(d));
+uncovered('an exact SKU with the opt-in shows catalogue facts only', 'sku 4400123', { exactSku: '4400123' }, OPEN_BROWSE, (d) => {
+  assert.equal(d.mode, 'legacy_search'); assert.deepEqual(d.claims.allowedClasses, ['catalog_fact']);
+});
+uncovered('a bare noun is unknown without live catalogue evidence', 'paint brushes', {}, OPEN_BROWSE, (d) => {
+  assert.equal(d.mode, 'no_match'); noProductsNoCheckout(d); assert.ok(d.trace.reasonCodes.includes('uncovered_unknown'));
+});
+uncovered('a bare noun the live catalogue recognises becomes catalogue-only shopping', 'paint brushes', { catalogueMatch: true }, OPEN_BROWSE, (d) => {
+  assert.equal(d.mode, 'legacy_search'); assert.ok(d.trace.reasonCodes.includes('uncovered_shopping_catalogue_only'));
+});
+uncovered('catalogue evidence cannot override a hazard', 'my heater is smoking', { catalogueMatch: true }, OPEN_BROWSE, escalates);
+uncovered('small talk is unknown and retrieves nothing', 'hello there', {}, OPEN_BROWSE, (d) => {
+  assert.equal(d.mode, 'no_match'); noProductsNoCheckout(d);
+});
+uncovered('an uncovered order question still reaches the operational journey', 'where is my order', {}, OPEN_BROWSE, (d) => assert.equal(d.mode, 'operational_journey'));
+uncovered('governed concepts are unaffected by the coverage setting', 'screw', { matchedConcepts: matched(conceptId('fastenings/screws')) }, OPEN_BROWSE, (d) => {
+  assert.equal(d.mode, 'overview_then_ask'); assert.equal(d.commerce.checkout, 'requires_compatibility_resolution');
+});
+
+// ── Basket: uncovered categories follow the explicit opt-in and still pass product checks ──────────────────────
+{
+  const basketBase = { ...basketInput, items: [{ sku: 'ODD-001' }], products: [{ projectId: 'placemakers', sku: 'ODD-001', categoryId: 'brushes.paint' }] };
+  const run = (coverage: any, over: Record<string, unknown> = {}) => resolveOkfBasketCommerce(covered(coverage), { ...basketBase, ...over } as any);
+  const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${passed}. ${name}`); };
+  check('basket: an uncovered category is blocked by default', () => {
+    const d = run(undefined); assert.equal(d.commerce.addToCart, 'blocked'); assert.ok(d.reasonCodes.includes('unmapped_catalog_category'));
+  });
+  check('basket: an opted-in uncovered category gets only the configured restricted policy plus a warning', () => {
+    const d = run(OPEN_BROWSE);
+    assert.deepEqual(d.commerce, { addToCart: 'allowed_with_warning', checkout: 'requires_compatibility_resolution' });
+    assert.ok(d.reasonCodes.includes('uncovered_catalog_category')); assert.match(d.warnings[0], /can't confirm compatibility/);
+  });
+  check('basket: the opt-in never rescues an unavailable, unknown or ambiguous SKU', () => {
+    const avail = { ...basketInput.availability };
+    assert.equal(run(OPEN_BROWSE, { products: [{ projectId: 'placemakers', sku: 'ODD-001', categoryId: 'brushes.paint', status: 'retired' }], availability: avail }).commerce.addToCart, 'blocked');
+    assert.equal(run(OPEN_BROWSE, { items: [{ sku: 'NOPE' }] }).commerce.addToCart, 'blocked');
+    assert.equal(run(OPEN_BROWSE, { products: [{ projectId: 'other', sku: 'ODD-001', categoryId: 'brushes.paint' }] }).commerce.addToCart, 'blocked');
+  });
+  check('basket: the strictest of governed and opted-in uncovered policy wins', () => {
+    const strict = { uncoveredShopping: { mode: 'catalogue_only', commerce: { addToCart: 'allowed_with_warning', checkout: 'requires_professional_confirmation' } } };
+    const d = run(strict, { items: [{ sku: 'ODD-001' }, { sku: 'SCREW-001' }], products: [
+      { projectId: 'placemakers', sku: 'ODD-001', categoryId: 'brushes.paint' },
+      { projectId: 'placemakers', sku: 'SCREW-001', categoryId: 'fastenings.screws' }] });
+    assert.equal(d.commerce.checkout, 'requires_professional_confirmation');
+    const alone = run(OPEN_BROWSE, { items: [{ sku: 'SCREW-001' }], products: [{ projectId: 'placemakers', sku: 'SCREW-001', categoryId: 'fastenings.screws' }] });
+    assert.equal(alone.commerce.checkout, 'requires_compatibility_resolution', 'governed products keep their own policy');
+  });
+}
+
+assert.equal(passed, 45 + 17 + 4);
 console.log(`✅ OKF gate suite: ${passed} passed, 0 failed`);

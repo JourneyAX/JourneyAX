@@ -22,6 +22,8 @@ export interface CatalogSearchInput {
   attributeFilters?: Record<string, any>;
   currency?: string;
   requireAuthoritativePrice?: boolean;
+  /** Every query word must match (instead of any), for existence probes such as classifying a bare noun. */
+  matchAllTokens?: boolean;
   groups?: Array<{
     conceptId: string;
     label: string;
@@ -42,7 +44,7 @@ interface QueryToken {
   regex: RegExp;
 }
 
-function tokenizeQuery(query: string): QueryToken[] {
+export function tokenizeQuery(query: string): QueryToken[] {
   const words = query
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -87,7 +89,11 @@ function scoreDocumentRelevance(doc: any, tokens: QueryToken[], mapping: Resolve
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class CatalogSearchHandler implements NativeCapabilityHandler {
-  constructor(private readonly inMemoryProducts?: any[]) {}
+  constructor(
+    private readonly inMemoryProducts?: any[],
+    /** Injected database (the runtime's own handle); falls back to MONGODB_URI when absent. */
+    private readonly dbProvider?: () => Promise<any>,
+  ) {}
 
   async execute(input: CatalogSearchInput, ctx: ExecutionContext): Promise<any> {
     if (input.groups?.length) {
@@ -157,7 +163,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         if (query) {
           const text = textOf(p, mapping.searchPaths);
           if (tokens.length > 0) {
-            if (!tokens.some((t) => t.regex.test(text))) return false;
+            const hit = (t: QueryToken) => t.regex.test(text);
+            if (!(input.matchAllTokens ? tokens.every(hit) : tokens.some(hit))) return false;
           } else if (!text.includes(query.toLowerCase())) {
             return false;
           }
@@ -170,12 +177,14 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       }
     } else {
       const uri = process.env.MONGODB_URI;
-      if (!uri) {
+      if (!uri && !this.dbProvider) {
         return { items: [], total: 0, error: 'Database connection required for catalog search' };
       }
 
       try {
-        const { db } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
+        const db = this.dbProvider
+          ? await this.dbProvider()
+          : (await connectToDatabase(uri!, process.env.MONGODB_DB_NAME || 'journeyx')).db;
 
         const excluded = [
           ...mapping.availability.excludeFlagPaths.map((path) => ({ [path]: true })),
@@ -205,7 +214,11 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           const matchers = tokens.length > 0
             ? tokens.map((t) => t.regex)
             : [new RegExp(escapeRegex(query), 'i')];
-          and.push({ $or: matchers.flatMap((regex) => anyOf(mapping.searchPaths, regex)) });
+          if (input.matchAllTokens && tokens.length > 0) {
+            for (const regex of matchers) and.push({ $or: anyOf(mapping.searchPaths, regex) });
+          } else {
+            and.push({ $or: matchers.flatMap((regex) => anyOf(mapping.searchPaths, regex)) });
+          }
         }
         for (const [filterKey, filterVal] of Object.entries(attributeFilters)) {
           const regex = new RegExp(`^${escapeRegex(String(filterVal))}$`, 'i');

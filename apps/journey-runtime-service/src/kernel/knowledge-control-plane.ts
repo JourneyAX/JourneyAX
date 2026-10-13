@@ -16,6 +16,7 @@ import {
   type OkfReleaseContent,
 } from '@journeyax/knowledge';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
+import { probeCatalogue } from './catalogue-probe';
 import type { InterpretationResult } from '../turn/interpret-event';
 
 export interface KnowledgeControlPlanePort {
@@ -192,6 +193,23 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
           knowledgeAvailability: { available: true, required, failurePolicy },
         });
         decision.trace.reasonCodes.push('workspace_concept_continuity');
+      }
+
+      // Only after conversation continuity had its chance: a request that matched no concept and carries no other class may still be a plain shopping request for
+      // something the live catalogue lists. Only a release that opted in to catalogue-only shopping pays for the probe.
+      if (
+        decision.trace.reasonCodes.includes('uncovered_unknown') &&
+        policy.coverage.uncoveredShopping.mode === 'catalogue_only' &&
+        await probeCatalogue(this.dbProvider, { tenantId: command.tenantId, message, catalogMapping: (release as any).catalogMapping })
+      ) {
+        decision = resolveOkfGate(content, {
+          ...inputBase,
+          exactSku,
+          catalogueMatch: true,
+          activeRevocations,
+          knowledgeAvailability: { available: true, required, failurePolicy },
+        });
+        decision.trace.reasonCodes.push('catalogue_probe_matched');
       }
 
       return decision;

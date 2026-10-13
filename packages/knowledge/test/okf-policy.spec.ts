@@ -349,4 +349,40 @@ test('locale policy survives bundle export and import', () => {
   assert.deepEqual(imported.draft.policy?.locales, localized.locales);
 });
 
+
+test('coverage defaults to fail-closed and only shopping can be opened', () => {
+  const resolved = resolveOkfPolicy();
+  assert.equal(resolved.coverage.uncoveredShopping.mode, 'blocked');
+  assert.deepEqual(resolved.coverage.uncoveredShopping.commerce, { addToCart: 'blocked', checkout: 'blocked' });
+  const open = { coverage: { uncoveredShopping: { mode: 'catalogue_only', commerce: { addToCart: 'allowed_with_warning', checkout: 'requires_compatibility_resolution' } } } };
+  assert.deepEqual(validateOkfTenantPolicy(open), []);
+  assert.equal(resolveOkfPolicy(open as any).coverage.uncoveredShopping.mode, 'catalogue_only');
+});
+
+test('coverage rejects unwarned add-to-cart, unknown modes and any attempt to open problems or technical requests', () => {
+  const bad = (coverage: unknown) => validateOkfTenantPolicy({ coverage }).length > 0;
+  assert.equal(bad({ uncoveredShopping: { mode: 'catalogue_only', commerce: { addToCart: 'allowed', checkout: 'allowed' } } }), true);
+  assert.equal(bad({ uncoveredShopping: { mode: 'open', commerce: { addToCart: 'blocked', checkout: 'blocked' } } }), true);
+  assert.equal(bad({ uncoveredProblem: { mode: 'catalogue_only' } }), true);
+  assert.equal(bad({ uncoveredTechnical: { mode: 'catalogue_only' } }), true);
+});
+
+test('the platform lexicon recognises hazards, technical questions and shopping requests', () => {
+  const policy = resolveOkfPolicy();
+  const intents = (text: string) => detectIntents(text, policy).intents;
+  for (const text of ['my appliance is sparking', 'there is water near the power points', 'i can smell gas', 'gas leak in the garage', 'my heater is smoking']) {
+    assert.ok(intents(text).includes('problem'), text);
+  }
+  for (const text of ['is it suitable for outdoor use', 'does this comply with the building code', 'is it load bearing']) {
+    assert.ok(intents(text).includes('technical_requirement'), text);
+  }
+  for (const text of ['i need some paint brushes', 'looking for a cordless drill', 'do you sell hinges', 'how much is a sheet of ply']) {
+    assert.ok(intents(text).includes('shopping'), text);
+  }
+  for (const text of ['complete laundry makeover', 'standard hinges', 'the cat sat on the mat']) {
+    assert.equal(intents(text).includes('technical_requirement'), false, `${text} must not read as technical`);
+  }
+  assert.equal(intents('water the garden').includes('problem'), false, 'ordinary water is not a hazard');
+});
+
 console.log(`✅ OKF policy suite: ${passed} passed, 0 failed`);

@@ -91,7 +91,9 @@ function productUnavailable(product: OkfBasketCatalogProduct, rules: OkfBasketAv
  * The current conversation's last matched concept is deliberately irrelevant.
  */
 export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfBasketCommerceInput): OkfBasketCommerceDecision {
-  const policyMessages = resolveOkfPolicy(content.policy).messages;
+  const resolvedPolicy = resolveOkfPolicy(content.policy);
+  const policyMessages = resolvedPolicy.messages;
+  const uncovered = resolvedPolicy.coverage.uncoveredShopping;
   if (!Array.isArray(input.items) || input.items.length === 0 || input.items.length > 100) {
     return { commerce: { ...BLOCKED }, warnings: [], reasonCodes: ['invalid_basket'], messages: policyMessages };
   }
@@ -127,6 +129,14 @@ export function resolveOkfBasketCommerce(content: OkfReleaseContent, input: OkfB
       concept.searchScope.catalogCategoryIds.some((id) => productCategories.has(id.trim().toLowerCase())) &&
       !concept.searchScope.excludeCategoryIds.some((id) => productCategories.has(id.trim().toLowerCase())));
     if (governing.length === 0) {
+      // Only an explicit, release-level opt-in lets an uncovered category into the basket, and then only with the
+      // restricted commerce policy the merchant configured. The product has already passed availability above.
+      if (uncovered.mode === 'catalogue_only') {
+        policy = strictest(policy, { ...uncovered.commerce });
+        reasonCodes.add('uncovered_catalog_category');
+        warnings.add(renderOkfMessage(policyMessages, 'uncovered_catalogue_only'));
+        continue;
+      }
       policy = strictest(policy, BLOCKED);
       reasonCodes.add('unmapped_catalog_category');
       continue;

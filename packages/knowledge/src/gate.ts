@@ -26,6 +26,8 @@ export interface OkfGateInput {
   matchedConcepts?: Array<{ id: string; score: number; matchedBy?: string }>;
   intentCandidates?: string[];
   exactSku?: string;
+  /** Live catalogue evidence that the message names something sold (supplied by the runtime, never assumed). */
+  catalogueMatch?: boolean;
   candidateCount?: number;
   journeyStage?: string;
   declinedQuestions?: string[];
@@ -321,6 +323,54 @@ function noMatch(input: OkfGateInput, reason: string, mode: OkfResponseMode = 'n
   };
 }
 
+export type UncoveredRequestKind = 'problem' | 'technical' | 'shopping' | 'operational' | 'unknown';
+
+/** Classifies a request that matched no governed concept. Hazards first, so nothing can outrank safety. */
+export function classifyUncoveredRequest(input: OkfGateInput, policy: ResolvedOkfPolicy, intents: string[]): UncoveredRequestKind {
+  if (intentInGroup(policy, 'problem', intents)) return 'problem';
+  if (intentInGroup(policy, 'operational', intents)) return 'operational';
+  if (intentInGroup(policy, 'technical', intents)) return 'technical';
+  if (input.exactSku || input.catalogueMatch || intentInGroup(policy, 'shopping', intents)) return 'shopping';
+  return 'unknown';
+}
+
+/**
+ * No governed concept matched. The result depends on what kind of request this is, never on a blanket default:
+ *  - problem/safety → escalate to a qualified professional; no products, no cart, no checkout, no invented guidance
+ *  - operational    → the operational journey
+ *  - technical      → no claims; clarify or refer to a specialist; no products
+ *  - shopping       → only if the release explicitly opts in: live-validated catalogue facts, no technical claims,
+ *                     cart/checkout limited to the configured policy (and still subject to per-product checks)
+ *  - unknown        → clarify; nothing is retrieved
+ */
+function uncoveredDecision(input: OkfGateInput, policy: ResolvedOkfPolicy, intents: string[]): OkfGateDecision {
+  const kind = classifyUncoveredRequest(input, policy, intents);
+  const tag = (decision: OkfGateDecision, ...codes: string[]) => { decision.trace.reasonCodes.push(...codes); return decision; };
+  if (kind === 'problem') {
+    const decision = noMatch(input, 'concept_not_found', 'safety_then_diagnose', policy);
+    decision.safety = { steps: [], blocksProducts: true, guidanceUnavailable: true, guidance: [] };
+    decision.claims = { allowedClasses: [], disclaimers: [] };
+    return tag(decision, 'uncovered_problem');
+  }
+  if (kind === 'operational') {
+    const decision = noMatch(input, 'operational_intent', 'operational_journey', policy);
+    decision.claims.disclaimers = [];
+    return decision;
+  }
+  if (kind === 'technical') {
+    const decision = noMatch(input, 'concept_not_found', 'no_match', policy);
+    decision.claims.disclaimers = [renderOkfMessage(policy.messages, 'uncovered_technical_unverified')];
+    return tag(decision, 'uncovered_technical');
+  }
+  if (kind === 'shopping' && policy.coverage.uncoveredShopping.mode === 'catalogue_only') {
+    const decision = noMatch(input, 'concept_not_found', 'legacy_search', policy);
+    decision.commerce = { ...policy.coverage.uncoveredShopping.commerce };
+    decision.claims = { allowedClasses: ['catalog_fact'], disclaimers: [renderOkfMessage(policy.messages, 'uncovered_catalogue_only')] };
+    return tag(decision, 'uncovered_shopping_catalogue_only');
+  }
+  return tag(noMatch(input, 'concept_not_found', 'no_match', policy), kind === 'shopping' ? 'uncovered_shopping_blocked' : 'uncovered_unknown');
+}
+
 export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput): OkfGateDecision {
   const policy = resolveOkfPolicy(content?.policy, input.locale);
   if (input.knowledgeAvailability && !input.knowledgeAvailability.available) {
@@ -343,7 +393,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
   if (operational && !intentInGroup(policy, 'problem', intents)) return operationalDecision();
 
   const { concept: initialConcept, matchedBy } = findConcept(content, input, policy);
-  if (!initialConcept) return operational ? operationalDecision() : noMatch(input, 'concept_not_found', 'no_match', policy);
+  if (!initialConcept) return uncoveredDecision(input, policy, intents);
   if (initialConcept.tenantId !== input.tenantId || tenantFromConceptId(initialConcept.conceptId) !== input.tenantId) {
     return noMatch(input, 'cross_tenant_concept_rejected', 'no_match', policy);
   }

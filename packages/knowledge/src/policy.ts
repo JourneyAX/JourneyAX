@@ -58,6 +58,21 @@ export const EvidenceClaimSchema = z.object({
   claimClass: ClaimClassSchema,
 }).strict().refine((entry) => Boolean(entry.intent) !== Boolean(entry.lens), 'exactly one of intent or lens is required');
 
+export const CoveragePolicySchema = z.object({
+  /**
+   * What a plain shopping request does when no governed concept matches. Problem, safety, technical and unknown
+   * requests are never configurable here: they always clarify or escalate and never get products or checkout.
+   */
+  uncoveredShopping: z.object({
+    mode: z.enum(['blocked', 'catalogue_only']),
+    commerce: z.object({
+      addToCart: z.enum(['allowed_with_warning', 'blocked']),
+      checkout: z.enum(['allowed', 'requires_compatibility_resolution', 'requires_professional_confirmation', 'blocked']),
+    }).strict(),
+  }).strict(),
+}).strict();
+export type CoveragePolicy = z.infer<typeof CoveragePolicySchema>;
+
 const MessageMapSchema = z.record(IdentifierSchema, z.string().min(1).max(MAX_MESSAGE_LENGTH));
 
 /** Full platform policy (defaults). Tenants cannot override `claimEvidence`. */
@@ -75,6 +90,7 @@ export const PlatformPolicySchema = z.object({
     }
   }),
   evidenceClaims: z.array(EvidenceClaimSchema).max(50),
+  coverage: CoveragePolicySchema,
   messages: MessageMapSchema,
 }).strict();
 
@@ -96,6 +112,7 @@ export const OkfTenantPolicySchema = z.object({
   sku: SkuPolicySchema.partial().optional(),
   verifierRoles: z.array(VerifierRoleSchema).max(50).optional(),
   evidenceClaims: z.array(EvidenceClaimSchema).max(50).optional(),
+  coverage: CoveragePolicySchema.optional(),
   messages: MessageMapSchema.optional(),
 }).strict();
 
@@ -211,6 +228,7 @@ export interface ResolvedOkfPolicy {
   verifierRoles: Map<string, { roleId: string; label?: string; claimClasses: ClaimClass[] }>;
   claimEvidence: Record<string, string[]>;
   evidenceClaims: Array<{ intent?: string; lens?: string; claimClass: ClaimClass }>;
+  coverage: CoveragePolicy;
   messages: Record<string, string>;
 }
 
@@ -275,6 +293,7 @@ export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null, locale?: strin
     verifierRoles: roles,
     claimEvidence: PLATFORM.claimEvidence,
     evidenceClaims: tenant?.evidenceClaims || PLATFORM.evidenceClaims,
+    coverage: tenant?.coverage || PLATFORM.coverage,
     messages: { ...PLATFORM.messages, ...(tenant?.messages || {}), ...(overlay?.messages || {}) },
   };
   perLocale.set(localeKey, resolved);
