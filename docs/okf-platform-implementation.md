@@ -426,3 +426,34 @@ Not done, and said plainly: the thresholds are defaults that have only been exer
 not on real customers or the real model's wording of an `answer`; real product descriptions will need their usage words and thresholds tuned
 through `dialoguePolicy`. Substitution/comparison questions are still worded by the model. A recommendation is "the best match to what you
 said", never "verified suitable": suitability still needs a verified claim.
+
+## The Knowledge screen, for a business
+
+The first version of the Studio's Knowledge tab was an engineer's control plane. Read by a business it was baffling: "unverified" on
+every link, a verification queue of **963** rows with no limit, and four blank-looking settings. What was wrong, and what changed:
+
+- **The queue listed things that make no claim.** `findStaleVerifications` lists every topic and link without a verification record, so for a
+  catalogue-shaped release that is everything: 449 "sits inside" links (a category's place in the tree), 30 "goes well with" suggestions and
+  ~460 ordinary categories. None of those states anything a customer could rely on, so there is nothing for a person to confirm.
+  `findVerificationWork` (knowledge package) keeps only what could change what the assistant may say: a link that carries a claim class, a
+  problem or care topic, a safety-critical or compatibility-sensitive topic, a topic with candidate manufacturer documents, and anything already
+  confirmed that was since edited or has expired. For PlaceMakers that is **279** (6 problems, 10 care, 10 compatibility, 253 document reviews; the
+  first 26 matter first, the document reviews can be done over time). The service's analysis returns this list, each with what it is about.
+- **"Not ready" no longer depends on it.** A release ships with unconfirmed advice withheld, so outstanding checks are *advisory*: shown, labelled
+  "does not block a release", and no longer make the release "not ready".
+- **The checklist is plain and bounded.** `VerificationQueue`: one explanation of why advice is held back ("this is a safety lock"), then each
+  kind of check (problems and safety, care, what goes with what, document reviews; the last marked "can wait"), each split by department with
+  "Assign all N" to hand a whole department to one named person in one save. Every list scrolls inside its own box, so the page no longer grows with
+  the catalogue. Links that make no claim are summarised ("449 only place topics in the catalogue"), not flagged.
+- **A plain summary first** (`KnowledgeSummary`): whether customers are served and with which release, topics, products it can find, confirmed
+  by a person, waiting for a person. The engineering detail (coverage tables, topic editor, links, readiness, preview, withdrawals, import/export,
+  raw editor, history) is folded into "For engineers".
+- **Pack settings say what is in effect without opening them**: "Set: …", "Built-in defaults: …" (not a gap) or "Needs a value" (the default
+  journey, required before a multi-journey project can publish). The boxes now refill when the project reloads, and the tab reads the project
+  again when it opens and after each save; before, they were filled once from the project as it was when the page first loaded, so a release applied
+  since (by the script, or in another tab) showed as empty.
+
+What this does **not** do: nobody has verified anything. A verification is a named person saying they checked a manufacturer's document and it
+applies; an assistant cannot be that person. Assigning needs real people and roles (Studio: "Who belongs to each role"), and each checker must
+confirm their own items.
+

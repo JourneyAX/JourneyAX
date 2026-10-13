@@ -292,8 +292,10 @@ export interface OkfAnalysis {
   revision: number;
   artifactRequired: boolean;
   verifierRoles: Array<{ roleId: string; label: string }>;
-  staleness: Array<{ targetType: 'concept' | 'relationship'; targetId: string; reason: 'edited_since_verification' | 'unverified' | 'expired' }>;
-  checks: Array<{ id: string; ok: boolean; detail?: string }>;
+  /** What a person can act on (not the whole category tree). `about` is what the check is for. */
+  staleness: Array<{ targetType: 'concept' | 'relationship'; targetId: string; reason: 'edited_since_verification' | 'unverified' | 'expired'; about?: 'safety' | 'compatibility' | 'care' | 'documents' }>;
+  /** An `advisory` check is information, never a reason a release is not ready. */
+  checks: Array<{ id: string; ok: boolean; detail?: string; advisory?: boolean }>;
   ready: boolean;
 }
 

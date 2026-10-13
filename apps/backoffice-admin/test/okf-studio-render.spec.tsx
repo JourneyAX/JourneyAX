@@ -32,7 +32,7 @@ const content: any = {
 const analysis: any = {
   tenantId: 't', environmentId: 'production', revision: 2, artifactRequired: true, verifierRoles: [{ roleId: 'trade_expert', label: 'Trade expert' }],
   staleness: [{ targetType: 'concept', targetId: 'concept://t/a', reason: 'unverified' }],
-  checks: [{ id: 'draft_valid', ok: true }, { id: 'verifications_current', ok: false, detail: '1 item(s) need verification' }, { id: 'unknown_future_check', ok: false }],
+  checks: [{ id: 'draft_valid', ok: true }, { id: 'verifications_current', ok: false, detail: '1 item(s) need verification', advisory: true }, { id: 'unknown_future_check', ok: false }],
   ready: false,
 };
 const noop = () => undefined;
@@ -44,6 +44,7 @@ check('readiness lists server checks with friendly labels and falls back to the 
   assert.match(html, /Not ready/);
   assert.match(html, /passes validation/);
   assert.match(html, /1 item\(s\) need verification/);
+  assert.match(html, /does not block a release/, 'outstanding checks are information, not a blocker');
   assert.match(html, /unknown_future_check/);
   assert.match(renderToStaticMarkup(<ReadinessPanel analysis={null} />), /once a draft exists/);
 });
@@ -51,18 +52,30 @@ check('readiness lists server checks with friendly labels and falls back to the 
 check('relationships show names, type and a verification badge', () => {
   const html = renderToStaticMarkup(<RelationshipList content={content} />);
   assert.match(html, /Toilet suites/);
-  assert.match(html, /compatible with/);
+  assert.match(html, /works with/, 'the link reads in plain words');
   assert.match(html, /Verified/);
+  // Links that make no claim are summarised, not flagged "unverified".
+  const mixed = structuredClone(content);
+  mixed.relationships.push({ relationshipId: 'tree', from: 'concept://t/a', to: 'concept://t/a', type: 'child_of', strength: 'required', scope: 'category', confidence: 'high', claimClasses: [], contentHash: hash('c') });
+  const summary = renderToStaticMarkup(<RelationshipList content={mixed} />);
+  assert.match(summary, /2 links in all\. 1 states something a customer could rely on/);
+  assert.match(summary, /Show the 1 links that make no claim/);
+  assert.match(summary, /No claim/);
+  assert.doesNotMatch(summary, /Unverified/);
 });
 
 check('verification queue groups stale items and offers attestation for verified records', () => {
   const html = renderToStaticMarkup(
     <VerificationQueue analysis={analysis} content={content} roles={analysis.verifierRoles} busy={false} onAssign={noop} onAttest={noop} onConfigureRole={noop} />,
   );
-  assert.match(html, /Not verified \(1\)/);
+  assert.match(html, /Things only a person can confirm/);
+  assert.match(html, /Manufacturer documents to review \(1\)/);
+  assert.match(html, /can wait/);
+  assert.match(html, /Assign all 1/);
   assert.match(html, /Trade expert/);
   assert.match(html, /Attest/);
-  assert.match(html, /not the draft author/);
+  assert.match(html, /not the person who drafted this/);
+  assert.match(renderToStaticMarkup(<VerificationQueue analysis={{ ...analysis, staleness: [] }} content={content} roles={analysis.verifierRoles} busy={false} onAssign={noop} onAttest={noop} onConfigureRole={noop} />), /Nothing is waiting for a person/);
 });
 
 check('revocation panel separates active revocations and requires a corrected release to lift', () => {
@@ -104,7 +117,15 @@ check('pack settings show current values and blank for platform defaults', () =>
   assert.match(html, /candidateLimit/);
   assert.match(html, /idleRepinAfterHours/);
   assert.match(html, /Empty = platform defaults/);
-  assert.match(html, /validated by the service/);
+  assert.match(html, /checked by the service/);
+  // Each line says what is in effect without opening it: set, built-in defaults, or needs a value.
+  assert.match(html, /Set: candidate limit/);
+  assert.match(html, /Set: a conversation idle for 12 hours/);
+  assert.match(html, /Built-in defaults: it asks only when a question helps/);
+  assert.match(html, /Needs a value[\s\S]*Not set: required before a project with several journeys can be published/);
+  const assigned = renderToStaticMarkup(<PackSettingsEditor project={{ ...project, routingPolicy: { defaultJourneyId: 'placemakers_shop', fallbackOnCatalogSearch: true } } as any} />);
+  assert.match(assigned, /requests no other journey matches go to “placemakers_shop”/);
+  assert.doesNotMatch(assigned, /Needs a value/);
 });
 
 console.log(`✅ backoffice OKF Studio components: ${passed} passed, 0 failed`);

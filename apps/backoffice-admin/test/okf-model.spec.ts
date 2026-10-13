@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-  assignVerifier, formatList, groupStaleness, parseList, patchConcept, relationshipBadge, splitRevocations,
+  areaResolver, assignVerifier, assignVerifiers, formatList, groupStaleness, groupVerificationWork, parseList, patchConcept, relationshipBadge,
+  relationshipMakesClaim, relationshipWords, splitRevocations,
 } from '../src/components/okf/okf-model';
 
 let passed = 0;
@@ -18,7 +19,7 @@ const content = (): any => ({
     lifecycle: { status: 'active_draft' }, requiredFacts: [], searchScope: { catalogCategoryIds: [], enrichmentFacets: [], excludeCategoryIds: [] },
     contentHash: hash('a'), evidenceRefs: ['src-1'],
   }, { conceptId: 'concept://t/b', name: 'B', contentHash: hash('b') }],
-  relationships: [{ relationshipId: 'rel-1', contentHash: hash('c'), sourceRefs: ['src-2'] }, { relationshipId: 'rel-2', contentHash: hash('d') }],
+  relationships: [{ relationshipId: 'rel-1', claimClasses: ['compatibility'], contentHash: hash('c'), sourceRefs: ['src-2'] }, { relationshipId: 'rel-2', claimClasses: ['compatibility'], contentHash: hash('d') }],
   verifications: [{ recordId: 'v1', targetType: 'relationship', targetId: 'rel-1', status: 'verified', verifiedBy: 'human:bob', verifierRole: 'trade_expert', contentHash: hash('c') }],
 });
 
@@ -77,6 +78,70 @@ check('assignVerifier writes a record bound to the current hash and replaces an 
   assert.equal(replaced.verifications[0].verifiedBy, 'human:carol');
   assert.throws(() => assignVerifier(draft, { targetType: 'concept', targetId: 'concept://t/a', verifiedBy: ' ', verifierRole: 'x' }), /verifier and a verifier role/);
   assert.throws(() => assignVerifier(draft, { targetType: 'relationship', targetId: 'nope', verifiedBy: 'a', verifierRole: 'b' }), /not in the draft/);
+});
+
+check('a link that makes no claim says so instead of "Unverified"; one that does still needs a person', () => {
+  const draft = content();
+  const tree = { relationshipId: 'tree', type: 'child_of', claimClasses: [], contentHash: hash('e') };
+  assert.equal(relationshipMakesClaim(tree), false);
+  assert.equal(relationshipMakesClaim(draft.relationships[1]), true);
+  assert.deepEqual([relationshipBadge(draft, tree).label, relationshipBadge(draft, tree).tone], ['No claim', 'neutral']);
+  assert.equal(relationshipBadge(draft, draft.relationships[1]).label, 'Unverified');
+  assert.equal(relationshipWords('child_of'), 'sits inside');
+  assert.equal(relationshipWords('some_future_type'), 'some future type', 'an unknown type reads in its own words');
+});
+
+// A small shop: two departments, a problem, a care guide, a suggestion and a tree link.
+const shop = (): any => {
+  const concept = (id: string, name: string, over: object = {}) => ({ conceptId: `concept://t/${id}`, name, lens: 'product', riskClass: 'standard', contentHash: hash('a'), ...over });
+  return {
+    concepts: [
+      concept('fastenings', 'Fastenings'), concept('fastenings/screws', 'Screws', { riskClass: 'compatibility' }), concept('fastenings/nails', 'Nails'),
+      concept('bathrooms', 'Bathrooms'), concept('bathrooms/vanities', 'Vanities'),
+      concept('problems/leak', 'Bathroom leak', { lens: 'problem', riskClass: 'safety_critical' }), concept('care/deck', 'Deck care', { lens: 'care' }),
+    ],
+    relationships: [
+      { relationshipId: 'r1', type: 'child_of', from: 'concept://t/fastenings/screws', to: 'concept://t/fastenings', claimClasses: [] },
+      { relationshipId: 'r2', type: 'child_of', from: 'concept://t/fastenings/nails', to: 'concept://t/fastenings', claimClasses: [] },
+      { relationshipId: 'r3', type: 'child_of', from: 'concept://t/bathrooms/vanities', to: 'concept://t/bathrooms', claimClasses: [] },
+      { relationshipId: 'r4', type: 'care_for', from: 'concept://t/care/deck', to: 'concept://t/fastenings/nails', claimClasses: ['care_safety'] },
+    ],
+    verifications: [],
+  };
+};
+const entry = (targetId: string, about: string, reason = 'unverified', targetType = 'concept'): any => ({ targetType, targetId, reason, about });
+
+check('the work list is grouped safety first, each kind split by the part of the shop it belongs to', () => {
+  const draft = shop();
+  const area = areaResolver(draft);
+  assert.equal(area({ targetType: 'concept', targetId: 'concept://t/fastenings/screws' }), 'Fastenings', 'a topic sits under its department');
+  assert.equal(area({ targetType: 'concept', targetId: 'concept://t/fastenings' }), 'Fastenings', 'a department is its own');
+  assert.equal(area({ targetType: 'concept', targetId: 'concept://t/problems/leak' }), 'Problems');
+  assert.equal(area({ targetType: 'concept', targetId: 'concept://t/care/deck' }), 'Care guides');
+  assert.equal(area({ targetType: 'relationship', targetId: 'r4' }), 'Care guides', 'a link belongs where it starts');
+  assert.equal(area({ targetType: 'concept', targetId: 'concept://t/nope' }), 'Other');
+
+  const { changed, groups } = groupVerificationWork([
+    entry('concept://t/fastenings/nails', 'documents'), entry('concept://t/bathrooms/vanities', 'documents'), entry('concept://t/fastenings/screws', 'compatibility'),
+    entry('concept://t/problems/leak', 'safety'), entry('concept://t/care/deck', 'care'), entry('r4', 'care', 'unverified', 'relationship'),
+    entry('concept://t/fastenings', 'documents', 'edited_since_verification'),
+  ], draft);
+  assert.deepEqual(groups.map((group) => [group.topic, group.count]), [['safety', 1], ['care', 2], ['compatibility', 1], ['documents', 2]]);
+  assert.deepEqual(groups.map((group) => group.optional), [false, false, false, true], 'document reviews can wait');
+  assert.deepEqual(groups[3].areas.map((a) => [a.area, a.items.length]), [['Bathrooms', 1], ['Fastenings', 1]].sort((a, b) => (a[0] < b[0] ? -1 : 1)), 'ties are alphabetical');
+  assert.deepEqual(changed.map((item) => item.label), ['Fastenings'], 'something confirmed and then edited comes first');
+  assert.equal(groups[1].areas.find((a) => a.area === 'Care guides')!.items.find((item) => item.entry.targetId === 'r4')!.label, 'Deck care is cared for with Nails', 'a link reads as a sentence');
+  assert.deepEqual(groupVerificationWork([], draft), { changed: [], groups: [] });
+});
+
+check('a whole department can be handed to one person in one save', () => {
+  const draft = shop();
+  const targets = [{ targetType: 'concept' as const, targetId: 'concept://t/fastenings/screws' }, { targetType: 'concept' as const, targetId: 'concept://t/fastenings/nails' }, { targetType: 'relationship' as const, targetId: 'r4' }];
+  const next = assignVerifiers(draft, targets, { verifiedBy: 'human:dana', verifierRole: 'trade_expert', now: new Date('2026-10-11T00:00:00Z') });
+  assert.equal(next.verifications.length, 3);
+  assert.ok(next.verifications.every((record: any) => record.verifiedBy === 'human:dana' && record.verifierRole === 'trade_expert' && record.status === 'verified'));
+  assert.equal(draft.verifications.length, 0, 'input is not mutated');
+  assert.throws(() => assignVerifiers(draft, [...targets, { targetType: 'concept', targetId: 'concept://t/missing' }], { verifiedBy: 'human:dana', verifierRole: 'x' }), /not in the draft/);
 });
 
 check('revocations split into active and history', () => {

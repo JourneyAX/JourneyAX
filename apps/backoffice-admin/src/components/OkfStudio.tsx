@@ -7,13 +7,14 @@ import {
   type KnowledgeCoverage, type KnowledgeLifecycle,
   type OkfAnalysis, type OkfDraft, type OkfReleaseMeta, type OkfRevocationSummary, type Project,
 } from "../lib/api";
-import { ENVIRONMENTS, assignVerifier, type EnvironmentId } from "./okf/okf-model";
+import { ENVIRONMENTS, assignVerifier, assignVerifiers, type EnvironmentId } from "./okf/okf-model";
 import { ArtifactPolicyToggle } from "./okf/ArtifactPolicyToggle";
 import { ConceptEditor } from "./okf/ConceptEditor";
 import { CoveragePanel } from "./okf/CoveragePanel";
 import { DecisionPreview } from "./okf/DecisionPreview";
 import { LifecyclePanel } from "./okf/LifecyclePanel";
 import { ImportExportBar } from "./okf/ImportExportBar";
+import { KnowledgeSummary } from "./okf/KnowledgeSummary";
 import { ReadinessPanel } from "./okf/ReadinessPanel";
 import { RelationshipList } from "./okf/RelationshipList";
 import { RevocationPanel } from "./okf/RevocationPanel";
@@ -160,6 +161,11 @@ export function OkfStudio({ project }: { project: Project }) {
     await persist(assignVerifier(draft.content, { ...target, verifiedBy, verifierRole }), `Verifier assigned for ${target.targetId}. They must now attest it themselves.`);
   });
 
+  const assignMany = (targets: Array<{ targetType: "concept" | "relationship"; targetId: string }>, verifiedBy: string, verifierRole: string) => act("assign", async () => {
+    if (!draft) throw new Error("No draft to update.");
+    await persist(assignVerifiers(draft.content, targets, { verifiedBy, verifierRole }), `${targets.length} topic${targets.length === 1 ? "" : "s"} assigned to ${verifiedBy}. They must now confirm each one themselves.`);
+  });
+
   const attest = (recordId: string) => act("attest", async () => {
     if (!draft) throw new Error("No draft to attest.");
     await okfApi.attest(project.projectId, recordId, draft.revision, environmentId);
@@ -187,10 +193,11 @@ export function OkfStudio({ project }: { project: Project }) {
     <div className="panel" style={{ borderColor: "var(--jx-gray-300)", marginBottom: 16 }}>
       <div className="between" style={{ alignItems: "flex-start", gap: 16 }}>
         <div>
-          <div className="micro"><Brain size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />STRUCTURED BUSINESS KNOWLEDGE</div>
-          <h3 style={{ margin: "4px 0" }}>OKF control plane</h3>
-          <p className="micro" style={{ maxWidth: 760, color: "var(--jx-gray-600)" }}>
-            Concepts decide what to ask and what may be claimed. Verified evidence explains. Live catalogue and commerce APIs still own products, price and stock.
+          <div className="micro"><Brain size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />WHAT THE ASSISTANT KNOWS</div>
+          <h3 style={{ margin: "4px 0" }}>Your assistant&apos;s knowledge</h3>
+          <p className="micro" style={{ maxWidth: 760, color: "var(--jx-gray-600)", textTransform: "none", letterSpacing: 0 }}>
+            Built from your catalogue and journeys; you do not write it. You come here to see what is covered, to have your experts confirm the advice the assistant is not yet allowed to give,
+            and to put a new release live.
           </p>
         </div>
         <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
@@ -199,107 +206,118 @@ export function OkfStudio({ project }: { project: Project }) {
               {ENVIRONMENTS.map((env) => <option key={env} value={env}>{env}</option>)}
             </select>
           </label>
-        <span className={`pill ${draft?.validation?.valid ? "p-active" : "p-draft"}`}>
-          {draft ? (draft.validation?.valid ? `Draft r${draft.revision} valid` : `Draft r${draft.revision} needs review`) : "No draft"}
-        </span>
+          <span className={`pill ${draft?.validation?.valid ? "p-active" : "p-draft"}`}>
+            {draft ? (draft.validation?.valid ? `Draft r${draft.revision} valid` : `Draft r${draft.revision} needs review`) : "No draft"}
+          </span>
         </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
-        {Object.entries(summary).map(([label, value]) => (
-          <div key={label} style={{ background: "var(--jx-gray-100)", borderRadius: 8, padding: "9px 10px" }}>
-            <div className="micro" style={{ textTransform: "uppercase" }}>{label}</div>
-            <strong style={{ fontSize: 20 }}>{value}</strong>
-          </div>
-        ))}
       </div>
 
       {notice && <div className="node" style={{ marginTop: 12, borderColor: "#52c41a", background: "#f6ffed" }}><CheckCircle2 size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />{notice}</div>}
       {error && <div className="node" style={{ marginTop: 12, borderColor: "var(--jx-destructive)", background: "#fff1f0" }}><AlertTriangle size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />{error}</div>}
 
+      <div style={{ marginTop: 14 }}><KnowledgeSummary lifecycle={lifecycle} coverage={coverage} analysis={analysis} verifiedByPeople={summary.verified} /></div>
       <div style={{ marginTop: 14 }}><LifecyclePanel lifecycle={lifecycle} /></div>
-      <details open style={{ marginTop: 14 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 700 }}>Coverage and what is missing</summary>
-        <div style={{ marginTop: 8 }}><CoveragePanel coverage={coverage} /></div>
-      </details>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, .85fr)", gap: 14, marginTop: 14 }}>
-        <div>
-          <div className="between"><h4>Concepts</h4><span className="micro">{summary.relationships} typed relationships</span></div>
-          {!draft && <div className="micro" style={{ padding: 6 }}>Import an OKF bundle or paste a typed draft to begin. Nothing in the legacy packs folder is read here.</div>}
-          {draft && <ConceptEditor content={draft.content} busy={busy !== null} onSave={saveContent} />}
-          <h4 style={{ marginTop: 14 }}>Relationships</h4>
-          <RelationshipList content={draft?.content} />
-        </div>
-
-        <div style={{ display: "grid", gap: 14, alignContent: "start" }}>
-          <ReadinessPanel analysis={analysis} />
-          <ArtifactPolicyToggle required={Boolean(analysis?.artifactRequired)} disabled={busy !== null} onChange={setArtifactPolicy} />
-          <div>
-            <h4>Conversation preview</h4>
-            <textarea className="inp" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
-            <button className="btn" style={{ marginTop: 8 }} onClick={() => runPreview()} disabled={!draft || busy === "preview"}><Play size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />What would the assistant use?</button>
-            <DecisionPreview preview={preview} onAnswer={(factKey, value) => runPreview({ ...previewFacts, [factKey]: value })} />
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 16 }}>
+      <div style={{ marginTop: 16 }}>
         <VerificationQueue
           analysis={analysis} content={draft?.content} busy={busy !== null}
           roles={analysis?.verifierRoles || []}
-          onAssign={assign} onAttest={attest} onConfigureRole={configureRole}
-        />
-        <RevocationPanel
-          revocations={revocations} releases={releases}
-          concepts={(draft?.content?.concepts || []).map((concept: any) => ({ conceptId: concept.conceptId, name: concept.name }))}
-          busy={busy !== null} onCreate={createRevocation} onLift={liftRevocation}
+          onAssign={assign} onAssignMany={assignMany} onAttest={attest} onConfigureRole={configureRole}
         />
       </div>
-
-      <div style={{ marginTop: 14 }}>
-        <ImportExportBar releases={releases} busy={busy !== null} onImport={importBundle} onExport={exportRelease} />
-      </div>
-
-      <details style={{ marginTop: 14 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 700 }}>Advanced typed release editor</summary>
-        <p className="micro" style={{ color: "var(--jx-gray-600)" }}>Strict JSON contract. Unknown fields, broken references, stale verification and unsigned evidence are rejected by the service.</p>
-        <textarea className="inp" style={{ width: "100%", minHeight: 300, fontFamily: "monospace", fontSize: 11 }} value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste an OKF release-content document…" />
-        <div className="actions" style={{ marginTop: 8 }}>
-          <button className="btn" onClick={saveDraft} disabled={busy === "save"}><Save size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Save draft</button>
-          <button className="btn" onClick={validate} disabled={!draft || busy === "validate"}><ShieldCheck size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Validate</button>
-        </div>
-        {draft && !draft.validation.valid && (
-          <div style={{ marginTop: 10, maxHeight: 180, overflow: "auto" }}>
-            {draft.validation.issues.map((issue, index) => <div key={`${issue.code}-${index}`} className="micro" style={{ color: "var(--jx-destructive)" }}>{issue.code}: {issue.message}</div>)}
-          </div>
-        )}
-      </details>
 
       <div className="between" style={{ marginTop: 16, alignItems: "end" }}>
         <div>
-          <h4 style={{ marginBottom: 5 }}>Release</h4>
+          <h4 style={{ marginBottom: 5 }}>Put a new release live</h4>
+          <p className="micro" style={{ textTransform: "none", letterSpacing: 0, color: "var(--jx-gray-600)", margin: "0 0 6px" }}>Step 1 freezes this draft as a release. Step 2 publishes it with the Business Pack, so customers get both together.</p>
           <label className="micro">Version</label>
           <input className="inp" style={{ width: 150 }} value={version} onChange={(e) => setVersion(e.target.value)} />
         </div>
         <div className="actions">
-          <button className="btn" onClick={publishKnowledge} disabled={!draft?.validation?.valid || busy === "publish"}><UploadCloud size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Publish immutable OKF</button>
-          <button className="btn y" onClick={activate} disabled={!hasStagedRelease || busy === "activate"}><GitBranch size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Publish Business Pack</button>
+          <button className="btn" onClick={publishKnowledge} disabled={!draft?.validation?.valid || busy === "publish"}><UploadCloud size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />1. Freeze this release</button>
+          <button className="btn y" onClick={activate} disabled={!hasStagedRelease || busy === "activate"}><GitBranch size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />2. Publish with the Business Pack</button>
         </div>
       </div>
 
-      {releases.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <div className="micro">RELEASE HISTORY</div>
-          {releases.map((release) => (
-            <div key={release.releaseId} className="between" style={{ padding: "8px 0", borderBottom: "1px solid var(--jx-gray-200)" }}>
-              <div><b>{release.version}</b> <span className="micro">{release.status} · {shortChecksum(release.checksum)}</span></div>
-              <button className="btn" onClick={() => stageRelease(release)} disabled={busy === `stage:${release.releaseId}`}>Stage release</button>
+      <details style={{ marginTop: 18 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700 }}>For engineers: coverage detail, topics, links, releases and the raw editor</summary>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginTop: 10 }}>
+          {Object.entries(summary).map(([label, value]) => (
+            <div key={label} style={{ background: "var(--jx-gray-100)", borderRadius: 8, padding: "9px 10px" }}>
+              <div className="micro" style={{ textTransform: "uppercase" }}>{label}</div>
+              <strong style={{ fontSize: 20 }}>{value}</strong>
             </div>
           ))}
-          <p className="micro" style={{ color: "var(--jx-gray-500)" }}>Activation and rollback happen through Business Pack Config History so journey, cards, tools and knowledge move together.</p>
         </div>
-      )}
+
+        <details open style={{ marginTop: 14 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Coverage and what is missing</summary>
+          <div style={{ marginTop: 8 }}><CoveragePanel coverage={coverage} /></div>
+        </details>
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, .85fr)", gap: 14, marginTop: 14 }}>
+          <div>
+            <div className="between"><h4>Topics</h4><span className="micro">{summary.relationships} links</span></div>
+            {!draft && <div className="micro" style={{ padding: 6 }}>Import an OKF bundle or paste a typed draft to begin. Nothing in the legacy packs folder is read here.</div>}
+            {draft && <ConceptEditor content={draft.content} busy={busy !== null} onSave={saveContent} />}
+            <h4 style={{ marginTop: 14 }}>How topics connect</h4>
+            <RelationshipList content={draft?.content} />
+          </div>
+
+          <div style={{ display: "grid", gap: 14, alignContent: "start" }}>
+            <ReadinessPanel analysis={analysis} />
+            <ArtifactPolicyToggle required={Boolean(analysis?.artifactRequired)} disabled={busy !== null} onChange={setArtifactPolicy} />
+            <div>
+              <h4>Conversation preview</h4>
+              <textarea className="inp" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
+              <button className="btn" style={{ marginTop: 8 }} onClick={() => runPreview()} disabled={!draft || busy === "preview"}><Play size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />What would the assistant use?</button>
+              <DecisionPreview preview={preview} onAnswer={(factKey, value) => runPreview({ ...previewFacts, [factKey]: value })} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <RevocationPanel
+            revocations={revocations} releases={releases}
+            concepts={(draft?.content?.concepts || []).map((concept: any) => ({ conceptId: concept.conceptId, name: concept.name }))}
+            busy={busy !== null} onCreate={createRevocation} onLift={liftRevocation}
+          />
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <ImportExportBar releases={releases} busy={busy !== null} onImport={importBundle} onExport={exportRelease} />
+        </div>
+
+        <details style={{ marginTop: 14 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Advanced typed release editor</summary>
+          <p className="micro" style={{ color: "var(--jx-gray-600)" }}>Strict JSON contract. Unknown fields, broken references, stale verification and unsigned evidence are rejected by the service.</p>
+          <textarea className="inp" style={{ width: "100%", minHeight: 300, fontFamily: "monospace", fontSize: 11 }} value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste an OKF release-content document…" />
+          <div className="actions" style={{ marginTop: 8 }}>
+            <button className="btn" onClick={saveDraft} disabled={busy === "save"}><Save size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Save draft</button>
+            <button className="btn" onClick={validate} disabled={!draft || busy === "validate"}><ShieldCheck size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />Validate</button>
+          </div>
+          {draft && !draft.validation.valid && (
+            <div style={{ marginTop: 10, maxHeight: 180, overflow: "auto" }}>
+              {draft.validation.issues.map((issue, index) => <div key={`${issue.code}-${index}`} className="micro" style={{ color: "var(--jx-destructive)" }}>{issue.code}: {issue.message}</div>)}
+            </div>
+          )}
+        </details>
+
+        {releases.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div className="micro">RELEASE HISTORY</div>
+            <div style={{ maxHeight: 240, overflow: "auto" }}>
+              {releases.map((release) => (
+                <div key={release.releaseId} className="between" style={{ padding: "8px 0", borderBottom: "1px solid var(--jx-gray-200)" }}>
+                  <div><b>{release.version}</b> <span className="micro">{release.status} · {shortChecksum(release.checksum)}</span></div>
+                  <button className="btn" onClick={() => stageRelease(release)} disabled={busy === `stage:${release.releaseId}`}>Stage release</button>
+                </div>
+              ))}
+            </div>
+            <p className="micro" style={{ color: "var(--jx-gray-500)" }}>Activation and rollback happen through Business Pack Config History so journey, cards, tools and knowledge move together.</p>
+          </div>
+        )}
+      </details>
     </div>
   );
 }

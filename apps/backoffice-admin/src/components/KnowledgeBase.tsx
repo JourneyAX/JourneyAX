@@ -139,6 +139,14 @@ export function KnowledgeBase({ project }: { project: Project }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // The project this tab was opened with can be out of date: it was read when the page first loaded, and a release applied or a setting
+  // saved since (here or by a script) would not be in it. Read it again on opening and after every save, so what is shown is what is stored.
+  const [current, setCurrent] = useState<Project>(project);
+  const refreshProject = useCallback(async () => {
+    try { setCurrent(await projectApi.get(project.projectId)); } catch { /* keep showing what we have */ }
+  }, [project.projectId]);
+  useEffect(() => { setCurrent(project); void refreshProject(); }, [project, refreshProject]);
+
   async function runDedup() {
     if (!confirm(`Remove duplicate chunks for "${brand}"? Keeps the newest of each duplicate group.`)) return;
     setDedupBusy(true);
@@ -172,8 +180,8 @@ export function KnowledgeBase({ project }: { project: Project }) {
 
   return (
     <>
-      <OkfStudio project={project} />
-      <PackSettingsEditor project={project} onSaved={load} />
+      <OkfStudio project={current} />
+      <PackSettingsEditor project={current} onSaved={() => { void load(); void refreshProject(); }} />
       <IngestionSources project={project} onSaved={load} />
       <div className="ctop">
         <div>
