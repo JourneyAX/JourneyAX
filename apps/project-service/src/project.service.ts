@@ -487,7 +487,7 @@ export class ProjectService {
     // Pack settings are validated at write time so an invalid one can never reach a publish.
     const $unset: Record<string, ''> = {};
     const settings = validatePackSettings(dto as any);
-    if (!settings.ok) return { success: false, message: settings.message };
+    if (settings.ok === false) return { success: false, message: settings.message };
     for (const [path, value] of Object.entries(settings.set)) {
       if (value === null) $unset[path] = ''; else $set[path] = value;
     }

@@ -4,6 +4,9 @@
       "test-support",
       "business-pack",
       "knowledge",
+      "journey-core",
+      "canary",
+      "public-path",
       "capability-sdk",
       "database",
       "project-service",
@@ -23,7 +26,9 @@
       "tsc:api-gateway",
       "tsc:agent-commerce-service",
       "tsc:journeyax-web",
-      "tsc:backoffice-admin"
+      "tsc:backoffice-admin",
+      "tsc:canary",
+      "tsc:public-path"
     ],
     "extended": [
       "agent-commerce-service",
@@ -129,6 +134,26 @@
     "tsc:backoffice-admin": {
       "cwd": "apps/backoffice-admin",
       "command": "npx tsc --noEmit -p ."
+    },
+    "journey-core": {
+      "cwd": "packages/journey-core",
+      "command": "npm test"
+    },
+    "canary": {
+      "cwd": "packages/canary",
+      "command": "npm test"
+    },
+    "public-path": {
+      "cwd": ".",
+      "command": "npx tsx --tsconfig tests/public-path/tsconfig.json tests/public-path/public-path.spec.ts && npx tsx --tsconfig tests/public-path/tsconfig.json tests/public-path/cards-render.spec.tsx && npx tsx --tsconfig tests/public-path/tsconfig.json tests/public-path/release-lifecycle.spec.ts"
+    },
+    "tsc:canary": {
+      "cwd": "packages/canary",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:public-path": {
+      "cwd": ".",
+      "command": "npx tsc --noEmit -p tests/public-path"
     }
   }
 }

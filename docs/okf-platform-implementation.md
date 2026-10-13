@@ -188,8 +188,8 @@ catalogue capability and shown as an `accessories` card whose heading and note c
 targets, never beside a problem, care or evidence answer, and never marks anything as compatible. Adding to the basket still goes
 through the per-product commerce policy.
 
-**Disclaimers are guaranteed.** Any disclaimer the gate requires and the composed message omitted is appended
-deterministically. A suitability/compliance/compatibility question about a concept we can list returns the listing plus the
+**Notices are guaranteed.** Any customer notice the gate requires (`claims.notices`) and the composed message omitted is appended
+deterministically; the agent-facing `claims.disclaimers` (which can name internal ids) are never shown verbatim (Phase 7). A suitability/compliance/compatibility question about a concept we can list returns the listing plus the
 `technical_requirement_unverified` statement and no claim class.
 
 **A bare SKU is governed.** An exact product code that names no concept in words resolves to the most specific concept its
@@ -246,4 +246,70 @@ a person say what each field means. Saving is enabled only after a current check
 Not done in this phase: showing, for a past real conversation, which knowledge the assistant used (turn decisions are not persisted with
 the knowledge trace yet — the preview shows what it *would* use for a message); editing a concept's catalogue category paths in the concept
 editor (they are preserved on save, and visible in the Advanced JSON); an in-product guided *import* of the authoring spec.
+
+## Evaluation, public path and customer wording (Phase 7)
+
+**Coverage-driven evaluation** (`packages/knowledge/src/evaluation.ts`). Scenarios are generated from the release and the
+catalogue snapshot, not hand-picked, and run through the real gate and basket policy (nothing stubbed): ten families — routing,
+scope, commerce, safety, technical claims, evidence, exact SKU, cross-sell, negative and the tenant's own customer paths. PlaceMakers:
+**4,653 scenarios, 0 failing, 0 gaps**, every department and leaf category probed in every family that applies
+(`docs/coverage/placemakers/evaluation.{md,json}`; regenerate with `scripts/okf/ingest-taxonomy.ts`). The tenant's customer paths
+(`scripts/okf/tenants/placemakers.scenarios.json`, 46) are attached to the draft as acceptance scenarios and run at publication.
+A mutation test per family proves the evaluation fails when the thing it guards is broken.
+
+**The customer sees a customer view.** The runtime's stream carries the decision, the knowledge trace, the model route and the
+workspace; none of that belongs in a browser. `packages/journey-core/src/public-projection.ts` projects every event through an
+allow-list held in data (`defaults/public-projection.json`); the full stream is available only to a platform workload that presents
+the internal key. Error bodies are the platform's plain message, chosen by error code, never the exception text. Verified hops:
+storefront route → gateway → commerce service → runtime; the gateway and commerce service forward upstream refusals with their
+status and `Retry-After` instead of a 200 with an error inside.
+
+**Public-path canary** (`packages/canary`, spec `scripts/canary/placemakers.canary.json`). A read-only check a person can run against
+a deployed shop: it drives real conversations and checks the stream shape, the allowed events, that no internal content or
+credential reaches the browser, that cards are real platform cards with valid state in the shop's currency, that nothing is
+bought, that the reply reads like a person wrote it (no platform vocabulary, no repeated sentence), and the scenario's own
+expectations. Its report is sanitised. It runs hermetically in CI (`tests/public-path`, four real hops on loopback, an in-memory store
+and a fixed stand-in model; transcript in `docs/canary/`) and, with a customer session, against the live URL:
+`CANARY_COOKIE='…' npx tsx packages/canary/src/cli.ts --spec scripts/canary/placemakers.canary.json --url <public chat stream url>`.
+
+**Cards and theming.** Every card the public path sends renders without error, binds only fields its schema declares, and the card
+stylesheet reads only theme variables (two hard-coded colours were replaced); a tenant theme reaches the markup
+(`tests/public-path/cards-render.spec.tsx`).
+
+**Customer wording (found by reading the canary transcript, fixed at the source).** Early transcripts showed the platform talking to
+the customer in its own vocabulary — validator notes ("No capability execution outcome provided for validation."), relationship ids,
+"pinned knowledge release", the same hazard sentence twice. Fixes, all in data or at the boundary:
+- The gate separates `claims.disclaimers` (everything the agent must respect) from `claims.notices` (plain-language text a customer may
+  read). Only notices are appended to a reply.
+- Customer-facing policy messages were rewritten in plain language (`packages/knowledge/src/defaults/platform-policy.json`); tenants
+  override any of them, and placeholders are validated against the platform default's own placeholders.
+- The presentation port writes no sentence of its own. Failure, out-of-scope, greeting, approval, price-unavailable, bundle summary and
+  heading wording come from the runtime message set (`apps/journey-runtime-service/src/defaults/interpretation-policy.json`, overridable
+  by a pack's `extensions.interpretationPolicy.messages`, then by the tenant's knowledge policy). A decision carries
+  `payload.customerMessage: true` only when its reason was written for a customer (a policy message or a rule's `remediationMessage`);
+  anything else is replaced by the generic sentence and stays in the decision trace.
+- A retrieval the knowledge gate blocked no longer reports "no outcome to validate"; nothing ran, so the customer gets the notice.
+- Guards: a platform-vocabulary list (`defaults/evaluation-templates.json`, `internalVocabulary`) is applied to every notice in all 4,653
+  scenarios, to every shipped customer message, to the presentation port's source, and to every reply the canary receives.
+
+## Release lifecycle and activation (Phase 8)
+
+Proved on the real repositories (publisher, pack loader/verifier, checksum-bound `ReleaseActivationRepository`, the four-hop public path)
+over an isolated in-memory store: `tests/public-path/release-lifecycle.spec.ts`, evidence in `docs/activation/release-lifecycle-evidence.md`.
+
+- An approval names a release version and checksum, is compare-and-swap numbered, and is attributed to a person. A wrong checksum, a
+  stale revision, a release that is not the active pointer and an unknown release are each refused, and the record stays as it was.
+- The runtime serves a request only if the active pack's version **and recomputed checksum** equal the approved ones; a tampered pack is
+  refused (the customer is told nothing about why) and serving resumes when the pack is restored.
+- A conversation is bound to the release it started on; publishing a newer release does not move it.
+- `status: rollback` stops every conversation, pinned or not, until an explicit approval of the exact checksum.
+- Rolling the project back restores the earlier release by its original checksum.
+
+**Finding — publishing is the go-live action (decision needed).** `publishBusinessPack` and `rollbackBusinessPack` rewrite the
+activation record (`tenant_cutovers`) of an environment that already has one: version and checksum follow the publication, status
+becomes `migrated` (or stays `canary`), with no new approver and no revision increment — so a stopped line (`rollback`) is restarted by
+the next publish, and an `unmigrated` record is flipped to `migrated`. This predates this work and had no test; it is characterised in
+step 8 of the lifecycle spec. A fix was proposed as a separate task (follow only live statuses, bump the revision, audit the publisher,
+optionally require explicit approval in production). Until it is decided, the production checklist treats **"Publish Business Pack" in
+production as the go-live action.**
 
