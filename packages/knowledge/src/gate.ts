@@ -1,3 +1,4 @@
+import { compareKnowledgeKeys } from './checksum';
 import type {
   ClaimClass,
   OkfConcept,
@@ -69,6 +70,14 @@ export interface OkfGateDecision {
     options: Array<{ value: string; label: string }>;
   };
   commerce: OkfConcept['commercePolicy'];
+  /**
+   * "Have you considered?" cross-sell from the matched concept. Always unverified: a suggestion never proves
+   * compatibility, never marks an accessory as required, and adds no claim class.
+   */
+  suggestions?: Array<{
+    conceptId: string; relationshipId: string; label: string; note: string;
+    categoryIds: string[]; excludeCategoryIds: string[]; status: 'unverified_cross_sell';
+  }>;
   catalogHandling: {
     requiresLiveValidation: true;
     productStatus?: 'active' | 'discontinued' | 'poa';
@@ -550,7 +559,12 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     return base;
   }
 
-  if (concept.lens === 'project' || concept.type === 'project' || concept.type === 'room') {
+  // A project owned by an authored journey hands off to that journey. A project with none is served by the gate
+  // itself: it asks its missing questions, then previews its member categories.
+  const projectLike = concept.lens === 'project' || concept.type === 'project' || concept.type === 'room';
+  // A project with neither an authored journey nor a preview policy keeps the original behaviour: hand off.
+  const servedByGate = projectLike && !concept.journeyRef && Boolean(concept.broadQueryPolicy);
+  if (projectLike && !servedByGate) {
     base.mode = 'project_journey';
     base.retrieval.permission = 'blocked';
     base.trace.reasonCodes.push('project_or_room');
@@ -573,7 +587,7 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     base.trace.reasonCodes.push('compatibility_fact_missing');
   } else if (
     concept.broadQueryPolicy &&
-    (forceShow || concept.discriminators.length === 0 || missingFacts.length > 0)
+    (forceShow || concept.discriminators.length === 0 || missingFacts.length > 0 || servedByGate)
   ) {
     // “Just show me” means show a safe, grouped overview now; it does not turn
     // a low-specificity query into a fully matched recommendation.
@@ -633,5 +647,30 @@ export function resolveOkfGate(content: OkfReleaseContent, input: OkfGateInput):
     base.commerce.addToCart = 'blocked';
     base.catalogHandling.nextAction = 'quote';
   }
+  if (servedByGate) base.trace.reasonCodes.push('project_served_by_gate');
+  if (base.retrieval.permission === 'allowed') {
+    const suggestions = suggestionsFor(content, concept, policy);
+    if (suggestions.length) base.suggestions = suggestions;
+  }
   return base;
+}
+
+function suggestionsFor(content: OkfReleaseContent, concept: OkfConcept, policy: ResolvedOkfPolicy): NonNullable<OkfGateDecision['suggestions']> {
+  if (policy.suggestions.max === 0) return [];
+  const concepts = new Map(content.concepts.map((entry) => [entry.conceptId, entry]));
+  return content.relationships
+    .filter((relationship) => relationship.type === 'cross_sell' && relationship.from === concept.conceptId)
+    .sort((a, b) => compareKnowledgeKeys(a.relationshipId, b.relationshipId))
+    .flatMap((relationship) => {
+      const target = concepts.get(relationship.to);
+      if (!target || target.lifecycle.status === 'retired' || target.tenantId !== concept.tenantId) return [];
+      return [{
+        conceptId: target.conceptId, relationshipId: relationship.relationshipId,
+        label: relationship.customerLabel || renderOkfMessage(policy.messages, 'cross_sell_label'),
+        note: renderOkfMessage(policy.messages, 'cross_sell_note'),
+        categoryIds: target.searchScope.catalogCategoryIds, excludeCategoryIds: target.searchScope.excludeCategoryIds,
+        status: 'unverified_cross_sell' as const,
+      }];
+    })
+    .slice(0, policy.suggestions.max);
 }

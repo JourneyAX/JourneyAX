@@ -73,6 +73,8 @@ export const CoveragePolicySchema = z.object({
 }).strict();
 export type CoveragePolicy = z.infer<typeof CoveragePolicySchema>;
 
+export const SuggestionPolicySchema = z.object({ max: z.number().int().min(0).max(10) }).strict();
+
 const MessageMapSchema = z.record(IdentifierSchema, z.string().min(1).max(MAX_MESSAGE_LENGTH));
 
 /** Full platform policy (defaults). Tenants cannot override `claimEvidence`. */
@@ -91,6 +93,7 @@ export const PlatformPolicySchema = z.object({
   }),
   evidenceClaims: z.array(EvidenceClaimSchema).max(50),
   coverage: CoveragePolicySchema,
+  suggestions: SuggestionPolicySchema,
   messages: MessageMapSchema,
 }).strict();
 
@@ -113,6 +116,7 @@ export const OkfTenantPolicySchema = z.object({
   verifierRoles: z.array(VerifierRoleSchema).max(50).optional(),
   evidenceClaims: z.array(EvidenceClaimSchema).max(50).optional(),
   coverage: CoveragePolicySchema.optional(),
+  suggestions: SuggestionPolicySchema.optional(),
   messages: MessageMapSchema.optional(),
 }).strict();
 
@@ -229,6 +233,7 @@ export interface ResolvedOkfPolicy {
   claimEvidence: Record<string, string[]>;
   evidenceClaims: Array<{ intent?: string; lens?: string; claimClass: ClaimClass }>;
   coverage: CoveragePolicy;
+  suggestions: { max: number };
   messages: Record<string, string>;
 }
 
@@ -294,6 +299,7 @@ export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null, locale?: strin
     claimEvidence: PLATFORM.claimEvidence,
     evidenceClaims: tenant?.evidenceClaims || PLATFORM.evidenceClaims,
     coverage: tenant?.coverage || PLATFORM.coverage,
+    suggestions: tenant?.suggestions || PLATFORM.suggestions,
     messages: { ...PLATFORM.messages, ...(tenant?.messages || {}), ...(overlay?.messages || {}) },
   };
   perLocale.set(localeKey, resolved);

@@ -1,6 +1,8 @@
 import type { GeneratedKnowledge, IngestWarnings } from './build-draft';
 import { conceptOwner, type TaxonomyNode } from './taxonomy';
 import { familyTerms } from './variants';
+import type { AuthoredKnowledge } from './authoring';
+import { summarizeWorklist, type WorklistSummary } from './worklist';
 
 export interface CoverageNodeRow {
   level: 'department' | 'group' | 'category';
@@ -47,6 +49,15 @@ export interface CoverageReport {
   warnings: IngestWarnings;
   /** Customer terms that name several categories (for example "screws"): candidates for an authored family concept. */
   familySuggestions: Array<{ term: string; categories: string[] }>;
+  /** Present when an authoring spec was applied on top of the generated draft. */
+  authoring?: {
+    specVersion: string;
+    authored: AuthoredKnowledge['authored'];
+    errors: AuthoredKnowledge['errors'];
+    projectsWithoutJourney: string[];
+    worklist: WorklistSummary;
+    sources: { authoredProposalSources: number; verifiedSources: number };
+  };
   /** Generated knowledge asserts no claim: the only verified content is whatever a human adds afterwards. */
   claims: { verifiedClaims: number; derivedConcepts: number; note: string };
 }
@@ -55,7 +66,7 @@ export interface CoverageReport {
 const levelName = (node: TaxonomyNode): 'department' | 'group' | 'category' =>
   node.level === 0 ? 'department' : node.children.length > 0 ? 'group' : 'category';
 
-export function buildCoverageReport(generated: GeneratedKnowledge): CoverageReport {
+export function buildCoverageReport(generated: GeneratedKnowledge | AuthoredKnowledge): CoverageReport {
   const { tree, snapshot, draft, conceptIdByNode, documentSourcesByNode, keywordCountByNode, navigationFactByNode } = generated;
   const leaves = tree.nodes.filter((node) => node.children.length === 0);
   const nodes: CoverageNodeRow[] = tree.nodes.map((node) => {
@@ -123,6 +134,11 @@ export function buildCoverageReport(generated: GeneratedKnowledge): CoverageRepo
     excluded: tree.excluded.map((entry) => ({ path: entry.row.path, category: entry.row.category, products: entry.row.productCount, reason: entry.reason })),
     ...(snapshot.documentTotals ? { documents: { ...snapshot.documentTotals, categoriesWithCandidates } } : {}),
     warnings: generated.warnings,
+    ...('spec' in generated ? { authoring: {
+      specVersion: generated.spec.version, authored: generated.authored, errors: generated.errors,
+      projectsWithoutJourney: generated.projectsWithoutJourney, worklist: summarizeWorklist(generated),
+      sources: { authoredProposalSources: draft.sources.filter((source: any) => source.sourceId === 'src-authoring-proposal').length, verifiedSources: 0 },
+    } } : {}),
     familySuggestions: familyTerms([...new Set(leaves.map((node) => node.name))], generated.config.synonyms.pluralise).slice(0, 80),
     claims: {
       verifiedClaims: draft.verifications.filter((record: any) => record.status === 'verified').length,
@@ -163,6 +179,16 @@ export function renderCoverageMarkdown(report: CoverageReport): string {
   }
   if (report.documents) {
     lines.push('## Documents', '', `${n(report.documents.documents)} crawled documents considered; ${n(report.documents.mappedToProduct)} mapped to a product through a stated SKU; ${report.documents.categoriesWithCandidates} categories have at least one candidate. By kind: ${Object.entries(report.documents.byKind).map(([kind, count]) => `${kind} ${n(count)}`).join(', ') || '—'}.`, '');
+  }
+  if (report.authoring) {
+    const a = report.authoring;
+    lines.push(
+      '## Authored layer (proposal awaiting merchant review)', '',
+      `Spec ${a.specVersion}: ${a.authored.families} families, ${a.authored.projects} projects, ${a.authored.problems} problems, ${a.authored.care} care topics, ${a.authored.facts} questions, ${a.authored.overlays} risk overlays, ${a.authored.suggestions} cross-sell suggestion sets (${a.authored.relationships} authored relationships). ${a.authored.removedDerivedPhrases} derived search phrases were handed to authored concepts.`, '',
+      `Projects served directly by the gate (no authored journey yet): ${a.projectsWithoutJourney.length ? a.projectsWithoutJourney.join(', ') : 'none'}.`, '',
+      `Verification worklist: ${a.worklist.entries} items across ${a.worklist.conceptsWithCandidates} concepts, ${a.worklist.gaps} claims with no candidate document. **Verified: ${a.worklist.verified}.**`, '',
+    );
+    if (a.errors.length) { lines.push('**Authoring errors:**', ...a.errors.map((error) => `- ${error.code} (${error.where}): ${error.message}`), ''); }
   }
   const w = report.warnings;
   lines.push(

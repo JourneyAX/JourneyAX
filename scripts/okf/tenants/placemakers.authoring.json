@@ -1,0 +1,144 @@
+{
+  "tenantId": "placemakers",
+  "version": "1.0.0-proposal",
+  "author": { "model": "claude-sonnet-5-5", "role": "proposal drafted for PlaceMakers review" },
+  "journeyTargets": [
+    { "journeyId": "placemakers_shop" },
+    { "journeyId": "placemakers_plan_your_space" },
+    { "journeyId": "placemakers_services" },
+    { "journeyId": "placemakers_tools___guides" },
+    { "journeyId": "placemakers_customer_service" }
+  ],
+  "evidence": {
+    "kinds": {
+      "installation_step": ["installation_guide"],
+      "warranty": ["warranty"],
+      "care_safety": ["care_guide"],
+      "safety_instruction": ["safety_data_sheet"]
+    }
+  },
+  "facts": [
+    { "factKey": "fastener_substrate", "question": "What are you screwing into?", "options": [
+      { "value": "timber", "label": "Timber" }, { "value": "metal", "label": "Metal" }, { "value": "masonry", "label": "Concrete, brick or block" } ] },
+    { "factKey": "project_scope", "question": "Are you renovating, building new, or repairing?", "options": [
+      { "value": "renovation", "label": "Renovating" }, { "value": "new_build", "label": "Building new" }, { "value": "repair", "label": "Repairing" } ] },
+    { "factKey": "room_dimensions", "question": "Roughly how big is the space?", "uiInputType": "text", "type": "string", "role": "measurement" },
+    { "factKey": "bathroom_features", "question": "What are you planning to include?", "uiInputType": "multi_select", "type": "array", "options": [
+      { "value": "vanity", "label": "Vanity" }, { "value": "shower", "label": "Shower" }, { "value": "bath", "label": "Bath" },
+      { "value": "toilet", "label": "Toilet" }, { "value": "tapware", "label": "Tapware" }, { "value": "mirror", "label": "Mirror" }, { "value": "towel_rail", "label": "Heated towel rail" } ] },
+    { "factKey": "laundry_features", "question": "What does the laundry need?", "uiInputType": "multi_select", "type": "array", "options": [
+      { "value": "tub", "label": "Tub or sink" }, { "value": "cabinetry", "label": "Cabinetry" }, { "value": "appliances", "label": "Appliances" } ] },
+    { "factKey": "kitchen_features", "question": "What are you updating in the kitchen?", "uiInputType": "multi_select", "type": "array", "options": [
+      { "value": "sink", "label": "Sink" }, { "value": "tapware", "label": "Tapware" }, { "value": "benchtop", "label": "Benchtop" },
+      { "value": "splashback", "label": "Splashback" }, { "value": "appliances", "label": "Appliances" }, { "value": "hardware", "label": "Handles and hardware" } ] },
+    { "factKey": "wet_area_room", "question": "Which room is the wet area?", "options": [
+      { "value": "bathroom", "label": "Bathroom or ensuite" }, { "value": "laundry", "label": "Laundry" }, { "value": "other", "label": "Somewhere else" } ] },
+    { "factKey": "deck_material", "question": "What decking are you considering?", "options": [
+      { "value": "composite", "label": "Composite" }, { "value": "hardwood", "label": "Hardwood" }, { "value": "radiata", "label": "Radiata pine" }, { "value": "unsure", "label": "Not sure yet" } ] },
+    { "factKey": "deck_size", "question": "Roughly how big is the deck?", "uiInputType": "text", "type": "string", "role": "measurement" },
+    { "factKey": "fence_type", "question": "What kind of fence?", "options": [
+      { "value": "timber", "label": "Timber" }, { "value": "metal", "label": "Metal panels or gates" }, { "value": "mesh", "label": "Mesh or wire" } ] },
+    { "factKey": "fence_length", "question": "Roughly how long is the fence line?", "uiInputType": "text", "type": "string", "role": "measurement" },
+    { "factKey": "paint_surface", "question": "What are you painting or finishing?", "options": [
+      { "value": "interior", "label": "Inside walls and ceilings" }, { "value": "exterior", "label": "Outside walls" }, { "value": "timber", "label": "Timber (deck, fence, furniture)" } ] },
+    { "factKey": "insulation_area", "question": "Where is the insulation going?", "options": [
+      { "value": "walls", "label": "Walls" }, { "value": "ceiling", "label": "Ceiling" }, { "value": "floor", "label": "Under the floor" }, { "value": "unsure", "label": "Not sure yet" } ] },
+    { "factKey": "leak_location", "question": "Where is the water showing up?", "options": [
+      { "value": "shower_bath", "label": "Shower or bath" }, { "value": "toilet", "label": "Around the toilet" }, { "value": "vanity_basin", "label": "Vanity or basin" },
+      { "value": "wall_ceiling", "label": "Wall or ceiling" }, { "value": "unsure", "label": "Not sure" } ] }
+  ],
+  "families": [
+    { "id": "screws", "name": "Screws", "description": "Screws and fixings, grouped by what they are fixed into.",
+      "synonyms": ["screw"], "phrases": ["what screws do i need", "fixing screws"],
+      "members": ["Wood Screws", "Metal Screws", "Masonry Anchors"],
+      "discriminator": { "fact": "fastener_substrate", "valueMap": { "timber": "Wood Screws", "metal": "Metal Screws", "masonry": "Masonry Anchors" } },
+      "compatibilitySensitive": true },
+    { "id": "nails", "name": "Nails", "description": "Hand-driven and gun-driven nails.", "synonyms": ["nail"], "phrases": ["nails for my nail gun"],
+      "members": ["Collated Nails", "Loose Nails"], "question": "Are the nails for a nail gun or for hand driving?" }
+  ],
+  "projects": [
+    { "id": "bathroom_renovation", "name": "Bathroom renovation", "description": "Planning a new or renovated bathroom or ensuite.",
+      "phrases": ["bathroom renovation", "renovate my bathroom", "bathroom makeover", "new bathroom", "ensuite renovation", "bathroom remodel"],
+      "journey": { "journeyId": "placemakers_plan_your_space" },
+      "facts": [{ "fact": "project_scope", "importance": "high" }, { "fact": "room_dimensions", "importance": "medium" }, { "fact": "bathroom_features", "importance": "medium" }],
+      "categories": ["Vanities", "Tapware & Showering", "Showers", "Baths", "Toilets", "Basins", "Mirrors", "Heated Towel Rails", "Bathroom Accessories"] },
+    { "id": "laundry_makeover", "name": "Laundry makeover", "description": "Planning a new or renovated laundry.",
+      "phrases": ["laundry makeover", "renovate my laundry", "new laundry", "laundry renovation", "laundry remodel"],
+      "journey": { "journeyId": "placemakers_plan_your_space" },
+      "facts": [{ "fact": "project_scope", "importance": "high" }, { "fact": "room_dimensions", "importance": "medium" }, { "fact": "laundry_features", "importance": "medium" }],
+      "categories": ["Laundry Cabinetry", "Laundry Tubs", "Laundry Appliances & Accessories", "Laundry Sinkware"] },
+    { "id": "kitchen_update", "name": "Kitchen update", "description": "Updating or renovating a kitchen.",
+      "phrases": ["kitchen update", "renovate my kitchen", "kitchen renovation", "new kitchen", "kitchen makeover"],
+      "journey": { "journeyId": "placemakers_plan_your_space" },
+      "facts": [{ "fact": "project_scope", "importance": "high" }, { "fact": "kitchen_features", "importance": "medium" }],
+      "categories": ["Kitchen Sinks", "Kitchen Tapware", "Kitchen Benchtops", "Kitchen Splashbacks", "Kitchen Appliances", "Kitchen Hardware & Accessories"] },
+    { "id": "wet_area_lining", "name": "Wet area lining", "description": "Lining and sealing the walls of a bathroom, shower or laundry.",
+      "phrases": ["wet area lining", "bathroom wall lining", "waterproof walls", "shower wall lining", "wet wall lining"],
+      "facts": [{ "fact": "wet_area_room", "importance": "high" }],
+      "categories": ["Wet Wall Linings", "Specialist Board", "Waterproofing", "Flashing & Sealing Tapes"] },
+    { "id": "deck_build", "name": "Deck build", "description": "Building or extending a deck.",
+      "phrases": ["build a deck", "building a deck", "new deck", "deck build", "deck project", "build my deck"],
+      "facts": [{ "fact": "deck_material", "importance": "high" }, { "fact": "deck_size", "importance": "medium" }],
+      "categories": ["Composite Decking", "Radiata Decking", "Hardwood Decking", "Decking Accessories"] },
+    { "id": "fence_build", "name": "Fence build", "description": "Building or replacing a fence.",
+      "phrases": ["build a fence", "new fence", "fencing project", "replace my fence", "build my fence"],
+      "facts": [{ "fact": "fence_type", "importance": "high" }, { "fact": "fence_length", "importance": "medium" }],
+      "categories": ["Timber Fencing", "Fencing & Netting (Non Timber) > Fence Panels", "Fencing & Netting (Non Timber) > Posts", "Fencing & Netting (Non Timber) > Fencing Accessories", "Fencing & Netting (Non Timber) > Metal Gates"] },
+    { "id": "paint_a_room", "name": "Painting project", "description": "Painting or finishing walls, ceilings or timber.",
+      "phrases": ["paint a room", "painting a room", "repaint my house", "paint my house", "painting project", "paint the walls"],
+      "facts": [{ "fact": "paint_surface", "importance": "high" }],
+      "categories": ["Interior Paint", "Exterior Paint", "Woodcare", "Primers Sealers & Undercoats", "Brushes & Rollers", "Masking", "Protective Wear & Coverings"] },
+    { "id": "insulate_home", "name": "Insulating a home", "description": "Insulating walls, ceilings or floors.",
+      "phrases": ["insulate my home", "insulate my house", "insulating a house", "add insulation", "insulation project"],
+      "facts": [{ "fact": "insulation_area", "importance": "high" }],
+      "categories": ["Insulation"] }
+  ],
+  "problems": [
+    { "id": "bathroom_leak", "name": "Bathroom leak", "description": "Water leaking in or around a bathroom.",
+      "phrases": ["bathroom is leaking", "my bathroom is leaking", "water under my vanity", "shower is leaking", "toilet is leaking", "bathroom leak"], "synonyms": ["leaking bathroom"],
+      "facts": ["leak_location"] },
+    { "id": "leaking_tap_or_pipe", "name": "Leaking tap or pipe", "description": "A dripping tap or leaking pipe.",
+      "phrases": ["tap is dripping", "dripping tap", "leaking pipe", "burst pipe", "pipe is leaking", "tap is leaking"] },
+    { "id": "blocked_drain", "name": "Blocked drain", "description": "A blocked sink, toilet or drain.",
+      "phrases": ["blocked drain", "drain is blocked", "toilet is blocked", "sink is blocked", "slow draining sink"] },
+    { "id": "mould_and_damp", "name": "Mould and damp", "description": "Mould, damp or condensation in the home.",
+      "phrases": ["mouldy walls", "damp walls", "mould in my bathroom", "condensation problem", "damp problem"], "synonyms": ["mould problem"] },
+    { "id": "electrical_hazard", "name": "Electrical hazard", "description": "A sparking, hot, damaged or wet electrical fitting.",
+      "phrases": ["electrical fault", "power point sparking", "switch is hot", "water near power points", "exposed wiring", "burning smell from outlet"] },
+    { "id": "gas_hazard", "name": "Gas hazard", "description": "A suspected gas leak or smell.",
+      "phrases": ["gas leak", "smell gas", "smells like gas", "gas smell"] }
+  ],
+  "care": [
+    { "id": "deck_care", "name": "Deck care", "description": "Cleaning and maintaining a deck.",
+      "phrases": ["deck care", "clean my deck", "maintain my deck", "oil my deck", "deck maintenance"],
+      "appliesTo": ["Composite Decking", "Radiata Decking", "Hardwood Decking", "Woodcare", "Outdoor Cleaners"] },
+    { "id": "tapware_care", "name": "Tapware care", "description": "Cleaning and caring for taps and showers.",
+      "phrases": ["clean my taps", "tapware care", "care for my tapware", "shower care"],
+      "appliesTo": ["Tapware & Showering", "Kitchen Tapware", "Indoor Cleaners"] }
+  ],
+  "overlays": [
+    { "id": "fixings_depend_on_substrate", "reason": "The right fixing depends on what it goes into, so these categories are treated as compatibility-sensitive.",
+      "match": { "categories": ["Wood Screws", "Metal Screws", "Masonry Anchors", "Bolts & Nut", "Timber Connectors", "Building Brackets", "Power Actuated", "Collated Nails", "Loose Nails"] },
+      "set": { "riskClass": "compatibility", "compatibilitySensitive": true } },
+    { "id": "confirm_with_a_qualified_person", "reason": "Proposed: a qualified person confirms the selection before checkout for products that are normally installed by a licensed trade. PlaceMakers to approve the list.",
+      "match": { "categories": ["Switchgear", "Cable & Data", "Gas Heating", "Solid Fuel", "Central Heating", "Heat Pumps", "Hot Water", "Passive Fire Penetrations"] },
+      "set": { "checkout": "requires_professional_confirmation" } }
+  ],
+  "suggestions": [
+    { "id": "deck_project_extras", "from": "project:deck_build", "to": ["Wood Screws", "Woodcare", "Outdoor Cleaners"], "rationale": "People building a deck often also need fixings and a finish." },
+    { "id": "composite_decking_extras", "from": "Composite Decking", "to": ["Decking Accessories"], "rationale": "Decking accessories are sold alongside boards." },
+    { "id": "timber_decking_finish", "from": "Radiata Decking", "to": ["Woodcare"], "rationale": "Timber decking is commonly finished." },
+    { "id": "hardwood_decking_finish", "from": "Hardwood Decking", "to": ["Woodcare"], "rationale": "Timber decking is commonly finished." },
+    { "id": "vanity_extras", "from": "Vanities", "to": ["Tapware & Showering", "Mirrors"], "rationale": "Vanities are usually bought with tapware and a mirror." },
+    { "id": "basin_extras", "from": "Basins", "to": ["Tapware & Showering"], "rationale": "A basin needs tapware." },
+    { "id": "toilet_extras", "from": "Toilets", "to": ["Traps & Wastes", "Bathroom Accessories"], "rationale": "Customers renewing a toilet often look at fittings and accessories." },
+    { "id": "bathroom_project_extras", "from": "project:bathroom_renovation", "to": ["Heated Towel Rails", "Mirrors", "Wet Wall Linings"], "rationale": "Common additions in a bathroom renovation." },
+    { "id": "kitchen_sink_extras", "from": "Kitchen Sinks", "to": ["Kitchen Tapware"], "rationale": "A sink needs tapware." },
+    { "id": "interior_paint_extras", "from": "Interior Paint", "to": ["Brushes & Rollers", "Masking", "Primers Sealers & Undercoats", "Protective Wear & Coverings"], "rationale": "Painters usually need applicators and preparation supplies." },
+    { "id": "applicator_extras", "from": "Brushes & Rollers", "to": ["Masking", "Thinners & Cleanup"], "rationale": "Applicators are bought with masking and cleanup supplies." },
+    { "id": "wood_screw_extras", "from": "Wood Screws", "to": ["Drill Bits", "Screwdriver Bits"], "rationale": "Driving screws needs the right bit." },
+    { "id": "drill_extras", "from": "Drills", "to": ["Drill Bits", "Screwdriver Bits", "Battery & Charger"], "rationale": "Drills are bought with bits and spare batteries." },
+    { "id": "insulation_protection", "from": "project:insulate_home", "to": ["Respiratory Protection", "Hand Protection", "Eye Protection"], "rationale": "Customers handling insulation often want protective gear." },
+    { "id": "fence_project_extras", "from": "project:fence_build", "to": ["Fencing & Netting (Non Timber) > Metal Gates"], "rationale": "A fence line usually needs a gate." }
+  ]
+}

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsx test/okf-release.spec.ts && tsx test/okf-gate.spec.ts && tsx test/okf-policy.spec.ts && tsx test/okf-interchange.spec.ts && tsx test/okf-server-evaluation.spec.ts && tsx test/okf-revocation.spec.ts && tsx test/okf-authoring-helpers.spec.ts && tsx test/okf-ingest.spec.ts && tsx test/okf-ingest-placemakers.spec.ts"
+    "test": "tsx test/okf-release.spec.ts && tsx test/okf-gate.spec.ts && tsx test/okf-policy.spec.ts && tsx test/okf-interchange.spec.ts && tsx test/okf-server-evaluation.spec.ts && tsx test/okf-revocation.spec.ts && tsx test/okf-authoring-helpers.spec.ts && tsx test/okf-ingest.spec.ts && tsx test/okf-ingest-placemakers.spec.ts && tsx test/okf-authoring-spec.spec.ts && tsx test/okf-authored-placemakers.spec.ts"
   },
   "dependencies": {
     "google-auth-library": "^11.0.2",

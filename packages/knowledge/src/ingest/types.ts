@@ -119,7 +119,8 @@ export const GENERATOR = 'okf-taxonomy-ingest/1';
 export type DerivationKind =
   | 'catalogue_taxonomy'          // structure read from the tenant's own catalogue
   | 'model_generated_keywords'    // retrieval aids produced by a model; never evidence
-  | 'crawl_document_candidate';   // a crawled document that may later support a claim once a human confirms it
+  | 'crawl_document_candidate'    // a crawled document that may later support a claim once a human confirms it
+  | 'authored_proposal';          // drafted on the merchant's behalf; becomes the merchant's only after their review
 
 export interface Provenance {
   kind: DerivationKind;

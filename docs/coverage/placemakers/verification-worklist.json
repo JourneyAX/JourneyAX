@@ -1,0 +1,5680 @@
+{
+ "entries": [
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/tapware-and-showering",
+   "conceptName": "Tapware & Showering",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1305470 spec 24D017 24D018 24D019 24D020 24D021 24D022 24D118",
+     "url": "pdf://placemakers/00b44f90bdf7c5d571255276bb7dd4987eb4ebcc.pdf",
+     "kind": "installation_guide",
+     "sku": "7840010"
+    },
+    {
+     "title": "1306817 spec 24D07 24D08 24D09 24D11 24D112",
+     "url": "pdf://placemakers/00c4bcb06bce2bfecbb23212f77c459c7534ca64.pdf",
+     "kind": "installation_guide",
+     "sku": "7840897"
+    },
+    {
+     "title": "1306442 spec 24D07 24D08 24D09 24D11 24D112",
+     "url": "pdf://placemakers/0108b58bb78b8d5891503078916cd654221dc8dd.pdf",
+     "kind": "installation_guide",
+     "sku": "7840923"
+    },
+    {
+     "title": "1306574 spec 24D07 24D08 24D09 24D11 24D112",
+     "url": "pdf://placemakers/01285764d9c065d1579301fb3bff418eb9c78303.pdf",
+     "kind": "installation_guide",
+     "sku": "7840883"
+    },
+    {
+     "title": "1306017 spec 24E019 24E020 24E021 24E022 24E023 24E024 24E131",
+     "url": "pdf://placemakers/01474b39786d8fdd4d5a650014cf9d7105ac00cb.pdf",
+     "kind": "installation_guide",
+     "sku": "7840449"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/vanities",
+   "conceptName": "Vanities",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1118151 StMichel 2437 BL installation",
+     "url": "pdf://placemakers/009ab63f8783d33e97b4026d23c59f47bf951391.pdf",
+     "kind": "installation_guide",
+     "sku": "3600992"
+    },
+    {
+     "title": "1107829 Raymor Vanities installation",
+     "url": "pdf://placemakers/01b762ec00730322b5f4009fdc78bfacd491c349.pdf",
+     "kind": "installation_guide",
+     "sku": "7628365"
+    },
+    {
+     "title": "1107824 Raymor Vanities installation",
+     "url": "pdf://placemakers/09385f9a564307db4062ebab70e1078165d5a22f.pdf",
+     "kind": "installation_guide",
+     "sku": "7715235"
+    },
+    {
+     "title": "1101771 Englefield 99231A 0 installation",
+     "url": "pdf://placemakers/09501d24a372f6522a0a79a24a4f50d5788bf22f.pdf",
+     "kind": "installation_guide",
+     "sku": "3601297"
+    },
+    {
+     "title": "1107779 Raymor Vanities installation",
+     "url": "pdf://placemakers/0c8ebf6e1f029d249efa6ecf9b548073894cf241.pdf",
+     "kind": "installation_guide",
+     "sku": "7628542"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/showers",
+   "conceptName": "Showers",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "SHOWER VALENCIA ELITE Alcove Pivot Shower",
+     "url": "pdf://placemakers/0056a694cbc95a980001ef05efb64fa0a89fcb22.pdf",
+     "kind": "installation_guide",
+     "sku": "7734063"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/00d593e6ecf9febe98712b444c73fc9f0253fdf7.pdf",
+     "kind": "installation_guide",
+     "sku": "7843825"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/00fc374f77af5bb41479f0b707d39c95a5a7ab34.pdf",
+     "kind": "installation_guide",
+     "sku": "7843890"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/02544eead3191feba61b4c9116938e6df3996246.pdf",
+     "kind": "installation_guide",
+     "sku": "7843905"
+    },
+    {
+     "title": "1154464 Englefield EliteShowerFlatWalls ID",
+     "url": "pdf://placemakers/0284b33580201227089ada97cbfc49d9ffede294.pdf",
+     "kind": "installation_guide",
+     "sku": "7726492"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/bathroom-accessories",
+   "conceptName": "Bathroom Accessories",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1294511 spec 16series",
+     "url": "pdf://placemakers/05f50296a4a0859cb33025c8e7aead2f3c7b4064.pdf",
+     "kind": "installation_guide",
+     "sku": "7834597"
+    },
+    {
+     "title": "1294639 spec 16series",
+     "url": "pdf://placemakers/064367c1355ef2d681e0d32999518eccaf69e35e.pdf",
+     "kind": "installation_guide",
+     "sku": "7834593"
+    },
+    {
+     "title": "Bathroom and kitchen mixers T 04 568 9898",
+     "url": "pdf://placemakers/1354104d3b48587307f8c60ff624730291b31d9f.pdf",
+     "kind": "installation_guide",
+     "sku": "7773055"
+    },
+    {
+     "title": "1294383 spec NRCS007",
+     "url": "pdf://placemakers/2033f80f8fce248c6cb21224b2d8cfcc4d752230.pdf",
+     "kind": "installation_guide",
+     "sku": "7833860"
+    },
+    {
+     "title": "1293881 spec 16series",
+     "url": "pdf://placemakers/266b2e58c0aa27a5bd77aafb36c8ff0a38d82b31.pdf",
+     "kind": "installation_guide",
+     "sku": "7834570"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/basins",
+   "conceptName": "Basins",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/d681ea15309f360091258e6b1eed7d7ebadc95f2.pdf",
+     "kind": "installation_guide",
+     "sku": "7751072"
+    },
+    {
+     "title": "P-Trap Set-out for Shroud",
+     "url": "pdf://placemakers/1a0f5990791225a52dde651e3d2cf48013dfe872.pdf",
+     "kind": "installation_guide",
+     "sku": "3732207"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4ac0b09cb7efe939852cd6b8b940896c293f9373.pdf",
+     "kind": "installation_guide",
+     "sku": "7751075"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/8c534080d2192f837fbbca461eba5f8e251bc060.pdf",
+     "kind": "installation_guide",
+     "sku": "7751074"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/a6dbdf2989cc6b8fa0c3080375b0c2aeefedd51b.pdf",
+     "kind": "installation_guide",
+     "sku": "7751177"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/baths",
+   "conceptName": "Baths",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1115520 Englefield EvoraCornerSpaBath ID",
+     "url": "pdf://placemakers/23cca7161d94c55a6387f59af49989995b0f74ef.pdf",
+     "kind": "installation_guide",
+     "sku": "3611642"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/27b5cb5f15dc651ed617a3503cceab1718400531.pdf",
+     "kind": "installation_guide",
+     "sku": "3610058"
+    },
+    {
+     "title": "1158949 Englefield FreeStandingBath ID",
+     "url": "pdf://placemakers/2945679ee87c9c21879aa94812670a9da389e8d2.pdf",
+     "kind": "installation_guide",
+     "sku": "7728719"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2fc1925c0b66318a3a0e020007b190da11654bd5.pdf",
+     "kind": "installation_guide",
+     "sku": "3610184"
+    },
+    {
+     "title": "1115527 Englefield EvoraCornerSpaBath ID",
+     "url": "pdf://placemakers/5071b2c52595aebefd5a1cd4b04e021f1d018d49.pdf",
+     "kind": "installation_guide",
+     "sku": "3612445"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/toilets",
+   "conceptName": "Toilets",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0df23be4415b9f4774feae68f252461bd3c01937.pdf",
+     "kind": "installation_guide",
+     "sku": "7831906"
+    },
+    {
+     "title": "1122261 Englefield 7380A 0 ID",
+     "url": "pdf://placemakers/22208a6ffa1e00a60d1767e4222a140d64c16153.pdf",
+     "kind": "installation_guide",
+     "sku": "3624395"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2bca3de66d6d03e9f8379652746705f48627ca65.pdf",
+     "kind": "installation_guide",
+     "sku": "7832235"
+    },
+    {
+     "title": "1235113 (7)741386 Adesso Edge Wall Faced Toilet 2023 V4",
+     "url": "pdf://placemakers/352c52855899c2356034673f0301340184c0abf4.pdf",
+     "kind": "installation_guide",
+     "sku": "7741386"
+    },
+    {
+     "title": "1111836 Caroma 301104W tds",
+     "url": "pdf://placemakers/4f5b8f46636e0f7267d2b662288fcd98adfbc872.pdf",
+     "kind": "installation_guide",
+     "sku": "7527176"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/heated-towel-rails",
+   "conceptName": "Heated Towel Rails",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1108699 Heirloom WS1025N installation",
+     "url": "pdf://placemakers/18232c5ce060cc68e4af7bf6f8f8bfd9ca63e50b.pdf",
+     "kind": "installation_guide",
+     "sku": "7691599"
+    },
+    {
+     "title": "1113285 Heirloom WG1220S installation",
+     "url": "pdf://placemakers/2453c0b82e7520390cd3b435dcffa203e014a2ef.pdf",
+     "kind": "installation_guide",
+     "sku": "3641037"
+    },
+    {
+     "title": "DESCRIPTION",
+     "url": "pdf://placemakers/3561700b7a112e4ad0670045d134a16e6d25da51.pdf",
+     "kind": "installation_guide",
+     "sku": "7758602"
+    },
+    {
+     "title": "1108579 Heirloom WG825N installation",
+     "url": "pdf://placemakers/41008059a99246bcef4d557805699606dc711fea.pdf",
+     "kind": "installation_guide",
+     "sku": "7691593"
+    },
+    {
+     "title": "1282588 NR190002H",
+     "url": "pdf://placemakers/46ede368ac0ac937b72b2a5505e7a915602054d1.pdf",
+     "kind": "installation_guide",
+     "sku": "7826260"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/bathrooms-and-accessories/mirrors",
+   "conceptName": "Mirrors",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1101414 Installation guide 707612",
+     "url": "pdf://placemakers/0fab0224e19bbe948c8d94e32d78e49babe0fdaa.pdf",
+     "kind": "installation_guide",
+     "sku": "7709628"
+    },
+    {
+     "title": "INSTALLATION INSTRUCTIONS",
+     "url": "pdf://placemakers/a1516cd5013b67bdd0fd5789b3956e57a0c231b7.pdf",
+     "kind": "installation_guide",
+     "sku": "7823992"
+    },
+    {
+     "title": "1101413 Installation guide 707612",
+     "url": "pdf://placemakers/d5a7f3edda7e09915d7cc2af36373a431adec2e9.pdf",
+     "kind": "installation_guide",
+     "sku": "7709625"
+    },
+    {
+     "title": "INSTALLATION INSTRUCTIONS",
+     "url": "pdf://placemakers/3e3489a9fa47564e3e72f58669921aa8fc19fc96.pdf",
+     "kind": "installation_guide",
+     "sku": "7768549"
+    },
+    {
+     "title": "1113833 TrendyMirrorsInstructionsDemisterPads",
+     "url": "pdf://placemakers/792edf7edb14171e163d30a366a1eff5f917dd50.pdf",
+     "kind": "installation_guide",
+     "sku": "3759355"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/pumps-tanks-and-filtration",
+   "conceptName": "Pumps, Tanks & Filtration",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1273919 stormPANEL Install guide",
+     "url": "pdf://placemakers/0a376b5739aafd8ad59c9d97ebeba39fea8c3075.pdf",
+     "kind": "installation_guide",
+     "sku": "7822432"
+    },
+    {
+     "title": "1152888 MicroleneUnderbenchKits UrbanQuickConnect instalI",
+     "url": "pdf://placemakers/8b3d613063d8c897375f523c18cd1f110b396ad4.pdf",
+     "kind": "installation_guide",
+     "sku": "5529448"
+    },
+    {
+     "title": "1273918 stormPANEL Install guide",
+     "url": "pdf://placemakers/9ec92c7b7e7f526078a5e5b2a53a0c7f3afbb66e.pdf",
+     "kind": "installation_guide",
+     "sku": "7822431"
+    },
+    {
+     "title": "User Guide",
+     "url": "pdf://placemakers/c368eb4cbd6e5de8c94f6442d25b6c8f4e0e72f8.pdf",
+     "kind": "installation_guide",
+     "sku": "6415655"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/d4fe70957bc89f67225a75d20ff92ac2798294a0.pdf",
+     "kind": "installation_guide",
+     "sku": "5529386"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/pvc-pipe-and-fittings",
+   "conceptName": "PVC Pipe & Fittings",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Urban Rain Harvesting",
+     "url": "pdf://placemakers/91bafec47732aec8fbe3ebda3ce828c3496f233c.pdf",
+     "kind": "installation_guide",
+     "sku": "7821986"
+    },
+    {
+     "title": "1143130 HydroflowSKUU018PipeID316PipeOD6mm1",
+     "url": "pdf://placemakers/3affecb2832cecf043390a353ffec4803fc14fbe.pdf",
+     "kind": "installation_guide",
+     "sku": "7527340"
+    },
+    {
+     "title": "1143131 HydroflowSKUU018PipeID316PipeOD6mm1",
+     "url": "pdf://placemakers/8f976049b45381cb94258089b24ad8ae9a1abaa8.pdf",
+     "kind": "installation_guide",
+     "sku": "7551724"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/pvc-pipe-and-fittings",
+   "conceptName": "PVC Pipe & Fittings",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/08c71f64f521e08a7816827136f840ff08d01273.pdf",
+     "kind": "warranty",
+     "sku": "3360237"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/d5d637c52108f783c8874ec3cc00f6f61feebecc.pdf",
+     "kind": "warranty",
+     "sku": "3361410"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/8e2723cdba5d4514d6f580a49392747cfa32630d.pdf",
+     "kind": "warranty",
+     "sku": "7821986"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/traps-and-wastes",
+   "conceptName": "Traps & Wastes",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1185007 BOSS GULLY 100.65.50.50.40",
+     "url": "pdf://placemakers/c4199d863eb62082067648847a44c0a2b1f93098.pdf",
+     "kind": "installation_guide",
+     "sku": "7572919"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/piping-systems-and-fittings",
+   "conceptName": "Piping Systems & Fittings",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Plumbers Technical",
+     "url": "pdf://placemakers/234d198bb550993846843486b0a3803c5ceec4bf.pdf",
+     "kind": "installation_guide",
+     "sku": "3760110"
+    },
+    {
+     "title": "1141538 Hansen Poly Fittings Spec",
+     "url": "pdf://placemakers/23cd22722bc87a8edae3959cd0b59c1f56fb5251.pdf",
+     "kind": "installation_guide",
+     "sku": "7504363"
+    },
+    {
+     "title": "1152246 Hansen Poly Fittings Spec",
+     "url": "pdf://placemakers/3d70c94837696fe1ad49d94d2c8eaeb2310a4114.pdf",
+     "kind": "installation_guide",
+     "sku": "7504269"
+    },
+    {
+     "title": "1141572 Hansen Poly Fittings Spec",
+     "url": "pdf://placemakers/507667f609c91191640967d49c5e4bb972212526.pdf",
+     "kind": "installation_guide",
+     "sku": "7504267"
+    },
+    {
+     "title": "1141528 Hansen Poly Fittings Spec",
+     "url": "pdf://placemakers/549a82589d4af9c56d662bbc08ad764ec6d91348.pdf",
+     "kind": "installation_guide",
+     "sku": "7504295"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/surface-drainage",
+   "conceptName": "Surface Drainage",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1141194 Iplex 400065150 tds",
+     "url": "pdf://placemakers/026b8f2c62507f71fd51079e9c68cea96952d694.pdf",
+     "kind": "installation_guide",
+     "sku": "3391216"
+    },
+    {
+     "title": "1185911 Novaflo Product Sheet",
+     "url": "pdf://placemakers/1212da0bfbe2573057d7fc04a4f31ffe0ebb6af6.pdf",
+     "kind": "installation_guide",
+     "sku": "7500517"
+    },
+    {
+     "title": "1141198 Iplex 500.110.15 tds",
+     "url": "pdf://placemakers/185b11e69ad7cf3af26d1044a8b5ede02967e265.pdf",
+     "kind": "installation_guide",
+     "sku": "3393253"
+    },
+    {
+     "title": "Cost Effective",
+     "url": "pdf://placemakers/24553fbfb9873a37c8f6bb17645db9c6a7d39442.pdf",
+     "kind": "installation_guide",
+     "sku": "3391944"
+    },
+    {
+     "title": "1141222 Iplex 500.110.15 tds",
+     "url": "pdf://placemakers/406ee3e89cd411d0491445fce24ebe6d74e97754.pdf",
+     "kind": "installation_guide",
+     "sku": "3394228"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/valves",
+   "conceptName": "Valves",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1149307 HydroflowSKUB2140ShankWasher1",
+     "url": "pdf://placemakers/c778558e730525c0ccae660d8d7277501c3fbcec.pdf",
+     "kind": "installation_guide",
+     "sku": "7601185"
+    },
+    {
+     "title": "1322234 Caleffi Instant Connect Sell sheet",
+     "url": "pdf://placemakers/3dd5a56ad2228e535926b146e92ecfbc8e9e3d28.pdf",
+     "kind": "installation_guide",
+     "sku": "7855837"
+    },
+    {
+     "title": "1322236 Caleffi Connect Sell sheet",
+     "url": "pdf://placemakers/9bcc18b73b6f2f8aa9633567000b108eb15a2309.pdf",
+     "kind": "installation_guide",
+     "sku": "7855836"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/valves",
+   "conceptName": "Valves",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1188616 HydroflowSKUCIM3739B.6565mm1",
+     "url": "pdf://placemakers/067cf8b79d91ce9232f1e3752988e9d90eca2736.pdf",
+     "kind": "warranty",
+     "sku": "7664012"
+    },
+    {
+     "title": "1149307 HydroflowSKU747EL38BrassShank2",
+     "url": "pdf://placemakers/5a290b4efcca70b751cfead5d99e85d37d16fa57.pdf",
+     "kind": "warranty",
+     "sku": "7601185"
+    },
+    {
+     "title": "1188617 HydroflowSKUCIM3739B.6565mm1",
+     "url": "pdf://placemakers/9ec4ff2dcd9547b5e2cb056632035bdd0263af7e.pdf",
+     "kind": "warranty",
+     "sku": "7664013"
+    },
+    {
+     "title": "1188619 HydroflowSKUCIM3739B.6565mm1",
+     "url": "pdf://placemakers/a3350155665bff26b259e4e78e01daeafc7a8942.pdf",
+     "kind": "warranty",
+     "sku": "7664009"
+    },
+    {
+     "title": "© Cav. Uff. Giacomo Cimberio S.p.A. - rev: 8/2021-01-11",
+     "url": "pdf://placemakers/d75fca08bc279f8267358adf3c4a556474f09677.pdf",
+     "kind": "warranty",
+     "sku": "7773450"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/hot-water",
+   "conceptName": "Hot Water",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1149206 Rheem 70103W NZ installation",
+     "url": "pdf://placemakers/0360d84224135db2d392ac1415a4edd7ce73ac13.pdf",
+     "kind": "installation_guide",
+     "sku": "7646825"
+    },
+    {
+     "title": "1152511 ef26 aseries install",
+     "url": "pdf://placemakers/733d00db28fbd75aeabb43251f2b0f37b255ed5e.pdf",
+     "kind": "installation_guide",
+     "sku": "3801698"
+    },
+    {
+     "title": "1149206 Boiling Water Lazer Spec Sheet 050624",
+     "url": "pdf://placemakers/a9582c67acae3d5a6a3bd652881776676683926a.pdf",
+     "kind": "installation_guide",
+     "sku": "7646825"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/bathrooms-and-plumbing/plumbing/hot-water",
+   "conceptName": "Hot Water",
+   "department": "Bathrooms & Plumbing",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "1141112 012920129301296GorillaPlumbersPuttyTDS",
+     "url": "pdf://placemakers/868518d8e331af3247bf6652234690b60eeef1f2.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4471678"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/drill-bits",
+   "conceptName": "Drill Bits",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "12/23/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/15d53182b52078ac8953542d297ffb0831c9e929.pdf",
+     "kind": "installation_guide",
+     "sku": "4804852"
+    },
+    {
+     "title": "12/23/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/1f79790cb72fe9e36627fb4bf46564354afc0c97.pdf",
+     "kind": "installation_guide",
+     "sku": "4804811"
+    },
+    {
+     "title": "12/23/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/36cce1955b15a38b370a70382b897b6a0cdfa382.pdf",
+     "kind": "installation_guide",
+     "sku": "4804803"
+    },
+    {
+     "title": "12/23/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/3b8017e04439ce97e089b96ebad5d72f0ae26bd5.pdf",
+     "kind": "installation_guide",
+     "sku": "4804878"
+    },
+    {
+     "title": "12/23/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/6dd443dc48bbd96180db20ebb56ffc4b5aa5418e.pdf",
+     "kind": "installation_guide",
+     "sku": "4804837"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/screwdriver-bits",
+   "conceptName": "Screwdriver Bits",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "12/6/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/56dc4d4cf3a938b68f2bb8cc0ac7bfd005269261.pdf",
+     "kind": "installation_guide",
+     "sku": "4732967"
+    },
+    {
+     "title": "12/23/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/709c9d05b87036b5e63a86de5a21eb27fb61bcdb.pdf",
+     "kind": "installation_guide",
+     "sku": "4760740"
+    },
+    {
+     "title": "12/6/2017 Products – Bordo Industrial Tools",
+     "url": "pdf://placemakers/833439063a6fc0b4921edb9b0f9f4eec327a4576.pdf",
+     "kind": "installation_guide",
+     "sku": "4732966"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/sanding-and-polishing",
+   "conceptName": "Sanding And Polishing",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1086248 Bosch 2608605148 tds",
+     "url": "pdf://placemakers/2263a16efc50ace4d515e61717de8ccdabbd581e.pdf",
+     "kind": "installation_guide",
+     "sku": "5040071"
+    },
+    {
+     "title": "12/23/2017 5-piece sanding sheet set Sanding sheets for multi-sanders, Expert for Wood, 4 ",
+     "url": "pdf://placemakers/9dfdfe7c9af8098b8155c0215a8fa1d1d00205a2.pdf",
+     "kind": "installation_guide",
+     "sku": "6146107"
+    },
+    {
+     "title": "1086284 Bosch 2608605255 tds",
+     "url": "pdf://placemakers/af72313d8fc1ff23c4dd0640cfe37829e40be6db.pdf",
+     "kind": "installation_guide",
+     "sku": "4130125"
+    },
+    {
+     "title": "12/23/2017 5-piece sanding sheet set Sanding sheets for multi-sanders, Expert for Wood, 4 ",
+     "url": "pdf://placemakers/c0ef5db4fbbd775875d848d7d4e69e44dd22baa1.pdf",
+     "kind": "installation_guide",
+     "sku": "6146106"
+    },
+    {
+     "title": "12/22/2017 10-piece sanding sheet set Sanding sheets for multi-sanders, Expert for Wood, 1",
+     "url": "pdf://placemakers/cd36987483cf1b5979f41ac3cc3f651efd7754c7.pdf",
+     "kind": "installation_guide",
+     "sku": "5040087"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tool-accessories/vacuum-dust-extraction",
+   "conceptName": "Vacuum/Dust Extraction",
+   "department": "Tools",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4a63b113378caf86543a4c50f3a97d3b07042748.pdf",
+     "kind": "warranty",
+     "sku": "5039779"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/hand-tools/measuring-tools",
+   "conceptName": "Measuring Tools",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4157b075300bdd10c024e3eb5cf8817d0926e282.pdf",
+     "kind": "installation_guide",
+     "sku": "4860835"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/hand-tools/measuring-tools",
+   "conceptName": "Measuring Tools",
+   "department": "Tools",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "A 3 P R O",
+     "url": "pdf://placemakers/cc4a6ec49d1c5ff58be780c75090f54472ab8eed.pdf",
+     "kind": "warranty",
+     "sku": "4500577"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/hand-tools/plastering-concrete-brick-tools",
+   "conceptName": "Plastering/Concrete/Brick Tools",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "125-100 Complete Cradle Assembly",
+     "url": "pdf://placemakers/b66e4c9491381e5a2bd58bda6294274f69acc7f7.pdf",
+     "kind": "installation_guide",
+     "sku": "4991869"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/hand-tools/other-hand-tools",
+   "conceptName": "Other Hand Tools",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Plumbers Technical",
+     "url": "pdf://placemakers/349cd23c3bf7e05db1374cc7d49ef9a7a6d2bda7.pdf",
+     "kind": "installation_guide",
+     "sku": "3760019"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/hand-tools/workbenches",
+   "conceptName": "Workbenches",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1280546 ajp60 2 in 1 clamping worktable",
+     "url": "pdf://placemakers/44e08e9c3ac2ae1e5077568fd768c51ad88d1586.pdf",
+     "kind": "installation_guide",
+     "sku": "4780198"
+    },
+    {
+     "title": "1280545 ajp60400 clamping sawhorses",
+     "url": "pdf://placemakers/ae1487b141eda9d019c6215321bf01e0de8cbd0d.pdf",
+     "kind": "installation_guide",
+     "sku": "4780197"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/drills",
+   "conceptName": "Drills",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/03cc42a491d902b7aee0aa2e5e0f59715e6295cb.pdf",
+     "kind": "installation_guide",
+     "sku": "5053018"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/6299e46ba19263c48aa0ef2a9db1db47bf768dba.pdf",
+     "kind": "installation_guide",
+     "sku": "5080416"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/68c8e7d010f7df99d5c32bcf07184fb8cf53c646.pdf",
+     "kind": "installation_guide",
+     "sku": "5162223"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/9b47c5b7eb4f18c0b650147871c24dba3f1f616c.pdf",
+     "kind": "installation_guide",
+     "sku": "5052765"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/e9c0b602433147ab03877fea36f58fb7986cf18e.pdf",
+     "kind": "installation_guide",
+     "sku": "5080271"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/machinery",
+   "conceptName": "Machinery",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1265099 Makita LXTPowerAssistedWheelbarrowBrushlessCordless SD",
+     "url": "pdf://placemakers/c6d9f5a32a5f1f20445cccc9e2d90eace31c39aa.pdf",
+     "kind": "installation_guide",
+     "sku": "5080353"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/machinery",
+   "conceptName": "Machinery",
+   "department": "Tools",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "lckitutu6m5j0zdohnca",
+     "url": "pdf://placemakers/38e44aa17dc913b643192d3419dd51803a6e530b.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4500572"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/nailers-bradders-and-concrete-guns-staplers",
+   "conceptName": "Nailers/Bradders & Concrete Guns/Staplers",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/098d6e0dd233194920a739d8e598d329cd02d42c.pdf",
+     "kind": "installation_guide",
+     "sku": "5080232"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4c86611ea20dae1cda5223dfe941a2e0cbbc8a9e.pdf",
+     "kind": "installation_guide",
+     "sku": "4732625"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/6f2f403f45df1825dcedd43d3fc5cd7d64fb6dc6.pdf",
+     "kind": "installation_guide",
+     "sku": "5089247"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/99a2d1e1a1c262a79992d95d4cec6551fb737adf.pdf",
+     "kind": "installation_guide",
+     "sku": "4737071"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/bee9746707fbdc7ae16acad7bf53cde5ea8263d4.pdf",
+     "kind": "installation_guide",
+     "sku": "5162253"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/nailers-bradders-and-concrete-guns-staplers",
+   "conceptName": "Nailers/Bradders & Concrete Guns/Staplers",
+   "department": "Tools",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1252494 Paslode PPN Product Data Sheet",
+     "url": "pdf://placemakers/4baf212305088ca8a88569f816c89e50e4426caa.pdf",
+     "kind": "warranty",
+     "sku": "5081728"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/angle-grinders",
+   "conceptName": "Angle Grinders",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/1b875305c441048d08756d783e887df904e77e06.pdf",
+     "kind": "installation_guide",
+     "sku": "5080426"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/angle-grinders",
+   "conceptName": "Angle Grinders",
+   "department": "Tools",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b5635634f727528e3d689a86ec09c4a92b03cc82.pdf",
+     "kind": "warranty",
+     "sku": "4913970"
+    },
+    {
+     "title": "36V High Powered 125mm Angle Grinder BARE TOOL",
+     "url": "pdf://placemakers/8e41eff60b8c4c93c2c393330ed5a5cb4baf1e9d.pdf",
+     "kind": "warranty",
+     "sku": "4860062"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/bench-saws-mitre-saws",
+   "conceptName": "Bench Saws/Mitre Saws",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/ced7c0ceb852caa7c2ebaf7f7104fd22e157874e.pdf",
+     "kind": "installation_guide",
+     "sku": "5032354"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/sanders",
+   "conceptName": "Sanders",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b53581e2cc8974ddc15a8340110af0eeed97820e.pdf",
+     "kind": "installation_guide",
+     "sku": "5110418"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/fa5ea96f85fcce476fe04bf91ddb5d29c33b54b8.pdf",
+     "kind": "installation_guide",
+     "sku": "5110507"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/reciprocating-saws",
+   "conceptName": "Reciprocating Saws",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1085644 Makita DJR183Z tds",
+     "url": "pdf://placemakers/4fe089607e88061290c217d1abc9c7c348ca3257.pdf",
+     "kind": "installation_guide",
+     "sku": "5080119"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/laminate-trimmers-routers",
+   "conceptName": "Laminate Trimmers/Routers",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/51a9d7a808ae6fc5168b75fbf76e6003400fb040.pdf",
+     "kind": "installation_guide",
+     "sku": "5080116"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/screwdrivers-and-screw-guns",
+   "conceptName": "Screwdrivers & Screw Guns",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b643c76308b08c8d57cb32defb389b2a947fecef.pdf",
+     "kind": "installation_guide",
+     "sku": "3161810"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/radio",
+   "conceptName": "Radio",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0b17e946e0ce4d90d1161b9ee14ae6addf264282.pdf",
+     "kind": "installation_guide",
+     "sku": "5080814"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3cf3f8461c7ba123badbed41f36e0ef2998e0317.pdf",
+     "kind": "installation_guide",
+     "sku": "4741993"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/light-construction-machinery",
+   "conceptName": "Light Construction Machinery",
+   "department": "Tools",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Overview",
+     "url": "pdf://placemakers/61ca63362e5234e67269b9ac02a9b00618fb32c1.pdf",
+     "kind": "warranty",
+     "sku": "4910609"
+    },
+    {
+     "title": "Overview",
+     "url": "pdf://placemakers/c63dfaa1d84c42fadf25394318338f6a01ac9a17.pdf",
+     "kind": "warranty",
+     "sku": "4910602"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/tools/power-tools/band-saws",
+   "conceptName": "Band Saws",
+   "department": "Tools",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1234629 Makita PB002GZ SD",
+     "url": "pdf://placemakers/b0d4a604cb8a2cee3dde4714365e68987b2fcd09.pdf",
+     "kind": "installation_guide",
+     "sku": "7764144"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/wood-screws",
+   "conceptName": "Wood Screws",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1196246 multione brochure",
+     "url": "pdf://placemakers/00a2541ffff65173f3d2161032976fb4a3b436f8.pdf",
+     "kind": "installation_guide",
+     "sku": "4512672"
+    },
+    {
+     "title": "1196242 multione brochure",
+     "url": "pdf://placemakers/09fd9ddd201200b3192311ba8e86ebf45b84368c.pdf",
+     "kind": "installation_guide",
+     "sku": "4512665"
+    },
+    {
+     "title": "1196238 multione brochure",
+     "url": "pdf://placemakers/0b91c5da7bd81c21e965655cceefb4b9abe61929.pdf",
+     "kind": "installation_guide",
+     "sku": "4512659"
+    },
+    {
+     "title": "1244325 multione brochure",
+     "url": "pdf://placemakers/0d5d7d4c26f217f9c5ddd803b08a70c42144bb06.pdf",
+     "kind": "installation_guide",
+     "sku": "7768141"
+    },
+    {
+     "title": "1244339 multione brochure",
+     "url": "pdf://placemakers/0f9c1afb67f5f90d592a1ab8eaf0c7a1c43bdf4d.pdf",
+     "kind": "installation_guide",
+     "sku": "7768160"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/masonry-anchors",
+   "conceptName": "Masonry  Anchors",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1034684 sa hex TDS",
+     "url": "pdf://placemakers/0479054ea892a9f2e3cebc58265e87e90caa87d0.pdf",
+     "kind": "installation_guide",
+     "sku": "4521301"
+    },
+    {
+     "title": "1034688 sa tech data",
+     "url": "pdf://placemakers/07873207d3ecfa97692c85f0503ecd9c77fafd23.pdf",
+     "kind": "installation_guide",
+     "sku": "4525109"
+    },
+    {
+     "title": "1034775 strike TDS 2",
+     "url": "pdf://placemakers/0aa0dfe03fc084fbe7295a9d7d4d22c753bf0ec6.pdf",
+     "kind": "installation_guide",
+     "sku": "4524909"
+    },
+    {
+     "title": "1034821 Iccons Grabcon new less bits spec",
+     "url": "pdf://placemakers/0b1d20cb6c51fcb1afbae57c4678830a4af80bfe.pdf",
+     "kind": "installation_guide",
+     "sku": "4524844"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0b403a8157ed974bd30f4a6689c1ede6de891e40.pdf",
+     "kind": "installation_guide",
+     "sku": "4524118"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/collated-nails",
+   "conceptName": "Collated Nails",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1298291 Paslode Steel frame Brad A4",
+     "url": "pdf://placemakers/2d6b5fe5e87fd90d79838bb7fe14a3990588ee5f.pdf",
+     "kind": "installation_guide",
+     "sku": "5081000"
+    },
+    {
+     "title": "1298293 Paslode Steel frame Brad A4",
+     "url": "pdf://placemakers/f8c425b1fb7897f189d34c6657d8155cc4f7094f.pdf",
+     "kind": "installation_guide",
+     "sku": "5080996"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/collated-nails",
+   "conceptName": "Collated Nails",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "BYPASS FOLLOWER",
+     "url": "pdf://placemakers/af72c0f918f1578e5f598cf4b9d9b55b201e3fb6.pdf",
+     "kind": "warranty",
+     "sku": "5081731"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/d6b46024a07e1384c6a6f97b020bfdc2fcd06ae1.pdf",
+     "kind": "warranty",
+     "sku": "5081865"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/timber-connectors",
+   "conceptName": "Timber Connectors",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/7ed1782ebd35755ed690a7ebb2c4d6c4d9552228.pdf",
+     "kind": "installation_guide",
+     "sku": "4512035"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/c98a35bb5308c6e9eceeaa57ad469f0081ab896b.pdf",
+     "kind": "installation_guide",
+     "sku": "4512039"
+    },
+    {
+     "title": "1198692 stud loksolution installation guide",
+     "url": "pdf://placemakers/2582b76bd8dec66fd68c2dd65373e926a4639a4e.pdf",
+     "kind": "installation_guide",
+     "sku": "4512031"
+    },
+    {
+     "title": "1197271 StudLok spec file",
+     "url": "pdf://placemakers/28c6a0c5f54af6de9e81a0fde04e3d3a9b228d55.pdf",
+     "kind": "installation_guide",
+     "sku": "4512029"
+    },
+    {
+     "title": "1197271 stud loksolution installation guide",
+     "url": "pdf://placemakers/2d58081777f1150d5c343bc18b971622863f4e17.pdf",
+     "kind": "installation_guide",
+     "sku": "4512029"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/fastenings/power-actuated",
+   "conceptName": "Power Actuated",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0d8798185556d69effefd2b20eb998baac8ed1d9.pdf",
+     "kind": "installation_guide",
+     "sku": "4521750"
+    },
+    {
+     "title": "Technical Bulletin | PXW75 Drive Pin",
+     "url": "pdf://placemakers/5fa76d18bd2c911ed98ae97eae3320d6a9b79835.pdf",
+     "kind": "installation_guide",
+     "sku": "4521750"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/gate-hardware",
+   "conceptName": "Gate Hardware",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/53f5c8adaa1810aaffe54d702d4973d08d79dcbb.pdf",
+     "kind": "installation_guide",
+     "sku": "4620852"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b99ab23f2dc57584bbd173b2425d92d2bb89c14c.pdf",
+     "kind": "installation_guide",
+     "sku": "4620845"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/fb14694a188808878064c1e18b624b5f2f33892c.pdf",
+     "kind": "installation_guide",
+     "sku": "4610333"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/fastenings-and-general-hardware/hardware/packers-wedges-pods",
+   "conceptName": "Packers, Wedges, Pods",
+   "department": "Fastenings & General Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1168173 Nuraspike BPIR Information Sheet",
+     "url": "pdf://placemakers/6ac8c11fc1333acf2c61e28bd1513c43a112e944.pdf",
+     "kind": "installation_guide",
+     "sku": "3551506"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0a49c9efc2face33f74c4b9264cb283e6a4792a1.pdf",
+     "kind": "installation_guide",
+     "sku": "3551560"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/e682d7c2c5a659b1f5b82cffeba3cd4e4575f4d7.pdf",
+     "kind": "installation_guide",
+     "sku": "3551513"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/watering-systems",
+   "conceptName": "Watering Systems",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1233584 Pope Polyethylene ID",
+     "url": "pdf://placemakers/003a7a6eae39644baf07f2d611054acfea1524a0.pdf",
+     "kind": "installation_guide",
+     "sku": "3393155"
+    },
+    {
+     "title": "1233619 Pope Polyethylene ID",
+     "url": "pdf://placemakers/1200aa4176ab64673c77aaa0b38e2393c38dc575.pdf",
+     "kind": "installation_guide",
+     "sku": "3393126"
+    },
+    {
+     "title": "1233537 Pope Polyethylene ID",
+     "url": "pdf://placemakers/134e8a8e721a59dcf3a62a74c369d87649d45e5c.pdf",
+     "kind": "installation_guide",
+     "sku": "3393124"
+    },
+    {
+     "title": "1245412 Pope Polyethylene ID",
+     "url": "pdf://placemakers/13630c871e882dcd78b3dc09b5caf3bf1fc882cf.pdf",
+     "kind": "installation_guide",
+     "sku": "7768792"
+    },
+    {
+     "title": "1233564 Pope Polyethylene ID",
+     "url": "pdf://placemakers/1e9d2d69b9ef76487ec8ae653c46b83a26e05415.pdf",
+     "kind": "installation_guide",
+     "sku": "3393160"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/plant-and-pest-control",
+   "conceptName": "Plant & Pest Control",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/13dad1b0c8ebfa466f874e388f953a98e7e7d22b.pdf",
+     "kind": "installation_guide",
+     "sku": "5301524"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3d2bc619d5505fc637cd8f67495b91a4a1cca259.pdf",
+     "kind": "installation_guide",
+     "sku": "5301548"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/76c0ec24400c1d039d8561c9a3549d72c51709ba.pdf",
+     "kind": "installation_guide",
+     "sku": "5301533"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/f711924cd16343ab1620e437286b7bce092b6c5c.pdf",
+     "kind": "installation_guide",
+     "sku": "5301529"
+    },
+    {
+     "title": "1029529 Kiwicare 30045 MD",
+     "url": "pdf://placemakers/9cc9911076544be07f63beef52e3b1c26a5226e1.pdf",
+     "kind": "installation_guide",
+     "sku": "5551007"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/underlay-and-textiles",
+   "conceptName": "Underlay & Textiles",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1200203 JakMat Dairy Flyer",
+     "url": "pdf://placemakers/70e73da8d1e470da7767417ff4a27d4340b47afa.pdf",
+     "kind": "installation_guide",
+     "sku": "5329136"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/clotheslines",
+   "conceptName": "Clotheslines",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1298883 77335 Sun King Rotary 47 Norfolk Green Manual",
+     "url": "pdf://placemakers/0096be17ef50bd1a96547e7176818c75061948a2.pdf",
+     "kind": "installation_guide",
+     "sku": "3590285"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/04e2ff8a48b3e441e8d0982a919f7caa904f918e.pdf",
+     "kind": "installation_guide",
+     "sku": "3590385"
+    },
+    {
+     "title": "1298906 77335 Sun King Rotary 47 Norfolk Green Manual",
+     "url": "pdf://placemakers/05cd654e1b86df2756c39f7dfd1dc4c47a68bce2.pdf",
+     "kind": "installation_guide",
+     "sku": "3590286"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3a1aeb8764514b06b0bea773874eb264c622a3f7.pdf",
+     "kind": "installation_guide",
+     "sku": "3590384"
+    },
+    {
+     "title": "1138352 Sun King 77390 installation",
+     "url": "pdf://placemakers/92926570adfae2bda9a19947b8718ca88ea8e2f1.pdf",
+     "kind": "installation_guide",
+     "sku": "3590238"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/garden-and-landscaping/plants-and-seeds",
+   "conceptName": "Plants & Seeds",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "For safety data sheets (SDS) please visit www.mcgregors.co.nz",
+     "url": "pdf://placemakers/41deb3781744c9cb4be9d79a578332cb79055048.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "5360901"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/fence-panels",
+   "conceptName": "Fence Panels",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1289754 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/1436e02620844fc12329b1fda525113185735ad9.pdf",
+     "kind": "installation_guide",
+     "sku": "2250191"
+    },
+    {
+     "title": "1289760 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/3592146b952367ddc6376f358941deb9a549d94b.pdf",
+     "kind": "installation_guide",
+     "sku": "2250224"
+    },
+    {
+     "title": "1289816 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/7d5ee2213d0a724469b28525e17539c69076a250.pdf",
+     "kind": "installation_guide",
+     "sku": "2250192"
+    },
+    {
+     "title": "A STEP-BY-STEP GUIDE TO INSTALLING YOUR FENCE",
+     "url": "pdf://placemakers/81ae0c6fce0cd28e08da68dde6fc04f91f81942b.pdf",
+     "kind": "installation_guide",
+     "sku": "2250186"
+    },
+    {
+     "title": "1289836 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/94cde4007a63d5a4cb22d858cec7594b07a2366f.pdf",
+     "kind": "installation_guide",
+     "sku": "2250219"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/metal-gates",
+   "conceptName": "Metal Gates",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1289731 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/0afac28ac97ad168383103b6c99c31222ff14965.pdf",
+     "kind": "installation_guide",
+     "sku": "2250228"
+    },
+    {
+     "title": "1289712 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/4fa7d7e8c15997340d8134dd4930f015e81868e7.pdf",
+     "kind": "installation_guide",
+     "sku": "2250200"
+    },
+    {
+     "title": "1289823 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/6302f61029c40d52a6a90b37a135d688c28e81d9.pdf",
+     "kind": "installation_guide",
+     "sku": "2250246"
+    },
+    {
+     "title": "1289835 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/71adad603336acd765862892310562c75edda5eb.pdf",
+     "kind": "installation_guide",
+     "sku": "2250199"
+    },
+    {
+     "title": "1289681 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/766c0bbac051eeeb79a587b907c81509d9c80a13.pdf",
+     "kind": "installation_guide",
+     "sku": "2250249"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/fencing-and-netting-non-timber/posts",
+   "conceptName": "Posts",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1289693 Fentec InstallationGuide FKAFP1224F",
+     "url": "pdf://placemakers/1830fe4b133426ff15ae583a6bd7706293ddca28.pdf",
+     "kind": "installation_guide",
+     "sku": "2250267"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/translucent-roofing/polycarb-roofing",
+   "conceptName": "Polycarb Roofing",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/6824c1080956e3773058bd78a7e3b74405728496.pdf",
+     "kind": "installation_guide",
+     "sku": "3373644"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/e83395b1cd51a2193c284af4f3b17a30ae85614c.pdf",
+     "kind": "installation_guide",
+     "sku": "3373647"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/f056ace7467a1fa1055c61fb5223c58127c322de.pdf",
+     "kind": "installation_guide",
+     "sku": "3373646"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/translucent-roofing/polycarb-roofing",
+   "conceptName": "Polycarb Roofing",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "NZ’s Number 1 Polycarbonate Sheeting",
+     "url": "pdf://placemakers/147e337c19407c45ad6f50fef27f0b1f59ca8d56.pdf",
+     "kind": "warranty",
+     "sku": "3372237"
+    },
+    {
+     "title": "1018370 PSP 3373644 tds",
+     "url": "pdf://placemakers/0074f76cf75349d7d873e1613fb8f25d379483af.pdf",
+     "kind": "warranty",
+     "sku": "3373646"
+    },
+    {
+     "title": "Tufclad Ultra",
+     "url": "pdf://placemakers/7734aa1bb64816aefc9b9afe7a05b58a19577dbf.pdf",
+     "kind": "warranty",
+     "sku": "3373541"
+    },
+    {
+     "title": "1018371 PSP 3373644 tds",
+     "url": "pdf://placemakers/be44d8666c94128ae9bede3a984afea27c442ecc.pdf",
+     "kind": "warranty",
+     "sku": "3373647"
+    },
+    {
+     "title": "1018368 PSP 3373644 tds",
+     "url": "pdf://placemakers/f8dfd7c08e36624e48a438d28ddffdc7ff8fb8de.pdf",
+     "kind": "warranty",
+     "sku": "3373644"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/outdoor-and-landscaping/translucent-roofing/pvc-roofing",
+   "conceptName": "PVC Roofing",
+   "department": "Outdoor & Landscaping",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1018019 PSP 3370178 tds",
+     "url": "pdf://placemakers/5aa90880d31aefc8a6b2679ddcf2bcd5a579e2d3.pdf",
+     "kind": "installation_guide",
+     "sku": "3370202"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/insulation/polystyrene",
+   "conceptName": "Polystyrene",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/104ffd493ec203ffd414e935f2aebd80f693c177.pdf",
+     "kind": "warranty",
+     "sku": "3400557"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/8b5284efc335a0510dd0f82bf17e88a56f646a4b.pdf",
+     "kind": "warranty",
+     "sku": "3400567"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b05b61f0cd2f112e77f4331bdd65beaddd379491.pdf",
+     "kind": "warranty",
+     "sku": "3400570"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/baa05c11952970aaf841bcec86b14e008855c8ab.pdf",
+     "kind": "warranty",
+     "sku": "3400559"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/dbc3ed8ce40efcf81b5440ac523235e991500360.pdf",
+     "kind": "warranty",
+     "sku": "3400566"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/insulation/other-insulation",
+   "conceptName": "Other Insulation",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1019754 Hardie Mineral Insulation Technical Supplement",
+     "url": "pdf://placemakers/2729993d235fd65a4d6c39a3abc94ae2a6d39311.pdf",
+     "kind": "warranty",
+     "sku": "3401085"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/insulation/polyester",
+   "conceptName": "Polyester",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1019930 Mammoth MU0900PL115 0450 11110 04 installation",
+     "url": "pdf://placemakers/026be7af0b7e8fd8e1bfa241dbdaa228ebdcab7a.pdf",
+     "kind": "installation_guide",
+     "sku": "3401317"
+    },
+    {
+     "title": "1019933 Mammoth MU0900PL115 0450 11110 04 installation",
+     "url": "pdf://placemakers/3c25081f7a4b9af2a531763a364e3a764a46cb45.pdf",
+     "kind": "installation_guide",
+     "sku": "3401320"
+    },
+    {
+     "title": "1020027 GreenStuf PQSS43 tds",
+     "url": "pdf://placemakers/415cd55448fde2e113b4b876cc63628b38bf7235.pdf",
+     "kind": "installation_guide",
+     "sku": "3401421"
+    },
+    {
+     "title": "1020025 GreenStuf PQSS43 tds",
+     "url": "pdf://placemakers/6585e95094ab818f589e1d4e60152d39b771d39e.pdf",
+     "kind": "installation_guide",
+     "sku": "3401419"
+    },
+    {
+     "title": "1291142 24328 insul baffle design and installation guide",
+     "url": "pdf://placemakers/71516143324995b135e236cdee09ab821cc8c077.pdf",
+     "kind": "installation_guide",
+     "sku": "4750623"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/insulation/fibreglass",
+   "conceptName": "Fibreglass",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1019747 Pink Batts 7160110 tds",
+     "url": "pdf://placemakers/3507dc98512183c63f6d43944a66666ab2009826.pdf",
+     "kind": "installation_guide",
+     "sku": "3401011"
+    },
+    {
+     "title": "pinkbatts.co.nz This data sheet may have been superseded. Please refer to pinkbatts.co.nz ",
+     "url": "pdf://placemakers/40e399034a9424fe35ac89498fadb6ea4c5cbc47.pdf",
+     "kind": "installation_guide",
+     "sku": "3401031"
+    },
+    {
+     "title": "Pink® Batts® glass wool insulation.",
+     "url": "pdf://placemakers/784652e73e1c5f830fee43de65c84ad6780864d0.pdf",
+     "kind": "installation_guide",
+     "sku": "3400456"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/flashing-and-sealing-tapes",
+   "conceptName": "Flashing & Sealing Tapes",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Cool Window Flashing Tape Installation Guide with Flexible Wall Underlay",
+     "url": "pdf://placemakers/c68e0af35ffcabfd850a91717421e263dcf33355.pdf",
+     "kind": "installation_guide",
+     "sku": "3411828"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/flashing-and-sealing-tapes",
+   "conceptName": "Flashing & Sealing Tapes",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Excellent sealant compatibility",
+     "url": "pdf://placemakers/a708d5a8e040c8a6139c57567bdf9863faa6dedf.pdf",
+     "kind": "warranty",
+     "sku": "3410266"
+    },
+    {
+     "title": "1202511 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/ba39b99e17a6acac7b92f6d66110a5036a7ea340.pdf",
+     "kind": "warranty",
+     "sku": "3410519"
+    },
+    {
+     "title": "SUPER-STICK Building Tape",
+     "url": "pdf://placemakers/d93fd6bc38973e7aadd7813d3d2ec0eb0ae3eaf0.pdf",
+     "kind": "warranty",
+     "sku": "3410116"
+    },
+    {
+     "title": "1229293 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/d99a489dd0c2767a3e8c82573e374683c00e4ea1.pdf",
+     "kind": "warranty",
+     "sku": "3410644"
+    },
+    {
+     "title": "For Support call 0800 522 533 | visit mpb.co.nz | email support@mpb.co.nz",
+     "url": "pdf://placemakers/16293fa6d5d3e6249127992c4b909bbad715a85f.pdf",
+     "kind": "warranty",
+     "sku": "3410066"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/accessories",
+   "conceptName": "Accessories",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1015123 PRODRAIN8 tds",
+     "url": "pdf://placemakers/bf2839ea00b5995871b7944fc08fb83e798d44b1.pdf",
+     "kind": "installation_guide",
+     "sku": "3261568"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/accessories",
+   "conceptName": "Accessories",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1267724 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/3e6b14e0f1ea74400ffb435a947ba06cc83539d4.pdf",
+     "kind": "warranty",
+     "sku": "3410666"
+    },
+    {
+     "title": "1202514 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/488eee2c9854bb88373671fe2c739698e2282639.pdf",
+     "kind": "warranty",
+     "sku": "3410525"
+    },
+    {
+     "title": "PRODUCT CATALOGUE",
+     "url": "pdf://placemakers/51686b91d8312a4888520f99eff504d60ce2cfc5.pdf",
+     "kind": "warranty",
+     "sku": "3410654"
+    },
+    {
+     "title": "1229304 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/cf5171c9f0f4fbcb10091582b4ad7fe728f41c05.pdf",
+     "kind": "warranty",
+     "sku": "3410650"
+    },
+    {
+     "title": "1229297 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/e000623601cda996491881caa44a3531c716f6c5.pdf",
+     "kind": "warranty",
+     "sku": "3410648"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/building-papers-wraps-and-barriers",
+   "conceptName": "Building Papers, Wraps & Barriers",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1020281 BPH13025 tds",
+     "url": "pdf://placemakers/85588e0d77886c6ec1ace9255c6514b1226961c5.pdf",
+     "kind": "installation_guide",
+     "sku": "3410286"
+    },
+    {
+     "title": "1020281 BPH13025 installation",
+     "url": "pdf://placemakers/9831ac6f9506a6bc4f4f7dd4ca5a6580198b2ad2.pdf",
+     "kind": "installation_guide",
+     "sku": "3410286"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/building-papers-wraps-and-barriers",
+   "conceptName": "Building Papers, Wraps & Barriers",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "- 12 Products",
+     "url": "pdf://placemakers/263d6fdf8d7445ac4e51ada8d2ca3382bccce645.pdf",
+     "kind": "warranty",
+     "sku": "3410191"
+    },
+    {
+     "title": "MW TEKTON 10/2014 Page 1",
+     "url": "pdf://placemakers/e4e305d14360e5d9e8f92a2985f826ca286eeefd.pdf",
+     "kind": "warranty",
+     "sku": "3410090"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/damp-proof-course-dpc",
+   "conceptName": "Damp Proof Course (DPC)",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Appraisal No. 329 [2005]",
+     "url": "pdf://placemakers/0d2cd9ab8bc2d1b69d5ada7b7b0dda9986ec117e.pdf",
+     "kind": "warranty",
+     "sku": "3429993"
+    },
+    {
+     "title": "1020434 Thermakraft SPC10030 tds",
+     "url": "pdf://placemakers/2640e7adcbfdf374e3635d873201607f444de398.pdf",
+     "kind": "warranty",
+     "sku": "3429992"
+    },
+    {
+     "title": "1020437 Thermakraft SPC10030 tds",
+     "url": "pdf://placemakers/28eee51bddf5901e9372416cb62dfe2e65305639.pdf",
+     "kind": "warranty",
+     "sku": "3429995"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2c0ab7669b541ffa510b801c3c60e4dfadb2ad79.pdf",
+     "kind": "warranty",
+     "sku": "3429993"
+    },
+    {
+     "title": "1020440 Thermakraft SPC10030 tds",
+     "url": "pdf://placemakers/57e61a93a2a40794bc1aa24d55e8bae35639985b.pdf",
+     "kind": "warranty",
+     "sku": "3429999"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/roof-underlays",
+   "conceptName": "Roof Underlays",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Installation Guide",
+     "url": "pdf://placemakers/7e13878ef8d0eafcabe5594b0025dfe204c35448.pdf",
+     "kind": "installation_guide",
+     "sku": "3410229"
+    },
+    {
+     "title": "1020332 TH4011350075 installation",
+     "url": "pdf://placemakers/c9ecb9beb581d659f48dfae20f043c707761312a.pdf",
+     "kind": "installation_guide",
+     "sku": "3410389"
+    },
+    {
+     "title": "Installation Guide",
+     "url": "pdf://placemakers/ce3b84c2c69a91b5f907f284f7f25da42b4c2a1f.pdf",
+     "kind": "installation_guide",
+     "sku": "3410257"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/roof-underlays",
+   "conceptName": "Roof Underlays",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Product Data Sheet",
+     "url": "pdf://placemakers/522ebc16b152e5642d633cb8962c331ed7243a74.pdf",
+     "kind": "warranty",
+     "sku": "3410257"
+    },
+    {
+     "title": "COVERTEK",
+     "url": "pdf://placemakers/7122ec040a5b17270d367c3fa4a722d3162f600b.pdf",
+     "kind": "warranty",
+     "sku": "3410244"
+    },
+    {
+     "title": "1020332 TH4011350075 tds",
+     "url": "pdf://placemakers/77e1022ae24f56566b98f9eca8b06d36e37943a5.pdf",
+     "kind": "warranty",
+     "sku": "3410389"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/rigid-air-barriers",
+   "conceptName": "Rigid Air Barriers",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1161875 405131 installation",
+     "url": "pdf://placemakers/47b5524f254f52d61ed2d6c04d40c1843b9b099c.pdf",
+     "kind": "installation_guide",
+     "sku": "3100892"
+    },
+    {
+     "title": "1160550 RRAP082412 installation",
+     "url": "pdf://placemakers/7265d1d46d1b351fa8454b6340514303a2b49dac.pdf",
+     "kind": "installation_guide",
+     "sku": "2700124"
+    },
+    {
+     "title": "PRE-CLADDING",
+     "url": "pdf://placemakers/f2718c4c403581e14804ba3d6362c384375c778d.pdf",
+     "kind": "installation_guide",
+     "sku": "3100893"
+    },
+    {
+     "title": "IBS RigidRAP® Installation Guide V1.1 Please allow 2mm gap around all 4 sides of the board",
+     "url": "pdf://placemakers/f7662678182fcf1ac7289a13785d14b0590359ed.pdf",
+     "kind": "installation_guide",
+     "sku": "2700126"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/rigid-air-barriers",
+   "conceptName": "Rigid Air Barriers",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1167605 Ecoply Barrier BRANZ Appraisal 827 August 19",
+     "url": "pdf://placemakers/143ff83d45de725f929a743a7b6097de4f30b564.pdf",
+     "kind": "warranty",
+     "sku": "3100879"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/330f5fbb253b0954cf943790edbdcfff136cc1a3.pdf",
+     "kind": "warranty",
+     "sku": "3150183"
+    },
+    {
+     "title": "1167606 Ecoply Barrier BRANZ Appraisal 827 August 19",
+     "url": "pdf://placemakers/8ee33ad3d534c7f5b10aa8181899097a8f40255b.pdf",
+     "kind": "warranty",
+     "sku": "3100878"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/ef1a602c59a697010684455bca2cace6c0ed2614.pdf",
+     "kind": "warranty",
+     "sku": "3150184"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/moisture-control",
+   "conceptName": "Moisture Control",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1020331 Thermakraft VS2130100 tds",
+     "url": "pdf://placemakers/02dc60fbd250a4c9d9b4c5d1704bb244052d616a.pdf",
+     "kind": "installation_guide",
+     "sku": "3410386"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/moisture-control",
+   "conceptName": "Moisture Control",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1267558 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/1ee9715613f041fd4c59e3a633943458876326b8.pdf",
+     "kind": "warranty",
+     "sku": "3410535"
+    },
+    {
+     "title": "1267556 Proclima NZ Product Catalogue 2023 11.7.2023",
+     "url": "pdf://placemakers/7f4213f392f945903a81ecc2352e2f486969de2b.pdf",
+     "kind": "warranty",
+     "sku": "3410534"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/concrete-underlays",
+   "conceptName": "Concrete Underlays",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Thermakraft",
+     "url": "pdf://placemakers/4f8466abeafc0d9e573018f2374173296e8a2e41.pdf",
+     "kind": "installation_guide",
+     "sku": "3410196"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/building-wraps-barriers-underlay-and-tapes/foils",
+   "conceptName": "Foils",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1020294 Thermakraft FF344100 installation",
+     "url": "pdf://placemakers/fcd83fe0970e6dcd9733cb4eac22c03e1ee747da.pdf",
+     "kind": "installation_guide",
+     "sku": "3410331"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/accessories-and-special-order-lining",
+   "conceptName": "Accessories & Special Order Lining",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1207339 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/09619cbd5de697db8a57731dde455280b7f2644f.pdf",
+     "kind": "installation_guide",
+     "sku": "2843626"
+    },
+    {
+     "title": "1014692 James Hardie 3160325 tds",
+     "url": "pdf://placemakers/0c01865771ae97ac642ff931a8f5394c5e9bbfa3.pdf",
+     "kind": "installation_guide",
+     "sku": "3160326"
+    },
+    {
+     "title": "1014723 James Hardie 3160325 tds",
+     "url": "pdf://placemakers/17c500ea070ec6ca0a46f76b7636cd9d3a4e6c68.pdf",
+     "kind": "installation_guide",
+     "sku": "3160603"
+    },
+    {
+     "title": "1014691 James Hardie 3160325 tds",
+     "url": "pdf://placemakers/2651d0a437ff21a8f50a570310407cab3394f9a3.pdf",
+     "kind": "installation_guide",
+     "sku": "3160325"
+    },
+    {
+     "title": "1014702 James Hardie 3160325 tds",
+     "url": "pdf://placemakers/391b13a92924437ea72537fe59c9c0bbc0317212.pdf",
+     "kind": "installation_guide",
+     "sku": "3160336"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/high-pressure-laminates",
+   "conceptName": "High Pressure Laminates",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1207505 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/36860ec8519d271adad5ac22030298684617f208.pdf",
+     "kind": "installation_guide",
+     "sku": "2742002"
+    },
+    {
+     "title": "1207492 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/5ae21dd00426a40e4139c4bdd4a5a974f0bf0b48.pdf",
+     "kind": "installation_guide",
+     "sku": "2742000"
+    },
+    {
+     "title": "1207317 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/632d271c89ce4d5b3c09d183b6c2662e6a9784aa.pdf",
+     "kind": "installation_guide",
+     "sku": "2742004"
+    },
+    {
+     "title": "1207364 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/7750e2d68cef1c52aef85787f04484696c893feb.pdf",
+     "kind": "installation_guide",
+     "sku": "2742003"
+    },
+    {
+     "title": "1207513 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/7e40e75487246c0c3da6679d16dab391890e7660.pdf",
+     "kind": "installation_guide",
+     "sku": "2742007"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/high-pressure-laminates",
+   "conceptName": "High Pressure Laminates",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Seratone® AQUA PLUSTM",
+     "url": "pdf://placemakers/063d1401a6232792f31522b12fd6e3278538752f.pdf",
+     "kind": "warranty",
+     "sku": "7831932"
+    },
+    {
+     "title": "1289964 Seratone AQUA PLUS Flyer 2024",
+     "url": "pdf://placemakers/1080c4197ed16607ad71d79433c9224ae09053fc.pdf",
+     "kind": "warranty",
+     "sku": "7831936"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/paint-surface-hardboard-backing",
+   "conceptName": "Paint Surface Hardboard Backing",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1207507 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/70693b9127120ca07d1fb8a81471a6ce5764477d.pdf",
+     "kind": "installation_guide",
+     "sku": "2741162"
+    },
+    {
+     "title": "1207441 Seratone Technical Installation Manual",
+     "url": "pdf://placemakers/801cbdd4afe9a30cfba4e704c47fe20c27991438.pdf",
+     "kind": "installation_guide",
+     "sku": "2741156"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/paint-surface-hardboard-backing",
+   "conceptName": "Paint Surface Hardboard Backing",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1207270 IBS SHOWER04249 tds",
+     "url": "pdf://placemakers/3cbdcd67601d303f31bf5f5bbf1bb00904fd1ff3.pdf",
+     "kind": "warranty",
+     "sku": "2741949"
+    },
+    {
+     "title": "TECHNICAL DOCUMENTATION",
+     "url": "pdf://placemakers/a23229070fbded9c6d1eaaaad87c3f9fc9361b5a.pdf",
+     "kind": "warranty",
+     "sku": "2741948"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/wet-wall-linings/paint-finish-fibre-cement-backing",
+   "conceptName": "Paint Finish Fibre Cement Backing",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1014620 James Hardie 400210 installation",
+     "url": "pdf://placemakers/12fe397c12512334e733fea5215999fddc7dcf27.pdf",
+     "kind": "installation_guide",
+     "sku": "3140076"
+    },
+    {
+     "title": "1014622 James Hardie 3160325 tds",
+     "url": "pdf://placemakers/92e7d0c416617bfa2abf9f8044867e375fb0e070.pdf",
+     "kind": "installation_guide",
+     "sku": "3140092"
+    },
+    {
+     "title": "1014626 James Hardie 3160325 tds",
+     "url": "pdf://placemakers/99a7c1638a2b8b761cc7e5354b6b334094068143.pdf",
+     "kind": "installation_guide",
+     "sku": "3141199"
+    },
+    {
+     "title": "1014627 James Hardie 3160325 tds",
+     "url": "pdf://placemakers/e365f98c66ba511bc9a0d26a6f1bc3f120707e2d.pdf",
+     "kind": "installation_guide",
+     "sku": "3141207"
+    },
+    {
+     "title": "NOVEMBER 2016 I NEW ZEALAND",
+     "url": "pdf://placemakers/f4a1165a137691c60b7aa466e3d300a8dbedf4b9.pdf",
+     "kind": "installation_guide",
+     "sku": "3140084"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/panels/mdf",
+   "conceptName": "MDF",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1255846 Surround by Laminex Fabrication & Installation Manual",
+     "url": "pdf://placemakers/010a48d8a71fb6ee8932a374ca6c3bae64e36306.pdf",
+     "kind": "installation_guide",
+     "sku": "2742313"
+    },
+    {
+     "title": "1255851 Surround by Laminex Design & Specification Guide",
+     "url": "pdf://placemakers/2b2a16648e8e0e5a5453d657ac2f8dab4a6f9eca.pdf",
+     "kind": "installation_guide",
+     "sku": "2742314"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3e9bef205282dc6641dce0ac1cc66e06720bb17a.pdf",
+     "kind": "installation_guide",
+     "sku": "2600767"
+    },
+    {
+     "title": "Fabrication & Installation Manual",
+     "url": "pdf://placemakers/478e773bc551a85f327aa746ba9874e15d22ccf5.pdf",
+     "kind": "installation_guide",
+     "sku": "2742306"
+    },
+    {
+     "title": "Design & Specification Guide",
+     "url": "pdf://placemakers/9ec3950e3286832ceacd261af81178d0ec8d3a8a.pdf",
+     "kind": "installation_guide",
+     "sku": "2742306"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/panels/melamine",
+   "conceptName": "Melamine",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1207358 Laminex 872036 tds",
+     "url": "pdf://placemakers/3397b9922ae9a9ef119b0762708e1ce71704b803.pdf",
+     "kind": "installation_guide",
+     "sku": "2640548"
+    },
+    {
+     "title": "1207435 Laminex 872036 tds",
+     "url": "pdf://placemakers/7472d108e8e090511e7ff9adab3bb02a1b31a59d.pdf",
+     "kind": "installation_guide",
+     "sku": "2640555"
+    },
+    {
+     "title": "1207443 Laminex 872036 tds",
+     "url": "pdf://placemakers/8620c4d3f12c78a0d8ed93f57132aae7c23d8502.pdf",
+     "kind": "installation_guide",
+     "sku": "2640530"
+    },
+    {
+     "title": "Description:",
+     "url": "pdf://placemakers/9aaf714244a735d5455ab9816d09523a93c6025a.pdf",
+     "kind": "installation_guide",
+     "sku": "2640506"
+    },
+    {
+     "title": "1207375 Laminex 872036 tds",
+     "url": "pdf://placemakers/be71b53eec64e6760ea1f0a1b8fb505ce93a7406.pdf",
+     "kind": "installation_guide",
+     "sku": "2640514"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/fibre-cement-accessories",
+   "conceptName": "Fibre Cement Accessories (Fibre Cement & Accessories)",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/312cdf3e7a500a8cafa0b3174bb0476706b1d94c.pdf",
+     "kind": "installation_guide",
+     "sku": "3100058"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4115fda29dbd168ec823f31de08971ed9e0405f0.pdf",
+     "kind": "installation_guide",
+     "sku": "3160015"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/51291dc8f44693f8ebc67fb15bef72b579254225.pdf",
+     "kind": "installation_guide",
+     "sku": "3100022"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/5d3cc930ea88adc90fc7094d1a2b946fead01556.pdf",
+     "kind": "installation_guide",
+     "sku": "3100043"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/8ca3e7982e3fad7977b4822d38ff23982e9281c3.pdf",
+     "kind": "installation_guide",
+     "sku": "3100880"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/fibre-cement-accessories",
+   "conceptName": "Fibre Cement Accessories (Fibre Cement & Accessories)",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2a8a04a835442a1e2e55cfe9b6e2cd58d99603ad.pdf",
+     "kind": "warranty",
+     "sku": "3160082"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2df472b46702b89dd8df41ad608c38d0b16cb4ef.pdf",
+     "kind": "warranty",
+     "sku": "3100883"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3a65cc2a41b69018aa840329c05cf458e64a0a22.pdf",
+     "kind": "warranty",
+     "sku": "3160066"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardipanel",
+   "conceptName": "Hardipanel",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/34ddf3d34712d82f3f8473b53c9c5d2739c3d1d4.pdf",
+     "kind": "warranty",
+     "sku": "3100057"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/9986c41fbcaebd074c052d9769a155c0074103a0.pdf",
+     "kind": "warranty",
+     "sku": "3100020"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/c3df3276504b9a980f25f225aa5959f1bfd2585c.pdf",
+     "kind": "warranty",
+     "sku": "3100019"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/eedd31279158f8ef1a5cb65308223cb968f0a517.pdf",
+     "kind": "warranty",
+     "sku": "3100018"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/villaboard",
+   "conceptName": "Villaboard",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/de3b75c1a536321a30ee1ea40ad9a4f01fda751c.pdf",
+     "kind": "installation_guide",
+     "sku": "3110707"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/villaboard",
+   "conceptName": "Villaboard",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0150f6e33e6649a5fab7f2fa09fe342328c0a49d.pdf",
+     "kind": "warranty",
+     "sku": "3110673"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/05db026b4843cfce3bc69ef1dc0fbdc3cf779c3a.pdf",
+     "kind": "warranty",
+     "sku": "3110657"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/1840066b07b41cf672363f9c0246897e1def7b3c.pdf",
+     "kind": "warranty",
+     "sku": "3110731"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/29c6e5fdd3c1733e446064f08369fc45aef89c30.pdf",
+     "kind": "warranty",
+     "sku": "3110681"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3542cdc8bdf2564b29d948c316a1a1e8d9c9e884.pdf",
+     "kind": "warranty",
+     "sku": "3110658"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardiflex",
+   "conceptName": "Hardiflex",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/e6f04b1c1365c1fbe8ab719a71cba1ae5def8c2a.pdf",
+     "kind": "installation_guide",
+     "sku": "3100179"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardiflex",
+   "conceptName": "Hardiflex",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0a01bf81d935adffdfd38035de2163ea7b49b500.pdf",
+     "kind": "warranty",
+     "sku": "3100096"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4d50ba8b64782149d318c1fa9c2244a399198cfe.pdf",
+     "kind": "warranty",
+     "sku": "3100070"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/8ebe9a40d3230cc90cd7069798b49de5ff82e5b5.pdf",
+     "kind": "warranty",
+     "sku": "3100187"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/a35aa7246f1ea43049094da402e95650f0c676b7.pdf",
+     "kind": "warranty",
+     "sku": "3100112"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b12082952cfafc3249799100299c8898dda072fb.pdf",
+     "kind": "warranty",
+     "sku": "3100195"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardigroove",
+   "conceptName": "Hardigroove",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/417cc28c913a3e58524b0f81658232019198ee05.pdf",
+     "kind": "warranty",
+     "sku": "3110403"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/7603a8b5b4ea43a4da4b370eac5530594487090f.pdf",
+     "kind": "warranty",
+     "sku": "3110401"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/fibre-cement-and-accessories/hardisoffit",
+   "conceptName": "Hardisoffit",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3a3eb199f8bea3ca6a4d0000f4fea9e79a9b5bd4.pdf",
+     "kind": "warranty",
+     "sku": "3100039"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b19cd73be7ab186f232141c45663ae56afd8f478.pdf",
+     "kind": "warranty",
+     "sku": "3100047"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b6582fbe16b581e3fef546d64853577ff7c8839f.pdf",
+     "kind": "warranty",
+     "sku": "3100021"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/roofing/roof-windows",
+   "conceptName": "Roof Windows",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "VAS 452259-0509",
+     "url": "pdf://placemakers/295cb762898443d7b78173008661811a4ab8b6a6.pdf",
+     "kind": "installation_guide",
+     "sku": "3381214"
+    },
+    {
+     "title": "VAS 454443-2019-01",
+     "url": "pdf://placemakers/64b337b59dee647109ec398ad4ab6bca58c9a64f.pdf",
+     "kind": "installation_guide",
+     "sku": "3381087"
+    },
+    {
+     "title": "VAS 452195-0109",
+     "url": "pdf://placemakers/680ebad78920881bede64f150dc7e521ee334396.pdf",
+     "kind": "installation_guide",
+     "sku": "3382304"
+    },
+    {
+     "title": "VAS 452262-0909",
+     "url": "pdf://placemakers/12217e5a73918d14b93b59180a996eac4c7603db.pdf",
+     "kind": "installation_guide",
+     "sku": "3382308"
+    },
+    {
+     "title": "VAS 453842-2015-01",
+     "url": "pdf://placemakers/96de6d8fc75044520b1bf6bafc2dbced5ed0daba.pdf",
+     "kind": "installation_guide",
+     "sku": "3385083"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/roofing/roof-windows",
+   "conceptName": "Roof Windows",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "World-leading skylights and roof windows",
+     "url": "pdf://placemakers/762823fc8770a4fa370c3459f99abfacae3d8265.pdf",
+     "kind": "warranty",
+     "sku": "3381214"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/roofing/longrun",
+   "conceptName": "Longrun",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1017968 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/720a515aef6ac5a42653cdf20fe66b4859dee2d9.pdf",
+     "kind": "warranty",
+     "sku": "3342614"
+    },
+    {
+     "title": "1017983 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/a2109cc9e2c35a623ec92b54239691e098a29516.pdf",
+     "kind": "warranty",
+     "sku": "3342629"
+    },
+    {
+     "title": "1017980 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/c2539ec3da777de19c5726c0c3aa9687cd43fb79.pdf",
+     "kind": "warranty",
+     "sku": "3342626"
+    },
+    {
+     "title": "1017982 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/ce399b0c6a1cb72b0dd1d8aba17869d1ca9be0c4.pdf",
+     "kind": "warranty",
+     "sku": "3342628"
+    },
+    {
+     "title": "1017984 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/f6cee2f0d416f04ebb4642987c9f49d47cd30c4f.pdf",
+     "kind": "warranty",
+     "sku": "3342630"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/roofing/passive-ventilation",
+   "conceptName": "Passive Ventilation",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1 info@mpb.co.nz 0800 522 533 www.mpb.co.nz",
+     "url": "pdf://placemakers/41761216dfa8042fa4749778acd423c2c7461e32.pdf",
+     "kind": "installation_guide",
+     "sku": "3373444"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/plasterboard-compounds-and-accessories/trims-and-moulds",
+   "conceptName": "Trims & Moulds",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2000f6ca4b76f9b556b75690836ba85f10b3ae3c.pdf",
+     "kind": "installation_guide",
+     "sku": "2803153"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/9694729cb30b0afc7bc496c2258795bcf756708e.pdf",
+     "kind": "installation_guide",
+     "sku": "2803187"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/e794969500e31c02aa7018f549a9a9f5aa74eff4.pdf",
+     "kind": "installation_guide",
+     "sku": "2803203"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars/concrete-additives",
+   "conceptName": "Concrete Additives",
+   "department": "Building Products",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1015124 Cemix 20848 tds",
+     "url": "pdf://placemakers/a87dc55d0f14d16c22b0e5f6616f2e1c1014f30c.pdf",
+     "kind": "warranty",
+     "sku": "3261641"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/concrete-and-mortars/bagged-mortars",
+   "conceptName": "Bagged Mortars",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1159045 Ardex 25354 tds",
+     "url": "pdf://placemakers/d53d98068513a67689ebb29e48054dc30618e499.pdf",
+     "kind": "installation_guide",
+     "sku": "3939521"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/masonry/concrete-blocks-grey-masonry",
+   "conceptName": "Concrete Blocks - Grey Masonry",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/5b560cddcf607377dbe6c7a70f3cc55d2799a17a.pdf",
+     "kind": "installation_guide",
+     "sku": "3230455"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/7a78086dbe97faf0327d6bff160476f7b4e1b812.pdf",
+     "kind": "installation_guide",
+     "sku": "3230034"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/bff7676cd22be1eb1dc8a1a51e146fe02459f2ab.pdf",
+     "kind": "installation_guide",
+     "sku": "3230315"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/fa3509fd5a3797b007319ff7e1d03ddffa99cfa9.pdf",
+     "kind": "installation_guide",
+     "sku": "3230118"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/concrete/readymix-concrete",
+   "conceptName": "Readymix Concrete",
+   "department": "Building Products",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "1273936 Dricon Construction Grout SDS August2023",
+     "url": "pdf://placemakers/a7708bf6122922db337afe83628fa8ab81a89399.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "2260104"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/building-products/passive-fire/passive-fire-penetrations",
+   "conceptName": "Passive Fire Penetrations",
+   "department": "Building Products",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4a88a884c3f7dbf3e1178658eedddd1db1457e7f.pdf",
+     "kind": "installation_guide",
+     "sku": "3399624"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/footwear",
+   "conceptName": "Footwear",
+   "department": "Safety & Ladders",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1129104 Blundstone 024 tds",
+     "url": "pdf://placemakers/3556697e8f89d2351f7882871b3653e105cf2910.pdf",
+     "kind": "warranty",
+     "sku": "4570670"
+    },
+    {
+     "title": "1129110 Blundstone 024 tds",
+     "url": "pdf://placemakers/3799100db2a3a4959af777d443a141a306a04b79.pdf",
+     "kind": "warranty",
+     "sku": "4570676"
+    },
+    {
+     "title": "1129106 Blundstone 024 tds",
+     "url": "pdf://placemakers/667fe6ac36306a7dc2bc7b1d14709d33311e3612.pdf",
+     "kind": "warranty",
+     "sku": "4570672"
+    },
+    {
+     "title": "1129107 Blundstone 024 tds",
+     "url": "pdf://placemakers/b609f2e2308a3652c12df7a5dd879915445a537e.pdf",
+     "kind": "warranty",
+     "sku": "4570673"
+    },
+    {
+     "title": "Blundstone New Zealand Ltd.",
+     "url": "pdf://placemakers/ca7b93662a50c797d8c68b4de11974631dded764.pdf",
+     "kind": "warranty",
+     "sku": "4570671"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/eye-protection",
+   "conceptName": "Eye Protection",
+   "department": "Safety & Ladders",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "TRYOPSI • Clear",
+     "url": "pdf://placemakers/cc1d9c25851438a798b8d3bac3791319f94ca208.pdf",
+     "kind": "warranty",
+     "sku": "4570064"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/respiratory-protection",
+   "conceptName": "Respiratory Protection",
+   "department": "Safety & Ladders",
+   "claimClass": "care_safety",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "care guidance",
+   "candidates": [
+    {
+     "title": "RESPIRATORY GEAR",
+     "url": "pdf://placemakers/ef8f68ae6414b0a2c4f7e1e1a6b4216871a3beb7.pdf",
+     "kind": "care_guide",
+     "sku": "7745072"
+    },
+    {
+     "title": "RESPIRATORY GEAR",
+     "url": "pdf://placemakers/13f13ae5c2aaa100013c90c4ffb1a905f08b2396.pdf",
+     "kind": "care_guide",
+     "sku": "7745000"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/safety-and-ladders/safety/site-safety",
+   "conceptName": "Site Safety",
+   "department": "Safety & Ladders",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1129229 Blundstone 793130 tds",
+     "url": "pdf://placemakers/0a726452df2c41928a61ee3128103338ec6a1954.pdf",
+     "kind": "warranty",
+     "sku": "7723227"
+    },
+    {
+     "title": "1129230 Blundstone 793130 tds",
+     "url": "pdf://placemakers/30f8b15975028b9f11395b0c63963b0410c1a4aa.pdf",
+     "kind": "warranty",
+     "sku": "7723228"
+    },
+    {
+     "title": "1129238 Blundstone 795130 tds",
+     "url": "pdf://placemakers/3d942fc119a678d753376542a42f72b9fb8750de.pdf",
+     "kind": "warranty",
+     "sku": "7722871"
+    },
+    {
+     "title": "1263286 BLD 9961 RF NZ lo PDF",
+     "url": "pdf://placemakers/434b850ee4c4975d49e3298e7ed8a9c71f938d43.pdf",
+     "kind": "warranty",
+     "sku": "7818856"
+    },
+    {
+     "title": "1129240 Blundstone 795130 tds",
+     "url": "pdf://placemakers/4d86dada514e0ef5016fc64d2044e23c679f4d47.pdf",
+     "kind": "warranty",
+     "sku": "7722873"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding/scaffold",
+   "conceptName": "Scaffold",
+   "department": "Safety & Ladders",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1236815 EasyAccess Installation ID",
+     "url": "pdf://placemakers/3138165681dce392ed162d03a178c9ecc4df6d23.pdf",
+     "kind": "installation_guide",
+     "sku": "4100573"
+    },
+    {
+     "title": "1236764 EasyAccess Installation ID",
+     "url": "pdf://placemakers/9db82fe9d78d0f4f74abbc68dd05776ab6a053f4.pdf",
+     "kind": "installation_guide",
+     "sku": "4100473"
+    },
+    {
+     "title": "1236837 EasyAccess Installation ID",
+     "url": "pdf://placemakers/b851253cafeacad51dd80b14eb9de5bae1f4f5a5.pdf",
+     "kind": "installation_guide",
+     "sku": "4100844"
+    },
+    {
+     "title": "1236801 EasyAccess Installation ID",
+     "url": "pdf://placemakers/da91c1e4583bf723ec36165924fc288cc4d40080.pdf",
+     "kind": "installation_guide",
+     "sku": "4100853"
+    },
+    {
+     "title": "1236797 EasyAccess Installation ID",
+     "url": "pdf://placemakers/deebd960dfa3d6c74d74bff0cda40cfc0fb2feb5.pdf",
+     "kind": "installation_guide",
+     "sku": "4100575"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding/attic-access",
+   "conceptName": "Attic Access",
+   "department": "Safety & Ladders",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1010189 FT30 Installation",
+     "url": "pdf://placemakers/4504abcf011f347bd3eb83192a84e272d345169e.pdf",
+     "kind": "installation_guide",
+     "sku": "4100805"
+    },
+    {
+     "title": "1010186 FT30 Installation",
+     "url": "pdf://placemakers/48535204e1c565ca1d8037f6f0f2c3509f7423d0.pdf",
+     "kind": "installation_guide",
+     "sku": "4100799"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/safety-and-ladders/ladders-and-scaffolding/attic-access",
+   "conceptName": "Attic Access",
+   "department": "Safety & Ladders",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1010186 FT30 tds",
+     "url": "pdf://placemakers/0be796b8457e84529df655786d30193afd279955.pdf",
+     "kind": "warranty",
+     "sku": "4100799"
+    },
+    {
+     "title": "1010189 FT30 tds",
+     "url": "pdf://placemakers/9152adda1d27b589ca540ff744171ab0df860221.pdf",
+     "kind": "warranty",
+     "sku": "4100805"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-hardware-and-accessories",
+   "conceptName": "Kitchen Hardware & Accessories",
+   "department": "Kitchens & Laundry",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/00d890cd7afc5149cd86b96551ebcfbfd4b96b8d.pdf",
+     "kind": "installation_guide",
+     "sku": "3038733"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-tapware",
+   "conceptName": "Kitchen Tapware",
+   "department": "Kitchens & Laundry",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1306221 spec 24E055 24E056 24E057 24E058 24E059 24E060 24E137",
+     "url": "pdf://placemakers/0943f81108075f768d4a48b4123ff8848fb09576.pdf",
+     "kind": "installation_guide",
+     "sku": "7840669"
+    },
+    {
+     "title": "1305552 spec 24E055 24E056 24E057 24E058 24E059 24E060 24E137",
+     "url": "pdf://placemakers/102622655509a31c541821ed8de671b9ace2c45d.pdf",
+     "kind": "installation_guide",
+     "sku": "7840655"
+    },
+    {
+     "title": "1305510 spec 24E055 24E056 24E057 24E058 24E059 24E060 24E137",
+     "url": "pdf://placemakers/11898f3c8f662e7e7a625d313b3f54547bb20b2a.pdf",
+     "kind": "installation_guide",
+     "sku": "7840663"
+    },
+    {
+     "title": "1305699 spec 24E055 24E056 24E057 24E058 24E059 24E060 24E137",
+     "url": "pdf://placemakers/2f3d5af2aeec43d81ecd81dd6f198b2bc1c84773.pdf",
+     "kind": "installation_guide",
+     "sku": "7840654"
+    },
+    {
+     "title": "1306205 spec 24E055 24E056 24E057 24E058 24E059 24E060 24E137",
+     "url": "pdf://placemakers/353ebebf843606309ac665856cf3504a7707b5f0.pdf",
+     "kind": "installation_guide",
+     "sku": "7840660"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-appliances",
+   "conceptName": "Kitchen Appliances",
+   "department": "Kitchens & Laundry",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1056680 Insinkerator EVO100 instructions",
+     "url": "pdf://placemakers/ed76031a13b9b740e9ac166a516471ce725375f5.pdf",
+     "kind": "installation_guide",
+     "sku": "3800502"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-appliances",
+   "conceptName": "Kitchen Appliances",
+   "department": "Kitchens & Laundry",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2863e1a045c3675d183add411e690731ec3b06ef.pdf",
+     "kind": "warranty",
+     "sku": "3803132"
+    },
+    {
+     "title": "Installation",
+     "url": "pdf://placemakers/812599fd0456c41dbb6aad3727ba09f0075e8d04.pdf",
+     "kind": "warranty",
+     "sku": "3803299"
+    },
+    {
+     "title": "Installation",
+     "url": "pdf://placemakers/94d754673fefa4d80e65e07919a50f66c5ab6f40.pdf",
+     "kind": "warranty",
+     "sku": "3802780"
+    },
+    {
+     "title": "1208986 SEN500Q SEN500QA SEN750QA IM v5 20 02 2020",
+     "url": "pdf://placemakers/9700aa1253b0daa0e3e383faada9329b512af1c8.pdf",
+     "kind": "warranty",
+     "sku": "7738770"
+    },
+    {
+     "title": "1208984 SEN500Q SEN500QA SEN750QA IM v5 20 02 2020",
+     "url": "pdf://placemakers/e2124618534d8b99fca7d1cf39f5813284227fd2.pdf",
+     "kind": "warranty",
+     "sku": "7738771"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-sinks",
+   "conceptName": "Kitchen Sinks",
+   "department": "Kitchens & Laundry",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Aquatica Warranty",
+     "url": "pdf://placemakers/42f16187f6d25d1a19c4e1b0f0f253b5c4ff16b0.pdf",
+     "kind": "warranty",
+     "sku": "3620401"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/kitchens/kitchen-splashbacks",
+   "conceptName": "Kitchen Splashbacks",
+   "department": "Kitchens & Laundry",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1161328 PSP DesignerSplash Guide V1",
+     "url": "pdf://placemakers/1733e32b59fe29358ecb206e876a2687f452e0a4.pdf",
+     "kind": "installation_guide",
+     "sku": "5711228"
+    },
+    {
+     "title": "1161287 PSP DesignerSplash Guide V1",
+     "url": "pdf://placemakers/1977209c7a8b79a9ab7c15ef0a681965c0bee06e.pdf",
+     "kind": "installation_guide",
+     "sku": "5711235"
+    },
+    {
+     "title": "1209547 PSP DesignerSplash Guide V1",
+     "url": "pdf://placemakers/23caf53c2f2a6c8cfef196016f6e1e6b44e0de71.pdf",
+     "kind": "installation_guide",
+     "sku": "3622098"
+    },
+    {
+     "title": "1161295 PSP DesignerSplash Guide V1",
+     "url": "pdf://placemakers/29db7ba46a632de5372755ad05946b04bce6cd8b.pdf",
+     "kind": "installation_guide",
+     "sku": "5711251"
+    },
+    {
+     "title": "1161305 PSP DesignerSplash Guide V1",
+     "url": "pdf://placemakers/378878d35a55adf501f0305df5d3e918d12574de.pdf",
+     "kind": "installation_guide",
+     "sku": "5711221"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/laundry/laundry-tubs",
+   "conceptName": "Laundry Tubs",
+   "department": "Kitchens & Laundry",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1034988 RobinhoodSTCL11",
+     "url": "pdf://placemakers/b13491a426b7f62be6d898204b4b6c3bee333807.pdf",
+     "kind": "installation_guide",
+     "sku": "3622064"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b277d7114cac2da1bade222b373963c02a359dbe.pdf",
+     "kind": "installation_guide",
+     "sku": "3622064"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/kitchens-and-laundry/laundry/laundry-tubs",
+   "conceptName": "Laundry Tubs",
+   "department": "Kitchens & Laundry",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Description: ROBINHOOD SUPERTUB STANDARD SERIES 3 WITH S/S GOOSENECK TAP",
+     "url": "pdf://placemakers/79964d910a341c91e407ff5f09fdfdda2d5747c6.pdf",
+     "kind": "warranty",
+     "sku": "3622003"
+    },
+    {
+     "title": "Description: ROBINHOOD SUPERTUB SLIM SERIES 3 WITH S/S GOOSENECK TAP",
+     "url": "pdf://placemakers/f5989352dc299a5bd0cd8ebb1f3df28b8eeb406b.pdf",
+     "kind": "warranty",
+     "sku": "3622001"
+    },
+    {
+     "title": "Specifications",
+     "url": "pdf://placemakers/dd025d8856bfa9d0c1db61a6349e5429f25d42c7.pdf",
+     "kind": "warranty",
+     "sku": "3622003"
+    },
+    {
+     "title": "Specifications",
+     "url": "pdf://placemakers/eb2b2dc03d390ff4a3cf480131b5a17f44ef7e87.pdf",
+     "kind": "warranty",
+     "sku": "3622001"
+    },
+    {
+     "title": "1034988 RobinhoodSTCL13",
+     "url": "pdf://placemakers/ecff57934e7ba0f1f6b543f9d39253a89b78ccc7.pdf",
+     "kind": "warranty",
+     "sku": "3622064"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/structural-plywood-treated",
+   "conceptName": "Structural Plywood Treated",
+   "department": "Timber & Plywood",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1242531 CD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/0ed68a26a9122c5d5f8a31f907455b49061a19e5.pdf",
+     "kind": "installation_guide",
+     "sku": "2420476"
+    },
+    {
+     "title": "1242506 CD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/0ff5029d5efdc139fcb94aaddebfb6081d59a2f2.pdf",
+     "kind": "installation_guide",
+     "sku": "2420435"
+    },
+    {
+     "title": "1167533 DD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/1095fd7a0c70b03d807c17a33a01d43c54d0ca79.pdf",
+     "kind": "installation_guide",
+     "sku": "2420362"
+    },
+    {
+     "title": "1292715 DD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/2a4dab17131b0288cd45728456dca469f13d4def.pdf",
+     "kind": "installation_guide",
+     "sku": "2422538"
+    },
+    {
+     "title": "1167500 CD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/2bebcdd865ed0506e3447f0caaaffe36761f5b25.pdf",
+     "kind": "installation_guide",
+     "sku": "2421196"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/structural-plywood-untreated",
+   "conceptName": "Structural Plywood Untreated",
+   "department": "Timber & Plywood",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1242525 CD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/03c91cf6d4f3b479a0bdd3266eab961035304724.pdf",
+     "kind": "installation_guide",
+     "sku": "2420469"
+    },
+    {
+     "title": "1292702 DD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/06675246ed41d1eec914ffdc0571c373a1f21864.pdf",
+     "kind": "installation_guide",
+     "sku": "2422534"
+    },
+    {
+     "title": "1292717 CD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/18ad5a547fee25502b207167dd3ef8a84d0c8f56.pdf",
+     "kind": "installation_guide",
+     "sku": "2422536"
+    },
+    {
+     "title": "1292698 CD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/2087874391dd8883827cf672d7ce1667f47e1c68.pdf",
+     "kind": "installation_guide",
+     "sku": "2422541"
+    },
+    {
+     "title": "1242490 CD Final PTS Ecoply Structural Plywood General August 2015",
+     "url": "pdf://placemakers/25837b7909285b2319d65a858e9d8ee4bc23343b.pdf",
+     "kind": "installation_guide",
+     "sku": "2420387"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/flooring-plywood",
+   "conceptName": "Flooring Plywood",
+   "department": "Timber & Plywood",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1268163 CarterHoltHarvey2322623tds",
+     "url": "pdf://placemakers/0dba59645c4c3a8ce6ee1ae618089711ce6bd3b5.pdf",
+     "kind": "installation_guide",
+     "sku": "2421122"
+    },
+    {
+     "title": "SPECIFICATION",
+     "url": "pdf://placemakers/15b62fcd62719446868e622950c0856f5660d074.pdf",
+     "kind": "installation_guide",
+     "sku": "2420340"
+    },
+    {
+     "title": "1268167 CarterHoltHarvey2322623tds",
+     "url": "pdf://placemakers/6feb6a9f879c3dea99558b9926c1523399c2af6d.pdf",
+     "kind": "installation_guide",
+     "sku": "2421125"
+    },
+    {
+     "title": "1011497 CarterHoltHarvey2322623tds",
+     "url": "pdf://placemakers/7085180062d9eff96215fca5b95c5e02e8f24290.pdf",
+     "kind": "installation_guide",
+     "sku": "2420325"
+    },
+    {
+     "title": "1199598 CarterHoltHarvey2322623tds",
+     "url": "pdf://placemakers/7f3d49db313a5a27210a2bb36d44e597cd105bca.pdf",
+     "kind": "installation_guide",
+     "sku": "2420350"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/timber-and-plywood/plywood/lining-plywood-interior",
+   "conceptName": "Lining Plywood Interior",
+   "department": "Timber & Plywood",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Information contained in this document is specific to Ecoply plywood and must not",
+     "url": "pdf://placemakers/9abd59a6c09be3c557527b8c570e6fcee1d758a9.pdf",
+     "kind": "installation_guide",
+     "sku": "2420321"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/timber-and-plywood/engineered-timber/laminated-posts-and-beams-gluelam",
+   "conceptName": "Laminated Posts And Beams (Gluelam)",
+   "department": "Timber & Plywood",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1177133 Prowood Design & Install Guide H12 H32 Beams Nov 2022",
+     "url": "pdf://placemakers/00102d375c339e72408d3def43fbcd140ba2597d.pdf",
+     "kind": "installation_guide",
+     "sku": "2208830"
+    },
+    {
+     "title": "1203443 Prowood Design & Install Guide H12 H32 Beams Nov 2022",
+     "url": "pdf://placemakers/00420d592ab30807e7e1c2d965e81c155949a012.pdf",
+     "kind": "installation_guide",
+     "sku": "2208536"
+    },
+    {
+     "title": "1177053 Prolam H5 Post Design and Install Guide",
+     "url": "pdf://placemakers/01f1ca29a6e92c92c94e011032602242facb2a1b.pdf",
+     "kind": "installation_guide",
+     "sku": "2201436"
+    },
+    {
+     "title": "1178141 Prolam H5 Post Design and Install Guide",
+     "url": "pdf://placemakers/040c4d0b124495914c8c35981947e08c6334da8e.pdf",
+     "kind": "installation_guide",
+     "sku": "1357727"
+    },
+    {
+     "title": "1173380 Prolam H5 Post Design and Install Guide",
+     "url": "pdf://placemakers/048b502a4468edb8e925b5045845e29ecbce2bb0.pdf",
+     "kind": "installation_guide",
+     "sku": "2201028"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/timber-and-plywood/engineered-timber/engineered-timber-other",
+   "conceptName": "Engineered Timber Other",
+   "department": "Timber & Plywood",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Building",
+     "url": "pdf://placemakers/664ec146191344748aef4ce230da9ad4cbe47e6a.pdf",
+     "kind": "installation_guide",
+     "sku": "2208413"
+    },
+    {
+     "title": "1264683 Prolam Portal Installation Guide",
+     "url": "pdf://placemakers/b7ee14aa4848a817155ddc9b23ec3d76a95fcef4.pdf",
+     "kind": "installation_guide",
+     "sku": "2208393"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/timber-and-plywood/engineered-timber/engineered-timber-other",
+   "conceptName": "Engineered Timber Other",
+   "department": "Timber & Plywood",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "RESIDENTIAL | COMMERCIAL",
+     "url": "pdf://placemakers/059ca58fd67ef315e2eeceb02515accdd9f186be.pdf",
+     "kind": "warranty",
+     "sku": "2208413"
+    },
+    {
+     "title": "1264683 Prolam PLX20 Portal BrochureLR",
+     "url": "pdf://placemakers/704fdb5fd970c647ba23fa3bb0fb61680c6d1267.pdf",
+     "kind": "warranty",
+     "sku": "2208393"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-furniture",
+   "conceptName": "Door Furniture",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "0800 607 028",
+     "url": "pdf://placemakers/47108336ce2ea2c8abc9efdf45b978082fc535d2.pdf",
+     "kind": "installation_guide",
+     "sku": "4590801"
+    },
+    {
+     "title": "0800 607 028",
+     "url": "pdf://placemakers/02a50aca0df2c4ba507f85c6cccba515d6dcee3d.pdf",
+     "kind": "installation_guide",
+     "sku": "4590773"
+    },
+    {
+     "title": "0800 607 028",
+     "url": "pdf://placemakers/8d9ecfe8366b6a5501279cf7f8748c1d76dcee9a.pdf",
+     "kind": "installation_guide",
+     "sku": "4590779"
+    },
+    {
+     "title": "1075189 Allegion RJENTSSBX installation",
+     "url": "pdf://placemakers/10ff4cf04d21a2e416387f719280702d6d26c202.pdf",
+     "kind": "installation_guide",
+     "sku": "4550789"
+    },
+    {
+     "title": "Version 1",
+     "url": "pdf://placemakers/3f22a78750f2e8b94fdb0f2feddec3e12c9c6ffa.pdf",
+     "kind": "installation_guide",
+     "sku": "4590776"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-locks-latches-and-spares",
+   "conceptName": "Door Locks, Latches & Spares",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "An ASSA ABLOY Group brand",
+     "url": "pdf://placemakers/75d1c395ced9fad1bb7a0e2dffba0c7cf25ae2af.pdf",
+     "kind": "installation_guide",
+     "sku": "4612123"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-locks-latches-and-spares",
+   "conceptName": "Door Locks, Latches & Spares",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1073582 Schlage 4556718 tds",
+     "url": "pdf://placemakers/3005b7efe142fae8bab6699cbe392b2d04c96c77.pdf",
+     "kind": "warranty",
+     "sku": "4581329"
+    },
+    {
+     "title": "1073585 Schlage 4556718 tds",
+     "url": "pdf://placemakers/7e4ed9e6d8f14886f99679830734ffadd4aeb383.pdf",
+     "kind": "warranty",
+     "sku": "4556718"
+    },
+    {
+     "title": "Components",
+     "url": "pdf://placemakers/8107cd5ccd3138424b567eec57c5f668e3178bc2.pdf",
+     "kind": "warranty",
+     "sku": "4611216"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/window-hardware",
+   "conceptName": "Window Hardware",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "G. Whitco",
+     "url": "pdf://placemakers/22cef5a63a44bda9475e176348e162e2add945e7.pdf",
+     "kind": "installation_guide",
+     "sku": "4590980"
+    },
+    {
+     "title": "Designed specifically in line with leading",
+     "url": "pdf://placemakers/63aa9ff4e3549b3aa261ff405eabac58f3dc6917.pdf",
+     "kind": "installation_guide",
+     "sku": "4610242"
+    },
+    {
+     "title": "A unique window fastener that has the",
+     "url": "pdf://placemakers/bdff75dde3323e13dbfc7c983a759af0dbe1df90.pdf",
+     "kind": "installation_guide",
+     "sku": "4611848"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/window-hardware",
+   "conceptName": "Window Hardware",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/85a20e067ceb5d4c9e53061ee7dc0ff17b30bf7c.pdf",
+     "kind": "warranty",
+     "sku": "4610242"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/85b6f035da41bcd8155f1bf967910380d6eb764a.pdf",
+     "kind": "warranty",
+     "sku": "4611848"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-track",
+   "conceptName": "Door Track",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1073419 Brio 2279388 tds",
+     "url": "pdf://placemakers/237ff8a33ee209075cab630d13339d9aa9bf8f21.pdf",
+     "kind": "installation_guide",
+     "sku": "2279616"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4688cdda295cea2c09e95427c53a68d9de72d4f5.pdf",
+     "kind": "installation_guide",
+     "sku": "4583428"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/75d07448f8222e8acf1ce76719849dda47c87787.pdf",
+     "kind": "installation_guide",
+     "sku": "4555588"
+    },
+    {
+     "title": "Brio, part of the Allegion family of brands. ISSUE 3 DATA SHEET B30",
+     "url": "pdf://placemakers/a4953b966e74926ca3e27a76461f6419a7ca06c8.pdf",
+     "kind": "installation_guide",
+     "sku": "4583433"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/df4a50aceb6a0736faf17e8522d96b40617c34d8.pdf",
+     "kind": "installation_guide",
+     "sku": "4555624"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/seals",
+   "conceptName": "Seals",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1070345 Raven 4627237 tds",
+     "url": "pdf://placemakers/4b0d26429607ced0e418b0074a53f8ddee5b79e6.pdf",
+     "kind": "installation_guide",
+     "sku": "4627238"
+    },
+    {
+     "title": "1070344 Raven 4627237 tds",
+     "url": "pdf://placemakers/a8e9db9dd277956c067272fca46f2bbec2e5bba0.pdf",
+     "kind": "installation_guide",
+     "sku": "4627237"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/catch",
+   "conceptName": "Catch",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Concealed Fix Cup Magnet",
+     "url": "pdf://placemakers/15a9d3989e316d244711a669afc9d7cf61d17314.pdf",
+     "kind": "installation_guide",
+     "sku": "4564684"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/keyless-entry",
+   "conceptName": "Keyless Entry",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1162218 SRE60120 installation",
+     "url": "pdf://placemakers/370a00a7c0f9da7a2a531fe21f49eafb8ead6981.pdf",
+     "kind": "installation_guide",
+     "sku": "2279905"
+    },
+    {
+     "title": "1072670 Assa Abloy SL7100SC installation",
+     "url": "pdf://placemakers/89490b289c9f85f3278f0ef6687416b6f4c4f797.pdf",
+     "kind": "installation_guide",
+     "sku": "4551409"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/joinery-hardware/door-closer",
+   "conceptName": "Door Closer",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1075035 Allegion BNT 1130B DA SEV installation",
+     "url": "pdf://placemakers/0a19dc8242b3bf28d01c365a45c594a4a8f22ddb.pdf",
+     "kind": "installation_guide",
+     "sku": "4651262"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/doors/interior-doors",
+   "conceptName": "Interior Doors",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "GUARANTEE",
+     "url": "pdf://placemakers/c9ff47eb6c26c56c70d4ab68e7311a2800595a05.pdf",
+     "kind": "warranty",
+     "sku": "2910083"
+    },
+    {
+     "title": "KÃINGA ORA STAMP OF APPROVAL",
+     "url": "pdf://placemakers/f4d433c3aa2704c995aa494235dd72331be01db7.pdf",
+     "kind": "warranty",
+     "sku": "2910083"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/doors-windows-and-joinery-hardware/doors/cavity-slider",
+   "conceptName": "Cavity Slider",
+   "department": "Doors, Windows & Joinery Hardware",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0a9aa8b577406708d6c81546bda651fc4f180bc9.pdf",
+     "kind": "installation_guide",
+     "sku": "4555754"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/0f6a73fedd4741fdf687ae91abe4af883ea1931a.pdf",
+     "kind": "installation_guide",
+     "sku": "4555758"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2c6ccac310434dd87f8f2278360cbcb0c84feab4.pdf",
+     "kind": "installation_guide",
+     "sku": "4555759"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4b3863052b135669997614423cbcb533267e4ed9.pdf",
+     "kind": "installation_guide",
+     "sku": "4555757"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/4fa22ff5a75913dc9de1afca6c8d6f636eff2254.pdf",
+     "kind": "installation_guide",
+     "sku": "4555753"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/interior-paint",
+   "conceptName": "Interior Paint",
+   "department": "Paint & Decorating",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "1004049 Dulux 52M04912 1L tds",
+     "url": "pdf://placemakers/1c873116ece9a13e26d66298ffcb2b3b684229c8.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3980591"
+    },
+    {
+     "title": "1004004 Dulux 54204912 2L tds",
+     "url": "pdf://placemakers/67faa22af5c5292f0509de8df54668370d350115.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3980167"
+    },
+    {
+     "title": "Product name: 542-Line Dulux Aquanamel Gloss SDS No: DLXGHSEN001089",
+     "url": "pdf://placemakers/78520a77514fc628482e1d9f759ea2bc00cfbd33.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3980003"
+    },
+    {
+     "title": "1004058 Dulux 52L04912 500ML tds",
+     "url": "pdf://placemakers/90b0f8bc4dcc3ccf001fe6fe8f8a1c2377e7241a.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3980600"
+    },
+    {
+     "title": "1004074 Dulux 52L04912 500ML tds",
+     "url": "pdf://placemakers/9b97b8af5107394c849fce7d97106efef68b1486.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3980619"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/woodcare",
+   "conceptName": "Woodcare",
+   "department": "Paint & Decorating",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "Product name: 592-Line Cabot’s Deck & Exterior Stain Water Based SDS No: DLXNZLEN002574",
+     "url": "pdf://placemakers/227755034b0d4595a6eafb36b54c3377d90fe400.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3981705"
+    },
+    {
+     "title": "1004182 Dulux 592W0140 1L tds",
+     "url": "pdf://placemakers/33b4e33d6d1010c14a040dd29a6875d7ba2e5c4d.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3981701"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/aerosol-paint",
+   "conceptName": "Aerosol Paint",
+   "department": "Paint & Decorating",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "TECHNICAL DATA SHEET",
+     "url": "pdf://placemakers/94747b1ca0faf5d7740d2520c88f3ea578542fa2.pdf",
+     "kind": "installation_guide",
+     "sku": "4080107"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/exterior-paint",
+   "conceptName": "Exterior Paint",
+   "department": "Paint & Decorating",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1298514 AP Non Slip Additive Tech Data Generic Version 27.2.22",
+     "url": "pdf://placemakers/968652decd92752600b55a14b144fc57f9698b6d.pdf",
+     "kind": "warranty",
+     "sku": "4011777"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/paint-and-decorating/paint/exterior-paint",
+   "conceptName": "Exterior Paint",
+   "department": "Paint & Decorating",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "Product name: 554-Line Dulux Timbacryl SDS No: DLXNZLEN001739",
+     "url": "pdf://placemakers/e100bd6fe3542f5c5ef463a280c5646d9d4513d5.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3991724"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/paint-and-decorating/paint-accessories/thinners-and-cleanup",
+   "conceptName": "Thinners & Cleanup",
+   "department": "Paint & Decorating",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "1003930 Dulux 92000399 500ML tds",
+     "url": "pdf://placemakers/c0aaf8fccb6898d42ec7197f1a72654dbe7ad6b7.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3977437"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/ventilation",
+   "conceptName": "Ventilation",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1098280 Installation Instructions Satin FAN6882 FAN6883",
+     "url": "pdf://placemakers/00f735d308da114e395ab1bc50b3cc7b743a1257.pdf",
+     "kind": "installation_guide",
+     "sku": "3800348"
+    },
+    {
+     "title": "1275578 PUB1805 2311 Manrose EC Contour Fan Installation Manual WEB",
+     "url": "pdf://placemakers/093ff4b9a4c24352c35167d8b27c000d0b59d951.pdf",
+     "kind": "installation_guide",
+     "sku": "7822762"
+    },
+    {
+     "title": "1164427 PUB1512 Contour Fan Brochure A4",
+     "url": "pdf://placemakers/0b98e93c7248d1501e2330d10e83d1b841fcd9fc.pdf",
+     "kind": "installation_guide",
+     "sku": "7731081"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/1007766acd172cc39cb1165d100f3e88a0fbd629.pdf",
+     "kind": "installation_guide",
+     "sku": "3800903"
+    },
+    {
+     "title": "1205305 PUB1582 2103 FAN7180 QUIET 125mm Extraction Fan Installation Instructions",
+     "url": "pdf://placemakers/127fd1b0d0c5144ce28c917202301b2a60b5d39c.pdf",
+     "kind": "installation_guide",
+     "sku": "7737348"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/solid-fuel",
+   "conceptName": "Solid Fuel",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Blenz Installation Instructions - AUG 2014.doc www.yunca.co.nz Page 1 of 4",
+     "url": "pdf://placemakers/01fb8981dab008fd63219f67fffffaf131232b54.pdf",
+     "kind": "installation_guide",
+     "sku": "4250743"
+    },
+    {
+     "title": "1098771 woodsman install guide",
+     "url": "pdf://placemakers/0a16f40a5fdf1524f7b77463562d273d506ab0fb.pdf",
+     "kind": "installation_guide",
+     "sku": "4250380"
+    },
+    {
+     "title": "Specifications and Installation",
+     "url": "pdf://placemakers/0c61abf6dd6863712e75a797afce8e53c1e8fcd6.pdf",
+     "kind": "installation_guide",
+     "sku": "4250469"
+    },
+    {
+     "title": "1098531 Yunca 1025OC5 installation",
+     "url": "pdf://placemakers/1868e12f0b83f875b5f881ceb8516912b8e7526e.pdf",
+     "kind": "installation_guide",
+     "sku": "4251908"
+    },
+    {
+     "title": "1298763 2 Pittsburg Installation Manual",
+     "url": "pdf://placemakers/28ecb54956a4cc39f62915972005936c7b6eeba1.pdf",
+     "kind": "installation_guide",
+     "sku": "7836791"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/electric-heating",
+   "conceptName": "Electric Heating",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "CONTINUOUS EXTRACT FILTERLESS FAN",
+     "url": "pdf://placemakers/635383f5ae109c91ba225fbf15a38aa6f37f1d84.pdf",
+     "kind": "installation_guide",
+     "sku": "7833698"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/75104df091f05561845c89aba6111bead45601f4.pdf",
+     "kind": "installation_guide",
+     "sku": "7748980"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/f3e00197e46f8021b2698e7b597e41315674c781.pdf",
+     "kind": "installation_guide",
+     "sku": "7821013"
+    },
+    {
+     "title": "1293524 V31RFR Installation Guide",
+     "url": "pdf://placemakers/5f69b7a24a860b2541602f3daf343f410c107eed.pdf",
+     "kind": "installation_guide",
+     "sku": "7833699"
+    },
+    {
+     "title": "+61 3 9775 0556",
+     "url": "pdf://placemakers/915a8108890f7ec358467bb6224f7436306e9478.pdf",
+     "kind": "installation_guide",
+     "sku": "7833700"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/electric-heating",
+   "conceptName": "Electric Heating",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "dMEV C 125",
+     "url": "pdf://placemakers/0407ef14679aa2fbdeb72407a5f3df4a1a7591f8.pdf",
+     "kind": "warranty",
+     "sku": "7833698"
+    },
+    {
+     "title": "1201814 Data FH30WH",
+     "url": "pdf://placemakers/4bca35582b6a966d7b6a886824370bf001f8f838.pdf",
+     "kind": "warranty",
+     "sku": "3809430"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/heat-pumps",
+   "conceptName": "Heat Pumps",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "j1plxntnpobysmuodfla",
+     "url": "pdf://placemakers/c038bd10413b0fe84d0736df8782e39a6e066024.pdf",
+     "kind": "installation_guide",
+     "sku": "7861860"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/d863545c16146b59e58b7170623dc47e006640ce.pdf",
+     "kind": "installation_guide",
+     "sku": "3804369"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/fd4547e4d26b9621348f7f7cf16cf072cb16a718.pdf",
+     "kind": "installation_guide",
+     "sku": "3804370"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/heat-pumps",
+   "conceptName": "Heat Pumps",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1251097 HPR17HT TechSheet",
+     "url": "pdf://placemakers/1e0c7dd9d39b03920db6a193a28b0ee84c8ff3c5.pdf",
+     "kind": "warranty",
+     "sku": "7771683"
+    },
+    {
+     "title": "1251096 HPR10HT TechSheet",
+     "url": "pdf://placemakers/cf048be82933e58dbdd145a43df2d598251e42d6.pdf",
+     "kind": "warranty",
+     "sku": "7771682"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/gas-heating",
+   "conceptName": "Gas Heating",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1158323 Rinnai Linear spec guide",
+     "url": "pdf://placemakers/0e06035f5df499f9a7e64a0a3b1e241fce72cf82.pdf",
+     "kind": "installation_guide",
+     "sku": "7728323"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/1041146ee92e179496f81ca89633286d5ddaba07.pdf",
+     "kind": "installation_guide",
+     "sku": "7728320"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/1a97b5487f10749e6601351019e2f3b9379ca292.pdf",
+     "kind": "installation_guide",
+     "sku": "7926929"
+    },
+    {
+     "title": "1158343 Rinnai Linear installation guide",
+     "url": "pdf://placemakers/27a6ab3e0fd5cd351359e198cec52762c9da8434.pdf",
+     "kind": "installation_guide",
+     "sku": "7728319"
+    },
+    {
+     "title": "1158321 Rinnai Linear installation guide",
+     "url": "pdf://placemakers/2a36af011cb8277bd7de4eee26001dc016e5eca7.pdf",
+     "kind": "installation_guide",
+     "sku": "7728325"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/outdoor-heating",
+   "conceptName": "Outdoor Heating",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1164616 Installation Instructions Moderno mini lo res",
+     "url": "pdf://placemakers/95abee91d6194b798c0f51eccb59a75e9ae90395.pdf",
+     "kind": "installation_guide",
+     "sku": "7746018"
+    },
+    {
+     "title": "1164587 Installation Instructions Moderno 23rd May reduced 0",
+     "url": "pdf://placemakers/c257dfe7721583fd38a38c34d1352b226302d073.pdf",
+     "kind": "installation_guide",
+     "sku": "7746016"
+    },
+    {
+     "title": "1164500 Installation Instructions Moderno mini lo res",
+     "url": "pdf://placemakers/e11738d5c04dbee3a5674b2ff5c0d789268f738c.pdf",
+     "kind": "installation_guide",
+     "sku": "7746019"
+    },
+    {
+     "title": "1097668 Cannon Horizon Installation Instructions",
+     "url": "pdf://placemakers/ef53cfd9d58076c2c319b7fb913d4df6da2b9724.pdf",
+     "kind": "installation_guide",
+     "sku": "5449778"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/heating-ventilation-and-cooling/outdoor-heating",
+   "conceptName": "Outdoor Heating",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1097668 Cannon Horizon Specs Sheet NZ",
+     "url": "pdf://placemakers/28a8e74847cdb14fdb2a38f57973d773f1da1dd3.pdf",
+     "kind": "warranty",
+     "sku": "5449778"
+    },
+    {
+     "title": "Keeping the",
+     "url": "pdf://placemakers/bd7386135f0f17a6ab372ffe9bc254c17a2f488e.pdf",
+     "kind": "warranty",
+     "sku": "7729990"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/switchgear",
+   "conceptName": "Switchgear",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "CONNECT TO YOUR HOME WIFI AND PAIR WITH YOUR DIY SMART",
+     "url": "pdf://placemakers/d0976b39c110bf76a025d55d7207f7cfed849030.pdf",
+     "kind": "warranty",
+     "sku": "3833352"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/f12e0fca75f7ad5e0c3510bc6b81ad2d44de833f.pdf",
+     "kind": "warranty",
+     "sku": "3833352"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/electrical-consumables",
+   "conceptName": "Electrical Consumables",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Classification: Alkaline",
+     "url": "pdf://placemakers/96d7122024187d044247c7fa2518ec281a49d98b.pdf",
+     "kind": "warranty",
+     "sku": "3810187"
+    },
+    {
+     "title": "Classification: Alkaline",
+     "url": "pdf://placemakers/49901a5efdaca0dbda06fbf988693d4b10822c85.pdf",
+     "kind": "warranty",
+     "sku": "7752908"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/smoke-alarms",
+   "conceptName": "Smoke Alarms",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/8c92395e114712a2c60330401ca563dec5ccd17f.pdf",
+     "kind": "installation_guide",
+     "sku": "5550011"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/a3258bb850f9f6f4a1504a05aa086a9beb62ff97.pdf",
+     "kind": "installation_guide",
+     "sku": "5550012"
+    },
+    {
+     "title": "cavius.co.nz",
+     "url": "pdf://placemakers/e5eea08a95d885c3fa3f9ab5a7effd0949614115.pdf",
+     "kind": "installation_guide",
+     "sku": "5550002"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/smoke-alarms",
+   "conceptName": "Smoke Alarms",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "SPECIFICATIONS",
+     "url": "pdf://placemakers/cb4ba95cd6c5c90dab27ec9319d760b03fbb77c5.pdf",
+     "kind": "warranty",
+     "sku": "1110083"
+    },
+    {
+     "title": "1264281 Spec sheet OM866H 10RF",
+     "url": "pdf://placemakers/cdc1866b1e49d6587355cb4594d8b149c910b0ac.pdf",
+     "kind": "warranty",
+     "sku": "1110079"
+    },
+    {
+     "title": "1264278 Spec sheet OM866H 10RF",
+     "url": "pdf://placemakers/e33a6d4674dd6fad9986803d2d6137347be7e24d.pdf",
+     "kind": "warranty",
+     "sku": "1110082"
+    },
+    {
+     "title": "On Point Distribution Partners Ltd. 58a Poplar Lane, Papamoa 3187, New Zealand.",
+     "url": "pdf://placemakers/089cbfd4dd301c6a353e55b05e0be833603f96be.pdf",
+     "kind": "warranty",
+     "sku": "5550021"
+    },
+    {
+     "title": "On Point Distribution Partners Ltd. 58a Poplar Lane, Papamoa 3187, New Zealand.",
+     "url": "pdf://placemakers/4d944a9662f11548f20be75679e3646305cc66b2.pdf",
+     "kind": "warranty",
+     "sku": "5550019"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/security",
+   "conceptName": "Security",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/c8ad937cbfcd65f45294abafb8d410f7bc2559e7.pdf",
+     "kind": "installation_guide",
+     "sku": "3830135"
+    },
+    {
+     "title": "CONNECT TO YOUR HOME WIFI AND PAIR WITH YOUR",
+     "url": "pdf://placemakers/e8cbb7d1d6a3d5c92c31a29cc435cc0e1da11953.pdf",
+     "kind": "installation_guide",
+     "sku": "3833315"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/security",
+   "conceptName": "Security",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b233f71394819ddf72016cee91364d1caa5f68ab.pdf",
+     "kind": "warranty",
+     "sku": "3833315"
+    },
+    {
+     "title": "DOORBELL CHIME",
+     "url": "pdf://placemakers/dc538a40f251f3283ebc9ac7a0d684e5247dbd1b.pdf",
+     "kind": "warranty",
+     "sku": "3833315"
+    },
+    {
+     "title": "Brilliant Lighting (Aust) Pty Ltd www.brilliantlighting.com.au",
+     "url": "pdf://placemakers/23f1acccdf1907adcc3f80dc40aaf22b8a151ab9.pdf",
+     "kind": "warranty",
+     "sku": "3833334"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/lighting",
+   "conceptName": "Lighting",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "SMART WiFi G45",
+     "url": "pdf://placemakers/46c0442e80e4172577b0729f6e5cd3e1411ecf60.pdf",
+     "kind": "installation_guide",
+     "sku": "3833326"
+    },
+    {
+     "title": "SMART WiFi C37",
+     "url": "pdf://placemakers/78dff5d3e4f491131d335e9a0e6d81cbc4c5c4e5.pdf",
+     "kind": "installation_guide",
+     "sku": "3833325"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/lighting",
+   "conceptName": "Lighting",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/38bc6c4ff41f0657ab1438b26b51060aa93d3286.pdf",
+     "kind": "warranty",
+     "sku": "3833330"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/cebfe4fd98a3a52be4398333f1112bd3c3de9d29.pdf",
+     "kind": "warranty",
+     "sku": "3833357"
+    },
+    {
+     "title": "Open and close your motorised tilt, roller or sectional garage",
+     "url": "pdf://placemakers/3a56173a0251fc95a7b720f768502e99e25984d4.pdf",
+     "kind": "warranty",
+     "sku": "3833330"
+    },
+    {
+     "title": "SMART WiFi RGB",
+     "url": "pdf://placemakers/cb4a35e7896c2c215a79332eacd788123c48f434.pdf",
+     "kind": "warranty",
+     "sku": "3833327"
+    },
+    {
+     "title": "Brilliant Lighting (Aust) Pty Ltd www.brilliantlighting.com.au",
+     "url": "pdf://placemakers/05bc1483b73da28ac30cf27e5e15c5a4f4f75249.pdf",
+     "kind": "warranty",
+     "sku": "3833333"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/light-bulbs",
+   "conceptName": "Light Bulbs",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1161031 924735545501 tds",
+     "url": "pdf://placemakers/214054a7a96ce10149c5ef54a05dc88a88b18512.pdf",
+     "kind": "warranty",
+     "sku": "3810195"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/phone-accessories",
+   "conceptName": "Phone Accessories",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "CONNECT TO YOUR HOME WIFI AND PAIR WITH YOUR DIY SMART",
+     "url": "pdf://placemakers/9cce8d36664020c2897c3c4961de24ae4e0dda8d.pdf",
+     "kind": "installation_guide",
+     "sku": "3833353"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/electrical-and-heating-cooling/electrical/phone-accessories",
+   "conceptName": "Phone Accessories",
+   "department": "Electrical & Heating/Cooling",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/11dfc8c8ee227d3b943720c4d549b893c519ea20.pdf",
+     "kind": "warranty",
+     "sku": "3833353"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/3d38d2b70ed8d3971551c375c423bfd64e70b176.pdf",
+     "kind": "warranty",
+     "sku": "3833351"
+    },
+    {
+     "title": "CONNECT TO YOUR HOME WIFI AND PAIR WITH YOUR DIY SMART",
+     "url": "pdf://placemakers/c27c515194180316a0906cb252be59b3ca2cf6d4.pdf",
+     "kind": "warranty",
+     "sku": "3833351"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/sheds-and-buildings/garden-and-landscaping/garden-sheds",
+   "conceptName": "Garden Sheds",
+   "department": "Sheds & Buildings",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/b460200881a864bb9153100fc35d5eaaecbdf333.pdf",
+     "kind": "installation_guide",
+     "sku": "5615525"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/e416e6f24ccf7c50ba72f95e46e1bbfbf93b342d.pdf",
+     "kind": "installation_guide",
+     "sku": "5615697"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/sheds-and-buildings/garden-and-landscaping/garden-sheds",
+   "conceptName": "Garden Sheds",
+   "department": "Sheds & Buildings",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/08496396b76dd8f562524dd7e03c6d217bd8c896.pdf",
+     "kind": "warranty",
+     "sku": "5615805"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/12b0b0a4bcc6ea18bdd6141858773ace7c70b86c.pdf",
+     "kind": "warranty",
+     "sku": "5616123"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/1506c435f05b73042484ded3901782d11c8e7fa3.pdf",
+     "kind": "warranty",
+     "sku": "5616088"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/1dfd68cd8a8176e11d3709936aafc5178d26a737.pdf",
+     "kind": "warranty",
+     "sku": "5617010"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2ca9255049f418490bd55d06d5b12e5f4123eb76.pdf",
+     "kind": "warranty",
+     "sku": "5615748"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/caulks-and-sealants",
+   "conceptName": "Caulks And Sealants (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1253485 Selleys 650fc adhesive sealant TDS",
+     "url": "pdf://placemakers/4bb2ca06db019a585662c2ade4fe1f1d007ff310.pdf",
+     "kind": "installation_guide",
+     "sku": "4450396"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/96bf028408aace10b86a2e9fc693ac5dde5d529b.pdf",
+     "kind": "installation_guide",
+     "sku": "4420070"
+    },
+    {
+     "title": "Technical Data Sheet",
+     "url": "pdf://placemakers/a663bf8aa1c82e5f6d5ca4ff0cb21a41e98809fc.pdf",
+     "kind": "installation_guide",
+     "sku": "4420070"
+    },
+    {
+     "title": "1253481 Selleys 650fc adhesive sealant TDS",
+     "url": "pdf://placemakers/bd20091c16673ae4acaf254d20b3974595da3884.pdf",
+     "kind": "installation_guide",
+     "sku": "4450397"
+    },
+    {
+     "title": "Bostik New Zealand Ltd,",
+     "url": "pdf://placemakers/f2bfc65eefc622f0a79030c3b01d65d115e9b28f.pdf",
+     "kind": "installation_guide",
+     "sku": "4420054"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/caulks-and-sealants",
+   "conceptName": "Caulks And Sealants (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Product Data Sheet",
+     "url": "pdf://placemakers/014d764f540d184cb60f8ac44ef5fd946cb91c00.pdf",
+     "kind": "warranty",
+     "sku": "4410148"
+    },
+    {
+     "title": "Product Data Sheet",
+     "url": "pdf://placemakers/325d71ef028094c18faf794b7a66e052a3f76c38.pdf",
+     "kind": "warranty",
+     "sku": "4411211"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/adhesives",
+   "conceptName": "Adhesives (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "PRODUCT DATA SHEET",
+     "url": "pdf://placemakers/98a4e1da84d0268db155c235dc73fddc36fb6851.pdf",
+     "kind": "installation_guide",
+     "sku": "4410133"
+    },
+    {
+     "title": "Gorilla Super Glue Easy Brush Updated: Nov 2018",
+     "url": "pdf://placemakers/f48ba5ec2dd76d7a972abc1e9a4bc45d75c30660.pdf",
+     "kind": "installation_guide",
+     "sku": "4472289"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/adhesives",
+   "conceptName": "Adhesives (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "IMPORTANT: Information, specifications, procedures and recommendations provided (“informat",
+     "url": "pdf://placemakers/0b2924b18a3978239a162d844cc0a17dc6e7d011.pdf",
+     "kind": "warranty",
+     "sku": "4440872"
+    },
+    {
+     "title": "IMPORTANT: Information, specifications, procedures and recommendations provided (“informat",
+     "url": "pdf://placemakers/3f32972517a34b786b5e4d5a8d26ee1db1aa3daa.pdf",
+     "kind": "warranty",
+     "sku": "4440384"
+    },
+    {
+     "title": "IMPORTANT: Information, specifications, procedures and recommendations provided (“informat",
+     "url": "pdf://placemakers/47cebab7e98e3db7d72e1f1660c6a6f9affc40a2.pdf",
+     "kind": "warranty",
+     "sku": "4440715"
+    },
+    {
+     "title": "IMPORTANT: Information, specifications, procedures and recommendations provided (“informat",
+     "url": "pdf://placemakers/5a512188c1a379f4ed728c582d4a446125832f5d.pdf",
+     "kind": "warranty",
+     "sku": "4440749"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/adhesives",
+   "conceptName": "Adhesives (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "23 May 2017",
+     "url": "pdf://placemakers/1185159589abfdf9370dafb6b48cfbc5f569e508.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4420031"
+    },
+    {
+     "title": "23 May 2017",
+     "url": "pdf://placemakers/48387a1b66b27bebba00b8160cce75430349fd5e.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4420027"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/repair-products",
+   "conceptName": "Repair Products (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1161710 HB Fuller 6003354112 tds",
+     "url": "pdf://placemakers/a765ad7ba6fc9768b8d3cbc3d48563d7414ec21c.pdf",
+     "kind": "warranty",
+     "sku": "4443157"
+    },
+    {
+     "title": "1161747 HB Fuller 6003354112 tds",
+     "url": "pdf://placemakers/b08c16ba381af273d83efd08116b70255c330ce0.pdf",
+     "kind": "warranty",
+     "sku": "4443156"
+    },
+    {
+     "title": "IMPORTANT: Information, specifications, procedures and recommendations provided (“informat",
+     "url": "pdf://placemakers/eba1fed783a68719d5477810e40c36ae7cfe7ae8.pdf",
+     "kind": "warranty",
+     "sku": "4443066"
+    },
+    {
+     "title": "1161726 HB Fuller 6003354112 tds",
+     "url": "pdf://placemakers/f8dec8584eb7c75244ed2eb19cfbb2c55d7dad7f.pdf",
+     "kind": "warranty",
+     "sku": "4443008"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/foam-products",
+   "conceptName": "Foam Products (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Gorilla Fire Rated Expanding Foam Click & Fix Updated: Nov 2018",
+     "url": "pdf://placemakers/4ff35b1bb86e59274f96c4cb3844c960b4a99204.pdf",
+     "kind": "installation_guide",
+     "sku": "4522650"
+    },
+    {
+     "title": "1309496 20169 Soudal Soudafoam FR HY 750ml Aerosol 2022June10",
+     "url": "pdf://placemakers/70274e1a72197b50b57cf1a91cee58b661c97f7a.pdf",
+     "kind": "installation_guide",
+     "sku": "4522649"
+    },
+    {
+     "title": "Gorilla Smart Expanding Foam Updated: September 2017",
+     "url": "pdf://placemakers/7c04b706cd09e4b666c5730c467d1168c2216fee.pdf",
+     "kind": "installation_guide",
+     "sku": "4080084"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/foam-products",
+   "conceptName": "Foam Products (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Product Data Sheet",
+     "url": "pdf://placemakers/91a6945f84cfdf7a6b62e477dd246119cb87bdc8.pdf",
+     "kind": "warranty",
+     "sku": "4410198"
+    },
+    {
+     "title": "Inseal® 3109 Single Sided Foam Tape",
+     "url": "pdf://placemakers/1d32621b6fce5f849364e9057595fc3e06a75409.pdf",
+     "kind": "warranty",
+     "sku": "4430245"
+    },
+    {
+     "title": "IMPORTANT – PLEASE READ",
+     "url": "pdf://placemakers/d3a279ddb9fb1eaadc7dbd65fe5190a08cd07fb9.pdf",
+     "kind": "warranty",
+     "sku": "4431086"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/foam-products",
+   "conceptName": "Foam Products (Adhesives & Sealants)",
+   "department": "Adhesives & Sealants",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "22 September 2014",
+     "url": "pdf://placemakers/13aeb839ac0e0bdcfe6808be5cfb18d7b285628e.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4410222"
+    },
+    {
+     "title": "1031034 Bostik 30605418 tds",
+     "url": "pdf://placemakers/358eecc3b0c7492be1f552687a0ce474c29c422f.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4410223"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/grouting-and-anchoring",
+   "conceptName": "Grouting & Anchoring",
+   "department": "Adhesives & Sealants",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "TECHNICAL",
+     "url": "pdf://placemakers/1779748d893249f1575235dc1addcd8b2482445a.pdf",
+     "kind": "installation_guide",
+     "sku": "5082914"
+    },
+    {
+     "title": "Gorilla Boltfix Anchoring Adhesive Updated: Nov 2018",
+     "url": "pdf://placemakers/45387ae75d8172a32b0fe0f87aafb85d7f670618.pdf",
+     "kind": "installation_guide",
+     "sku": "4472401"
+    },
+    {
+     "title": "PRODUCT DATA SHEET",
+     "url": "pdf://placemakers/923d04bbbf7a0b004a494fc1a29b076fd539228c.pdf",
+     "kind": "installation_guide",
+     "sku": "3261014"
+    },
+    {
+     "title": "Chembolt™",
+     "url": "pdf://placemakers/2a5da8210329cc42b8a733fb047bb5a69a8108ff.pdf",
+     "kind": "installation_guide",
+     "sku": "5082914"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/938572ce6847cf2e28ee87b95a217293ac7a343a.pdf",
+     "kind": "installation_guide",
+     "sku": "5082914"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/grouting-and-anchoring",
+   "conceptName": "Grouting & Anchoring",
+   "department": "Adhesives & Sealants",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/2e68124d05e41cf0ec2116be2685cf05802caea6.pdf",
+     "kind": "warranty",
+     "sku": "4525009"
+    },
+    {
+     "title": "TECHNICAL DATA SHEET",
+     "url": "pdf://placemakers/8ac7e0fc01685f2d5dfef9aa7e74cdc433864e44.pdf",
+     "kind": "warranty",
+     "sku": "4525948"
+    },
+    {
+     "title": "Together we’re helping",
+     "url": "pdf://placemakers/05838a645455177cdfe7b147929491bed18719c4.pdf",
+     "kind": "warranty",
+     "sku": "4525009"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/waterproofing",
+   "conceptName": "Waterproofing",
+   "department": "Adhesives & Sealants",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1031128 19926BlackJackBituminousJointSealantTDS",
+     "url": "pdf://placemakers/05bfe67895da765c4c282cbfa6d82f99b80cd006.pdf",
+     "kind": "installation_guide",
+     "sku": "4450321"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/waterproofing",
+   "conceptName": "Waterproofing",
+   "department": "Adhesives & Sealants",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "PRODUCT DATA SHEET",
+     "url": "pdf://placemakers/bfe775a8e5a74525a865686561b89304c0dc09f5.pdf",
+     "kind": "warranty",
+     "sku": "4410213"
+    },
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/d6c7cb53cb2d027c98430404c0336e5c7da6a8db.pdf",
+     "kind": "warranty",
+     "sku": "3261436"
+    },
+    {
+     "title": "Product Data Sheet",
+     "url": "pdf://placemakers/e6ba0de093df4909b4e0645182ee387325011c28.pdf",
+     "kind": "warranty",
+     "sku": "4410216"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/waterproofing",
+   "conceptName": "Waterproofing",
+   "department": "Adhesives & Sealants",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "SAFETY DATA SHEET",
+     "url": "pdf://placemakers/21cbf54fdc3d44dc745831b8f88bf70e6d864b19.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4410217"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/solvents-and-strippers",
+   "conceptName": "Solvents And Strippers",
+   "department": "Adhesives & Sealants",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1031140 20057GorillaPrimer150TDS",
+     "url": "pdf://placemakers/1627f4b50beb470235a7b657a7de5dbf7d7b40ea.pdf",
+     "kind": "warranty",
+     "sku": "4472218"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/adhesives-and-sealants/adhesives-and-sealants/solvents-and-strippers",
+   "conceptName": "Solvents And Strippers",
+   "department": "Adhesives & Sealants",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "Technical Data Sheet",
+     "url": "pdf://placemakers/4ebeaeeb490efa27c29ee6f353f79a56a79a952d.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "4400289"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/cladding/timber-cladding/weatherboard-radiata",
+   "conceptName": "Weatherboard Radiata",
+   "department": "Cladding",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1177336 Bevel Back Technical Manual V03 12",
+     "url": "pdf://placemakers/0eaa77254c5b4883d529da87066bb110030b25ff.pdf",
+     "kind": "installation_guide",
+     "sku": "2202096"
+    },
+    {
+     "title": "1202629 Shiplap Technical Manual V02 06",
+     "url": "pdf://placemakers/107bd42af7783fcfbb2b4a409777e7b491fe9d34.pdf",
+     "kind": "installation_guide",
+     "sku": "2202132"
+    },
+    {
+     "title": "1169980 Bevel Back Technical Manual V03 12",
+     "url": "pdf://placemakers/1382be6d90057a1549a576bcbf527d08e4e5ed14.pdf",
+     "kind": "installation_guide",
+     "sku": "2202104"
+    },
+    {
+     "title": "1246337 Shiplap Technical Manual V02 06",
+     "url": "pdf://placemakers/40c555691cefb93380e7b5cb42094a5be8031f72.pdf",
+     "kind": "installation_guide",
+     "sku": "2202013"
+    },
+    {
+     "title": "1246340 Shiplap Technical Manual V02 06",
+     "url": "pdf://placemakers/492e787453d5fa28f5f20397a0a9fe8f66053796.pdf",
+     "kind": "installation_guide",
+     "sku": "2202019"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/cladding/timber-cladding/cladding-plywood-exterior",
+   "conceptName": "Cladding Plywood Exterior",
+   "department": "Cladding",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "1175735 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/0e1aceb3acc3dcb4c50025e01dfa45aa525cacbf.pdf",
+     "kind": "warranty",
+     "sku": "2421817"
+    },
+    {
+     "title": "1175738 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/1c6c50e4b0206b0ffff572cd56d77ecbfa770be3.pdf",
+     "kind": "warranty",
+     "sku": "2421821"
+    },
+    {
+     "title": "1175737 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/3a52387358d7416c9bcaa88170521ec0e163635b.pdf",
+     "kind": "warranty",
+     "sku": "2421820"
+    },
+    {
+     "title": "1176042 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/497478682b81d0b5c825439f44477a0574684fc4.pdf",
+     "kind": "warranty",
+     "sku": "2421827"
+    },
+    {
+     "title": "1175970 Shadowclad Cavity BRANZ Appraisal 764 September 2018",
+     "url": "pdf://placemakers/64b8d5a6d3ea6e56e309926106e034f182f7afa8.pdf",
+     "kind": "warranty",
+     "sku": "2421116"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/cladding/prefinished-cladding-and-facades/pvc",
+   "conceptName": "PVC",
+   "department": "Cladding",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "Dynex Soffit Installation Guide V03 March 2016 1",
+     "url": "pdf://placemakers/0b6a8de16a772e92bc68682fd79930e24403da05.pdf",
+     "kind": "installation_guide",
+     "sku": "3372476"
+    },
+    {
+     "title": "1018270 DY0262 Palliside Traditional Drained Cavity Installation Guide v4",
+     "url": "pdf://placemakers/5cdfca0183a47f5de6e2ea2a2218911d5f5c1a41.pdf",
+     "kind": "installation_guide",
+     "sku": "3372380"
+    },
+    {
+     "title": "1018313 Dynexsoffit Installation Guide V03 March 2016",
+     "url": "pdf://placemakers/5f331d1781940f7258d99711613b9d0671ff8496.pdf",
+     "kind": "installation_guide",
+     "sku": "3372478"
+    },
+    {
+     "title": "1018273 DY0262 Palliside Traditional Drained Cavity Installation Guide v4",
+     "url": "pdf://placemakers/810332e52fb810073b11841e947947e3ea0b7de3.pdf",
+     "kind": "installation_guide",
+     "sku": "3372403"
+    },
+    {
+     "title": "1018312 Dynexsoffit Installation Guide V03 March 2016",
+     "url": "pdf://placemakers/9ab4570ae149df752de885e474a9d94c7d7cf6ef.pdf",
+     "kind": "installation_guide",
+     "sku": "3372477"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/cladding/fibre-cement-and-accessories/fibre-cement-weatherboard",
+   "conceptName": "Fibre Cement Weatherboard",
+   "department": "Cladding",
+   "claimClass": "warranty",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "warranty answers",
+   "candidates": [
+    {
+     "title": "Instruction Manual",
+     "url": "pdf://placemakers/7bb7d23a93908051d2c0d36b5b4c2a48ceb0de2a.pdf",
+     "kind": "warranty",
+     "sku": "3100060"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/indoor-cleaners",
+   "conceptName": "Indoor Cleaners",
+   "department": "Cleaning & Consumables",
+   "claimClass": "safety_instruction",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "safety guidance",
+   "candidates": [
+    {
+     "title": "1000679 Bostik 30603766 tds",
+     "url": "pdf://placemakers/9ce6b9c9a4040fe315c313db8a1b92ba3acc199e.pdf",
+     "kind": "safety_data_sheet",
+     "sku": "3621718"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/cleaning-and-consumables/cleaners-and-cleaning-equipment/mops-and-brooms",
+   "conceptName": "Mops & Brooms",
+   "department": "Cleaning & Consumables",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "FREEPHONE 0800 394 222",
+     "url": "pdf://placemakers/495f970eb5dccdfccecb86be418acc6e80a0d52b.pdf",
+     "kind": "installation_guide",
+     "sku": "4100110"
+    },
+    {
+     "title": "1006075 EasyAccess Installation ID",
+     "url": "pdf://placemakers/fcf6304b3316c017b3ad6d747d360844405d1ac7.pdf",
+     "kind": "installation_guide",
+     "sku": "4100124"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/flooring-prep-and-finishing",
+   "conceptName": "Flooring Prep & Finishing",
+   "department": "Wardrobes, Storage & Flooring",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "DUNLOP WALL AND FLOOR TILE ADHESIVE is specially",
+     "url": "pdf://placemakers/54adab02d98c8e8cf7becc5d2af8e1a9cc6a8382.pdf",
+     "kind": "installation_guide",
+     "sku": "3939424"
+    },
+    {
+     "title": "1002252 Dunlop 10377 tds",
+     "url": "pdf://placemakers/757719f1fd2e20eb19e4c56c3e79f19379290b11.pdf",
+     "kind": "installation_guide",
+     "sku": "3939425"
+    },
+    {
+     "title": "DUNLOP WALL TILE ADHESIVE is a ready-mixed indoor wall",
+     "url": "pdf://placemakers/7d50be7e96b97a96bacf870bff301d27fd5654b0.pdf",
+     "kind": "installation_guide",
+     "sku": "3939422"
+    },
+    {
+     "title": "1002254 Dunlop 10344 tds",
+     "url": "pdf://placemakers/93e6ed158bddbffb6a2657723fd882f419e0e7f8.pdf",
+     "kind": "installation_guide",
+     "sku": "3939427"
+    },
+    {
+     "title": "1002318 Dunlop 16552 tds",
+     "url": "pdf://placemakers/a71bec5b4e8e0bd78c448e7220cc08a39edc4f54.pdf",
+     "kind": "installation_guide",
+     "sku": "3939509"
+    }
+   ]
+  },
+  {
+   "conceptId": "concept://placemakers/wardrobes-storage-and-flooring/decorative-flooring/laminate-flooring",
+   "conceptName": "Laminate Flooring",
+   "department": "Wardrobes, Storage & Flooring",
+   "claimClass": "installation_step",
+   "status": "unverified",
+   "needs": "applicable_manufacturer_document_or_qualified_human",
+   "blocks": "installation answers",
+   "candidates": [
+    {
+     "title": "1219887 Strata PremiumHush IG",
+     "url": "pdf://placemakers/0f05377a5f9078fecadda55d0ac4f345ba164f54.pdf",
+     "kind": "installation_guide",
+     "sku": "7757223"
+    },
+    {
+     "title": "1219887 Strata PremiumHush SF",
+     "url": "pdf://placemakers/2809551b2a65ccca4b146dd7542ef92f42ec506a.pdf",
+     "kind": "installation_guide",
+     "sku": "7757223"
+    },
+    {
+     "title": "1252008 Strata PremiumHush SF",
+     "url": "pdf://placemakers/350a18e8afc937f8df10cb57556c895511cb1f69.pdf",
+     "kind": "installation_guide",
+     "sku": "7772622"
+    },
+    {
+     "title": "1219890 Strata PremiumHush SF",
+     "url": "pdf://placemakers/35c9ca053b8915b91d05c997545fc1b1cffb681f.pdf",
+     "kind": "installation_guide",
+     "sku": "7757218"
+    },
+    {
+     "title": "1219891 Strata PremiumHush IG",
+     "url": "pdf://placemakers/37b242806c1f59eab10bfc30ceec283a1612a78c.pdf",
+     "kind": "installation_guide",
+     "sku": "7757219"
+    }
+   ]
+  }
+ ],
+ "gaps": [
+  {
+   "conceptId": "concept://placemakers/problems/bathroom-leak",
+   "conceptName": "Bathroom leak",
+   "claimClass": "safety_instruction",
+   "reason": "No applicable document: needs a qualified person to author and verify the first-response guidance. Customers are referred to a professional until then."
+  },
+  {
+   "conceptId": "concept://placemakers/problems/leaking-tap-or-pipe",
+   "conceptName": "Leaking tap or pipe",
+   "claimClass": "safety_instruction",
+   "reason": "No applicable document: needs a qualified person to author and verify the first-response guidance. Customers are referred to a professional until then."
+  },
+  {
+   "conceptId": "concept://placemakers/problems/blocked-drain",
+   "conceptName": "Blocked drain",
+   "claimClass": "safety_instruction",
+   "reason": "No applicable document: needs a qualified person to author and verify the first-response guidance. Customers are referred to a professional until then."
+  },
+  {
+   "conceptId": "concept://placemakers/problems/mould-and-damp",
+   "conceptName": "Mould and damp",
+   "claimClass": "safety_instruction",
+   "reason": "No applicable document: needs a qualified person to author and verify the first-response guidance. Customers are referred to a professional until then."
+  },
+  {
+   "conceptId": "concept://placemakers/problems/electrical-hazard",
+   "conceptName": "Electrical hazard",
+   "claimClass": "safety_instruction",
+   "reason": "No applicable document: needs a qualified person to author and verify the first-response guidance. Customers are referred to a professional until then."
+  },
+  {
+   "conceptId": "concept://placemakers/problems/gas-hazard",
+   "conceptName": "Gas hazard",
+   "claimClass": "safety_instruction",
+   "reason": "No applicable document: needs a qualified person to author and verify the first-response guidance. Customers are referred to a professional until then."
+  },
+  {
+   "conceptId": "concept://placemakers/care/deck-care",
+   "conceptName": "Deck care",
+   "claimClass": "care_safety",
+   "reason": "Care instructions need an applicable manufacturer document or a qualified person; the care relationships are unverified."
+  },
+  {
+   "conceptId": "concept://placemakers/care/tapware-care",
+   "conceptName": "Tapware care",
+   "claimClass": "care_safety",
+   "reason": "Care instructions need an applicable manufacturer document or a qualified person; the care relationships are unverified."
+  }
+ ]
+}

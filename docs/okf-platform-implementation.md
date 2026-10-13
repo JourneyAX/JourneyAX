@@ -118,3 +118,44 @@ draft where derived material is marked verified, asserts a claim, or exceeds the
 Known limitations (see the coverage report warnings): some category names occur in more than one department, so an
 identifier can also select products elsewhere (needs path-scoped matching in the catalogue mapping); customer terms
 spanning categories resolve to a common parent concept and are listed as "family suggestions" for the authored layer.
+
+## Authored business layer (Phase 4)
+
+The derived layer says *where things are*; the authored layer says *how a customer is helped*. It is a second tenant file,
+`scripts/okf/tenants/<tenant>.authoring.json` (PlaceMakers: `placemakers.authoring.json`), applied on top of the generated
+draft with `applyAuthoring` (`packages/knowledge/src/ingest/authoring.ts`). Nothing in it is code.
+
+```bash
+npm run okf:ingest -- <snapshot> scripts/okf/tenants/placemakers.ingest.json logs/okf/placemakers scripts/okf/tenants/placemakers.authoring.json
+```
+
+What the spec can express: **facts** (question, options, `role: measurement`, `type: array` for multi-select), **families**
+(customer-level groupings over several categories, e.g. *Screws*), **projects** (deck, bathroom renovation, laundry, fence,
+paint, wet-area lining, insulation — each with ordered questions and optionally the Business Pack journey that runs it),
+**problems** (leak, blocked drain, mould, electrical, gas), **care** topics, **risk overlays** that can only *tighten*
+commerce, and **"Have you considered?" cross-sell suggestions**.
+
+What it cannot express (enforced by the schema, so a spec cannot smuggle it in): claims, compatibility/requirement/
+substitution relationships, safety steps, instructions, warranty terms, or anything marked verified. Authored material is
+stamped `x-journeyax-provenance.kind = authored_proposal`, `verified: false`, source `src-authoring-proposal`
+("awaiting merchant review"). Problem and care concepts therefore *escalate*: products paused, no invented guidance, a
+professional is named. Installation, warranty and care questions return `evidence_answer` with retrieval blocked until a
+person attaches and verifies a source.
+
+Cross-sell is surfaced by the gate as `suggestions` (`unverified_cross_sell`), labelled with the tenant's
+`cross_sell_label` ("Have you considered?") and the note that compatibility is not confirmed. It never feeds a claim class
+and is not offered with problem, evidence-blocked or hazard answers.
+
+**Verification worklist** (`verification-worklist.{md,json}`): for each concept that could carry installation, warranty,
+safety or care claims, the crawled documents (max 5, by stated SKU) that a qualified person could review, plus the
+concepts for which *no* document exists and a person must author the guidance. PlaceMakers today: 194 items across 149
+concepts (installation 119, warranty 61, safety 13, care 1), 8 authoring gaps, **0 verified**.
+
+Gate additions from this stage: a project concept with `broadQueryPolicy` and no `journeyRef` is served by the gate
+itself (`project_served_by_gate`) — questions and grouped overview come from the release, not from code.
+
+Known gaps carried forward: five projects (wet-area lining, deck, fence, paint, insulation) have no Business Pack journey, so
+they are answered by the gate only; care concepts with no verified evidence return no products (design question for the
+runtime phase); derived concepts' commerce ceiling is `allowed/allowed` (merchant decision); eleven category names occur in
+more than one department and need path-scoped matching in the catalogue mapping.
+

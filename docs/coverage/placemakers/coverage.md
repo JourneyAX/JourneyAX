@@ -12,7 +12,7 @@ Snapshot **2026-10-13T02:03:32.198Z** · source: journeyx.products / journeyx.do
 | Departments / groups / leaf categories | 18 / 64 / 376 |
 | Leaf categories with their own concept | 376 |
 | Leaf categories covered by a parent concept | 0 |
-| Concepts / relationships / navigation questions | 457 / 439 / 70 |
+| Concepts / relationships / navigation questions | 475 / 482 / 85 |
 | Candidate document sources linked | 514 |
 | **Verified claims** | **0** |
 
@@ -46,6 +46,14 @@ Reconciliation: ✅ Every product in the snapshot is covered by a concept or exc
 ## Documents
 
 10,274 crawled documents considered; 10,204 mapped to a product through a stated SKU; 194 categories have at least one candidate. By kind: installation_guide 5,866, warranty 1,605, document 1,101, specification 1,614, safety_data_sheet 44, brochure 42, care_guide 2.
+
+## Authored layer (proposal awaiting merchant review)
+
+Spec 1.0.0-proposal: 2 families, 8 projects, 6 problems, 2 care topics, 14 questions, 2 risk overlays, 15 cross-sell suggestion sets (43 authored relationships). 5 derived search phrases were handed to authored concepts.
+
+Projects served directly by the gate (no authored journey yet): wet_area_lining, deck_build, fence_build, paint_a_room, insulate_home.
+
+Verification worklist: 194 items across 149 concepts, 8 claims with no candidate document. **Verified: 0.**
 
 ## Warnings
 

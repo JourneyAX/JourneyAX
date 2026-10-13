@@ -312,7 +312,9 @@
     "basket_warning_compatibility": "Compatibility must be confirmed for {conceptName} before checkout.",
     "basket_warning_professional": "A qualified professional must confirm {conceptName} before checkout.",
     "uncovered_technical_unverified": "I can't confirm technical suitability, compatibility or compliance from verified information. Tell me more about what you need, or speak with a qualified specialist.",
-    "uncovered_catalogue_only": "Here is what the catalogue lists. I can't confirm compatibility, installation or compliance for these items yet."
+    "uncovered_catalogue_only": "Here is what the catalogue lists. I can't confirm compatibility, installation or compliance for these items yet.",
+    "cross_sell_label": "Have you considered?",
+    "cross_sell_note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection."
   },
   "coverage": {
     "uncoveredShopping": {
@@ -322,5 +324,8 @@
         "checkout": "blocked"
       }
     }
+  },
+  "suggestions": {
+    "max": 3
   }
 }

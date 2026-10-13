@@ -3,7 +3,7 @@ import { PROVENANCE_KEY, type IngestConfig, type ProvenanceMap } from './types';
 export interface ProvenanceViolation { entity: string; code: string; message: string }
 export interface ProvenanceAudit { ok: boolean; violations: ProvenanceViolation[]; counts: Record<string, number> }
 
-const DERIVED_KINDS = new Set(['catalogue_taxonomy', 'model_generated_keywords', 'crawl_document_candidate']);
+const DERIVED_KINDS = new Set(['catalogue_taxonomy', 'model_generated_keywords', 'crawl_document_candidate', 'authored_proposal']);
 const DERIVED_SOURCE_KINDS = new Set(['crawl', 'llm_draft', 'catalog_feed']);
 const COMMERCE_RANK = {
   addToCart: { allowed: 0, allowed_with_warning: 1, blocked: 2 },
@@ -32,7 +32,10 @@ export function auditProvenance(draft: any, config?: Pick<IngestConfig, 'commerc
       if (mark.verified !== false) violations.push({ entity: id, code: 'derived_marked_verified', message: `${group}: derived material cannot be marked verified` });
     }
     if (entityType === 'relationship' && (entity.claimClasses || []).length > 0) {
-      violations.push({ entity: id, code: 'derived_claim', message: 'A derived relationship cannot assert claim classes' });
+      // A claim on *derived* structure is never allowed. An authored proposal may name the claim it hopes to support,
+      // but it stays pending: it is only a claim once a verification record covers it (the gate ignores it until then).
+      if (marks.structure.kind === 'authored_proposal') counts.pending_claim_relationships = (counts.pending_claim_relationships || 0) + 1;
+      else violations.push({ entity: id, code: 'derived_claim', message: 'A derived relationship cannot assert claim classes' });
     }
     if (verifiedTargets.has(`${entityType}:${id}`)) {
       violations.push({ entity: id, code: 'derived_verified_in_place', message: 'Verification of derived material must be recorded by re-authoring it, not by marking it verified in place' });

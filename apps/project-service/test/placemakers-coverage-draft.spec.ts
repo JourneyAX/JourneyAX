@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { MemoryDb, createSuite } from '@journeyax/test-support';
-import { buildTaxonomyDraft, computeKnowledgeEntityHash, hydrateOkfReleaseEnvelope } from '../../../packages/knowledge/src';
+import { applyAuthoring, buildTaxonomyDraft, computeKnowledgeEntityHash, hydrateOkfReleaseEnvelope } from '../../../packages/knowledge/src';
 import { OkfAuthoringService } from '../src/okf-authoring.service';
 
 const suite = createSuite('project-service: generated PlaceMakers coverage draft');
 const root = path.resolve(__dirname, '../../..');
 const read = (file: string) => JSON.parse(readFileSync(path.join(root, file), 'utf8'));
 const generated = buildTaxonomyDraft(read('docs/inventory/placemakers-taxonomy-snapshot-2026-10-13.json'), read('scripts/okf/tenants/placemakers.ingest.json'));
+const authored = applyAuthoring(generated, read('scripts/okf/tenants/placemakers.authoring.json'));
 
 function setup() {
   const db = new MemoryDb();
@@ -55,6 +56,35 @@ async function main() {
     const resaved = await service.saveDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: saved.revision, content: edited, updatedBy: 'human:author' });
     assert.notEqual(resaved.content.concepts[0].contentHash, saved.content.concepts[0].contentHash);
     assert.equal(resaved.content.concepts[1].contentHash, saved.content.concepts[1].contentHash, 'other concepts are untouched');
+  });
+  await suite.test('the authored layer saves and publishes through the same path and carries fact semantics to the pack', async () => {
+    assert.deepEqual(authored.errors, []);
+    const { service, db, attached } = setup();
+    const saved = await service.saveDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: 0, content: authored.draft, updatedBy: 'process:okf-taxonomy-ingest' });
+    assert.equal(saved.validation.valid, true, JSON.stringify(saved.validation.issues.slice(0, 3)));
+    assert.equal(saved.content.verifications.length, 0);
+    for (const entry of saved.content.concepts) assert.equal(entry.contentHash, computeKnowledgeEntityHash(entry), `${entry.conceptId} keeps its hash`);
+    const result: any = await service.publishDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: saved.revision, version: '1.0.0', publishedBy: 'human:reviewer' });
+    assert.equal(result.release.status, 'ready');
+    const release = await hydrateOkfReleaseEnvelope(db as any, await db.collection('okf_releases').findOne({ releaseId: result.release.releaseId }));
+    assert.equal(release.content.evaluation.passed, true);
+    assert.equal(attached[0].knowledgeModel.checksum, result.release.checksum);
+    const facts = attached[0].factRegistry.facts;
+    for (const key of ['room_dimensions', 'deck_size', 'fence_length']) assert.equal(facts[key].role, 'measurement', `${key} is a measurement`);
+    for (const key of ['bathroom_features', 'laundry_features', 'kitchen_features']) assert.equal(facts[key].multiple, true, `${key} holds several values`);
+    assert.equal(facts.deck_material.role, undefined, 'a plain choice fact carries no role');
+  });
+
+  await suite.test('editing an authored concept afterwards is a visible edit and the rest keeps its hashes', async () => {
+    const { service } = setup();
+    const saved = await service.saveDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: 0, content: authored.draft, updatedBy: 'process:okf-taxonomy-ingest' });
+    const index = saved.content.concepts.findIndex((entry: any) => entry.name === 'Deck build');
+    assert.ok(index >= 0);
+    const edited = structuredClone(saved.content);
+    edited.concepts[index].description = `${edited.concepts[index].description} Reviewed.`;
+    const resaved = await service.saveDraft({ projectId: 'placemakers', environmentId: 'test', expectedRevision: saved.revision, content: edited, updatedBy: 'human:author' });
+    assert.notEqual(resaved.content.concepts[index].contentHash, saved.content.concepts[index].contentHash);
+    assert.equal(resaved.content.concepts[(index + 1) % saved.content.concepts.length].contentHash, saved.content.concepts[(index + 1) % saved.content.concepts.length].contentHash);
   });
 }
 

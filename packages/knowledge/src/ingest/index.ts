@@ -6,3 +6,5 @@ export * from './coverage';
 export * from './provenance';
 export * from './documents';
 export * from './variants';
+export * from './authoring';
+export * from './worklist';
