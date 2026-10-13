@@ -28,4 +28,18 @@ assert.ok(validateOkfGeneratedClaims('Apply in a ventilated area.', ['suggestion
 assert.ok(validateOkfGeneratedClaims('Use diluted 1:4 with water.', ['suggestion']).forbidden.includes('care_safety'));
 assert.deepEqual(validateOkfGeneratedClaims('Spray on, leave to dry, then brush off.', ['suggestion']).forbidden, [], 'an ordinary usage step is not a safety claim');
 assert.deepEqual(validateOkfGeneratedClaims('Always wear a respirator and apply in a ventilated area.', ['suggestion', 'safety_instruction', 'care_safety']).forbidden, [], 'allowed once the release verifies safety guidance');
-console.log('✅ OKF claim validator: 16 passed, 0 failed');
+// What a model said about a leaking toilet: steps that tell a customer what to do with water and fittings are safety instructions,
+// whatever the object is called ("the isolation tap", "the stop valve", "at the wall").
+for (const sentence of [
+  'For a leaky toilet, turn off the isolation tap and avoid using it until the leak is checked.',
+  'Switch off the power at the switchboard.',
+  'Shut the water off at the stop valve.',
+  'Isolate the supply before you start.',
+  'Stop using the heater.',
+  "Don't use the shower until it is repaired.",
+]) assert.ok(validateOkfGeneratedClaims(sentence, ['suggestion']).forbidden.includes('safety_instruction'), sentence);
+assert.deepEqual(withholdUnsupportedClaims('For a leaky toilet, turn off the isolation tap and avoid using it until the leak is checked. Tell me where the water shows up?', ['suggestion']).text, 'Tell me where the water shows up?', 'the instruction goes, the question stays');
+for (const ordinary of ['Isolation valves are in the plumbing aisle.', 'This kettle has an automatic switch.', 'Spray on, leave to dry, then brush off.', 'Turn the handle clockwise to open.']) {
+  assert.deepEqual(validateOkfGeneratedClaims(ordinary, ['suggestion']).forbidden, [], `ordinary wording is not a safety claim: ${ordinary}`);
+}
+console.log('✅ OKF claim validator: 27 passed, 0 failed');

@@ -391,6 +391,15 @@ test('the platform lexicon recognises hazards, technical questions and shopping 
   }
 });
 
+test('leak wording in any common form is a problem; leak products are still shopping', () => {
+  for (const text of ['leaky toilet', 'toilet leak', 'the tap leaks', 'leaking shower', 'roof leak', 'my cistern is leaking', 'leaky tap in the kitchen', 'there is a water leak', 'toilet is leaking']) {
+    assert.ok(intentsOf(text).includes('problem'), text);
+  }
+  for (const text of ['leak detector', 'do you sell leak sealant', 'i need leak repair tape', 'leak proof container', 'a leak stopper for the roof', 'leak free taps', 'no leaks please, just show me taps', 'i want a leak kit']) {
+    assert.equal(intentsOf(text).includes('problem'), false, `${text} is shopping, not a problem`);
+  }
+});
+
 test('every message written for a customer is plain language: no internal vocabulary, ids or unrendered placeholders', () => {
   const agentOnly = new Set(OKF_PLATFORM_POLICY.agentMessages);
   const unrendered = /\{[A-Za-z0-9_]+\}/g;

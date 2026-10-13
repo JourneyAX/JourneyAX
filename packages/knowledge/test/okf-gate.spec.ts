@@ -307,6 +307,14 @@ uncovered('governed concepts are unaffected by the coverage setting', 'screw', {
     assert.equal(d.retrieval.permission, 'blocked'); assert.equal(d.commerce.addToCart, 'blocked'); assert.deepEqual(d.claims.allowedClasses, []);
     assert.ok(d.trace.reasonCodes.includes('problem_without_problem_concept'));
   });
+  check('"leaky" and "leak" wording is a problem too, so a product shelf never answers it', () => {
+    for (const message of ['leaky screws', 'screws leak', 'my screws are leaking']) {
+      const d = product(message);
+      assert.equal(d.mode, 'safety_then_diagnose', message); assert.equal(d.retrieval.permission, 'blocked', message);
+      assert.ok(d.trace.reasonCodes.includes('problem_without_problem_concept'), message);
+    }
+    assert.equal(product('leak proof screws').mode, 'overview_then_ask', 'a leak-proof product is still shopping');
+  });
   check('the same concept without a problem intent is unaffected', () => {
     assert.equal(product('i need screws').mode, 'overview_then_ask');
   });
@@ -321,5 +329,5 @@ uncovered('governed concepts are unaffected by the coverage setting', 'screw', {
   });
 }
 
-assert.equal(passed, 45 + 17 + 4 + 4);
+assert.equal(passed, 45 + 17 + 4 + 5);
 console.log(`✅ OKF gate suite: ${passed} passed, 0 failed`);

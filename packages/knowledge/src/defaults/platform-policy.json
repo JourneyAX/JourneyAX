@@ -106,10 +106,13 @@
         "caught fire|on fire",
         "burning smell|smell* burning|smell* smoke",
         "smoke|fumes|sparks|flames|steam coming|pouring|rising|billowing|flying|shooting",
-        "fire in|at|near|under|behind|inside|around the|my|our"
+        "fire in|at|near|under|behind|inside|around the|my|our",
+        "leaky|leaking|leaks",
+        "* leak"
       ],
       "suppressedBy": [
-        "no|not a? problem|fault|leak|damage"
+        "no|not a? problem|fault|leak*|damage",
+        "leak detector*|detection|seal*|stop|stopper*|repair*|proof|free|tape|paste|putty|kit|kits|prevention"
       ]
     },
     {
