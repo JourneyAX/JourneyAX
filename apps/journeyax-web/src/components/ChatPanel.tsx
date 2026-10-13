@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
+import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { useAuth } from '@/context/AuthContext';
@@ -815,10 +816,7 @@ export default function ChatPanel() {
     const fingerprint = qs.map((q: any) => `${q.id}:${answers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
-    const answerSummary = qs
-      .map((q: any) => `${q.text || q.title || q.id} → ${answers[q.id] ?? q.answer ?? 'Not answered'}`)
-      .join('\n');
-    const clarificationText = `My answers:\n${answerSummary}`;
+    const clarificationText = `My answers:\n${answerSummary(qs, answers)}`;
 
     if (isLoading || state.isThinking) {
       pendingClarificationRef.current = { fingerprint, message: clarificationText };
@@ -860,10 +858,7 @@ export default function ChatPanel() {
     const fingerprint = qs.map((q: any) => `${q.id}:${state.dynamicAnswers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
-    const answerSummary = qs
-      .map((q: any) => `${q.text || q.title || q.id} → ${state.dynamicAnswers[q.id] ?? q.answer ?? 'Not answered'}`)
-      .join('\n');
-    const clarificationText = `My answers:\n${answerSummary}`;
+    const clarificationText = `My answers:\n${answerSummary(qs, state.dynamicAnswers)}`;
 
     if (isLoading || state.isThinking) {
       pendingClarificationRef.current = { fingerprint, message: clarificationText };

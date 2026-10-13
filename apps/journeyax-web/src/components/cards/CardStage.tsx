@@ -13,6 +13,7 @@
  */
 import { useCallback, useRef } from 'react';
 import { CardRenderer } from '@journeyax/ui-cards/react';
+import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
@@ -137,10 +138,7 @@ export function useCardActions() {
           // ChatPanel's useEffect monitors dynamicAnswers and will submit with fingerprint deduplication once all questions are answered
           if (!w.__handleClarifySubmit && (left === 0 || total <= 1)) {
             // Only if ChatPanel bridge is somehow absent, fallback to direct send
-            const answerSummary = updatedQuestions
-              .map((q: any) => `${q.text || q.title || q.id} → ${answers[q.id] ?? q.answer ?? 'Not answered'}`)
-              .join('\n');
-            const clarificationText = `My answers:\n${answerSummary}`;
+            const clarificationText = `My answers:\n${answerSummary(updatedQuestions, answers)}`;
             w.__journeySend?.(clarificationText);
           }
         } else {

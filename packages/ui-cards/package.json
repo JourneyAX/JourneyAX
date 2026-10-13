@@ -16,6 +16,11 @@
       "require": "./dist/catalog/index.js",
       "import": "./dist/catalog/index.js"
     },
+    "./answers": {
+      "types": "./dist/answers.d.ts",
+      "require": "./dist/answers.js",
+      "import": "./dist/answers.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "require": "./dist/react.js",

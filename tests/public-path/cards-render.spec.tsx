@@ -6,9 +6,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createSuite } from '@journeyax/test-support';
 import { CARD_TYPES, DEFAULT_TEMPLATES, DEFAULT_TOKENS, getDefaultTemplate, mergeTokens, tokensToCssVars, cssVarsToString } from '@journeyax/ui-cards';
 import { CardRenderer } from '@journeyax/ui-cards/react';
+import { answerLabel, answerSummary } from '@journeyax/ui-cards/answers';
 import { runCanary } from '../../packages/canary/src';
 import { sampleStateFor } from '../../apps/backoffice-admin/src/lib/cardSampleState';
 import { startPublicPath } from './harness';
+import { buildPlaceMakersStack } from '../../apps/journey-runtime-service/test/helpers/placemakers-stack';
 
 /**
  * Every card a customer can be sent renders, and renders through the tenant's theme: the cards the real public path produced for
@@ -89,6 +91,37 @@ async function main() {
     const branded = mergeTokens({ colors: { brand: '#0B5FFF', accent: '#FF6A00' } } as any);
     assert.match(cssVarsToString(tokensToCssVars(branded)), /--jx-color-brand:#0B5FFF/);
     assert.match(render('products', [...seen.values()].find((card) => card.cardType === 'products')!.state, branded), /--jx-color-brand:#0B5FFF/);
+  });
+
+  await suite.test('a tapped answer reads in the customer\'s words, never as the option\'s internal code, and the server still reads it back', async () => {
+    const paint = { id: 'nav_paint', text: 'Which type of Paint are you looking for?', options: [{ value: 'interior-paint', label: 'Interior Paint' }, { value: 'primers-sealers-and-undercoats', label: 'Primers Sealers & Undercoats' }] };
+    assert.equal(answerSummary([paint], { nav_paint: 'interior-paint' }), 'Which type of Paint are you looking for? → Interior Paint');
+    assert.equal(answerLabel(paint, 'primers-sealers-and-undercoats'), 'Primers Sealers & Undercoats');
+    assert.equal(answerLabel(paint, 'something typed'), 'something typed', 'a value that is no option stays as it is');
+    // Plain-string options (value is the label), several questions, no answer yet, an answer carried on the question itself.
+    const size = { id: 'size', title: 'How big?', options: ['Small', 'Large'] };
+    const budget = { id: 'budget', text: 'Budget?', options: [], answer: 'under 50' };
+    assert.equal(answerSummary([paint, size, budget], { nav_paint: 'interior-paint' }), 'Which type of Paint are you looking for? → Interior Paint\nHow big? → Not answered\nBudget? → under 50');
+    // A multi-select keeps its values: its labels may contain commas, which would split the answer wrongly.
+    const rooms = { id: 'rooms', text: 'Which rooms?', multi: true, options: [{ value: 'kitchen', label: 'Kitchen, pantry' }, { value: 'bath', label: 'Bathroom' }] };
+    assert.equal(answerSummary([rooms], { rooms: 'kitchen, bath' }), 'Which rooms? → kitchen, bath');
+    // The server understands the label as well as the value: the same conversation, both ways.
+    const stack = await buildPlaceMakersStack({ environmentId: 'production' });
+    const service: any = stack.serviceFor();
+    const ask = (workspaceId: string, message: string, n: number) => service.executeTurn({ tenantId: 'placemakers', environmentId: 'production', workspaceId, sessionId: workspaceId, turnId: `${workspaceId}-${n}`, correlationId: `${workspaceId}-${n}`, message }, stack.pack);
+    const quietly = console.log;
+    console.log = () => undefined;
+    try {
+      for (const [workspaceId, pick] of [['label', (option: any) => option.label], ['value', (option: any) => option.value]] as const) {
+        const first = await ask(workspaceId, 'paint', 1);
+        const question = first.uiInstructions.find((card: any) => card.component === 'clarify').props.questions[0];
+        const option = question.options.find((entry: any) => entry.value === 'interior-paint');
+        assert.equal(answerLabel(question, option.value), 'Interior Paint');
+        const second = await ask(workspaceId, `My answers:\n${answerSummary([question], { [question.id]: pick(option) })}`, 2);
+        assert.equal(second.trace.knowledgeGate.conceptId.split('/').pop(), 'interior-paint', workspaceId);
+        assert.ok(second.uiInstructions.some((card: any) => card.component === 'products'), workspaceId);
+      }
+    } finally { console.log = quietly; }
   });
 
   await suite.test('every platform card type has a valid sample, renders, and its default template only binds fields its schema declares', () => {

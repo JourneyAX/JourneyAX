@@ -399,6 +399,19 @@ the customer wants to look, and explain from the product itself.
   `[Turn] pack 1.3.17 | knowledge okf-…@4b0e1c8d619c | overview_then_ask · building-products/plasterboard (exact_phrase) | decided ask [release question: …]: … | cards: clarify | model read: skipped (tapped_answer)`.
   The knowledge release itself is logged once per process when it loads (a cached release prints nothing), so this line is the per-turn proof.
   `[TurnDiagnostics]` also carries the decision, its reasons, the needs and each product's score.
+- **A shop with nothing to show is never handed to a model.** When the catalogue search ran and found nothing, or failed, the
+  assistant still asks the release's question if it has one (a question needs no products), and otherwise says the tenant's plain
+  `nothing_to_show` sentence, with no model call. Before this, an empty or failed search fell through to a model that improvised ("The
+  results on screen will now focus on that range" when nothing was on screen). The `[Turn]` line now shows `catalogue search: N products / failed
+  (reason) / not run`, so a broken search is visible in one line.
+- **A leak is a problem however it is worded.** The platform's problem cues (`defaults/platform-policy.json`) now include "leaky",
+  "leaking", "leaks" and "<thing> leak", with leak *products* ("leak sealant", "leak detector", "leak proof") still shopping, so "leaky toilet" and
+  "toilet is leaking" get the same safe answer instead of one showing a toilet shelf. A tenant refusal is shown as written, with no model call to word it.
+- **The claim guard also catches instructions about fittings and water in any phrasing** ("turn off the isolation tap", "switch off at
+  the wall", "avoid using it", "isolate the supply", "don't use"), withheld unless the release has verified safety guidance.
+- **Tapped answers read in the customer's words.** The web app now puts the label of the tapped option into the customer's message (shared
+  `answerSummary` in `@journeyax/ui-cards/answers`), not its internal code ("→ interior-paint"). A multi-select keeps its values. The server
+  reads a label or a value.
 - **Remembered between turns** in the workspace (`conversation_state`: needs, constraints, what was asked, the question on screen); it is never
   shown to the customer or sent to the model, and a new shelf starts fresh.
 - **Trace.** Every turn's trace carries `conversation`: the action, the rules that decided it in order, the needs, and each product's score,

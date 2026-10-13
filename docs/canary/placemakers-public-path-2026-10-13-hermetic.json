@@ -1,12 +1,12 @@
 {
  "tenantId": "placemakers",
  "specVersion": "1.0.0",
- "startedAt": "2026-10-13T16:49:09.463Z",
- "durationMs": 388,
+ "startedAt": "2026-10-13T20:21:51.765Z",
+ "durationMs": 315,
  "passed": true,
  "totals": {
-  "scenarios": 19,
-  "turns": 21,
+  "scenarios": 21,
+  "turns": 25,
   "violations": 0,
   "warnings": 0
  },
@@ -19,8 +19,8 @@
     {
      "message": "screws",
      "status": 200,
-     "elapsedMs": 133,
-     "reply": "One quick question so I get you the right thing.",
+     "elapsedMs": 113,
+     "reply": "A quick question first, so I can point you to the right ones.",
      "cardTypes": [
       "clarify"
      ],
@@ -41,7 +41,7 @@
        "data": {
         "sessionId": "session-1"
        },
-       "atMs": 132
+       "atMs": 112
       },
       {
        "event": "capability",
@@ -49,7 +49,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 132
+       "atMs": 112
       },
       {
        "event": "uiAction",
@@ -115,37 +115,37 @@
          }
         }
        },
-       "atMs": 132
+       "atMs": 113
       },
       {
        "event": "token",
        "data": {
-        "token": "One quick question so I get you the right thing.",
-        "delta": "One quick question so I get you the right thing."
+        "token": "A quick question first, so I can point you to the right ones.",
+        "delta": "A quick question first, so I can point you to the right ones."
        },
-       "atMs": 132
+       "atMs": 113
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-1",
         "workspaceId": "session-1",
-        "response": "One quick question so I get you the right thing.",
-        "assistantMessage": "One quick question so I get you the right thing.",
+        "response": "A quick question first, so I can point you to the right ones.",
+        "assistantMessage": "A quick question first, so I can point you to the right ones.",
         "message": {
          "role": "assistant",
-         "content": "One quick question so I get you the right thing."
+         "content": "A quick question first, so I can point you to the right ones."
         }
        },
-       "atMs": 132
+       "atMs": 113
       }
      ]
     },
     {
      "message": "just show me screws",
      "status": 200,
-     "elapsedMs": 24,
-     "reply": "Here's what we have.\n\nPlease check compatibility before you buy.",
+     "elapsedMs": 18,
+     "reply": "These are the closest matches.\n\nPlease check compatibility before you buy.",
      "cardTypes": [
       "products"
      ],
@@ -166,7 +166,7 @@
        "data": {
         "sessionId": "session-1"
        },
-       "atMs": 24
+       "atMs": 18
       },
       {
        "event": "capability",
@@ -174,7 +174,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 24
+       "atMs": 18
       },
       {
        "event": "uiAction",
@@ -268,29 +268,29 @@
          }
         }
        },
-       "atMs": 24
+       "atMs": 18
       },
       {
        "event": "token",
        "data": {
-        "token": "Here's what we have.\n\nPlease check compatibility before you buy.",
-        "delta": "Here's what we have.\n\nPlease check compatibility before you buy."
+        "token": "These are the closest matches.\n\nPlease check compatibility before you buy.",
+        "delta": "These are the closest matches.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 24
+       "atMs": 18
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-1",
         "workspaceId": "session-1",
-        "response": "Here's what we have.\n\nPlease check compatibility before you buy.",
-        "assistantMessage": "Here's what we have.\n\nPlease check compatibility before you buy.",
+        "response": "These are the closest matches.\n\nPlease check compatibility before you buy.",
+        "assistantMessage": "These are the closest matches.\n\nPlease check compatibility before you buy.",
         "message": {
          "role": "assistant",
-         "content": "Here's what we have.\n\nPlease check compatibility before you buy."
+         "content": "These are the closest matches.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 24
+       "atMs": 18
       }
      ]
     }
@@ -304,8 +304,8 @@
     {
      "message": "wood screws",
      "status": 200,
-     "elapsedMs": 19,
-     "reply": "Here's what we have.\n\nPlease check compatibility before you buy.",
+     "elapsedMs": 11,
+     "reply": "These are the closest matches.\n\nPlease check compatibility before you buy.",
      "cardTypes": [
       "products",
       "accessories"
@@ -328,7 +328,7 @@
        "data": {
         "sessionId": "session-2"
        },
-       "atMs": 19
+       "atMs": 11
       },
       {
        "event": "capability",
@@ -336,7 +336,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 19
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -398,7 +398,7 @@
          }
         }
        },
-       "atMs": 19
+       "atMs": 11
       },
       {
        "event": "uiAction",
@@ -498,29 +498,29 @@
          }
         }
        },
-       "atMs": 19
+       "atMs": 11
       },
       {
        "event": "token",
        "data": {
-        "token": "Here's what we have.\n\nPlease check compatibility before you buy.",
-        "delta": "Here's what we have.\n\nPlease check compatibility before you buy."
+        "token": "These are the closest matches.\n\nPlease check compatibility before you buy.",
+        "delta": "These are the closest matches.\n\nPlease check compatibility before you buy."
        },
-       "atMs": 19
+       "atMs": 11
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-2",
         "workspaceId": "session-2",
-        "response": "Here's what we have.\n\nPlease check compatibility before you buy.",
-        "assistantMessage": "Here's what we have.\n\nPlease check compatibility before you buy.",
+        "response": "These are the closest matches.\n\nPlease check compatibility before you buy.",
+        "assistantMessage": "These are the closest matches.\n\nPlease check compatibility before you buy.",
         "message": {
          "role": "assistant",
-         "content": "Here's what we have.\n\nPlease check compatibility before you buy."
+         "content": "These are the closest matches.\n\nPlease check compatibility before you buy."
         }
        },
-       "atMs": 19
+       "atMs": 11
       }
      ]
     }
@@ -534,7 +534,7 @@
     {
      "message": "i want to build a deck",
      "status": 200,
-     "elapsedMs": 17,
+     "elapsedMs": 12,
      "reply": "One quick question so I get you the right thing.",
      "cardTypes": [
       "clarify"
@@ -556,7 +556,7 @@
        "data": {
         "sessionId": "session-3"
        },
-       "atMs": 16
+       "atMs": 12
       },
       {
        "event": "capability",
@@ -564,7 +564,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 16
+       "atMs": 12
       },
       {
        "event": "uiAction",
@@ -638,7 +638,7 @@
          }
         }
        },
-       "atMs": 17
+       "atMs": 12
       },
       {
        "event": "token",
@@ -646,7 +646,7 @@
         "token": "One quick question so I get you the right thing.",
         "delta": "One quick question so I get you the right thing."
        },
-       "atMs": 17
+       "atMs": 12
       },
       {
        "event": "done",
@@ -660,7 +660,7 @@
          "content": "One quick question so I get you the right thing."
         }
        },
-       "atMs": 17
+       "atMs": 12
       }
      ]
     }
@@ -674,8 +674,8 @@
     {
      "message": "vanities",
      "status": 200,
-     "elapsedMs": 13,
-     "reply": "These are the closest matches.",
+     "elapsedMs": 9,
+     "reply": "Here's what we have.",
      "cardTypes": [
       "products",
       "accessories"
@@ -698,7 +698,7 @@
        "data": {
         "sessionId": "session-4"
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "capability",
@@ -706,7 +706,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "uiAction",
@@ -768,7 +768,7 @@
          }
         }
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "uiAction",
@@ -852,29 +852,29 @@
          }
         }
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "token",
        "data": {
-        "token": "These are the closest matches.",
-        "delta": "These are the closest matches."
+        "token": "Here's what we have.",
+        "delta": "Here's what we have."
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-4",
         "workspaceId": "session-4",
-        "response": "These are the closest matches.",
-        "assistantMessage": "These are the closest matches.",
+        "response": "Here's what we have.",
+        "assistantMessage": "Here's what we have.",
         "message": {
          "role": "assistant",
-         "content": "These are the closest matches."
+         "content": "Here's what we have."
         }
        },
-       "atMs": 12
+       "atMs": 9
       }
      ]
     }
@@ -888,7 +888,7 @@
     {
      "message": "renovate my bathroom",
      "status": 200,
-     "elapsedMs": 16,
+     "elapsedMs": 10,
      "reply": "Here are options from the catalogue.",
      "cardTypes": [
       "clarify"
@@ -907,7 +907,7 @@
        "data": {
         "sessionId": "session-5"
        },
-       "atMs": 16
+       "atMs": 10
       },
       {
        "event": "uiAction",
@@ -973,7 +973,7 @@
          }
         }
        },
-       "atMs": 16
+       "atMs": 10
       },
       {
        "event": "token",
@@ -981,7 +981,7 @@
         "token": "Here are options from the catalogue.",
         "delta": "Here are options from the catalogue."
        },
-       "atMs": 16
+       "atMs": 10
       },
       {
        "event": "done",
@@ -995,7 +995,7 @@
          "content": "Here are options from the catalogue."
         }
        },
-       "atMs": 16
+       "atMs": 10
       }
      ]
     }
@@ -1009,7 +1009,7 @@
     {
      "message": "my bathroom is leaking",
      "status": 200,
-     "elapsedMs": 14,
+     "elapsedMs": 7,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1025,7 +1025,7 @@
        "data": {
         "sessionId": "session-6"
        },
-       "atMs": 14
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1033,7 +1033,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 14
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1047,7 +1047,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 14
+       "atMs": 7
       }
      ]
     }
@@ -1061,7 +1061,7 @@
     {
      "message": "i can smell gas",
      "status": 200,
-     "elapsedMs": 12,
+     "elapsedMs": 9,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1077,7 +1077,7 @@
        "data": {
         "sessionId": "session-7"
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "token",
@@ -1085,7 +1085,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "done",
@@ -1099,7 +1099,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 12
+       "atMs": 9
       }
      ]
     }
@@ -1113,7 +1113,7 @@
     {
      "message": "my appliance is sparking",
      "status": 200,
-     "elapsedMs": 9,
+     "elapsedMs": 7,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1129,7 +1129,7 @@
        "data": {
         "sessionId": "session-8"
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1137,7 +1137,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1151,7 +1151,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 9
+       "atMs": 7
       }
      ]
     }
@@ -1165,7 +1165,7 @@
     {
      "message": "where is my order? my bathroom is leaking",
      "status": 200,
-     "elapsedMs": 12,
+     "elapsedMs": 9,
      "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
      "cardTypes": [],
      "capabilities": [],
@@ -1181,7 +1181,7 @@
        "data": {
         "sessionId": "session-9"
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "token",
@@ -1189,7 +1189,7 @@
         "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
         "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
        },
-       "atMs": 12
+       "atMs": 9
       },
       {
        "event": "done",
@@ -1203,7 +1203,7 @@
          "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
         }
        },
-       "atMs": 12
+       "atMs": 9
       }
      ]
     }
@@ -1217,7 +1217,7 @@
     {
      "message": "how do i install a vanity",
      "status": 200,
-     "elapsedMs": 9,
+     "elapsedMs": 7,
      "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
      "cardTypes": [],
      "capabilities": [],
@@ -1233,7 +1233,7 @@
        "data": {
         "sessionId": "session-10"
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1241,7 +1241,7 @@
         "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
         "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1255,7 +1255,7 @@
          "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
         }
        },
-       "atMs": 9
+       "atMs": 7
       }
      ]
     }
@@ -1269,7 +1269,7 @@
     {
      "message": "what is the warranty on this vanity",
      "status": 200,
-     "elapsedMs": 8,
+     "elapsedMs": 7,
      "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
      "cardTypes": [],
      "capabilities": [],
@@ -1285,7 +1285,7 @@
        "data": {
         "sessionId": "session-11"
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1293,7 +1293,7 @@
         "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
         "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
        },
-       "atMs": 8
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1307,7 +1307,7 @@
          "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
         }
        },
-       "atMs": 8
+       "atMs": 7
       }
      ]
     }
@@ -1321,7 +1321,7 @@
     {
      "message": "clean my deck",
      "status": 200,
-     "elapsedMs": 8,
+     "elapsedMs": 6,
      "reply": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
      "cardTypes": [],
      "capabilities": [],
@@ -1337,7 +1337,7 @@
        "data": {
         "sessionId": "session-12"
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "token",
@@ -1345,7 +1345,7 @@
         "token": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help.",
         "delta": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
        },
-       "atMs": 7
+       "atMs": 6
       },
       {
        "event": "done",
@@ -1359,7 +1359,7 @@
          "content": "I don't have a verified source to answer that, so I won't guess. One of our specialists can help."
         }
        },
-       "atMs": 7
+       "atMs": 6
       }
      ]
     }
@@ -1373,7 +1373,7 @@
     {
      "message": "is this wood screw suitable for a load bearing beam",
      "status": 200,
-     "elapsedMs": 14,
+     "elapsedMs": 9,
      "reply": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
      "cardTypes": [
       "products",
@@ -1397,7 +1397,7 @@
        "data": {
         "sessionId": "session-13"
        },
-       "atMs": 14
+       "atMs": 9
       },
       {
        "event": "capability",
@@ -1405,7 +1405,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 14
+       "atMs": 9
       },
       {
        "event": "uiAction",
@@ -1467,7 +1467,7 @@
          }
         }
        },
-       "atMs": 14
+       "atMs": 9
       },
       {
        "event": "uiAction",
@@ -1567,7 +1567,7 @@
          }
         }
        },
-       "atMs": 14
+       "atMs": 9
       },
       {
        "event": "token",
@@ -1575,7 +1575,7 @@
         "token": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement.",
         "delta": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
        },
-       "atMs": 14
+       "atMs": 9
       },
       {
        "event": "done",
@@ -1589,7 +1589,7 @@
          "content": "Here's what we have.\n\nPlease check compatibility before you buy.\n\nI can't confirm technical suitability, compatibility or compliance from verified information. These are products we stock; a qualified specialist can confirm the right choice for your requirement."
         }
        },
-       "atMs": 14
+       "atMs": 9
       }
      ]
     }
@@ -1655,7 +1655,7 @@
     {
      "message": "switchgear",
      "status": 200,
-     "elapsedMs": 11,
+     "elapsedMs": 7,
      "reply": "These are the closest matches.",
      "cardTypes": [
       "products"
@@ -1677,7 +1677,7 @@
        "data": {
         "sessionId": "session-15"
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "capability",
@@ -1685,7 +1685,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -1731,7 +1731,7 @@
          }
         }
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "token",
@@ -1739,7 +1739,7 @@
         "token": "These are the closest matches.",
         "delta": "These are the closest matches."
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "done",
@@ -1753,7 +1753,7 @@
          "content": "These are the closest matches."
         }
        },
-       "atMs": 11
+       "atMs": 7
       }
      ]
     }
@@ -1767,7 +1767,7 @@
     {
      "message": "interior paint",
      "status": 200,
-     "elapsedMs": 11,
+     "elapsedMs": 8,
      "reply": "These are the closest matches.",
      "cardTypes": [
       "products",
@@ -1791,7 +1791,7 @@
        "data": {
         "sessionId": "session-16"
        },
-       "atMs": 11
+       "atMs": 8
       },
       {
        "event": "capability",
@@ -1799,7 +1799,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 11
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -1845,7 +1845,7 @@
          }
         }
        },
-       "atMs": 11
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -1929,7 +1929,7 @@
          }
         }
        },
-       "atMs": 11
+       "atMs": 8
       },
       {
        "event": "token",
@@ -1937,7 +1937,7 @@
         "token": "These are the closest matches.",
         "delta": "These are the closest matches."
        },
-       "atMs": 11
+       "atMs": 8
       },
       {
        "event": "done",
@@ -1951,7 +1951,7 @@
          "content": "These are the closest matches."
         }
        },
-       "atMs": 11
+       "atMs": 8
       }
      ]
     }
@@ -1965,8 +1965,8 @@
     {
      "message": "outdoor cleaners",
      "status": 200,
-     "elapsedMs": 11,
-     "reply": "These are the closest matches.",
+     "elapsedMs": 7,
+     "reply": "Here's what we have.",
      "cardTypes": [
       "products"
      ],
@@ -1987,7 +1987,7 @@
        "data": {
         "sessionId": "session-17"
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "capability",
@@ -1995,7 +1995,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -2041,29 +2041,29 @@
          }
         }
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "token",
        "data": {
-        "token": "These are the closest matches.",
-        "delta": "These are the closest matches."
+        "token": "Here's what we have.",
+        "delta": "Here's what we have."
        },
-       "atMs": 11
+       "atMs": 7
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-17",
         "workspaceId": "session-17",
-        "response": "These are the closest matches.",
-        "assistantMessage": "These are the closest matches.",
+        "response": "Here's what we have.",
+        "assistantMessage": "Here's what we have.",
         "message": {
          "role": "assistant",
-         "content": "These are the closest matches."
+         "content": "Here's what we have."
         }
        },
-       "atMs": 11
+       "atMs": 7
       }
      ]
     }
@@ -2077,8 +2077,8 @@
     {
      "message": "What moisture-resistant linings and waterproofing do I need for my wet area?",
      "status": 200,
-     "elapsedMs": 10,
-     "reply": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
+     "elapsedMs": 8,
+     "reply": "One quick question so I get you the right thing.",
      "cardTypes": [
       "clarify"
      ],
@@ -2099,7 +2099,7 @@
        "data": {
         "sessionId": "session-18"
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "capability",
@@ -2107,7 +2107,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -2173,29 +2173,29 @@
          }
         }
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "token",
        "data": {
-        "token": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
-        "delta": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists."
+        "token": "One quick question so I get you the right thing.",
+        "delta": "One quick question so I get you the right thing."
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-18",
         "workspaceId": "session-18",
-        "response": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
-        "assistantMessage": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists.",
+        "response": "One quick question so I get you the right thing.",
+        "assistantMessage": "One quick question so I get you the right thing.",
         "message": {
          "role": "assistant",
-         "content": "I can't show products for that yet. Tell me a little more about what you need, or ask one of our specialists."
+         "content": "One quick question so I get you the right thing."
         }
        },
-       "atMs": 10
+       "atMs": 8
       }
      ]
     }
@@ -2209,8 +2209,8 @@
     {
      "message": "cleaning supply",
      "status": 200,
-     "elapsedMs": 10,
-     "reply": "A quick question first, so I can point you to the right ones.",
+     "elapsedMs": 8,
+     "reply": "One quick question so I get you the right thing.",
      "cardTypes": [
       "clarify"
      ],
@@ -2231,7 +2231,7 @@
        "data": {
         "sessionId": "session-19"
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "capability",
@@ -2239,7 +2239,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "uiAction",
@@ -2321,37 +2321,37 @@
          }
         }
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "token",
        "data": {
-        "token": "A quick question first, so I can point you to the right ones.",
-        "delta": "A quick question first, so I can point you to the right ones."
+        "token": "One quick question so I get you the right thing.",
+        "delta": "One quick question so I get you the right thing."
        },
-       "atMs": 10
+       "atMs": 8
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-19",
         "workspaceId": "session-19",
-        "response": "A quick question first, so I can point you to the right ones.",
-        "assistantMessage": "A quick question first, so I can point you to the right ones.",
+        "response": "One quick question so I get you the right thing.",
+        "assistantMessage": "One quick question so I get you the right thing.",
         "message": {
          "role": "assistant",
-         "content": "A quick question first, so I can point you to the right ones."
+         "content": "One quick question so I get you the right thing."
         }
        },
-       "atMs": 10
+       "atMs": 8
       }
      ]
     },
     {
      "message": "show me cleaning supplies",
      "status": 200,
-     "elapsedMs": 9,
-     "reply": "These are the closest matches.",
+     "elapsedMs": 7,
+     "reply": "Here's what we have.",
      "cardTypes": [
       "products"
      ],
@@ -2372,7 +2372,7 @@
        "data": {
         "sessionId": "session-19"
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "capability",
@@ -2380,7 +2380,7 @@
         "toolId": "catalog.search",
         "status": "success"
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "uiAction",
@@ -2474,29 +2474,481 @@
          }
         }
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "token",
        "data": {
-        "token": "These are the closest matches.",
-        "delta": "These are the closest matches."
+        "token": "Here's what we have.",
+        "delta": "Here's what we have."
        },
-       "atMs": 9
+       "atMs": 7
       },
       {
        "event": "done",
        "data": {
         "sessionId": "session-19",
         "workspaceId": "session-19",
-        "response": "These are the closest matches.",
-        "assistantMessage": "These are the closest matches.",
+        "response": "Here's what we have.",
+        "assistantMessage": "Here's what we have.",
         "message": {
          "role": "assistant",
-         "content": "These are the closest matches."
+         "content": "Here's what we have."
         }
        },
-       "atMs": 9
+       "atMs": 7
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "problem-leaky-toilet",
+   "description": "A leak is a problem however it is worded: 'leaky toilet' gets the same safe answer as 'my toilet is leaking' - no products, no steps made up by a model, a professional is named",
+   "passed": true,
+   "turns": [
+    {
+     "message": "leaky toilet",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-20"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-20",
+        "workspaceId": "session-20",
+        "response": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "assistantMessage": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "message": {
+         "role": "assistant",
+         "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
+        }
+       },
+       "atMs": 7
+      }
+     ]
+    },
+    {
+     "message": "toilet leak",
+     "status": 200,
+     "elapsedMs": 6,
+     "reply": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+     "cardTypes": [],
+     "capabilities": [],
+     "events": [
+      "session",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-20"
+       },
+       "atMs": 6
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "delta": "I can't give verified safety guidance for this. Please contact a qualified professional."
+       },
+       "atMs": 6
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-20",
+        "workspaceId": "session-20",
+        "response": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "assistantMessage": "I can't give verified safety guidance for this. Please contact a qualified professional.",
+        "message": {
+         "role": "assistant",
+         "content": "I can't give verified safety guidance for this. Please contact a qualified professional."
+        }
+       },
+       "atMs": 6
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "paint-broad",
+   "description": "A bare 'paint' asks which kind first, with no products yet; the tapped answer shows the range and the customer's own message reads in plain words, not an internal code",
+   "passed": true,
+   "turns": [
+    {
+     "message": "paint",
+     "status": 200,
+     "elapsedMs": 7,
+     "reply": "One quick question so I get you the right thing.",
+     "cardTypes": [
+      "clarify"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-21"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 7
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_clarify_[phone]",
+          "cardType": "clarify",
+          "state": {
+           "questions": [
+            {
+             "id": "nav_paint_and_decorating_paint",
+             "text": "Which type of Paint are you looking for?",
+             "options": [
+              {
+               "value": "interior-paint",
+               "label": "Interior Paint"
+              },
+              {
+               "value": "woodcare",
+               "label": "Woodcare"
+              },
+              {
+               "value": "aerosol-paint",
+               "label": "Aerosol Paint"
+              },
+              {
+               "value": "exterior-paint",
+               "label": "Exterior Paint"
+              },
+              {
+               "value": "protective-coatings",
+               "label": "Protective Coatings"
+              },
+              {
+               "value": "primers-sealers-and-undercoats",
+               "label": "Primers Sealers & Undercoats"
+              },
+              {
+               "value": "tinters",
+               "label": "Tinters"
+              }
+             ],
+             "multi": false,
+             "inputType": "single_select"
+            }
+           ],
+           "progress": "1 detail needed"
+          }
+         }
+        },
+        "card": {
+         "cardType": "clarify",
+         "state": {
+          "questions": [
+           {
+            "id": "nav_paint_and_decorating_paint",
+            "text": "Which type of Paint are you looking for?",
+            "options": [
+             {
+              "value": "interior-paint",
+              "label": "Interior Paint"
+             },
+             {
+              "value": "woodcare",
+              "label": "Woodcare"
+             },
+             {
+              "value": "aerosol-paint",
+              "label": "Aerosol Paint"
+             },
+             {
+              "value": "exterior-paint",
+              "label": "Exterior Paint"
+             },
+             {
+              "value": "protective-coatings",
+              "label": "Protective Coatings"
+             },
+             {
+              "value": "primers-sealers-and-undercoats",
+              "label": "Primers Sealers & Undercoats"
+             },
+             {
+              "value": "tinters",
+              "label": "Tinters"
+             }
+            ],
+            "multi": false,
+            "inputType": "single_select"
+           }
+          ],
+          "progress": "1 detail needed"
+         }
+        }
+       },
+       "atMs": 7
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "One quick question so I get you the right thing.",
+        "delta": "One quick question so I get you the right thing."
+       },
+       "atMs": 7
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-21",
+        "workspaceId": "session-21",
+        "response": "One quick question so I get you the right thing.",
+        "assistantMessage": "One quick question so I get you the right thing.",
+        "message": {
+         "role": "assistant",
+         "content": "One quick question so I get you the right thing."
+        }
+       },
+       "atMs": 7
+      }
+     ]
+    },
+    {
+     "message": "My answers:\nWhich type of Paint are you looking for? → Interior Paint",
+     "status": 200,
+     "elapsedMs": 5,
+     "reply": "Here's what we have.",
+     "cardTypes": [
+      "products",
+      "accessories"
+     ],
+     "capabilities": [
+      "catalog.search"
+     ],
+     "events": [
+      "session",
+      "capability",
+      "uiAction",
+      "uiAction",
+      "token",
+      "done"
+     ],
+     "violations": [],
+     "transcript": [
+      {
+       "event": "session",
+       "data": {
+        "sessionId": "session-21"
+       },
+       "atMs": 4
+      },
+      {
+       "event": "capability",
+       "data": {
+        "toolId": "catalog.search",
+        "status": "success"
+       },
+       "atMs": 4
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_products_[phone]",
+          "cardType": "products",
+          "state": {
+           "eyebrow": "From our range",
+           "heading": "What we have",
+           "products": [
+            {
+             "sku": "1000120",
+             "title": "Interior wall paint 4L",
+             "imageUrl": null,
+             "price": 89,
+             "currency": "NZD",
+             "recommended": false
+            }
+           ],
+           "closing": "cart"
+          }
+         }
+        },
+        "card": {
+         "cardType": "products",
+         "state": {
+          "eyebrow": "From our range",
+          "heading": "What we have",
+          "products": [
+           {
+            "sku": "1000120",
+            "title": "Interior wall paint 4L",
+            "imageUrl": null,
+            "price": 89,
+            "currency": "NZD",
+            "recommended": false
+           }
+          ],
+          "closing": "cart"
+         }
+        }
+       },
+       "atMs": 4
+      },
+      {
+       "event": "uiAction",
+       "data": {
+        "name": "presentCard",
+        "arguments": {
+         "card": {
+          "id": "card_okf_suggestions_[phone]",
+          "cardType": "accessories",
+          "state": {
+           "heading": "Have you considered?",
+           "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+           "groups": [
+            {
+             "key": "suggestion-1",
+             "label": "Brushes & Rollers",
+             "items": [
+              {
+               "sku": "1000122",
+               "title": "Paint roller kit",
+               "imageUrl": null,
+               "price": 24,
+               "currency": "NZD",
+               "category": "Brushes & Rollers"
+              }
+             ]
+            },
+            {
+             "key": "suggestion-2",
+             "label": "Masking",
+             "items": [
+              {
+               "sku": "1000123",
+               "title": "Masking tape 36mm",
+               "imageUrl": null,
+               "price": 6,
+               "currency": "NZD",
+               "category": "Masking"
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        "card": {
+         "cardType": "accessories",
+         "state": {
+          "heading": "Have you considered?",
+          "note": "These are suggestions only. They are not confirmed to be compatible with, or required for, your selection.",
+          "groups": [
+           {
+            "key": "suggestion-1",
+            "label": "Brushes & Rollers",
+            "items": [
+             {
+              "sku": "1000122",
+              "title": "Paint roller kit",
+              "imageUrl": null,
+              "price": 24,
+              "currency": "NZD",
+              "category": "Brushes & Rollers"
+             }
+            ]
+           },
+           {
+            "key": "suggestion-2",
+            "label": "Masking",
+            "items": [
+             {
+              "sku": "1000123",
+              "title": "Masking tape 36mm",
+              "imageUrl": null,
+              "price": 6,
+              "currency": "NZD",
+              "category": "Masking"
+             }
+            ]
+           }
+          ]
+         }
+        }
+       },
+       "atMs": 5
+      },
+      {
+       "event": "token",
+       "data": {
+        "token": "Here's what we have.",
+        "delta": "Here's what we have."
+       },
+       "atMs": 5
+      },
+      {
+       "event": "done",
+       "data": {
+        "sessionId": "session-21",
+        "workspaceId": "session-21",
+        "response": "Here's what we have.",
+        "assistantMessage": "Here's what we have.",
+        "message": {
+         "role": "assistant",
+         "content": "Here's what we have."
+        }
+       },
+       "atMs": 5
       }
      ]
     }
