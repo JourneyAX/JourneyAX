@@ -44,7 +44,8 @@ const usableReason = (s?: string | null, title?: string) => {
 export function usableImage(url: string | null | undefined): string | null {
   const u = String(url || '').trim();
   if (!u) return null;
-  if (/\/\d+Wx\d+H-null(\b|\?)/.test(u)) return null;
+  // Discard empty placeholder images with no media context
+  if (/\/\d+Wx\d+H-null$/.test(u) || (/\/\d+Wx\d+H-null\?/.test(u) && !u.includes('context='))) return null;
   return u;
 }
 

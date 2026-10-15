@@ -13,7 +13,7 @@ Snapshot **2026-10-13T02:03:32.198Z** · source: journeyx.products / journeyx.do
 | Departments / groups / leaf categories | 18 / 64 / 376 |
 | Leaf categories with their own concept | 376 |
 | Leaf categories covered by a parent concept | 0 |
-| Concepts / relationships / navigation questions | 476 / 487 / 86 |
+| Concepts / relationships / navigation questions | 476 / 509 / 89 |
 | Candidate document sources linked | 514 |
 | **Verified claims** | **0** |
 
@@ -50,7 +50,7 @@ Reconciliation: ✅ Every product in the snapshot is covered by a concept or exc
 
 ## Authored layer (proposal awaiting merchant review)
 
-Spec 1.0.0-proposal: 3 families, 8 projects, 6 problems, 2 care topics, 15 questions, 2 risk overlays, 15 cross-sell suggestion sets (48 authored relationships). 19 derived search phrases were handed to authored concepts.
+Spec 1.0.0-proposal: 3 families, 8 projects, 6 problems, 2 care topics, 18 questions, 2 risk overlays, 21 cross-sell suggestion sets (70 authored relationships). 19 derived search phrases were handed to authored concepts.
 
 Projects served directly by the gate (no authored journey yet): wet_area_lining, deck_build, fence_build, paint_a_room, insulate_home.
 

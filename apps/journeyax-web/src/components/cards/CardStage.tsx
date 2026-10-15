@@ -189,12 +189,31 @@ export function useCardActions() {
         const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
         if (p) {
           const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
+          const rawSpecs = (p as any).specs || {};
+          const specList = Array.isArray((p as any).specList) && (p as any).specList.length > 0
+            ? (p as any).specList
+            : Object.entries(rawSpecs).map(([label, value]) => ({ label, value: String(value) }));
           dispatch({
             type: 'PUSH_CARD',
             card: {
               id: `productDetail-${sku}-${Date.now()}`,
               cardType: 'productDetail',
-              state: { product: { sku, title: p.name, description: p.description, imageUrl: usableImage(p.imageUrl), price: p.price ?? null, category: p.category, specs: p.specs }, closing, handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: p.name, category: p.category }) },
+              state: {
+                product: {
+                  sku,
+                  title: p.name || (p as any).title,
+                  description: p.description || (p as any).narrative,
+                  imageUrl: usableImage(p.imageUrl) || (p as any).image,
+                  price: p.price ?? null,
+                  category: p.category,
+                  specs: rawSpecs,
+                  specList,
+                  featuresList: (p as any).featuresList || [],
+                  documents: (p as any).documents || [],
+                },
+                closing,
+                handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: p.name, category: p.category }),
+              },
               createdAt: String(count ?? 0),
             },
           });
@@ -207,8 +226,30 @@ export function useCardActions() {
         const qty = Math.max(1, Math.floor(Number(params?.qty) || 1));
         const title = String(params?.title || '').trim();
         const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
-        addToCart(sku, qty, title, p);
-        setCartOpen(true);
+        const name = title || p?.name || (p as any)?.title || sku;
+
+        // Optimistic UI feedback: immediately mark inBag so the button becomes 'Added ✓'
+        const cardId = params?.cardId ? String(params.cardId) : undefined;
+        if (cardId) {
+          const card = state.cards.find((c) => c.id === cardId);
+          if (card && card.cardType === 'products') {
+            const prods = ((card.state as any)?.products || []).map((prod: any) =>
+              String(prod.sku).toUpperCase() === sku.toUpperCase() ? { ...prod, inBag: true } : prod
+            );
+            dispatch({ type: 'PATCH_CARD', id: cardId, state: { products: prods } });
+          }
+        }
+
+        // Await authoritative quote pricing then open drawer and confirm in conversation
+        (async () => {
+          await addToCart(sku, qty, title, p);
+          setCartOpen(true);
+          dispatch({
+            type: 'ADD_MESSAGE',
+            role: 'ai',
+            text: `Added **${name}** (SKU ${sku}) to your ${closing}. You can review your materials list, adjust quantities, or check branch stock in the panel on the right, or let me know what other materials you need!`,
+          });
+        })();
         break;
       }
       case 'addAllToCart': {
@@ -224,6 +265,11 @@ export function useCardActions() {
               await addToCart(sku, qty, title, p);
             }
             setCartOpen(true);
+            dispatch({
+              type: 'ADD_MESSAGE',
+              role: 'ai',
+              text: `Added ${items.length} items to your ${closing}. You can review your quote and check branch stock in the materials drawer.`,
+            });
           })();
         }
         break;

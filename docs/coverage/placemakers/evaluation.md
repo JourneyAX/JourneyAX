@@ -1,6 +1,6 @@
 # placemakers coverage evaluation
 
-Evaluated 2026-10-13T02:03:32.198Z. **4,694 of 4,694 scenarios hold**. Every scenario runs through the real gate and basket policy; none is stubbed.
+Evaluated 2026-10-13T02:03:32.198Z. **4,716 of 4,716 scenarios hold**. Every scenario runs through the real gate and basket policy; none is stubbed.
 
 ## By family
 
@@ -13,7 +13,7 @@ Evaluated 2026-10-13T02:03:32.198Z. **4,694 of 4,694 scenarios hold**. Every sce
 | technical_claims | 365 | 365 |
 | evidence | 1,095 | 1,095 |
 | exact_sku | 365 | 365 |
-| cross_sell | 30 | 30 |
+| cross_sell | 52 | 52 |
 | negative | 13 | 13 |
 | authored_path | 73 | 73 |
 
@@ -22,13 +22,13 @@ Evaluated 2026-10-13T02:03:32.198Z. **4,694 of 4,694 scenarios hold**. Every sce
 | Department | Categories probed | Scenarios | Passed |
 |---|---:|---:|---:|
 | Tools | 77 | 877 | 877 |
-| Building Products | 82 | 804 | 804 |
+| Building Products | 82 | 812 | 812 |
 | Timber & Plywood | 50 | 486 | 486 |
 | Outdoor & Landscaping | 33 | 333 | 333 |
-| Fastenings & General Hardware | 25 | 292 | 292 |
+| Fastenings & General Hardware | 25 | 295 | 295 |
 | Doors, Windows & Joinery Hardware | 25 | 247 | 247 |
-| Paint & Decorating | 21 | 229 | 229 |
-| Bathrooms & Plumbing | 20 | 228 | 228 |
+| Paint & Decorating | 21 | 237 | 237 |
+| Bathrooms & Plumbing | 20 | 231 | 231 |
 | Electrical & Heating/Cooling | 20 | 209 | 209 |
 | Safety & Ladders | 20 | 209 | 209 |
 | Cleaning & Consumables | 15 | 136 | 136 |

@@ -600,7 +600,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         key: l.sku,
         id: l.sku,
         name: l.name,
-        price: l.unitPrice ?? 0,
+        price: (l.unitPrice !== null && l.unitPrice !== undefined ? l.unitPrice : ((l as any).price ?? null)) as any,
         spec: l.reason || l.category || '',
         sku: l.sku,
         imageUrl: l.imageUrl || undefined,

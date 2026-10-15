@@ -61,8 +61,10 @@ export default function LoginScreen() {
           <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, color: '#0A0A0A' }}>Sign in</h2>
           <p style={{ margin: '0 0 24px', fontSize: 13.5, color: '#6B655B' }}>Use your {brand} account to continue.</p>
 
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4A453C', marginBottom: 6 }}>Email</label>
+          <label htmlFor="login-email" style={{ display: 'block', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4A453C', marginBottom: 6 }}>Email</label>
           <input
+            id="login-email"
+            name="email"
             type="text"
             autoComplete="username"
             value={email}
@@ -71,8 +73,10 @@ export default function LoginScreen() {
             style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', fontSize: 15, border: '1px solid #cbd5e1', borderRadius: 8, marginBottom: 16, outline: 'none' }}
           />
 
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4A453C', marginBottom: 6 }}>Password</label>
+          <label htmlFor="login-password" style={{ display: 'block', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4A453C', marginBottom: 6 }}>Password</label>
           <input
+            id="login-password"
+            name="password"
             type="password"
             autoComplete="current-password"
             value={password}
@@ -86,6 +90,7 @@ export default function LoginScreen() {
           )}
 
           <button
+            id="login-submit"
             type="submit"
             disabled={busy}
             style={{ width: '100%', padding: '14px 18px', fontSize: 15, fontWeight: 700, color: '#0A0A0A', background: accent, border: 'none', borderRadius: 8, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}
@@ -93,8 +98,35 @@ export default function LoginScreen() {
             {busy ? 'Signing in…' : 'Sign in →'}
           </button>
 
+          <button
+            id="quick-login-btn"
+            type="button"
+            onClick={async () => {
+              setEmail('admin');
+              setPassword('admin');
+              setBusy(true);
+              const r = await login('admin', 'admin');
+              setBusy(false);
+              if (!r.success) setError(r.message || 'Sign-in failed.');
+            }}
+            style={{
+              marginTop: 10,
+              width: '100%',
+              padding: '10px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#334155',
+              background: '#f1f5f9',
+              border: '1px dashed #94a3b8',
+              borderRadius: 8,
+              cursor: 'pointer'
+            }}
+          >
+            ⚡ Quick Demo Sign-in (admin / admin)
+          </button>
+
           {process.env.NODE_ENV !== 'production' && (
-            <p style={{ margin: '18px 0 0', fontSize: 12, color: '#A29A8B', textAlign: 'center' }}>
+            <p style={{ margin: '14px 0 0', fontSize: 12, color: '#A29A8B', textAlign: 'center' }}>
               Dev credentials: admin / admin
             </p>
           )}

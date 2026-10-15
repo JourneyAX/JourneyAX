@@ -110,7 +110,7 @@ function resolve(provider: string, projectKey?: string, baseUrlOverride?: string
   const key = (name: string) => (projectKey && projectKey.trim()) || process.env[name] || '';
   switch (provider) {
     case 'anthropic': {
-      const apiKey = key('ANTHROPIC_API_KEY');
+      const apiKey = key('ANTHROPIC_API_KEY') || key('CLAUDE_API_KEY');
       return { baseURL: baseUrlOverride || 'https://api.anthropic.com/v1/', apiKey, ok: !!apiKey };
     }
     case 'gemini':

@@ -7,7 +7,7 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { useAuth } from '@/context/AuthContext';
 import {
   type Conversation, resolveActiveConversation, saveConversations, setActiveConversation,
-  messagesKey, sessionKey, journeyKey, newId, summarise,
+  deleteConversation, messagesKey, sessionKey, journeyKey, newId, summarise,
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
 import WorkingStrip from './shell/WorkingStrip';
@@ -306,6 +306,7 @@ export default function ChatPanel() {
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   // Sample-customer demo (config-driven: cfg.demoCustomers). The chosen profile
   // is remembered per project and sent with every turn; changing it starts a
   // fresh conversation so one thread never mixes two identities.
@@ -339,7 +340,7 @@ export default function ChatPanel() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading, state.isThinking]);
+  }, [messages.length, isLoading, state.isThinking, state.messages?.length, state.cards?.length]);
 
   // Conversation survives a refresh. The chat used to blank out on reload because
   // `messages` is client state; persist it per session and restore on mount so the
@@ -484,6 +485,17 @@ export default function ChatPanel() {
     clearCheckoutParams();
     setConvoMenuOpen(false);
   }, [convoId, cfg.projectId, dispatch, restoreJourney]);
+
+  const handleDeleteConversation = useCallback((e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (typeof window !== 'undefined' && !window.confirm('Delete this conversation?')) return;
+    const next = deleteConversation(cfg.projectId, id);
+    setConvos(next);
+    if (id === convoId) {
+      if (next.length > 0) openConversation(next[0].id);
+      else startNewConversation();
+    }
+  }, [cfg.projectId, convoId, openConversation, startNewConversation]);
 
   // Real sign-in (cookie session via the BFF). The header shows who's signed in;
   // clicking it signs out — the gate in page.tsx then shows the login screen.
@@ -1045,34 +1057,98 @@ export default function ChatPanel() {
   const showWorking = state.isThinking || isLoading;
 
   return (
-    <div className="chat-panel" data-sidebar={cfg.theme?.sidebarStyle || 'light'}>
-      {/* Header — brand, then the header utility cluster: cart, conversation
-          history, sign-in. One continuous thread below owns everything else —
-          see the "PlaceMakers Conversation" mockup this header/layout follows. */}
-      <div className="chat-header">
-        {(() => {
-          // Config-driven only — every tenant's logo (or lack of one) lives in
-          // its own theme.logoUrl, never a code-level tenant literal.
-          const logoSrc = cfg.theme?.logoUrl || null;
-          if (!logoSrc || logoFailed) {
-            return <div className="chat-header__brand">{cfg.companyName || 'JourneyAX'}</div>;
-          }
-          return (
-            <img
-              className="chat-header__logo"
-              src={logoSrc}
-              alt={cfg.companyName || 'Brand Logo'}
-              onError={() => setLogoFailed(true)}
-              style={{ height: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
-            />
-          );
-        })()}
-        <div className="chat-header__actions">
-          {/* Cart — every commerce mode, not just retail: the quote/BOM is just
-              as much "what's in my cart" as a B2C bag. Opens a drawer over the
-              thread rather than a separate stage — see CartDrawer.tsx. */}
+    <div className={`chat-panel ${sidebarOpen ? 'sidebar-open' : 'sidebar-collapsed'}`} data-sidebar={cfg.theme?.sidebarStyle || 'light'}>
+      {/* ChatGPT-style Left Sidebar */}
+      <aside className={`chat-sidebar ${sidebarOpen ? 'is-open' : 'is-collapsed'}`} aria-label="Conversation history">
+        <div className="chat-sidebar__header">
+          <div className="chat-sidebar__brand">
+            {(() => {
+              const logoSrc = cfg.theme?.logoUrl || null;
+              if (!logoSrc || logoFailed) {
+                return <span className="chat-sidebar__brand-text">{cfg.companyName || 'PlaceMakers'}</span>;
+              }
+              return (
+                <img
+                  className="chat-sidebar__logo"
+                  src={logoSrc}
+                  alt={cfg.companyName || 'PlaceMakers'}
+                  onError={() => setLogoFailed(true)}
+                />
+              );
+            })()}
+          </div>
+          <button
+            type="button"
+            className="chat-sidebar__iconbtn"
+            onClick={() => setSidebarOpen(false)}
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+              <path d="M15 9l-3 3 3 3" />
+            </svg>
+          </button>
+        </div>
+
+        {/* New chat button */}
+        <div className="chat-sidebar__action">
+          <button
+            id="new-convo-btn"
+            type="button"
+            className="chat-sidebar__new-btn"
+            onClick={startNewConversation}
+            title="Start a new conversation"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>New conversation</span>
+          </button>
+        </div>
+
+        {/* Conversation list */}
+        <div className="chat-sidebar__convos">
+          <div className="chat-sidebar__section-title">Your chats</div>
+          <div className="chat-sidebar__list">
+            {convos.map((c) => (
+              <div
+                key={c.id}
+                className={`chat-sidebar__item ${c.id === convoId ? 'is-active' : ''}`}
+                onClick={() => openConversation(c.id)}
+                role="button"
+                tabIndex={0}
+              >
+                <svg className="chat-sidebar__item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.7-.8L3 21l1.9-4.8A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z" />
+                </svg>
+                <span className="chat-sidebar__item-title" title={c.title}>{c.title}</span>
+                <button
+                  type="button"
+                  className="chat-sidebar__item-del"
+                  onClick={(e) => handleDeleteConversation(e, c.id)}
+                  title="Delete chat"
+                  aria-label="Delete chat"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+            {convos.length === 0 && (
+              <div className="chat-sidebar__empty">No previous conversations</div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="chat-sidebar__footer">
           {cfg.demoCustomers && cfg.demoCustomers.profiles.length > 0 && (
-            <label className="chat-header__demo" title={cfg.demoCustomers.disclaimer}>
+            <label className="chat-sidebar__demo" title={cfg.demoCustomers.disclaimer}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
@@ -1095,159 +1171,147 @@ export default function ChatPanel() {
               </select>
             </label>
           )}
-          {/* Always present (an empty cart is still a place to look), the count
-              badge only once there is something in it. */}
-          <button
-            type="button"
-            className="chat-header__bag"
-            onClick={() => setCartOpen((v) => !v)}
-            title={isCart ? 'View your bag' : 'View your quote'}
-            aria-label={`View your ${isCart ? 'bag' : 'quote'}, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
-            aria-expanded={cartOpen}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-              <path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            {bagCount > 0 && <span className="chat-header__bag-count">{bagCount}</span>}
-          </button>
-          {/* Conversations. One customer has more than one job — this season's
-              volleyball kit, next month's caps — and each deserves its own
-              thread with its own context, plus a way back to the earlier one. */}
-          <div className="chat-header__convos">
+
+          <div className="chat-sidebar__user">
+            <div className="chat-sidebar__user-avatar">
+              {displayName ? displayName.slice(0, 2).toUpperCase() : 'PM'}
+            </div>
+            <div className="chat-sidebar__user-meta">
+              <div className="chat-sidebar__user-name">{displayName || 'Sign in'}</div>
+              <div className="chat-sidebar__user-sub">{authUser?.role || 'PlaceMakers Customer'}</div>
+            </div>
             <button
               type="button"
-              className="chat-header__iconbtn"
-              onClick={() => setConvoMenuOpen((o) => !o)}
-              title="Your conversations"
-              aria-label="Your conversations"
-              aria-expanded={convoMenuOpen}
+              className="chat-sidebar__user-action"
+              onClick={onSignIn}
+              title={displayName ? `Signed in as ${displayName} — click to sign out` : 'Sign in'}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.7-.8L3 21l1.9-4.8A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="chat-header__iconbtn"
-              onClick={startNewConversation}
-              title="Start a new conversation"
-              aria-label="Start a new conversation"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-            {convoMenuOpen && (
-              <div className="chat-header__convomenu" role="menu">
-                <div className="chat-header__convomenu-title">Your conversations</div>
-                {convos.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="menuitem"
-                    className={`chat-header__convoitem${c.id === convoId ? ' is-active' : ''}`}
-                    onClick={() => openConversation(c.id)}
-                  >
-                    <span className="chat-header__convoitem-title">{c.title}</span>
-                    <span className="chat-header__convoitem-when">
-                      {new Date(c.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </span>
-                  </button>
-                ))}
-                <button type="button" role="menuitem" className="chat-header__convonew" onClick={startNewConversation}>
-                  + New conversation
-                </button>
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            className="chat-header__signin"
-            onClick={onSignIn}
-            title={displayName ? `Signed in as ${displayName} — click to sign out` : 'Sign in'}
-          >
-            {displayName ? (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+              {displayName ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
-                <span>{displayName}</span>
-              </>
-            ) : 'Sign in'}
-          </button>
+              ) : (
+                <span style={{ fontSize: '12px', fontWeight: 600 }}>Log in</span>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+      </aside>
 
-      {/* The conversation — text and cards interleaved in one scrolling
-          thread, in the order they actually happened. */}
-      <div className="chat-messages">
-        {timeline.map((item) => item.kind === 'msg'
-          ? <MessageBubble key={item.msg.id} message={item.msg} />
-          : <CardTile key={item.card.id} card={item.card} onAction={onCardAction} />)}
-        {/* ProjectPanel: a still-bespoke, non-card experience (3D
-            configurator, team roster, space planner, …; LEGACY_CARD_PHASES),
-            or the fallback for a phase with no card yet — the brief render
-            before a tenant's first card-sync effect fires, or a card type
-            that tenant has disabled in Cards & Theme. Renders nothing (an
-            empty wrapper) once real cards are covering the current phase;
-            mounted unconditionally so its own per-phase logic can decide. */}
-        <ProjectPanel />
-        {/* In progress — inline, where the reply will land, never a strip
-            that can be scrolled away from. */}
-        {showWorking && <WorkingStrip working={state.working} />}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input */}
-      <div className="chat-input-area">
-        {state.phase === 'intro' && messages.length === 0 && (demoProfile?.tryAsking?.length || introStarters.length > 0) && (
-          <div className="chat-suggestions">
-            {(demoProfile?.tryAsking?.length
-              ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
-              : introStarters
-            ).map((s, i) => (
-              <div
-                key={i}
-                className="chat-suggestion"
-                onClick={() => append({ role: 'user', content: s.prompt })}
+      {/* Main Chat Area */}
+      <div className="chat-main">
+        {/* Minimal clean topbar */}
+        <header className="chat-topbar">
+          <div className="chat-topbar__left">
+            {!sidebarOpen && (
+              <button
+                type="button"
+                className="chat-topbar__iconbtn"
+                onClick={() => setSidebarOpen(true)}
+                title="Open sidebar"
+                aria-label="Open sidebar"
               >
-                <span className="chat-suggestion__arrow">→</span>
-                {s.label}
-              </div>
-            ))}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                  <path d="M9 9l3 3-3 3" />
+                </svg>
+              </button>
+            )}
+            <div className="chat-topbar__brand-badge">
+              <span className="chat-topbar__dot" />
+              <span className="chat-topbar__title">{cfg.companyName || 'PlaceMakers'} Consultant</span>
+              <span className="chat-topbar__tag">AI</span>
+            </div>
           </div>
-        )}
-        <form
-          className="chat-input-row"
-          onSubmit={onSubmit}
-        >
-          <input
-            className="chat-input"
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={introPlaceholder}
-          />
-          <button type="submit" className="chat-send-btn" aria-label="Send message">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4 12h13M11 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </form>
-        <div className="chat-input-hint">
-          {cfg.systemName || 'Your consultant'} can search products, check stock and build your {isCart ? 'bag' : 'quote'}.
+          <div className="chat-topbar__right">
+            <button
+              type="button"
+              className="chat-topbar__bag"
+              onClick={() => setCartOpen((v) => !v)}
+              title={isCart ? 'View your bag' : 'View your quote / materials'}
+              aria-label={`View your ${isCart ? 'bag' : 'quote'}, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
+              aria-expanded={cartOpen}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+                <path d="M6 8h12l-1 12H7L6 8Z" />
+                <path d="M9 8V6a3 3 0 0 1 6 0v2" strokeLinecap="round" />
+              </svg>
+              {bagCount > 0 && <span className="chat-topbar__bag-count">{bagCount}</span>}
+            </button>
+          </div>
+        </header>
+
+        {/* Conversation stream */}
+        <div className="chat-messages">
+          {timeline.map((item) => item.kind === 'msg'
+            ? <MessageBubble key={item.msg.id} message={item.msg} />
+            : <CardTile key={item.card.id} card={item.card} onAction={onCardAction} />)}
+          <ProjectPanel />
+          {showWorking && <WorkingStrip working={state.working} />}
+          <div ref={messagesEndRef} />
         </div>
-        {demoProfile && cfg.demoCustomers && (
-          <div className="chat-demo-note">
-            Exploring as <b>{demoProfile.name}{demoProfile.country ? ` · ${demoProfile.country}` : ''}</b>
-            {demoProfile.scenario ? ` — ${demoProfile.scenario}` : ''}. {cfg.demoCustomers.disclaimer}
+
+        {/* ChatGPT-style Input Area */}
+        <div className="chat-input-area">
+          {state.phase === 'intro' && messages.length === 0 && (demoProfile?.tryAsking?.length || introStarters.length > 0) && (
+            <div className="chat-suggestions">
+              {(demoProfile?.tryAsking?.length
+                ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
+                : introStarters
+              ).map((s, i) => (
+                <div
+                  key={i}
+                  className="chat-suggestion"
+                  onClick={() => append({ role: 'user', content: s.prompt })}
+                >
+                  <span className="chat-suggestion__arrow">→</span>
+                  {s.label}
+                </div>
+              ))}
+            </div>
+          )}
+          <form
+            className="chat-input-row"
+            onSubmit={onSubmit}
+          >
+            <input
+              id="chat-input-field"
+              className="chat-input"
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={introPlaceholder}
+            />
+            <button
+              id="chat-send-btn"
+              type="submit"
+              className={`chat-send-btn ${prompt.trim() ? 'has-content' : ''}`}
+              aria-label="Send message"
+              disabled={!prompt.trim() && !isLoading}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </svg>
+            </button>
+          </form>
+          <div className="chat-input-hint">
+            {cfg.systemName || 'PlaceMakers Consultant'} can search verified building products, check branch stock, and build your quote.
           </div>
-        )}
+          {demoProfile && cfg.demoCustomers && (
+            <div className="chat-demo-note">
+              Exploring as <b>{demoProfile.name}{demoProfile.country ? ` · ${demoProfile.country}` : ''}</b>
+              {demoProfile.scenario ? ` — ${demoProfile.scenario}` : ''}. {cfg.demoCustomers.disclaimer}
+            </div>
+          )}
+        </div>
       </div>
+
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
     </div>
   );
 }
+

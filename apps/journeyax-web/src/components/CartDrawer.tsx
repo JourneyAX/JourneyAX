@@ -23,6 +23,7 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
   const currencyCode = state.serverQuote?.currency;
   const money = (n: number | null | undefined): string => {
     if (n === null || n === undefined || Number.isNaN(n)) return 'Price on request';
+    if (n === 0 && bom.length > 0 && bom.every((l) => l.price === null || l.price === 0)) return 'Price on request';
     return symbol + Math.round(n).toLocaleString('en-US') + (currencyCode ? ` ${currencyCode}` : '');
   };
   const itemCount = bom.reduce((sum, l) => sum + (l.quantity ?? 1), 0);

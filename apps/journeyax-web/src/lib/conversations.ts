@@ -82,6 +82,20 @@ export function saveConversations(projectId: string | undefined, list: Conversat
   write(listKey(projectId), kept);
 }
 
+export function deleteConversation(projectId: string | undefined, id: string): Conversation[] {
+  const current = listConversations(projectId);
+  const next = current.filter((c) => c.id !== id);
+  saveConversations(projectId, next);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(messagesKey(projectId, id));
+      localStorage.removeItem(sessionKey(projectId, id));
+      localStorage.removeItem(journeyKey(projectId, id));
+    } catch { /* best effort */ }
+  }
+  return next;
+}
+
 /**
  * The conversation to open on load, creating one if this is a first visit.
  *

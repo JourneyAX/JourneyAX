@@ -1,4 +1,4 @@
-import { Injectable, Inject, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Inject, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { TurnCommand, TurnResult } from '@journeyax/journey-core';
 import { CanonicalRuntimeAdapter } from '../runtime/canonical-runtime.adapter';
 import { TenantRuntimeActivationRouter } from '../runtime/tenant-runtime-activation.router';
@@ -6,16 +6,14 @@ import { LegacyJourneyAdapter } from '../legacy/legacy-journey-adapter';
 import { ConfigLoader } from '../pipeline/config-loader';
 import { ChatRequest, ChatResponse } from '../pipeline/types';
 
+import { ReactAgentOrchestrator } from './react-agent-orchestrator';
+
 /**
  * JourneyCoordinator
  *
- * Serves strictly as:
- * - HTTP compatibility façade & tenant propagation adapter
- * - Routing boundary: delegates Business Pack tenants to canonical Journey Runtime
- * - Isolates legacy compatibility for genuinely unmigrated tenants
- * - Pure streaming pass-through to canonical /runtime/chat/stream
- *
- * Invariant: Never executes a parallel model/tool loop for canonical tenants.
+ * Serves as:
+ * - Routing boundary: delegates to autonomous ReactAgentOrchestrator
+ * - Preserves canonical / legacy fallback paths
  */
 @Injectable()
 export class JourneyCoordinator {
@@ -23,7 +21,8 @@ export class JourneyCoordinator {
     @Inject(TenantRuntimeActivationRouter) private readonly activationRouter: TenantRuntimeActivationRouter,
     @Inject(CanonicalRuntimeAdapter) private readonly canonicalRuntime: CanonicalRuntimeAdapter,
     @Inject(LegacyJourneyAdapter) private readonly legacyAdapter: LegacyJourneyAdapter,
-    @Inject(ConfigLoader) private readonly configLoader: ConfigLoader
+    @Inject(ConfigLoader) private readonly configLoader: ConfigLoader,
+    @Optional() @Inject(ReactAgentOrchestrator) private readonly reactAgent?: ReactAgentOrchestrator
   ) {}
 
   /**
@@ -33,6 +32,14 @@ export class JourneyCoordinator {
     const tenantId = (request.tenantId || '').toLowerCase().trim();
     if (!tenantId) {
       throw new Error('[JourneyCoordinator] Missing tenantId - failing closed: tenantId is required');
+    }
+
+    // Autonomous ReAct loop agent powered by Google OKF
+    const isReactEnabled =
+      process.env.ENABLE_REACT_AGENT !== 'false' &&
+      (request as any).agentMode !== 'legacy';
+    if (this.reactAgent && isReactEnabled) {
+      return this.reactAgent.executeAgentTurnStream(request);
     }
 
     const env = ((request as any).environmentId || 'production') as string;
@@ -124,6 +131,15 @@ export class JourneyCoordinator {
     const tenantId = (request.tenantId || '').toLowerCase().trim();
     if (!tenantId) {
       throw new Error('[JourneyCoordinator] Missing tenantId - failing closed: tenantId is required');
+    }
+
+    // Autonomous ReAct loop agent powered by Google OKF
+    const isReactEnabled =
+      process.env.ENABLE_REACT_AGENT !== 'false' &&
+      (request as any).agentMode !== 'legacy';
+    if (this.reactAgent && isReactEnabled) {
+      await this.reactAgent.executeAgentTurnStream(request, emit);
+      return;
     }
 
     const env = ((request as any).environmentId || 'production') as string;

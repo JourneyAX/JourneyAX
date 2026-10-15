@@ -2,8 +2,8 @@
  "tenantId": "placemakers",
  "evaluatedAt": "2026-10-13T02:03:32.198Z",
  "totals": {
-  "scenarios": 4694,
-  "passed": 4694,
+  "scenarios": 4716,
+  "passed": 4716,
   "failed": 0,
   "acceptedCollisions": 0
  },
@@ -37,8 +37,8 @@
    "total": 365
   },
   "cross_sell": {
-   "passed": 30,
-   "total": 30
+   "passed": 52,
+   "total": 52
   },
   "negative": {
    "passed": 13,
@@ -3017,8 +3017,8 @@
   },
   {
    "name": "Building Products",
-   "scenarios": 804,
-   "passed": 804,
+   "scenarios": 812,
+   "passed": 812,
    "categories": [
     {
      "category": "Access Panels",
@@ -5581,6 +5581,25 @@
      }
     },
     {
+     "category": "Wet Wall Linings",
+     "path": [
+      "Building Products",
+      "Wet Wall Linings"
+     ],
+     "scenarios": 8,
+     "passed": 8,
+     "families": {
+      "routing": {
+       "passed": 4,
+       "total": 4
+      },
+      "cross_sell": {
+       "passed": 4,
+       "total": 4
+      }
+     }
+    },
+    {
      "category": "Insulation",
      "path": [
       "Building Products",
@@ -5600,15 +5619,19 @@
      }
     },
     {
-     "category": "Wet Wall Linings",
+     "category": "Plasterboard",
      "path": [
       "Building Products",
-      "Wet Wall Linings"
+      "Plasterboard"
      ],
-     "scenarios": 4,
-     "passed": 4,
+     "scenarios": 6,
+     "passed": 6,
      "families": {
       "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "cross_sell": {
        "passed": 4,
        "total": 4
       }
@@ -5701,21 +5724,6 @@
      "path": [
       "Building Products",
       "Panels"
-     ],
-     "scenarios": 2,
-     "passed": 2,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      }
-     }
-    },
-    {
-     "category": "Plasterboard",
-     "path": [
-      "Building Products",
-      "Plasterboard"
      ],
      "scenarios": 2,
      "passed": 2,
@@ -8763,8 +8771,8 @@
   },
   {
    "name": "Fastenings & General Hardware",
-   "scenarios": 292,
-   "passed": 292,
+   "scenarios": 295,
+   "passed": 295,
    "categories": [
     {
      "category": "Wood Screws",
@@ -8847,6 +8855,50 @@
       "exact_sku": {
        "passed": 2,
        "total": 2
+      }
+     }
+    },
+    {
+     "category": "Metal Screws",
+     "path": [
+      "Fastenings & General Hardware",
+      "Fastenings",
+      "Metal Screws"
+     ],
+     "scenarios": 15,
+     "passed": 15,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      },
+      "cross_sell": {
+       "passed": 3,
+       "total": 3
       }
      }
     },
@@ -9136,46 +9188,6 @@
       "Fastenings & General Hardware",
       "Fastenings",
       "Masonry  Anchors"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Metal Screws",
-     "path": [
-      "Fastenings & General Hardware",
-      "Fastenings",
-      "Metal Screws"
      ],
      "scenarios": 12,
      "passed": 12,
@@ -10579,8 +10591,8 @@
   },
   {
    "name": "Paint & Decorating",
-   "scenarios": 229,
-   "passed": 229,
+   "scenarios": 237,
+   "passed": 237,
    "categories": [
     {
      "category": "Interior Paint",
@@ -10589,12 +10601,56 @@
       "Paint",
       "Interior Paint"
      ],
-     "scenarios": 18,
-     "passed": 18,
+     "scenarios": 22,
+     "passed": 22,
      "families": {
       "routing": {
        "passed": 4,
        "total": 4
+      },
+      "scope": {
+       "passed": 1,
+       "total": 1
+      },
+      "commerce": {
+       "passed": 1,
+       "total": 1
+      },
+      "safety": {
+       "passed": 3,
+       "total": 3
+      },
+      "technical_claims": {
+       "passed": 1,
+       "total": 1
+      },
+      "evidence": {
+       "passed": 3,
+       "total": 3
+      },
+      "exact_sku": {
+       "passed": 1,
+       "total": 1
+      },
+      "cross_sell": {
+       "passed": 8,
+       "total": 8
+      }
+     }
+    },
+    {
+     "category": "Exterior Paint",
+     "path": [
+      "Paint & Decorating",
+      "Paint",
+      "Exterior Paint"
+     ],
+     "scenarios": 16,
+     "passed": 16,
+     "families": {
+      "routing": {
+       "passed": 2,
+       "total": 2
       },
       "scope": {
        "passed": 1,
@@ -10756,46 +10812,6 @@
       "Paint & Decorating",
       "Paint Accessories",
       "Extension Poles"
-     ],
-     "scenarios": 12,
-     "passed": 12,
-     "families": {
-      "routing": {
-       "passed": 2,
-       "total": 2
-      },
-      "scope": {
-       "passed": 1,
-       "total": 1
-      },
-      "commerce": {
-       "passed": 1,
-       "total": 1
-      },
-      "safety": {
-       "passed": 3,
-       "total": 3
-      },
-      "technical_claims": {
-       "passed": 1,
-       "total": 1
-      },
-      "evidence": {
-       "passed": 3,
-       "total": 3
-      },
-      "exact_sku": {
-       "passed": 1,
-       "total": 1
-      }
-     }
-    },
-    {
-     "category": "Exterior Paint",
-     "path": [
-      "Paint & Decorating",
-      "Paint",
-      "Exterior Paint"
      ],
      "scenarios": 12,
      "passed": 12,
@@ -11358,8 +11374,8 @@
   },
   {
    "name": "Bathrooms & Plumbing",
-   "scenarios": 228,
-   "passed": 228,
+   "scenarios": 231,
+   "passed": 231,
    "categories": [
     {
      "category": "Tapware & Showering",
@@ -11368,8 +11384,8 @@
       "Bathrooms & Accessories",
       "Tapware & Showering"
      ],
-     "scenarios": 20,
-     "passed": 20,
+     "scenarios": 23,
+     "passed": 23,
      "families": {
       "routing": {
        "passed": 4,
@@ -11398,6 +11414,10 @@
       "exact_sku": {
        "passed": 1,
        "total": 1
+      },
+      "cross_sell": {
+       "passed": 3,
+       "total": 3
       }
      }
     },

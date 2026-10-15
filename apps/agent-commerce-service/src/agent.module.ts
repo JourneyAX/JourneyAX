@@ -19,11 +19,18 @@ import { TenantRuntimeActivationRouter } from './runtime/tenant-runtime-activati
 import { LegacyJourneyAdapter } from './legacy/legacy-journey-adapter';
 import { WhatsappController } from './whatsapp.controller';
 
+import { OkfContextLoader } from './okf/okf-context-loader';
+import { ReactAgentOrchestrator } from './orchestration/react-agent-orchestrator';
+import { TradeKnowledgeService } from './knowledge/trade-knowledge.service';
+
 @Module({
   controllers: [JourneyAXController, WhatsappController],
   providers: [
     AgentService,
     JourneyCoordinator,
+    ReactAgentOrchestrator,
+    OkfContextLoader,
+    TradeKnowledgeService,
     TenantRuntimeActivationRouter,
     CanonicalRuntimeAdapter,
     LegacyJourneyAdapter,
@@ -43,6 +50,9 @@ import { WhatsappController } from './whatsapp.controller';
   exports: [
     AgentService,
     JourneyCoordinator,
+    ReactAgentOrchestrator,
+    OkfContextLoader,
+    TradeKnowledgeService,
     TenantRuntimeActivationRouter,
     CanonicalRuntimeAdapter,
     LegacyJourneyAdapter,

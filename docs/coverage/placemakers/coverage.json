@@ -16,8 +16,8 @@
   "leafCategoriesWithOwnConcept": 376,
   "leafCategoriesCoveredByAncestor": 0,
   "concepts": 476,
-  "relationships": 487,
-  "navigationFacts": 86,
+  "relationships": 509,
+  "navigationFacts": 89,
   "documentSources": 514
  },
  "reconciliation": {
@@ -6304,17 +6304,17 @@
  "authoring": {
   "specVersion": "1.0.0-proposal",
   "authored": {
-   "facts": 15,
+   "facts": 18,
    "families": 3,
    "projects": 8,
    "problems": 6,
    "care": 2,
    "overlays": 2,
    "aliases": 87,
-   "suggestions": 15,
+   "suggestions": 21,
    "removedDerivedPhrases": 19,
    "concepts": 19,
-   "relationships": 48
+   "relationships": 70
   },
   "errors": [],
   "projectsWithoutJourney": [

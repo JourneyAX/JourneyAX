@@ -49,7 +49,21 @@
       { "value": "walls", "label": "Walls" }, { "value": "ceiling", "label": "Ceiling" }, { "value": "floor", "label": "Under the floor" }, { "value": "unsure", "label": "Not sure yet" } ] },
     { "factKey": "leak_location", "question": "Where is the water showing up?", "options": [
       { "value": "shower_bath", "label": "Shower or bath" }, { "value": "toilet", "label": "Around the toilet" }, { "value": "vanity_basin", "label": "Vanity or basin" },
-      { "value": "wall_ceiling", "label": "Wall or ceiling" }, { "value": "unsure", "label": "Not sure" } ] }
+      { "value": "wall_ceiling", "label": "Wall or ceiling" }, { "value": "unsure", "label": "Not sure" } ] },
+    { "factKey": "tap_fixture_type", "question": "Is it a single lever mixer tap or separate hot and cold turning taps?", "options": [
+      { "value": "mixer", "label": "Single lever mixer tap" },
+      { "value": "traditional", "label": "Separate hot and cold taps (turning handles)" },
+      { "value": "pipe", "label": "Exposed pipe or fitting" } ] },
+    { "factKey": "blocked_drain_location", "question": "Where is the drain blocked?", "options": [
+      { "value": "sink", "label": "Kitchen sink or basin" },
+      { "value": "shower_bath", "label": "Shower or bath waste" },
+      { "value": "toilet", "label": "Toilet" },
+      { "value": "outdoor", "label": "Outside gully trap" } ] },
+    { "factKey": "mould_area", "question": "Where is the mould or damp appearing?", "options": [
+      { "value": "bathroom_ceiling", "label": "Bathroom ceiling or walls" },
+      { "value": "bedroom_walls", "label": "Bedroom or living room walls" },
+      { "value": "window_frames", "label": "Around windows and sills" },
+      { "value": "subfloor", "label": "Under the floor or carpet" } ] }
   ],
   "families": [
     { "id": "screws", "name": "Screws", "description": "Screws and fixings, grouped by what they are fixed into.",
@@ -109,11 +123,14 @@
       "phrases": ["bathroom is leaking", "my bathroom is leaking", "water under my vanity", "shower is leaking", "toilet is leaking", "bathroom leak"], "synonyms": ["leaking bathroom"],
       "facts": ["leak_location"] },
     { "id": "leaking_tap_or_pipe", "name": "Leaking tap or pipe", "description": "A dripping tap or leaking pipe.",
-      "phrases": ["tap is dripping", "dripping tap", "leaking pipe", "burst pipe", "pipe is leaking", "tap is leaking"] },
+      "phrases": ["tap is dripping", "dripping tap", "leaking pipe", "burst pipe", "pipe is leaking", "tap is leaking"],
+      "facts": ["tap_fixture_type"] },
     { "id": "blocked_drain", "name": "Blocked drain", "description": "A blocked sink, toilet or drain.",
-      "phrases": ["blocked drain", "drain is blocked", "toilet is blocked", "sink is blocked", "slow draining sink"] },
+      "phrases": ["blocked drain", "drain is blocked", "toilet is blocked", "sink is blocked", "slow draining sink"],
+      "facts": ["blocked_drain_location"] },
     { "id": "mould_and_damp", "name": "Mould and damp", "description": "Mould, damp or condensation in the home.",
-      "phrases": ["mouldy walls", "damp walls", "mould in my bathroom", "condensation problem", "damp problem"], "synonyms": ["mould problem"] },
+      "phrases": ["mouldy walls", "damp walls", "mould in my bathroom", "condensation problem", "damp problem"], "synonyms": ["mould problem"],
+      "facts": ["mould_area"] },
     { "id": "electrical_hazard", "name": "Electrical hazard", "description": "A sparking, hot, damaged or wet electrical fitting.",
       "phrases": ["electrical fault", "power point sparking", "switch is hot", "water near power points", "exposed wiring", "burning smell from outlet"] },
     { "id": "gas_hazard", "name": "Gas hazard", "description": "A suspected gas leak or smell.",
@@ -326,6 +343,12 @@
     { "id": "wood_screw_extras", "from": "Wood Screws", "to": ["Drill Bits", "Screwdriver Bits"], "rationale": "Driving screws needs the right bit." },
     { "id": "drill_extras", "from": "Drills", "to": ["Drill Bits", "Screwdriver Bits", "Battery & Charger"], "rationale": "Drills are bought with bits and spare batteries." },
     { "id": "insulation_protection", "from": "project:insulate_home", "to": ["Respiratory Protection", "Hand Protection", "Eye Protection"], "rationale": "Customers handling insulation often want protective gear." },
-    { "id": "fence_project_extras", "from": "project:fence_build", "to": ["Fencing & Netting (Non Timber) > Metal Gates"], "rationale": "A fence line usually needs a gate." }
+    { "id": "fence_project_extras", "from": "project:fence_build", "to": ["Fencing & Netting (Non Timber) > Metal Gates"], "rationale": "A fence line usually needs a gate." },
+    { "id": "plasterboard_installation_extras", "from": "Building Products > Plasterboard", "to": ["Plasterboard Compounds & Accessories > Compounds & Plasters", "Plasterboard Compounds & Accessories > Drywall Tapes", "Wood Screws", "Plasterboard Compounds & Accessories > Trims & Moulds"], "rationale": "Installing plasterboard requires jointing compound, drywall tape, fastening screws, and trims." },
+    { "id": "wet_area_lining_extras", "from": "project:wet_area_lining", "to": ["Waterproofing", "Flashing & Sealing Tapes", "Adhesives & Sealants > Adhesives & Sealants > Caulks And Sealants", "Measuring Tools"], "rationale": "Lining wet areas requires waterproofing membrane, sealing tape, sanitary silicone, and accurate measuring." },
+    { "id": "paint_project_extras", "from": "project:paint_a_room", "to": ["Brushes & Rollers", "Masking", "Primers Sealers & Undercoats", "Protective Wear & Coverings"], "rationale": "Painting a room needs prep, primer, masking tape, and drop sheets." },
+    { "id": "exterior_paint_extras", "from": "Exterior Paint", "to": ["Primers Sealers & Undercoats", "Brushes & Rollers", "Masking", "Outdoor Cleaners"], "rationale": "Exterior painting requires surface wash, primer, and high-coverage rollers." },
+    { "id": "metal_screw_extras", "from": "Metal Screws", "to": ["Drill Bits", "Screwdriver Bits", "Eye Protection"], "rationale": "Fixing into metal requires drill bits, driver bits, and eye protection." },
+    { "id": "tapware_installation_extras", "from": "Tapware & Showering", "to": ["Traps & Wastes", "Tools > Hand Tools > Plumbing Tools", "Flashing & Sealing Tapes"], "rationale": "Installing or replacing tapware commonly needs traps/waste fittings, plumbing tools, and thread seal tape." }
   ]
 }
