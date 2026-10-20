@@ -53,7 +53,7 @@ export function auditProvenance(draft: any, config?: Pick<IngestConfig, 'commerc
 
   for (const chunk of draft.evidenceChunks || []) {
     const kind = sourceKind.get(chunk.sourceRef);
-    const governed = (chunk.claimClasses || []).filter((claim: string) => claim !== 'catalog_fact' && claim !== 'suggestion');
+    const governed = (chunk.claimClasses || []).filter((claim: string) => claim !== 'catalog_fact' && claim !== 'stock' && claim !== 'suggestion');
     if (kind && DERIVED_SOURCE_KINDS.has(kind) && governed.length > 0) {
       violations.push({ entity: chunk.chunkId, code: 'derived_evidence_as_claim', message: `A ${kind} source cannot back ${governed.join(', ')}` });
     }

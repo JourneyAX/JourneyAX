@@ -74,7 +74,7 @@ function verificationIsQualified(
 ): boolean {
   if (!verification || verification.status !== 'verified') return true;
   const role = policy.verifierRoles.get((verification.verifierRole || '').trim().toLowerCase());
-  const governed = claimClasses.filter((claim) => claim !== 'suggestion' && claim !== 'catalog_fact');
+  const governed = claimClasses.filter((claim) => claim !== 'suggestion' && claim !== 'catalog_fact' && claim !== 'stock');
   if (!role) return governed.length === 0;
   for (const claim of governed) {
     if (!role.claimClasses.includes(claim as any)) return false;

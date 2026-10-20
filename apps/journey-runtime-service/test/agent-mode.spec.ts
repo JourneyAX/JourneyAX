@@ -15,6 +15,7 @@ import { TurnApplicationService } from '../src/kernel/turn-application.service';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
 import { AgentRouter } from '../src/kernel/agent.router';
+import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 
@@ -790,7 +791,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           };
         } else {
           // Final text
-          const finalText = 'We have premium kwila decking boards in stock.';
+          const finalText = 'We have premium kwila decking boards priced at $45.';
           for (const token of finalText.split(' ')) {
             onDelta?.(token + ' ');
             await new Promise((r) => setTimeout(r, 20)); // slow-streaming delay
@@ -1189,5 +1190,85 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(agentCalls, 1, 'Agent loop was invoked once and aborted');
     });
   });
+
+  describe('Empty search and stock claims verification', () => {
+    test('search finding nothing returns clear could-not-find message and unlocks no claims', async () => {
+      const emptyCatalogSearchHandler = {
+        execute: async () => ({ items: [], total: 0 }),
+      } as any;
+
+      const toolContext: any = {
+        tenantId: 'test-tenant',
+        release: { profile: { primaryCurrency: 'NZD' } },
+        catalogSearchHandler: emptyCatalogSearchHandler,
+        turnProductSkus: new Set(),
+        catalogProductCache: new Map(),
+        allowedClaimClasses: new Set(),
+      };
+
+      const result = await executeAgentTool('search_products', { query: 'nonexistent widget' }, toolContext);
+      assert.equal(result.count, 0);
+      assert.deepEqual(result.products, []);
+      assert.match(result.message, /Could not find any products matching "nonexistent widget"/i);
+      assert.match(result.message, /do NOT say the product is out of stock/i);
+      assert.equal(toolContext.allowedClaimClasses.size, 0, 'Empty search must unlock no claim classes');
+    });
+
+    test('search finding products does NOT unlock stock claim class; only check_stock does', async () => {
+      const catalogSearchHandler = {
+        execute: async () => ({
+          items: [{ sku: 'SKU-TIMBER-1', name: 'Framing Timber 100x50', price: 15 }],
+          total: 1,
+        }),
+      } as any;
+
+      const toolContext: any = {
+        tenantId: 'test-tenant',
+        release: { profile: { primaryCurrency: 'NZD' } },
+        catalogSearchHandler,
+        turnProductSkus: new Set(),
+        catalogProductCache: new Map(),
+        allowedClaimClasses: new Set(),
+      };
+
+      // 1. Search products found: unlocks catalog_fact, but NOT stock
+      await executeAgentTool('search_products', { query: 'timber' }, toolContext);
+      assert.equal(toolContext.allowedClaimClasses.has('catalog_fact'), true);
+      assert.equal(toolContext.allowedClaimClasses.has('stock'), false, 'search_products must NOT unlock stock');
+
+      // 2. An answer asserting stock without check_stock is rejected by claim validator
+      const claimResultWithoutStock = validateOkfGeneratedClaims(
+        'The framing timber is currently out of stock.',
+        Array.from(toolContext.allowedClaimClasses)
+      );
+      assert.equal(claimResultWithoutStock.valid, false);
+      assert.deepEqual(claimResultWithoutStock.forbidden, ['stock'], 'Must forbid stock claim when check_stock has not run');
+
+      const claimResultInStockWithout = validateOkfGeneratedClaims(
+        'We have this item in stock.',
+        Array.from(toolContext.allowedClaimClasses)
+      );
+      assert.equal(claimResultInStockWithout.valid, false);
+      assert.deepEqual(claimResultInStockWithout.forbidden, ['stock']);
+
+      // 3. Executing check_stock unlocks the stock claim class
+      await executeAgentTool('check_stock', { sku: 'SKU-TIMBER-1' }, toolContext);
+      assert.equal(toolContext.allowedClaimClasses.has('stock'), true, 'check_stock must unlock stock claim class');
+
+      // 4. Now stock statements are valid and supported
+      const claimResultAfterCheck = validateOkfGeneratedClaims(
+        'The framing timber is currently in stock at Main Branch.',
+        Array.from(toolContext.allowedClaimClasses)
+      );
+      assert.equal(claimResultAfterCheck.valid, true, 'Stock claim is now supported after check_stock');
+
+      const claimResultOutAfterCheck = validateOkfGeneratedClaims(
+        'This item is out of stock at this location.',
+        Array.from(toolContext.allowedClaimClasses)
+      );
+      assert.equal(claimResultOutAfterCheck.valid, true, 'Out of stock claim is supported after check_stock');
+    });
+  });
 });
+
 

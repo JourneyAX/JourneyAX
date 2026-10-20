@@ -77,6 +77,7 @@ const TOPIC_OF_CLAIM: Record<string, VerificationTopic> = {
   legal_requirement: 'documents',
   warranty: 'documents',
   catalog_fact: 'documents',
+  stock: 'documents',
   suggestion: 'documents',
 };
 

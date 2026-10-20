@@ -68,7 +68,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'search_products',
-    description: 'Search the product catalogue using hybrid keyword and semantic retrieval, expanded by the business glossary. Returns matching products with SKU, title, price, and availability.',
+    description: 'Search the product catalogue using hybrid keyword and semantic retrieval, expanded by the business glossary. Returns matching products with SKU, title, price, category, and description. To check branch inventory availability or whether an item is in stock, use check_stock.',
     parameters: {
       type: 'object',
       properties: {
@@ -91,7 +91,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'get_product',
-    description: 'Retrieve full specifications, details, pricing, and stock for a specific SKU from the catalogue.',
+    description: 'Retrieve full specifications, details, and pricing for a specific SKU from the catalogue. To check branch inventory availability or whether an item is in stock, use check_stock.',
     parameters: {
       type: 'object',
       properties: {
@@ -174,7 +174,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'check_stock',
-    description: 'Check real-time stock availability and inventory levels for a product SKU at a specific branch or location.',
+    description: 'Check real-time stock availability and inventory levels for a product SKU at a specific branch or location. Only a check_stock result supports claiming an item is in stock or out of stock.',
     parameters: {
       type: 'object',
       properties: {
@@ -362,9 +362,16 @@ export async function executeAgentTool(
         }
       }
 
-      if (products.length > 0) {
-        ctx.allowedClaimClasses.add('catalog_fact');
+      if (products.length === 0) {
+        return {
+          query,
+          count: 0,
+          products: [],
+          message: `Could not find any products matching "${query}" in the catalogue. Please inform the customer that no matching products were found in the catalogue. Do NOT say the product is out of stock.`,
+        };
       }
+
+      ctx.allowedClaimClasses.add('catalog_fact');
 
       return {
         query,
@@ -374,7 +381,6 @@ export async function executeAgentTool(
           title: p.title || p.name,
           price: p.priceUSD?.min ?? p.price ?? null,
           currency: p.currency || ctx.release.profile?.primaryCurrency,
-          availability: p.inStock ? 'in_stock' : 'out_of_stock',
           category: p.category,
           excerpt: p.description?.slice(0, 140),
         })),
@@ -407,7 +413,6 @@ export async function executeAgentTool(
             description: found.description,
             price: found.priceUSD?.min ?? found.price ?? null,
             currency: found.currency || ctx.release.profile?.primaryCurrency,
-            inStock: Boolean(found.inStock),
             category: found.category,
             specs: found.specs || found.attributes,
           },
@@ -774,6 +779,7 @@ export async function executeAgentTool(
       const cached = ctx.catalogProductCache.get(sku);
       ctx.turnProductSkus.add(sku);
       ctx.allowedClaimClasses.add('catalog_fact');
+      ctx.allowedClaimClasses.add('stock');
 
       return {
         sku,

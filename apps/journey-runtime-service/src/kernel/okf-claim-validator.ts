@@ -9,7 +9,8 @@ const CLAIM_PATTERNS: ReadonlyArray<[ClaimClass, RegExp]> = [
   ['care_safety', /\b(?:dilut(?:e|es|ed|ing|ion)|abrasive|chemical|ventilat(?:e|es|ed|ing|ion)|clean(?:er|ing)? safely)\b/i],
   ['safety_instruction', /\b(?:safe to|unsafe|hazard|danger|isolat(?:e|es|ing) (?:the |your |it |them )?\w+|(?:turn|switch|shut)(?: \w+){0,3}? off|(?:avoid|stop) using|(?:do not|don't|never) use|protective equipment|(?:wear|use) (?:\w+ ){0,2}(?:respirators?|masks?|gloves|goggles|glasses|protective))\b/i],
   ['requirement', /\b(?:must|mandatory|required|requires?|need(?:s)? to|necessary)\b/i],
-  ['catalog_fact', /(?:\$\s?\d|\b(?:in stock|out of stock|available now|sku\s*[:#]|costs?\s+\d|price(?:d)? at)\b)/i],
+  ['catalog_fact', /(?:\$\s?\d|\b(?:sku\s*[:#]|costs?\s+\d|price(?:d)? at)\b)/i],
+  ['stock', /\b(?:in stock|out of stock|in-stock|out-of-stock|available now)\b/i],
 ];
 
 /**
