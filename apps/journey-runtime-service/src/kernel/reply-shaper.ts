@@ -1,4 +1,4 @@
-import type { ReplyStyle } from '../turn/fact-semantics';
+import type { ReplyStyle, TurnKind } from '../turn/fact-semantics';
 import type { ClaimClass } from '@journeyax/knowledge';
 import { validateOkfGeneratedClaims } from './okf-claim-validator';
 
@@ -10,6 +10,8 @@ export interface ShapeContext {
   internalIds: string[];
   /** A question card is on screen, so the reply must not ask anything of its own. */
   questionCardShown: boolean;
+  /** The kind of turn being handled (fact, card, answer, recommend, howto). */
+  turnKind?: TurnKind;
 }
 
 export interface ShapedReply { text: string; removed: Array<{ reason: string; sentence: string }> }
@@ -20,30 +22,52 @@ export interface CompiledShapeContext {
   compiledIds: RegExp[];
   compiledPhrases: RegExp[];
   questionCardShown: boolean;
+  turnKind?: TurnKind;
 }
 
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const LIST_LINE = /^\s*(?:[-*•–]|\d+[.)])\s+/;
 
 /**
+ * Resolves effective reply style by overlaying turn-specific rules when available.
+ */
+export function resolveEffectiveReplyStyle(baseStyle: ReplyStyle, turnKind?: TurnKind): ReplyStyle {
+  if (!turnKind || !baseStyle.turnStyles?.[turnKind]) {
+    return baseStyle;
+  }
+  const turnStyle = baseStyle.turnStyles[turnKind]!;
+  return {
+    ...baseStyle,
+    maxSentences: turnStyle.maxSentences ?? baseStyle.maxSentences,
+    dropListLines: turnStyle.dropListLines ?? baseStyle.dropListLines,
+    allowFollowUpQuestion: turnStyle.allowFollowUpQuestion ?? baseStyle.allowFollowUpQuestion ?? false,
+    maxQuestions: turnStyle.maxQuestions ?? baseStyle.maxQuestions ?? (turnStyle.allowFollowUpQuestion ? 1 : 0),
+    forbiddenPhrases: turnStyle.forbiddenPhrases ?? baseStyle.forbiddenPhrases,
+    rules: turnStyle.rules ?? baseStyle.rules,
+  };
+}
+
+/**
  * Pre-compiles regexes and normalized sets for sentence-by-sentence reply shaping.
  */
 export function compileShapeContext(context: ShapeContext): CompiledShapeContext {
+  const effectiveStyle = resolveEffectiveReplyStyle(context.style, context.turnKind);
   const ids = context.internalIds
     .map((id) => id.trim().toLowerCase())
     .filter((id) => id.length >= 6 && /[-_/:]/.test(id))
     .map((id) => new RegExp(`(?<![a-z0-9_-])${escape(id)}(?![a-z0-9_-])`, 'i'));
   const names = context.companyNames.map((name) => name.trim().toLowerCase()).filter(Boolean);
-  const phrases = context.style.forbiddenPhrases.map(
+  const phrases = effectiveStyle.forbiddenPhrases.map(
     (phrase) => new RegExp(`(?<![A-Za-z])${escape(phrase.trim())}(?![A-Za-z])`, 'i')
   );
 
   return {
-    style: context.style,
+    style: effectiveStyle,
     companyNames: names,
     compiledIds: ids,
     compiledPhrases: phrases,
     questionCardShown: context.questionCardShown,
+    turnKind: context.turnKind,
   };
 }
 
@@ -53,8 +77,9 @@ export function compileShapeContext(context: ShapeContext): CompiledShapeContext
 export function shapeSentence(
   sentence: string,
   context: CompiledShapeContext | ShapeContext,
-  currentCount: number = 0
-): { keep: boolean; reason?: string; sentence: string } {
+  currentCount: number = 0,
+  questionsSeen: number = 0
+): { keep: boolean; reason?: string; sentence: string; isQuestion?: boolean } {
   const ctx = 'compiledIds' in context ? context : compileShapeContext(context);
   const { style } = ctx;
   const trimmed = sentence.trim();
@@ -66,11 +91,18 @@ export function shapeSentence(
   if (currentCount >= style.maxSentences) {
     return { keep: false, reason: 'too long', sentence: trimmed };
   }
+
+  const isQuestion = trimmed.endsWith('?');
+  const maxQ = ctx.style.maxQuestions ?? (ctx.style.allowFollowUpQuestion ? 1 : 1);
+  const questionDisallowed = ctx.questionCardShown
+    ? isQuestion
+    : isQuestion && (maxQ === 0 || questionsSeen >= maxQ);
+
   const lower = trimmed.toLowerCase();
   const reason =
     trimmed.includes('`') || lower.includes('concept://') || ctx.compiledIds.some((id) => id.test(trimmed))
       ? 'internal id'
-      : ctx.questionCardShown && trimmed.endsWith('?')
+      : questionDisallowed
       ? 'second question'
       : ctx.compiledPhrases.some((pattern) => pattern.test(trimmed))
       ? 'sends the customer elsewhere'
@@ -79,9 +111,9 @@ export function shapeSentence(
       : undefined;
 
   if (reason) {
-    return { keep: false, reason, sentence: trimmed };
+    return { keep: false, reason, sentence: trimmed, isQuestion };
   }
-  return { keep: true, sentence: trimmed };
+  return { keep: true, sentence: trimmed, isQuestion };
 }
 
 /**
@@ -93,20 +125,29 @@ export function shapeSentence(
 export function shapeReply(text: string, context: ShapeContext): ShapedReply {
   const removed: ShapedReply['removed'] = [];
   const compiled = compileShapeContext(context);
-  const { style } = context;
+  const { style } = compiled;
 
   const kept: string[] = [];
+  let questionsSeen = 0;
+
   for (const line of text.split(/\n+/)) {
     if (style.dropListLines && LIST_LINE.test(line)) {
       removed.push({ reason: 'list', sentence: line.trim() });
       continue;
     }
-    for (const raw of line.split(/(?<=[.!?:])\s+/)) {
+    const sentences = LIST_LINE.test(line)
+      ? [line.trim()]
+      : line.split(/(?<!\b\d+[.!?:])(?<=[.!?:])\s+/);
+
+    for (const raw of sentences) {
       const sentence = raw.trim();
       if (!sentence) continue;
-      const result = shapeSentence(sentence, compiled, kept.length);
+      const result = shapeSentence(sentence, compiled, kept.length, questionsSeen);
       if (result.keep) {
         kept.push(sentence);
+        if (result.isQuestion) {
+          questionsSeen++;
+        }
       } else if (result.reason) {
         removed.push({ reason: result.reason, sentence });
       }
@@ -116,7 +157,20 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
   for (const sentence of kept.slice(style.maxSentences)) {
     removed.push({ reason: 'too long', sentence });
   }
-  return { text: limited.join(' ').replace(/\s+([,.;:!?])/g, '$1').trim(), removed };
+
+  const hasList = limited.some((s) => LIST_LINE.test(s));
+  let formatted: string;
+  if (hasList) {
+    formatted = limited.reduce((acc, curr, idx) => {
+      if (idx === 0) return curr;
+      if (LIST_LINE.test(curr)) return `${acc}\n${curr}`;
+      return `${acc} ${curr}`;
+    }, '').replace(/\s+([,.;:!?])/g, '$1').trim();
+  } else {
+    formatted = limited.join(' ').replace(/\s+([,.;:!?])/g, '$1').trim();
+  }
+
+  return { text: formatted, removed };
 }
 
 /**
@@ -129,6 +183,7 @@ export class IncrementalSentenceShaper {
   private emittedSentences: string[] = [];
   private streamedText = '';
   private compiledShape: CompiledShapeContext;
+  private questionsSeen = 0;
 
   constructor(
     shapeContext: ShapeContext,
@@ -141,7 +196,7 @@ export class IncrementalSentenceShaper {
 
   processDelta(chunk: string): void {
     this.buffer += chunk;
-    const parts = this.buffer.split(/(?<=[.!?])\s+|\n+/);
+    const parts = this.buffer.split(/(?<!\b\d+[.!?])(?<=[.!?])\s+|\n+/);
     if (parts.length > 1) {
       for (let i = 0; i < parts.length - 1; i++) {
         this.processSentence(parts[i]);
@@ -172,14 +227,19 @@ export class IncrementalSentenceShaper {
       }
     }
 
-    const shaped = shapeSentence(sentence, this.compiledShape, this.emittedSentences.length);
+    const shaped = shapeSentence(sentence, this.compiledShape, this.emittedSentences.length, this.questionsSeen);
     if (!shaped.keep) {
       console.warn(`[ReplyShaper] removed sentence during stream: "${sentence}" (${shaped.reason})`);
       return;
     }
 
+    if (shaped.isQuestion) {
+      this.questionsSeen++;
+    }
+
     this.emittedSentences.push(sentence);
-    const delta = (this.streamedText ? ' ' : '') + sentence;
+    const separator = LIST_LINE.test(sentence) ? '\n' : (this.streamedText ? ' ' : '');
+    const delta = separator + sentence;
     this.streamedText += delta;
     this.onApprovedSentence(sentence, delta);
   }
@@ -192,5 +252,6 @@ export class IncrementalSentenceShaper {
     return this.emittedSentences;
   }
 }
+
 
 

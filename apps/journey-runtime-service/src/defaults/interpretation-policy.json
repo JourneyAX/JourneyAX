@@ -110,6 +110,66 @@
       "Do not mention category names, ids, section names or where to browse; the cards on screen show the range.",
       "Do not ask the customer a question, and do not list options or steps: a card on screen asks anything that needs asking.",
       "Do not sell or pitch. No 'perfect for', 'ideal' or 'recommended' language unless the verified information says so."
-    ]
+    ],
+    "turnStyles": {
+      "fact": {
+        "maxSentences": 2,
+        "dropListLines": true,
+        "allowFollowUpQuestion": false,
+        "maxQuestions": 0
+      },
+      "card": {
+        "maxSentences": 2,
+        "dropListLines": true,
+        "allowFollowUpQuestion": false,
+        "maxQuestions": 0
+      },
+      "answer": {
+        "maxSentences": 6,
+        "dropListLines": false,
+        "allowFollowUpQuestion": true,
+        "maxQuestions": 1,
+        "rules": [
+          "Provide a clear, helpful and thorough response in plain, friendly language.",
+          "You may include numbered steps or concise bullet points when explaining a process or specifications.",
+          "Ground all statements strictly in verified catalog products and verified technical documentation.",
+          "You may ask at most one natural follow-up question to assist with the next step, unless a question card is shown on screen.",
+          "Relevant add-on suggestions are welcome as long as they are strictly grounded in verified catalog items.",
+          "Do not say the company's name: the customer is already in its shop.",
+          "Do not mention category names, ids, section names or where to browse.",
+          "Do not sell or pitch unverified claims."
+        ]
+      },
+      "recommend": {
+        "maxSentences": 5,
+        "dropListLines": false,
+        "allowFollowUpQuestion": true,
+        "maxQuestions": 1,
+        "rules": [
+          "Provide a clear, helpful recommendation in plain, friendly language based on verified catalog products.",
+          "Explain why the items suit the project using verified features and specifications.",
+          "You may suggest relevant grounded accessories, fixings, or add-ons from verified catalog items.",
+          "You may ask at most one natural follow-up question to confirm or refine the selection.",
+          "Do not say the company's name: the customer is already in its shop.",
+          "Do not mention category names, ids, or internal section names.",
+          "Do not make unverified claims."
+        ]
+      },
+      "howto": {
+        "maxSentences": 6,
+        "dropListLines": false,
+        "allowFollowUpQuestion": true,
+        "maxQuestions": 1,
+        "rules": [
+          "Provide clear, structured, and practical step-by-step guidance in plain, friendly language.",
+          "Use numbered steps or bullet points for the instructions.",
+          "Ground all steps, techniques, and product references in verified technical documentation and catalog items.",
+          "You may suggest relevant tools, materials, or add-ons grounded in verified products.",
+          "You may ask at most one natural follow-up question to assist with the next step.",
+          "Do not say the company's name: the customer is already in its shop.",
+          "Do not make unverified claims."
+        ]
+      }
+    }
   }
 }
