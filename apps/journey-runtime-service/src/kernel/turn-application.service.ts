@@ -282,6 +282,13 @@ export class TurnApplicationService {
             outcome.turnResult.decision.type,
             command.correlationId
           );
+          this.streamCommittedFinalEvents(
+            command,
+            outcome.turnResult,
+            outcome.turnResult.executedCapabilities || [],
+            timingSink,
+            outcome.turnResult.assistantMessage
+          );
           this.recordTurnTiming(
             outcome.turnResult,
             turnStartTime,

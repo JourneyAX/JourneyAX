@@ -228,9 +228,8 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.equal(outcome.toolsCalled[0].name, 'search_products');
     assert.equal(outcome.toolsCalled[1].name, 'present_card');
     assert.equal(emittedCapabilities.length, 2, 'Should emit 2 capability traces for UI working strip');
-    assert.equal(emittedUiActions.length, 1, 'Should emit 1 presentCard uiAction');
-    assert.equal(emittedUiActions[0].name, 'presentCard');
-    assert.equal(emittedUiActions[0].arguments.card.cardType, 'products');
+    assert.equal(outcome.turnResult.uiInstructions?.length, 1, 'Should record 1 presentCard in uiInstructions');
+    assert.equal(outcome.turnResult.uiInstructions?.[0].component, 'products');
 
     // Check that streamed token chunks reached the sink
     assert.ok(streamedTokens.length > 0, 'Streamed tokens should reach sink');
@@ -841,6 +840,126 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       // 3. Final text combines pre-tool and final answers
       assert.match(outcome.turnResult.assistantMessage!, /check our catalogue/i);
       assert.match(outcome.turnResult.assistantMessage!, /kwila decking/i);
+    });
+
+    test('final events: after commitWorkspace, emits capability, uiAction, data, and exactly one done event without duplicate tokens', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const workspace = createTestWorkspace();
+
+      let round = 0;
+      gateway.mockAgentExecutor = async (_req, onDelta) => {
+        round++;
+        if (round === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_search_1',
+                name: 'search_products',
+                arguments: { query: 'pine timber' },
+              },
+            ],
+          };
+        } else if (round === 2) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_present_card_1',
+                name: 'present_card',
+                arguments: {
+                  cardType: 'products',
+                  state: {
+                    heading: 'Recommended Timber',
+                    products: [{ sku: 'SKU-TIMBER-1', title: 'Treated Pine' }],
+                  },
+                },
+              },
+            ],
+          };
+        } else {
+          const finalAnswer = 'Here are our recommended timber products.';
+          onDelta?.(finalAnswer);
+          return {
+            content: finalAnswer,
+            toolCalls: [],
+          };
+        }
+      };
+
+      const mockCatalogHandler = {
+        execute: async () => ({
+          products: [{ sku: 'SKU-TIMBER-1', title: 'Treated Pine', price: 15.0, inStock: true }],
+        }),
+      };
+      const mockCapabilityGateway = {
+        getNativeHandler: (toolId: string) => (toolId === 'catalog.search' ? mockCatalogHandler : undefined),
+      };
+
+      const outboxRepo = new OutboxRepository({ forceInMemory: true });
+      const service = new TurnApplicationService(
+        { loadActivePack: async () => release } as any,
+        {
+          load: async () => workspace,
+          getOrCreate: async () => workspace,
+          save: async () => {},
+        } as any,
+        new JourneyResolver(),
+        new AgentRouter(),
+        gateway,
+        mockCapabilityGateway as any,
+        undefined,
+        undefined,
+        outboxRepo
+      );
+
+      const events: Array<{ event: string; data: any }> = [];
+      const result = await service.executeTurnStream(
+        {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: workspace.workspaceId,
+          sessionId: 'test-session',
+          correlationId: 'test-corr',
+          message: 'Show me pine timber',
+        },
+        release,
+        (event, data) => events.push({ event, data })
+      );
+
+      assert.ok(result);
+      const eventNames = events.map((e) => e.event);
+
+      // Verify session event
+      assert.ok(eventNames.includes('session'), 'Must emit session event');
+
+      // Verify token events (streamed during the turn)
+      const tokenEvents = events.filter((e) => e.event === 'token');
+      assert.ok(tokenEvents.length > 0, 'Must stream tokens during turn');
+
+      // Verify capability event emitted from streamCommittedFinalEvents
+      const capabilityEvents = events.filter((e) => e.event === 'capability');
+      assert.ok(capabilityEvents.length > 0, 'Must emit capability events');
+
+      // Verify uiAction event emitted for presented card
+      const uiActionEvents = events.filter((e) => e.event === 'uiAction');
+      assert.equal(uiActionEvents.length, 1, 'Must emit exactly one uiAction for presented card');
+      assert.equal(uiActionEvents[0].data.name, 'presentCard');
+      assert.equal(uiActionEvents[0].data.card.cardType, 'products');
+
+      // Verify data event
+      const dataEvents = events.filter((e) => e.event === 'data');
+      assert.equal(dataEvents.length, 1, 'Must emit data event');
+
+      // Verify exactly ONE done event
+      const doneEvents = events.filter((e) => e.event === 'done');
+      assert.equal(doneEvents.length, 1, 'Must emit EXACTLY ONE done event');
+      assert.equal(doneEvents[0].data.response, result.assistantMessage);
+
+      // Verify that after commitWorkspace, text already streamed is not re-sent as an additional full token
+      const totalTokenText = tokenEvents.map((t) => t.data.delta || t.data.token || '').join('');
+      assert.equal(totalTokenText, result.assistantMessage, 'Streamed tokens must match assistant message without duplicates');
     });
   });
 });

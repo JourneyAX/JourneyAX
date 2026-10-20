@@ -149,7 +149,6 @@ export class AgentTurnLoop {
       isHumanHandoffRequested: false,
       customerQuestion,
       consultedConcepts: new Set<OkfConcept>(),
-      emitUiAction: (action) => sink('uiAction', action),
       emitTrace: (name, payload) => sink('trace', { [name]: payload }),
     };
 
@@ -434,11 +433,6 @@ export class AgentTurnLoop {
         status: t.ok ? 'success' : 'failure',
         durationMs: t.durationMs,
       })),
-      timing: {
-        totalMs: totalDurationMs,
-        timeToFirstTextMs: timeToFirstTextMs ?? totalDurationMs,
-        timeToFirstEventMs: timeToFirstTextMs ?? 1,
-      },
       trace: {
         agentMode: true,
         toolsCalled: toolsTrace,
