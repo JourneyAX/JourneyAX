@@ -679,6 +679,85 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.match(warrantyA.warranty.terms, /15-year warranty/i);
       assert.equal(toolContext.allowedClaimClasses.has('warranty'), true, 'Warranty claim class must be unlocked for verified Product A');
     });
+
+    test('safety settings: present_card blocks product cards when OKF safety.blocksProducts or commercePolicy is active', async () => {
+      const mockOkfContent: any = {
+        manifest: { releaseId: 'rel-okf-safety', tenantId: 'test-tenant' },
+        concepts: [
+          {
+            conceptId: 'concept://test-tenant/bathroom-leak',
+            name: 'Bathroom Water Leak',
+            description: 'Major leak emergency',
+            synonyms: ['leak', 'burst pipe'],
+            riskClass: 'safety_critical',
+            safety: { blocksProducts: true, stepRefs: [] },
+            commercePolicy: { addToCart: 'blocked', checkout: 'blocked' },
+          },
+          {
+            conceptId: 'concept://test-tenant/safe-decking',
+            name: 'Standard Decking',
+            description: 'Standard timber decking',
+            riskClass: 'standard',
+            safety: { blocksProducts: false, stepRefs: [] },
+            commercePolicy: { addToCart: 'allowed', checkout: 'allowed' },
+          },
+        ],
+        relationships: [],
+        verifications: [],
+        evidenceChunks: [],
+      };
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        correlationId: 'test-corr',
+        customerQuestion: 'My bathroom pipe burst and water is leaking everywhere!',
+        release: createTestPack(),
+        okfContent: mockOkfContent,
+        catalogSearchHandler: {} as any,
+        turnProductSkus: new Set(['SKU-TAP-001']),
+        catalogProductCache: new Map([
+          ['SKU-TAP-001', { sku: 'SKU-TAP-001', title: 'Emergency Shutoff Tap', price: 25.0, inStock: true }],
+        ]),
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+      };
+
+      // Model attempts to present a product card for a leak emergency where safety.blocksProducts is active
+      const res = await executeAgentTool(
+        'present_card',
+        {
+          cardType: 'products',
+          state: {
+            heading: 'Recommended Taps',
+            products: [{ sku: 'SKU-TAP-001', title: 'Emergency Shutoff Tap' }],
+          },
+        },
+        toolContext
+      );
+
+      assert.equal(res.ok, false, 'Product card must be rejected when safety.blocksProducts is active');
+      assert.match(res.error, /safety\.blocksProducts/i);
+      assert.equal(toolContext.presentedCards.length, 0, 'No cards should be presented');
+
+      // Now with safe context without safety blocks, product card succeeds
+      toolContext.customerQuestion = 'Looking for standard decking timber';
+      const safeRes = await executeAgentTool(
+        'present_card',
+        {
+          cardType: 'products',
+          state: {
+            heading: 'Recommended Taps',
+            products: [{ sku: 'SKU-TAP-001', title: 'Emergency Shutoff Tap' }],
+          },
+        },
+        toolContext
+      );
+      assert.equal(safeRes.ok, true, 'Product card is accepted when topic is not blocked by safety');
+      assert.equal(toolContext.presentedCards.length, 1);
+    });
   });
 });
 

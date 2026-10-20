@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
-import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk } from '@journeyax/knowledge';
+import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { effectiveVerification, scopedClaims, verifiedEvidenceRefs } from '@journeyax/knowledge';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
 import { extractRelevantOkfNotes, findRelevantOkfConcepts } from '../kernel/business-knowledge';
@@ -29,6 +29,8 @@ export interface AgentToolContext {
   presentedCards: Array<{ cardType: string; state: any }>;
   isHumanHandoffRequested: boolean;
   handoffReason?: string;
+  customerQuestion?: string;
+  consultedConcepts?: Set<OkfConcept>;
   emitUiAction?: (action: { name: string; arguments: any }) => void;
   emitTrace?: (name: string, payload: any) => void;
 }
@@ -303,6 +305,8 @@ export async function executeAgentTool(
       const verifications = new Map((ctx.okfContent.verifications || []).map((v) => [v.recordId, v]));
 
       for (const concept of activeConcepts) {
+        if (ctx.consultedConcepts) ctx.consultedConcepts.add(concept);
+
         // Concept verification record check
         const vRecord = concept.verificationRef
           ? verifications.get(concept.verificationRef)
@@ -805,7 +809,63 @@ export async function executeAgentTool(
       };
       extractSkus(state);
 
-      // 2. SKU Provenance Verification: Every product SKU must have been returned by a tool result this turn
+      // 2. Enforce OKF Safety & Commerce Policy: block product presentation if safety.blocksProducts or commercePolicy is blocked
+      const isProductCard =
+        ['products', 'productDetail', 'comparison', 'bundle', 'accessories'].includes(cardType) ||
+        referencedSkus.length > 0;
+
+      if (isProductCard && ctx.okfContent) {
+        const candidateConcepts = new Set<OkfConcept>();
+
+        // Concepts from customer question
+        if (ctx.customerQuestion) {
+          for (const c of findRelevantOkfConcepts(ctx.okfContent, { customerQuestion: ctx.customerQuestion })) {
+            candidateConcepts.add(c);
+          }
+        }
+
+        // Concepts consulted via consult_business_knowledge during this turn
+        if (ctx.consultedConcepts) {
+          for (const c of ctx.consultedConcepts) {
+            candidateConcepts.add(c);
+          }
+        }
+
+        // Concepts mapped to referenced SKUs via evidence chunks
+        if (ctx.okfContent.evidenceChunks && ctx.okfContent.concepts) {
+          const skuSet = new Set(referencedSkus.map((s) => s.toLowerCase()));
+          for (const chunk of ctx.okfContent.evidenceChunks) {
+            const hasSku = chunk.applicability?.refs?.some((r) => skuSet.has(r.toLowerCase()));
+            if (hasSku && chunk.conceptIds) {
+              for (const cId of chunk.conceptIds) {
+                const c = ctx.okfContent.concepts.find((item) => item.conceptId === cId);
+                if (c) candidateConcepts.add(c);
+              }
+            }
+          }
+        }
+
+        // Check safety.blocksProducts and commercePolicy
+        for (const concept of candidateConcepts) {
+          if (concept.safety?.blocksProducts) {
+            return {
+              ok: false,
+              error: `Rejected card: Products cannot be shown because safety policy for "${concept.name}" blocks products (safety.blocksProducts). Deliver safety guidance first.`,
+            };
+          }
+          if (
+            concept.commercePolicy?.addToCart === 'blocked' &&
+            concept.commercePolicy?.checkout === 'blocked'
+          ) {
+            return {
+              ok: false,
+              error: `Rejected card: Products cannot be shown because commerce policy for "${concept.name}" blocks commerce.`,
+            };
+          }
+        }
+      }
+
+      // 3. SKU Provenance Verification: Every product SKU must have been returned by a tool result this turn
       for (const sku of referencedSkus) {
         if (!ctx.turnProductSkus.has(sku)) {
           return {

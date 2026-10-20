@@ -6,7 +6,7 @@ import type {
   UIInstruction,
 } from '@journeyax/journey-core';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
-import type { OkfReleaseContent, ClaimClass } from '@journeyax/knowledge';
+import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
 import {
   ModelGateway,
   type AgentMessage,
@@ -146,6 +146,8 @@ export class AgentTurnLoop {
       allowedClaimClasses: new Set<ClaimClass>(),
       presentedCards: [],
       isHumanHandoffRequested: false,
+      customerQuestion,
+      consultedConcepts: new Set<OkfConcept>(),
       emitUiAction: (action) => sink('uiAction', action),
       emitTrace: (name, payload) => sink('trace', { [name]: payload }),
     };
