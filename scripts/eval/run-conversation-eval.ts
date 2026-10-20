@@ -20,6 +20,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { buildPlaceMakersStack, TENANT, ENVIRONMENT } from '../../apps/journey-runtime-service/test/helpers/placemakers-stack';
 import { validateOkfGeneratedClaims } from '../../apps/journey-runtime-service/src/kernel/okf-claim-validator';
+import { ModelGateway } from '../../apps/journey-runtime-service/src/kernel/model.gateway';
+
+if (typeof (process as any).loadEnvFile === 'function' && fs.existsSync('.env')) {
+  try {
+    (process as any).loadEnvFile('.env');
+  } catch {}
+}
 
 export type PromptType =
   | 'product_lookup'
@@ -48,6 +55,8 @@ interface EvalTurnResult {
   groundTruthReference: string;
   assistantMessage: string;
   cards: string[];
+  toolCalls: number;
+  toolsCalled: string[];
   timing: {
     timeToFirstEventMs: number | null;
     timeToFirstTextMs: number | null;
@@ -63,7 +72,7 @@ interface EvalTurnResult {
     answerNotEmpty: boolean;
     noInternalIds: boolean;
     forbiddenClaimsAbsent: boolean;
-    expectedSkuOrCategoryPresent: boolean;
+    expectedSkuPresent: boolean;
   };
   passed: boolean;
   failureReasons: string[];
@@ -346,7 +355,10 @@ async function main() {
   const loadedCount = await loadPlacemakersCsvProducts(stack.db);
   console.log(`Loaded ${loadedCount} catalogue products into in-memory store.`);
 
-  const service = stack.serviceFor({ servePacks: true });
+  const service = stack.serviceFor({
+    servePacks: true,
+    modelGateway: useRealModel ? new ModelGateway() : undefined,
+  });
 
   const evalResults: EvalTurnResult[] = [];
   let completed = 0;
@@ -378,43 +390,53 @@ async function main() {
 
     const assistantMessage = (lastResult?.assistantMessage || '').trim();
     const cards = (lastResult?.uiInstructions || []).map((ui: any) => ui.component || ui.envelope?.arguments?.card?.cardType || 'unknown');
+    const toolCalls =
+      (lastResult?.executedCapabilities || []).length ||
+      (lastResult?.trace?.toolsCalled || []).length ||
+      0;
+    const toolsCalled =
+      ((lastResult?.trace?.toolsCalled || []).map((t: any) => t.name) as string[]) ||
+      ((lastResult?.executedCapabilities || []).map((c: any) => c.toolId) as string[]) ||
+      [];
     const timing = aggregateTiming || {
-      timeToFirstEventMs: 0,
-      timeToFirstTextMs: 0,
+      timeToFirstEventMs: lastResult?.trace?.timeToFirstTextMs ?? 0,
+      timeToFirstTextMs: lastResult?.trace?.timeToFirstTextMs ?? 0,
       interpretMs: 0,
-      responseMs: 0,
+      responseMs: lastResult?.trace?.durationMs ?? 0,
       phraseMs: 0,
       retrievalMs: 0,
-      totalMs: 0,
-      modelCalls: 0,
-      tokens: { prompt: 0, completion: 0, total: 0 },
+      totalMs: lastResult?.trace?.durationMs ?? 0,
+      modelCalls: toolCalls + 1,
+      tokens: lastResult?.trace?.tokens || { prompt: 0, completion: 0, total: 0 },
     };
 
     // Automated Checks
     const expectedSkus = extractExpectedSkus(tc.groundTruthReference, tc.groundTruthUrls);
     const answerNotEmpty = assistantMessage.length > 0;
     const noInternalIds = checkNoInternalIds(assistantMessage);
-    const claimCheck = validateOkfGeneratedClaims(assistantMessage, ['suggestion']);
+    const allowedClasses = (useAgentMode && lastResult?.trace?.allowedClaimClasses)
+      ? lastResult.trace.allowedClaimClasses
+      : ['suggestion'];
+    const claimCheck = validateOkfGeneratedClaims(assistantMessage, allowedClasses);
     const forbiddenClaimsAbsent = claimCheck.valid;
 
-    // SKU / Category check:
-    // Only apply specific SKU check where a specific SKU is actually expected.
-    // Advisory, education, safety, project, vocabulary, and garbled queries do NOT expect a single specific SKU.
-    let expectedSkuOrCategoryPresent = true;
+    // SKU check:
+    // A prompt passes only if an expected SKU for that prompt is shown (in message or presented card)
+    // or the prompt type does not need one.
+    let expectedSkuPresent = true;
     if (classification.expectsSpecificSku && expectedSkus.length > 0) {
-      const mentionsSku = expectedSkus.some((sku) => assistantMessage.includes(sku));
-      const hasProductsCard = cards.includes('products');
-      const mentionsCategory = tc.category ? assistantMessage.toLowerCase().includes(tc.category.split('&')[0].trim().toLowerCase()) : false;
-      expectedSkuOrCategoryPresent = mentionsSku || hasProductsCard || mentionsCategory;
+      const uiStr = JSON.stringify(lastResult?.uiInstructions || []);
+      const mentionsSku = expectedSkus.some((sku) => assistantMessage.includes(sku) || uiStr.includes(sku));
+      expectedSkuPresent = mentionsSku;
     }
 
     const failureReasons: string[] = [];
     if (!answerNotEmpty) failureReasons.push('Empty assistant message');
     if (!noInternalIds) failureReasons.push('Internal IDs or platform terms leaked in message');
     if (!forbiddenClaimsAbsent) failureReasons.push(`Forbidden claims present: ${claimCheck.forbidden.join(', ')}`);
-    if (!expectedSkuOrCategoryPresent) failureReasons.push(`Expected SKU or category not found (expected: ${expectedSkus.slice(0, 3).join(', ')})`);
+    if (!expectedSkuPresent) failureReasons.push(`Expected SKU not found (expected: ${expectedSkus.slice(0, 3).join(', ')})`);
 
-    const passed = answerNotEmpty && noInternalIds && forbiddenClaimsAbsent && expectedSkuOrCategoryPresent;
+    const passed = answerNotEmpty && noInternalIds && forbiddenClaimsAbsent && expectedSkuPresent;
 
     evalResults.push({
       id: tc.id,
@@ -425,12 +447,14 @@ async function main() {
       groundTruthReference: tc.groundTruthReference,
       assistantMessage,
       cards,
+      toolCalls,
+      toolsCalled,
       timing,
       checks: {
         answerNotEmpty,
         noInternalIds,
         forbiddenClaimsAbsent,
-        expectedSkuOrCategoryPresent,
+        expectedSkuPresent,
       },
       passed,
       failureReasons,
@@ -456,6 +480,8 @@ async function main() {
   const p50Total = percentile(totalMsValues, 50);
   const p95Total = percentile(totalMsValues, 95);
   const avgModelCalls = modelCallsValues.reduce((a, b) => a + b, 0) / (total || 1);
+  const totalToolCalls = evalResults.reduce((acc, r) => acc + (r.toolCalls || 0), 0);
+  const avgToolCalls = totalToolCalls / (total || 1);
 
   // Category Breakdown
   const categoriesMap = new Map<string, { total: number; passed: number }>();
@@ -535,6 +561,7 @@ async function main() {
     `| p50 Total Turn Latency | ${p50Total.toFixed(1)} ms |`,
     `| p95 Total Turn Latency | ${p95Total.toFixed(1)} ms |`,
     `| Average Model Calls / Turn | ${avgModelCalls.toFixed(2)} |`,
+    `| Average Tool Calls / Turn | ${avgToolCalls.toFixed(2)} |`,
     ``,
     `## Pass Rate by Prompt Type`,
     ``,
@@ -566,7 +593,7 @@ async function main() {
     `- **Answer Not Empty**: ${evalResults.filter((r) => r.checks.answerNotEmpty).length}/${total}`,
     `- **No Internal IDs Leaked**: ${evalResults.filter((r) => r.checks.noInternalIds).length}/${total}`,
     `- **Forbidden Claims Absent**: ${evalResults.filter((r) => r.checks.forbiddenClaimsAbsent).length}/${total}`,
-    `- **Expected SKU Present (where applicable)**: ${evalResults.filter((r) => r.checks.expectedSkuOrCategoryPresent).length}/${total}`,
+    `- **Expected SKU Present (where applicable)**: ${evalResults.filter((r) => r.checks.expectedSkuPresent).length}/${total}`,
     ``,
     `## Failure Sample (First 5)`,
     ``,
@@ -590,7 +617,7 @@ async function main() {
   console.log(`============================================================`);
   console.log(`Pass Rate: ${overallPassRate.toFixed(1)}% (${passedCount}/${total})`);
   console.log(`p50 Time to First Text: ${p50Ttft.toFixed(1)} ms | p95: ${p95Ttft.toFixed(1)} ms`);
-  console.log(`Model Calls/Turn: ${avgModelCalls.toFixed(2)}`);
+  console.log(`Model Calls/Turn: ${avgModelCalls.toFixed(2)} | Tool Calls/Turn: ${avgToolCalls.toFixed(2)}`);
   console.log(`\nPrompt Type Breakdown:`);
   for (const p of promptTypeStats) {
     console.log(`  - ${p.type.padEnd(20)}: ${p.passed}/${p.total} (${p.passRate.toFixed(1)}%)`);

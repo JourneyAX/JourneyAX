@@ -1,0 +1,43 @@
+[
+  {
+    "id": 1,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Do you have 100x50 H3.2 treated timber in stock?",
+    "purpose": "Numeric dimension code + treatment grade recognition",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 1002835 \"Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)\" (framing timber; priced per branch/quote, not a listed national price).",
+    "assistantMessage": "I don't have verified technical specifications for that. Could you tell me more about your project, such as the requirements or dimensions?",
+    "cards": [
+      "clarify"
+    ],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-1-1",
+      "timeToFirstEventMs": 1315,
+      "timeToFirstTextMs": 1315,
+      "interpretMs": 0,
+      "responseMs": 0,
+      "phraseMs": 1,
+      "retrievalMs": 10,
+      "totalMs": 1315,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 0,
+        "completion": 0,
+        "total": 0
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1002835, 1003586, 1003591)"
+    ]
+  }
+]

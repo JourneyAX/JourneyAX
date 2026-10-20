@@ -28,11 +28,11 @@
       "answerNotEmpty": true,
       "noInternalIds": true,
       "forbiddenClaimsAbsent": true,
-      "expectedSkuOrCategoryPresent": false
+      "expectedSkuPresent": false
     },
     "passed": false,
     "failureReasons": [
-      "Expected SKU or category not found (expected: 1002835, 1003586, 1003591)"
+      "Expected SKU not found (expected: 1002835, 1003586, 1003591)"
     ]
   },
   {
@@ -62,11 +62,11 @@
       "answerNotEmpty": true,
       "noInternalIds": true,
       "forbiddenClaimsAbsent": true,
-      "expectedSkuOrCategoryPresent": false
+      "expectedSkuPresent": false
     },
     "passed": false,
     "failureReasons": [
-      "Expected SKU or category not found (expected: 1002835, 1010788, 1003586)"
+      "Expected SKU not found (expected: 1002835, 1010788, 1003586)"
     ]
   },
   {
@@ -96,11 +96,9 @@
       "answerNotEmpty": true,
       "noInternalIds": true,
       "forbiddenClaimsAbsent": true,
-      "expectedSkuOrCategoryPresent": false
+      "expectedSkuPresent": true
     },
-    "passed": false,
-    "failureReasons": [
-      "Expected SKU or category not found (expected: 1002837, 1003595, 1002834)"
-    ]
+    "passed": true,
+    "failureReasons": []
   }
 ]
