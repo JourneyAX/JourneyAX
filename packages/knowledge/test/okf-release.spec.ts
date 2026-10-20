@@ -281,29 +281,29 @@ await test('pinned loader rejects cross-tenant, wrong checksum, and non-ready re
 await test('revocation event stream is append-only and active created event is returned', async () => {
   const db = new MemoryDb();
   const created = await appendOkfRevocationEvent(db as any, {
-    revocationId: 'rev-1', eventType: 'created', tenantId: 'placemakers', environmentId: 'production', releaseId: 'okf-placemakers-1.0.0', conceptIds: [conceptId('problems/bathroom-leak')], cascade: 'descendants', effect: { suppressClaims: true, suppressRetrieval: true }, reason: 'safety correction', createdBy: 'safety-owner', expiresAt: new Date('2026-10-20T00:00:00.000Z'),
+    revocationId: 'rev-1', eventType: 'created', tenantId: 'placemakers', environmentId: 'production', releaseId: 'okf-placemakers-1.0.0', conceptIds: [conceptId('problems/bathroom-leak')], cascade: 'descendants', effect: { suppressClaims: true, suppressRetrieval: true }, reason: 'safety correction', createdBy: 'safety-owner', expiresAt: new Date(Date.now() + 7 * 86400000),
   });
   assert.equal(created.eventType, 'created');
-  const active = await loadActiveOkfRevocations(db as any, 'placemakers', 'production', 'okf-placemakers-1.0.0', new Date('2026-10-10T00:00:00.000Z'));
+  const active = await loadActiveOkfRevocations(db as any, 'placemakers', 'production', 'okf-placemakers-1.0.0', new Date());
   assert.equal(active.length, 1);
   assert.equal(db.collection('okf_revocation_events').docs.length, 1);
 });
 
 await test('lifting a revocation preserves history and removes it from active head', async () => {
   const db = new MemoryDb();
-  const common = { revocationId: 'rev-1', tenantId: 'placemakers', environmentId: 'production' as const, releaseId: 'okf-placemakers-1.0.0', conceptIds: [conceptId('problems/bathroom-leak')], cascade: 'descendants' as const, effect: { suppressClaims: true, suppressRetrieval: true }, reason: 'safety correction', createdBy: 'safety-owner', expiresAt: new Date('2026-10-20T00:00:00.000Z') };
-  await appendOkfRevocationEvent(db as any, { ...common, eventType: 'created', createdAt: new Date('2026-10-09T00:00:00.000Z') });
-  await appendOkfRevocationEvent(db as any, { ...common, eventType: 'lifted', eventId: 'lift-1', createdAt: new Date('2026-10-10T00:00:00.000Z'), correctedReleaseId: 'okf-placemakers-1.0.1' });
+  const common = { revocationId: 'rev-1', tenantId: 'placemakers', environmentId: 'production' as const, releaseId: 'okf-placemakers-1.0.0', conceptIds: [conceptId('problems/bathroom-leak')], cascade: 'descendants' as const, effect: { suppressClaims: true, suppressRetrieval: true }, reason: 'safety correction', createdBy: 'safety-owner', expiresAt: new Date(Date.now() + 7 * 86400000) };
+  await appendOkfRevocationEvent(db as any, { ...common, eventType: 'created', createdAt: new Date(Date.now() - 3600000) });
+  await appendOkfRevocationEvent(db as any, { ...common, eventType: 'lifted', eventId: 'lift-1', createdAt: new Date(Date.now() - 1800000), correctedReleaseId: 'okf-placemakers-1.0.1' });
   assert.equal(db.collection('okf_revocation_events').docs.length, 2);
-  const active = await loadActiveOkfRevocations(db as any, 'placemakers', 'production', undefined, new Date('2026-10-11T00:00:00.000Z'));
+  const active = await loadActiveOkfRevocations(db as any, 'placemakers', 'production', undefined, new Date());
   assert.equal(active.length, 0);
 });
 
 await test('invalid revocation expiry and invalid transition fail closed', async () => {
   const db = new MemoryDb();
   const base = { revocationId: 'rev-x', tenantId: 'placemakers', environmentId: 'production' as const, conceptIds: [conceptId('problems/bathroom-leak')], cascade: 'none' as const, effect: { suppressClaims: true, suppressRetrieval: true }, reason: 'test', createdBy: 'owner' };
-  await rejectsCode(() => appendOkfRevocationEvent(db as any, { ...base, eventType: 'created', createdAt: new Date('2026-10-10T00:00:00.000Z'), expiresAt: new Date('2026-10-09T00:00:00.000Z') }), 'invalid_expiry');
-  await rejectsCode(() => appendOkfRevocationEvent(db as any, { ...base, eventType: 'lifted', createdAt: new Date('2026-10-10T00:00:00.000Z'), expiresAt: new Date('2026-10-20T00:00:00.000Z') }), 'invalid_transition');
+  await rejectsCode(() => appendOkfRevocationEvent(db as any, { ...base, eventType: 'created', createdAt: new Date(), expiresAt: new Date(Date.now() - 1000) }), 'invalid_expiry');
+  await rejectsCode(() => appendOkfRevocationEvent(db as any, { ...base, eventType: 'lifted', createdAt: new Date(), expiresAt: new Date(Date.now() + 7 * 86400000) }), 'invalid_transition');
 });
 
 await test('unresolved relationships, hierarchy cycles, and cross-tenant concepts fail semantic validation', () => {
