@@ -82,6 +82,53 @@ export interface ModelExecutionResponse {
   };
 }
 
+export interface AgentToolDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
+
+export interface AgentToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, any>;
+}
+
+export interface AgentMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content?: string;
+  tool_calls?: AgentToolCall[];
+  tool_call_id?: string;
+  name?: string;
+}
+
+export interface AgentExecutionRequest {
+  taskType?: TaskType;
+  systemPrompt?: string;
+  messages: AgentMessage[];
+  tools?: AgentToolDefinition[];
+  policyRef?: string;
+  targetDataResidency?: string;
+}
+
+export interface AgentExecutionResponse {
+  content: string;
+  toolCalls: AgentToolCall[];
+  route: ModelRouteResult;
+  latencyMs: number;
+  residencyProven: boolean;
+  residencyEvidence: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+}
+
 export class ModelGateway {
   public readonly router: ModelRouter;
   public readonly agentRouter: AgentRouter;
@@ -244,6 +291,74 @@ export class ModelGateway {
           const next = routes[i + 1];
           console.warn(
             `[ModelGateway] Candidate stream ${route.provider}/${route.model} failed (${err.name || err.message}). Attempting fallback to ${next.provider}/${next.model}...`
+          );
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  /**
+   * Optional mock executor for scripted agent tests without network.
+   */
+  public mockAgentExecutor?: (
+    req: AgentExecutionRequest,
+    onDelta?: (delta: string) => void
+  ) => Promise<{
+    content: string;
+    toolCalls: AgentToolCall[];
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  }>;
+
+  /**
+   * Executes an autonomous agent turn with streaming tokens and structured tool calling.
+   * Supports OpenAI-compatible first and Anthropic second.
+   */
+  async executeAgentStream(
+    release: BusinessPackRelease,
+    req: AgentExecutionRequest,
+    onDelta: (delta: string) => void = () => {}
+  ): Promise<AgentExecutionResponse> {
+    const startTime = Date.now();
+
+    if (this.mockAgentExecutor) {
+      const mockResult = await this.mockAgentExecutor(req, onDelta);
+      return {
+        content: mockResult.content || '',
+        toolCalls: mockResult.toolCalls || [],
+        route: {
+          policyId: req.policyRef || 'mock_agent_policy',
+          provider: 'custom',
+          model: 'mock-agent',
+          dataResidency: 'au',
+          maxInputTokens: 8192,
+          maxOutputTokens: 4096,
+          timeoutMs: 10000,
+        },
+        latencyMs: Date.now() - startTime,
+        residencyProven: true,
+        residencyEvidence: 'mock:internal',
+        usage: mockResult.usage,
+      };
+    }
+
+    const taskType: TaskType = req.taskType || 'agent_turn';
+    const routes = this.router.resolveCandidates(taskType, release, {
+      targetDataResidency: req.targetDataResidency,
+      policyRef: req.policyRef,
+    });
+
+    let lastError: any = null;
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
+      try {
+        return await this.executeRouteAgentStream(route, release, req, onDelta, startTime);
+      } catch (err: any) {
+        lastError = err;
+        if (i < routes.length - 1) {
+          const next = routes[i + 1];
+          console.warn(
+            `[ModelGateway] Candidate agent stream ${route.provider}/${route.model} failed (${err.name || err.message}). Attempting fallback to ${next.provider}/${next.model}...`
           );
         }
       }
@@ -511,6 +626,304 @@ export class ModelGateway {
 
     return {
       content: content.trim(),
+      route,
+      latencyMs: Date.now() - startTime,
+      residencyProven: true,
+      residencyEvidence: evidenced.evidence,
+      usage,
+    };
+  }
+
+  private async executeRouteAgentStream(
+    route: ModelRouteResult,
+    release: BusinessPackRelease,
+    req: AgentExecutionRequest,
+    onDelta: (delta: string) => void,
+    startTime: number
+  ): Promise<AgentExecutionResponse> {
+    const { endpoint, evidenced, apiKey, signal, timeoutMs } = this.prepareExecution(route, release, {
+      taskType: req.taskType || 'agent_turn',
+      prompt: '',
+      systemPrompt: req.systemPrompt,
+      policyRef: req.policyRef,
+      targetDataResidency: req.targetDataResidency,
+    });
+
+    let resp: Response;
+    try {
+      if (route.provider === 'openai' || route.provider === 'open-model' || route.provider === 'custom') {
+        const isReasoningOrGpt5 =
+          route.model.startsWith('o1') ||
+          route.model.startsWith('o3') ||
+          route.model.startsWith('gpt-5') ||
+          route.model.includes('preview');
+
+        const messages: any[] = [];
+        if (req.systemPrompt) {
+          messages.push({ role: isReasoningOrGpt5 ? 'developer' : 'system', content: req.systemPrompt });
+        }
+        for (const m of req.messages) {
+          if (m.role === 'tool') {
+            messages.push({
+              role: 'tool',
+              tool_call_id: m.tool_call_id,
+              content: m.content || '',
+            });
+          } else if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+            messages.push({
+              role: 'assistant',
+              content: m.content || null,
+              tool_calls: m.tool_calls.map((tc) => ({
+                id: tc.id,
+                type: 'function',
+                function: {
+                  name: tc.name,
+                  arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments),
+                },
+              })),
+            });
+          } else {
+            messages.push({ role: m.role, content: m.content || '' });
+          }
+        }
+
+        const payload: Record<string, any> = {
+          model: route.model,
+          messages,
+          stream: true,
+        };
+
+        if (req.tools && req.tools.length > 0) {
+          payload.tools = req.tools.map((t) => ({
+            type: 'function',
+            function: {
+              name: t.name,
+              description: t.description,
+              parameters: t.parameters,
+            },
+          }));
+          payload.tool_choice = 'auto';
+        }
+
+        if (isReasoningOrGpt5) {
+          if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
+        } else {
+          if (route.temperature !== undefined) payload.temperature = route.temperature;
+          else payload.temperature = 0.2;
+          if (route.maxOutputTokens) payload.max_tokens = route.maxOutputTokens;
+          payload.stream_options = { include_usage: true };
+        }
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          signal,
+          headers,
+          body: JSON.stringify(payload),
+        });
+      } else if (route.provider === 'anthropic') {
+        const anthropicMessages: any[] = [];
+        for (const m of req.messages) {
+          if (m.role === 'tool') {
+            anthropicMessages.push({
+              role: 'user',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: m.tool_call_id,
+                  content: m.content || '',
+                },
+              ],
+            });
+          } else if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+            const contentParts: any[] = [];
+            if (m.content) contentParts.push({ type: 'text', text: m.content });
+            for (const tc of m.tool_calls) {
+              contentParts.push({
+                type: 'tool_use',
+                id: tc.id,
+                name: tc.name,
+                input: tc.arguments,
+              });
+            }
+            anthropicMessages.push({ role: 'assistant', content: contentParts });
+          } else if (m.role === 'user' || m.role === 'assistant') {
+            anthropicMessages.push({ role: m.role, content: m.content || '' });
+          }
+        }
+
+        const payload: Record<string, any> = {
+          model: route.model,
+          messages: anthropicMessages,
+          stream: true,
+          max_tokens: route.maxOutputTokens || 4096,
+          temperature: route.temperature ?? 0.2,
+        };
+        if (req.systemPrompt) payload.system = req.systemPrompt;
+        if (req.tools && req.tools.length > 0) {
+          payload.tools = req.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.parameters,
+          }));
+        }
+
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey || '',
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        throw new ModelGatewayError(
+          `Provider '${route.provider}' does not support agent tool-calling streaming.`,
+          'UNSUPPORTED_PROVIDER',
+          route.provider,
+          route.model
+        );
+      }
+    } catch (err: any) {
+      if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+        throw new ModelTimeoutError(route.provider, route.model, timeoutMs);
+      }
+      throw new ModelGatewayError(
+        `Failed to execute model agent request to ${route.provider}/${route.model}: ${err.message}`,
+        'NETWORK_FAILURE',
+        route.provider,
+        route.model,
+        { cause: err.message }
+      );
+    }
+
+    if (!resp.ok) {
+      const errorBody = await resp.text();
+      throw new ModelProviderHttpError(route.provider, route.model, resp.status, errorBody);
+    }
+
+    if (!resp.body) {
+      throw new ModelMalformedResponseError(route.provider, route.model, 'Response body is empty');
+    }
+
+    let content = '';
+    const toolCallsMap = new Map<number, { id: string; name: string; argsStr: string }>();
+    let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
+
+    if (route.provider === 'openai' || route.provider === 'open-model' || route.provider === 'custom') {
+      await readSseStream(resp.body, (line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(':')) return;
+        if (trimmed.startsWith('data:')) {
+          const dataStr = trimmed.slice(5).trim();
+          if (dataStr === '[DONE]') return;
+          try {
+            const parsed = JSON.parse(dataStr);
+            const choice = parsed.choices?.[0];
+            const delta = choice?.delta;
+            if (delta?.content) {
+              content += delta.content;
+              onDelta(delta.content);
+            }
+            if (Array.isArray(delta?.tool_calls)) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                let existing = toolCallsMap.get(idx);
+                if (!existing) {
+                  existing = { id: tc.id || `call_${idx}_${Date.now()}`, name: tc.function?.name || '', argsStr: '' };
+                  toolCallsMap.set(idx, existing);
+                }
+                if (tc.id) existing.id = tc.id;
+                if (tc.function?.name) existing.name = tc.function.name;
+                if (tc.function?.arguments) existing.argsStr += tc.function.arguments;
+              }
+            }
+            if (parsed.usage) {
+              usage = {
+                promptTokens: parsed.usage.prompt_tokens,
+                completionTokens: parsed.usage.completion_tokens,
+                totalTokens: parsed.usage.total_tokens,
+              };
+            }
+          } catch {}
+        }
+      });
+    } else if (route.provider === 'anthropic') {
+      let currentToolIdx = -1;
+      await readSseStream(resp.body, (line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(':')) return;
+        if (trimmed.startsWith('data:')) {
+          const dataStr = trimmed.slice(5).trim();
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.type === 'content_block_start') {
+              if (parsed.content_block?.type === 'tool_use') {
+                currentToolIdx = parsed.index ?? toolCallsMap.size;
+                toolCallsMap.set(currentToolIdx, {
+                  id: parsed.content_block.id || `tool_${Date.now()}`,
+                  name: parsed.content_block.name || '',
+                  argsStr: '',
+                });
+              }
+            } else if (parsed.type === 'content_block_delta') {
+              if (parsed.delta?.type === 'text_delta' && parsed.delta?.text) {
+                content += parsed.delta.text;
+                onDelta(parsed.delta.text);
+              } else if (parsed.delta?.type === 'input_json_delta' && parsed.delta?.partial_json) {
+                const existing = toolCallsMap.get(currentToolIdx);
+                if (existing) existing.argsStr += parsed.delta.partial_json;
+              }
+            } else if (parsed.type === 'message_start' && parsed.message?.usage) {
+              usage = {
+                promptTokens: parsed.message.usage.input_tokens,
+                completionTokens: 0,
+                totalTokens: parsed.message.usage.input_tokens,
+              };
+            } else if (parsed.type === 'message_delta' && parsed.usage) {
+              const out = parsed.usage.output_tokens || 0;
+              const inTokens = usage?.promptTokens || 0;
+              usage = {
+                promptTokens: inTokens,
+                completionTokens: out,
+                totalTokens: inTokens + out,
+              };
+            }
+          } catch {}
+        }
+      });
+    }
+
+    const toolCalls: AgentToolCall[] = [];
+    for (const [, item] of toolCallsMap.entries()) {
+      let args: Record<string, any> = {};
+      try {
+        args = item.argsStr ? JSON.parse(item.argsStr) : {};
+      } catch {
+        args = { raw: item.argsStr };
+      }
+      toolCalls.push({
+        id: item.id,
+        name: item.name,
+        arguments: args,
+      });
+    }
+
+    if (!content.trim() && toolCalls.length === 0) {
+      throw new ModelMalformedResponseError(
+        route.provider,
+        route.model,
+        'Provider agent streaming response contained neither content nor tool calls'
+      );
+    }
+
+    return {
+      content: content.trim(),
+      toolCalls,
       route,
       latencyMs: Date.now() - startTime,
       residencyProven: true,

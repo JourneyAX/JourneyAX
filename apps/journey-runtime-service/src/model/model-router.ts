@@ -6,7 +6,8 @@ export type TaskType =
   | 'tool_selection'
   | 'complex_reasoning'
   | 'fast_intent'
-  | 'response_generation';
+  | 'response_generation'
+  | 'agent_turn';
 
 export interface ModelRouteResult {
   policyId: string;
@@ -53,9 +54,9 @@ export class ModelRouter {
       } else if (taskType === 'planning' || taskType === 'complex_reasoning') {
         const complexPolicy = modelPolicy.policies.find((p) => p.policyId === 'complex_reasoning');
         if (complexPolicy) targetPolicyId = 'complex_reasoning';
-      } else if (taskType === 'tool_selection') {
-        const toolPolicy = modelPolicy.policies.find((p) => p.policyId === 'tool_selection' || p.policyId === 'complex_reasoning');
-        if (toolPolicy) targetPolicyId = toolPolicy.policyId;
+      } else if (taskType === 'tool_selection' || taskType === 'agent_turn') {
+        const agentPolicy = modelPolicy.policies.find((p) => p.policyId === 'agent_turn' || p.policyId === 'complex_reasoning' || p.policyId === 'tool_selection');
+        if (agentPolicy) targetPolicyId = agentPolicy.policyId;
       } else if (taskType === 'response_generation') {
         const respPolicy = modelPolicy.policies.find((p) => p.policyId === 'response_generation');
         if (respPolicy) {

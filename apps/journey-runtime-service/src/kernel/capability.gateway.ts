@@ -98,6 +98,10 @@ export class CapabilityGateway {
     this.dispatcher.registerNativeHandler(toolId, handler);
   }
 
+  getNativeHandler(toolId: string): NativeCapabilityHandler | undefined {
+    return this.dispatcher.getNativeHandler(toolId);
+  }
+
   /**
    * Resolves permitted stage-scoped capabilities for the current turn.
    */

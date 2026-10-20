@@ -37,6 +37,12 @@ const SETTINGS: Array<{ key: SettingKey; title: string; help: string; read: (pro
     help: "Optional: move idle conversations to the active release after this many hours, only when it can host the conversation. Empty keeps every conversation on its original release.",
     read: (project) => project.extensions?.workspacePinPolicy,
   },
+  {
+    key: "agentMode",
+    title: "Agent mode (autonomous conversational assistant)",
+    help: "When enabled, the assistant uses autonomous tool calling and multi-step reasoning to answer customer questions, with the rule-based journey engine as fallback. Default: false.",
+    read: (project) => project.extensions?.agentMode,
+  },
 ];
 
 const pretty = (value: unknown) => (value === undefined ? "" : JSON.stringify(value, null, 2));

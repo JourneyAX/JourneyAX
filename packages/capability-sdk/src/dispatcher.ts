@@ -30,6 +30,10 @@ export class CapabilityDispatcher {
     this.nativeHandlers.set(name, handler);
   }
 
+  getNativeHandler(name: string): NativeCapabilityHandler | undefined {
+    return this.nativeHandlers.get(name);
+  }
+
   /**
    * Dispatches execution according to the ToolBinding executor definition.
    */

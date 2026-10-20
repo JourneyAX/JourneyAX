@@ -19,6 +19,7 @@ import { OutcomeValidator } from '../../src/turn/validate-outcome';
 import { OkfKnowledgeControlPlane } from '../../src/kernel/knowledge-control-plane';
 import { ProjectService } from '../../../project-service/src/project.service';
 import { OkfAuthoringService } from '../../../project-service/src/okf-authoring.service';
+import { createScriptedAgentExecutor } from './scripted-agent-server';
 
 /**
  * The real PlaceMakers inputs, published through the real chain, for tests that run the runtime on them: the committed catalogue
@@ -86,7 +87,10 @@ export const products: any[] = [
 /** Stands in for the language model: a fixed function of the message, so the run is repeatable. */
 export class FixedGateway extends ModelGateway {
   /** `calls` receives the task type of every request, so a test can say how many times the model was asked and for what. */
-  constructor(private readonly reply = 'Here are options from the catalogue.', private readonly calls?: string[]) { super(); }
+  constructor(private readonly reply = 'Here are options from the catalogue.', private readonly calls?: string[]) {
+    super();
+    this.mockAgentExecutor = createScriptedAgentExecutor();
+  }
   async execute(_release: any, request: ModelExecutionRequest): Promise<ModelExecutionResponse> {
     this.calls?.push(request.taskType);
     let content = this.reply;
@@ -128,12 +132,13 @@ export class FixedGateway extends ModelGateway {
  * The project as the back office holds it: a visual journey graph (one trigger per journey, named as the live pack's are),
  * the catalogue mapping, and the AI settings. The pack is produced by the real publisher, never assembled by hand.
  */
-export function projectDoc() {
+export function projectDoc(agentMode = false) {
   const trigger = (id: string, label: string) => ({ id: `t-${id}`, data: { kind: 'trigger.intent', stageId: `${id}_start`, label } });
   return {
     projectId: TENANT, name: 'PlaceMakers', companyName: 'PlaceMakers', ai: { provider: 'anthropic', model: 'claude-3-5-sonnet' },
     pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' }, catalogMapping,
     routingPolicy: { defaultJourneyId: 'placemakers_shop', fallbackOnCatalogSearch: true },
+    extensions: agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true } } : {},
     persona: {
       systemName: 'PlaceMakers assistant', systemPromptOverrides: 'Help customers find products.',
       journeyGraph: {
@@ -160,11 +165,14 @@ export interface PlaceMakersStack {
   authored: ReturnType<typeof applyAuthoring>;
   /** `servePacks: true` loads the active pack through the real repository and loader (checksum-verified) instead of being handed one. */
   /** `searchError` makes the catalogue search fail the way a broken connection would, with that message. */
-  serviceFor: (options?: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string }) => TurnApplicationService;
+  serviceFor: (options?: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string; modelGateway?: ModelGateway }) => TurnApplicationService;
 }
 
 /** Draft + customer paths → immutable OKF release → project → Business Pack, exactly as the back office does it. */
-export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | 'test' | 'staging' | 'production' } = {}): Promise<PlaceMakersStack> {
+export async function buildPlaceMakersStack(options: {
+  environmentId?: 'dev' | 'test' | 'staging' | 'production';
+  agentMode?: boolean;
+} = {}): Promise<PlaceMakersStack> {
   // Always an isolated in-memory store; `production` only names the environment inside it (the one a customer's request defaults to).
   const ENVIRONMENT = options.environmentId ?? 'test';
   const authored = applyAuthoring(buildTaxonomyDraft(snapshot, ingest), authoringSpec);
@@ -178,7 +186,7 @@ export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | '
   for (const [name, spec] of [['business_pack_releases', { tenantId: 1, environmentId: 1, version: 1 }], ['config_versions', { projectId: 1, version: 1 }]] as const) {
     await db.collection(name).createIndex(spec as any, { unique: true });
   }
-  await db.collection('tenant_configs').insertOne(projectDoc());
+  await db.collection('tenant_configs').insertOne(projectDoc(options.agentMode));
   const projects = new ProjectService();
   Object.assign(projects as any, {
     db, projectsCol: db.collection('tenant_configs'), membersCol: db.collection('project_members'), rulesCol: db.collection('business_rules'),
@@ -194,8 +202,8 @@ export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | '
   assert.equal(pack.knowledgeModel.checksum, okf.release.checksum, 'the pack is bound to the exact checksum of the published release');
   assert.equal(pack.knowledgeModel.required, true);
 
-  const serviceFor = (options: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string } = {}) => {
-    const modelGateway = new FixedGateway(options.reply, options.calls);
+  const serviceFor = (options: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string; modelGateway?: ModelGateway } = {}) => {
+    const modelGateway = options.modelGateway || new FixedGateway(options.reply, options.calls);
     const capabilityGateway = new CapabilityGateway();
     capabilityGateway.registerCustomAdapter('catalog.search', options.searchError
       ? ({ execute: async () => ({ items: [], total: 0, error: options.searchError }) } as any)

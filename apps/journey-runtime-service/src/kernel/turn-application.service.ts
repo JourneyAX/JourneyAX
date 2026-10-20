@@ -45,6 +45,10 @@ import {
 } from './knowledge-control-plane';
 import { formatBusinessProfile, extractRelevantOkfNotes } from './business-knowledge';
 import type { OkfGateDecision } from '@journeyax/knowledge';
+import { AgentTurnLoop, isAgentModeEnabled } from '../agent/agent-loop';
+import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
+import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
+import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
 
 export interface TurnTiming {
   tenantId?: string;
@@ -230,6 +234,72 @@ export class TurnApplicationService {
       // 3a. Turn Replay Rejection — Duplicate turnId is rejected unconditionally regardless of tool execution!
       if (turnId && workspace && workspace.lastProcessedTurnId === turnId) {
         throw new DuplicateTurnError(turnId);
+      }
+
+      // 3b. Agent Mode: autonomous AI-led turn with multi-round tool execution and streaming
+      if (isAgentModeEnabled(release)) {
+        if (!workspace) {
+          workspace = await this.workspaceRepo.getOrCreate(
+            tenantId,
+            envId,
+            workspaceId,
+            'unassigned',
+            'initial',
+            undefined,
+            release.manifest.version || release.manifest.packId,
+            this.createWorkspacePins(release)
+          );
+        }
+        try {
+          const agentLoop = new AgentTurnLoop();
+          const catalogSearchHandler =
+            (this.capabilityGateway?.getNativeHandler?.('catalog.search') as CatalogSearchHandler) ||
+            new CatalogSearchHandler();
+          const branchStockHandler =
+            (this.capabilityGateway?.getNativeHandler?.('branch.stock_check') as BranchStockCheckHandler) ||
+            new BranchStockCheckHandler();
+          const outcome = await agentLoop.execute({
+            command,
+            release,
+            workspace,
+            modelGateway: this.modelGateway,
+            catalogSearchHandler,
+            branchStockHandler,
+            knowledgeSearchHandler: new KnowledgeSearchHandler(
+              undefined,
+              this.knowledgeControlPlane ? (() => this.knowledgeControlPlane) as any : undefined
+            ),
+            knowledgeControlPlane: this.knowledgeControlPlane,
+            sink: timingSink,
+          });
+
+          await this.commitWorkspace(
+            workspace,
+            turnId,
+            envId,
+            tenantId,
+            workspaceId,
+            outcome.turnResult.decision.type,
+            command.correlationId
+          );
+          this.recordTurnTiming(
+            outcome.turnResult,
+            turnStartTime,
+            timeToFirstEventMs,
+            timeToFirstTextMs,
+            { latencyMs: outcome.durationMs, usage: outcome.tokens },
+            undefined,
+            0,
+            0,
+            command
+          );
+          return outcome.turnResult;
+        } catch (agentErr: any) {
+          console.warn(
+            `[AgentMode] Autonomous turn failed (${agentErr?.message || agentErr}). Falling back to rule-based engine.`
+          );
+          // Fall back seamlessly to rule-based execution below
+        }
       }
 
       // 4. Extract and reduce conversational facts through model-gateway & schema validation

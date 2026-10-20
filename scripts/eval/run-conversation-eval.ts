@@ -192,6 +192,7 @@ function parseArgs(): {
   outputPath: string;
   reportPath: string;
   useRealModel: boolean;
+  useAgentMode: boolean;
   limit: number | null;
 } {
   const args = process.argv.slice(2);
@@ -200,6 +201,7 @@ function parseArgs(): {
   let outputPath = path.resolve(`docs/evals/eval-results-${Date.now()}.json`);
   let reportPath = path.resolve(`docs/evals/baseline-${today}.md`);
   let useRealModel = false;
+  let useAgentMode = true;
   let limit: number | null = null;
 
   for (let i = 0; i < args.length; i++) {
@@ -213,12 +215,16 @@ function parseArgs(): {
       useRealModel = true;
     } else if (args[i] === '--mock') {
       useRealModel = false;
+    } else if (args[i] === '--agent') {
+      useAgentMode = true;
+    } else if (args[i] === '--rule-based') {
+      useAgentMode = false;
     } else if (args[i] === '--limit' && args[i + 1]) {
       limit = parseInt(args[++i], 10);
     }
   }
 
-  return { promptsPath, outputPath, reportPath, useRealModel, limit };
+  return { promptsPath, outputPath, reportPath, useRealModel, useAgentMode, limit };
 }
 
 function percentile(values: number[], p: number): number {
@@ -254,7 +260,7 @@ function checkNoInternalIds(text: string): boolean {
 }
 
 /** Load PlaceMakers products CSV into the in-memory db. */
-function loadPlacemakersCsvProducts(db: any): number {
+async function loadPlacemakersCsvProducts(db: any): Promise<number> {
   const csvPath = path.resolve('apps/journeyax-web/public/data/placemakers-products.csv');
   if (!fs.existsSync(csvPath)) return 0;
 
@@ -268,8 +274,9 @@ function loadPlacemakersCsvProducts(db: any): number {
   const catIdx = header.indexOf('Category');
   const descIdx = header.indexOf('Item_Description');
   const priceIdx = header.indexOf('OriginalPrice');
+  const brandIdx = header.indexOf('Brand');
 
-  for (let i = 1; i < Math.min(lines.length, 2500); i++) {
+  for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line.trim()) continue;
     const parts: string[] = [];
@@ -292,6 +299,7 @@ function loadPlacemakersCsvProducts(db: any): number {
     const name = (parts[nameIdx] || '').trim();
     if (!sku || !name) continue;
 
+    const brand = brandIdx >= 0 ? (parts[brandIdx] || '').trim() : '';
     const category = (parts[catIdx] || 'General').trim();
     const description = (parts[descIdx] || name).trim();
     const priceStr = (parts[priceIdx] || '0').replace(/[^0-9.]/g, '');
@@ -301,9 +309,10 @@ function loadPlacemakersCsvProducts(db: any): number {
       projectId: TENANT,
       sku,
       name,
+      brand,
       category,
       categoryPath: [category],
-      description,
+      description: brand ? `${brand} ${description}` : description,
       priceUSD: { min: price },
       currency: 'NZD',
       inStock: true,
@@ -311,13 +320,13 @@ function loadPlacemakersCsvProducts(db: any): number {
   }
 
   if (products.length > 0) {
-    db.collection('products').insertMany(products);
+    await db.collection('products').insertMany(products);
   }
   return products.length;
 }
 
 async function main() {
-  const { promptsPath, outputPath, reportPath, useRealModel, limit } = parseArgs();
+  const { promptsPath, outputPath, reportPath, useRealModel, useAgentMode, limit } = parseArgs();
 
   console.log(`Loading test prompts from: ${promptsPath}`);
   if (!fs.existsSync(promptsPath)) {
@@ -332,9 +341,9 @@ async function main() {
     console.log(`Limiting evaluation to first ${limit} test cases.`);
   }
 
-  console.log(`Setting up in-process PlaceMakers runtime stack (${useRealModel ? 'real model gateway' : 'mock model gateway'})...`);
-  const stack = await buildPlaceMakersStack();
-  const loadedCount = loadPlacemakersCsvProducts(stack.db);
+  console.log(`Setting up in-process PlaceMakers runtime stack (${useRealModel ? 'real model gateway' : 'scripted fake model server'} | ${useAgentMode ? 'Agent Mode' : 'Rule-Based Mode'})...`);
+  const stack = await buildPlaceMakersStack({ agentMode: useAgentMode });
+  const loadedCount = await loadPlacemakersCsvProducts(stack.db);
   console.log(`Loaded ${loadedCount} catalogue products into in-memory store.`);
 
   const service = stack.serviceFor({ servePacks: true });
@@ -494,12 +503,22 @@ async function main() {
   console.log(`\nJSON evaluation results saved to: ${outputPath}`);
 
   // Write Markdown Report
-  const modeLabel = useRealModel ? 'Real Model Gateway' : 'Retrieval-Only Baseline (Mock Model Gateway)';
+  const modeLabel = useAgentMode
+    ? (useRealModel ? 'Agent Mode (Real Model Gateway)' : 'Agent Mode (Scripted Model Server)')
+    : (useRealModel ? 'Rule-Based Baseline (Real Model Gateway)' : 'Retrieval-Only Baseline (Mock Model Gateway)');
+
+  const reportTitle = useAgentMode
+    ? `# PlaceMakers Conversation Quality Evaluation Report: Agent Mode`
+    : `# PlaceMakers Conversation Quality Baseline Report (Retrieval-Only Baseline)`;
+
+  const noteBlock = useAgentMode
+    ? `> [!NOTE]\n> **Agent Mode Evaluation**: Evaluates the autonomous AI-led loop with dynamic tool calling (parallel read-only tools, catalog search, OKF notes, present_card) and streaming sentence shaping with OKF Claim Guard.`
+    : `> [!NOTE]\n> **Retrieval-Only Baseline**: This evaluation was executed using the mock model gateway. Latency numbers reflect local in-memory execution and pass rates reflect catalogue retrieval and rule-based response generation without a live LLM API key. To run against a live provider with streaming LLM generation, set your API key and pass \`--real\`.`;
+
   const reportLines: string[] = [
-    `# PlaceMakers Conversation Quality Baseline Report (Retrieval-Only Baseline)`,
+    reportTitle,
     ``,
-    `> [!NOTE]`,
-    `> **Retrieval-Only Baseline**: This evaluation was executed using the mock model gateway. Latency numbers reflect local in-memory execution and pass rates reflect catalogue retrieval and rule-based response generation without a live LLM API key. To run against a live provider with streaming LLM generation, set your API key and pass \`--real\`.`,
+    noteBlock,
     ``,
     `- **Date**: ${new Date().toISOString()}`,
     `- **Test Set**: PlaceMakers 100 Test Prompts (\`${path.basename(promptsPath)}\`)`,

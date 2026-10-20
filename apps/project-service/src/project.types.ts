@@ -647,6 +647,8 @@ export interface UpdateProjectDto {
   workspacePinPolicy?: { idleRepinAfterHours?: number } | null;
   /** How the assistant decides each turn (ask, recommend, show, answer): thresholds, word lists and wording. Unset sections use platform defaults. */
   dialoguePolicy?: Record<string, unknown> | null;
+  /** Autonomous AI agent mode: tool calling, parallel retrieval and multi-step reasoning. Defaults to off (false). */
+  agentMode?: boolean | { enabled: boolean } | null;
   /** The journey that answers a request matching none; required before a project with several journeys can be published. */
   routingPolicy?: { defaultJourneyId: string; fallbackOnCatalogSearch?: boolean } | null;
   embed?: EmbedConfig;

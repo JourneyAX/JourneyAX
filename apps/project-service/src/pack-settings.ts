@@ -40,6 +40,7 @@ const DIALOGUE_SHAPE = object({
   wording: { kind: 'choice', values: ['template', 'model'] },
   history: object({ maxTurns: whole(1, 20), maxChars: whole(500, 20000) }),
   streaming: bool,
+  agentMode: bool,
   templates: object({
     ask: texts, askMany: texts, recommendOne: texts, recommendMany: texts, show: texts, showNeeds: texts,
     why: text, whyNoExcerpt: text, howTo: text, howToNone: text, headingRecommend: text, headingShow: text, eyebrowRecommend: text, eyebrowShow: text,
@@ -91,6 +92,7 @@ export function validatePackSettings(dto: {
   workspacePinPolicy?: unknown;
   routingPolicy?: unknown;
   dialoguePolicy?: unknown;
+  agentMode?: unknown;
 }): PackSettingsResult {
   const set: Record<string, unknown | null> = {};
 
@@ -204,5 +206,34 @@ export function validatePackSettings(dto: {
     }
   }
 
+  // Agent mode: enables tool calling and autonomous reasoning. Defaults to off.
+  if (dto.agentMode !== undefined) {
+    if (dto.agentMode === null) {
+      set['extensions.agentMode'] = null;
+    } else if (typeof dto.agentMode === 'boolean') {
+      set['extensions.agentMode'] = { enabled: dto.agentMode };
+    } else if (typeof dto.agentMode === 'object' && !Array.isArray(dto.agentMode)) {
+      const modeObj = dto.agentMode as any;
+      if (typeof modeObj.enabled !== 'boolean') {
+        return { ok: false, message: 'Invalid agentMode: enabled must be true or false' };
+      }
+      set['extensions.agentMode'] = { enabled: modeObj.enabled };
+    } else {
+      return { ok: false, message: 'Invalid agentMode: must be a boolean or an object with { enabled: boolean }' };
+    }
+  }
+
   return { ok: true, set };
+}
+
+/**
+ * Checks whether agent mode is enabled for a given release or pack.
+ * Agent mode is switched on per tenant by pack setting (default off).
+ */
+export function isAgentModeEnabled(release?: any): boolean {
+  if (!release) return false;
+  const ext = release.extensions;
+  if (ext?.agentMode?.enabled === true || ext?.agentMode === true) return true;
+  if (ext?.dialoguePolicy?.agentMode === true) return true;
+  return false;
 }
