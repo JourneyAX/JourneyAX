@@ -168,7 +168,7 @@
     { "id": "roofing_iron", "concept": "Building Products > Roofing", "reason": "Roofing iron, corrugate and Colorsteel are the everyday words for metal roofing.",
       "phrases": ["roofing iron", "corrugated iron", "corrugate", "colorsteel", "coloursteel", "iron roofing", "roofing sheets"] },
     { "id": "framing_timber", "concept": "Timber & Plywood > Structural Grade Timber Kiln Dried", "reason": "Customers ask for framing by its size and by the trade words dwang and noggin.",
-      "phrases": ["framing timber", "dwang", "dwangs", "noggin", "noggins", "nog", "nogs", "4x2", "2x4", "4 by 2", "90x45", "100x50"] },
+      "phrases": ["framing timber", "dwang", "dwangs", "noggin", "noggins", "nog", "nogs", "4x2", "2x4", "4 by 2", "4 x 2", "90x45", "90 x 45", "90x45mm", "90 x 45mm", "100x50", "100 x 50", "100x50mm", "100 x 50mm"] },
     { "id": "chipboard", "concept": "Building Products > Panels > Medium Density Particle Board", "reason": "Chipboard is the everyday word for particle board.",
       "phrases": ["chipboard", "chip board", "particle board", "particleboard"] },
     { "id": "chipboard_flooring", "concept": "Building Products > Structural Flooring > Particle Board Floor Sheets", "reason": "Customers ask for flooring by the tongue-and-groove sheet.",

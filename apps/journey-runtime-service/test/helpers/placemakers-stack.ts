@@ -134,10 +134,32 @@ export class FixedGateway extends ModelGateway {
  */
 export function projectDoc(agentMode = false) {
   const trigger = (id: string, label: string) => ({ id: `t-${id}`, data: { kind: 'trigger.intent', stageId: `${id}_start`, label } });
+  const ai = process.env.OPENAI_API_KEY
+    ? { provider: 'openai', model: process.env.MODEL_NAME || 'gpt-4o-mini' }
+    : { provider: 'anthropic', model: 'claude-3-5-sonnet' };
   return {
-    projectId: TENANT, name: 'PlaceMakers', companyName: 'PlaceMakers', ai: { provider: 'anthropic', model: 'claude-3-5-sonnet' },
+    projectId: TENANT, name: 'PlaceMakers', companyName: 'PlaceMakers', ai,
     pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' }, catalogMapping,
     routingPolicy: { defaultJourneyId: 'placemakers_shop', fallbackOnCatalogSearch: true },
+    vocabulary: {
+      version: '1.0.0',
+      terms: [
+        {
+          term: '4x2',
+          canonical: '100x50',
+          synonyms: ['100 x 50', '100x50mm', '100 x 50mm', '4x2', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+        },
+        {
+          term: '100x50',
+          canonical: '100x50',
+          synonyms: ['100 x 50', '100x50mm', '100 x 50mm', '4x2', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+        },
+      ],
+      slotSynonyms: {
+        '100x50': ['100 x 50', '100x50mm', '100 x 50mm', '4x2', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+        '4x2': ['100x50', '100 x 50', '100x50mm', '100 x 50mm', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+      },
+    },
     extensions: agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true } } : {},
     persona: {
       systemName: 'PlaceMakers assistant', systemPromptOverrides: 'Help customers find products.',

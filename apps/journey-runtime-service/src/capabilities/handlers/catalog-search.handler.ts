@@ -71,6 +71,8 @@ export interface QueryToken {
   synonyms?: string[];
 }
 
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export function buildGlossaryIndex(sources: {
   glossary?: Record<string, string[]>;
   vocabulary?: any;
@@ -101,12 +103,12 @@ export function buildGlossaryIndex(sources: {
   if (vocab && typeof vocab === 'object') {
     if (vocab.synonyms && typeof vocab.synonyms === 'object') {
       for (const [key, syns] of Object.entries(vocab.synonyms)) {
-        if (Array.isArray(syns)) addCluster([key, ...syns as string[]]);
+        if (Array.isArray(syns)) addCluster([key, ...(syns as string[])]);
       }
     }
     if (vocab.glossary && typeof vocab.glossary === 'object') {
       for (const [key, syns] of Object.entries(vocab.glossary)) {
-        if (Array.isArray(syns)) addCluster([key, ...syns as string[]]);
+        if (Array.isArray(syns)) addCluster([key, ...(syns as string[])]);
       }
     }
     if (Array.isArray(vocab.terms)) {
@@ -115,8 +117,14 @@ export function buildGlossaryIndex(sources: {
       }
     }
     if (vocab.slotSynonyms && typeof vocab.slotSynonyms === 'object') {
-      for (const syns of Object.values(vocab.slotSynonyms)) {
-        if (Array.isArray(syns)) addCluster(syns as string[]);
+      for (const [key, syns] of Object.entries(vocab.slotSynonyms)) {
+        if (Array.isArray(syns)) addCluster([key, ...(syns as string[])]);
+      }
+    }
+    if (Array.isArray(vocab.dimensions)) {
+      for (const d of vocab.dimensions) {
+        if (Array.isArray(d)) addCluster(d);
+        else if (d && typeof d === 'object') addCluster([d.canonical, ...(d.variants || d.synonyms || [])]);
       }
     }
   }
@@ -131,41 +139,52 @@ export function buildGlossaryIndex(sources: {
 }
 
 export function tokenizeQuery(query: string, glossaryIndex?: Map<string, string[]>): QueryToken[] {
+  const tokens: QueryToken[] = [];
+  const lowerQuery = query.toLowerCase();
+  const matchedPhrases = new Set<string>();
+
+  if (glossaryIndex) {
+    const sortedPhrases = Array.from(glossaryIndex.keys()).sort((a, b) => b.length - a.length);
+    for (const phrase of sortedPhrases) {
+      const syns = glossaryIndex.get(phrase) || [];
+      const phraseRegex = new RegExp(`(?:^|[^a-z0-9])${escapeRegex(phrase)}(?:[^a-z0-9]|$)`, 'i');
+      if (phraseRegex.test(lowerQuery)) {
+        const alreadyCovered = tokens.some((tk) => tk.stem === phrase || tk.synonyms?.includes(phrase));
+        if (!alreadyCovered) {
+          matchedPhrases.add(phrase);
+          const clean = escapeRegex(phrase);
+          const validSyns = syns.map((s) => escapeRegex(s)).filter(Boolean);
+          const patterns = [clean, ...validSyns].sort((a, b) => b.length - a.length);
+          tokens.push({
+            stem: phrase,
+            regex: new RegExp(`\\b(?:${patterns.join('|')})(?:s|es)?\\b`, 'i'),
+            synonyms: syns,
+          });
+        }
+      }
+    }
+  }
+
   const words = query
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
-  const tokens: QueryToken[] = [];
-  const lowerQuery = query.toLowerCase();
-
   for (const w of words) {
-    const clean = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const isPartOfMatched = Array.from(matchedPhrases).some((p) => p.includes(' ') && p.split(/\s+/).includes(w));
+    if (isPartOfMatched || matchedPhrases.has(w)) continue;
+
+    const clean = escapeRegex(w);
     const stem = clean.length > 3 && clean.endsWith('s') ? clean.slice(0, -1) : clean;
     const syns = glossaryIndex ? (glossaryIndex.get(w) || glossaryIndex.get(stem) || []) : [];
-    const validSyns = syns.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).filter(Boolean);
-    const patterns = [stem, ...validSyns];
+    const validSyns = syns.map((s) => escapeRegex(s)).filter(Boolean);
+    const patterns = [stem, clean, ...validSyns].sort((a, b) => b.length - a.length);
     tokens.push({
       stem,
       regex: new RegExp(`\\b(?:${patterns.join('|')})(?:s|es)?\\b`, 'i'),
       synonyms: syns,
     });
-  }
-
-  if (glossaryIndex) {
-    for (const [phrase, syns] of glossaryIndex.entries()) {
-      if (phrase.includes(' ') && lowerQuery.includes(phrase)) {
-        const clean = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const validSyns = syns.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).filter(Boolean);
-        const patterns = [clean, ...validSyns];
-        tokens.push({
-          stem: phrase,
-          regex: new RegExp(`\\b(?:${patterns.join('|')})(?:s|es)?\\b`, 'i'),
-          synonyms: syns,
-        });
-      }
-    }
   }
 
   return tokens;
@@ -195,8 +214,6 @@ function scoreDocumentRelevance(doc: any, tokens: QueryToken[], mapping: Resolve
   }
   return score;
 }
-
-const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class CatalogSearchHandler implements NativeCapabilityHandler {
   private readonly okfConceptCache = new Map<string, Array<{ name?: string; synonyms?: string[]; customerPhrases?: string[] }>>();
@@ -261,7 +278,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const limit = Math.min(input.maxResults || 10, 50);
 
     // Dynamic glossary expansion from tenant's OKF release or pack vocabulary
-    let okfConcepts = (ctx as any).okfRelease?.concepts || (ctx as any).okfContent?.concepts;
+    let okfConcepts = (ctx as any).okfConcepts || (ctx as any).okfRelease?.concepts || (ctx as any).okfContent?.concepts;
     let db: any = null;
     if (this.dbProvider || (!this.inMemoryProducts && process.env.MONGODB_URI)) {
       try {

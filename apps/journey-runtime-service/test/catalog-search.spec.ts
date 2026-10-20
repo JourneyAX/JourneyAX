@@ -181,3 +181,59 @@ test('CatalogSearchHandler - Hybrid Retrieval & Reranking', async (t) => {
     assert.equal(res.error, undefined);
   });
 });
+
+test('CatalogSearchHandler - Dimension normalization from pack vocabulary / OKF (SKU 1002835)', async (t) => {
+  // SKU 1002835 from docs/evals/placemakers-100.json (prompt 1)
+  const product1002835 = {
+    tenantId: 'placemakers',
+    sku: '1002835',
+    name: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)',
+    category: 'SG H3.2 Radiata KD',
+    description: 'SG8 structural grade framing timber suitable for internal and exposed above ground applications. Treated H3.2 CCA. Machine gauged to ensure dimensional accuracy and straightness. Ideal for frames and trusses.',
+    price: { amount: 15, currency: 'NZD' },
+    inStock: true,
+  };
+
+  const handler = new CatalogSearchHandler([product1002835]);
+
+  await t.test('matches SKU 1002835 across dimension forms configured via pack vocabulary', async () => {
+    // Normalization rules loaded from pack vocabulary (never hardcoded in search code)
+    const ctx = makeContext({
+      tenantId: 'placemakers',
+      vocabulary: {
+        slotSynonyms: {
+          '100x50': ['100 x 50', '100x50mm', '100 x 50mm', '4x2', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+          '4x2': ['100x50', '100 x 50', '100x50mm', '100 x 50mm', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+        },
+      },
+    });
+
+    const queries = ['100x50', '100 x 50', '100x50mm', '4x2', 'Do you have 100x50 H3.2 treated timber in stock?'];
+    for (const q of queries) {
+      const res = await handler.execute({ query: q }, ctx);
+      assert.ok(res.items.length >= 1, `Expected at least 1 match for query "${q}"`);
+      assert.equal(res.items[0].sku, '1002835', `Query "${q}" should return SKU 1002835`);
+    }
+  });
+
+  await t.test('matches SKU 1002835 across dimension forms configured via OKF concept glossary', async () => {
+    // Normalization rules loaded from OKF concept release / authoring customer phrases
+    const ctx = makeContext({
+      tenantId: 'placemakers',
+      okfConcepts: [
+        {
+          name: 'Timber & Plywood > Structural Grade Timber Kiln Dried',
+          customerPhrases: ['framing timber', '4x2', '2x4', '4 by 2', '4 x 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm', '100x50', '100 x 50', '100x50mm', '100 x 50mm'],
+        },
+      ],
+    } as any);
+
+    const queries = ['100x50', '100 x 50', '100x50mm', '4x2'];
+    for (const q of queries) {
+      const res = await handler.execute({ query: q }, ctx);
+      assert.ok(res.items.length >= 1, `Expected at least 1 match for query "${q}"`);
+      assert.equal(res.items[0].sku, '1002835', `Query "${q}" should return SKU 1002835 via OKF glossary`);
+    }
+  });
+});
+
