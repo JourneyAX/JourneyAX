@@ -49,6 +49,7 @@ export interface AgentTurnOutcome {
   okfNotesRead: string[];
   tokens: { prompt: number; completion: number; total: number };
   durationMs: number;
+  timeToFirstTextMs?: number;
 }
 
 /**
@@ -215,6 +216,20 @@ export class AgentTurnLoop {
     const totalTokens = { prompt: 0, completion: 0, total: 0 };
     let finalAssistantText = '';
     let isFinished = false;
+    let timeToFirstTextMs: number | null = null;
+
+    // Incremental sentence shaper active across all rounds
+    const shaper = new IncrementalSentenceShaper(
+      shapeContext,
+      toolContext.allowedClaimClasses,
+      true, // OKF release claim guard always active in agent mode
+      (_sentence, delta) => {
+        if (timeToFirstTextMs === null) {
+          timeToFirstTextMs = Date.now() - loopStart;
+        }
+        sink('token', { delta });
+      }
+    );
 
     // 6. Multi-Round Tool Loop (at most 5 rounds)
     for (let round = 0; round < maxToolRounds; round++) {
@@ -226,10 +241,11 @@ export class AgentTurnLoop {
       // Determine if this is the final text-generation phase
       const isLastAllowedRound = round === maxToolRounds - 1;
 
-      // Stream delta handler
-      const deltaChunks: string[] = [];
+      // Pass model deltas directly to the IncrementalSentenceShaper as they arrive
+      let roundStreamedChunks = 0;
       const onDelta = (delta: string) => {
-        deltaChunks.push(delta);
+        roundStreamedChunks++;
+        shaper.processDelta(delta);
       };
 
       const response = await modelGateway.executeAgentStream(
@@ -252,6 +268,11 @@ export class AgentTurnLoop {
 
       roundContent = response.content;
       roundToolCalls = response.toolCalls || [];
+
+      // If deltas weren't streamed by the executor (e.g. non-streaming mock or direct content), pass roundContent
+      if (roundStreamedChunks === 0 && roundContent) {
+        shaper.processDelta(roundContent);
+      }
 
       // If the model called tools
       if (roundToolCalls.length > 0) {
@@ -312,6 +333,9 @@ export class AgentTurnLoop {
           mutatingResults.push({ call: tc, result });
         }
 
+        // Update shaper with newly unlocked claim classes from tool executions
+        shaper.updateAllowedClaims(toolContext.allowedClaimClasses);
+
         // Append tool results to messages
         for (const { call, result } of [...readOnlyResults, ...mutatingResults]) {
           messages.push({
@@ -325,46 +349,30 @@ export class AgentTurnLoop {
         // If human handoff was requested, we can conclude
         if (toolContext.isHumanHandoffRequested) {
           isFinished = true;
-          finalAssistantText = 'A customer consultant has been notified and will assist you shortly.';
-          sink('token', { delta: finalAssistantText });
           break;
         }
       } else {
         // No tool calls returned: this is the final customer-facing answer
         isFinished = true;
-
-        // Process generated text through OKF Claim Guard and Reply Shaper (always active in agent mode)
-        const shaper = new IncrementalSentenceShaper(
-          shapeContext,
-          Array.from(toolContext.allowedClaimClasses),
-          true,
-          (_sentence, delta) => {
-            sink('token', { delta });
-          }
-        );
-
-        // Process all streamed or response text chunks
-        if (deltaChunks.length > 0) {
-          for (const chunk of deltaChunks) {
-            shaper.processDelta(chunk);
-          }
-        } else if (roundContent) {
-          shaper.processDelta(roundContent);
-        }
-
-        shaper.flush();
-        finalAssistantText = shaper.getStreamedText().trim();
-
-        // If all sentences were withheld by claim guard (or empty text)
-        if (!finalAssistantText) {
-          const fallback =
-            'I want to ensure all details and specifications are completely accurate. Would you like me to connect you with a specialist consultant who can verify this for you?';
-          sink('token', { delta: fallback });
-          finalAssistantText = fallback;
-        }
-
         break;
       }
+    }
+
+    // Flush any remaining text in the shaper buffer
+    shaper.flush();
+    finalAssistantText = shaper.getStreamedText().trim();
+
+    if (toolContext.isHumanHandoffRequested) {
+      if (!finalAssistantText) {
+        finalAssistantText = 'A customer consultant has been notified and will assist you shortly.';
+        sink('token', { delta: finalAssistantText });
+      }
+    } else if (!finalAssistantText) {
+      // If all sentences were withheld by claim guard (or empty text)
+      const fallback =
+        'I want to ensure all details and specifications are completely accurate. Would you like me to connect you with a specialist consultant who can verify this for you?';
+      sink('token', { delta: fallback });
+      finalAssistantText = fallback;
     }
 
     // 7. Determine Final Decision
@@ -426,6 +434,11 @@ export class AgentTurnLoop {
         status: t.ok ? 'success' : 'failure',
         durationMs: t.durationMs,
       })),
+      timing: {
+        totalMs: totalDurationMs,
+        timeToFirstTextMs: timeToFirstTextMs ?? totalDurationMs,
+        timeToFirstEventMs: timeToFirstTextMs ?? 1,
+      },
       trace: {
         agentMode: true,
         toolsCalled: toolsTrace,
@@ -434,6 +447,7 @@ export class AgentTurnLoop {
         allowedClaimClasses: Array.from(toolContext.allowedClaimClasses),
         tokens: totalTokens,
         durationMs: totalDurationMs,
+        timeToFirstTextMs: timeToFirstTextMs ?? totalDurationMs,
       } as any,
     };
 
@@ -443,6 +457,7 @@ export class AgentTurnLoop {
       okfNotesRead: Array.from(toolContext.readSourceIds),
       tokens: totalTokens,
       durationMs: totalDurationMs,
+      timeToFirstTextMs: timeToFirstTextMs ?? undefined,
     };
   }
 }

@@ -758,6 +758,90 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(safeRes.ok, true, 'Product card is accepted when topic is not blocked by safety');
       assert.equal(toolContext.presentedCards.length, 1);
     });
+
+    test('real streaming: deltas pass to shaper as they arrive, text before tools is allowed, and TTFT is measured', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const workspace = createTestWorkspace();
+
+      let roundsExecuted = 0;
+      const streamedTokens: string[] = [];
+
+      // Slow-streaming fake server:
+      // Round 1: Model streams pre-tool text (with intentional delays) AND then invokes search_products
+      // Round 2: Model streams final text (with intentional delays)
+      gateway.mockAgentExecutor = async (_req, onDelta) => {
+        roundsExecuted++;
+        if (roundsExecuted === 1) {
+          // Pre-tool text: a complete sentence that passes shaper
+          const preToolText = 'I will check our catalogue for decking timber options.\n';
+          for (const token of preToolText.split(' ')) {
+            onDelta?.(token + ' ');
+            await new Promise((r) => setTimeout(r, 20)); // slow-streaming delay
+          }
+          return {
+            content: preToolText,
+            toolCalls: [
+              {
+                id: 'call_search_1',
+                name: 'search_products',
+                arguments: { query: 'decking timber' },
+              },
+            ],
+          };
+        } else {
+          // Final text
+          const finalText = 'We have premium kwila decking boards in stock.';
+          for (const token of finalText.split(' ')) {
+            onDelta?.(token + ' ');
+            await new Promise((r) => setTimeout(r, 20)); // slow-streaming delay
+          }
+          return {
+            content: finalText,
+            toolCalls: [],
+          };
+        }
+      };
+
+      const agentLoop = new AgentTurnLoop();
+      const outcome = await agentLoop.execute({
+        command: {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: workspace.workspaceId,
+          sessionId: 'test-session',
+          correlationId: 'test-corr',
+          message: 'What decking timber do you have?',
+        },
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: {
+          execute: async () => ({
+            products: [{ sku: 'SKU-DECK-1', title: 'Kwila Decking', inStock: true }],
+          }),
+        } as any,
+        sink: (event, data) => {
+          if (event === 'token') streamedTokens.push(data.delta);
+        },
+      });
+
+      // 1. Pre-tool text was allowed and streamed in round 1
+      assert.ok(streamedTokens.length >= 2, 'Should receive tokens from both pre-tool text and final text');
+      assert.match(streamedTokens[0], /check our catalogue/i, 'First streamed token must come from pre-tool text');
+
+      // 2. Time to first text (TTFT) was measured and is much lower than total duration
+      assert.ok(outcome.timeToFirstTextMs !== undefined, 'TTFT must be measured');
+      assert.ok(outcome.timeToFirstTextMs! > 0, 'TTFT must be > 0ms');
+      assert.ok(
+        outcome.timeToFirstTextMs! < outcome.durationMs,
+        `TTFT (${outcome.timeToFirstTextMs}ms) must be less than total turn duration (${outcome.durationMs}ms)`
+      );
+
+      // 3. Final text combines pre-tool and final answers
+      assert.match(outcome.turnResult.assistantMessage!, /check our catalogue/i);
+      assert.match(outcome.turnResult.assistantMessage!, /kwila decking/i);
+    });
   });
 });
 

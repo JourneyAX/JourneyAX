@@ -187,11 +187,15 @@ export class IncrementalSentenceShaper {
 
   constructor(
     shapeContext: ShapeContext,
-    private readonly allowedClaims: ClaimClass[],
+    private allowedClaims: ClaimClass[] | Set<ClaimClass>,
     private readonly isOkfRelease: boolean,
     private readonly onApprovedSentence: (sentence: string, delta: string) => void
   ) {
     this.compiledShape = compileShapeContext(shapeContext);
+  }
+
+  updateAllowedClaims(claims: ClaimClass[] | Set<ClaimClass>): void {
+    this.allowedClaims = claims;
   }
 
   processDelta(chunk: string): void {
@@ -220,7 +224,8 @@ export class IncrementalSentenceShaper {
     if (!sentence) return;
 
     if (this.isOkfRelease) {
-      const claimResult = validateOkfGeneratedClaims(sentence, this.allowedClaims);
+      const allowed = this.allowedClaims instanceof Set ? Array.from(this.allowedClaims) : this.allowedClaims;
+      const claimResult = validateOkfGeneratedClaims(sentence, allowed);
       if (!claimResult.valid) {
         console.warn(`[ClaimGuard] withheld sentence during stream: "${sentence}" asserting ${claimResult.forbidden.join(', ')}`);
         return;
