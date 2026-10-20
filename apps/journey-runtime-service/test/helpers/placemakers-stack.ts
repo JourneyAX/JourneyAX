@@ -99,7 +99,15 @@ export class FixedGateway extends ModelGateway {
       if (message === 'renovation') candidateFacts.project_scope = { value: 'renovation', confidence: 1 };
       if (message === 'indoor') candidateFacts.cleaning_task = { value: 'indoor', confidence: 1 };
       if (message === 'inside walls') candidateFacts.paint_surface = { value: 'interior', confidence: 1 };
+      if ((message.includes('screws for that') || message.includes('what screws')) && (request.prompt.includes('decking') || request.prompt.includes('timber') || request.prompt.includes('composite'))) {
+        candidateFacts.fastener_substrate = { value: 'timber', confidence: 1 };
+      }
       content = JSON.stringify({ intent: 'product_search', candidateFacts });
+    }
+    if (request.taskType === 'response_generation' && (request.prompt.includes('screws for that') || request.prompt.includes('what screws'))) {
+      if (request.prompt.includes('composite')) {
+        content = 'For composite decking boards, we recommend 10g x 65mm decking screws with a self-countersinking head.';
+      }
     }
     return {
       content, route: { policyId: request.taskType, provider: 'custom', model: 'fixed-test-model', dataResidency: 'test', timeoutMs: 1000, maxInputTokens: 4096, maxOutputTokens: 1024 },

@@ -31,6 +31,7 @@ export interface ConversationPolicy {
    * release or the products' own question can read, and a plain "show me" for a shelf (nothing else said).
    */
   modelReading: { skipForTappedAnswers: boolean; skipForBrowse: boolean; browseMaxWords: number; maxHeaderWords: number };
+  history?: { maxTurns?: number; maxChars?: number };
   wording: 'template' | 'model';
   templates: {
     ask: string[]; askMany: string[]; recommendOne: string[]; recommendMany: string[]; show: string[]; showNeeds: string[];

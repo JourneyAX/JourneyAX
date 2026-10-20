@@ -9,3 +9,5 @@ export { pendingReadingMode, readsWithoutModel } from './model-reading';
 export type { ReadingMode } from './model-reading';
 export { catalogOutcome } from './search';
 export type { CatalogOutcome } from './search';
+export { readHistory, appendHistory, formatHistoryBlock, HISTORY_KEY } from './history';
+export type { ConversationTurnRecord } from './history';
