@@ -21,6 +21,8 @@ export interface ConversationTurnRecord {
 export function sanitizeHistoryText(text: string): string {
   if (!text) return '';
   return text
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .replace(/(bearer\s+)[a-zA-Z0-9._~+/-]+=*/gi, '$1[REDACTED]')
     .replace(/(api[_-]?key\s*[:=]\s*)[a-zA-Z0-9_-]+/gi, '$1[REDACTED]')
     .replace(/(password\s*[:=]\s*)[^\s]+/gi, '$1[REDACTED]')

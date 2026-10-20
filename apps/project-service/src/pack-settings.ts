@@ -38,6 +38,8 @@ const DIALOGUE_SHAPE = object({
   }),
   reason: object({ maxChars: whole(40, 400), maxSentences: whole(1, 3) }),
   wording: { kind: 'choice', values: ['template', 'model'] },
+  history: object({ maxTurns: whole(1, 20), maxChars: whole(500, 20000) }),
+  streaming: bool,
   templates: object({
     ask: texts, askMany: texts, recommendOne: texts, recommendMany: texts, show: texts, showNeeds: texts,
     why: text, whyNoExcerpt: text, howTo: text, howToNone: text, headingRecommend: text, headingShow: text, eyebrowRecommend: text, eyebrowShow: text,

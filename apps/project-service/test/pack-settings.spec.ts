@@ -74,7 +74,11 @@ async function main() {
     assert.match(bad([]).message, /must be an object/);
     assert.match(bad({ modelReading: { browseMaxWords: 0 } }).message, /modelReading\.browseMaxWords must be a whole number from 1 to 30/);
     assert.match(bad({ modelReading: { skipForBrowse: 'yes' } }).message, /modelReading\.skipForBrowse must be true or false/);
+    assert.match(bad({ history: { maxTurns: 0 } }).message, /history\.maxTurns must be a whole number from 1 to 20/);
+    assert.match(bad({ history: { maxChars: 100 } }).message, /history\.maxChars must be a whole number from 500 to 20000/);
+    assert.match(bad({ streaming: 'yes' }).message, /streaming must be true or false/);
     assert.equal((validatePackSettings({ dialoguePolicy: { modelReading: { skipForTappedAnswers: false } } }) as any).ok, true, 'a tenant can keep the model in every turn');
+    assert.equal((validatePackSettings({ dialoguePolicy: { history: { maxTurns: 8, maxChars: 5000 }, streaming: true } }) as any).ok, true, 'valid history and streaming settings pass');
     const policy = { ask: { maxPerConcept: 1 }, wording: 'template', templates: { recommendOne: ['For {needs}, try the {title}.'], why: 'Because {excerpt}' }, reason: { maxChars: 120, maxSentences: 2 } };
     const ok: any = validatePackSettings({ dialoguePolicy: policy });
     assert.equal(ok.ok, true);

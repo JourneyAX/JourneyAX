@@ -46,6 +46,8 @@ import {
 import type { OkfGateDecision } from '@journeyax/knowledge';
 
 export interface TurnTiming {
+  tenantId?: string;
+  turnId?: string;
   timeToFirstEventMs: number | null;
   timeToFirstTextMs: number | null;
   interpretMs: number;
@@ -180,10 +182,11 @@ export class TurnApplicationService {
     let timeToFirstEventMs: number | null = null;
     let timeToFirstTextMs: number | null = null;
     let totalRetrievalMs = 0;
+    let phraseMs = 0;
 
     const timingSink = (event: string, data: any) => {
       const elapsed = Date.now() - turnStartTime;
-      if (timeToFirstEventMs === null) {
+      if (timeToFirstEventMs === null && event !== 'session') {
         timeToFirstEventMs = elapsed;
       }
       if (timeToFirstTextMs === null && event === 'token') {
@@ -266,13 +269,15 @@ export class TurnApplicationService {
           createdAt: new Date().toISOString(),
         };
         workspace.decisions.push({ ...decision, executedAt: new Date().toISOString(), outcomeStatus: 'failure' });
+        const phraseStart = Date.now();
         const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace, release, { messages: knowledgeGate.messages });
+        phraseMs += Date.now() - phraseStart;
         if (turnResult.trace) (turnResult.trace as any).knowledgeGate = knowledgeGate;
         this.appendTurnHistory(workspace, release, command, turnResult);
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the knowledge decision answers on its own (safety, nothing verified, or knowledge unavailable)');
         this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
-        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
 
@@ -285,11 +290,13 @@ export class TurnApplicationService {
           reason: 'Journey resolution component is unavailable',
           createdAt: new Date().toISOString(),
         };
+        const phraseStart = Date.now();
         const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
+        phraseMs += Date.now() - phraseStart;
         sink('trace', { currentStage: workspace?.currentStage || 'initial', transitions: [] });
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the journey resolver is unavailable');
         this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
-        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
 
@@ -359,7 +366,9 @@ export class TurnApplicationService {
         });
         workspace.lastProcessedTurnId = turnId;
 
+        const phraseStart = Date.now();
         const turnResult = this.presentationPort.compose({ valid: true }, decision, workspace, release);
+        phraseMs += Date.now() - phraseStart;
         if (turnResult.trace) {
           turnResult.trace.transitions = [];
           if ((interpretation as any)?.modelRoute) {
@@ -379,7 +388,7 @@ export class TurnApplicationService {
         // Only after commit emit final confirmed events
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the request matches more than one journey');
         this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
-        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
 
@@ -415,6 +424,7 @@ export class TurnApplicationService {
           } catch (e: any) {}
         }
 
+        const phraseStart = Date.now();
         const turnResult = this.presentationPort.compose(
           { valid: false, notes: decision.reason },
           decision,
@@ -425,6 +435,7 @@ export class TurnApplicationService {
             customerQuery: command?.message,
           }
         );
+        phraseMs += Date.now() - phraseStart;
         if (turnResult.trace) {
           turnResult.trace.transitions = [];
           if (groundedResponse.modelRoute) {
@@ -438,9 +449,13 @@ export class TurnApplicationService {
           currentStage: workspace?.currentStage || 'initial',
           transitions: [],
         });
+        if (workspace) {
+          this.appendTurnHistory(workspace, release, command, turnResult);
+          await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
+        }
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'no journey matched the request');
         this.streamCommittedFinalEvents(command, turnResult, [], timingSink, groundedResponse.streamedText);
-        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
 
@@ -1124,6 +1139,7 @@ export class TurnApplicationService {
       }
     }
 
+    const phraseStart = Date.now();
     const turnResult = this.presentationPort.compose(
       validatedOutcome,
       decision,
@@ -1137,6 +1153,7 @@ export class TurnApplicationService {
         plan: conversationPlan ?? undefined,
       }
     );
+    phraseMs += Date.now() - phraseStart;
     if (basketWarnings.size > 0) {
       turnResult.assistantMessage = [turnResult.assistantMessage, ...basketWarnings].filter(Boolean).join('\n\n');
     }
@@ -1278,7 +1295,7 @@ export class TurnApplicationService {
 
     // 9. Only after successful commit emit final assistant response, capability results, confirmed UI actions, data and exactly one done
     this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, timingSink, groundedResponse.streamedText);
-    this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs);
+    this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs, phraseMs, command);
 
     return turnResult;
     } catch (err: any) {
@@ -1302,7 +1319,8 @@ export class TurnApplicationService {
     interpretation?: { latencyMs?: number; usage?: any },
     groundedResponse?: { latencyMs?: number; usage?: any },
     retrievalMs: number = 0,
-    phraseMs: number = 0
+    phraseMs: number = 0,
+    command?: { tenantId?: string; turnId?: string }
   ): TurnTiming {
     const totalMs = Date.now() - turnStartTime;
     const interpretMs = interpretation?.latencyMs || 0;
@@ -1317,6 +1335,8 @@ export class TurnApplicationService {
     const totalTokens = (interpretation?.usage?.totalTokens || 0) + (groundedResponse?.usage?.totalTokens || 0);
 
     const timing: TurnTiming = {
+      tenantId: command?.tenantId,
+      turnId: command?.turnId,
       timeToFirstEventMs,
       timeToFirstTextMs: timeToFirstTextMs ?? (turnResult.assistantMessage ? totalMs : null),
       interpretMs,
@@ -1335,7 +1355,12 @@ export class TurnApplicationService {
     if (turnResult.trace) {
       (turnResult.trace as any).timing = timing;
     }
-    console.log(JSON.stringify({ event: 'turn.timing', ...timing }));
+    console.log(JSON.stringify({
+      event: 'turn.timing',
+      tenantId: command?.tenantId,
+      turnId: command?.turnId,
+      ...timing,
+    }));
     return timing;
   }
 
