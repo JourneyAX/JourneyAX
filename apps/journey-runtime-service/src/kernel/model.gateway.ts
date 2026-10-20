@@ -221,15 +221,50 @@ export class ModelGateway {
     throw lastError;
   }
 
-  private async executeRoute(
-    route: ModelRouteResult,
+  async executeStream(
     release: BusinessPackRelease,
     req: ModelExecutionRequest,
-    startTime: number
+    onDelta: (delta: string) => void
   ): Promise<ModelExecutionResponse> {
+    const startTime = Date.now();
+
+    const routes = this.router.resolveCandidates(req.taskType, release, {
+      targetDataResidency: req.targetDataResidency,
+      policyRef: req.policyRef,
+    });
+
+    let lastError: any = null;
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
+      try {
+        return await this.executeRouteStream(route, release, req, onDelta, startTime);
+      } catch (err: any) {
+        lastError = err;
+        if (i < routes.length - 1) {
+          const next = routes[i + 1];
+          console.warn(
+            `[ModelGateway] Candidate stream ${route.provider}/${route.model} failed (${err.name || err.message}). Attempting fallback to ${next.provider}/${next.model}...`
+          );
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  private prepareExecution(
+    route: ModelRouteResult,
+    release: BusinessPackRelease,
+    req: ModelExecutionRequest
+  ): {
+    endpoint: string;
+    evidenced: { residency: string; evidence: string };
+    apiKey: string | undefined;
+    signal: AbortSignal;
+    timeoutMs: number;
+  } {
     const endpoint = this.getEndpointForProvider(route.provider, route.model);
 
-    // 2. Evidenced Data Residency Verification (Must be proven by endpoint/config, not just label)
+    // Evidenced Data Residency Verification (Must be proven by endpoint/config, not just label)
     const evidenced = this.determineEndpointResidency(route.provider, endpoint);
     const requiredResidency = (req.targetDataResidency || route.dataResidency || 'au').trim().toLowerCase();
 
@@ -271,13 +306,13 @@ export class ModelGateway {
       );
     }
 
-    // 3. Credential Verification
+    // Credential Verification
     const apiKey = this.getApiKeyForProvider(route.provider);
     if (route.provider !== 'open-model' && route.provider !== 'custom' && !apiKey) {
       throw new ModelMissingCredentialsError(route.provider);
     }
 
-    // 4. Provider Call Execution
+    // Provider Call Execution
     const timeoutMs = route.timeoutMs || 10000;
     let signal: AbortSignal;
     try {
@@ -287,6 +322,210 @@ export class ModelGateway {
       setTimeout(() => controller.abort(), timeoutMs);
       signal = controller.signal;
     }
+
+    return { endpoint, evidenced, apiKey, signal, timeoutMs };
+  }
+
+  private async executeRouteStream(
+    route: ModelRouteResult,
+    release: BusinessPackRelease,
+    req: ModelExecutionRequest,
+    onDelta: (delta: string) => void,
+    startTime: number
+  ): Promise<ModelExecutionResponse> {
+    const { endpoint, evidenced, apiKey, signal, timeoutMs } = this.prepareExecution(route, release, req);
+
+    let resp: Response;
+    try {
+      if (route.provider === 'openai') {
+        const isReasoningOrGpt5 =
+          route.model.startsWith('o1') ||
+          route.model.startsWith('o3') ||
+          route.model.startsWith('gpt-5') ||
+          route.model.includes('preview');
+
+        const payload: Record<string, any> = {
+          model: route.model,
+          messages: [
+            ...(req.systemPrompt
+              ? [{ role: isReasoningOrGpt5 ? 'developer' : 'system', content: req.systemPrompt }]
+              : []),
+            { role: 'user', content: req.prompt },
+          ],
+          stream: true,
+        };
+
+        if (isReasoningOrGpt5) {
+          if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
+        } else {
+          if (route.temperature !== undefined) payload.temperature = route.temperature;
+          else payload.temperature = 0.2;
+          if (route.maxOutputTokens) payload.max_tokens = route.maxOutputTokens;
+          payload.stream_options = { include_usage: true };
+        }
+
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          signal,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      } else if (route.provider === 'anthropic') {
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey || '',
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: route.model,
+            system: req.systemPrompt,
+            messages: [{ role: 'user', content: req.prompt }],
+            temperature: route.temperature ?? 0.2,
+            max_tokens: route.maxOutputTokens,
+            stream: true,
+          }),
+        });
+      } else if (route.provider === 'open-model' || route.provider === 'custom') {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          signal,
+          headers,
+          body: JSON.stringify({
+            model: route.model,
+            messages: [
+              ...(req.systemPrompt ? [{ role: 'system', content: req.systemPrompt }] : []),
+              { role: 'user', content: req.prompt },
+            ],
+            temperature: route.temperature ?? 0.2,
+            max_tokens: route.maxOutputTokens,
+            stream: true,
+          }),
+        });
+      } else {
+        // Fall back to non-streaming execution and emit single delta
+        const nonStreamRes = await this.executeRoute(route, release, req, startTime);
+        if (nonStreamRes.content) {
+          onDelta(nonStreamRes.content);
+        }
+        return nonStreamRes;
+      }
+    } catch (err: any) {
+      if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+        throw new ModelTimeoutError(route.provider, route.model, timeoutMs);
+      }
+      throw new ModelGatewayError(
+        `Failed to execute model streaming request to ${route.provider}/${route.model}: ${err.message}`,
+        'NETWORK_FAILURE',
+        route.provider,
+        route.model,
+        { cause: err.message }
+      );
+    }
+
+    if (!resp.ok) {
+      const errorBody = await resp.text();
+      throw new ModelProviderHttpError(route.provider, route.model, resp.status, errorBody);
+    }
+
+    if (!resp.body) {
+      const nonStreamRes = await this.executeRoute(route, release, req, startTime);
+      if (nonStreamRes.content) onDelta(nonStreamRes.content);
+      return nonStreamRes;
+    }
+
+    let content = '';
+    let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
+
+    if (route.provider === 'openai' || route.provider === 'open-model' || route.provider === 'custom') {
+      await readSseStream(resp.body, (line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(':')) return;
+        if (trimmed.startsWith('data:')) {
+          const dataStr = trimmed.slice(5).trim();
+          if (dataStr === '[DONE]') return;
+          try {
+            const parsed = JSON.parse(dataStr);
+            const delta = parsed.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              content += delta;
+              onDelta(delta);
+            }
+            if (parsed.usage) {
+              usage = {
+                promptTokens: parsed.usage.prompt_tokens,
+                completionTokens: parsed.usage.completion_tokens,
+                totalTokens: parsed.usage.total_tokens,
+              };
+            }
+          } catch {}
+        }
+      });
+    } else if (route.provider === 'anthropic') {
+      await readSseStream(resp.body, (line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(':')) return;
+        if (trimmed.startsWith('data:')) {
+          const dataStr = trimmed.slice(5).trim();
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              const delta = parsed.delta.text;
+              content += delta;
+              onDelta(delta);
+            } else if (parsed.type === 'message_start' && parsed.message?.usage) {
+              usage = {
+                promptTokens: parsed.message.usage.input_tokens,
+                completionTokens: 0,
+                totalTokens: parsed.message.usage.input_tokens,
+              };
+            } else if (parsed.type === 'message_delta' && parsed.usage) {
+              const out = parsed.usage.output_tokens || 0;
+              const inTokens = usage?.promptTokens || 0;
+              usage = {
+                promptTokens: inTokens,
+                completionTokens: out,
+                totalTokens: inTokens + out,
+              };
+            }
+          } catch {}
+        }
+      });
+    }
+
+    if (!content || !content.trim()) {
+      throw new ModelMalformedResponseError(
+        route.provider,
+        route.model,
+        'Provider streaming response contained empty content'
+      );
+    }
+
+    return {
+      content: content.trim(),
+      route,
+      latencyMs: Date.now() - startTime,
+      residencyProven: true,
+      residencyEvidence: evidenced.evidence,
+      usage,
+    };
+  }
+
+  private async executeRoute(
+    route: ModelRouteResult,
+    release: BusinessPackRelease,
+    req: ModelExecutionRequest,
+    startTime: number
+  ): Promise<ModelExecutionResponse> {
+    const { endpoint, evidenced, apiKey, signal, timeoutMs } = this.prepareExecution(route, release, req);
 
     let resp: Response;
     try {
@@ -502,3 +741,29 @@ export class ModelGateway {
     }
   }
 }
+
+/**
+ * Reads a streaming response body line-by-line for Server-Sent Events (SSE).
+ */
+async function readSseStream(
+  body: ReadableStream<Uint8Array>,
+  onLine: (line: string) => void
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      onLine(line);
+    }
+  }
+  if (buffer.trim()) {
+    onLine(buffer);
+  }
+}
+

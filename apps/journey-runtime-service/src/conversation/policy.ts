@@ -32,6 +32,7 @@ export interface ConversationPolicy {
    */
   modelReading: { skipForTappedAnswers: boolean; skipForBrowse: boolean; browseMaxWords: number; maxHeaderWords: number };
   history?: { maxTurns?: number; maxChars?: number };
+  streaming?: boolean;
   wording: 'template' | 'model';
   templates: {
     ask: string[]; askMany: string[]; recommendOne: string[]; recommendMany: string[]; show: string[]; showNeeds: string[];

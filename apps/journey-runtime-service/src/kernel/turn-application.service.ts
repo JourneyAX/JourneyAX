@@ -25,7 +25,7 @@ import { AgentRouter } from './agent.router';
 import { ModelGateway } from './model.gateway';
 import { CapabilityGateway } from './capability.gateway';
 import { validateOkfGeneratedClaims, withholdUnsupportedClaims } from './okf-claim-validator';
-import { shapeReply } from './reply-shaper';
+import { shapeReply, IncrementalSentenceShaper, type ShapeContext } from './reply-shaper';
 import { renderOkfMessage } from '@journeyax/knowledge';
 import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
@@ -168,6 +168,13 @@ export class TurnApplicationService {
     preloadedRelease?: any,
     sink: (event: string, data: any) => void = () => {}
   ): Promise<TurnResult> {
+    let effectiveRelease = preloadedRelease;
+    let effectiveSink = sink;
+    if (typeof preloadedRelease === 'function') {
+      effectiveSink = preloadedRelease;
+      effectiveRelease = undefined;
+    }
+
     const turnStartTime = Date.now();
     let timeToFirstEventMs: number | null = null;
     let timeToFirstTextMs: number | null = null;
@@ -181,7 +188,7 @@ export class TurnApplicationService {
       if (timeToFirstTextMs === null && event === 'token') {
         timeToFirstTextMs = elapsed;
       }
-      sink(event, data);
+      effectiveSink(event, data);
     };
 
     try {
@@ -197,7 +204,7 @@ export class TurnApplicationService {
       // If a pre-validated release was passed by the cutover gate, use it directly.
       // This eliminates the double loadActivePack call and guarantees the exact
       // version and checksum that was validated is what executes — no TOCTOU window.
-      const release = preloadedRelease ?? await this.packRepo.loadActivePack(tenantId, envId);
+      const release = effectiveRelease ?? await this.packRepo.loadActivePack(tenantId, envId);
 
       // 3. Load existing Workspace State (if present)
       let workspace =
@@ -390,7 +397,7 @@ export class TurnApplicationService {
         }
         const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
 
-        let groundedResponse: { message?: string; modelRoute?: any; latencyMs?: number; usage?: any } = {};
+        let groundedResponse: { message?: string; modelRoute?: any; latencyMs?: number; usage?: any; streamedText?: string } = {};
         if (command?.message && command.message.trim() && decision.type === 'handoff') {
           try {
             groundedResponse = await this.composeGroundedCustomerResponse(
@@ -401,7 +408,8 @@ export class TurnApplicationService {
               decision,
               [],
               null,
-              knowledgeGate
+              knowledgeGate,
+              timingSink
             );
           } catch (e: any) {}
         }
@@ -430,7 +438,7 @@ export class TurnApplicationService {
           transitions: [],
         });
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'no journey matched the request');
-        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink, groundedResponse.streamedText);
         this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs);
         return turnResult;
       }
@@ -1086,7 +1094,7 @@ export class TurnApplicationService {
     }
 
     // 8. Grounded customer response composition using explicit response_generation model policy
-    let groundedResponse: { message?: string; modelRoute?: any; latencyMs?: number; usage?: any } = {};
+    let groundedResponse: { message?: string; modelRoute?: any; latencyMs?: number; usage?: any; streamedText?: string } = {};
     // Verified safety instructions are rendered deterministically from the
     // pinned OKF release. Never send them through a model phrasing step.
     // "Nothing to show" is always the tenant's sentence, whoever words the rest of the reply.
@@ -1106,7 +1114,8 @@ export class TurnApplicationService {
           decision,
           executedCapabilities,
           resolvedAgentInfo,
-          knowledgeGate
+          knowledgeGate,
+          timingSink
         );
       } catch (e: any) {
         // Degrade gracefully; compose will provide safe deterministic response
@@ -1266,7 +1275,7 @@ export class TurnApplicationService {
     await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
 
     // 9. Only after successful commit emit final assistant response, capability results, confirmed UI actions, data and exactly one done
-    this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, timingSink);
+    this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, timingSink, groundedResponse.streamedText);
     this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs);
 
     return turnResult;
@@ -1617,7 +1626,8 @@ export class TurnApplicationService {
     command: TurnCommand,
     turnResult: TurnResult,
     executedCapabilities: any[],
-    sink: (event: string, data: any) => void
+    sink: (event: string, data: any) => void,
+    streamedText?: string
   ): void {
     // 1. capability: executed capabilities
     for (const cap of executedCapabilities) {
@@ -1645,7 +1655,18 @@ export class TurnApplicationService {
     // 3. token: honest model message delivery of the final confirmed assistant response
     const text = turnResult.assistantMessage || '';
     if (text) {
-      sink('token', { token: text, delta: text });
+      if (!streamedText) {
+        sink('token', { token: text, delta: text });
+      } else if (text !== streamedText) {
+        if (text.startsWith(streamedText)) {
+          const remaining = text.slice(streamedText.length);
+          if (remaining) {
+            sink('token', { token: remaining, delta: remaining });
+          }
+        } else {
+          sink('token', { token: text, delta: '', replace: text });
+        }
+      }
     }
 
     // 4. data: state, decision, and trace
@@ -1682,8 +1703,9 @@ export class TurnApplicationService {
     decision: Decision,
     executedCapabilities: any[],
     resolvedAgentInfo: any,
-    knowledgeGate?: OkfGateDecision | null
-  ): Promise<{ message?: string; modelRoute?: any; latencyMs?: number; usage?: any }> {
+    knowledgeGate?: OkfGateDecision | null,
+    sink?: (event: string, data: any) => void
+  ): Promise<{ message?: string; modelRoute?: any; latencyMs?: number; usage?: any; streamedText?: string }> {
     const customerQuestion = (command?.message || (command as any)?.userInput || '').trim();
     if (!customerQuestion) {
       return {};
@@ -1909,16 +1931,67 @@ export class TurnApplicationService {
           .filter(Boolean)
           .join('\n');
 
-    try {
-      const modelRes = await this.modelGateway.execute(
-        release,
-        {
-          taskType: 'response_generation',
-          prompt: userPrompt,
-          systemPrompt,
-          policyRef: resolvedAgentInfo?.modelPolicyRef,
+    const idsOf = (conceptId?: string) => (conceptId ? conceptId.replace(/^concept:\/\//, '').split('/').slice(1) : []);
+    const shapeContext: ShapeContext = {
+      style: replyPolicy.replyStyle,
+      companyNames: [release.profile?.companyName, release.manifest?.name].filter((name): name is string => Boolean(name)),
+      internalIds: [
+        ...idsOf(knowledgeGate?.conceptId),
+        ...(knowledgeGate?.retrieval?.scope ?? []).flatMap(idsOf),
+        ...(knowledgeGate?.retrieval?.groups ?? []).flatMap((group) => [...idsOf(group.conceptId), ...group.categoryIds]),
+        ...(knowledgeGate?.retrieval?.categoryIds ?? []),
+        ...(knowledgeGate?.clarification ? [knowledgeGate.clarification.factKey] : []),
+      ],
+      questionCardShown: Boolean(knowledgeGate?.clarification) || decision.type === 'ask_fact',
+    };
+
+    const shape = (text: string): string => {
+      if (release.knowledgeModel?.type !== 'okf_release') return text;
+      const shaped = shapeReply(text, shapeContext);
+      if (shaped.removed.length) {
+        console.warn(`[ReplyShaper] removed ${shaped.removed.length} sentence(s) from the model reply: ${shaped.removed.slice(0, 4).map((entry) => `${entry.reason} ("${entry.sentence.slice(0, 80)}")`).join('; ')}`);
+      }
+      return shaped.text || (knowledgeGate?.clarification ? renderOkfMessage(interpretationMessages, 'clarify_lead_in') : '');
+    };
+
+    const streamingEnabled = resolveConversationPolicy(release).streaming !== false;
+    let shaper: IncrementalSentenceShaper | undefined;
+    if (streamingEnabled && sink) {
+      shaper = new IncrementalSentenceShaper(
+        shapeContext,
+        knowledgeGate?.claims.allowedClasses || [],
+        release.knowledgeModel?.type === 'okf_release',
+        (sentence, delta) => {
+          sink('token', { token: sentence, delta });
         }
       );
+    }
+
+    try {
+      const modelRes = shaper && typeof (this.modelGateway as any).executeStream === 'function'
+        ? await (this.modelGateway as any).executeStream(
+            release,
+            {
+              taskType: 'response_generation',
+              prompt: userPrompt,
+              systemPrompt,
+              policyRef: resolvedAgentInfo?.modelPolicyRef,
+            },
+            (delta: string) => shaper!.processDelta(delta)
+          )
+        : await this.modelGateway.execute(
+            release,
+            {
+              taskType: 'response_generation',
+              prompt: userPrompt,
+              systemPrompt,
+              policyRef: resolvedAgentInfo?.modelPolicyRef,
+            }
+          );
+
+      if (shaper) {
+        shaper.flush();
+      }
 
       if (modelRes?.content) {
         let content = modelRes.content.trim();
@@ -1928,27 +2001,6 @@ export class TurnApplicationService {
         if (isAmbiguousMeasurement && !content.toLowerCase().includes('unit') && !content.toLowerCase().includes('measurement') && !content.toLowerCase().includes('clarify')) {
           content = `${renderOkfMessage(interpretationMessages, 'measurement_clarification')} ${content}`;
         }
-        // What the model wrote is shaped before anyone reads it: no internal ids, no second question, no "go and browse", short.
-        const shape = (text: string): string => {
-          if (release.knowledgeModel?.type !== 'okf_release') return text;
-          const idsOf = (conceptId?: string) => (conceptId ? conceptId.replace(/^concept:\/\//, '').split('/').slice(1) : []);
-          const shaped = shapeReply(text, {
-            style: replyPolicy.replyStyle,
-            companyNames: [release.profile?.companyName, release.manifest?.name].filter((name): name is string => Boolean(name)),
-            internalIds: [
-              ...idsOf(knowledgeGate?.conceptId),
-              ...(knowledgeGate?.retrieval?.scope ?? []).flatMap(idsOf),
-              ...(knowledgeGate?.retrieval?.groups ?? []).flatMap((group) => [...idsOf(group.conceptId), ...group.categoryIds]),
-              ...(knowledgeGate?.retrieval?.categoryIds ?? []),
-              ...(knowledgeGate?.clarification ? [knowledgeGate.clarification.factKey] : []),
-            ],
-            questionCardShown: Boolean(knowledgeGate?.clarification) || decision.type === 'ask_fact',
-          });
-          if (shaped.removed.length) {
-            console.warn(`[ReplyShaper] removed ${shaped.removed.length} sentence(s) from the model reply: ${shaped.removed.slice(0, 4).map((entry) => `${entry.reason} ("${entry.sentence.slice(0, 80)}")`).join('; ')}`);
-          }
-          return shaped.text || (knowledgeGate?.clarification ? renderOkfMessage(interpretationMessages, 'clarify_lead_in') : '');
-        };
         if (release.knowledgeModel?.type === 'okf_release') {
           const checked = validateOkfGeneratedClaims(content, knowledgeGate?.claims.allowedClasses || []);
           if (!checked.valid) {
@@ -1961,6 +2013,7 @@ export class TurnApplicationService {
               modelRoute: modelRes.route,
               latencyMs: modelRes.latencyMs,
               usage: modelRes.usage,
+              streamedText: shaper?.getStreamedText(),
             };
           }
         }
@@ -1969,6 +2022,7 @@ export class TurnApplicationService {
           modelRoute: modelRes.route,
           latencyMs: modelRes.latencyMs,
           usage: modelRes.usage,
+          streamedText: shaper?.getStreamedText(),
         };
       }
     } catch (err: any) {

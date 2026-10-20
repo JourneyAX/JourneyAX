@@ -42,10 +42,14 @@ export function readHistory(facts: Record<string, { value?: unknown }> | undefin
  * Appends new turns to workspace conversation history and trims to limits.
  */
 export function appendHistory(
-  workspace: { facts: Record<string, any> },
+  workspace: { facts?: Record<string, any> },
   newTurns: ConversationTurnRecord[],
   policy?: { maxTurns?: number; maxChars?: number }
 ): void {
+  if (!workspace) return;
+  if (!workspace.facts) {
+    workspace.facts = {};
+  }
   const maxTurns = policy?.maxTurns ?? 6;
   const maxChars = policy?.maxChars ?? 4000;
 

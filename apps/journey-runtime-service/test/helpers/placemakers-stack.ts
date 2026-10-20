@@ -114,6 +114,14 @@ export class FixedGateway extends ModelGateway {
       latencyMs: 1, usage: { promptTokens: 50, completionTokens: 25, totalTokens: 75 }, residencyProven: true, residencyEvidence: 'isolated-test-adapter',
     };
   }
+  async executeStream(release: any, request: ModelExecutionRequest, onDelta: (delta: string) => void): Promise<ModelExecutionResponse> {
+    const res = await this.execute(release, request);
+    const words = res.content.split(' ');
+    for (let i = 0; i < words.length; i++) {
+      onDelta(words[i] + (i < words.length - 1 ? ' ' : ''));
+    }
+    return res;
+  }
 }
 
 /**
