@@ -233,6 +233,9 @@ export class AgentTurnLoop {
     // 6. Multi-Round Tool Loop (at most 5 rounds)
     for (let round = 0; round < maxToolRounds; round++) {
       if (isFinished) break;
+      if (options.timeoutMs && Date.now() - loopStart > options.timeoutMs) {
+        throw new Error(`Agent mode turn deadline exceeded (${options.timeoutMs}ms)`);
+      }
 
       let roundContent = '';
       let roundToolCalls: AgentToolCall[] = [];

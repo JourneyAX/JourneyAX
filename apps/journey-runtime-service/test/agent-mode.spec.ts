@@ -961,6 +961,106 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       const totalTokenText = tokenEvents.map((t) => t.data.delta || t.data.token || '').join('');
       assert.equal(totalTokenText, result.assistantMessage, 'Streamed tokens must match assistant message without duplicates');
     });
+
+    test('turn deadline: times out and falls back to rule-based engine when agent loop exceeds turnDeadlineMs from policy', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack({
+        agentMode: { enabled: true, timeoutMs: 80 },
+      });
+      const workspace = createTestWorkspace();
+
+      gateway.mockAgentExecutor = async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return { content: 'Too late', toolCalls: [] };
+      };
+
+      const outboxRepo = new OutboxRepository({ forceInMemory: true });
+      const service = new TurnApplicationService(
+        { loadActivePack: async () => release } as any,
+        {
+          load: async () => workspace,
+          getOrCreate: async () => workspace,
+          save: async () => {},
+        } as any,
+        new JourneyResolver(),
+        new AgentRouter(),
+        gateway,
+        undefined,
+        undefined,
+        undefined,
+        outboxRepo
+      );
+
+      const result = await service.executeTurnStream(
+        {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: workspace.workspaceId,
+          sessionId: 'test-session',
+          correlationId: 'test-corr',
+          message: 'Hello after delay',
+        },
+        release
+      );
+
+      assert.ok(result, 'Must fall back and produce a TurnResult');
+      assert.ok(result.decision, 'Must have a decision from rule-based fallback');
+    });
+
+    test('fallback after text streamed: does not stream second answer; sends replace token event', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const workspace = createTestWorkspace();
+
+      // Agent mode starts streaming partial text, then errors out
+      gateway.mockAgentExecutor = async (_req, onDelta) => {
+        onDelta?.('I can certainly look up timber products for you.\n');
+        await new Promise((r) => setTimeout(r, 10));
+        throw new Error('Mid-stream model connection drop');
+      };
+
+      const outboxRepo = new OutboxRepository({ forceInMemory: true });
+      const service = new TurnApplicationService(
+        { loadActivePack: async () => release } as any,
+        {
+          load: async () => workspace,
+          getOrCreate: async () => workspace,
+          save: async () => {},
+        } as any,
+        new JourneyResolver(),
+        new AgentRouter(),
+        gateway,
+        undefined,
+        undefined,
+        undefined,
+        outboxRepo
+      );
+
+      const events: Array<{ event: string; data: any }> = [];
+      const result = await service.executeTurnStream(
+        {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: workspace.workspaceId,
+          sessionId: 'test-session',
+          correlationId: 'test-corr',
+          message: 'Show me timber',
+        },
+        release,
+        (event, data) => events.push({ event, data })
+      );
+
+      assert.ok(result);
+      const tokenEvents = events.filter((e) => e.event === 'token');
+      const replaceEvents = tokenEvents.filter((e) => Boolean(e.data.replace));
+
+      assert.ok(replaceEvents.length >= 1, 'Must emit a replace token event to overwrite partial streamed text');
+      assert.equal(replaceEvents[0].data.replace, result.assistantMessage, 'Replace content must equal fallback assistant message');
+
+      // Exactly one done event
+      const doneEvents = events.filter((e) => e.event === 'done');
+      assert.equal(doneEvents.length, 1, 'Must emit exactly one done event');
+    });
   });
 });
 

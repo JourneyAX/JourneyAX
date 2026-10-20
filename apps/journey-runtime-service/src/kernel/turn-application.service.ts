@@ -237,6 +237,8 @@ export class TurnApplicationService {
       }
 
       // 3b. Agent Mode: autonomous AI-led turn with multi-round tool execution and streaming
+      let fallbackStreamedText: string | undefined = undefined;
+
       if (isAgentModeEnabled(release)) {
         if (!workspace) {
           workspace = await this.workspaceRepo.getOrCreate(
@@ -250,6 +252,35 @@ export class TurnApplicationService {
             this.createWorkspacePins(release)
           );
         }
+
+        const turnDeadlineMs =
+          Number(
+            (release.conversationPolicy as any)?.turnDeadlineMs ||
+            (release.conversationPolicy as any)?.timeoutMs ||
+            (release.conversationPolicy as any)?.deadlineMs ||
+            (release.conversationPolicy as any)?.escalationThresholds?.turnTimeoutMs ||
+            (release.extensions?.agentMode as any)?.timeoutMs ||
+            (release.extensions?.agentMode as any)?.turnDeadlineMs
+          ) || 20_000;
+
+        let agentStreamedText = '';
+        let agentCancelled = false;
+        const agentTimingSink = (event: string, data: any) => {
+          if (agentCancelled) return;
+          if (event === 'token') {
+            const chunk = data?.delta !== undefined ? data.delta : (data?.token || '');
+            agentStreamedText += chunk;
+          }
+          timingSink(event, data);
+        };
+
+        let timeoutHandle: any;
+        const deadlinePromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(new Error(`Agent mode turn deadline exceeded (${turnDeadlineMs}ms)`));
+          }, turnDeadlineMs);
+        });
+
         try {
           const agentLoop = new AgentTurnLoop();
           const catalogSearchHandler =
@@ -258,20 +289,26 @@ export class TurnApplicationService {
           const branchStockHandler =
             (this.capabilityGateway?.getNativeHandler?.('branch.stock_check') as BranchStockCheckHandler) ||
             new BranchStockCheckHandler();
-          const outcome = await agentLoop.execute({
-            command,
-            release,
-            workspace,
-            modelGateway: this.modelGateway,
-            catalogSearchHandler,
-            branchStockHandler,
-            knowledgeSearchHandler: new KnowledgeSearchHandler(
-              undefined,
-              this.knowledgeControlPlane ? (() => this.knowledgeControlPlane) as any : undefined
-            ),
-            knowledgeControlPlane: this.knowledgeControlPlane,
-            sink: timingSink,
-          });
+          const outcome = await Promise.race([
+            agentLoop.execute({
+              command,
+              release,
+              workspace,
+              modelGateway: this.modelGateway,
+              catalogSearchHandler,
+              branchStockHandler,
+              knowledgeSearchHandler: new KnowledgeSearchHandler(
+                undefined,
+                this.knowledgeControlPlane ? (() => this.knowledgeControlPlane) as any : undefined
+              ),
+              knowledgeControlPlane: this.knowledgeControlPlane,
+              sink: agentTimingSink,
+              timeoutMs: turnDeadlineMs,
+            }),
+            deadlinePromise,
+          ]);
+
+          clearTimeout(timeoutHandle);
 
           await this.commitWorkspace(
             workspace,
@@ -302,10 +339,16 @@ export class TurnApplicationService {
           );
           return outcome.turnResult;
         } catch (agentErr: any) {
+          agentCancelled = true;
+          clearTimeout(timeoutHandle);
           console.warn(
             `[AgentMode] Autonomous turn failed (${agentErr?.message || agentErr}). Falling back to rule-based engine.`
           );
-          // Fall back seamlessly to rule-based execution below
+          if (agentStreamedText.length > 0) {
+            fallbackStreamedText = agentStreamedText;
+          }
+        } finally {
+          clearTimeout(timeoutHandle);
         }
       }
 
@@ -354,7 +397,7 @@ export class TurnApplicationService {
         this.appendTurnHistory(workspace, release, command, turnResult);
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the knowledge decision answers on its own (safety, nothing verified, or knowledge unavailable)');
-        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink, fallbackStreamedText);
         this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
@@ -373,7 +416,7 @@ export class TurnApplicationService {
         phraseMs += Date.now() - phraseStart;
         sink('trace', { currentStage: workspace?.currentStage || 'initial', transitions: [] });
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the journey resolver is unavailable');
-        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink, fallbackStreamedText);
         this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
@@ -465,7 +508,7 @@ export class TurnApplicationService {
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         // Only after commit emit final confirmed events
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the request matches more than one journey');
-        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink, fallbackStreamedText);
         this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
@@ -497,7 +540,7 @@ export class TurnApplicationService {
               [],
               null,
               knowledgeGate,
-              timingSink
+              fallbackStreamedText ? undefined : timingSink
             );
           } catch (e: any) {}
         }
@@ -532,7 +575,7 @@ export class TurnApplicationService {
           await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         }
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'no journey matched the request');
-        this.streamCommittedFinalEvents(command, turnResult, [], timingSink, groundedResponse.streamedText);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink, fallbackStreamedText || groundedResponse.streamedText);
         this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs, phraseMs, command);
         return turnResult;
       }
@@ -1212,7 +1255,7 @@ export class TurnApplicationService {
           executedCapabilities,
           resolvedAgentInfo,
           knowledgeGate,
-          timingSink,
+          fallbackStreamedText ? undefined : timingSink,
           conversationPlan
         );
       } catch (e: any) {
@@ -1375,7 +1418,7 @@ export class TurnApplicationService {
     await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
 
     // 9. Only after successful commit emit final assistant response, capability results, confirmed UI actions, data and exactly one done
-    this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, timingSink, groundedResponse.streamedText);
+    this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, timingSink, fallbackStreamedText || groundedResponse.streamedText);
     this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs, phraseMs, command);
 
     return turnResult;
