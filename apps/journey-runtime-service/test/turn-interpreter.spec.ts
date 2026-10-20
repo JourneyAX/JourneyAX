@@ -352,6 +352,60 @@ async function runTests() {
     );
     assert.equal(invalid.candidateFacts.substrate, undefined);
     console.log('✓ OKF registry facts are available to interpretation and enforce their schema\n');
+
+    // Task B6: Grounding with evidenceQuote
+    console.log('Testing Task B6: Interpreter Grounding with evidenceQuote');
+    const groundedGateway: Partial<ModelGateway> = {
+      execute: async () => ({
+        content: JSON.stringify({
+          intent: 'process_turn',
+          candidateFacts: {
+            substrate: { value: 'timber', evidenceQuote: 'timber framing', confidence: 0.95 },
+          },
+        }),
+        provider: 'test-provider', model: 'test-model', residencyProven: 'nz',
+      }),
+    };
+    const groundedRes = await new TurnInterpreter(groundedGateway as ModelGateway).interpret(
+      { message: 'I need screws for timber framing fascias' } as TurnCommand, registryRelease, mockWorkspace
+    );
+    assert.equal(groundedRes.candidateFacts.substrate?.value, 'timber');
+    assert.equal(groundedRes.candidateFacts.substrate?.metadata?.evidenceQuote, 'timber framing');
+
+    // Hallucinated evidenceQuote not in message or history must be dropped
+    const hallucinatedGateway: Partial<ModelGateway> = {
+      execute: async () => ({
+        content: JSON.stringify({
+          intent: 'process_turn',
+          candidateFacts: {
+            substrate: { value: 'timber', evidenceQuote: 'concrete wall', confidence: 0.95 },
+          },
+        }),
+        provider: 'test-provider', model: 'test-model', residencyProven: 'nz',
+      }),
+    };
+    const hallucinatedRes = await new TurnInterpreter(hallucinatedGateway as ModelGateway).interpret(
+      { message: 'I need some screws please' } as TurnCommand, registryRelease, mockWorkspace
+    );
+    assert.equal(hallucinatedRes.candidateFacts.substrate, undefined, 'unsupported quote dropped');
+
+    // Value outside allowedValues must be dropped even with quote
+    const disallowedValGateway: Partial<ModelGateway> = {
+      execute: async () => ({
+        content: JSON.stringify({
+          intent: 'process_turn',
+          candidateFacts: {
+            substrate: { value: 'brick', evidenceQuote: 'brick', confidence: 0.95 },
+          },
+        }),
+        provider: 'test-provider', model: 'test-model', residencyProven: 'nz',
+      }),
+    };
+    const disallowedRes = await new TurnInterpreter(disallowedValGateway as ModelGateway).interpret(
+      { message: 'screws into brick' } as TurnCommand, registryRelease, mockWorkspace
+    );
+    assert.equal(disallowedRes.candidateFacts.substrate, undefined, 'disallowed enum value dropped');
+    console.log('✓ Task B6: Interpreter grounding with evidenceQuote verified\n');
   }
 
   console.log('====================================================');

@@ -93,14 +93,14 @@ export class FixedGateway extends ModelGateway {
     if (request.taskType === 'fast_intent' && request.prompt.includes('<customer_message>')) {
       const message = request.prompt.match(/<customer_message>\s*([\s\S]*?)\s*<\/customer_message>/i)?.[1]?.trim().toLowerCase() || '';
       const candidateFacts: Record<string, any> = {};
-      if (message.includes('composite')) candidateFacts.deck_material = { value: 'composite', confidence: 1 };
-      if (message.includes('4x3')) candidateFacts.deck_size = { value: '4x3 m', confidence: 1 };
-      if (message.includes('timber screws')) candidateFacts.fastener_substrate = { value: 'timber', confidence: 1 };
-      if (message === 'renovation') candidateFacts.project_scope = { value: 'renovation', confidence: 1 };
-      if (message === 'indoor') candidateFacts.cleaning_task = { value: 'indoor', confidence: 1 };
-      if (message === 'inside walls') candidateFacts.paint_surface = { value: 'interior', confidence: 1 };
+      if (message.includes('composite')) candidateFacts.deck_material = { value: 'composite', evidenceQuote: 'composite', confidence: 1 };
+      if (message.includes('4x3')) candidateFacts.deck_size = { value: '4x3 m', evidenceQuote: '4x3', confidence: 1 };
+      if (message.includes('timber screws')) candidateFacts.fastener_substrate = { value: 'timber', evidenceQuote: 'timber screws', confidence: 1 };
+      if (message === 'renovation') candidateFacts.project_scope = { value: 'renovation', evidenceQuote: 'renovation', confidence: 1 };
+      if (message === 'indoor') candidateFacts.cleaning_task = { value: 'indoor', evidenceQuote: 'indoor', confidence: 1 };
+      if (message === 'inside walls') candidateFacts.paint_surface = { value: 'interior', evidenceQuote: 'inside walls', confidence: 1 };
       if ((message.includes('screws for that') || message.includes('what screws')) && (request.prompt.includes('decking') || request.prompt.includes('timber') || request.prompt.includes('composite'))) {
-        candidateFacts.fastener_substrate = { value: 'timber', confidence: 1 };
+        candidateFacts.fastener_substrate = { value: 'timber', evidenceQuote: 'screws for that', confidence: 1 };
       }
       content = JSON.stringify({ intent: 'product_search', candidateFacts });
     }

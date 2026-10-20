@@ -46,6 +46,7 @@ export const InterpretationOutputSchema = z.object({
     z.union([
       z.object({
         value: z.any().optional(),
+        evidenceQuote: z.string().optional(),
         confidence: z.number().optional(),
       }),
       z.any(),
@@ -205,7 +206,9 @@ export class TurnInterpreter {
           (historyBlock ? `${historyBlock}\n\n` : '') +
           `Available slots and schemas:\n${JSON.stringify(slotQuestions)}\n\n` +
           `<customer_message>\n${rawMessage}\n</customer_message>\n\n` +
-          `Instructions:\n${policy.promptRules.map((rule, index) => `${index + 1}. ${rule}`).join('\n')}`;
+          `Instructions:\n${policy.promptRules.map((rule, index) => `${index + 1}. ${rule}`).join('\n')}\n` +
+          `Extract candidateFacts as an object where each slot maps to { "value": <allowed_value>, "evidenceQuote": "<short verbatim substring from customer message or conversation history>", "confidence": <0.0 to 1.0> }.\n` +
+          `Only extract facts directly supported by evidence in the customer message or conversation history. If there is no supporting evidence quote, do not extract the fact.`;
 
         const modelRes = await this.modelGateway.execute(release, {
           taskType: 'fast_intent',
@@ -237,19 +240,43 @@ export class TurnInterpreter {
           if (parsed.candidateFacts && typeof parsed.candidateFacts === 'object') {
             for (const [k, v] of Object.entries(parsed.candidateFacts)) {
               const rawVal = v && typeof v === 'object' && 'value' in v ? (v as any).value : v;
-              // Grounding check for categorical slots:
-              // Reject candidate extractions if the customer's message doesn't actually mention that option
+              const evidenceQuote = (v && typeof v === 'object' && 'evidenceQuote' in v && typeof (v as any).evidenceQuote === 'string')
+                ? (v as any).evidenceQuote.trim()
+                : '';
+
               const slotDef = slotQuestions[k];
               const entityDef: any = (release.entities?.entities || []).find(
                 (e: any) => e.entityName === k || e.entityId === k || e.name === k
               );
               const attrDef: any = entityDef?.attributes?.find((a: any) => a.name === k);
-              const enumOptions = slotDef?.options || entityDef?.allowedValues || attrDef?.enum;
+              const enumOptions = slotDef?.options || slotDef?.allowedValues || entityDef?.allowedValues || attrDef?.enum;
 
-              if (Array.isArray(enumOptions) && enumOptions.length > 0 && typeof rawVal === 'string') {
+              // Check 1: Allowed values constraint (for enum/categorical slots)
+              if (Array.isArray(enumOptions) && enumOptions.length > 0) {
+                const allowedSet = new Set(
+                  enumOptions.map((opt: any) =>
+                    (typeof opt === 'object' && opt?.value !== undefined ? String(opt.value) : String(opt)).toLowerCase()
+                  )
+                );
+                if (typeof rawVal === 'string' && !allowedSet.has(rawVal.toLowerCase())) {
+                  // Not in allowed values constraint; drop candidate fact
+                  continue;
+                }
+              }
+
+              // Check 2: Grounding with evidence quote (or fallback to message containment)
+              const historyText = readHistory(workspace?.facts).map((h) => h.content.toLowerCase()).join(' ');
+              const conversationalContext = `${lowerMsg} ${historyText}`;
+
+              if (evidenceQuote) {
+                // Structured evidence quote: must appear verbatim in message or history
+                const lowerQuote = evidenceQuote.toLowerCase();
+                if (!conversationalContext.includes(lowerQuote)) {
+                  // Hallucinated or unsupported quote; drop candidate fact
+                  continue;
+                }
+              } else if (Array.isArray(enumOptions) && enumOptions.length > 0 && typeof rawVal === 'string') {
                 const lowerOpt = rawVal.toLowerCase();
-                const historyText = readHistory(workspace?.facts).map((h) => h.content.toLowerCase()).join(' ');
-                const conversationalContext = `${lowerMsg} ${historyText}`;
                 const msgContainsOpt = conversationalContext.includes(lowerOpt);
                 const syns = ((release.vocabulary as any)?.slotSynonyms?.[k] || []).map((s: string) => String(s).toLowerCase());
                 const msgContainsSyn = syns.some((s: string) => conversationalContext.includes(s));
@@ -259,12 +286,10 @@ export class TurnInterpreter {
                 const msgContainsWord = optWords.some((w: string) => conversationalContext.includes(w));
 
                 if (resolveFactRole(release, k) === 'measurement') {
-                  // A non-numeric option for a measurement slot needs the customer to name that option (or a declared synonym).
                   if (!msgContainsOpt && !msgContainsSyn) {
                     continue;
                   }
                 } else if (!msgContainsOpt && !msgContainsSyn && !msgContainsWord) {
-                  // Ungrounded model extraction from generic casual phrasing; drop candidate fact
                   continue;
                 }
               }
@@ -275,6 +300,7 @@ export class TurnInterpreter {
                   source: 'customer',
                   confidence: (v as any).confidence ?? 0.95,
                   extractedAt: new Date().toISOString(),
+                  metadata: evidenceQuote ? { evidenceQuote } : undefined,
                 };
               } else {
                 rawCandidateFacts[k] = {
@@ -282,6 +308,7 @@ export class TurnInterpreter {
                   source: 'customer',
                   confidence: 0.95,
                   extractedAt: new Date().toISOString(),
+                  metadata: evidenceQuote ? { evidenceQuote } : undefined,
                 };
               }
             }
