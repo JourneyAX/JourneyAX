@@ -40,19 +40,28 @@ export interface ExtractOkfNotesOptions {
   maxChars?: number;
 }
 
+export const OKF_ALLOWED_RELATIONSHIP_TYPES = new Set([
+  'requires',
+  'installed_with',
+  'cross_sell',
+  'compatible_with',
+  'incompatible_with',
+  'alternative_to',
+  'care_for',
+  'document_for',
+  'escalates_to',
+]);
+
 /**
- * Extracts relevant OKF notes on demand from the tenant's PINNED release:
- * concepts, project recipes, family notes, relationships (what goes with what), and install/care notes.
- * Capped by maxChars (default 4000) and delimited inside <business_knowledge>.
+ * Finds relevant OKF concepts for a given question or conceptId.
  */
-export function extractRelevantOkfNotes(
+export function findRelevantOkfConcepts(
   okfContent: OkfReleaseContent | null | undefined,
-  options: ExtractOkfNotesOptions
-): string {
-  if (!okfContent) return '';
-  const maxChars = options.maxChars || 4000;
+  options: { conceptId?: string; customerQuestion: string; maxConcepts?: number }
+): OkfConcept[] {
+  if (!okfContent) return [];
+  const maxConcepts = options.maxConcepts || 4;
   const concepts: OkfConcept[] = okfContent.concepts || [];
-  const relationships = okfContent.relationships || [];
   const lowerQ = options.customerQuestion.toLowerCase();
 
   const activeConcepts: OkfConcept[] = [];
@@ -68,17 +77,44 @@ export function extractRelevantOkfNotes(
     const phraseMatch = Boolean((c.customerPhrases || []).some((p) => lowerQ.includes(p.toLowerCase())));
     if (nameMatch || synMatch || phraseMatch) {
       activeConcepts.push(c);
-      if (activeConcepts.length >= 4) break;
+      if (activeConcepts.length >= maxConcepts) break;
     }
   }
+
+  return activeConcepts;
+}
+
+/**
+ * Extracts relevant OKF notes on demand from the tenant's PINNED release:
+ * concepts, project recipes, family notes, relationships (what goes with what), and install/care notes.
+ * Capped by maxChars (default 4000) and delimited inside <business_knowledge>.
+ */
+export function extractRelevantOkfNotes(
+  okfContent: OkfReleaseContent | null | undefined,
+  options: ExtractOkfNotesOptions
+): string {
+  if (!okfContent) return '';
+  const maxChars = options.maxChars || 4000;
+  const concepts: OkfConcept[] = okfContent.concepts || [];
+  const relationships = okfContent.relationships || [];
+
+  const activeConcepts = findRelevantOkfConcepts(okfContent, {
+    conceptId: options.conceptId,
+    customerQuestion: options.customerQuestion,
+    maxConcepts: 4,
+  });
 
   const notes: string[] = [];
   let currentChars = 0;
 
+  const escapeClosingTag = (str: string): string =>
+    str.replace(/<\/business_knowledge>/gi, '&lt;/business_knowledge&gt;');
+
   const addNote = (line: string): boolean => {
-    if (currentChars + line.length + 1 > maxChars) return false;
-    notes.push(line);
-    currentChars += line.length + 1;
+    const sanitized = escapeClosingTag(line);
+    if (currentChars + sanitized.length + 1 > maxChars) return false;
+    notes.push(sanitized);
+    currentChars += sanitized.length + 1;
     return true;
   };
 
@@ -87,12 +123,12 @@ export function extractRelevantOkfNotes(
     addNote(`[concept: ${c.name}] (id: ${c.conceptId}, risk: ${c.riskClass || 'standard'}): ${c.description || ''}`);
   }
 
-  // 2. Relationships (requires, installed_with, cross_sell, care_for, relevant_to)
+  // 2. Relationships (keep only requires, installed_with, cross_sell, compatible_with, incompatible_with, alternative_to, care_for, document_for, escalates_to; exclude child_of)
   const conceptMap = new Map<string, OkfConcept>(concepts.map((c) => [c.conceptId, c]));
   const activeIds = new Set<string>(activeConcepts.map((c) => c.conceptId));
 
   const relevantRels = relationships.filter(
-    (r) => activeIds.has(r.from) || activeIds.has(r.to)
+    (r) => (activeIds.has(r.from) || activeIds.has(r.to)) && OKF_ALLOWED_RELATIONSHIP_TYPES.has(r.type)
   );
 
   for (const r of relevantRels) {
