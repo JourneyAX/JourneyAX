@@ -540,6 +540,145 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       // Server price wins!
       assert.equal(toolContext.presentedCards[0].state.products[0].price, 45.0);
     });
+
+    test('claim classes: empty lookup unlocks nothing and warranty of product A is never used for product B', async () => {
+      // Set up OKF release content with a verified warranty chunk specifically for Product A
+      const mockOkfContent: any = {
+        manifest: { releaseId: 'rel-okf-1', tenantId: 'test-tenant' },
+        concepts: [
+          {
+            conceptId: 'concept://test-tenant/product-a',
+            name: 'Product A Special Timber',
+            description: 'Premium treated timber',
+            synonyms: ['timber-a'],
+            riskClass: 'standard',
+            safety: { blocksProducts: false, stepRefs: [] },
+            commercePolicy: { addToCart: 'allowed', checkout: 'allowed' },
+            verificationRef: 'verify-concept-a',
+          },
+          {
+            conceptId: 'concept://test-tenant/product-b',
+            name: 'Product B Steel Joist',
+            description: 'Galvanised joist',
+            synonyms: ['joist-b'],
+            riskClass: 'standard',
+            safety: { blocksProducts: false, stepRefs: [] },
+            commercePolicy: { addToCart: 'allowed', checkout: 'allowed' },
+            verificationRef: 'verify-concept-b',
+          },
+        ],
+        relationships: [
+          {
+            relationshipId: 'rel-a-docs',
+            from: 'concept://test-tenant/product-a',
+            to: 'concept://test-tenant/doc-warranty',
+            type: 'document_for',
+            strength: 'recommended',
+            scope: 'sku',
+            confidence: 'high',
+            sourceRefs: ['src-warranty-doc-a'],
+            verificationRef: 'verify-rel-a',
+            claimClasses: ['warranty'],
+          },
+        ],
+        sources: [
+          {
+            sourceId: 'src-warranty-doc-a',
+            title: 'Product A Warranty Certificate',
+            kind: 'document',
+          },
+        ],
+        verifications: [
+          {
+            recordId: 'verify-concept-a',
+            targetType: 'concept',
+            targetId: 'concept://test-tenant/product-a',
+            status: 'verified',
+            verifiedBy: 'inspector-1',
+            verifierRole: 'expert',
+            verifiedAt: new Date().toISOString(),
+            contentHash: 'hash-a',
+          },
+          {
+            recordId: 'verify-concept-b',
+            targetType: 'concept',
+            targetId: 'concept://test-tenant/product-b',
+            status: 'verified',
+            verifiedBy: 'inspector-1',
+            verifierRole: 'expert',
+            verifiedAt: new Date().toISOString(),
+            contentHash: 'hash-b',
+          },
+          {
+            recordId: 'verify-rel-a',
+            targetType: 'relationship',
+            targetId: 'rel-a-docs',
+            status: 'verified',
+            verifiedBy: 'inspector-1',
+            verifierRole: 'expert',
+            verifiedAt: new Date().toISOString(),
+            contentHash: 'hash-rel-a',
+          },
+        ],
+        evidenceChunks: [
+          {
+            chunkId: 'chunk-warranty-prod-a',
+            sourceRef: 'src-warranty-doc-a',
+            conceptIds: ['concept://test-tenant/product-a'],
+            claimClasses: ['warranty'],
+            title: 'Product A 15-Year Manufacturer Warranty',
+            content: 'Product A comes with a 15-year warranty against structural decay.',
+            applicability: { scope: 'sku', refs: ['SKU-PROD-A'] },
+            ordinal: 0,
+            contentHash: 'hash-chunk-a',
+          },
+        ],
+      };
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        correlationId: 'test-corr',
+        release: createTestPack(),
+        okfContent: mockOkfContent,
+        catalogSearchHandler: {} as any,
+        turnProductSkus: new Set(['SKU-PROD-A', 'SKU-PROD-B']),
+        catalogProductCache: new Map([
+          ['SKU-PROD-A', { sku: 'SKU-PROD-A', name: 'Product A Special Timber' }],
+          ['SKU-PROD-B', { sku: 'SKU-PROD-B', name: 'Product B Steel Joist' }],
+        ]),
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+      };
+
+      // 1. Empty lookup unlocks nothing for get_warranty
+      const emptyWarranty = await executeAgentTool('get_warranty', { productOrBrand: '' }, toolContext);
+      assert.equal(emptyWarranty.found, false);
+      assert.equal(toolContext.allowedClaimClasses.has('warranty'), false, 'Empty warranty lookup must unlock nothing');
+
+      // 2. Empty lookup unlocks nothing for consult_business_knowledge
+      const emptyKnowledge = await executeAgentTool('consult_business_knowledge', { topic: '' }, toolContext);
+      assert.equal(emptyKnowledge.found, false);
+      assert.equal(toolContext.allowedClaimClasses.size, 0, 'Empty business knowledge lookup must unlock nothing');
+
+      // 3. Unmatched lookup unlocks nothing
+      const unmatchedKnowledge = await executeAgentTool('consult_business_knowledge', { topic: 'completely unrelated query' }, toolContext);
+      assert.equal(unmatchedKnowledge.found, false);
+      assert.equal(toolContext.allowedClaimClasses.size, 0, 'Unmatched business knowledge lookup must unlock nothing');
+
+      // 4. Warranty of Product A is NEVER used for Product B
+      const warrantyB = await executeAgentTool('get_warranty', { productOrBrand: 'SKU-PROD-B' }, toolContext);
+      assert.equal(warrantyB.found, false, 'Warranty for Product A must NOT be returned when asked for Product B');
+      assert.equal(toolContext.allowedClaimClasses.has('warranty'), false, 'Warranty claim class must NOT be unlocked for Product B');
+
+      // 5. Warranty of Product A IS returned and unlocked when asked for Product A
+      const warrantyA = await executeAgentTool('get_warranty', { productOrBrand: 'SKU-PROD-A' }, toolContext);
+      assert.equal(warrantyA.found, true, 'Warranty for Product A should be found');
+      assert.match(warrantyA.warranty.terms, /15-year warranty/i);
+      assert.equal(toolContext.allowedClaimClasses.has('warranty'), true, 'Warranty claim class must be unlocked for verified Product A');
+    });
   });
 });
 

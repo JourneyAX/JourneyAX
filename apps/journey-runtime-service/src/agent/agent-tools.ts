@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
-import type { ClaimClass, OkfReleaseContent } from '@journeyax/knowledge';
+import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk } from '@journeyax/knowledge';
+import { effectiveVerification, scopedClaims, verifiedEvidenceRefs } from '@journeyax/knowledge';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
-import { extractRelevantOkfNotes } from '../kernel/business-knowledge';
+import { extractRelevantOkfNotes, findRelevantOkfConcepts } from '../kernel/business-knowledge';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
@@ -263,17 +264,32 @@ export async function executeAgentTool(
   switch (toolName) {
     case 'consult_business_knowledge': {
       const topic = String(args.topic || '').trim();
-      if (!ctx.okfContent) {
+      if (!ctx.okfContent || !topic) {
         return {
           found: false,
-          notes: 'No pinned business knowledge release available for this tenant.',
+          knowledge: !ctx.okfContent
+            ? 'No pinned business knowledge release available for this tenant.'
+            : 'No topic specified.',
         };
       }
+
+      const activeConcepts = findRelevantOkfConcepts(ctx.okfContent, {
+        customerQuestion: topic,
+        maxConcepts: 4,
+      });
 
       const notesBlock = extractRelevantOkfNotes(ctx.okfContent, {
         customerQuestion: topic,
         maxChars: 3000,
       });
+
+      if (!notesBlock || activeConcepts.length === 0) {
+        return {
+          found: false,
+          topic,
+          knowledge: 'No specific notes found for this topic.',
+        };
+      }
 
       // Extract source IDs mentioned in notes: [source: ...]
       const sourceMatches = notesBlock.matchAll(/\[source:\s*([^\]]+)\]/g);
@@ -281,16 +297,35 @@ export async function executeAgentTool(
         if (m[1]) ctx.readSourceIds.add(m[1].trim());
       }
 
-      // Add allowed claim classes supported by the active OKF content
-      ctx.allowedClaimClasses.add('compatibility');
-      ctx.allowedClaimClasses.add('requirement');
-      ctx.allowedClaimClasses.add('installation_step');
-      ctx.allowedClaimClasses.add('care_safety');
+      // Add classes only when it returned notes from concepts whose OKF verification is currently valid
+      // (reusing the gate's effectiveVerification / scopedClaims logic) and only for those classes.
+      const now = new Date();
+      const verifications = new Map((ctx.okfContent.verifications || []).map((v) => [v.recordId, v]));
+
+      for (const concept of activeConcepts) {
+        // Concept verification record check
+        const vRecord = concept.verificationRef
+          ? verifications.get(concept.verificationRef)
+          : (ctx.okfContent.verifications || []).find(
+              (v) => v.targetType === 'concept' && v.targetId === concept.conceptId
+            );
+        if (vRecord && effectiveVerification(vRecord, now) !== 'verified') {
+          continue;
+        }
+
+        // Use scopedClaims to get verified claim classes for this concept's relationships
+        const { allowed } = scopedClaims(ctx.okfContent, concept.conceptId, now);
+        for (const claimClass of allowed) {
+          if (claimClass !== 'suggestion') {
+            ctx.allowedClaimClasses.add(claimClass);
+          }
+        }
+      }
 
       return {
-        found: Boolean(notesBlock),
+        found: true,
         topic,
-        knowledge: notesBlock || 'No specific notes found for this topic.',
+        knowledge: notesBlock,
       };
     }
 
@@ -318,7 +353,9 @@ export async function executeAgentTool(
         }
       }
 
-      ctx.allowedClaimClasses.add('catalog_fact');
+      if (products.length > 0) {
+        ctx.allowedClaimClasses.add('catalog_fact');
+      }
 
       return {
         query,
@@ -399,7 +436,14 @@ export async function executeAgentTool(
             (rel.from && mainProd?.name && rel.from.toLowerCase().includes(mainProd.name.toLowerCase()));
           if (isMatch) {
             relatedTerms.push(rel.to);
-            ctx.allowedClaimClasses.add('compatibility');
+            const relVer = rel.verificationRef
+              ? (ctx.okfContent.verifications || []).find((v) => v.recordId === rel.verificationRef)
+              : undefined;
+            if (effectiveVerification(relVer, new Date()) === 'verified') {
+              for (const cc of rel.claimClasses || ['compatibility']) {
+                ctx.allowedClaimClasses.add(cc);
+              }
+            }
           }
         }
       }
@@ -420,7 +464,9 @@ export async function executeAgentTool(
         }
       }
 
-      ctx.allowedClaimClasses.add('catalog_fact');
+      if (items.length > 0) {
+        ctx.allowedClaimClasses.add('catalog_fact');
+      }
 
       return {
         forSku: sku,
@@ -455,8 +501,13 @@ export async function executeAgentTool(
               snippet: chunk.content.slice(0, 200),
             });
             ctx.readSourceIds.add(chunk.sourceRef);
-            ctx.allowedClaimClasses.add('installation_step');
-            ctx.allowedClaimClasses.add('care_safety');
+            const chunkVer = (ctx.okfContent.verifications || []).find(
+              (v) => (v.targetId === chunk.chunkId || v.sourceRefs.includes(chunk.sourceRef))
+            );
+            if (chunkVer && effectiveVerification(chunkVer, new Date()) === 'verified') {
+              if (chunk.claimClasses.includes('installation_step')) ctx.allowedClaimClasses.add('installation_step');
+              if (chunk.claimClasses.includes('care_safety')) ctx.allowedClaimClasses.add('care_safety');
+            }
           }
         }
       }
@@ -486,49 +537,158 @@ export async function executeAgentTool(
 
     case 'get_warranty': {
       const target = String(args.productOrBrand || '').trim();
-      let warrantyDetails: any = null;
+      if (!target) {
+        return {
+          found: false,
+          productOrBrand: '',
+          message: 'No product or brand specified.',
+        };
+      }
 
-      // Look for warranty evidence chunks in OKF
+      let matchedChunk: OkfEvidenceChunk | null = null;
+      const now = new Date();
+      const verifications = new Map((ctx.okfContent?.verifications || []).map((v) => [v.recordId, v]));
+
       if (ctx.okfContent?.evidenceChunks) {
+        const targetLower = target.toLowerCase();
+        let targetProduct = ctx.catalogProductCache.get(target);
+        if (!targetProduct) {
+          targetProduct = [...ctx.catalogProductCache.values()].find(
+            (p) =>
+              p.sku?.toLowerCase() === targetLower ||
+              p.name?.toLowerCase() === targetLower ||
+              p.title?.toLowerCase() === targetLower
+          );
+        }
+        const targetSku = targetProduct?.sku?.toLowerCase();
+        const targetName = (targetProduct?.name || targetProduct?.title)?.toLowerCase();
+
         for (const chunk of ctx.okfContent.evidenceChunks) {
-          if (
-            chunk.claimClasses.includes('warranty') ||
-            chunk.title.toLowerCase().includes('warranty') ||
-            chunk.content.toLowerCase().includes('warranty')
-          ) {
-            warrantyDetails = {
-              sourceId: chunk.sourceRef,
-              title: chunk.title,
-              terms: chunk.content,
-            };
-            ctx.readSourceIds.add(chunk.sourceRef);
-            ctx.allowedClaimClasses.add('warranty');
+          if (!chunk.claimClasses.includes('warranty')) {
+            continue;
+          }
+
+          // Match the chunk to the asked product, brand or concept
+          const refs = (chunk.applicability?.refs || []).map((r) => r.toLowerCase());
+          const matchesRef = refs.some(
+            (ref) =>
+              ref === targetLower ||
+              targetLower.includes(ref) ||
+              ref.includes(targetLower) ||
+              (targetSku && ref === targetSku) ||
+              (targetName && (ref === targetName || targetName.includes(ref)))
+          );
+
+          let matchesConcept = false;
+          if (chunk.conceptIds && ctx.okfContent.concepts) {
+            for (const cId of chunk.conceptIds) {
+              if (cId.toLowerCase() === targetLower) {
+                matchesConcept = true;
+                break;
+              }
+              const concept = ctx.okfContent.concepts.find((c) => c.conceptId === cId);
+              if (concept) {
+                const nameLower = concept.name.toLowerCase();
+                if (
+                  nameLower === targetLower ||
+                  targetLower.includes(nameLower) ||
+                  nameLower.includes(targetLower) ||
+                  (targetName && (nameLower === targetName || targetName.includes(nameLower)))
+                ) {
+                  matchesConcept = true;
+                  break;
+                }
+                if (
+                  concept.synonyms?.some(
+                    (s) =>
+                      s.toLowerCase() === targetLower ||
+                      targetLower.includes(s.toLowerCase()) ||
+                      (targetName && s.toLowerCase() === targetName)
+                  )
+                ) {
+                  matchesConcept = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          // Also match title only if it explicitly mentions target or target product name
+          const matchesTitle =
+            chunk.title.toLowerCase().includes(targetLower) ||
+            Boolean(targetName && chunk.title.toLowerCase().includes(targetName));
+
+          if (!matchesRef && !matchesConcept && !matchesTitle) {
+            continue;
+          }
+
+          // Require verified status: must be verified
+          let isVerified = false;
+
+          // 1. Direct verification record
+          const directVer = (ctx.okfContent.verifications || []).find(
+            (v) => v.targetId === chunk.chunkId || v.sourceRefs?.includes(chunk.sourceRef)
+          );
+          if (directVer && effectiveVerification(directVer, now) === 'verified') {
+            isVerified = true;
+          }
+
+          // 2. Verified via concept evidence refs
+          if (!isVerified && chunk.conceptIds && ctx.okfContent.concepts) {
+            for (const cId of chunk.conceptIds) {
+              const concept = ctx.okfContent.concepts.find((c) => c.conceptId === cId);
+              if (concept) {
+                const verifiedSources = verifiedEvidenceRefs(ctx.okfContent, concept, now);
+                if (verifiedSources.includes(chunk.sourceRef)) {
+                  isVerified = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 3. Verified via relationship
+          if (!isVerified && ctx.okfContent.relationships) {
+            for (const rel of ctx.okfContent.relationships) {
+              if (
+                rel.claimClasses?.includes('warranty') &&
+                rel.sourceRefs?.includes(chunk.sourceRef)
+              ) {
+                const relVer = rel.verificationRef ? verifications.get(rel.verificationRef) : undefined;
+                if (effectiveVerification(relVer, now) === 'verified') {
+                  isVerified = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (isVerified) {
+            matchedChunk = chunk;
             break;
           }
         }
       }
 
-      if (!warrantyDetails) {
-        // Fallback: check product description from cache or search
-        const found = [...ctx.catalogProductCache.values()].find(
-          (p) => p.name?.toLowerCase().includes(target.toLowerCase()) || p.sku === target
-        );
-        if (found?.specs?.warranty || found?.description?.match(/\b(\d+)\s*(?:year|month)\s*warranty\b/i)) {
-          const match = found.description?.match(/\b(\d+)\s*(?:year|month)\s*warranty\b/i);
-          warrantyDetails = {
-            sourceId: `sku:${found.sku}`,
-            title: `${found.name} Manufacturer Warranty`,
-            terms: match ? match[0] : (found.specs?.warranty || 'Standard Manufacturer Warranty'),
-          };
-          ctx.allowedClaimClasses.add('warranty');
-        }
+      if (matchedChunk) {
+        ctx.readSourceIds.add(matchedChunk.sourceRef);
+        ctx.allowedClaimClasses.add('warranty');
+        return {
+          productOrBrand: target,
+          found: true,
+          warranty: {
+            sourceId: matchedChunk.sourceRef,
+            title: matchedChunk.title,
+            terms: matchedChunk.content,
+          },
+        };
       }
 
       return {
         productOrBrand: target,
-        found: Boolean(warrantyDetails),
-        warranty: warrantyDetails || {
-          message: `No specific warranty certificate registered for '${target}'. Please consult store staff.`,
+        found: false,
+        warranty: {
+          message: `No verified warranty certificate registered for '${target}'. Please consult store staff.`,
         },
       };
     }

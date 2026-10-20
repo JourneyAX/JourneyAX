@@ -230,16 +230,21 @@ function descendantsOf(content: OkfReleaseContent, parentId: string): Set<string
   return descendants;
 }
 
-function effectiveVerification(
+export function effectiveVerification(
   record: OkfVerificationRecord | undefined,
-  now: Date
+  now: Date = new Date()
 ): 'unverified' | 'in_review' | 'verified' | 'expired' {
   if (!record) return 'unverified';
   if (record.staleAfter && new Date(record.staleAfter) <= now) return 'expired';
   return record.status;
 }
 
-function scopedClaims(content: OkfReleaseContent, conceptId: string, now: Date, policy: ResolvedOkfPolicy): { allowed: ClaimClass[]; disclaimers: string[] } {
+export function scopedClaims(
+  content: OkfReleaseContent,
+  conceptId: string,
+  now: Date = new Date(),
+  policy: ResolvedOkfPolicy = resolveOkfPolicy(content?.policy)
+): { allowed: ClaimClass[]; disclaimers: string[] } {
   const verifications = new Map(content.verifications.map((record) => [record.recordId, record]));
   const allowed = new Set<ClaimClass>(['suggestion']);
   const disclaimers: string[] = [];
@@ -306,14 +311,14 @@ function verifiedSafetyGuidance(
   });
 }
 
-function verifiedEvidenceRefs(content: OkfReleaseContent, concept: OkfConcept, now: Date): string[] {
+export function verifiedEvidenceRefs(content: OkfReleaseContent, concept: OkfConcept, now: Date = new Date()): string[] {
   const verifications = new Map(content.verifications.map((entry) => [entry.recordId, entry]));
   const refs = new Set<string>();
 
   if (concept.verificationRef) {
     const verification = verifications.get(concept.verificationRef);
     if (effectiveVerification(verification, now) === 'verified') {
-      for (const sourceRef of [...concept.evidenceRefs, ...(verification?.sourceRefs || [])]) refs.add(sourceRef);
+      for (const sourceRef of [...(concept.evidenceRefs || []), ...(verification?.sourceRefs || [])]) refs.add(sourceRef);
     }
   }
 
@@ -322,7 +327,7 @@ function verifiedEvidenceRefs(content: OkfReleaseContent, concept: OkfConcept, n
       ? verifications.get(relationship.verificationRef)
       : undefined;
     if (effectiveVerification(verification, now) !== 'verified') continue;
-    for (const sourceRef of [...relationship.sourceRefs, ...(verification?.sourceRefs || [])]) refs.add(sourceRef);
+    for (const sourceRef of [...(relationship.sourceRefs || []), ...(verification?.sourceRefs || [])]) refs.add(sourceRef);
   }
   return [...refs];
 }
