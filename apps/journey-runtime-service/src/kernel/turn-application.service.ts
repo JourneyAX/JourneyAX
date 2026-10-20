@@ -1762,6 +1762,19 @@ export class TurnApplicationService {
         }
       }
     }
+    // Also include products from conversationPlan.products if present
+    if (verifiedProducts.length === 0 && conversationPlan?.products?.length) {
+      for (const p of conversationPlan.products) {
+        const item = (p as any).item || p;
+        const sku = item.sku || item.id;
+        if (sku && !seenSkus.has(sku)) {
+          seenSkus.add(sku);
+          verifiedProducts.push(item);
+        } else if (!sku) {
+          verifiedProducts.push(item);
+        }
+      }
+    }
 
     // A successful but empty live catalogue result cannot support "here are" or an
     // availability claim from the model. Use the merchant's configured empty-result
