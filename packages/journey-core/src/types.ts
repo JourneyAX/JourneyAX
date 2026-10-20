@@ -256,6 +256,7 @@ export interface TurnResult {
     };
     errors?: any[];
     events?: any[];
+    timing?: any;
   };
 }
 

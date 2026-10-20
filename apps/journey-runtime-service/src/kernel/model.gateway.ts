@@ -75,6 +75,11 @@ export interface ModelExecutionResponse {
   latencyMs: number;
   residencyProven: boolean;
   residencyEvidence: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
 }
 
 export class ModelGateway {
@@ -399,12 +404,36 @@ export class ModelGateway {
     }
 
     let content = '';
+    let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
     if (route.provider === 'openai' || route.provider === 'open-model' || route.provider === 'custom') {
       content = responseData.choices?.[0]?.message?.content || '';
+      if (responseData.usage) {
+        usage = {
+          promptTokens: responseData.usage.prompt_tokens,
+          completionTokens: responseData.usage.completion_tokens,
+          totalTokens: responseData.usage.total_tokens,
+        };
+      }
     } else if (route.provider === 'anthropic') {
       content = responseData.content?.[0]?.text || '';
+      if (responseData.usage) {
+        const inputTokens = responseData.usage.input_tokens || 0;
+        const outputTokens = responseData.usage.output_tokens || 0;
+        usage = {
+          promptTokens: inputTokens,
+          completionTokens: outputTokens,
+          totalTokens: inputTokens + outputTokens,
+        };
+      }
     } else if (route.provider === 'google') {
       content = responseData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (responseData.usageMetadata) {
+        usage = {
+          promptTokens: responseData.usageMetadata.promptTokenCount,
+          completionTokens: responseData.usageMetadata.candidatesTokenCount,
+          totalTokens: responseData.usageMetadata.totalTokenCount,
+        };
+      }
     }
 
     if (!content || !content.trim()) {
@@ -421,6 +450,7 @@ export class ModelGateway {
       latencyMs: Date.now() - startTime,
       residencyProven: true,
       residencyEvidence: evidenced.evidence,
+      usage,
     };
   }
 

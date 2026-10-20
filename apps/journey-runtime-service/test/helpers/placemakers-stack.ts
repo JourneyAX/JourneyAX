@@ -103,7 +103,7 @@ export class FixedGateway extends ModelGateway {
     }
     return {
       content, route: { policyId: request.taskType, provider: 'custom', model: 'fixed-test-model', dataResidency: 'test', timeoutMs: 1000, maxInputTokens: 4096, maxOutputTokens: 1024 },
-      latencyMs: 1, residencyProven: true, residencyEvidence: 'isolated-test-adapter',
+      latencyMs: 1, usage: { promptTokens: 50, completionTokens: 25, totalTokens: 75 }, residencyProven: true, residencyEvidence: 'isolated-test-adapter',
     };
   }
 }

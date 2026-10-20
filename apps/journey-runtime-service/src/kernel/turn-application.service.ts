@@ -43,6 +43,22 @@ import {
   type KnowledgeControlPlanePort,
 } from './knowledge-control-plane';
 import type { OkfGateDecision } from '@journeyax/knowledge';
+
+export interface TurnTiming {
+  timeToFirstEventMs: number | null;
+  timeToFirstTextMs: number | null;
+  interpretMs: number;
+  responseMs: number;
+  phraseMs: number;
+  retrievalMs: number;
+  totalMs: number;
+  modelCalls: number;
+  tokens: {
+    prompt: number;
+    completion: number;
+    total: number;
+  };
+}
 function extractValueByJsonPath(obj: any, path: string): any {
   if (!obj || !path) return undefined;
   if (path === 'true') return true;
@@ -152,6 +168,22 @@ export class TurnApplicationService {
     preloadedRelease?: any,
     sink: (event: string, data: any) => void = () => {}
   ): Promise<TurnResult> {
+    const turnStartTime = Date.now();
+    let timeToFirstEventMs: number | null = null;
+    let timeToFirstTextMs: number | null = null;
+    let totalRetrievalMs = 0;
+
+    const timingSink = (event: string, data: any) => {
+      const elapsed = Date.now() - turnStartTime;
+      if (timeToFirstEventMs === null) {
+        timeToFirstEventMs = elapsed;
+      }
+      if (timeToFirstTextMs === null && event === 'token') {
+        timeToFirstTextMs = elapsed;
+      }
+      sink(event, data);
+    };
+
     try {
       const tenantId = command.tenantId;
       const envId: EnvironmentId = command.environmentId || 'production';
@@ -159,7 +191,7 @@ export class TurnApplicationService {
       const turnId = command.turnId;
 
       // 1. Forward session event at start of streaming boundary
-      sink('session', { sessionId: command.sessionId || workspaceId });
+      timingSink('session', { sessionId: command.sessionId || workspaceId });
 
       // 2. Authoritative Business Pack resolution
       // If a pre-validated release was passed by the cutover gate, use it directly.
@@ -189,7 +221,8 @@ export class TurnApplicationService {
       }
 
       // 4. Extract and reduce conversational facts through model-gateway & schema validation
-      const { interpretation, knowledgeGate } = await this.readTurn(command, release, workspace);
+      const { interpretation, knowledgeGate, retrievalMs: gateRetrievalMs } = await this.readTurn(command, release, workspace);
+      totalRetrievalMs += gateRetrievalMs || 0;
 
       // Terminal knowledge outcomes answer from tenant/platform wording and never reach journey routing, the model
       // composer or any capability:
@@ -229,7 +262,8 @@ export class TurnApplicationService {
         (turnResult.trace as any).knowledgeGate = knowledgeGate;
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the knowledge decision answers on its own (safety, nothing verified, or knowledge unavailable)');
-        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs);
         return turnResult;
       }
 
@@ -245,7 +279,8 @@ export class TurnApplicationService {
         const turnResult = this.presentationPort.compose({ valid: false, notes: decision.reason }, decision, workspace || ({} as any), release);
         sink('trace', { currentStage: workspace?.currentStage || 'initial', transitions: [] });
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the journey resolver is unavailable');
-        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs);
         return turnResult;
       }
 
@@ -333,7 +368,8 @@ export class TurnApplicationService {
         await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
         // Only after commit emit final confirmed events
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'the request matches more than one journey');
-        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, undefined, totalRetrievalMs);
         return turnResult;
       }
 
@@ -352,7 +388,7 @@ export class TurnApplicationService {
         }
         const decision = this.journeyResolver.decide(release, workspace, command, interpretation);
 
-        let groundedResponse: { message?: string; modelRoute?: any } = {};
+        let groundedResponse: { message?: string; modelRoute?: any; latencyMs?: number; usage?: any } = {};
         if (command?.message && command.message.trim() && decision.type === 'handoff') {
           try {
             groundedResponse = await this.composeGroundedCustomerResponse(
@@ -392,7 +428,8 @@ export class TurnApplicationService {
           transitions: [],
         });
         this.logTurn(release, knowledgeGate, interpretation, turnResult, 'no journey matched the request');
-        this.streamCommittedFinalEvents(command, turnResult, [], sink);
+        this.streamCommittedFinalEvents(command, turnResult, [], timingSink);
+        this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs);
         return turnResult;
       }
 
@@ -813,6 +850,10 @@ export class TurnApplicationService {
           ctx
         );
 
+        if (execResponse?.durationMs && (toolId.includes('search') || toolId.includes('catalog') || toolId.includes('knowledge'))) {
+          totalRetrievalMs += execResponse.durationMs;
+        }
+
         if (execResponse.status === 'requires_approval') {
           pendingApproval = await this.approvalService.createPending(
             toolId,
@@ -1043,7 +1084,7 @@ export class TurnApplicationService {
     }
 
     // 8. Grounded customer response composition using explicit response_generation model policy
-    let groundedResponse: { message?: string; modelRoute?: any } = {};
+    let groundedResponse: { message?: string; modelRoute?: any; latencyMs?: number; usage?: any } = {};
     // Verified safety instructions are rendered deterministically from the
     // pinned OKF release. Never send them through a model phrasing step.
     // "Nothing to show" is always the tenant's sentence, whoever words the rest of the reply.
@@ -1222,7 +1263,8 @@ export class TurnApplicationService {
     await this.commitWorkspace(workspace, turnId, envId, tenantId, workspaceId, decision.type, command.correlationId);
 
     // 9. Only after successful commit emit final assistant response, capability results, confirmed UI actions, data and exactly one done
-    this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, sink);
+    this.streamCommittedFinalEvents(command, turnResult, executedCapabilities, timingSink);
+    this.recordTurnTiming(turnResult, turnStartTime, timeToFirstEventMs, timeToFirstTextMs, interpretation, groundedResponse, totalRetrievalMs);
 
     return turnResult;
     } catch (err: any) {
@@ -1233,6 +1275,54 @@ export class TurnApplicationService {
       });
       throw err;
     }
+  }
+
+  /**
+   * Records structured timing and token metrics on the turn trace and emits a structured JSON log.
+   */
+  private recordTurnTiming(
+    turnResult: TurnResult,
+    turnStartTime: number,
+    timeToFirstEventMs: number | null,
+    timeToFirstTextMs: number | null,
+    interpretation?: { latencyMs?: number; usage?: any },
+    groundedResponse?: { latencyMs?: number; usage?: any },
+    retrievalMs: number = 0,
+    phraseMs: number = 0
+  ): TurnTiming {
+    const totalMs = Date.now() - turnStartTime;
+    const interpretMs = interpretation?.latencyMs || 0;
+    const responseMs = groundedResponse?.latencyMs || 0;
+    let modelCalls = 0;
+    if (interpretMs > 0) modelCalls++;
+    if (responseMs > 0) modelCalls++;
+    if (phraseMs > 0) modelCalls++;
+
+    const promptTokens = (interpretation?.usage?.promptTokens || 0) + (groundedResponse?.usage?.promptTokens || 0);
+    const completionTokens = (interpretation?.usage?.completionTokens || 0) + (groundedResponse?.usage?.completionTokens || 0);
+    const totalTokens = (interpretation?.usage?.totalTokens || 0) + (groundedResponse?.usage?.totalTokens || 0);
+
+    const timing: TurnTiming = {
+      timeToFirstEventMs,
+      timeToFirstTextMs: timeToFirstTextMs ?? (turnResult.assistantMessage ? totalMs : null),
+      interpretMs,
+      responseMs,
+      phraseMs,
+      retrievalMs,
+      totalMs,
+      modelCalls,
+      tokens: {
+        prompt: promptTokens,
+        completion: completionTokens,
+        total: totalTokens,
+      },
+    };
+
+    if (turnResult.trace) {
+      (turnResult.trace as any).timing = timing;
+    }
+    console.log(JSON.stringify({ event: 'turn.timing', ...timing }));
+    return timing;
   }
 
   /** The one-line summary of a turn that ended before the normal diagnostics, so no turn goes unlogged. */
@@ -1259,17 +1349,22 @@ export class TurnApplicationService {
     const policy = resolveConversationPolicy(release);
     const message = (command.message || (command as any).userInput || '').trim();
     const mode = pendingReadingMode(message, policy);
+    let retrievalMs = 0;
     if (mode) {
       const quick = await this.interpreter.interpret(command, release, workspace || ({} as any), { model: false });
+      const t0 = Date.now();
       const gate = await this.knowledgeControlPlane.evaluate(release, command, workspace, quick);
+      retrievalMs += Date.now() - t0;
       if (gate && readsWithoutModel(mode, message, gate, quick.candidateFacts as any, policy)) {
         quick.modelSkipped = mode === 'tapped' ? 'tapped_answer' : 'browse_request';
-        return { interpretation: quick, knowledgeGate: gate };
+        return { interpretation: quick, knowledgeGate: gate, retrievalMs };
       }
     }
     const interpretation = await this.interpreter.interpret(command, release, workspace || ({} as any));
+    const t1 = Date.now();
     const knowledgeGate = await this.knowledgeControlPlane.evaluate(release, command, workspace, interpretation);
-    return { interpretation, knowledgeGate };
+    retrievalMs += Date.now() - t1;
+    return { interpretation, knowledgeGate, retrievalMs };
   }
 
   /**
@@ -1564,7 +1659,7 @@ export class TurnApplicationService {
     executedCapabilities: any[],
     resolvedAgentInfo: any,
     knowledgeGate?: OkfGateDecision | null
-  ): Promise<{ message?: string; modelRoute?: any }> {
+  ): Promise<{ message?: string; modelRoute?: any; latencyMs?: number; usage?: any }> {
     const customerQuestion = (command?.message || (command as any)?.userInput || '').trim();
     if (!customerQuestion) {
       return {};
@@ -1835,12 +1930,16 @@ export class TurnApplicationService {
             return {
               message: shape(withheld.text) || decision.payload?.question || knowledgeGate?.clarification?.question || renderOkfMessage(interpretationMessages, 'claim_withheld'),
               modelRoute: modelRes.route,
+              latencyMs: modelRes.latencyMs,
+              usage: modelRes.usage,
             };
           }
         }
         return {
           message: shape(content),
           modelRoute: modelRes.route,
+          latencyMs: modelRes.latencyMs,
+          usage: modelRes.usage,
         };
       }
     } catch (err: any) {
