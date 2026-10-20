@@ -1268,6 +1268,55 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       );
       assert.equal(claimResultOutAfterCheck.valid, true, 'Out of stock claim is supported after check_stock');
     });
+
+    test('records streamed token usage across multi-round execution in agent mode', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const workspace = createTestWorkspace();
+
+      let round = 0;
+      gateway.mockAgentExecutor = async (_req, onDelta) => {
+        round++;
+        if (round === 1) {
+          return {
+            content: '',
+            toolCalls: [{ id: 'call_1', name: 'search_products', arguments: { query: 'timber' } }],
+            usage: { promptTokens: 120, completionTokens: 30, totalTokens: 150 },
+          };
+        } else {
+          onDelta?.('Found products.');
+          return {
+            content: 'Found products.',
+            toolCalls: [],
+            usage: { promptTokens: 200, completionTokens: 50, totalTokens: 250 },
+          };
+        }
+      };
+
+      const agentLoop = new AgentTurnLoop();
+      const outcome = await agentLoop.execute({
+        command: {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: workspace.workspaceId,
+          sessionId: 'test-session',
+          correlationId: 'test-corr',
+          message: 'Show timber',
+        },
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: {
+          execute: async () => ({ items: [{ sku: '1002835', name: 'Timber' }], total: 1 }),
+        } as any,
+        sink: () => {},
+      });
+
+      assert.equal(outcome.tokens.prompt, 320, 'Prompt tokens should accumulate across rounds');
+      assert.equal(outcome.tokens.completion, 80, 'Completion tokens should accumulate across rounds');
+      assert.equal(outcome.tokens.total, 400, 'Total tokens should accumulate across rounds');
+      assert.deepEqual(outcome.turnResult.trace?.tokens, { prompt: 320, completion: 80, total: 400 });
+    });
   });
 });
 

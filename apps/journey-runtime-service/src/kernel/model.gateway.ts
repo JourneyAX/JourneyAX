@@ -502,13 +502,13 @@ export class ModelGateway {
           stream: true,
         };
 
+        payload.stream_options = { include_usage: true };
         if (isReasoningOrGpt5) {
           if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
         } else {
           if (route.temperature !== undefined) payload.temperature = route.temperature;
           else payload.temperature = 0.2;
           if (route.maxOutputTokens) payload.max_tokens = route.maxOutputTokens;
-          payload.stream_options = { include_usage: true };
         }
 
         resp = await fetch(endpoint, {
@@ -743,13 +743,13 @@ export class ModelGateway {
           payload.tool_choice = 'auto';
         }
 
+        payload.stream_options = { include_usage: true };
         if (isReasoningOrGpt5) {
           if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
         } else {
           if (route.temperature !== undefined) payload.temperature = route.temperature;
           else payload.temperature = 0.2;
           if (route.maxOutputTokens) payload.max_tokens = route.maxOutputTokens;
-          payload.stream_options = { include_usage: true };
         }
 
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
