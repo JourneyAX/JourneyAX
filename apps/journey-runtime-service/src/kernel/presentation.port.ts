@@ -133,6 +133,12 @@ export class PresentationPort {
   /**
    * LLM phrasing step through Model Gateway over verified results without
    * hallucinating prices/SKUs; falls back safely to pack templates or deterministic stage copy.
+   *
+   * Architectural Decision (Task B3):
+   * In the canonical runtime turn lifecycle (`turn-application.service.ts`), phrasing is
+   * merged into the primary response step (`composeGroundedCustomerResponse`) to eliminate an extra
+   * sequential LLM call while ensuring claim safety and reply shaping. This method is preserved on the
+   * port for standalone presentation adapter use and legacy cutover tests.
    */
   async phraseMessage(
     release: BusinessPackRelease,

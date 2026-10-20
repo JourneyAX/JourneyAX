@@ -56,6 +56,23 @@ async function main() {
     assert.equal(parsed.event, 'turn.timing');
     assert.equal(parsed.tokens.total, timing.tokens.total);
   });
+
+  await suite.test('Task B3: phrasing is merged into response step with zero extra phrase calls', async () => {
+    const stack = await buildPlaceMakersStack();
+    const calls: string[] = [];
+    const service = stack.serviceFor({ servePacks: true, calls });
+
+    const result = await service.executeTurn({
+      tenantId: TENANT,
+      environmentId: ENVIRONMENT,
+      workspaceId: 'ws-phrase-check',
+      turnId: 'turn-1',
+      message: 'Show me decking screws',
+    });
+
+    assert.equal(result.trace?.timing?.phraseMs, 0, 'phraseMs is 0 because phrasing is merged into response step');
+    assert.equal(calls.includes('phraseMessage'), false, 'no separate phraseMessage call was dispatched');
+  });
 }
 
 main().then(() => { suite.finish(); }).catch((error) => { console.error(error); process.exitCode = 1; });
