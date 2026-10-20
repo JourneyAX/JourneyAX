@@ -784,6 +784,9 @@ export class TurnApplicationService {
           stageId: workspace.currentStage,
           packVersionId: release.manifest.version || release.manifest.packId,
           correlationId: command.correlationId,
+          packSettings: (release as any).packSettings || (release as any).settings,
+          vocabulary: release.vocabulary,
+          release,
           ...(release.knowledgeModel?.type === 'okf_release' && toolId === 'order.commit'
             ? { requiresAuthoritativeCart: true }
             : {}),
@@ -1489,6 +1492,9 @@ export class TurnApplicationService {
       stageId: input.workspace.currentStage,
       packVersionId: release.manifest.version || release.manifest.packId,
       correlationId: input.command.correlationId,
+      packSettings: (release as any).packSettings || (release as any).settings,
+      vocabulary: release.vocabulary,
+      release,
     };
     try {
       const response = await this.capabilityGateway.executeCapability(release, primary.toolId, {

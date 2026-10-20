@@ -182,7 +182,17 @@ export class CapabilityGateway {
       toolDef,
       toolBinding,
       { toolId, input: payload, idempotencyKey: ctx.correlationId },
-      { ...ctx, packSettings: { ...ctx.packSettings, catalogMapping: (release as any).catalogMapping } }
+      {
+        ...ctx,
+        release,
+        vocabulary: (release as any).vocabulary,
+        packSettings: {
+          ...ctx.packSettings,
+          catalogMapping: (release as any).catalogMapping,
+          vocabulary: (release as any).vocabulary,
+          extensions: (release as any).extensions,
+        },
+      }
     );
   }
 }
