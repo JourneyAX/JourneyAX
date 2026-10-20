@@ -275,9 +275,12 @@ export class TurnApplicationService {
         };
 
         let timeoutHandle: any;
+        const abortController = new AbortController();
         const deadlinePromise = new Promise<never>((_, reject) => {
           timeoutHandle = setTimeout(() => {
-            reject(new Error(`Agent mode turn deadline exceeded (${turnDeadlineMs}ms)`));
+            const err = new Error(`Agent mode turn deadline exceeded (${turnDeadlineMs}ms)`);
+            abortController.abort(err);
+            reject(err);
           }, turnDeadlineMs);
         });
 
@@ -304,6 +307,7 @@ export class TurnApplicationService {
               knowledgeControlPlane: this.knowledgeControlPlane,
               sink: agentTimingSink,
               timeoutMs: turnDeadlineMs,
+              signal: abortController.signal,
             }),
             deadlinePromise,
           ]);
@@ -339,6 +343,7 @@ export class TurnApplicationService {
           );
           return outcome.turnResult;
         } catch (agentErr: any) {
+          abortController.abort(agentErr);
           agentCancelled = true;
           clearTimeout(timeoutHandle);
           console.warn(
@@ -1454,9 +1459,15 @@ export class TurnApplicationService {
     if (responseMs > 0) modelCalls++;
     if (phraseMs > 0) modelCalls++;
 
-    const promptTokens = (interpretation?.usage?.promptTokens || 0) + (groundedResponse?.usage?.promptTokens || 0);
-    const completionTokens = (interpretation?.usage?.completionTokens || 0) + (groundedResponse?.usage?.completionTokens || 0);
-    const totalTokens = (interpretation?.usage?.totalTokens || 0) + (groundedResponse?.usage?.totalTokens || 0);
+    const promptTokens =
+      (interpretation?.usage?.promptTokens || (interpretation?.usage as any)?.prompt || 0) +
+      (groundedResponse?.usage?.promptTokens || (groundedResponse?.usage as any)?.prompt || 0);
+    const completionTokens =
+      (interpretation?.usage?.completionTokens || (interpretation?.usage as any)?.completion || 0) +
+      (groundedResponse?.usage?.completionTokens || (groundedResponse?.usage as any)?.completion || 0);
+    const totalTokens =
+      (interpretation?.usage?.totalTokens || (interpretation?.usage as any)?.total || 0) +
+      (groundedResponse?.usage?.totalTokens || (groundedResponse?.usage as any)?.total || 0);
 
     const timing: TurnTiming = {
       tenantId: command?.tenantId,

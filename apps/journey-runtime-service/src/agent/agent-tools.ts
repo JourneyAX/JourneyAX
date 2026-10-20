@@ -31,6 +31,7 @@ export interface AgentToolContext {
   handoffReason?: string;
   customerQuestion?: string;
   consultedConcepts?: Set<OkfConcept>;
+  signal?: AbortSignal;
   emitUiAction?: (action: { name: string; arguments: any }) => void;
   emitTrace?: (name: string, payload: any) => void;
 }
@@ -258,6 +259,10 @@ export async function executeAgentTool(
   rawArgs: Record<string, any>,
   ctx: AgentToolContext
 ): Promise<any> {
+  if (ctx.signal?.aborted) {
+    throw ctx.signal.reason || new Error('Agent turn aborted');
+  }
+
   // Strip any model-injected tenant or environment properties
   const args = { ...rawArgs };
   delete args.tenantId;

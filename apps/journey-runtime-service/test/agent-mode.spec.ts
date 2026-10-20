@@ -1058,8 +1058,135 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(replaceEvents[0].data.replace, result.assistantMessage, 'Replace content must equal fallback assistant message');
 
       // Exactly one done event
-      const doneEvents = events.filter((e) => e.event === 'done');
-      assert.equal(doneEvents.length, 1, 'Must emit exactly one done event');
+      assert.equal(events.filter((e) => e.event === 'done').length, 1, 'Must emit exactly one done event');
+    });
+
+    test('agent loop stops on AbortSignal: makes no further calls and writes no conversation history', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const workspace = createTestWorkspace();
+      const abortController = new AbortController();
+
+      let modelCallCount = 0;
+      let toolCallCount = 0;
+
+      // Model returns a tool call on round 0
+      gateway.mockAgentExecutor = async (req, _onDelta, signal) => {
+        modelCallCount++;
+        if (signal?.aborted) {
+          throw new Error('Should not call model after abort');
+        }
+        return {
+          content: 'Looking up timber...',
+          toolCalls: [
+            {
+              id: 'call_search_1',
+              name: 'search_products',
+              arguments: { query: 'timber' },
+            },
+          ],
+        };
+      };
+
+      // Custom catalog handler that aborts during tool execution
+      const mockCatalogHandler = {
+        execute: async () => {
+          toolCallCount++;
+          // Trigger abort during tool execution
+          abortController.abort(new Error('Deadline reached'));
+          return { items: [{ sku: 'SKU-TIMBER-1', name: 'Timber 100x50' }], total: 1 };
+        },
+      } as any;
+
+      const agentLoop = new AgentTurnLoop();
+
+      await assert.rejects(
+        async () => {
+          await agentLoop.execute({
+            command: {
+              tenantId: 'test-tenant',
+              environmentId: 'test',
+              workspaceId: workspace.workspaceId,
+              sessionId: 'test-session',
+              correlationId: 'test-corr',
+              message: 'Find timber',
+            },
+            release,
+            workspace,
+            modelGateway: gateway,
+            catalogSearchHandler: mockCatalogHandler,
+            sink: () => {},
+            signal: abortController.signal,
+          });
+        },
+        /Deadline reached|Agent turn aborted/
+      );
+
+      // Verify no further model calls were made after abort
+      assert.equal(modelCallCount, 1, 'Must make no further model calls after abort');
+      assert.equal(toolCallCount, 1, 'Tool execution was called exactly once');
+
+      // Verify NO conversation history was written to workspace
+      assert.equal(
+        workspace.facts.conversation_history,
+        undefined,
+        'Workspace must contain no conversation history after abort'
+      );
+    });
+
+    test('turn deadline aborts agent loop and fallback writes no agent history', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack({
+        conversationPolicy: { turnDeadlineMs: 50 },
+      });
+      const workspace = createTestWorkspace();
+
+      let agentCalls = 0;
+      gateway.mockAgentExecutor = async (_req, _onDelta, signal) => {
+        agentCalls++;
+        // Simulate a slow model that exceeds turnDeadlineMs
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(resolve, 200);
+          signal?.addEventListener('abort', () => {
+            clearTimeout(t);
+            reject(signal.reason);
+          });
+        });
+        return { content: 'Delayed response', toolCalls: [] };
+      };
+
+      const outboxRepo = new OutboxRepository({ forceInMemory: true });
+      const service = new TurnApplicationService(
+        { loadActivePack: async () => release } as any,
+        {
+          load: async () => workspace,
+          getOrCreate: async () => workspace,
+          save: async () => {},
+        } as any,
+        new JourneyResolver(),
+        new AgentRouter(),
+        gateway,
+        undefined,
+        undefined,
+        undefined,
+        outboxRepo
+      );
+
+      const result = await service.executeTurnStream(
+        {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: workspace.workspaceId,
+          sessionId: 'test-session',
+          correlationId: 'test-corr',
+          message: 'Check timeout',
+        },
+        release
+      );
+
+      assert.ok(result, 'Must fallback and return TurnResult');
+      // Verify agent loop only attempted 1 call before being aborted
+      assert.equal(agentCalls, 1, 'Agent loop was invoked once and aborted');
     });
   });
 });

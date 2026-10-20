@@ -41,6 +41,7 @@ export interface AgentTurnOptions {
   sink: (event: string, data: any) => void;
   maxToolRounds?: number;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface AgentTurnOutcome {
@@ -104,7 +105,12 @@ export class AgentTurnLoop {
       knowledgeControlPlane,
       sink = () => {},
       maxToolRounds = 5,
+      signal,
     } = options;
+
+    if (signal?.aborted) {
+      throw signal.reason || new Error('Agent turn aborted');
+    }
 
     const loopStart = Date.now();
     const customerQuestion = (
@@ -149,6 +155,7 @@ export class AgentTurnLoop {
       isHumanHandoffRequested: false,
       customerQuestion,
       consultedConcepts: new Set<OkfConcept>(),
+      signal,
       emitTrace: (name, payload) => sink('trace', { [name]: payload }),
     };
 
@@ -233,6 +240,9 @@ export class AgentTurnLoop {
     // 6. Multi-Round Tool Loop (at most 5 rounds)
     for (let round = 0; round < maxToolRounds; round++) {
       if (isFinished) break;
+      if (signal?.aborted) {
+        throw signal.reason || new Error('Agent turn aborted');
+      }
       if (options.timeoutMs && Date.now() - loopStart > options.timeoutMs) {
         throw new Error(`Agent mode turn deadline exceeded (${options.timeoutMs}ms)`);
       }
@@ -259,8 +269,13 @@ export class AgentTurnLoop {
           tools: isLastAllowedRound ? undefined : AGENT_TOOL_DEFINITIONS,
           policyRef: 'agent_turn',
         },
-        onDelta
+        onDelta,
+        signal
       );
+
+      if (signal?.aborted) {
+        throw signal.reason || new Error('Agent turn aborted');
+      }
 
       if (response.usage) {
         totalTokens.prompt += response.usage.promptTokens || 0;
@@ -297,6 +312,9 @@ export class AgentTurnLoop {
         // Execute read-only tools in parallel
         const readOnlyResults = await Promise.all(
           readOnlyCalls.map(async (tc) => {
+            if (signal?.aborted || toolContext.signal?.aborted) {
+              throw signal?.reason || toolContext.signal?.reason || new Error('Agent turn aborted');
+            }
             const toolStart = Date.now();
             let result: any;
             let ok = true;
@@ -306,6 +324,9 @@ export class AgentTurnLoop {
                 ok = false;
               }
             } catch (err: any) {
+              if (signal?.aborted || toolContext.signal?.aborted) {
+                throw err;
+              }
               ok = false;
               result = { ok: false, error: `Tool execution failed: ${err.message}` };
             }
@@ -318,6 +339,9 @@ export class AgentTurnLoop {
         // Execute mutating tools in sequence (e.g. present_card, hand_off_to_human)
         const mutatingResults: Array<{ call: AgentToolCall; result: any }> = [];
         for (const tc of mutatingCalls) {
+          if (signal?.aborted || toolContext.signal?.aborted) {
+            throw signal?.reason || toolContext.signal?.reason || new Error('Agent turn aborted');
+          }
           const toolStart = Date.now();
           let result: any;
           let ok = true;
@@ -327,6 +351,9 @@ export class AgentTurnLoop {
               ok = false;
             }
           } catch (err: any) {
+            if (signal?.aborted || toolContext.signal?.aborted) {
+              throw err;
+            }
             ok = false;
             result = { ok: false, error: `Tool execution failed: ${err.message}` };
           }
@@ -398,6 +425,10 @@ export class AgentTurnLoop {
     }
 
     // 8. Update Workspace Conversation History
+    if (signal?.aborted) {
+      throw signal.reason || new Error('Agent turn aborted');
+    }
+
     appendHistory(
       workspace,
       [

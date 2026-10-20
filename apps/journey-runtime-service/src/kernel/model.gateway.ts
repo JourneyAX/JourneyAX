@@ -303,7 +303,8 @@ export class ModelGateway {
    */
   public mockAgentExecutor?: (
     req: AgentExecutionRequest,
-    onDelta?: (delta: string) => void
+    onDelta?: (delta: string) => void,
+    signal?: AbortSignal
   ) => Promise<{
     content: string;
     toolCalls: AgentToolCall[];
@@ -317,12 +318,20 @@ export class ModelGateway {
   async executeAgentStream(
     release: BusinessPackRelease,
     req: AgentExecutionRequest,
-    onDelta: (delta: string) => void = () => {}
+    onDelta: (delta: string) => void = () => {},
+    signal?: AbortSignal
   ): Promise<AgentExecutionResponse> {
     const startTime = Date.now();
 
+    if (signal?.aborted) {
+      throw signal.reason || new Error('Agent turn aborted');
+    }
+
     if (this.mockAgentExecutor) {
-      const mockResult = await this.mockAgentExecutor(req, onDelta);
+      const mockResult = await this.mockAgentExecutor(req, onDelta, signal);
+      if (signal?.aborted) {
+        throw signal.reason || new Error('Agent turn aborted');
+      }
       return {
         content: mockResult.content || '',
         toolCalls: mockResult.toolCalls || [],
@@ -350,10 +359,16 @@ export class ModelGateway {
 
     let lastError: any = null;
     for (let i = 0; i < routes.length; i++) {
+      if (signal?.aborted) {
+        throw signal.reason || new Error('Agent turn aborted');
+      }
       const route = routes[i];
       try {
-        return await this.executeRouteAgentStream(route, release, req, onDelta, startTime);
+        return await this.executeRouteAgentStream(route, release, req, onDelta, startTime, signal);
       } catch (err: any) {
+        if (signal?.aborted) {
+          throw signal.reason || err;
+        }
         lastError = err;
         if (i < routes.length - 1) {
           const next = routes[i + 1];
@@ -369,7 +384,8 @@ export class ModelGateway {
   private prepareExecution(
     route: ModelRouteResult,
     release: BusinessPackRelease,
-    req: ModelExecutionRequest
+    req: ModelExecutionRequest,
+    clientSignal?: AbortSignal
   ): {
     endpoint: string;
     evidenced: { residency: string; evidence: string };
@@ -430,11 +446,27 @@ export class ModelGateway {
     // Provider Call Execution
     const timeoutMs = route.timeoutMs || 10000;
     let signal: AbortSignal;
-    try {
-      signal = AbortSignal.timeout(timeoutMs);
-    } catch {
+    if (!clientSignal) {
+      try {
+        signal = AbortSignal.timeout(timeoutMs);
+      } catch {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(new Error(`Timeout (${timeoutMs}ms)`)), timeoutMs);
+        signal = controller.signal;
+      }
+    } else if (clientSignal.aborted) {
+      signal = clientSignal;
+    } else {
       const controller = new AbortController();
-      setTimeout(() => controller.abort(), timeoutMs);
+      const timer = setTimeout(() => controller.abort(new Error(`Timeout (${timeoutMs}ms)`)), timeoutMs);
+      clientSignal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer);
+          controller.abort(clientSignal.reason);
+        },
+        { once: true }
+      );
       signal = controller.signal;
     }
 
@@ -639,15 +671,21 @@ export class ModelGateway {
     release: BusinessPackRelease,
     req: AgentExecutionRequest,
     onDelta: (delta: string) => void,
-    startTime: number
+    startTime: number,
+    clientSignal?: AbortSignal
   ): Promise<AgentExecutionResponse> {
-    const { endpoint, evidenced, apiKey, signal, timeoutMs } = this.prepareExecution(route, release, {
-      taskType: req.taskType || 'agent_turn',
-      prompt: '',
-      systemPrompt: req.systemPrompt,
-      policyRef: req.policyRef,
-      targetDataResidency: req.targetDataResidency,
-    });
+    const { endpoint, evidenced, apiKey, signal, timeoutMs } = this.prepareExecution(
+      route,
+      release,
+      {
+        taskType: req.taskType || 'agent_turn',
+        prompt: '',
+        systemPrompt: req.systemPrompt,
+        policyRef: req.policyRef,
+        targetDataResidency: req.targetDataResidency,
+      },
+      clientSignal
+    );
 
     let resp: Response;
     try {
@@ -815,49 +853,55 @@ export class ModelGateway {
     let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
 
     if (route.provider === 'openai' || route.provider === 'open-model' || route.provider === 'custom') {
-      await readSseStream(resp.body, (line) => {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) return;
-        if (trimmed.startsWith('data:')) {
-          const dataStr = trimmed.slice(5).trim();
-          if (dataStr === '[DONE]') return;
-          try {
-            const parsed = JSON.parse(dataStr);
-            const choice = parsed.choices?.[0];
-            const delta = choice?.delta;
-            if (delta?.content) {
-              content += delta.content;
-              onDelta(delta.content);
-            }
-            if (Array.isArray(delta?.tool_calls)) {
-              for (const tc of delta.tool_calls) {
-                const idx = tc.index ?? 0;
-                let existing = toolCallsMap.get(idx);
-                if (!existing) {
-                  existing = { id: tc.id || `call_${idx}_${Date.now()}`, name: tc.function?.name || '', argsStr: '' };
-                  toolCallsMap.set(idx, existing);
-                }
-                if (tc.id) existing.id = tc.id;
-                if (tc.function?.name) existing.name = tc.function.name;
-                if (tc.function?.arguments) existing.argsStr += tc.function.arguments;
+      await readSseStream(
+        resp.body,
+        (line) => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(':')) return;
+          if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim();
+            if (dataStr === '[DONE]') return;
+            try {
+              const parsed = JSON.parse(dataStr);
+              const choice = parsed.choices?.[0];
+              const delta = choice?.delta;
+              if (delta?.content) {
+                content += delta.content;
+                onDelta(delta.content);
               }
-            }
-            if (parsed.usage) {
-              usage = {
-                promptTokens: parsed.usage.prompt_tokens,
-                completionTokens: parsed.usage.completion_tokens,
-                totalTokens: parsed.usage.total_tokens,
-              };
-            }
-          } catch {}
-        }
-      });
+              if (Array.isArray(delta?.tool_calls)) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? 0;
+                  let existing = toolCallsMap.get(idx);
+                  if (!existing) {
+                    existing = { id: tc.id || `call_${idx}_${Date.now()}`, name: tc.function?.name || '', argsStr: '' };
+                    toolCallsMap.set(idx, existing);
+                  }
+                  if (tc.id) existing.id = tc.id;
+                  if (tc.function?.name) existing.name = tc.function.name;
+                  if (tc.function?.arguments) existing.argsStr += tc.function.arguments;
+                }
+              }
+              if (parsed.usage) {
+                usage = {
+                  promptTokens: parsed.usage.prompt_tokens,
+                  completionTokens: parsed.usage.completion_tokens,
+                  totalTokens: parsed.usage.total_tokens,
+                };
+              }
+            } catch {}
+          }
+        },
+        signal
+      );
     } else if (route.provider === 'anthropic') {
       let currentToolIdx = -1;
-      await readSseStream(resp.body, (line) => {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) return;
-        if (trimmed.startsWith('data:')) {
+      await readSseStream(
+        resp.body,
+        (line) => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(':')) return;
+          if (trimmed.startsWith('data:')) {
           const dataStr = trimmed.slice(5).trim();
           try {
             const parsed = JSON.parse(dataStr);
@@ -895,8 +939,10 @@ export class ModelGateway {
             }
           } catch {}
         }
-      });
-    }
+      },
+      signal
+    );
+  }
 
     const toolCalls: AgentToolCall[] = [];
     for (const [, item] of toolCallsMap.entries()) {
@@ -1160,12 +1206,17 @@ export class ModelGateway {
  */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
-  onLine: (line: string) => void
+  onLine: (line: string) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   while (true) {
+    if (signal?.aborted) {
+      await reader.cancel();
+      throw signal.reason || new Error('Stream aborted');
+    }
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
