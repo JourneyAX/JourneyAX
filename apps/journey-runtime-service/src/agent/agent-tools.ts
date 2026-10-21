@@ -1,13 +1,21 @@
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { effectiveVerification, scopedClaims, verifiedEvidenceRefs } from '@journeyax/knowledge';
+import type { WorkspaceState } from '@journeyax/journey-core';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
 import { extractRelevantOkfNotes, findRelevantOkfConcepts } from '../kernel/business-knowledge';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
+import { TradeQuoteCreateHandler } from '../capabilities/handlers/trade-quote-create.handler';
+import { QuoteUpdateHandler } from '../capabilities/handlers/quote-update.handler';
+import { CartUpdateHandler } from '../capabilities/handlers/cart-update.handler';
+import type { CapabilityGateway } from '../kernel/capability.gateway';
+import type { ApprovalService } from '../kernel/approval.service';
+import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 
 export interface AgentToolContext {
@@ -16,12 +24,21 @@ export interface AgentToolContext {
   workspaceId?: string;
   sessionId?: string;
   correlationId: string;
+  principalId?: string;
+  principalRole?: string;
+  idempotencyKey?: string;
   release: BusinessPackRelease;
+  workspace?: WorkspaceState | null;
   okfContent?: OkfReleaseContent | null;
   catalogSearchHandler: CatalogSearchHandler;
   branchStockHandler?: BranchStockCheckHandler;
   knowledgeSearchHandler?: KnowledgeSearchHandler;
   knowledgeControlPlane?: KnowledgeControlPlanePort;
+  capabilityGateway?: CapabilityGateway;
+  approvalService?: ApprovalService;
+  executionRepo?: ExecutionRepository;
+  inMemoryQuotes?: Map<string, any> | Record<string, any>;
+  inMemoryCarts?: Map<string, any> | Record<string, any>;
   turnProductSkus: Set<string>;
   catalogProductCache: Map<string, any>;
   readSourceIds: Set<string>;
@@ -37,18 +54,34 @@ export interface AgentToolContext {
 }
 
 function makeExecContext(ctx: AgentToolContext) {
+  const primaryCurrency =
+    (ctx.release as any)?.profile?.primaryCurrency ||
+    (ctx.release as any)?.pricing?.currency;
   return {
     tenantId: ctx.tenantId,
     environmentId: ctx.environmentId,
     workspaceId: ctx.workspaceId || ctx.sessionId || 'agent_workspace',
     sessionId: ctx.sessionId || ctx.workspaceId || 'agent_session',
+    principalId: ctx.principalId || 'customer',
+    principalRole: ctx.principalRole || 'customer',
     stageId: 'agent_stage',
     packVersionId: ctx.release.manifest?.version || ctx.release.manifest?.packId || '1.0.0',
     correlationId: ctx.correlationId,
+    idempotencyKey: ctx.idempotencyKey || ctx.correlationId,
     release: ctx.release,
     packSettings: ctx.release,
     okfRelease: ctx.okfContent,
+    currency: primaryCurrency,
+    pricing: (ctx.release as any)?.pricing || (primaryCurrency ? { currency: primaryCurrency } : undefined),
   };
+}
+
+export function hashPayload(val: unknown): string {
+  try {
+    return createHash('sha256').update(JSON.stringify(val || {})).digest('hex').slice(0, 16);
+  } catch {
+    return 'nohash';
+  }
 }
 
 export const TOOL_CAPABILITY_ALIASES: Record<string, string[]> = {
@@ -62,6 +95,12 @@ export const TOOL_CAPABILITY_ALIASES: Record<string, string[]> = {
   calculate_quantity: ['calculator.*', 'quantity.calculate', 'calculate_quantity'],
   present_card: ['ui.present_card', 'ui_cards', 'cards.*', 'present_card'],
   hand_off_to_human: ['handoff.*', 'human_handoff', 'agent.handoff', 'hand_off_to_human'],
+  create_quote: ['trade.quote_create', 'quote.create', 'quote', 'create_quote', 'quotes.*'],
+  update_quote: ['quote.update', 'quote_update', 'quote.*', 'update_quote', 'quotes.*'],
+  add_to_quote: ['quote.update', 'quote_update', 'quote.*', 'add_to_quote', 'quotes.*'],
+  get_cart: ['cart.get', 'cart.*', 'get_cart', 'cart'],
+  update_cart: ['cart.update', 'cart_update', 'cart.*', 'update_cart', 'add_to_cart'],
+  add_to_cart: ['cart.update', 'cart_update', 'cart.*', 'add_to_cart', 'update_cart'],
 };
 
 export function isToolAllowed(toolName: string, allowedTools?: string[]): boolean {
@@ -272,13 +311,131 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
       required: ['reason'],
     },
   },
+  {
+    name: 'create_quote',
+    description: 'Request creation of a formal trade quote for specified items and quantities. The server verifies items against catalogue pricing, applies trade account terms, and checks required approvals. The model proposes, the server decides.',
+    parameters: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          description: 'List of items to include in the quote with sku and quantity.',
+          items: {
+            type: 'object',
+            properties: {
+              sku: { type: 'string', description: 'Product SKU code.' },
+              quantity: { type: 'number', description: 'Item quantity.' },
+              name: { type: 'string', description: 'Optional item title or description.' },
+            },
+            required: ['sku', 'quantity'],
+          },
+        },
+        tradeCategory: { type: 'string', description: 'Optional trade category or project classification.' },
+        projectDimensions: { type: 'string', description: 'Optional project specifications or measurements.' },
+        currency: { type: 'string', description: 'Optional currency code (must match pack currency).' },
+        accountNumber: { type: 'string', description: 'Optional trade account number.' },
+      },
+      required: ['items'],
+    },
+  },
+  {
+    name: 'update_quote',
+    description: 'Update an existing trade quote with revised specifications, quantities, or line items. Modifying finalized quotes or exceeding approval thresholds triggers server approval.',
+    parameters: {
+      type: 'object',
+      properties: {
+        quoteId: { type: 'string', description: 'Existing quote identifier.' },
+        items: {
+          type: 'array',
+          description: 'Updated line items for the quote.',
+          items: {
+            type: 'object',
+            properties: {
+              sku: { type: 'string', description: 'Product SKU.' },
+              quantity: { type: 'number', description: 'Quantity.' },
+            },
+            required: ['sku', 'quantity'],
+          },
+        },
+        specs: { type: 'array', description: 'Optional project specifications or configuration items.' },
+        notes: { type: 'string', description: 'Optional notes explaining the update.' },
+      },
+      required: ['quoteId'],
+    },
+  },
+  {
+    name: 'add_to_quote',
+    description: 'Add new items or specifications to an existing trade quote.',
+    parameters: {
+      type: 'object',
+      properties: {
+        quoteId: { type: 'string', description: 'Existing quote identifier.' },
+        items: {
+          type: 'array',
+          description: 'Items to append to the quote.',
+          items: {
+            type: 'object',
+            properties: {
+              sku: { type: 'string', description: 'Product SKU.' },
+              quantity: { type: 'number', description: 'Quantity.' },
+            },
+            required: ['sku', 'quantity'],
+          },
+        },
+      },
+      required: ['quoteId', 'items'],
+    },
+  },
+  {
+    name: 'get_cart',
+    description: 'Retrieve current customer cart items, quantities, and totals.',
+    parameters: {
+      type: 'object',
+      properties: {
+        cartId: { type: 'string', description: 'Optional cart identifier.' },
+      },
+    },
+  },
+  {
+    name: 'update_cart',
+    description: 'Update the customer cart by adding, modifying, or removing items.',
+    parameters: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          description: 'Items and quantities to update in the cart.',
+          items: {
+            type: 'object',
+            properties: {
+              sku: { type: 'string', description: 'Product SKU.' },
+              quantity: { type: 'number', description: 'Quantity.' },
+            },
+            required: ['sku', 'quantity'],
+          },
+        },
+        cartId: { type: 'string', description: 'Optional cart identifier.' },
+        category: { type: 'string', description: 'Optional category tag.' },
+      },
+      required: ['items'],
+    },
+  },
 ];
 
 /**
  * Checks if a tool is read-only (can be executed in parallel with other read-only tools).
  */
 export function isReadOnlyTool(toolName: string): boolean {
-  return toolName !== 'present_card' && toolName !== 'hand_off_to_human';
+  const mutatingTools = new Set([
+    'present_card',
+    'hand_off_to_human',
+    'create_quote',
+    'update_quote',
+    'add_to_quote',
+    'update_cart',
+    'add_to_cart',
+  ]);
+  return !mutatingTools.has(toolName);
 }
 
 /**
@@ -1002,6 +1159,598 @@ export async function executeAgentTool(
         reason,
         message: 'A human customer consultant has been requested and will assist shortly.',
       };
+    }
+
+    case 'create_quote': {
+      const items = Array.isArray(args.items) ? args.items : [];
+      if (items.length === 0) {
+        return {
+          ok: false,
+          error: 'Cannot create quote: items list is empty.',
+        };
+      }
+
+      // Authoritative SKU provenance check: The model proposes, the server decides
+      for (const item of items) {
+        if (!item.sku) {
+          return { ok: false, error: 'Every quote line item must specify a product sku.' };
+        }
+        let prod = ctx.catalogProductCache.get(item.sku);
+        if (!prod && !ctx.turnProductSkus.has(item.sku)) {
+          try {
+            const res = await ctx.catalogSearchHandler.execute(
+              { query: item.sku, maxResults: 1 },
+              makeExecContext(ctx)
+            );
+            const found = (res.products || res.items || []).find(
+              (p: any) => String(p.sku).toLowerCase() === String(item.sku).toLowerCase()
+            );
+            if (found) {
+              ctx.turnProductSkus.add(found.sku);
+              ctx.catalogProductCache.set(found.sku, found);
+              prod = found;
+            }
+          } catch {}
+        }
+        if (!prod && !ctx.turnProductSkus.has(item.sku)) {
+          return {
+            ok: false,
+            error: `Cannot create quote: SKU "${item.sku}" could not be verified in the catalogue.`,
+          };
+        }
+      }
+
+      const inputPayload = {
+        items: items.map((it: any) => ({
+          sku: it.sku,
+          quantity: Number(it.quantity) || 1,
+          name: it.name,
+        })),
+        projectDimensions: args.projectDimensions,
+        tradeCategory: args.tradeCategory,
+        currency: args.currency || ctx.release.profile?.primaryCurrency,
+        accountNumber: args.accountNumber,
+      };
+
+      const idempotencyKey =
+        ctx.idempotencyKey ||
+        `${ctx.correlationId}:create_quote:${hashPayload(inputPayload)}`;
+
+      // 1. Idempotency Check
+      if (ctx.executionRepo) {
+        const existing = await ctx.executionRepo.findExecution(
+          ctx.tenantId,
+          ctx.environmentId,
+          ctx.workspaceId || 'agent_workspace',
+          'trade.quote_create',
+          idempotencyKey
+        );
+        if (existing && existing.status === 'completed') {
+          return {
+            ok: true,
+            status: 'success',
+            quote: existing.outputPayload,
+            idempotentReplay: true,
+          };
+        }
+
+        await ctx.executionRepo.recordExecution({
+          tenantId: ctx.tenantId,
+          environmentId: ctx.environmentId,
+          workspaceId: ctx.workspaceId || 'agent_workspace',
+          correlationId: ctx.correlationId,
+          toolId: 'trade.quote_create',
+          idempotencyKey,
+          status: 'started',
+          inputPayload,
+          executedBy: ctx.principalId,
+          executedAt: new Date(),
+        });
+      }
+
+      // 2. Server Approval Gate: The model proposes, the server decides
+      const requiresApproval =
+        args.requiresApproval === true ||
+        (ctx.release as any)?.conversationPolicy?.requiresApproval?.includes('trade.quote_create') ||
+        (ctx.release as any)?.conversationPolicy?.requiresApproval?.includes('create_quote');
+
+      if (requiresApproval && ctx.approvalService) {
+        const pending = await ctx.approvalService.createPending(
+          'trade.quote_create',
+          inputPayload,
+          makeExecContext(ctx)
+        );
+
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'trade.quote_create',
+            idempotencyKey,
+            status: 'requires_approval',
+            inputPayload,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+
+        return {
+          ok: true,
+          status: 'requires_approval',
+          approvalRequestId: pending.approvalRequestId,
+          quote: {
+            status: 'pending_approval',
+            approvalRequestId: pending.approvalRequestId,
+            items: inputPayload.items,
+          },
+          message: 'Trade quote request submitted and requires approval.',
+        };
+      }
+
+      // 3. Dispatch to CapabilityGateway or Native Handler
+      const startTime = Date.now();
+      let quoteOutcome: any;
+      try {
+        if (ctx.capabilityGateway) {
+          const execRes = await ctx.capabilityGateway.executeCapability(
+            ctx.release,
+            'trade.quote_create',
+            inputPayload,
+            makeExecContext(ctx)
+          );
+          if (execRes.status === 'requires_approval') {
+            const pending = await ctx.approvalService?.createPending(
+              'trade.quote_create',
+              inputPayload,
+              makeExecContext(ctx)
+            );
+            if (ctx.executionRepo) {
+              await ctx.executionRepo.recordExecution({
+                tenantId: ctx.tenantId,
+                environmentId: ctx.environmentId,
+                workspaceId: ctx.workspaceId || 'agent_workspace',
+                correlationId: ctx.correlationId,
+                toolId: 'trade.quote_create',
+                idempotencyKey,
+                status: 'requires_approval',
+                inputPayload,
+                executedBy: ctx.principalId,
+                executedAt: new Date(),
+              });
+            }
+            return {
+              ok: true,
+              status: 'requires_approval',
+              approvalRequestId: pending?.approvalRequestId || execRes.approvalRequestId,
+              quote: {
+                status: 'pending_approval',
+                approvalRequestId: pending?.approvalRequestId || execRes.approvalRequestId,
+                items: inputPayload.items,
+              },
+              message: execRes.error || 'Trade quote request requires approval.',
+            };
+          } else if (execRes.status === 'success') {
+            quoteOutcome = execRes.output;
+          } else {
+            const nativeHandler = ctx.capabilityGateway.getNativeHandler('trade.quote_create');
+            if (nativeHandler) {
+              quoteOutcome = await nativeHandler.execute(inputPayload, makeExecContext(ctx));
+            } else {
+              throw new Error(execRes.error || 'trade.quote_create capability execution failed');
+            }
+          }
+        } else {
+          const handler = new TradeQuoteCreateHandler(
+            undefined,
+            (ctx.inMemoryQuotes as any) || undefined,
+            Array.from(ctx.catalogProductCache.values())
+          );
+          quoteOutcome = await handler.execute(inputPayload, makeExecContext(ctx));
+        }
+
+        const durationMs = Date.now() - startTime;
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'trade.quote_create',
+            idempotencyKey,
+            status: 'completed',
+            inputPayload,
+            outputPayload: quoteOutcome,
+            durationMs,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+
+        if (ctx.inMemoryQuotes instanceof Map && quoteOutcome?.quoteId) {
+          ctx.inMemoryQuotes.set(quoteOutcome.quoteId, quoteOutcome);
+        }
+
+        return {
+          ok: true,
+          status: 'success',
+          quote: quoteOutcome,
+          message: `Successfully created trade quote ${quoteOutcome?.quoteId || ''}.`,
+        };
+      } catch (err: any) {
+        const durationMs = Date.now() - startTime;
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'trade.quote_create',
+            idempotencyKey,
+            status: 'failed',
+            inputPayload,
+            error: err.message,
+            durationMs,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+        return {
+          ok: false,
+          error: `Failed to create quote: ${err.message}`,
+        };
+      }
+    }
+
+    case 'update_quote':
+    case 'add_to_quote': {
+      const quoteId = String(args.quoteId || '').trim();
+      if (!quoteId) {
+        return { ok: false, error: 'quoteId is required.' };
+      }
+
+      const inputPayload = {
+        quoteId,
+        items: args.items,
+        specs: args.specs,
+        spaceType: args.spaceType,
+        finish: args.finish,
+        totalAmountCents: args.totalAmountCents,
+      };
+
+      const idempotencyKey =
+        ctx.idempotencyKey ||
+        `${ctx.correlationId}:update_quote:${quoteId}:${hashPayload(inputPayload)}`;
+
+      // 1. Idempotency Check
+      if (ctx.executionRepo) {
+        const existing = await ctx.executionRepo.findExecution(
+          ctx.tenantId,
+          ctx.environmentId,
+          ctx.workspaceId || 'agent_workspace',
+          'quote.update',
+          idempotencyKey
+        );
+        if (existing && existing.status === 'completed') {
+          return {
+            ok: true,
+            status: 'success',
+            quote: existing.outputPayload,
+            idempotentReplay: true,
+          };
+        }
+
+        await ctx.executionRepo.recordExecution({
+          tenantId: ctx.tenantId,
+          environmentId: ctx.environmentId,
+          workspaceId: ctx.workspaceId || 'agent_workspace',
+          correlationId: ctx.correlationId,
+          toolId: 'quote.update',
+          idempotencyKey,
+          status: 'started',
+          inputPayload,
+          executedBy: ctx.principalId,
+          executedAt: new Date(),
+        });
+      }
+
+      // 2. Server Approval Gate:
+      const requiresApproval =
+        args.requiresApproval === true ||
+        (ctx.release as any)?.conversationPolicy?.requiresApproval?.includes('quote.update');
+
+      if (requiresApproval && ctx.approvalService) {
+        const pending = await ctx.approvalService.createPending(
+          'quote.update',
+          inputPayload,
+          makeExecContext(ctx)
+        );
+
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'quote.update',
+            idempotencyKey,
+            status: 'requires_approval',
+            inputPayload,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+
+        return {
+          ok: true,
+          status: 'requires_approval',
+          approvalRequestId: pending.approvalRequestId,
+          message: 'Quote update submitted and requires approval.',
+        };
+      }
+
+      // 3. Dispatch to CapabilityGateway or Native Handler
+      const startTime = Date.now();
+      let updateOutcome: any;
+      try {
+        if (ctx.capabilityGateway) {
+          const execRes = await ctx.capabilityGateway.executeCapability(
+            ctx.release,
+            'quote.update',
+            inputPayload,
+            makeExecContext(ctx)
+          );
+          if (execRes.status === 'success') {
+            updateOutcome = execRes.output;
+          } else {
+            const nativeHandler = ctx.capabilityGateway.getNativeHandler('quote.update');
+            if (nativeHandler) {
+              updateOutcome = await nativeHandler.execute(inputPayload, makeExecContext(ctx));
+            } else {
+              throw new Error(execRes.error || 'quote.update capability execution failed');
+            }
+          }
+        } else {
+          const handler = new QuoteUpdateHandler(
+            undefined,
+            ctx.inMemoryQuotes instanceof Map ? ctx.inMemoryQuotes : undefined
+          );
+          updateOutcome = await handler.execute(inputPayload, makeExecContext(ctx));
+        }
+
+        const durationMs = Date.now() - startTime;
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'quote.update',
+            idempotencyKey,
+            status: 'completed',
+            inputPayload,
+            outputPayload: updateOutcome,
+            durationMs,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+
+        return {
+          ok: true,
+          status: 'success',
+          quote: updateOutcome?.quote || updateOutcome,
+          message: `Successfully updated quote ${quoteId}.`,
+        };
+      } catch (err: any) {
+        const durationMs = Date.now() - startTime;
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'quote.update',
+            idempotencyKey,
+            status: 'failed',
+            inputPayload,
+            error: err.message,
+            durationMs,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+        return {
+          ok: false,
+          error: `Failed to update quote: ${err.message}`,
+        };
+      }
+    }
+
+    case 'get_cart': {
+      const cartId = String(args.cartId || `cart-${ctx.workspaceId || 'default'}`).trim();
+      let cartData: any = null;
+
+      if (ctx.inMemoryCarts instanceof Map) {
+        cartData = ctx.inMemoryCarts.get(cartId) || ctx.inMemoryCarts.get('default');
+      }
+
+      if (!cartData && ctx.workspace?.facts?.cart?.value) {
+        cartData = ctx.workspace.facts.cart.value;
+      }
+
+      if (!cartData) {
+        cartData = {
+          cartId,
+          items: [],
+          totalItems: 0,
+          status: 'empty',
+        };
+      }
+
+      return {
+        ok: true,
+        cart: cartData,
+      };
+    }
+
+    case 'update_cart':
+    case 'add_to_cart': {
+      const items = Array.isArray(args.items) ? args.items : [];
+      const cartId = String(args.cartId || `cart-${ctx.workspaceId || 'default'}`).trim();
+
+      // Verify SKUs in catalogue
+      for (const item of items) {
+        if (!item.sku) {
+          return { ok: false, error: 'Every cart item must specify a product sku.' };
+        }
+        let prod = ctx.catalogProductCache.get(item.sku);
+        if (!prod && !ctx.turnProductSkus.has(item.sku)) {
+          try {
+            const res = await ctx.catalogSearchHandler.execute(
+              { query: item.sku, maxResults: 1 },
+              makeExecContext(ctx)
+            );
+            const found = (res.products || res.items || []).find(
+              (p: any) => String(p.sku).toLowerCase() === String(item.sku).toLowerCase()
+            );
+            if (found) {
+              ctx.turnProductSkus.add(found.sku);
+              ctx.catalogProductCache.set(found.sku, found);
+              prod = found;
+            }
+          } catch {}
+        }
+        if (!prod && !ctx.turnProductSkus.has(item.sku)) {
+          return {
+            ok: false,
+            error: `Cannot update cart: SKU "${item.sku}" could not be verified in the catalogue.`,
+          };
+        }
+      }
+
+      const inputPayload = {
+        cartId,
+        items: items.map((it: any) => ({
+          sku: it.sku,
+          quantity: Number(it.quantity) || 1,
+        })),
+        category: args.category,
+      };
+
+      const idempotencyKey =
+        ctx.idempotencyKey ||
+        `${ctx.correlationId}:update_cart:${cartId}:${hashPayload(inputPayload)}`;
+
+      // 1. Idempotency Check
+      if (ctx.executionRepo) {
+        const existing = await ctx.executionRepo.findExecution(
+          ctx.tenantId,
+          ctx.environmentId,
+          ctx.workspaceId || 'agent_workspace',
+          'cart.update',
+          idempotencyKey
+        );
+        if (existing && existing.status === 'completed') {
+          return {
+            ok: true,
+            status: 'success',
+            cart: existing.outputPayload,
+            idempotentReplay: true,
+          };
+        }
+
+        await ctx.executionRepo.recordExecution({
+          tenantId: ctx.tenantId,
+          environmentId: ctx.environmentId,
+          workspaceId: ctx.workspaceId || 'agent_workspace',
+          correlationId: ctx.correlationId,
+          toolId: 'cart.update',
+          idempotencyKey,
+          status: 'started',
+          inputPayload,
+          executedBy: ctx.principalId,
+          executedAt: new Date(),
+        });
+      }
+
+      // 2. Dispatch to CapabilityGateway or Native Handler
+      const startTime = Date.now();
+      let cartOutcome: any;
+      try {
+        if (ctx.capabilityGateway) {
+          const execRes = await ctx.capabilityGateway.executeCapability(
+            ctx.release,
+            'cart.update',
+            inputPayload,
+            makeExecContext(ctx)
+          );
+          if (execRes.status === 'success') {
+            cartOutcome = execRes.output;
+          } else {
+            const nativeHandler = ctx.capabilityGateway.getNativeHandler('cart.update');
+            if (nativeHandler) {
+              cartOutcome = await nativeHandler.execute(inputPayload, makeExecContext(ctx));
+            } else {
+              throw new Error(execRes.error || 'cart.update capability execution failed');
+            }
+          }
+        } else {
+          const handler = new CartUpdateHandler(
+            undefined,
+            ctx.inMemoryCarts instanceof Map ? ctx.inMemoryCarts : undefined
+          );
+          cartOutcome = await handler.execute(inputPayload, makeExecContext(ctx));
+        }
+
+        const durationMs = Date.now() - startTime;
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'cart.update',
+            idempotencyKey,
+            status: 'completed',
+            inputPayload,
+            outputPayload: cartOutcome,
+            durationMs,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+
+        return {
+          ok: true,
+          status: 'success',
+          cart: cartOutcome?.cart || cartOutcome,
+          message: 'Cart updated successfully.',
+        };
+      } catch (err: any) {
+        const durationMs = Date.now() - startTime;
+        if (ctx.executionRepo) {
+          await ctx.executionRepo.recordExecution({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            workspaceId: ctx.workspaceId || 'agent_workspace',
+            correlationId: ctx.correlationId,
+            toolId: 'cart.update',
+            idempotencyKey,
+            status: 'failed',
+            inputPayload,
+            error: err.message,
+            durationMs,
+            executedBy: ctx.principalId,
+            executedAt: new Date(),
+          });
+        }
+        return {
+          ok: false,
+          error: `Failed to update cart: ${err.message}`,
+        };
+      }
     }
 
     default:

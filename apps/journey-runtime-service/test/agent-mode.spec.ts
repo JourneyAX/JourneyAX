@@ -23,6 +23,9 @@ import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
 import { AgentRouter } from '../src/kernel/agent.router';
 import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
+import { ExecutionRepository } from '../src/kernel/execution.repository';
+import { ApprovalService } from '../src/kernel/approval.service';
+import { ApprovalStore } from '../src/approval/approval.store';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 
@@ -1648,6 +1651,287 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(questionMsg.role, 'user');
       assert.match(questionMsg.content, /<customer_message>/);
       assert.match(questionMsg.content, /What fasteners do you suggest\?/);
+    });
+  });
+
+  describe('Task A3: Action tools for quote and cart with capability gateway', () => {
+    test('create_quote verifies catalogue SKUs and calculates authoritative quote with audit log', async () => {
+      const release = createTestPack();
+      const executionRepo = new ExecutionRepository();
+      const approvalService = new ApprovalService(new ApprovalStore({ explicitMemory: true }));
+
+      const catalogProductCache = new Map<string, any>([
+        ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber 100x50', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+      ]);
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-quote-1',
+        correlationId: 'corr-quote-1',
+        release,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        turnProductSkus: new Set(['SKU-TIMBER-100']),
+        catalogProductCache,
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+        executionRepo,
+        approvalService,
+      };
+
+      const result = await executeAgentTool(
+        'create_quote',
+        {
+          items: [{ sku: 'SKU-TIMBER-100', quantity: 10 }],
+        },
+        toolContext
+      );
+
+      assert.equal(result.ok, true);
+      assert.equal(result.status, 'success');
+      assert.ok(result.quote?.quoteId);
+      assert.equal(result.quote.totalAmount, 255.0);
+      assert.equal(result.quote.currency, 'NZD');
+
+      // Verify audit record in executionRepo
+      const audit = executionRepo.getAuditTrail();
+      assert.ok(audit.length >= 1);
+      const quoteAudit = audit.find((r) => r.toolId === 'trade.quote_create' && r.status === 'completed');
+      assert.ok(quoteAudit, 'Completed execution record must be written to audit log');
+      assert.equal(quoteAudit.tenantId, 'test-tenant');
+      assert.equal(quoteAudit.workspaceId, 'ws-quote-1');
+    });
+
+    test('create_quote rejects unverified/uncatalogued SKUs and fails closed', async () => {
+      const release = createTestPack();
+      const executionRepo = new ExecutionRepository();
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-quote-2',
+        correlationId: 'corr-quote-2',
+        release,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        turnProductSkus: new Set(),
+        catalogProductCache: new Map(),
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+        executionRepo,
+      };
+
+      const result = await executeAgentTool(
+        'create_quote',
+        {
+          items: [{ sku: 'SKU-FAKE-999', quantity: 2 }],
+        },
+        toolContext
+      );
+
+      assert.equal(result.ok, false);
+      assert.match(result.error, /could not be verified in the catalogue/);
+
+      // Verify no completed record for rejected quote
+      const audit = executionRepo.getAuditTrail();
+      const completed = audit.find((r) => r.status === 'completed');
+      assert.equal(completed, undefined, 'No completed execution record for rejected quote');
+    });
+
+    test('create_quote creates pending approval when approval is required by policy', async () => {
+      const release = createTestPack();
+      (release.conversationPolicy as any).requiresApproval = ['trade.quote_create'];
+
+      const executionRepo = new ExecutionRepository();
+      const approvalService = new ApprovalService(new ApprovalStore({ explicitMemory: true }));
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-quote-3',
+        correlationId: 'corr-quote-3',
+        release,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        turnProductSkus: new Set(['SKU-TIMBER-100']),
+        catalogProductCache: new Map([
+          ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+        ]),
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+        executionRepo,
+        approvalService,
+      };
+
+      const result = await executeAgentTool(
+        'create_quote',
+        {
+          items: [{ sku: 'SKU-TIMBER-100', quantity: 5 }],
+          requiresApproval: true,
+        },
+        toolContext
+      );
+
+      assert.equal(result.ok, true);
+      assert.equal(result.status, 'requires_approval');
+      assert.ok(result.approvalRequestId, 'Must return approvalRequestId');
+
+      // Verify approval record was created in approval store
+      const approvalRecord = await approvalService.getApproval(result.approvalRequestId);
+      assert.ok(approvalRecord);
+      assert.equal(approvalRecord.status, 'pending');
+      assert.equal(approvalRecord.toolId, 'trade.quote_create');
+    });
+
+    test('create_quote returns cached result on idempotent replay with same key and input', async () => {
+      const release = createTestPack();
+      const executionRepo = new ExecutionRepository();
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-quote-4',
+        correlationId: 'corr-quote-4',
+        release,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        turnProductSkus: new Set(['SKU-TIMBER-100']),
+        catalogProductCache: new Map([
+          ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+        ]),
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+        executionRepo,
+      };
+
+      const input = { items: [{ sku: 'SKU-TIMBER-100', quantity: 4 }] };
+
+      const res1 = await executeAgentTool('create_quote', input, toolContext);
+      assert.equal(res1.ok, true);
+      assert.equal(res1.status, 'success');
+      assert.equal(res1.idempotentReplay, undefined);
+
+      const res2 = await executeAgentTool('create_quote', input, toolContext);
+      assert.equal(res2.ok, true);
+      assert.equal(res2.status, 'success');
+      assert.equal(res2.idempotentReplay, true, 'Second call with identical input must return idempotent replay');
+      assert.equal(res2.quote.quoteId, res1.quote.quoteId);
+    });
+
+    test('get_cart and update_cart execute with SKU verification and record execution in audit repo', async () => {
+      const release = createTestPack();
+      const executionRepo = new ExecutionRepository();
+      const inMemoryCarts = new Map<string, any>();
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-cart-1',
+        correlationId: 'corr-cart-1',
+        release,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        turnProductSkus: new Set(['SKU-FASTENER-50']),
+        catalogProductCache: new Map([
+          ['SKU-FASTENER-50', { sku: 'SKU-FASTENER-50', title: 'Galv Screws 50mm', price: 12.0, priceCents: 1200, currency: 'NZD' }],
+        ]),
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+        executionRepo,
+        inMemoryCarts,
+      };
+
+      // 1. Get empty cart
+      const getEmpty = await executeAgentTool('get_cart', { cartId: 'cart-123' }, toolContext);
+      assert.equal(getEmpty.ok, true);
+      assert.equal(getEmpty.cart?.status, 'empty');
+
+      // 2. Update cart with verified SKU
+      const updateRes = await executeAgentTool(
+        'update_cart',
+        {
+          cartId: 'cart-123',
+          items: [{ sku: 'SKU-FASTENER-50', quantity: 3 }],
+        },
+        toolContext
+      );
+      assert.equal(updateRes.ok, true);
+      assert.equal(updateRes.status, 'success');
+
+      // 3. Verify in audit repo
+      const audit = executionRepo.getAuditTrail();
+      const cartAudit = audit.find((r) => r.toolId === 'cart.update' && r.status === 'completed');
+      assert.ok(cartAudit, 'Cart update must be recorded in audit log');
+
+      // 4. Update cart with unverified SKU must fail closed
+      const failRes = await executeAgentTool(
+        'update_cart',
+        {
+          cartId: 'cart-123',
+          items: [{ sku: 'SKU-UNKNOWN-99', quantity: 1 }],
+        },
+        toolContext
+      );
+      assert.equal(failRes.ok, false);
+      assert.match(failRes.error, /could not be verified in the catalogue/);
+    });
+
+    test('server-enforced tool permission scoping: agent without create_quote in allowedTools has tool rejected', async () => {
+      const release = createTestPack();
+      release.agents = [
+        {
+          agentId: 'catalog_only_agent',
+          name: 'Catalog Browser',
+          purpose: 'Browse products only',
+          systemPromptTemplate: 'Help browse items.',
+          allowedTools: ['search_products', 'check_stock'],
+          isDefault: true,
+        },
+      ];
+
+      const gateway = new ModelGateway();
+      gateway.mockAgentExecutor = async () => ({
+        content: 'I will create a quote for you.',
+        toolCalls: [
+          {
+            id: 'tc-quote-unauth',
+            name: 'create_quote',
+            arguments: { items: [{ sku: 'SKU-TIMBER-100', quantity: 1 }] },
+          },
+        ],
+      });
+
+      const workspace = createTestWorkspace();
+      const command: TurnCommand = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: workspace.workspaceId,
+        sessionId: 'test-session',
+        correlationId: 'test-corr-unauth',
+        message: 'Please quote these items.',
+      };
+
+      const agentLoop = new AgentTurnLoop();
+      const outcome = await agentLoop.execute({
+        command,
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        sink: () => {},
+      });
+
+      // The unauthorized tool call must be recorded as rejected
+      const quoteTool = outcome.toolsCalled.find((t) => t.name === 'create_quote');
+      assert.ok(quoteTool, 'Unauthorized tool call must be tracked');
+      assert.equal(quoteTool.ok, false);
+      assert.match(quoteTool.error || '', /not in allowedTools|unauthorized/i);
     });
   });
 });

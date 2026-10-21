@@ -305,6 +305,9 @@ export class TurnApplicationService {
                 this.knowledgeControlPlane ? (() => this.knowledgeControlPlane) as any : undefined
               ),
               knowledgeControlPlane: this.knowledgeControlPlane,
+              capabilityGateway: this.capabilityGateway,
+              approvalService: this.approvalService,
+              executionRepo: this.executionRepo,
               sink: agentTimingSink,
               timeoutMs: turnDeadlineMs,
               signal: abortController.signal,

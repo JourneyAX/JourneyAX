@@ -30,10 +30,18 @@ export class CartUpdateHandler implements NativeCapabilityHandler {
     if (this.inMemoryCarts) {
       const cartId = input.cartId || 'default';
       const existing = this.inMemoryCarts.get(cartId);
-      if (!existing) {
-        throw new Error(`[CartUpdateHandler] Cart '${cartId}' not found in fixture repository`);
-      }
-      return { cart: existing, status: 'success' };
+      const items = Array.isArray(input.items) ? input.items : (existing?.items || []);
+      const updated = {
+        cartId,
+        projectId: tenantId,
+        workspaceId: ctx.workspaceId,
+        items,
+        totalItems: items.reduce((acc: number, it: any) => acc + (Number(it.quantity) || 1), 0),
+        status: 'active',
+        updatedAt: new Date().toISOString(),
+      };
+      this.inMemoryCarts.set(cartId, updated);
+      return { cart: updated, status: 'success' };
     }
 
     // 3. Durable, authoritative platform repository

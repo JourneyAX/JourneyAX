@@ -30,6 +30,9 @@ import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.ha
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
+import type { CapabilityGateway } from '../kernel/capability.gateway';
+import type { ApprovalService } from '../kernel/approval.service';
+import type { ExecutionRepository } from '../kernel/execution.repository';
 
 export interface AgentTurnOptions {
   command: TurnCommand;
@@ -40,6 +43,11 @@ export interface AgentTurnOptions {
   branchStockHandler?: BranchStockCheckHandler;
   knowledgeSearchHandler?: KnowledgeSearchHandler;
   knowledgeControlPlane?: KnowledgeControlPlanePort;
+  capabilityGateway?: CapabilityGateway;
+  approvalService?: ApprovalService;
+  executionRepo?: ExecutionRepository;
+  inMemoryQuotes?: Map<string, any> | Record<string, any>;
+  inMemoryCarts?: Map<string, any> | Record<string, any>;
   sink: (event: string, data: any) => void;
   maxToolRounds?: number;
   timeoutMs?: number;
@@ -294,6 +302,11 @@ export class AgentTurnLoop {
       branchStockHandler,
       knowledgeSearchHandler,
       knowledgeControlPlane,
+      capabilityGateway,
+      approvalService,
+      executionRepo,
+      inMemoryQuotes,
+      inMemoryCarts,
       sink = () => {},
       signal,
     } = options;
@@ -335,12 +348,21 @@ export class AgentTurnLoop {
       workspaceId: command.workspaceId || command.sessionId,
       sessionId: command.sessionId || command.workspaceId,
       correlationId: command.correlationId || `corr-${Date.now()}`,
+      principalId: command.principalId || (command as any).userId || (command as any).customerId || 'customer',
+      principalRole: (command as any).principalRole || (command as any).role || 'customer',
+      idempotencyKey: command.idempotencyKey || (command as any).turnId,
       release,
+      workspace,
       okfContent,
       catalogSearchHandler,
       branchStockHandler,
       knowledgeSearchHandler,
       knowledgeControlPlane,
+      capabilityGateway,
+      approvalService,
+      executionRepo,
+      inMemoryQuotes,
+      inMemoryCarts,
       turnProductSkus: new Set<string>(),
       catalogProductCache: new Map<string, any>(),
       readSourceIds: new Set<string>(),
