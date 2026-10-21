@@ -304,7 +304,9 @@ export class ModelGateway {
   public mockAgentExecutor?: (
     req: AgentExecutionRequest,
     onDelta?: (delta: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    route?: ModelRouteResult,
+    attempt?: number
   ) => Promise<{
     content: string;
     toolCalls: AgentToolCall[];
@@ -314,6 +316,7 @@ export class ModelGateway {
   /**
    * Executes an autonomous agent turn with streaming tokens and structured tool calling.
    * Supports OpenAI-compatible first and Anthropic second.
+   * Implements Task A4 resilience: retries once per candidate, then falls back to next candidate model.
    */
   async executeAgentStream(
     release: BusinessPackRelease,
@@ -327,15 +330,19 @@ export class ModelGateway {
       throw signal.reason || new Error('Agent turn aborted');
     }
 
-    if (this.mockAgentExecutor) {
-      const mockResult = await this.mockAgentExecutor(req, onDelta, signal);
-      if (signal?.aborted) {
-        throw signal.reason || new Error('Agent turn aborted');
+    const taskType: TaskType = req.taskType || 'agent_turn';
+    let routes: ModelRouteResult[] = [];
+    try {
+      routes = this.router.resolveCandidates(taskType, release, {
+        targetDataResidency: req.targetDataResidency,
+        policyRef: req.policyRef,
+      });
+    } catch (err: any) {
+      if (!this.mockAgentExecutor) {
+        throw err;
       }
-      return {
-        content: mockResult.content || '',
-        toolCalls: mockResult.toolCalls || [],
-        route: {
+      routes = [
+        {
           policyId: req.policyRef || 'mock_agent_policy',
           provider: 'custom',
           model: 'mock-agent',
@@ -344,18 +351,22 @@ export class ModelGateway {
           maxOutputTokens: 4096,
           timeoutMs: 10000,
         },
-        latencyMs: Date.now() - startTime,
-        residencyProven: true,
-        residencyEvidence: 'mock:internal',
-        usage: mockResult.usage,
-      };
+      ];
     }
 
-    const taskType: TaskType = req.taskType || 'agent_turn';
-    const routes = this.router.resolveCandidates(taskType, release, {
-      targetDataResidency: req.targetDataResidency,
-      policyRef: req.policyRef,
-    });
+    if (routes.length === 0) {
+      routes = [
+        {
+          policyId: req.policyRef || 'mock_agent_policy',
+          provider: 'custom',
+          model: 'mock-agent',
+          dataResidency: 'au',
+          maxInputTokens: 8192,
+          maxOutputTokens: 4096,
+          timeoutMs: 10000,
+        },
+      ];
+    }
 
     let lastError: any = null;
     for (let i = 0; i < routes.length; i++) {
@@ -363,18 +374,45 @@ export class ModelGateway {
         throw signal.reason || new Error('Agent turn aborted');
       }
       const route = routes[i];
-      try {
-        return await this.executeRouteAgentStream(route, release, req, onDelta, startTime, signal);
-      } catch (err: any) {
+      const maxAttempts = 2; // Initial attempt + retry once
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         if (signal?.aborted) {
-          throw signal.reason || err;
+          throw signal.reason || new Error('Agent turn aborted');
         }
-        lastError = err;
-        if (i < routes.length - 1) {
-          const next = routes[i + 1];
-          console.warn(
-            `[ModelGateway] Candidate agent stream ${route.provider}/${route.model} failed (${err.name || err.message}). Attempting fallback to ${next.provider}/${next.model}...`
-          );
+        try {
+          if (this.mockAgentExecutor) {
+            const mockResult = await this.mockAgentExecutor(req, onDelta, signal, route, attempt);
+            if (signal?.aborted) {
+              throw signal.reason || new Error('Agent turn aborted');
+            }
+            return {
+              content: mockResult.content || '',
+              toolCalls: mockResult.toolCalls || [],
+              route,
+              latencyMs: Date.now() - startTime,
+              residencyProven: true,
+              residencyEvidence: 'mock:internal',
+              usage: mockResult.usage,
+            };
+          }
+
+          return await this.executeRouteAgentStream(route, release, req, onDelta, startTime, signal);
+        } catch (err: any) {
+          if (signal?.aborted) {
+            throw signal.reason || err;
+          }
+          lastError = err;
+          if (attempt < maxAttempts) {
+            console.warn(
+              `[ModelGateway] Candidate agent stream ${route.provider}/${route.model} failed (attempt ${attempt}/${maxAttempts}: ${err.name || err.message}). Retrying once...`
+            );
+          } else if (i < routes.length - 1) {
+            const next = routes[i + 1];
+            console.warn(
+              `[ModelGateway] Candidate agent stream ${route.provider}/${route.model} exhausted retries. Attempting fallback to candidate ${next.provider}/${next.model}...`
+            );
+          }
         }
       }
     }

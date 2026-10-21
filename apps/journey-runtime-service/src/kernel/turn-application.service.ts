@@ -350,11 +350,94 @@ export class TurnApplicationService {
           agentCancelled = true;
           clearTimeout(timeoutHandle);
           console.warn(
-            `[AgentMode] Autonomous turn failed (${agentErr?.message || agentErr}). Falling back to rule-based engine.`
+            `[AgentMode] Autonomous turn failed (${agentErr?.message || agentErr}). Initiating polite handoff resilience (never routing to rule-based engine).`
           );
+
+          const politeMessage =
+            (release.conversationPolicy as any)?.handoffMessage ||
+            (release.extensions?.dialoguePolicy as any)?.handoffMessage ||
+            (release.extensions?.agentMode as any)?.handoffMessage ||
+            'I apologize, but I am unable to complete your request right now. A customer consultant has been notified and will assist you shortly.';
+
           if (agentStreamedText.length > 0) {
-            fallbackStreamedText = agentStreamedText;
+            timingSink('token', { replace: politeMessage, delta: politeMessage });
+          } else {
+            timingSink('token', { delta: politeMessage });
           }
+
+          appendHistory(
+            workspace,
+            [
+              { role: 'customer', content: command.message || (command as any).userInput || (command as any).text || '', turnId },
+              { role: 'assistant', content: politeMessage, turnId },
+            ],
+            release.extensions?.dialoguePolicy?.history
+          );
+
+          const handoffDecision: Decision = {
+            decisionId: `dec_${Date.now()}`,
+            type: 'handoff',
+            payload: { reason: agentErr?.message || 'Agent mode failure' },
+            reason: agentErr?.message || 'Agent mode failure',
+            createdAt: new Date().toISOString(),
+          };
+
+          const handoffResult: TurnResult = {
+            workspace,
+            decision: handoffDecision,
+            assistantMessage: politeMessage,
+            uiInstructions: [],
+            executedCapabilities: [
+              {
+                toolId: 'hand_off_to_human',
+                input: { reason: agentErr?.message },
+                output: { handedOff: true, reason: agentErr?.message },
+                status: 'success',
+                durationMs: 0,
+              } as any,
+            ],
+            trace: {
+              stage: workspace.currentStage || 'unassigned',
+              transitions: [],
+              decisionsMade: [handoffDecision],
+              agentMode: true,
+              fallbackToRuleEngine: false,
+              resilienceHandled: true,
+              error: agentErr?.message || String(agentErr),
+            } as any,
+          };
+
+          await this.commitWorkspace(
+            workspace,
+            turnId,
+            envId,
+            tenantId,
+            workspaceId,
+            handoffDecision.type,
+            command.correlationId
+          );
+
+          this.streamCommittedFinalEvents(
+            command,
+            handoffResult,
+            handoffResult.executedCapabilities || [],
+            timingSink,
+            politeMessage
+          );
+
+          this.recordTurnTiming(
+            handoffResult,
+            turnStartTime,
+            timeToFirstEventMs,
+            timeToFirstTextMs,
+            { latencyMs: Date.now() - turnStartTime, usage: { prompt: 0, completion: 0, total: 0 } },
+            undefined,
+            0,
+            0,
+            command
+          );
+
+          return handoffResult;
         } finally {
           clearTimeout(timeoutHandle);
         }

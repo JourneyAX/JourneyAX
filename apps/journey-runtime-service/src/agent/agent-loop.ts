@@ -11,6 +11,7 @@ import {
   ModelGateway,
   type AgentMessage,
   type AgentToolCall,
+  type AgentExecutionResponse,
 } from '../kernel/model.gateway';
 import {
   AGENT_TOOL_DEFINITIONS,
@@ -484,18 +485,32 @@ export class AgentTurnLoop {
         shaper.processDelta(delta);
       };
 
-      const response = await modelGateway.executeAgentStream(
-        release,
-        {
-          taskType: 'agent_turn',
-          systemPrompt,
-          messages,
-          tools: isLastAllowedRound ? undefined : (availableTools.length > 0 ? availableTools : undefined),
-          policyRef: resolvedAgent.modelPolicyRef || 'agent_turn',
-        },
-        onDelta,
-        signal
-      );
+      let response: AgentExecutionResponse;
+      try {
+        response = await modelGateway.executeAgentStream(
+          release,
+          {
+            taskType: 'agent_turn',
+            systemPrompt,
+            messages,
+            tools: isLastAllowedRound ? undefined : (availableTools.length > 0 ? availableTools : undefined),
+            policyRef: resolvedAgent.modelPolicyRef || 'agent_turn',
+          },
+          onDelta,
+          signal
+        );
+      } catch (streamErr: any) {
+        if (signal?.aborted) {
+          throw streamErr;
+        }
+        console.warn(
+          `[AgentTurnLoop] Model execution failed after retries and candidate fallback (${streamErr?.message || streamErr}). Initiating polite handoff resilience.`
+        );
+        toolContext.isHumanHandoffRequested = true;
+        toolContext.handoffReason = `Model execution failure: ${streamErr?.message || streamErr}`;
+        isFinished = true;
+        break;
+      }
 
       if (signal?.aborted) {
         throw signal.reason || new Error('Agent turn aborted');
@@ -651,9 +666,18 @@ export class AgentTurnLoop {
     finalAssistantText = shaper.getStreamedText().trim();
 
     if (toolContext.isHumanHandoffRequested) {
+      const handoffMsg =
+        (release.conversationPolicy as any)?.handoffMessage ||
+        (release.extensions?.dialoguePolicy as any)?.handoffMessage ||
+        (release.extensions?.agentMode as any)?.handoffMessage ||
+        'A customer consultant has been notified and will assist you shortly.';
+
       if (!finalAssistantText) {
-        finalAssistantText = 'A customer consultant has been notified and will assist you shortly.';
+        finalAssistantText = handoffMsg;
         sink('token', { delta: finalAssistantText });
+      } else if (toolContext.handoffReason?.startsWith('Model execution failure')) {
+        finalAssistantText = handoffMsg;
+        sink('token', { replace: finalAssistantText, delta: finalAssistantText });
       }
     } else if (!finalAssistantText) {
       // If all sentences were withheld by claim guard (or empty text)
@@ -681,6 +705,15 @@ export class AgentTurnLoop {
         reason: 'Agent provided grounded answer',
         createdAt: new Date().toISOString(),
       };
+    }
+
+    // Ensure hand_off_to_human is recorded in toolsTrace if handoff occurred
+    if (toolContext.isHumanHandoffRequested && !toolsTrace.some((t) => t.name === 'hand_off_to_human')) {
+      toolsTrace.push({
+        name: 'hand_off_to_human',
+        durationMs: 0,
+        ok: true,
+      });
     }
 
     // 8. Update Workspace Conversation History
@@ -735,6 +768,9 @@ export class AgentTurnLoop {
         tokens: totalTokens,
         durationMs: totalDurationMs,
         timeToFirstTextMs: timeToFirstTextMs ?? totalDurationMs,
+        handoffRequested: toolContext.isHumanHandoffRequested,
+        handoffReason: toolContext.handoffReason,
+        resilienceHandled: toolContext.isHumanHandoffRequested,
       } as any,
     };
 

@@ -2134,6 +2134,152 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(inMemoryQuotes.size, 0, 'No duplicate quote must be created when previous execution is in progress');
     });
   });
+
+  describe('Task A4: Resilience instead of rule fallback', () => {
+    test('retry once: retries failed candidate model and succeeds on attempt 2', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      let callCount = 0;
+
+      gateway.mockAgentExecutor = async (_req, _onDelta, _signal, _route, attempt) => {
+        callCount++;
+        if (attempt === 1) {
+          throw new Error('Transient network glitch on attempt 1');
+        }
+        return {
+          content: 'Success on attempt 2 after retry',
+          toolCalls: [],
+        };
+      };
+
+      const res = await gateway.executeAgentStream(release, {
+        taskType: 'agent_turn',
+        systemPrompt: 'System',
+        messages: [{ role: 'user', content: 'Hello' }],
+      });
+
+      assert.equal(callCount, 2, 'Must have attempted initial call and retried once');
+      assert.equal(res.content, 'Success on attempt 2 after retry');
+    });
+
+    test('candidate model fallback: switches to next candidate model from pack policy after retries fail', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      // Configure modelPolicy with 2 candidates
+      release.modelPolicy = {
+        defaultPolicy: 'agent_turn',
+        policies: [
+          {
+            policyId: 'agent_turn',
+            fallbackAllowed: true,
+            candidates: [
+              {
+                priority: 1,
+                provider: 'custom',
+                model: 'model-candidate-primary',
+                temperature: 0.2,
+              },
+              {
+                priority: 2,
+                provider: 'custom',
+                model: 'model-candidate-secondary',
+                temperature: 0.2,
+              },
+            ],
+          },
+        ],
+      } as any;
+
+      const attemptedCandidates: string[] = [];
+
+      gateway.mockAgentExecutor = async (_req, _onDelta, _signal, route, attempt) => {
+        attemptedCandidates.push(`${route?.model}:attempt${attempt}`);
+        if (route?.model === 'model-candidate-primary') {
+          throw new Error('Primary model failed');
+        }
+        return {
+          content: 'Answer from secondary candidate model',
+          toolCalls: [],
+        };
+      };
+
+      const res = await gateway.executeAgentStream(release, {
+        taskType: 'agent_turn',
+        systemPrompt: 'System',
+        messages: [{ role: 'user', content: 'Hello' }],
+        policyRef: 'agent_turn',
+      });
+
+      assert.ok(attemptedCandidates.includes('model-candidate-primary:attempt1'));
+      assert.ok(attemptedCandidates.includes('model-candidate-primary:attempt2'));
+      assert.ok(attemptedCandidates.includes('model-candidate-secondary:attempt1'));
+      assert.equal(res.content, 'Answer from secondary candidate model');
+      assert.equal(res.route.model, 'model-candidate-secondary');
+    });
+
+    test('agent mode failure never routes to rule-based engine: emits polite message and calls hand_off_to_human', async () => {
+      const failingGateway = new ModelGateway();
+      failingGateway.mockAgentExecutor = async () => {
+        throw new Error('All model candidates completely down');
+      };
+
+      const release = createTestPack();
+      (release.conversationPolicy as any).handoffMessage =
+        'We are currently experiencing technical difficulties. Connecting you to our support desk.';
+
+      const workspace = createTestWorkspace();
+      const outboxRepo = new OutboxRepository({ forceInMemory: true });
+      const service = new TurnApplicationService(
+        { loadActivePack: async () => release } as any,
+        {
+          load: async () => workspace,
+          getOrCreate: async () => workspace,
+          save: async () => {},
+        } as any,
+        new JourneyResolver(),
+        new AgentRouter(),
+        failingGateway,
+        undefined,
+        undefined,
+        undefined,
+        outboxRepo
+      );
+
+      const streamedEvents: Array<{ event: string; data: any }> = [];
+      const result = await service.executeTurnStream(
+        {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: workspace.workspaceId,
+          sessionId: 'test-session',
+          correlationId: 'test-corr-handoff',
+          message: 'Can I get advice on building a deck?',
+        },
+        release,
+        (event, data) => streamedEvents.push({ event, data })
+      );
+
+      // Verify decision is handoff (never routed to rule-based engine)
+      assert.equal(result.decision.type, 'handoff');
+      assert.equal(
+        result.assistantMessage,
+        'We are currently experiencing technical difficulties. Connecting you to our support desk.'
+      );
+
+      // Verify executed capabilities includes hand_off_to_human
+      const handoffCap = result.executedCapabilities?.find((c) => c.toolId === 'hand_off_to_human');
+      assert.ok(handoffCap, 'Must record hand_off_to_human capability execution');
+
+      // Verify token events streamed the polite message
+      const tokenEvents = streamedEvents.filter((e) => e.event === 'token');
+      assert.ok(tokenEvents.length >= 1);
+      assert.match(tokenEvents[0].data.delta, /support desk/i);
+
+      // Verify trace confirms agent mode handoff without rule-based engine
+      assert.equal((result.trace as any)?.agentMode, true);
+      assert.equal(Boolean((result.trace as any)?.handoffRequested || (result.trace as any)?.resilienceHandled), true);
+    });
+  });
 });
 
 
