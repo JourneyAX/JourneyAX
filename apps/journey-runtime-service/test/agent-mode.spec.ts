@@ -9,6 +9,7 @@ import {
   AgentTurnLoop,
   isAgentModeEnabled,
   buildAgentSystemPrompt,
+  formatCustomerContextMessage,
   GENERIC_PLATFORM_OPERATING_PROMPT,
 } from '../src/agent/agent-loop';
 import {
@@ -1511,6 +1512,142 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       // 2. Loop bounded by agent.maxTurns (2 rounds)
       assert.equal(roundsCount, 2, 'Should execute at most agent.maxTurns (2) rounds');
       assert.ok(outcome.durationMs >= 0);
+    });
+  });
+
+  describe('Task A2: Customer Context Per Turn', () => {
+    test('formatCustomerContextMessage formats signed-in trade customer with active cart and quote', () => {
+      const release = createTestPack();
+      (release.profile as any).region = 'Auckland';
+      release.profile.primaryLocale = 'en-NZ';
+
+      const command: TurnCommand = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-context-trade',
+        sessionId: 'sess-context-trade',
+        correlationId: 'corr-context-trade',
+        message: 'Looking for framing timber',
+        principalId: 'user-builder-77',
+      };
+      (command as any).customerType = 'trade';
+      (command as any).branch = 'Penrose';
+      (command as any).cart = {
+        items: [{ sku: 'SKU-TIMBER-1' }, { sku: 'SKU-FASTENER-2' }],
+        total: '$250.00',
+      };
+      (command as any).quote = {
+        quoteId: 'QT-8801',
+        status: 'draft',
+        items: [{ sku: 'SKU-TIMBER-1' }],
+        total: '$190.00',
+      };
+
+      const contextMsg = formatCustomerContextMessage({
+        command,
+        release,
+      });
+
+      assert.match(contextMsg, /<customer_context>/);
+      assert.match(contextMsg, /Signed-in: Signed In \(user-builder-77\)/);
+      assert.match(contextMsg, /Customer Type: Trade/);
+      assert.match(contextMsg, /Branch \/ Store: Penrose/);
+      assert.match(contextMsg, /Region: Auckland/);
+      assert.match(contextMsg, /Locale: en-NZ/);
+      assert.match(contextMsg, /Cart Summary: 2 items \(total: \$250\.00\)/);
+      assert.match(contextMsg, /Quote Summary: QT-8801 \[draft\]: 1 items \(total: \$190\.00\)/);
+      assert.match(contextMsg, /<\/customer_context>/);
+    });
+
+    test('formatCustomerContextMessage formats guest DIY customer with defaults', () => {
+      const release = createTestPack();
+      delete (release.profile as any).region;
+      delete (release.profile as any).headquarters;
+
+      const command: TurnCommand = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-context-guest',
+        sessionId: 'sess-context-guest',
+        correlationId: 'corr-context-guest',
+        message: 'Need help fixing a deck',
+        principalId: 'guest',
+      };
+      (command as any).customerType = 'diy';
+
+      const contextMsg = formatCustomerContextMessage({
+        command,
+        release,
+      });
+
+      assert.match(contextMsg, /<customer_context>/);
+      assert.match(contextMsg, /Signed-in: Guest \(not signed in\)/);
+      assert.match(contextMsg, /Customer Type: DIY/);
+      assert.match(contextMsg, /Branch \/ Store: Not selected/);
+      assert.match(contextMsg, /Region: Not specified/);
+      assert.match(contextMsg, /Cart Summary: Empty/);
+      assert.match(contextMsg, /Quote Summary: None/);
+      assert.match(contextMsg, /<\/customer_context>/);
+    });
+
+    test('AgentTurnLoop.execute injects customer context message and assistant acknowledgment before customer question', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const workspace = createTestWorkspace();
+
+      let receivedMessages: any[] = [];
+      gateway.mockAgentExecutor = async (req) => {
+        receivedMessages = req.messages;
+        return {
+          content: 'Hello! I see you are shopping at Penrose.',
+          toolCalls: [],
+        };
+      };
+
+      const command: TurnCommand = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: workspace.workspaceId,
+        sessionId: 'test-session',
+        correlationId: 'test-corr',
+        message: 'What fasteners do you suggest?',
+        principalId: 'builder-44',
+      };
+      (command as any).customerType = 'trade';
+      (command as any).branch = 'Penrose';
+
+      const agentLoop = new AgentTurnLoop();
+      await agentLoop.execute({
+        command,
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        sink: () => {},
+      });
+
+      assert.ok(receivedMessages.length >= 3, 'Should have context, ack, and customer question messages');
+
+      // Find the customer context message
+      const contextIdx = receivedMessages.findIndex((m) =>
+        m.role === 'user' && typeof m.content === 'string' && m.content.includes('<customer_context>')
+      );
+      assert.ok(contextIdx >= 0, 'Context user message should be present');
+      assert.match(receivedMessages[contextIdx].content, /Branch \/ Store: Penrose/);
+      assert.match(receivedMessages[contextIdx].content, /Customer Type: Trade/);
+
+      // Next message should be assistant acknowledgment
+      const ackMsg = receivedMessages[contextIdx + 1];
+      assert.ok(ackMsg, 'Assistant acknowledgment must follow context');
+      assert.equal(ackMsg.role, 'assistant');
+      assert.match(ackMsg.content, /I acknowledge the customer context/);
+
+      // Next message should be customer question
+      const questionMsg = receivedMessages[contextIdx + 2];
+      assert.ok(questionMsg, 'Customer question must follow ack');
+      assert.equal(questionMsg.role, 'user');
+      assert.match(questionMsg.content, /<customer_message>/);
+      assert.match(questionMsg.content, /What fasteners do you suggest\?/);
     });
   });
 });

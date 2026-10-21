@@ -152,6 +152,134 @@ export function buildAgentSystemPrompt(params: {
   return sections.join('\n\n');
 }
 
+/**
+ * Builds the customer context message for the current turn.
+ * Sourced from request command, workspace facts, and pack profile (never hardcoded in platform code).
+ */
+export function formatCustomerContextMessage(params: {
+  command: TurnCommand;
+  workspace?: WorkspaceState | null;
+  release?: BusinessPackRelease;
+}): string {
+  const { command, workspace, release } = params;
+  const inputFacts = command.inputFacts || {};
+  const facts = workspace?.facts || {};
+
+  // 1. Signed-in state
+  const rawPrincipal = command.principalId || (command as any).userId || (command as any).customerId;
+  const isSignedIn = Boolean(
+    rawPrincipal &&
+    rawPrincipal !== 'guest' &&
+    rawPrincipal !== 'anonymous'
+  ) || (command as any).signedIn === true;
+  const signedInStr = isSignedIn
+    ? `Signed In${rawPrincipal ? ` (${rawPrincipal})` : ''}`
+    : 'Guest (not signed in)';
+
+  // 2. Customer type (trade or DIY)
+  const rawType = String(
+    (command as any).customerType ||
+    (command as any).customerContext?.customerType ||
+    inputFacts.customerType ||
+    inputFacts.customer_type ||
+    facts.customer_type?.value ||
+    facts.customerType?.value ||
+    command.principalRole ||
+    ''
+  ).toLowerCase();
+  let customerType = 'General';
+  if (rawType.includes('trade') || rawType.includes('builder') || rawType.includes('contractor') || rawType.includes('commercial')) {
+    customerType = 'Trade';
+  } else if (rawType.includes('diy') || rawType.includes('retail') || rawType.includes('homeowner')) {
+    customerType = 'DIY';
+  } else if (rawType) {
+    customerType = rawType;
+  }
+
+  // 3. Branch or store
+  const branch =
+    (command as any).branch ||
+    (command as any).store ||
+    (command as any).customerContext?.branch ||
+    (command as any).customerContext?.store ||
+    inputFacts.branch ||
+    inputFacts.store ||
+    facts.branch?.value ||
+    facts.store?.value ||
+    facts.preferred_branch?.value ||
+    'Not selected';
+
+  // 4. Region
+  const region =
+    (command as any).region ||
+    (command as any).customerContext?.region ||
+    inputFacts.region ||
+    facts.region?.value ||
+    (release?.profile as any)?.region ||
+    release?.profile?.headquarters ||
+    'Not specified';
+
+  // 5. Locale
+  const locale =
+    (command as any).locale ||
+    (command as any).customerContext?.locale ||
+    inputFacts.locale ||
+    facts.locale?.value ||
+    release?.profile?.primaryLocale ||
+    'en';
+
+  // 6. Current cart or quote summary
+  const rawCart: any =
+    (command as any).cart ||
+    (command as any).customerContext?.cart ||
+    inputFacts.cart ||
+    facts.cart?.value ||
+    facts.cart_summary?.value;
+  let cartSummary = 'Empty';
+  if (rawCart) {
+    if (typeof rawCart === 'string') {
+      cartSummary = rawCart;
+    } else if (Array.isArray(rawCart.items)) {
+      cartSummary = `${rawCart.items.length} items${rawCart.total != null ? ` (total: ${rawCart.total})` : ''}`;
+    } else if (typeof rawCart === 'object') {
+      const itemCount = Array.isArray(rawCart.lines) ? rawCart.lines.length : undefined;
+      cartSummary = itemCount != null ? `${itemCount} items` : JSON.stringify(rawCart);
+    }
+  }
+
+  const rawQuote: any =
+    (command as any).quote ||
+    (command as any).customerContext?.quote ||
+    inputFacts.quote ||
+    facts.quote?.value ||
+    facts.quote_summary?.value;
+  let quoteSummary = 'None';
+  if (rawQuote) {
+    if (typeof rawQuote === 'string') {
+      quoteSummary = rawQuote;
+    } else if (typeof rawQuote === 'object') {
+      const qId = rawQuote.quoteId || rawQuote.id || 'draft';
+      const qStatus = rawQuote.status ? ` [${rawQuote.status}]` : '';
+      const qItems = Array.isArray(rawQuote.items) ? `${rawQuote.items.length} items` : '';
+      quoteSummary = `${qId}${qStatus}${qItems ? `: ${qItems}` : ''}${rawQuote.total != null ? ` (total: ${rawQuote.total})` : ''}`;
+    }
+  }
+
+  const lines = [
+    '<customer_context>',
+    `Signed-in: ${signedInStr}`,
+    `Customer Type: ${customerType}`,
+    `Branch / Store: ${branch}`,
+    `Region: ${region}`,
+    `Locale: ${locale}`,
+    `Cart Summary: ${cartSummary}`,
+    `Quote Summary: ${quoteSummary}`,
+    '</customer_context>',
+  ];
+
+  return lines.join('\n');
+}
+
 export class AgentTurnLoop {
   /**
    * Executes the full multi-round agent loop with streaming and claim validation.
@@ -258,6 +386,21 @@ export class AgentTurnLoop {
         content: 'I understand the conversation history and will use it to interpret follow-up questions in context.',
       });
     }
+
+    // Customer Context Per Turn (Message) (Task A2)
+    const customerContextText = formatCustomerContextMessage({
+      command,
+      workspace,
+      release,
+    });
+    messages.push({
+      role: 'user',
+      content: customerContextText,
+    });
+    messages.push({
+      role: 'assistant',
+      content: 'I acknowledge the customer context, branch location, and session details.',
+    });
 
     // Current Customer Message (escaped data block)
     const sanitizedCustomer = sanitizeHistoryText(customerQuestion);
