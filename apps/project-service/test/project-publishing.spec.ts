@@ -204,6 +204,44 @@ async function runProjectPublishingSuite() {
     assert.match(result.message || '', /Project must define AI model policy or AI model configuration/i);
   });
 
+  // ── TEST 2b: Fail-Closed without Agent Instructions ──────────────────────
+  await test('publishConfig fails closed if pack defines no agent instructions', async () => {
+    const { service } = createMockProjectService({
+      'tenant-no-agent-instructions': {
+        projectId: 'tenant-no-agent-instructions',
+        name: 'Tenant No Agent',
+        companyName: 'No Agent Corp',
+        pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
+        ai: {
+          provider: 'openai',
+          model: 'gpt-4o',
+        },
+        persona: {
+          systemName: 'No Agent Bot',
+          // Note: NO systemPromptOverrides
+          journeyDefinition: {
+            journeyId: 'j1',
+            version: '1.0.0',
+            goals: ['goal1'],
+            initialStage: 'start',
+            stages: {
+              start: {
+                requiredFacts: [],
+                allowedCapabilities: [],
+                nextDecisionPolicy: 'dependency-first',
+                exitConditions: [],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const result = await service.publishConfig('tenant-no-agent-instructions');
+    assert.equal(result.success, false, 'Expected publish to fail closed without agent instructions');
+    assert.match(result.message || '', /Pack must define agent instructions/i);
+  });
+
   // ── TEST 3: Strict Compilation & Publication ───────────────────────────
   await test('publishConfig strictly compiles Studio journeys, AI config, agents, capabilities, and publishes pack', async () => {
     const { service, memoryReleases, memoryPointers, memoryOutbox } = createMockProjectService({
@@ -664,6 +702,7 @@ async function runProjectPublishingSuite() {
           ai: { provider: 'openai', model: 'gpt-4o' },
           persona: {
             systemName: 'PM Assistant',
+            systemPromptOverrides: 'Guide planning.',
             journeyDefinition: {
               journeyId: 'j_pm',
               version: '1.0.0',
@@ -766,6 +805,7 @@ async function runProjectPublishingSuite() {
           catalogMapping: { componentCategoryRules: { overhead: { deny: ['tapware'], allow: ['mirror', 'cabinet', 'cupboard'] } } },
           persona: {
             systemName: 'PM Assistant',
+            systemPromptOverrides: 'Guide planning.',
             journeyDefinition: {
               journeyId: 'j_pm_cat',
               version: '1.0.0',
@@ -859,6 +899,7 @@ async function runProjectPublishingSuite() {
           ai: { provider: 'openai', model: 'gpt-4o' },
           persona: {
             systemName: 'PM Assistant',
+            systemPromptOverrides: 'Guide planning.',
             journeyDefinition: {
               journeyId: 'j_pm_valid',
               version: '1.0.0',
@@ -1022,6 +1063,7 @@ async function runProjectPublishingSuite() {
           companyName: 'Card Invalid Test',
           pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
           ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
+          persona: { systemName: 'Card Assistant', systemPromptOverrides: 'Assist with cards.' },
           journeys: [
             {
               journeyId: 'j1',
@@ -1092,6 +1134,7 @@ async function runProjectPublishingSuite() {
       companyName: 'Card Invalid Test',
       pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 },
       ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
+      persona: { systemName: 'Card Assistant', systemPromptOverrides: 'Assist with cards.' },
       journeys: [
         {
           journeyId: 'j1',
@@ -1129,6 +1172,7 @@ async function runProjectPublishingSuite() {
           ai: { provider: 'openai', model: 'gpt-4o', apiKeyRef: 'sec_1' },
           persona: {
             systemName: 'Card Assistant',
+            systemPromptOverrides: 'Assist with cards.',
             journeyDefinition: {
               journeyId: 'j1',
               version: '1.0.0',

@@ -235,29 +235,60 @@ export class BusinessPackPublicationService {
       ...(typeof j.isDefaultConsultant === 'boolean' ? { isDefaultConsultant: j.isDefaultConsultant } : {}),
     }));
 
-    // Compile Agents (min 1 required by BusinessPackReleaseSchema)
-    const compiledAgents = (doc.agents && Array.isArray(doc.agents) && doc.agents.length > 0)
-      ? doc.agents.map((a: any) => ({
+    // Validate and compile Agents (min 1 required; all instructions from data)
+    const rawAgents = (doc.agents && Array.isArray(doc.agents) && doc.agents.length > 0)
+      ? doc.agents
+      : null;
+
+    const hasAnyInstructions = rawAgents
+      ? rawAgents.some((a: any) => Boolean(a.systemPromptTemplate?.trim() || doc.persona?.systemPromptOverrides?.trim()))
+      : Boolean(doc.persona?.systemPromptOverrides?.trim());
+
+    if (!hasAnyInstructions) {
+      return {
+        success: false,
+        message: 'Publish blocked: Pack must define agent instructions (agents[].systemPromptTemplate or persona.systemPromptOverrides).',
+      };
+    }
+
+    if (rawAgents) {
+      for (const a of rawAgents) {
+        const instructions = a.systemPromptTemplate?.trim() || doc.persona?.systemPromptOverrides?.trim();
+        if (!instructions) {
+          return {
+            success: false,
+            message: `Publish blocked: Agent '${a.agentId || a.name || 'unnamed'}' must define a systemPromptTemplate.`,
+          };
+        }
+      }
+    }
+
+    const compiledAgents = rawAgents
+      ? rawAgents.map((a: any) => ({
           agentId: a.agentId || `${pid}_specialist`,
-          name: a.name || `${pid} Specialist`,
-          purpose: a.purpose || 'Architectural compliance and product specification',
-          systemPromptTemplate: a.systemPromptTemplate || doc.persona?.systemPromptOverrides || `Assist customers with recommendations for ${pid}.`,
+          name: a.name || a.agentId || `${pid} Specialist`,
+          purpose: a.purpose || a.name || a.agentId || `${pid} advisor`,
+          systemPromptTemplate: (a.systemPromptTemplate || doc.persona?.systemPromptOverrides || '').trim(),
           inputSchema: a.inputSchema || {},
           outputSchema: a.outputSchema || {},
-          allowedTools: Array.isArray(a.allowedTools) ? a.allowedTools : [],
+          allowedTools: Array.isArray(a.allowedTools)
+            ? a.allowedTools
+            : (Array.isArray(doc.capabilities) ? doc.capabilities.map((c: any) => typeof c === 'string' ? c : c.toolId) : []),
           modelPolicyRef: a.modelPolicyRef || compiledModelPolicy.defaultPolicy || 'default',
-          maxTurns: a.maxTurns || 4,
+          maxTurns: a.maxTurns || 5,
           handoffConditions: Array.isArray(a.handoffConditions) ? a.handoffConditions : [],
         }))
       : [
           {
-            agentId: `${pid}_primary_stylist`,
-            name: doc.persona?.systemName || `${pid} Stylist`,
-            purpose: 'Primary conversational journey advisor',
-            systemPromptTemplate: doc.persona?.systemPromptOverrides || `Assist customers with recommendations for ${pid}.`,
+            agentId: `${pid}_primary_agent`,
+            name: doc.persona?.systemName || doc.companyName || `${pid} Agent`,
+            purpose: (doc.persona as any)?.mission || (doc.persona as any)?.role || doc.persona?.systemName || `${pid} Advisor`,
+            systemPromptTemplate: (doc.persona?.systemPromptOverrides || '').trim(),
             inputSchema: {},
             outputSchema: {},
-            allowedTools: Array.isArray(doc.capabilities) ? doc.capabilities.map((c: any) => typeof c === 'string' ? c : c.toolId) : [],
+            allowedTools: Array.isArray(doc.capabilities)
+              ? doc.capabilities.map((c: any) => typeof c === 'string' ? c : c.toolId)
+              : [],
             modelPolicyRef: compiledModelPolicy.defaultPolicy || 'default',
             maxTurns: 5,
             handoffConditions: [],
@@ -484,6 +515,12 @@ export class BusinessPackPublicationService {
       profile: {
         companyName: doc.companyName || doc.name || pid,
         industry,
+        ...((doc.persona as any)?.brandTone || (doc.profile as any)?.brandTone || (doc.persona as any)?.tone
+          ? { brandTone: (doc.persona as any)?.brandTone || (doc.profile as any)?.brandTone || (doc.persona as any)?.tone }
+          : {}),
+        ...((doc.persona as any)?.mission || (doc.profile as any)?.mission
+          ? { mission: (doc.persona as any)?.mission || (doc.profile as any)?.mission }
+          : {}),
         primaryGoals: doc.scope?.categories || ['customer_service'],
         primaryCurrency,
         supportedCurrencies,
@@ -524,7 +561,11 @@ export class BusinessPackPublicationService {
       // Studio compilation has never published evaluation suites in the release content;
       // stated explicitly because the schema no longer injects a default.
       evaluations: [] as any[],
-      extensions: { ...((doc as any).spacePlanner ? { spacePlanner: (doc as any).spacePlanner } : {}), ...((doc as any).extensions || {}) },
+      extensions: {
+        ...((doc as any).spacePlanner ? { spacePlanner: (doc as any).spacePlanner } : {}),
+        ...(doc.persona ? { persona: doc.persona } : {}),
+        ...((doc as any).extensions || {}),
+      },
     };
 
     // Validate Business Pack reference integrity fail-closed

@@ -51,6 +51,37 @@ function makeExecContext(ctx: AgentToolContext) {
   };
 }
 
+export const TOOL_CAPABILITY_ALIASES: Record<string, string[]> = {
+  search_products: ['catalog.search', 'catalog_search', 'catalog.*', 'search_products'],
+  get_product: ['catalog.search', 'catalog_search', 'catalog.get', 'catalog_get', 'catalog.*', 'get_product'],
+  get_related_products: ['catalog.search', 'catalog_search', 'catalog.related', 'catalog.*', 'get_related_products'],
+  check_stock: ['branch.stock_check', 'branch_stock_check', 'inventory.check', 'inventory_check', 'stock.*', 'check_stock'],
+  consult_business_knowledge: ['knowledge.search', 'knowledge_search', 'knowledge.*', 'consult_business_knowledge'],
+  search_guides: ['knowledge.search', 'knowledge_search', 'knowledge.*', 'search_guides'],
+  get_warranty: ['knowledge.search', 'knowledge_search', 'knowledge.*', 'get_warranty'],
+  calculate_quantity: ['calculator.*', 'quantity.calculate', 'calculate_quantity'],
+  present_card: ['ui.present_card', 'ui_cards', 'cards.*', 'present_card'],
+  hand_off_to_human: ['handoff.*', 'human_handoff', 'agent.handoff', 'hand_off_to_human'],
+};
+
+export function isToolAllowed(toolName: string, allowedTools?: string[]): boolean {
+  if (!allowedTools || allowedTools.length === 0) return false;
+  if (allowedTools.includes('*') || allowedTools.includes('all')) return true;
+  if (allowedTools.includes(toolName)) return true;
+
+  const aliases = TOOL_CAPABILITY_ALIASES[toolName] || [toolName];
+  for (const allowed of allowedTools) {
+    if (aliases.includes(allowed)) return true;
+    if (allowed.endsWith('.*')) {
+      const prefix = allowed.slice(0, -2);
+      if (toolName.startsWith(prefix) || aliases.some((a) => a.startsWith(prefix))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   {
     name: 'consult_business_knowledge',

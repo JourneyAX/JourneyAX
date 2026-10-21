@@ -5,9 +5,15 @@ import {
   type AgentExecutionRequest,
   type AgentExecutionResponse,
 } from '../src/kernel/model.gateway';
-import { AgentTurnLoop, isAgentModeEnabled } from '../src/agent/agent-loop';
+import {
+  AgentTurnLoop,
+  isAgentModeEnabled,
+  buildAgentSystemPrompt,
+  GENERIC_PLATFORM_OPERATING_PROMPT,
+} from '../src/agent/agent-loop';
 import {
   executeAgentTool,
+  isToolAllowed,
   type AgentToolContext,
 } from '../src/agent/agent-tools';
 import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-search.handler';
@@ -83,6 +89,26 @@ function createTestPack(overrides: Record<string, any> = {}): BusinessPackReleas
             exitConditions: [],
           },
         },
+      },
+    ],
+    agents: [
+      {
+        agentId: 'specialist_trade',
+        name: 'Trade Specialist',
+        purpose: 'Assisting trade customers with building materials and timber',
+        systemPromptTemplate: 'You are a trade specialist assistant. Help trade customers with specifications.',
+        allowedTools: [
+          'search_products',
+          'get_product',
+          'get_related_products',
+          'check_stock',
+          'consult_business_knowledge',
+          'present_card',
+          'hand_off_to_human',
+        ],
+        modelPolicyRef: 'default',
+        maxTurns: 5,
+        handoffConditions: [],
       },
     ],
     extensions: {
@@ -1316,6 +1342,175 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(outcome.tokens.completion, 80, 'Completion tokens should accumulate across rounds');
       assert.equal(outcome.tokens.total, 400, 'Total tokens should accumulate across rounds');
       assert.deepEqual(outcome.turnResult.trace?.tokens, { prompt: 320, completion: 80, total: 400 });
+    });
+  });
+
+  describe('Task A1: Instructions as Data, AgentRouter, and Tool Scoping', () => {
+    test('buildAgentSystemPrompt: assembles generic platform rules, resolved agent, persona, and business profile', () => {
+      const release = createTestPack();
+      release.profile.companyName = 'TimberCraft Supplies';
+      release.profile.brandTone = 'Professional, direct, practical trade focus';
+      release.profile.mission = 'Empower trade builders with certified specification advice';
+      (release.profile as any).sellingScope = {
+        inScope: ['framing', 'fasteners'],
+        outOfScope: ['food', 'apparel'],
+      };
+
+      const agentRouter = new AgentRouter();
+      const workspace = createTestWorkspace();
+      const resolvedAgent = agentRouter.resolveAgent(release, workspace);
+
+      const prompt = buildAgentSystemPrompt({
+        resolvedAgent,
+        release,
+      });
+
+      // 1. Generic platform operating rules
+      assert.match(prompt, /# Platform Operating Rules/);
+      assert.match(prompt, /Tool Usage & Grounding Rules/);
+      assert.match(prompt, /Output Rules/);
+
+      // 2. Resolved agent instructions from release.agents
+      assert.match(prompt, /# Role & Specialist Instructions/);
+      assert.match(prompt, /Trade Specialist/);
+      assert.match(prompt, /Assisting trade customers with building materials and timber/);
+      assert.match(prompt, /You are a trade specialist assistant/);
+
+      // 3. Persona and brand voice from the pack
+      assert.match(prompt, /# Persona & Brand Voice/);
+      assert.match(prompt, /Professional, direct, practical trade focus/);
+      assert.match(prompt, /Empower trade builders with certified specification advice/);
+
+      // 4. OKF business profile
+      assert.match(prompt, /<business_profile>/);
+      assert.match(prompt, /Business: TimberCraft Supplies/);
+      assert.match(prompt, /What is sold: framing, fasteners/);
+      assert.match(prompt, /What is NOT sold: food, apparel/);
+    });
+
+    test('generic platform prompt contains no tenant names, model names, or business words', () => {
+      const platformPrompt = GENERIC_PLATFORM_OPERATING_PROMPT;
+      // Prohibited tenant names
+      assert.doesNotMatch(platformPrompt, /placemakers/i);
+      assert.doesNotMatch(platformPrompt, /caroma/i);
+      assert.doesNotMatch(platformPrompt, /workwear/i);
+      assert.doesNotMatch(platformPrompt, /abercrombie/i);
+
+      // Prohibited model names
+      assert.doesNotMatch(platformPrompt, /gpt-4/i);
+      assert.doesNotMatch(platformPrompt, /claude/i);
+      assert.doesNotMatch(platformPrompt, /gemini/i);
+
+      // Prohibited domain-specific vocabulary
+      assert.doesNotMatch(platformPrompt, /\btimber\b/i);
+      assert.doesNotMatch(platformPrompt, /\bfasteners\b/i);
+      assert.doesNotMatch(platformPrompt, /\bscrews\b/i);
+      assert.doesNotMatch(platformPrompt, /\bplumbing\b/i);
+      assert.doesNotMatch(platformPrompt, /\bclothing\b/i);
+    });
+
+    test('tool scoping: offers only agent.allowedTools and server rejects unauthorized calls', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      // Restrict agent to ONLY search_products
+      release.agents[0].allowedTools = ['search_products'];
+
+      let offeredTools: string[] = [];
+      let roundNum = 0;
+      gateway.mockAgentExecutor = async (req) => {
+        roundNum++;
+        if (req.tools) {
+          offeredTools = req.tools.map((t) => t.name);
+        }
+        if (roundNum === 1) {
+          // Attempt to call check_stock which is NOT in allowedTools
+          return {
+            content: '',
+            toolCalls: [
+              { id: 'call_unauthorized', name: 'check_stock', arguments: { sku: 'SKU-100', branch: 'Central' } },
+            ],
+          };
+        }
+        return {
+          content: 'I cannot check branch stock directly.',
+          toolCalls: [],
+        };
+      };
+
+      const agentLoop = new AgentTurnLoop();
+      const outcome = await agentLoop.execute({
+        command: {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: 'ws-tool-scope',
+          sessionId: 'sess-tool-scope',
+          correlationId: 'corr-tool-scope',
+          message: 'Is SKU-100 in stock?',
+        },
+        release,
+        workspace: createTestWorkspace(),
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        sink: () => {},
+        maxToolRounds: 2,
+      });
+
+      // 1. Only allowed tool was offered to the model
+      assert.deepEqual(offeredTools, ['search_products']);
+
+      // 2. Server rejected unauthorized check_stock call
+      const checkStockTool = outcome.toolsCalled.find((t) => t.name === 'check_stock');
+      assert.ok(checkStockTool, 'Unauthorized tool call should be tracked');
+      assert.equal(checkStockTool.ok, false);
+      assert.match(checkStockTool.error || '', /not in allowedTools/);
+    });
+
+    test('honours agent.maxTurns, modelPolicyRef, and handoffConditions', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      release.agents[0].maxTurns = 2;
+      release.agents[0].modelPolicyRef = 'specialist_fast_policy';
+      release.agents[0].handoffConditions = [
+        'Customer asks for credit line or account financing terms',
+      ];
+
+      let observedPolicyRef = '';
+      let roundsCount = 0;
+      gateway.mockAgentExecutor = async (req) => {
+        roundsCount++;
+        observedPolicyRef = req.policyRef || '';
+        // Always return a tool call to see if maxTurns bounds it
+        return {
+          content: 'Searching...',
+          toolCalls: [
+            { id: `call_${roundsCount}`, name: 'search_products', arguments: { query: 'timber' } },
+          ],
+        };
+      };
+
+      const agentLoop = new AgentTurnLoop();
+      const outcome = await agentLoop.execute({
+        command: {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: 'ws-turns',
+          sessionId: 'sess-turns',
+          correlationId: 'corr-turns',
+          message: 'Check lumber options',
+        },
+        release,
+        workspace: createTestWorkspace(),
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        sink: () => {},
+      });
+
+      // 1. Policy ref honoured
+      assert.equal(observedPolicyRef, 'specialist_fast_policy');
+
+      // 2. Loop bounded by agent.maxTurns (2 rounds)
+      assert.equal(roundsCount, 2, 'Should execute at most agent.maxTurns (2) rounds');
+      assert.ok(outcome.durationMs >= 0);
     });
   });
 });

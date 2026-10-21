@@ -18,8 +18,17 @@ export class AgentRouter {
       throw new Error(`Business Pack '${release.manifest.packId}' declares no agents.`);
     }
 
-    const activeJourney = release.journeys.find((j) => j.journeyId === workspace.journeyId);
-    const currentStage = activeJourney?.stages[workspace.currentStage];
+    const activeJourney =
+      release.journeys?.find((j) => j.journeyId === workspace?.journeyId) ||
+      release.journeys?.find((j) => j.isDefaultConsultant) ||
+      release.journeys?.find((j) => j.journeyId === release.routingPolicy?.defaultJourneyId) ||
+      (release.journeys?.length === 1 ? release.journeys.find(Boolean) : undefined);
+
+    const currentStageKey = workspace?.currentStage && activeJourney?.stages?.[workspace.currentStage]
+      ? workspace.currentStage
+      : activeJourney?.initialStage;
+
+    const currentStage = currentStageKey ? activeJourney?.stages?.[currentStageKey] : undefined;
 
     let selectedAgent: AgentDefinition | undefined;
 
@@ -36,10 +45,10 @@ export class AgentRouter {
           norm(a.purpose).includes(normTarget)
       );
       if (match) selectedAgent = match;
-    } else {
+    } else if (currentStageKey) {
       // 2. Direct stage ID match
       const stageMatch = agents.find(
-        (a) => a.agentId.toLowerCase() === workspace.currentStage?.toLowerCase()
+        (a) => a.agentId.toLowerCase() === currentStageKey.toLowerCase()
       );
       if (stageMatch) selectedAgent = stageMatch;
     }
@@ -49,9 +58,16 @@ export class AgentRouter {
       selectedAgent = agents.find(Boolean);
     }
 
+    // 4. Default / primary agent match
+    if (!selectedAgent) {
+      selectedAgent = agents.find(
+        (a) => a.agentId.includes('primary') || a.agentId.includes('consultant') || a.agentId.includes('default')
+      );
+    }
+
     if (!selectedAgent) {
       throw new Error(
-        `[AgentRouter] Could not resolve specialist agent for stage '${workspace.currentStage}' in journey '${workspace.journeyId}'. Pack declares ${agents.length} agents without an explicit match or targetRole - failing closed.`
+        `[AgentRouter] Could not resolve specialist agent for stage '${workspace?.currentStage}' in journey '${workspace?.journeyId}'. Pack declares ${agents.length} agents without an explicit match or targetRole - failing closed.`
       );
     }
 
