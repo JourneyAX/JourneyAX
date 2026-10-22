@@ -20,7 +20,7 @@ The JourneyAX platform has successfully transitioned its core execution engine t
 - Product discovery is driven by generic dynamic attributes (`colour`, `size`, `fit`, `treatment`, `finish`, etc.).
 - Knowledge is retrieved through OKF (Open Knowledge Federation) as factual notes and hints without hardcoded strings.
 
-While **PlaceMakers** possesses complete agent specifications, calculators, OKF taxonomy, and 100-prompt evaluation suites, the remaining three platform tenants (**Workwear Group**, **Abercrombie & Fitch**, and **Caroma**) remain configured primarily for legacy stage-based execution.
+While **PlaceMakers** possesses complete agent specifications, calculators, OKF taxonomy, and 100-prompt evaluation suites, its overall agent-only readiness is marked as **not measured** pending live-model verification. The remaining three platform tenants (**Workwear Group**, **Abercrombie & Fitch**, and **Caroma**) remain configured primarily for legacy stage-based execution.
 
 ### Tenant Readiness Matrix
 
@@ -36,7 +36,7 @@ While **PlaceMakers** possesses complete agent specifications, calculators, OKF 
 | **Safe Formula Calculators** | 🟢 100% (Plasterboard/Decking) | 🔴 0% (No calculators) | ⚪ N/A (B2C apparel) | 🔴 0% (No waterflow calc) |
 | **Commerce / Action Handlers** | 🟢 100% (Quote & Cart) | 🟡 40% (Native stub, no B2B quote) | 🟡 50% (Native stub, cart only) | 🟡 40% (Activepieces stub) |
 | **Multi-Turn Evaluation Suite** | 🟢 100% (`placemakers-100.json`) | 🔴 15% (Single-turn legacy eval) | 🔴 15% (Single-turn legacy eval) | 🔴 15% (Single-turn legacy eval) |
-| **Overall Agent-Only Readiness** | **95% (Production Ready)** | **28% (High Effort Needed)** | **33% (Moderate Effort Needed)** | **26% (High Effort Needed)** |
+| **Overall Agent-Only Readiness** | **Not Measured** | **28% (High Effort Needed)** | **33% (Moderate Effort Needed)** | **26% (High Effort Needed)** |
 
 ---
 
