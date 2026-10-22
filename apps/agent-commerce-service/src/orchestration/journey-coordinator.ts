@@ -17,13 +17,22 @@ import { ReactAgentOrchestrator } from './react-agent-orchestrator';
  */
 @Injectable()
 export class JourneyCoordinator {
+  private static loggedRollbackWarning = false;
+
   constructor(
     @Inject(TenantRuntimeActivationRouter) private readonly activationRouter: TenantRuntimeActivationRouter,
     @Inject(CanonicalRuntimeAdapter) private readonly canonicalRuntime: CanonicalRuntimeAdapter,
     @Inject(LegacyJourneyAdapter) private readonly legacyAdapter: LegacyJourneyAdapter,
     @Inject(ConfigLoader) private readonly configLoader: ConfigLoader,
     @Optional() @Inject(ReactAgentOrchestrator) private readonly reactAgent?: ReactAgentOrchestrator
-  ) {}
+  ) {
+    if (process.env.ENABLE_REACT_AGENT === 'true' && !JourneyCoordinator.loggedRollbackWarning) {
+      console.warn(
+        '[JourneyCoordinator] WARNING: ENABLE_REACT_AGENT=true is enabled as a rollback mechanism. Every chat turn will bypass the activation router and canonical runtime.'
+      );
+      JourneyCoordinator.loggedRollbackWarning = true;
+    }
+  }
 
   /**
    * Executes a buffered chat turn.
@@ -34,12 +43,15 @@ export class JourneyCoordinator {
       throw new Error('[JourneyCoordinator] Missing tenantId - failing closed: tenantId is required');
     }
 
-    // Autonomous ReAct loop agent powered by Google OKF
-    const isReactEnabled =
-      process.env.ENABLE_REACT_AGENT !== 'false' &&
-      (request as any).agentMode !== 'legacy';
-    if (this.reactAgent && isReactEnabled) {
-      return this.reactAgent.executeAgentTurnStream(request);
+    // Rollback mechanism: ONLY when ENABLE_REACT_AGENT is explicitly 'true'
+    if (this.reactAgent && process.env.ENABLE_REACT_AGENT === 'true') {
+      console.warn(`[JourneyCoordinator] Rollback: routing turn ${request.turnId || ''} to ReAct agent`);
+      const response = await this.reactAgent.executeAgentTurnStream(request);
+      return {
+        ...response,
+        engine: 'react',
+        trace: [{ step: 'react_agent', detail: 'engine=react' }],
+      } as any;
     }
 
     const env = ((request as any).environmentId || 'production') as string;
@@ -98,6 +110,9 @@ export class JourneyCoordinator {
         };
       });
 
+      const engine = turnResult.trace?.engine || 'canonical';
+      const agentId = turnResult.trace?.agentId;
+
       return {
         message: { role: 'assistant', content: turnResult.assistantMessage || '' },
         conversation: [
@@ -107,8 +122,10 @@ export class JourneyCoordinator {
         ],
         uiActions,
         sessionId: command.sessionId,
-        trace: turnResult.trace ? [{ step: 'canonical_turn', detail: `stage=${turnResult.trace.stage || 'unknown'}` }] : undefined,
-      };
+        engine,
+        agentId,
+        trace: turnResult.trace ? [{ step: 'canonical_turn', detail: `engine=${engine} stage=${turnResult.trace.stage || 'unknown'}` }] : undefined,
+      } as any;
     }
 
     // ── LEGACY PATH: Unmigrated tenants / out-of-canary workspaces ──
@@ -117,7 +134,12 @@ export class JourneyCoordinator {
       throw new Error(`[JourneyCoordinator] No active configuration found for tenant "${tenantId}" - failing closed`);
     }
 
-    return this.legacyAdapter.executeLegacyChat(request);
+    const legacyResponse = await this.legacyAdapter.executeLegacyChat(request);
+    return {
+      ...legacyResponse,
+      engine: 'legacy',
+      trace: [{ step: 'legacy_turn', detail: 'engine=legacy' }],
+    } as any;
   }
 
   /**
@@ -133,12 +155,16 @@ export class JourneyCoordinator {
       throw new Error('[JourneyCoordinator] Missing tenantId - failing closed: tenantId is required');
     }
 
-    // Autonomous ReAct loop agent powered by Google OKF
-    const isReactEnabled =
-      process.env.ENABLE_REACT_AGENT !== 'false' &&
-      (request as any).agentMode !== 'legacy';
-    if (this.reactAgent && isReactEnabled) {
-      await this.reactAgent.executeAgentTurnStream(request, emit);
+    // Rollback mechanism: ONLY when ENABLE_REACT_AGENT is explicitly 'true'
+    if (this.reactAgent && process.env.ENABLE_REACT_AGENT === 'true') {
+      console.warn(`[JourneyCoordinator] Rollback: routing turn ${request.turnId || ''} to ReAct agent stream`);
+      await this.reactAgent.executeAgentTurnStream(request, (event, data) => {
+        if (event === 'done') {
+          emit?.(event, { ...data, engine: 'react', trace: { ...(data?.trace || {}), engine: 'react' } });
+        } else {
+          emit?.(event, data);
+        }
+      });
       return;
     }
 

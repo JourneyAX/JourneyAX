@@ -1975,12 +1975,23 @@ export class TurnApplicationService {
       }
     }
 
+    const engine = turnResult.trace?.engine || (turnResult.trace?.agentMode ? 'agent' : 'canonical');
+    const agentId = turnResult.trace?.agentId || (turnResult as any).metadata?.agentId;
+    if (turnResult.trace && !turnResult.trace.engine) {
+      (turnResult.trace as any).engine = engine;
+    }
+    if (turnResult.trace && !turnResult.trace.agentId && agentId) {
+      (turnResult.trace as any).agentId = agentId;
+    }
+
     // 4. data: state, decision, and trace
     sink('data', {
       sessionId: command.sessionId,
       workspaceId: command.workspaceId,
       decision: turnResult.decision,
       trace: turnResult.trace,
+      engine,
+      agentId,
     });
 
     // 5. done: final outcome — exactly one done event
@@ -1989,6 +2000,8 @@ export class TurnApplicationService {
       workspaceId: command.workspaceId,
       decision: turnResult.decision,
       trace: turnResult.trace,
+      engine,
+      agentId,
       response: text,
       assistantMessage: text,
       message: { role: 'assistant', content: text },

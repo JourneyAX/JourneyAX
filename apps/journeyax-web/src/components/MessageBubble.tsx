@@ -108,11 +108,38 @@ export default function MessageBubble({ message }: Props) {
   // Agent turn — brand-initials avatar beside plain running text, no bubble
   // box (the "PlaceMakers Conversation" mockup this layout follows). Rich
   // content for the same turn (cards) follows as its own block in the thread.
+  const debugEngine =
+    process.env.NEXT_PUBLIC_DEBUG_ENGINE === 'true' ||
+    process.env.NEXT_PUBLIC_DEBUG_ENGINE === '1';
+
   return (
     <div className="msg msg--ai">
       <div className="msg__avatar" aria-hidden="true">{brandInitials(cfg.companyName)}</div>
       <div className="msg__body">
-        <div className="msg__label">{cfg.systemName || 'Consultant'}</div>
+        <div className="msg__label">
+          {cfg.systemName || 'Consultant'}
+          {debugEngine && (message.engine || message.agentId) && (
+            <span
+              className="msg__engine-badge"
+              data-testid="debug-engine-badge"
+              style={{
+                display: 'inline-block',
+                marginLeft: '8px',
+                padding: '1px 6px',
+                fontSize: '11px',
+                fontWeight: 600,
+                borderRadius: '4px',
+                backgroundColor: message.engine === 'agent' ? '#e6f4ea' : '#f1f3f4',
+                color: message.engine === 'agent' ? '#137333' : '#5f6368',
+                border: '1px solid currentColor',
+                fontFamily: 'monospace',
+                textTransform: 'lowercase',
+              }}
+            >
+              engine={message.engine || 'unknown'}{message.agentId ? ` (${message.agentId})` : ''}
+            </span>
+          )}
+        </div>
         <div className="msg__bubble--ai">{renderMarkdown(message.text)}</div>
       </div>
     </div>

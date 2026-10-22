@@ -18,6 +18,8 @@ dist/
 .env.bak.*
 setup-vercel-envs.js
 .env*
+!/.env.example
+!apps/agent-commerce-service/.env.example
 scratch/
 tmp/
 artifacts/

@@ -196,6 +196,9 @@ async function streamChat(
       }
     } else if (ev === 'done') {
       doneData = payload;
+      const engine = payload.engine || payload.trace?.engine;
+      const agentId = payload.agentId || payload.trace?.agentId;
+      setMessages([...newMessages, { role: 'assistant', content: streamText || payload.message?.content || '', engine, agentId }]);
       if (payload.sessionId) capturedSessionId = payload.sessionId;
       if (workingSteps.length) workingSteps[workingSteps.length - 1].status = 'done';
       dispatch?.({
@@ -587,7 +590,9 @@ export default function ChatPanel() {
       } else {
         const aiText = data.message?.content || '';
         if (aiText) {
-          const updatedMessages = [...newMessages, { role: 'assistant', content: aiText }];
+          const engine = data.engine || data.trace?.engine;
+          const agentId = data.agentId || data.trace?.agentId;
+          const updatedMessages = [...newMessages, { role: 'assistant', content: aiText, engine, agentId }];
           guardedSetMessages(updatedMessages);
         }
       }

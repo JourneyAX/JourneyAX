@@ -793,6 +793,8 @@ export class AgentTurnLoop {
         durationMs: t.durationMs,
       })),
       trace: {
+        engine: 'agent',
+        agentId: resolvedAgent.agent.agentId,
         agentMode: true,
         toolsCalled: toolsTrace,
         readSourceIds: Array.from(toolContext.readSourceIds),

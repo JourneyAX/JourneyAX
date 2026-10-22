@@ -304,6 +304,8 @@ export interface JourneyMessage {
   role: MessageRole;
   text: string;
   head?: string;             // note heading (e.g., "EasySwitch added.")
+  engine?: string;           // 'react' | 'legacy' | 'canonical' | 'agent'
+  agentId?: string;          // resolved agent ID
 }
 
 // ── Quote totals ───────────────────────────────────────────────────────

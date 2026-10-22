@@ -220,17 +220,23 @@ export class CanonicalRuntimeAdapter {
           },
         });
       }
+      const engine = result.trace?.engine || (result.trace?.agentMode ? 'agent' : 'canonical');
+      const agentId = result.trace?.agentId;
       emit('data', {
         sessionId: command.sessionId,
         workspaceId: command.workspaceId,
         decision: result.decision,
         trace: result.trace,
+        engine,
+        agentId,
       });
       emit('done', {
         sessionId: command.sessionId,
         workspaceId: command.workspaceId,
         decision: result.decision,
         trace: result.trace,
+        engine,
+        agentId,
         response: result.assistantMessage || '',
         assistantMessage: result.assistantMessage || '',
         message: { role: 'assistant', content: result.assistantMessage || '' },
@@ -305,6 +311,14 @@ export class CanonicalRuntimeAdapter {
         }
         if (currentEvent === 'token' && typeof parsedData === 'string') {
           parsedData = { token: parsedData, delta: parsedData };
+        }
+        if (currentEvent === 'done' && typeof parsedData === 'object' && parsedData !== null) {
+          if (!parsedData.engine && parsedData.trace?.engine) {
+            parsedData.engine = parsedData.trace.engine;
+          }
+          if (!parsedData.agentId && parsedData.trace?.agentId) {
+            parsedData.agentId = parsedData.trace.agentId;
+          }
         }
         emit(currentEvent, parsedData);
       }

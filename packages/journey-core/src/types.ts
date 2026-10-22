@@ -262,6 +262,8 @@ export interface TurnResult {
   decision: Decision;
   assistantMessage?: string;
   uiInstructions: UIInstruction[];
+  engine?: string;
+  agentId?: string;
   executedCapabilities: {
     toolId: string;
     status: 'success' | 'failure' | 'requires_approval' | 'denied';
@@ -283,6 +285,10 @@ export interface TurnResult {
     errors?: any[];
     events?: any[];
     timing?: any;
+    engine?: 'react' | 'legacy' | 'canonical' | 'agent' | string;
+    agentId?: string;
+    agentMode?: boolean;
+    [key: string]: any;
   };
 }
 
