@@ -36,6 +36,7 @@ import type { CapabilityGateway } from '../kernel/capability.gateway';
 import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { TurnTranscriptStore } from '../kernel/transcript.store';
+import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 
 export interface AgentTurnOptions {
   command: TurnCommand;
@@ -50,6 +51,7 @@ export interface AgentTurnOptions {
   approvalService?: ApprovalService;
   executionRepo?: ExecutionRepository;
   transcriptStore?: TurnTranscriptStore;
+  knowledgeGapRepo?: KnowledgeGapRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   sink: (event: string, data: any) => void;
@@ -98,6 +100,11 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
    - Product prices and availability displayed on cards are server-authoritative.
 4. Scope & Boundaries:
    - If a customer asks for items or services outside the merchant's declared scope (see business profile), explain clearly and politely and offer assistance or human handoff if appropriate.
+5. Knowledge Verification & Unverified Topics:
+   - When consult_business_knowledge, search_guides, or get_warranty return nothing (found: false or 0 results) for a requested topic, product, or question:
+     a. You MUST explicitly state that you have no verified information on that topic.
+     b. You MUST ask a clarifying question or offer a person (such as store staff, a qualified specialist, or human assistance).
+     c. You MUST NOT invent, guess, or fabricate compliance, regulatory, installation, or warranty claims.
 
 ## Conversational Context & Retrieval Rules
 1. Multi-turn Resolution: Resolve short, elliptical, or ambiguous customer follow-ups using the earlier conversation history before calling any tool. Combine prior context (such as previously discussed topics, categories, or items) with the current request so all tool search queries and arguments are complete and self-contained.
@@ -371,6 +378,7 @@ export class AgentTurnLoop {
       capabilityGateway,
       approvalService,
       executionRepo,
+      knowledgeGapRepo: options.knowledgeGapRepo,
       inMemoryQuotes,
       inMemoryCarts,
       turnProductSkus: new Set<string>(),

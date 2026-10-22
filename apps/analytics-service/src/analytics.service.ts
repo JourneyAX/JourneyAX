@@ -23,6 +23,7 @@ import {
   COLLECTION_TOOL_APPROVALS,
   COLLECTION_NOTIFICATION_DELIVERIES,
   COLLECTION_TURN_TRANSCRIPTS,
+  COLLECTION_KNOWLEDGE_GAPS,
   AnalyticsEventRecord,
   CustomReportDefinition,
   AnalyticsAlertDefinition,
@@ -112,10 +113,16 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
     const documentsCol = db.collection('documents');
     const quotesCol = db.collection('quotes');
     const ordersCol = db.collection('orders');
+    const knowledgeGapsCol = db.collection(COLLECTION_KNOWLEDGE_GAPS);
 
     const tenantFilter: Record<string, any> = { tenantId: projectId };
     if (options?.environmentId) tenantFilter.environmentId = options.environmentId;
     if (options?.workspaceId) tenantFilter.workspaceId = options.workspaceId;
+
+    const gapFilter: Record<string, any> = {
+      $or: [{ tenantId: projectId }, { tenant: projectId }],
+    };
+    if (options?.environmentId) gapFilter.environmentId = options.environmentId;
 
     const since7d = new Date(Date.now() - 7 * 24 * 3600 * 1000);
     const since24h = new Date(Date.now() - 24 * 3600 * 1000);
@@ -134,6 +141,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         orderDocs,
         docs,
         dailyAgg,
+        knowledgeGapsCount,
       ] = await Promise.all([
         sessionsCol.countDocuments(tenantFilter),
         sessionsCol.countDocuments({ ...tenantFilter, updatedAt: { $gte: since7d } }),
@@ -207,6 +215,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
             { $sort: { _id: 1 } },
           ])
           .toArray(),
+        knowledgeGapsCol.countDocuments(gapFilter),
       ]);
 
       const dailyCounts = new Map<string, number>();
@@ -270,6 +279,8 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         orders: ordersOut,
         ordersPaid: ordersOut.filter((o) => o.status === 'paid').length,
         knowledgeDocs: docs,
+        knowledgeGapsCount,
+        knowledgeGaps: knowledgeGapsCount,
         sessionsByDay,
       };
     } catch (err: any) {
@@ -1487,7 +1498,28 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       orders: [],
       ordersPaid: 0,
       knowledgeDocs: 0,
+      knowledgeGapsCount: 0,
+      knowledgeGaps: 0,
       sessionsByDay,
     };
+  }
+
+  /**
+   * Returns tracked knowledge gaps (uncovered topics) for a given tenant so authors can fill them.
+   */
+  async getKnowledgeGaps(
+    projectId: string,
+    options?: AnalyticsFilterOptions
+  ): Promise<{ total: number; gaps: any[] }> {
+    const db = await this.getDb();
+    if (!db) return { total: 0, gaps: [] };
+    const gapFilter: Record<string, any> = {
+      $or: [{ tenantId: projectId }, { tenant: projectId }],
+    };
+    if (options?.environmentId) gapFilter.environmentId = options.environmentId;
+    const col = db.collection(COLLECTION_KNOWLEDGE_GAPS);
+    const total = await col.countDocuments(gapFilter);
+    const gaps = await col.find(gapFilter).sort({ recordedAt: -1 }).limit(100).toArray();
+    return { total, gaps };
   }
 }

@@ -26,6 +26,7 @@ import type { CapabilityGateway } from '../kernel/capability.gateway';
 import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
+import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
 
 export interface AgentToolContext {
@@ -47,6 +48,7 @@ export interface AgentToolContext {
   capabilityGateway?: CapabilityGateway;
   approvalService?: ApprovalService;
   executionRepo?: ExecutionRepository;
+  knowledgeGapRepo?: KnowledgeGapRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   turnProductSkus: Set<string>;
@@ -679,6 +681,15 @@ export async function executeAgentTool(
     case 'consult_business_knowledge': {
       const topic = String(args.topic || '').trim();
       if (!ctx.okfContent || !topic) {
+        if (topic && ctx.knowledgeGapRepo) {
+          ctx.knowledgeGapRepo.recordGap({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            topic,
+            toolName: 'consult_business_knowledge',
+            conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+          }).catch(() => {});
+        }
         return {
           found: false,
           knowledge: !ctx.okfContent
@@ -698,6 +709,15 @@ export async function executeAgentTool(
       });
 
       if (!notesBlock || activeConcepts.length === 0) {
+        if (ctx.knowledgeGapRepo && topic) {
+          ctx.knowledgeGapRepo.recordGap({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            topic,
+            toolName: 'consult_business_knowledge',
+            conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+          }).catch(() => {});
+        }
         return {
           found: false,
           topic,
@@ -1087,8 +1107,9 @@ export async function executeAgentTool(
         for (const chunk of ctx.okfContent.evidenceChunks) {
           const contentLower = chunk.content.toLowerCase();
           const titleLower = chunk.title.toLowerCase();
-          const qTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-          const matches = qTokens.some((tok) => contentLower.includes(tok) || titleLower.includes(tok));
+          const qTokens = query.toLowerCase().split(/\s+/).map((t) => t.replace(/[^\w]/g, '')).filter((t) => t.length > 2);
+          const matchCount = qTokens.filter((tok) => contentLower.includes(tok) || titleLower.includes(tok)).length;
+          const matches = qTokens.length === 0 ? false : qTokens.length <= 2 ? matchCount === qTokens.length : matchCount >= Math.ceil(qTokens.length * 0.5);
           if (matches && (chunk.claimClasses.includes('installation_step') || chunk.claimClasses.includes('care_safety'))) {
             matchedGuides.push({
               sourceId: chunk.sourceRef,
@@ -1109,8 +1130,14 @@ export async function executeAgentTool(
 
       // Also look for document sources
       if (ctx.okfContent?.sources) {
+        const qLower = query.toLowerCase().trim();
+        const pLower = productOrCategory.toLowerCase().trim();
         for (const s of ctx.okfContent.sources) {
-          if (s.title.toLowerCase().includes(query.toLowerCase()) || s.title.toLowerCase().includes(productOrCategory.toLowerCase())) {
+          const sTitle = s.title.toLowerCase();
+          const matchesTitle =
+            (Boolean(qLower) && sTitle.includes(qLower)) ||
+            (Boolean(pLower) && sTitle.includes(pLower));
+          if (matchesTitle) {
             matchedGuides.push({
               sourceId: s.sourceId,
               title: s.title,
@@ -1122,7 +1149,28 @@ export async function executeAgentTool(
         }
       }
 
+      if (matchedGuides.length === 0) {
+        const gapTopic = query || productOrCategory || 'guides';
+        if (ctx.knowledgeGapRepo && gapTopic) {
+          ctx.knowledgeGapRepo.recordGap({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            topic: gapTopic,
+            toolName: 'search_guides',
+            conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+          }).catch(() => {});
+        }
+        return {
+          found: false,
+          query,
+          productOrCategory,
+          guides: [],
+          count: 0,
+        };
+      }
+
       return {
+        found: true,
         query,
         productOrCategory,
         guides: matchedGuides.slice(0, 3),
@@ -1277,6 +1325,16 @@ export async function executeAgentTool(
             terms: matchedChunk.content,
           },
         };
+      }
+
+      if (ctx.knowledgeGapRepo && target) {
+        ctx.knowledgeGapRepo.recordGap({
+          tenantId: ctx.tenantId,
+          environmentId: ctx.environmentId,
+          topic: target,
+          toolName: 'get_warranty',
+          conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+        }).catch(() => {});
       }
 
       return {

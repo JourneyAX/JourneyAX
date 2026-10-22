@@ -17,6 +17,7 @@ import { PresentationPort } from '../../src/kernel/presentation.port';
 import { TurnInterpreter } from '../../src/turn/interpret-event';
 import { OutcomeValidator } from '../../src/turn/validate-outcome';
 import { OkfKnowledgeControlPlane } from '../../src/kernel/knowledge-control-plane';
+import { KnowledgeGapRepository } from '../../src/kernel/knowledge-gap.repository';
 import { ProjectService } from '../../../project-service/src/project.service';
 import { OkfAuthoringService } from '../../../project-service/src/okf-authoring.service';
 import { createScriptedAgentExecutor } from './scripted-agent-server';
@@ -173,6 +174,8 @@ export function projectDoc(agentMode = false) {
               'search_products',
               'get_journey_checklist',
               'consult_business_knowledge',
+              'search_guides',
+              'get_warranty',
               'check_stock',
               'calculate_quantity',
               'create_quote',
@@ -293,7 +296,7 @@ export async function buildPlaceMakersStack(options: {
       options.servePacks ? new PackRepository(db) : new PackRepository(), new WorkspaceRepository(new WorkspaceStore({ forceInMemory: true })), new JourneyResolver(), undefined,
       modelGateway, capabilityGateway, undefined, new ExecutionRepository(), new OutboxRepository({ forceInMemory: true }),
       new PresentationPort(modelGateway), new TurnInterpreter(modelGateway), undefined, new OutcomeValidator(),
-      new OkfKnowledgeControlPlane(async () => db as any),
+      new OkfKnowledgeControlPlane(async () => db as any), undefined, new KnowledgeGapRepository(db),
     );
   };
   return { db, projects, pack, reference: pack.knowledgeModel, content, okf, authored, serviceFor };

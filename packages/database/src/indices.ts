@@ -31,6 +31,7 @@ import {
   COLLECTION_OKF_VERIFICATION_ATTESTATIONS,
   COLLECTION_OKF_VERIFIER_ROLES,
   COLLECTION_TURN_TRANSCRIPTS,
+  COLLECTION_KNOWLEDGE_GAPS,
 } from './types';
 
 async function safeCreateIndex(
@@ -196,4 +197,10 @@ export async function ensureDatabaseIndices(db: Db): Promise<void> {
   await safeCreateIndex(turnTranscripts, { tenantId: 1, environmentId: 1, workspaceId: 1, 'timestamps.receivedAt': -1 });
   await safeCreateIndex(turnTranscripts, { tenantId: 1, sessionId: 1, 'timestamps.receivedAt': -1 });
   await safeCreateIndex(turnTranscripts, { retentionExpiresAt: 1 }, { expireAfterSeconds: 0 });
+
+  // 21. Knowledge Gaps: tracked uncovered topics for author filling
+  const knowledgeGaps = db.collection(COLLECTION_KNOWLEDGE_GAPS);
+  await safeCreateIndex(knowledgeGaps, { tenantId: 1, environmentId: 1, recordedAt: -1 });
+  await safeCreateIndex(knowledgeGaps, { tenantId: 1, topic: 1 });
+  await safeCreateIndex(knowledgeGaps, { tenantId: 1, conversationId: 1 });
 }

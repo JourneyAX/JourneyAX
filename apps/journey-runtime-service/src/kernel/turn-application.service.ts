@@ -47,6 +47,7 @@ import { formatBusinessProfile, extractRelevantOkfNotes } from './business-knowl
 import type { OkfGateDecision } from '@journeyax/knowledge';
 import { AgentTurnLoop, isAgentModeEnabled } from '../agent/agent-loop';
 import { TurnTranscriptStore } from './transcript.store';
+import { KnowledgeGapRepository } from './knowledge-gap.repository';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
@@ -132,7 +133,8 @@ export class TurnApplicationService {
     private readonly factReducer: FactReducer = new FactReducer(),
     public readonly outcomeValidator: OutcomeValidator = new OutcomeValidator(),
     public readonly knowledgeControlPlane: KnowledgeControlPlanePort = new OkfKnowledgeControlPlane(),
-    public readonly transcriptStore: TurnTranscriptStore = new TurnTranscriptStore()
+    public readonly transcriptStore: TurnTranscriptStore = new TurnTranscriptStore(),
+    public readonly knowledgeGapRepo: KnowledgeGapRepository = new KnowledgeGapRepository()
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
@@ -421,6 +423,7 @@ export class TurnApplicationService {
               approvalService: this.approvalService,
               executionRepo: this.executionRepo,
               transcriptStore: this.transcriptStore,
+              knowledgeGapRepo: this.knowledgeGapRepo,
               sink: agentTimingSink,
               timeoutMs: turnDeadlineMs,
               signal: abortController.signal,

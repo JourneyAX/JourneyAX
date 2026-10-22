@@ -13,6 +13,7 @@ import { PresentationPort } from '../../src/kernel/presentation.port';
 import { TurnInterpreter } from '../../src/turn/interpret-event';
 import { OutcomeValidator } from '../../src/turn/validate-outcome';
 import { OkfKnowledgeControlPlane } from '../../src/kernel/knowledge-control-plane';
+import { KnowledgeGapRepository } from '../../src/kernel/knowledge-gap.repository';
 import { publishBusinessPack, type BusinessPackRelease } from '@journeyax/business-pack';
 import { FixedGateway } from './placemakers-stack';
 
@@ -224,6 +225,34 @@ export function createAbercrombieRelease(): BusinessPackRelease {
           approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
           dataClassification: 'internal',
         },
+        {
+          toolId: 'consult_business_knowledge',
+          version: '1.0.0',
+          displayName: 'Consult Knowledge',
+          description: 'Look up verified business knowledge',
+          inputSchema: { type: 'object' },
+          outputSchema: { type: 'object' },
+          sideEffect: 'read',
+          risk: 'low',
+          timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
+          idempotencyPolicy: { required: false, ttlSeconds: 86400 },
+          approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
+          dataClassification: 'internal',
+        },
+        {
+          toolId: 'get_warranty',
+          version: '1.0.0',
+          displayName: 'Get Warranty',
+          description: 'Get verified warranty certificate',
+          inputSchema: { type: 'object' },
+          outputSchema: { type: 'object' },
+          sideEffect: 'read',
+          risk: 'low',
+          timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
+          idempotencyPolicy: { required: false, ttlSeconds: 86400 },
+          approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
+          dataClassification: 'internal',
+        },
       ],
       toolBindings: [
         {
@@ -316,6 +345,36 @@ export function createAbercrombieRelease(): BusinessPackRelease {
             retryAttempts: 0,
           },
         },
+        {
+          toolId: 'consult_business_knowledge',
+          tenantId: ABERCROMBIE_TENANT,
+          environmentId: ABERCROMBIE_ENV,
+          bindingVersion: '1.0.0',
+          executor: { type: 'native_capability', nativeHandler: 'knowledge-search' },
+          enabled: true,
+          policy: {
+            requiredRole: 'customer',
+            requiresConfirmation: false,
+            idempotencyRequired: false,
+            timeoutMs: 10000,
+            retryAttempts: 0,
+          },
+        },
+        {
+          toolId: 'get_warranty',
+          tenantId: ABERCROMBIE_TENANT,
+          environmentId: ABERCROMBIE_ENV,
+          bindingVersion: '1.0.0',
+          executor: { type: 'native_capability', nativeHandler: 'knowledge-search' },
+          enabled: true,
+          policy: {
+            requiredRole: 'customer',
+            requiresConfirmation: false,
+            idempotencyRequired: false,
+            timeoutMs: 10000,
+            retryAttempts: 0,
+          },
+        },
       ],
       stageBindings: [
         {
@@ -342,6 +401,8 @@ export function createAbercrombieRelease(): BusinessPackRelease {
           'check_stock',
           'update_cart',
           'present_card',
+          'consult_business_knowledge',
+          'get_warranty',
         ],
         journeyPlaybook: [
           {
@@ -439,7 +500,9 @@ export async function buildAbercrombieStack() {
       new TurnInterpreter(modelGateway),
       undefined,
       new OutcomeValidator(),
-      new OkfKnowledgeControlPlane(async () => db as any)
+      new OkfKnowledgeControlPlane(async () => db as any),
+      undefined,
+      new KnowledgeGapRepository(db)
     );
   };
 

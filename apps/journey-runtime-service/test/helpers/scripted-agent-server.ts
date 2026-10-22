@@ -49,6 +49,7 @@ export function createScriptedAgentExecutor() {
     const cardToolResult = toolMessages.find((m) => m.name === 'present_card');
     const knowledgeResult = toolMessages.find((m) => m.name === 'consult_business_knowledge');
     const guideResult = toolMessages.find((m) => m.name === 'search_guides');
+    const warrantyResult = toolMessages.find((m) => m.name === 'get_warranty');
     const checklistResult = toolMessages.find((m) => m.name === 'get_journey_checklist');
 
     // ROUND 1: No tools executed yet
@@ -278,7 +279,18 @@ export function createScriptedAgentExecutor() {
         finalAnswer = `Here is your current journey progress: ${summary} Now ${nextStep.toLowerCase()}`;
       }
     } else if (knowledgeResult) {
-      if (qLower.includes('dwang') || qLower.includes('nogging')) {
+      let parsedKnowledge: any = {};
+      try {
+        parsedKnowledge = JSON.parse(knowledgeResult.content || '{}');
+      } catch {}
+
+      if (
+        parsedKnowledge.found === false ||
+        parsedKnowledge.knowledge?.includes('No specific notes') ||
+        parsedKnowledge.knowledge?.includes('No pinned business knowledge')
+      ) {
+        finalAnswer = 'I have no verified information on that topic in our records. Would you like me to connect you with a specialist, or could you provide more details so I can check further?';
+      } else if (qLower.includes('dwang') || qLower.includes('nogging')) {
         finalAnswer = 'A dwang, also known as a nogging or blocking, is a horizontal timber spacer fitted between vertical wall studs to prevent buckling and provide fixing support for wall linings.';
       } else if (qLower.includes('power outlets') || qLower.includes('load bearing') || qLower.includes('electrical')) {
         finalAnswer = 'For safety and compliance with building regulations, electrical wiring and structural load-bearing elements must be assessed by a licensed trade specialist. Please consult a qualified electrician or structural engineer before proceeding.';
@@ -286,7 +298,27 @@ export function createScriptedAgentExecutor() {
         finalAnswer = 'Here is the relevant technical and project guidance from our building standards. Please let us know if you need specific sizing or structural verification.';
       }
     } else if (guideResult) {
-      finalAnswer = 'Here are the recommended installation procedures and project guidelines for your build. Make sure to follow the manufacturer specifications and local code requirements.';
+      let parsedGuide: any = {};
+      try {
+        parsedGuide = JSON.parse(guideResult.content || '{}');
+      } catch {}
+
+      if (parsedGuide.found === false || parsedGuide.count === 0 || (Array.isArray(parsedGuide.guides) && parsedGuide.guides.length === 0)) {
+        finalAnswer = 'I have no verified information on that guide topic in our records. Would you like me to connect you with a team specialist, or could you provide more details about your project?';
+      } else {
+        finalAnswer = 'Here are the recommended installation procedures and project guidelines for your build. Make sure to follow the manufacturer specifications and local code requirements.';
+      }
+    } else if (warrantyResult) {
+      let parsedWarranty: any = {};
+      try {
+        parsedWarranty = JSON.parse(warrantyResult.content || '{}');
+      } catch {}
+
+      if (parsedWarranty.found === false || !parsedWarranty.warranty?.terms) {
+        finalAnswer = 'I have no verified information on that item in our records. Would you like me to connect you with our store team to check warranty terms, or could you clarify the exact model?';
+      } else {
+        finalAnswer = `Here is the verified warranty for ${parsedWarranty.productOrBrand}: ${parsedWarranty.warranty.terms}`;
+      }
     } else if (cardToolResult || searchToolResult) {
       // Products were found
       let parsedProducts: any[] = [];

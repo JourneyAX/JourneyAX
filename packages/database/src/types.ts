@@ -37,6 +37,21 @@ export const COLLECTION_OKF_ARTIFACT_POLICIES = 'okf_artifact_policies';
 export const COLLECTION_OKF_VERIFICATION_ATTESTATIONS = 'okf_verification_attestations';
 export const COLLECTION_OKF_VERIFIER_ROLES = 'okf_verifier_roles';
 export const COLLECTION_TURN_TRANSCRIPTS = 'turn_transcripts';
+export const COLLECTION_KNOWLEDGE_GAPS = 'knowledge_gaps';
+
+export interface KnowledgeGapRecord {
+  _id?: any;
+  tenantId: string;
+  tenant?: string;
+  environmentId?: string;
+  topic: string;
+  toolName: string;
+  conversationId: string;
+  recordedAt: Date;
+  time?: string;
+  createdAt?: Date;
+  metadata?: Record<string, unknown>;
+}
 
 export interface TurnTranscriptRecord {
   _id?: any;
