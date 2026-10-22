@@ -52,7 +52,8 @@ test('CatalogSearchHandler - buildGlossaryIndex & tokenizeQuery', async (t) => {
       ['dwang', ['noggin']],
     ]);
 
-    const tokens = tokenizeQuery('need screws for jib and dwang', glossaryIndex);
+    const stopWords = ['need', 'for', 'and'];
+    const tokens = tokenizeQuery('need screws for jib and dwang', glossaryIndex, stopWords);
     assert.equal(tokens.length, 3); // 'need', 'for', 'and' are stopwords or filtered
 
     const jibToken = tokens.find((tk) => tk.stem === 'jib');

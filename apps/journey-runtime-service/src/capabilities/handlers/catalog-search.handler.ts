@@ -25,6 +25,13 @@ export type VectorSearchFunction = (
 ) => Promise<Array<{ doc: any; score: number }>>;
 
 export interface CatalogSearchInput {
+  isAgentMode?: boolean;
+  keywords?: string[];
+  productType?: string;
+  size?: string;
+  treatment?: string;
+  rValue?: string;
+  brand?: string;
   query?: string;
   category?: string;
   categoryIds?: string[];
@@ -59,11 +66,17 @@ export interface CatalogSearchInput {
   }>;
 }
 
-const STOP_WORDS = new Set([
-  'want', 'need', 'with', 'from', 'this', 'that', 'have', 'make', 'doing', 'does',
-  'will', 'would', 'could', 'should', 'about', 'into', 'over', 'room', 'complete',
-  'makeover', 'please', 'help', 'and', 'the', 'for', 'are', 'you', 'can', 'our'
-]);
+export interface StructuredSearchSpecs {
+  size?: string;
+  sizeVariants?: string[];
+  treatment?: string;
+  treatmentVariants?: string[];
+  rValue?: string;
+  rValueVariants?: string[];
+  brand?: string;
+  productType?: string;
+  keywords?: string[];
+}
 
 export interface QueryToken {
   stem: string;
@@ -72,6 +85,269 @@ export interface QueryToken {
 }
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export function resolveEquivalentSizes(rawSize: string, glossaryIndex?: Map<string, string[]>): string[] {
+  if (!rawSize) return [];
+  const clean = rawSize.trim().toLowerCase().replace(/\s+/g, ' ');
+  const variants = new Set<string>();
+  variants.add(clean);
+  variants.add(clean.replace(/\s+/g, ''));
+
+  const imperialToMetric: Record<string, { canonical: string; nominal: string; gauged: string; imperialVariants: string[] }> = {
+    '4x2': {
+      canonical: '100x50',
+      nominal: '100 x 50',
+      gauged: '90 x 45',
+      imperialVariants: ['4x2', '4 x 2', '4 by 2', '2x4', '2 x 4'],
+    },
+    '6x2': {
+      canonical: '150x50',
+      nominal: '150 x 50',
+      gauged: '140 x 45',
+      imperialVariants: ['6x2', '6 x 2', '6 by 2'],
+    },
+    '3x2': {
+      canonical: '75x50',
+      nominal: '75 x 50',
+      gauged: '70 x 45',
+      imperialVariants: ['3x2', '3 x 2', '3 by 2'],
+    },
+    '8x2': {
+      canonical: '200x50',
+      nominal: '200 x 50',
+      gauged: '190 x 45',
+      imperialVariants: ['8x2', '8 x 2', '8 by 2'],
+    },
+    '4x4': {
+      canonical: '100x100',
+      nominal: '100 x 100',
+      gauged: '88 x 88',
+      imperialVariants: ['4x4', '4 x 4'],
+    },
+    '10x2': {
+      canonical: '250x50',
+      nominal: '250 x 50',
+      gauged: '240 x 45',
+      imperialVariants: ['10x2', '10 x 2'],
+    },
+    '12x2': {
+      canonical: '300x50',
+      nominal: '300 x 50',
+      gauged: '290 x 45',
+      imperialVariants: ['12x2', '12 x 2'],
+    },
+  };
+
+  const impKey = clean.replace(/\s*(?:by|x|\*|×)\s*/i, 'x');
+  if (imperialToMetric[impKey]) {
+    const entry = imperialToMetric[impKey];
+    for (const iv of entry.imperialVariants) variants.add(iv);
+    variants.add(entry.canonical);
+    variants.add(entry.nominal);
+    variants.add(`${entry.canonical}mm`);
+    variants.add(`${entry.nominal}mm`);
+    variants.add(entry.gauged.replace(/\s+/g, ''));
+    variants.add(entry.gauged);
+    variants.add(`${entry.gauged.replace(/\s+/g, '')}mm`);
+    variants.add(`${entry.gauged}mm`);
+  }
+
+  const metricMatch = clean.match(/^(\d{2,4})\s*[xX*×]\s*(\d{2,4})(?:\s*[xX*×]\s*(\d{2,4}))?(?:\s*mm)?$/);
+  if (metricMatch) {
+    const w = metricMatch[1];
+    const h = metricMatch[2];
+    const d = metricMatch[3];
+    const noSpace = d ? `${w}x${h}x${d}` : `${w}x${h}`;
+    const withSpace = d ? `${w} x ${h} x ${d}` : `${w} x ${h}`;
+    variants.add(noSpace);
+    variants.add(withSpace);
+    variants.add(`${noSpace}mm`);
+    variants.add(`${withSpace}mm`);
+
+    for (const entry of Object.values(imperialToMetric)) {
+      if (
+        entry.canonical === noSpace ||
+        entry.gauged.replace(/\s+/g, '') === noSpace ||
+        entry.nominal === withSpace ||
+        entry.gauged === withSpace
+      ) {
+        for (const iv of entry.imperialVariants) variants.add(iv);
+        variants.add(entry.canonical);
+        variants.add(entry.nominal);
+        variants.add(`${entry.canonical}mm`);
+        variants.add(`${entry.nominal}mm`);
+        variants.add(entry.gauged.replace(/\s+/g, ''));
+        variants.add(entry.gauged);
+        variants.add(`${entry.gauged.replace(/\s+/g, '')}mm`);
+        variants.add(`${entry.gauged}mm`);
+      }
+    }
+  }
+
+  if (glossaryIndex) {
+    for (const v of Array.from(variants)) {
+      const syns = glossaryIndex.get(v.toLowerCase());
+      if (syns) {
+        for (const s of syns) variants.add(s.toLowerCase());
+      }
+    }
+  }
+
+  return Array.from(variants);
+}
+
+export function resolveEquivalentTreatments(rawTreatment: string, glossaryIndex?: Map<string, string[]>): string[] {
+  if (!rawTreatment) return [];
+  const clean = rawTreatment.trim();
+  const variants = new Set<string>();
+  variants.add(clean);
+
+  const hMatch = clean.match(/^H\s*([1-6])(?:\.([1-2]))?$/i);
+  if (hMatch) {
+    const major = hMatch[1];
+    const minor = hMatch[2];
+    if (minor) {
+      variants.add(`H${major}.${minor}`);
+      variants.add(`H${major}${minor}`);
+      variants.add(`H${major} ${minor}`);
+      variants.add(`H${major}-${minor}`);
+      variants.add(`H ${major}.${minor}`);
+    } else {
+      variants.add(`H${major}`);
+      variants.add(`H ${major}`);
+      variants.add(`H-${major}`);
+    }
+  } else if (/^cca$/i.test(clean)) {
+    variants.add('CCA');
+    variants.add('C.C.A.');
+  } else if (/^boron$/i.test(clean)) {
+    variants.add('Boron');
+  } else if (/^untreated|ut$/i.test(clean)) {
+    variants.add('Untreated');
+    variants.add('UT');
+    variants.add('Non-Treated');
+  }
+
+  if (glossaryIndex) {
+    for (const v of Array.from(variants)) {
+      const syns = glossaryIndex.get(v.toLowerCase());
+      if (syns) {
+        for (const s of syns) variants.add(s);
+      }
+    }
+  }
+
+  return Array.from(variants);
+}
+
+export function resolveEquivalentRValues(rawRValue: string, glossaryIndex?: Map<string, string[]>): string[] {
+  if (!rawRValue) return [];
+  const clean = rawRValue.trim();
+  const variants = new Set<string>();
+  variants.add(clean);
+
+  const rMatch = clean.match(/^R\s*([0-9])(?:\.([0-9]))?$/i);
+  if (rMatch) {
+    const major = rMatch[1];
+    const minor = rMatch[2];
+    if (minor) {
+      variants.add(`R${major}.${minor}`);
+      variants.add(`R${major}${minor}`);
+      variants.add(`R ${major}.${minor}`);
+      variants.add(`R${major}-${minor}`);
+      variants.add(`R ${major} ${minor}`);
+    } else {
+      variants.add(`R${major}`);
+      variants.add(`R ${major}`);
+      variants.add(`R-${major}`);
+    }
+  }
+
+  if (glossaryIndex) {
+    for (const v of Array.from(variants)) {
+      const syns = glossaryIndex.get(v.toLowerCase());
+      if (syns) {
+        for (const s of syns) variants.add(s);
+      }
+    }
+  }
+
+  return Array.from(variants);
+}
+
+export function extractSearchSpecs(params: {
+  query?: string;
+  keywords?: string[];
+  productType?: string;
+  size?: string;
+  treatment?: string;
+  rValue?: string;
+  brand?: string;
+  glossaryIndex?: Map<string, string[]>;
+}): StructuredSearchSpecs {
+  const fullText = [params.query, ...(params.keywords || [])].filter(Boolean).join(' ');
+
+  let size = params.size?.trim();
+  if (!size && fullText) {
+    const metric = fullText.match(/\b(\d{2,4})\s*[xX*×]\s*(\d{2,4})(?:\s*[xX*×]\s*(\d{2,4}))?(?:\s*mm)?\b/i);
+    if (metric) {
+      size = metric[0];
+    } else {
+      const imperial = fullText.match(/\b([2-9]|10|12)\s*[xX*×]\s*([1-9]|10|12)\b/i);
+      if (imperial) {
+        size = imperial[0];
+      }
+    }
+  }
+
+  let treatment = params.treatment?.trim();
+  if (!treatment && fullText) {
+    const treat = fullText.match(/\b(H[1-6](?:\.[1-2])?|CCA|Boron|LOSP|Untreated)\b/i);
+    if (treat) {
+      treatment = treat[0];
+    }
+  }
+
+  let rValue = params.rValue?.trim();
+  if (!rValue && fullText) {
+    const rMatch = fullText.match(/\b(R\s*[0-9](?:\.[0-9])?)\b/i);
+    if (rMatch) {
+      rValue = rMatch[0].replace(/\s+/g, '');
+    }
+  }
+
+  const sizeVariants = size ? resolveEquivalentSizes(size, params.glossaryIndex) : undefined;
+  const treatmentVariants = treatment ? resolveEquivalentTreatments(treatment, params.glossaryIndex) : undefined;
+  const rValueVariants = rValue ? resolveEquivalentRValues(rValue, params.glossaryIndex) : undefined;
+
+  const keywords: string[] = [];
+  if (params.keywords && params.keywords.length > 0) {
+    keywords.push(...params.keywords);
+  } else if (params.productType) {
+    keywords.push(params.productType);
+  } else if (params.query) {
+    let residual = params.query;
+    if (size) residual = residual.replace(size, ' ');
+    if (treatment) residual = residual.replace(new RegExp(`\\b${escapeRegex(treatment)}\\b`, 'i'), ' ');
+    if (rValue) residual = residual.replace(new RegExp(`\\b${escapeRegex(rValue)}\\b`, 'i'), ' ');
+    const words = residual.trim().split(/\s+/).filter((w) => w.length > 1);
+    if (words.length > 0) {
+      keywords.push(...words);
+    }
+  }
+
+  return {
+    size,
+    sizeVariants,
+    treatment,
+    treatmentVariants,
+    rValue,
+    rValueVariants,
+    brand: params.brand?.trim(),
+    productType: params.productType?.trim(),
+    keywords: keywords.length > 0 ? keywords : undefined,
+  };
+}
 
 export function buildGlossaryIndex(sources: {
   glossary?: Record<string, string[]>;
@@ -138,10 +414,18 @@ export function buildGlossaryIndex(sources: {
   return index;
 }
 
-export function tokenizeQuery(query: string, glossaryIndex?: Map<string, string[]>): QueryToken[] {
+export function tokenizeQuery(
+  query: string,
+  glossaryIndex?: Map<string, string[]>,
+  stopWords?: Set<string> | string[]
+): QueryToken[] {
   const tokens: QueryToken[] = [];
   const lowerQuery = query.toLowerCase();
   const matchedPhrases = new Set<string>();
+
+  const stopSet = stopWords instanceof Set
+    ? stopWords
+    : new Set(Array.isArray(stopWords) ? stopWords.map((s) => String(s).toLowerCase().trim()) : []);
 
   if (glossaryIndex) {
     const sortedPhrases = Array.from(glossaryIndex.keys()).sort((a, b) => b.length - a.length);
@@ -165,18 +449,28 @@ export function tokenizeQuery(query: string, glossaryIndex?: Map<string, string[
     }
   }
 
-  const words = query
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+  // Preserve dimensional patterns (e.g. "100 x 50" -> "100x50", "4 x 2" -> "4x2")
+  const normalizedQuery = query.replace(/(\d+)\s*[xX*×]\s*(\d+)/g, '$1x$2');
+
+  // Split preserving dots in codes like H3.2, R2.6, H1.2
+  const rawWords = normalizedQuery
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+    .map((w) => w.replace(/^[^a-z0-9.]+|[^a-z0-9.]+$/gi, '').toLowerCase())
+    .filter(Boolean);
+
+  const words = rawWords.filter((w) => {
+    if (stopSet.has(w)) return false;
+    // Preserve tokens with digits (e.g. H3.2, R2.6, 90x45, 4x2) or length > 2
+    return w.length > 2 || /\d/.test(w);
+  });
 
   for (const w of words) {
     const isPartOfMatched = Array.from(matchedPhrases).some((p) => p.includes(' ') && p.split(/\s+/).includes(w));
     if (isPartOfMatched || matchedPhrases.has(w)) continue;
 
     const clean = escapeRegex(w);
-    const stem = clean.length > 3 && clean.endsWith('s') ? clean.slice(0, -1) : clean;
+    // Never strip 's' if the token contains digits
+    const stem = clean.length > 3 && clean.endsWith('s') && !/\d/.test(clean) ? clean.slice(0, -1) : clean;
     const syns = glossaryIndex ? (glossaryIndex.get(w) || glossaryIndex.get(stem) || []) : [];
     const validSyns = syns.map((s) => escapeRegex(s)).filter(Boolean);
     const patterns = [stem, clean, ...validSyns].sort((a, b) => b.length - a.length);
@@ -317,44 +611,167 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       okfConcepts,
     });
 
+    const isAgent = Boolean(
+      input.isAgentMode ||
+      (ctx as any).isAgentMode ||
+      ((ctx as any).release && (
+        (ctx as any).release.extensions?.agentMode === true ||
+        (ctx as any).release.extensions?.agentMode?.enabled === true ||
+        (ctx as any).release.extensions?.dialoguePolicy?.agentMode === true ||
+        (Array.isArray((ctx as any).release.agents) && (ctx as any).release.agents.length > 0 &&
+          (ctx as any).release.agentRouting?.enabled !== false && (ctx as any).release.extensions?.agentMode !== false)
+      ))
+    );
+
+    const rawStopWords =
+      (ctx as any)?.conversationPolicy?.stopWords ||
+      (ctx as any)?.packSettings?.conversationPolicy?.stopWords ||
+      (ctx as any)?.release?.conversationPolicy?.stopWords;
+    const stopWords = Array.isArray(rawStopWords)
+      ? new Set<string>(rawStopWords.map((w: string) => String(w).toLowerCase().trim()))
+      : rawStopWords instanceof Set
+        ? rawStopWords
+        : undefined;
+
+    const specs = isAgent ? extractSearchSpecs({
+      query,
+      keywords: input.keywords,
+      productType: input.productType,
+      size: input.size,
+      treatment: input.treatment,
+      rValue: input.rValue,
+      brand: input.brand,
+      glossaryIndex,
+    }) : undefined;
+
     // Top-level input keys that the tenant mapping declares as attributes behave as attribute filters.
     const declaredFilterKeys = Object.keys(mapping.attributeAliases);
+    const reservedStructuredKeys = new Set(['size', 'treatment', 'rValue', 'brand', 'keywords', 'productType']);
     const attributeFilters: Record<string, any> = {
       ...(input.attributeFilters || {}),
       ...Object.fromEntries(declaredFilterKeys
+        .filter((key) => !isAgent || !reservedStructuredKeys.has(key))
         .filter((key) => (input as any)[key] !== undefined && (input as any)[key] !== null && (input as any)[key] !== '')
         .map((key) => [key, (input as any)[key]])),
     };
 
     let docs: any[] = [];
-    const tokens = query ? tokenizeQuery(query, glossaryIndex) : [];
+    const tokens = (!isAgent && query) ? tokenizeQuery(query, glossaryIndex, stopWords) : [];
     const textOf = (doc: any, paths: string[]): string => paths
       .map((path) => readPath(doc, path))
       .map((value) => (Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value)))
       .join(' ')
       .toLowerCase();
 
-    if (this.inMemoryProducts) {
-      docs = this.inMemoryProducts.filter((p) => {
-        const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
-        if (owner !== undefined && owner !== tenantId) return false;
-        if (classifyAvailability(p, mapping) === 'excluded') return false;
-        if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
-        if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
-        if (query) {
-          const text = textOf(p, mapping.searchPaths);
-          if (tokens.length > 0) {
-            const hit = (t: QueryToken) => t.regex.test(text);
-            if (!(input.matchAllTokens ? tokens.every(hit) : tokens.some(hit))) return false;
-          } else if (!text.includes(query.toLowerCase())) {
-            return false;
-          }
-        }
-        return true;
-      });
+    const sizeRegex = specs?.sizeVariants?.length
+      ? new RegExp(`(?:^|[^a-z0-9])(?:${specs.sizeVariants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i')
+      : undefined;
 
-      if (tokens.length > 0 && docs.length > 0) {
-        docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
+    const treatmentRegex = specs?.treatmentVariants?.length
+      ? new RegExp(`(?:^|[^a-z0-9])(?:${specs.treatmentVariants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i')
+      : undefined;
+
+    const rValueRegex = specs?.rValueVariants?.length
+      ? new RegExp(`(?:^|[^a-z0-9])(?:${specs.rValueVariants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i')
+      : undefined;
+
+    if (this.inMemoryProducts) {
+      if (isAgent) {
+        docs = this.inMemoryProducts.filter((p) => {
+          const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
+          if (owner !== undefined && owner !== tenantId) return false;
+          if (classifyAvailability(p, mapping) === 'excluded') return false;
+          if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
+          if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
+
+          if (specs?.brand) {
+            const cleanBrand = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const brandTarget = cleanBrand(specs.brand);
+            const brandText = textOf(p, mapping.brandPaths);
+            const brandAttr = readAttribute(p, 'brand', mapping);
+            const title = textOf(p, mapping.titlePaths);
+            const search = textOf(p, mapping.searchPaths);
+            const brandMatch =
+              cleanBrand(brandText).includes(brandTarget) ||
+              (brandAttr && cleanBrand(String(brandAttr)).includes(brandTarget)) ||
+              cleanBrand(title).includes(brandTarget) ||
+              cleanBrand(search).includes(brandTarget);
+            if (!brandMatch) return false;
+          }
+
+          if (sizeRegex) {
+            const title = textOf(p, mapping.titlePaths);
+            const search = textOf(p, mapping.searchPaths);
+            const attr = readAttribute(p, 'size', mapping) || p.size || p.attributes?.size;
+            const matchesSize = sizeRegex.test(title) || sizeRegex.test(search) || (attr && sizeRegex.test(String(attr)));
+            if (!matchesSize) return false;
+          }
+
+          if (treatmentRegex) {
+            const title = textOf(p, mapping.titlePaths);
+            const search = textOf(p, mapping.searchPaths);
+            const attr = readAttribute(p, 'treatment', mapping) || p.treatment || p.attributes?.treatment;
+            const matchesTreatment = treatmentRegex.test(title) || treatmentRegex.test(search) || (attr && treatmentRegex.test(String(attr)));
+            if (!matchesTreatment) return false;
+          }
+
+          if (rValueRegex) {
+            const title = textOf(p, mapping.titlePaths);
+            const search = textOf(p, mapping.searchPaths);
+            const attr = readAttribute(p, 'rValue', mapping) || p.rValue || p.attributes?.rValue;
+            const matchesR = rValueRegex.test(title) || rValueRegex.test(search) || (attr && rValueRegex.test(String(attr)));
+            if (!matchesR) return false;
+          }
+
+          if (specs?.keywords && specs.keywords.length > 0) {
+            const search = textOf(p, mapping.searchPaths);
+            const title = textOf(p, mapping.titlePaths);
+            const cat = textOf(p, mapping.categoryPaths);
+            const allText = `${title} ${cat} ${search}`.toLowerCase();
+            for (const kw of specs.keywords) {
+              const kwLower = kw.toLowerCase().trim();
+              if (!kwLower) continue;
+              if (!allText.includes(kwLower)) {
+                const syns = glossaryIndex.get(kwLower);
+                const hasSyn = syns && syns.some((s) => allText.includes(s.toLowerCase()));
+                if (!hasSyn) {
+                  const words = kwLower.split(/\s+/).filter(Boolean);
+                  if (words.length > 1) {
+                    const allWordsMatch = words.every((w) => allText.includes(w) || (glossaryIndex.get(w)?.some((s) => allText.includes(s.toLowerCase()))));
+                    if (!allWordsMatch) return false;
+                  } else {
+                    return false;
+                  }
+                }
+              }
+            }
+          }
+
+          return true;
+        });
+        // In agent mode, no JS scoring comparator: database / natural order preserved
+      } else {
+        docs = this.inMemoryProducts.filter((p) => {
+          const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
+          if (owner !== undefined && owner !== tenantId) return false;
+          if (classifyAvailability(p, mapping) === 'excluded') return false;
+          if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
+          if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
+          if (query) {
+            const text = textOf(p, mapping.searchPaths);
+            if (tokens.length > 0) {
+              const hit = (t: QueryToken) => t.regex.test(text);
+              if (!(input.matchAllTokens ? tokens.every(hit) : tokens.some(hit))) return false;
+            } else if (!text.includes(query.toLowerCase())) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        if (tokens.length > 0 && docs.length > 0) {
+          docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
+        }
       }
     } else {
       const uri = process.env.MONGODB_URI;
@@ -377,35 +794,97 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           and.push({ $or: anyOf(mapping.categoryPaths, regex) });
         }
         and.push(...buildCategoryScopeClauses(mapping, { categoryIds, categoryPaths, excludeCategoryIds }));
-        if (query) {
-          const matchers = tokens.length > 0
-            ? tokens.map((t) => t.regex)
-            : [new RegExp(escapeRegex(query), 'i')];
-          if (input.matchAllTokens && tokens.length > 0) {
-            for (const regex of matchers) and.push({ $or: anyOf(mapping.searchPaths, regex) });
-          } else {
-            and.push({ $or: matchers.flatMap((regex) => anyOf(mapping.searchPaths, regex)) });
+
+        if (isAgent) {
+          if (specs?.brand) {
+            const brandPattern = escapeRegex(specs.brand).replace(/\s+/g, '[^a-zA-Z0-9]*');
+            const brandRegex = new RegExp(brandPattern, 'i');
+            and.push({
+              $or: [
+                ...anyOf(mapping.brandPaths, brandRegex),
+                ...anyOf(mapping.searchPaths, brandRegex),
+                ...anyOf(mapping.titlePaths, brandRegex),
+              ],
+            });
           }
-        }
-        for (const [filterKey, filterVal] of Object.entries(attributeFilters)) {
-          const regex = new RegExp(`^${escapeRegex(String(filterVal))}$`, 'i');
-          const keys = [filterKey, ...(mapping.attributeAliases[filterKey] || [])];
-          and.push({
-            $or: keys.flatMap((key) => [
-              ...mapping.attributeContainers.map((container) => ({ [`${container}.${key}`]: regex })),
-              { [key]: regex },
-            ]),
-          });
-        }
-        if (and.length === 0) delete filter.$and;
+          if (sizeRegex) {
+            and.push({
+              $or: [
+                ...anyOf(mapping.titlePaths, sizeRegex),
+                ...anyOf(mapping.searchPaths, sizeRegex),
+                ...mapping.attributeContainers.map((c) => ({ [`${c}.size`]: sizeRegex })),
+                { size: sizeRegex },
+              ],
+            });
+          }
+          if (treatmentRegex) {
+            and.push({
+              $or: [
+                ...anyOf(mapping.titlePaths, treatmentRegex),
+                ...anyOf(mapping.searchPaths, treatmentRegex),
+                ...mapping.attributeContainers.map((c) => ({ [`${c}.treatment`]: treatmentRegex })),
+                { treatment: treatmentRegex },
+              ],
+            });
+          }
+          if (rValueRegex) {
+            and.push({
+              $or: [
+                ...anyOf(mapping.titlePaths, rValueRegex),
+                ...anyOf(mapping.searchPaths, rValueRegex),
+                ...mapping.attributeContainers.map((c) => ({ [`${c}.rValue`]: rValueRegex })),
+                { rValue: rValueRegex },
+              ],
+            });
+          }
+          if (specs?.keywords && specs.keywords.length > 0) {
+            for (const kw of specs.keywords) {
+              const kwClean = kw.trim();
+              if (!kwClean) continue;
+              const syns = glossaryIndex.get(kwClean.toLowerCase()) || [];
+              const patterns = [escapeRegex(kwClean), ...syns.map(escapeRegex)];
+              const kwRegex = new RegExp(`\\b(?:${patterns.join('|')})`, 'i');
+              and.push({ $or: anyOf(mapping.searchPaths, kwRegex) });
+            }
+          }
+          if (and.length === 0) delete filter.$and;
 
-        docs = await db.collection(COLLECTION_PRODUCTS)
-          .find(filter)
-          .limit(mapping.candidateLimit)
-          .toArray();
+          docs = await db.collection(COLLECTION_PRODUCTS)
+            .find(filter)
+            .limit(mapping.candidateLimit)
+            .toArray();
+          // In agent mode, no JS scoring comparators applied!
+        } else {
+          if (query) {
+            const matchers = tokens.length > 0
+              ? tokens.map((t) => t.regex)
+              : [new RegExp(escapeRegex(query), 'i')];
+            if (input.matchAllTokens && tokens.length > 0) {
+              for (const regex of matchers) and.push({ $or: anyOf(mapping.searchPaths, regex) });
+            } else {
+              and.push({ $or: matchers.flatMap((regex) => anyOf(mapping.searchPaths, regex)) });
+            }
+          }
+          for (const [filterKey, filterVal] of Object.entries(attributeFilters)) {
+            const regex = new RegExp(`^${escapeRegex(String(filterVal))}$`, 'i');
+            const keys = [filterKey, ...(mapping.attributeAliases[filterKey] || [])];
+            and.push({
+              $or: keys.flatMap((key) => [
+                ...mapping.attributeContainers.map((container) => ({ [`${container}.${key}`]: regex })),
+                { [key]: regex },
+              ]),
+            });
+          }
+          if (and.length === 0) delete filter.$and;
 
-        if (tokens.length > 0 && docs.length > 0) {
-          docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
+          docs = await db.collection(COLLECTION_PRODUCTS)
+            .find(filter)
+            .limit(mapping.candidateLimit)
+            .toArray();
+
+          if (tokens.length > 0 && docs.length > 0) {
+            docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
+          }
         }
       } catch (err: any) {
         console.warn('[CatalogSearchHandler] Failed to query catalog:', err.message);
@@ -462,7 +941,9 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         const key = (idPath ? readPath(doc, idPath) : undefined) || doc.sku || String(doc._id);
         docMap.set(key, doc);
         kwRankMap.set(key, rank);
-        kwScoreMap.set(key, scoreDocumentRelevance(doc, tokens, mapping));
+        if (!isAgent) {
+          kwScoreMap.set(key, scoreDocumentRelevance(doc, tokens, mapping));
+        }
       });
 
       vectorResults.forEach(({ doc, score }, rank) => {
@@ -478,6 +959,9 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         const kwRank = kwRankMap.has(key) ? kwRankMap.get(key)! : -1;
         const vecRank = vecRankMap.has(key) ? vecRankMap.get(key)! : -1;
         const rrf = (kwRank >= 0 ? 1 / (60 + kwRank) : 0) + (vecRank >= 0 ? 1 / (60 + vecRank) : 0);
+        if (isAgent) {
+          return { doc, finalScore: rrf };
+        }
         const kwScore = kwScoreMap.get(key) || scoreDocumentRelevance(doc, tokens, mapping);
         const finalScore = rrf * 1000 + kwScore;
         return { doc, finalScore };

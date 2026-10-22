@@ -1,5 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   ModelGateway,
   type AgentExecutionRequest,
@@ -17,7 +19,13 @@ import {
   isToolAllowed,
   type AgentToolContext,
 } from '../src/agent/agent-tools';
-import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-search.handler';
+import {
+  CatalogSearchHandler,
+  resolveEquivalentSizes,
+  resolveEquivalentTreatments,
+  resolveEquivalentRValues,
+  extractSearchSpecs,
+} from '../src/capabilities/handlers/catalog-search.handler';
 import { TurnApplicationService } from '../src/kernel/turn-application.service';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
@@ -2278,6 +2286,303 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       // Verify trace confirms agent mode handoff without rule-based engine
       assert.equal((result.trace as any)?.agentMode, true);
       assert.equal(Boolean((result.trace as any)?.handoffRequested || (result.trace as any)?.resilienceHandled), true);
+    });
+  });
+
+  describe('Task A5: Structured Search, Deterministic Extraction, and Performance (Prompts 1, 4, 8, 28, 30)', () => {
+    test('deterministic extraction of size, treatment, and rValue from prompt text', () => {
+      // Prompt 1
+      const specs1 = extractSearchSpecs({ query: 'Do you have 100x50 H3.2 treated timber in stock?' });
+      assert.equal(specs1.size, '100x50');
+      assert.equal(specs1.treatment, 'H3.2');
+      assert.ok(specs1.sizeVariants?.includes('100x50'));
+      assert.ok(specs1.sizeVariants?.includes('100 x 50'));
+      assert.ok(specs1.sizeVariants?.includes('100x50mm'));
+      assert.ok(specs1.sizeVariants?.includes('4x2'));
+      assert.ok(specs1.sizeVariants?.includes('90x45'));
+      assert.ok(specs1.treatmentVariants?.includes('H3.2'));
+      assert.ok(specs1.treatmentVariants?.includes('H32'));
+
+      // Prompt 4
+      const specs4 = extractSearchSpecs({ query: 'Looking for 150x50 treated pine for a deck frame' });
+      assert.equal(specs4.size, '150x50');
+      assert.ok(specs4.sizeVariants?.includes('150x50'));
+      assert.ok(specs4.sizeVariants?.includes('150 x 50'));
+      assert.ok(specs4.sizeVariants?.includes('6x2'));
+      assert.ok(specs4.sizeVariants?.includes('140x45'));
+
+      // Prompt 8
+      const specs8 = extractSearchSpecs({ query: 'Can I get H1.2 treated timber for interior framing?' });
+      assert.equal(specs8.treatment, 'H1.2');
+      assert.ok(specs8.treatmentVariants?.includes('H1.2'));
+      assert.ok(specs8.treatmentVariants?.includes('H12'));
+
+      // Prompt 28
+      const specs28 = extractSearchSpecs({ query: 'What insulation do you recommend for ceiling, R2.2 or R2.6?' });
+      assert.equal(specs28.rValue, 'R2.2');
+      assert.ok(specs28.rValueVariants?.includes('R2.2'));
+      assert.ok(specs28.rValueVariants?.includes('R22'));
+    });
+
+    test('size equivalence matches 100x50, 100 x 50, 100x50mm, and 4x2 symmetrically', async () => {
+      const product1002835 = {
+        tenantId: 'test-tenant',
+        sku: '1002835',
+        title: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)',
+        name: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)',
+        category: 'SG H3.2 Radiata KD',
+        description: 'SG8 structural grade framing timber suitable for internal and exposed above ground applications. Treated H3.2 CCA.',
+        price: { amount: 15, currency: 'NZD' },
+        inStock: true,
+      };
+
+      const handler = new CatalogSearchHandler([product1002835]);
+      const ctx: any = { tenantId: 'test-tenant', packSettings: {} };
+
+      // Sizing equivalence forms: 100x50, 4x2, 100 x 50, 100x50mm
+      const testSizes = ['100x50', '4x2', '100 x 50', '100x50mm'];
+      for (const s of testSizes) {
+        const res = await handler.execute({ isAgentMode: true, size: s }, ctx);
+        assert.equal(res.items.length, 1, `Size ${s} should match SKU 1002835`);
+        assert.equal(res.items[0].sku, '1002835', `Size ${s} must return SKU 1002835`);
+      }
+    });
+
+    test('search_products tool call via executeAgentTool with structured arguments', async () => {
+      const product1002835 = {
+        tenantId: 'test-tenant',
+        sku: '1002835',
+        title: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)',
+        name: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)',
+        category: 'SG H3.2 Radiata KD',
+        description: 'SG8 structural grade framing timber suitable for internal and exposed above ground applications.',
+        price: { amount: 15, currency: 'NZD' },
+        inStock: true,
+      };
+
+      const handler = new CatalogSearchHandler([product1002835]);
+      const turnProductSkus = new Set<string>();
+      const catalogProductCache = new Map<string, any>();
+      const allowedClaimClasses = new Set<any>();
+
+      const toolCtx: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        correlationId: 'corr-structured-search',
+        release: createTestPack(),
+        catalogSearchHandler: handler,
+        turnProductSkus,
+        catalogProductCache,
+        readSourceIds: new Set<string>(),
+        allowedClaimClasses,
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+      };
+
+      const toolResult = await executeAgentTool(
+        'search_products',
+        {
+          size: '100x50',
+          treatment: 'H3.2',
+          productType: 'timber',
+        },
+        toolCtx
+      );
+
+      assert.equal(toolResult.count, 1);
+      assert.equal(toolResult.products[0].sku, '1002835');
+      assert.ok(turnProductSkus.has('1002835'), 'Must register verified turnProductSku');
+      assert.ok(catalogProductCache.has('1002835'), 'Must cache catalog product for downstream quote verification');
+      assert.ok(allowedClaimClasses.has('catalog_fact'), 'Must unlock catalog_fact claim class');
+    });
+
+    test('evaluation test: placemakers-100 prompts 1, 4, 8, 28, 30', async () => {
+      const evalProducts = [
+        {
+          tenantId: 'placemakers',
+          sku: '1002835',
+          title: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)',
+          name: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)',
+          category: 'SG H3.2 Radiata KD',
+          description: 'SG8 structural grade framing timber suitable for internal and exposed above ground applications. Treated H3.2 CCA. Machine gauged to ensure dimensional accuracy and straightness.',
+          inStock: true,
+        },
+        {
+          tenantId: 'placemakers',
+          sku: '1002836',
+          title: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 150 x 50mm (140 x 45mm)',
+          name: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 150 x 50mm (140 x 45mm)',
+          category: 'SG H3.2 Radiata KD',
+          description: 'SG8 structural grade framing timber suitable for internal and exposed above ground applications. Treated H3.2 CCA. Ideal for frames and trusses, joists, bearers, roof beams and lintels.',
+          inStock: true,
+        },
+        {
+          tenantId: 'placemakers',
+          sku: '1010784',
+          title: 'Radiata Structural Grade 6 Planer Gauged Kiln Dried H1.2 Boron Treated 75 x 50mm (70 x 45mm)',
+          name: 'Radiata Structural Grade 6 Planer Gauged Kiln Dried H1.2 Boron Treated 75 x 50mm (70 x 45mm)',
+          category: 'SG H1.2 Radiata KD',
+          description: 'SG6 structural grade framing timber suitable for interior framing. Treated H1.2 Boron.',
+          inStock: true,
+        },
+        {
+          tenantId: 'placemakers',
+          sku: '3401015',
+          title: 'Ceiling Insulation R2.2 1220 x 432 x 115mm 12.6m2 Per Bale',
+          name: 'Ceiling Insulation R2.2 1220 x 432 x 115mm 12.6m2 Per Bale',
+          brand: 'Pink Batts',
+          category: 'Fibreglass Ceiling Insulation',
+          description: 'Pink Batts thermal ceiling insulation blanket rated R2.2 for residential roofs.',
+          inStock: true,
+        },
+        {
+          tenantId: 'placemakers',
+          sku: '3400456',
+          title: 'Steel Framing Wall Insulation R2.6 1220 x 610 x 90mm',
+          name: 'Steel Framing Wall Insulation R2.6 1220 x 610 x 90mm',
+          brand: 'Pink® Batts®',
+          category: 'Fibreglass Wall Insulation',
+          description: 'Pink Batts wall insulation segment rated R2.6 for thermal and acoustic performance.',
+          inStock: true,
+        },
+      ];
+
+      const handler = new CatalogSearchHandler(evalProducts);
+      const ctx: any = {
+        tenantId: 'placemakers',
+        packSettings: {},
+        vocabulary: {
+          synonyms: {
+            timber: ['radiata', 'pine', 'wood', 'framing'],
+            pine: ['radiata'],
+          },
+        },
+      };
+
+      // Prompt 1: "Do you have 100x50 H3.2 treated timber in stock?"
+      const p1 = await handler.execute({ isAgentMode: true, size: '100x50', treatment: 'H3.2', keywords: ['timber'] }, ctx);
+      assert.ok(p1.items.length >= 1);
+      assert.equal(p1.items[0].sku, '1002835');
+
+      // Prompt 1 with 4x2 imperial equivalence: "Do you have 4x2 H3.2 treated timber in stock?"
+      const p1_imp = await handler.execute({ isAgentMode: true, size: '4x2', treatment: 'H3.2' }, ctx);
+      assert.ok(p1_imp.items.length >= 1);
+      assert.equal(p1_imp.items[0].sku, '1002835');
+
+      // Prompt 4: "Looking for 150x50 treated pine for a deck frame"
+      const p4 = await handler.execute({ isAgentMode: true, size: '150x50', keywords: ['pine'] }, ctx);
+      assert.ok(p4.items.length >= 1);
+      assert.equal(p4.items[0].sku, '1002836');
+
+      // Prompt 4 with 6x2 imperial equivalence: "Looking for 6x2 treated pine"
+      const p4_imp = await handler.execute({ isAgentMode: true, size: '6x2', keywords: ['pine'] }, ctx);
+      assert.ok(p4_imp.items.length >= 1);
+      assert.equal(p4_imp.items[0].sku, '1002836');
+
+      // Prompt 8: "Can I get H1.2 treated timber for interior framing?"
+      const p8 = await handler.execute({ isAgentMode: true, treatment: 'H1.2', keywords: ['framing'] }, ctx);
+      assert.ok(p8.items.length >= 1);
+      assert.equal(p8.items[0].sku, '1010784');
+
+      // Prompt 28: "What insulation do you recommend for ceiling, R2.2 or R2.6?"
+      const p28 = await handler.execute({ isAgentMode: true, rValue: 'R2.2', keywords: ['ceiling'] }, ctx);
+      assert.ok(p28.items.length >= 1);
+      assert.equal(p28.items[0].sku, '3401015');
+
+      // Prompt 30: "Do you have Pink Batts in stock?"
+      const p30 = await handler.execute({ isAgentMode: true, brand: 'Pink Batts' }, ctx);
+      assert.ok(p30.items.length >= 2);
+      assert.ok(p30.items.some((i: any) => i.sku === '3401015'));
+      assert.ok(p30.items.some((i: any) => i.sku === '3400456'));
+    });
+
+    test('database engine ranking without JavaScript scoring comparators in agent mode', async () => {
+      const products = [
+        { tenantId: 'test-tenant', sku: 'SKU-A', title: 'Galvanised Timber Screws 50mm', inStock: true },
+        { tenantId: 'test-tenant', sku: 'SKU-B', title: 'Stainless Timber Screws 50mm', inStock: true },
+        { tenantId: 'test-tenant', sku: 'SKU-C', title: 'Zinc Timber Screws 50mm', inStock: true },
+      ];
+
+      const vectorResults = [
+        { doc: products[1], score: 0.99 }, // SKU-B rank 0 in vector
+        { doc: products[2], score: 0.85 }, // SKU-C rank 1 in vector
+        { doc: products[0], score: 0.50 }, // SKU-A rank 2 in vector
+      ];
+
+      const handler = new CatalogSearchHandler(products, undefined, async () => vectorResults);
+      const ctx: any = { tenantId: 'test-tenant', packSettings: {} };
+
+      // In agent mode, RRF rank fusion does not invoke scoreDocumentRelevance JS scoring
+      const res = await handler.execute({ isAgentMode: true, query: 'timber screws', keywords: ['timber screws'] }, ctx);
+      assert.equal(res.items.length, 3);
+      // SKU-B was ranked #0 in vector search and matches keywords, so pure RRF ranks SKU-B first
+      assert.equal(res.items[0].sku, 'SKU-B');
+    });
+
+    test('PlaceMakers 33,600 product catalog speed test', async () => {
+      const csvPath = path.resolve('apps/journeyax-web/public/data/placemakers-products.csv');
+      if (!fs.existsSync(csvPath)) return; // Gracefully skip if CSV is not in local checkout
+
+      const content = fs.readFileSync(csvPath, 'utf8');
+      const lines = content.split('\n');
+      const header = lines[0].split(',').map((h) => h.trim());
+      const skuIdx = header.indexOf('Item_SKU') >= 0 ? header.indexOf('Item_SKU') : header.indexOf('Parent_SKU');
+      const nameIdx = header.indexOf('Item_Name');
+      const catIdx = header.indexOf('Category');
+      const brandIdx = header.indexOf('Brand');
+      const descIdx = header.indexOf('Item_Description');
+
+      const products: any[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
+        const parts: string[] = [];
+        let inQuotes = false;
+        let curr = '';
+        for (let c = 0; c < line.length; c++) {
+          const ch = line[c];
+          if (ch === '"') inQuotes = !inQuotes;
+          else if (ch === ',' && !inQuotes) { parts.push(curr); curr = ''; }
+          else curr += ch;
+        }
+        parts.push(curr);
+        const sku = (parts[skuIdx] || '').trim();
+        const name = (parts[nameIdx] || '').trim();
+        if (!sku || !name) continue;
+        products.push({
+          tenantId: 'test-speed',
+          sku,
+          title: name,
+          name,
+          category: (parts[catIdx] || '').trim(),
+          description: (parts[descIdx] || '').trim(),
+          brand: (parts[brandIdx] || '').trim(),
+          inStock: true,
+        });
+      }
+
+      assert.ok(products.length >= 30000, `Expected at least 30,000 products, got ${products.length}`);
+
+      const handler = new CatalogSearchHandler(products);
+      const ctx: any = {
+        tenantId: 'test-speed',
+        packSettings: {},
+        vocabulary: {
+          synonyms: {
+            timber: ['radiata', 'pine', 'wood', 'framing'],
+          },
+        },
+      };
+
+      // Measure search query latency over entire 30,000+ catalog
+      const start = performance.now();
+      const res = await handler.execute({ isAgentMode: true, size: '100x50', treatment: 'H3.2', keywords: ['timber'] }, ctx);
+      const durationMs = performance.now() - start;
+
+      assert.ok(res.items.length >= 1, 'Should find matching 100x50 H3.2 products in full feed');
+      assert.equal(res.items[0].sku, '1002835', 'Top match must be SKU 1002835');
+      // Assert search execution across 30,000+ products completes within acceptable threshold (200ms)
+      assert.ok(durationMs < 200, `Catalog search took ${durationMs.toFixed(2)}ms; must be < 200ms`);
     });
   });
 });

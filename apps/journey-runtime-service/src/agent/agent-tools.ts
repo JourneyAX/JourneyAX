@@ -138,25 +138,56 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'search_products',
-    description: 'Search the product catalogue using hybrid keyword and semantic retrieval, expanded by the business glossary. Returns matching products with SKU, title, price, category, and description. To check branch inventory availability or whether an item is in stock, use check_stock.',
+    description: "Search the product catalogue using structured parameters and exact dimension/treatment specifications. Copy codes like 'H3.2', 'R2.6', and '100x50' exactly as written by the customer. Returns matching products with SKU, title, price, category, and description. To check branch inventory availability or whether an item is in stock, use check_stock.",
     parameters: {
       type: 'object',
       properties: {
+        keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Search keywords or phrases for products (e.g. ["composite decking", "screws"]).',
+        },
+        productType: {
+          type: 'string',
+          description: 'Product type or general noun (e.g. "timber", "screws", "insulation", "decking").',
+        },
+        size: {
+          type: 'string',
+          description: 'Dimension or size specification. Copy exactly as written (e.g. "100x50", "90x45", "150x50", "4x2").',
+        },
+        treatment: {
+          type: 'string',
+          description: 'Treatment grade or level. Copy code exactly as written (e.g. "H3.2", "H1.2", "H4", "CCA", "Boron", "Untreated").',
+        },
+        rValue: {
+          type: 'string',
+          description: 'Thermal resistance rating code. Copy code exactly as written (e.g. "R2.2", "R2.6", "R3.2").',
+        },
+        brand: {
+          type: 'string',
+          description: 'Brand name filter.',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional category name filter.',
+        },
+        minPrice: {
+          type: 'number',
+          description: 'Minimum price filter.',
+        },
+        maxPrice: {
+          type: 'number',
+          description: 'Maximum price filter.',
+        },
+        inStockOnly: {
+          type: 'boolean',
+          description: 'Only show in-stock products.',
+        },
         query: {
           type: 'string',
-          description: 'Search keywords for products (e.g. composite decking board, plasterboard screws, basin mixer).',
-        },
-        filters: {
-          type: 'object',
-          properties: {
-            category: { type: 'string', description: 'Optional category name filter' },
-            minPrice: { type: 'number', description: 'Minimum price filter' },
-            maxPrice: { type: 'number', description: 'Maximum price filter' },
-            inStockOnly: { type: 'boolean', description: 'Only show in-stock products' },
-          },
+          description: 'Optional raw query keywords if not passing structured keywords array.',
         },
       },
-      required: ['query'],
     },
   },
   {
@@ -527,15 +558,37 @@ export async function executeAgentTool(
     }
 
     case 'search_products': {
+      const keywordsRaw = args.keywords;
+      const keywords: string[] = Array.isArray(keywordsRaw)
+        ? keywordsRaw.map(String).map((k) => k.trim()).filter(Boolean)
+        : (typeof keywordsRaw === 'string' && keywordsRaw.trim())
+          ? [keywordsRaw.trim()]
+          : [];
       const query = String(args.query || '').trim();
+      const productType = args.productType ? String(args.productType).trim() : undefined;
+      const size = args.size ? String(args.size).trim() : undefined;
+      const treatment = args.treatment ? String(args.treatment).trim() : undefined;
+      const rValue = args.rValue ? String(args.rValue).trim() : undefined;
+      const brand = args.brand ? String(args.brand).trim() : undefined;
       const filters = args.filters || {};
+      const category = args.category ? String(args.category).trim() : (filters.category ? String(filters.category).trim() : undefined);
+      const minPrice = args.minPrice ?? filters.minPrice;
+      const maxPrice = args.maxPrice ?? filters.maxPrice;
+      const inStockOnly = args.inStockOnly ?? filters.inStockOnly;
 
       const searchInput: any = {
-        query,
-        category: filters.category,
-        minPriceCents: filters.minPrice !== undefined ? Math.round(filters.minPrice * 100) : undefined,
-        maxPriceCents: filters.maxPrice !== undefined ? Math.round(filters.maxPrice * 100) : undefined,
-        inStockOnly: filters.inStockOnly,
+        isAgentMode: true,
+        keywords: keywords.length > 0 ? keywords : undefined,
+        productType,
+        size,
+        treatment,
+        rValue,
+        brand,
+        query: query || (keywords.length > 0 ? keywords.join(' ') : undefined),
+        category,
+        minPriceCents: minPrice !== undefined ? Math.round(Number(minPrice) * 100) : undefined,
+        maxPriceCents: maxPrice !== undefined ? Math.round(Number(maxPrice) * 100) : undefined,
+        inStockOnly,
         maxResults: 6,
       };
 
@@ -550,19 +603,21 @@ export async function executeAgentTool(
         }
       }
 
+      const displayQuery = query || keywords.join(' ') || [productType, size, treatment, rValue, brand].filter(Boolean).join(' ') || 'catalogue search';
+
       if (products.length === 0) {
         return {
-          query,
+          query: displayQuery,
           count: 0,
           products: [],
-          message: `Could not find any products matching "${query}" in the catalogue. Please inform the customer that no matching products were found in the catalogue. Do NOT say the product is out of stock.`,
+          message: `Could not find any products matching "${displayQuery}" in the catalogue. Please inform the customer that no matching products were found in the catalogue. Do NOT say the product is out of stock.`,
         };
       }
 
       ctx.allowedClaimClasses.add('catalog_fact');
 
       return {
-        query,
+        query: displayQuery,
         count: products.length,
         products: products.map((p) => ({
           sku: p.sku,
