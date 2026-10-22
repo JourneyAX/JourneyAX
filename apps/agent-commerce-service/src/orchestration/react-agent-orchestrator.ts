@@ -175,8 +175,9 @@ export class ReactAgentOrchestrator {
 
     const brandTone = (projectConfig as any)?.brandVoice || (projectConfig as any)?.tone || projectConfig?.journeyGuidance || 'Pragmatic, helpful, knowledgeable trade professional.';
 
-    // 2. Retrieve Google OKF Business Knowledge context for the query
-    const okfContext = await this.okfLoader.getBusinessContext(tenantId, userMessage);
+    // 2. Business knowledge context
+    // Removed per Prompt P2: no code may build a search or OKF query from the latest message alone.
+    const okfContext = '';
 
     // 3. Assemble System Prompt with Persona + OKF Context + Tool Instructions
     const systemPrompt = [
@@ -307,7 +308,7 @@ export class ReactAgentOrchestrator {
         if (tc.name === 'consultTradeKnowledge') {
           toolOutput = await this.tradeKnowledge.consult({
             tenantId,
-            topic: args.topic || userMessage,
+            topic: String(args.topic || '').trim(),
           });
         } else if (tc.name === 'searchProducts' || tc.name === 'searchKnowledge') {
           toolOutput = await this.executeProductSearch(tenantId, args);

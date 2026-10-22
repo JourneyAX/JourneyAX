@@ -913,7 +913,7 @@ export class TurnApplicationService {
           ...decision,
           payload: {
             ...decision.payload,
-            query: decision.payload?.query || command.message || '',
+            query: decision.payload?.query || '',
             categoryIds: knowledgeGate.retrieval.categoryIds,
             categoryPaths: knowledgeGate.retrieval.categoryPaths,
             excludeCategoryIds: knowledgeGate.retrieval.excludeCategoryIds,

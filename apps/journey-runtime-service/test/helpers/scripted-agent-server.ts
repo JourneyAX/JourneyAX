@@ -18,9 +18,34 @@ export function createScriptedAgentExecutor() {
     const rawQuestion = (match ? match[1] : userContent).trim();
     const qLower = rawQuestion.toLowerCase();
 
+    // Extract earlier conversation context from history block if present (Prompt P2)
+    const historyMsg = req.messages.find(
+      (m) =>
+        m.role === 'user' &&
+        typeof m.content === 'string' &&
+        (m.content.includes('<conversation_history>') || m.content.includes('[Previous Conversation History]'))
+    );
+    let previousTopic = '';
+    if (historyMsg && typeof historyMsg.content === 'string') {
+      const lines = historyMsg.content.split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (line.startsWith('Customer:')) {
+          const topic = line.replace(/^Customer:\s*/, '').trim();
+          if (topic) {
+            previousTopic = topic
+              .replace(/^(do you have|i need|looking for|can i get|show me your range of|show me|find me|what)\s+/i, '')
+              .replace(/[?!.]/g, '')
+              .trim();
+            break;
+          }
+        }
+      }
+    }
+
     // 2. Inspect previous tool calls & results
     const toolMessages = req.messages.filter((m) => m.role === 'tool');
-    const searchToolResult = toolMessages.find((m) => m.name === 'search_products');
+    const searchToolResult = toolMessages.find((m) => m.name === 'search_products' || m.name === 'catalog.search');
     const cardToolResult = toolMessages.find((m) => m.name === 'present_card');
     const knowledgeResult = toolMessages.find((m) => m.name === 'consult_business_knowledge');
     const guideResult = toolMessages.find((m) => m.name === 'search_guides');
@@ -119,24 +144,47 @@ export function createScriptedAgentExecutor() {
       if (/\b6x2\b/i.test(cleanQuery)) cleanQuery += ' 150x50';
       if (/\bjib\b/i.test(cleanQuery)) cleanQuery = cleanQuery.replace(/\bjib\b/i, 'gib plasterboard');
 
+      // Resolve short or ambiguous follow-up using previous conversation topic (Prompt P2)
+      const isShortFollowUp =
+        cleanQuery.split(/\s+/).length <= 2 ||
+        qLower.includes('for that') ||
+        qLower.includes('for those') ||
+        qLower.includes('and what');
+
+      let resolvedQuery = cleanQuery || rawQuestion;
+      if (isShortFollowUp && previousTopic) {
+        const prevLower = previousTopic.toLowerCase();
+        const cleanLower = cleanQuery.toLowerCase();
+        if (!cleanLower.includes(prevLower)) {
+          resolvedQuery = `${previousTopic} ${cleanQuery}`.trim();
+        }
+      }
+
+      const searchToolDef = req.tools?.find((t) => t.name === 'catalog.search' || t.name === 'search_products');
+      const searchToolName = searchToolDef?.name || 'search_products';
+
       return {
         content: '',
         toolCalls: [
           {
             id: `call_search_${Date.now()}`,
-            name: 'search_products',
-            arguments: { query: cleanQuery || rawQuestion },
+            name: searchToolName,
+            arguments: { query: resolvedQuery },
           },
         ],
       };
     }
 
-    // ROUND 2: search_products returned, now present_card
+    // ROUND 2: search_products or catalog.search returned, now present_card
     if (searchToolResult && !cardToolResult) {
       let parsedProducts: any[] = [];
       try {
         const parsed = JSON.parse(searchToolResult.content || '{}');
-        parsedProducts = Array.isArray(parsed.products) ? parsed.products : [];
+        parsedProducts = Array.isArray(parsed.products)
+          ? parsed.products
+          : Array.isArray(parsed.items)
+          ? parsed.items
+          : [];
       } catch {}
 
       if (parsedProducts.length > 0) {
@@ -182,7 +230,11 @@ export function createScriptedAgentExecutor() {
       let parsedProducts: any[] = [];
       try {
         const parsed = JSON.parse(searchToolResult?.content || '{}');
-        parsedProducts = Array.isArray(parsed.products) ? parsed.products : [];
+        parsedProducts = Array.isArray(parsed.products)
+          ? parsed.products
+          : Array.isArray(parsed.items)
+          ? parsed.items
+          : [];
       } catch {}
 
       if (parsedProducts.length > 0) {

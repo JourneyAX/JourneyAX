@@ -160,6 +160,20 @@ export function projectDoc(agentMode = false) {
         '4x2': ['100x50', '100 x 50', '100x50mm', '100 x 50mm', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
       },
     },
+    capabilities: ['catalog.search'],
+    agents: agentMode
+      ? [
+          {
+            agentId: 'placemakers_trade_consultant',
+            name: 'PlaceMakers Trade Consultant',
+            purpose: 'Guides Kiwi builders and DIYers through multi-trade material estimation, compliance, and trade quote delivery.',
+            modelPolicyRef: 'complex_reasoning',
+            allowedTools: ['catalog.search'],
+            systemPromptTemplate:
+              'You are the official PlaceMakers Trade Consultant for PlaceMakers NZ. Ground all advice in PlaceMakers catalogue products.',
+          },
+        ]
+      : undefined,
     extensions: agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true } } : {},
     persona: {
       systemName: 'PlaceMakers assistant', systemPromptOverrides: 'Help customers find products.',

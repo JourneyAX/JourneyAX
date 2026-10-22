@@ -23,7 +23,7 @@ import {
 } from './agent-tools';
 import { formatBusinessProfile } from '../kernel/business-knowledge';
 import { AgentRouter, type ResolvedAgent } from '../kernel/agent.router';
-import { readHistory, appendHistory, formatHistoryBlock } from '../conversation';
+import { readHistory, appendHistory, formatHistoryBlock, type ConversationTurnRecord } from '../conversation';
 import { sanitizeHistoryText } from '../conversation/history';
 import { IncrementalSentenceShaper, type ShapeContext } from '../kernel/reply-shaper';
 import { resolveTurnKind } from '../turn/turn-kind';
@@ -98,6 +98,11 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
    - Product prices and availability displayed on cards are server-authoritative.
 4. Scope & Boundaries:
    - If a customer asks for items or services outside the merchant's declared scope (see business profile), explain clearly and politely and offer assistance or human handoff if appropriate.
+
+## Conversational Context & Retrieval Rules
+1. Multi-turn Resolution: Resolve short, elliptical, or ambiguous customer follow-ups using the earlier conversation history before calling any tool. Combine prior context (such as previously discussed topics, categories, or items) with the current request so all tool search queries and arguments are complete and self-contained.
+2. Unclear Requests: If the customer's request remains ambiguous or unclear even after considering the conversation history, ask a clarifying question rather than executing a blind or incomplete search.
+3. Whole-Conversation Tool Arguments: All tool arguments must be written by synthesizing information across the whole conversation, never relying solely on the latest isolated message.
 
 ## Output Rules
 - Be concise, direct, helpful, and natural.
@@ -476,7 +481,7 @@ export class AgentTurnLoop {
       turnKind,
     };
 
-    const toolsTrace: Array<{ name: string; durationMs: number; ok: boolean; error?: string }> = [];
+    const toolsTrace: Array<{ name: string; durationMs: number; ok: boolean; error?: string; arguments?: any }> = [];
     const totalTokens = { prompt: 0, completion: 0, total: 0 };
     let finalAssistantText = '';
     let isFinished = false;
@@ -563,6 +568,12 @@ export class AgentTurnLoop {
         shaper.processDelta(roundContent);
       }
 
+      // If the model called no tools, this is the final customer-facing answer
+      if (roundToolCalls.length === 0) {
+        isFinished = true;
+        break;
+      }
+
       // If the model called tools
       if (roundToolCalls.length > 0) {
         // Enforce allowed tools: partition into authorized and unauthorized
@@ -638,7 +649,7 @@ export class AgentTurnLoop {
               result = { ok: false, error: `Tool execution failed: ${err.message}` };
             }
             const durationMs = Date.now() - toolStart;
-            toolsTrace.push({ name: tc.name, durationMs, ok, error: !ok ? result?.error : undefined });
+            toolsTrace.push({ name: tc.name, durationMs, ok, error: !ok ? result?.error : undefined, arguments: tc.arguments });
             return { call: tc, result };
           })
         );
@@ -665,7 +676,7 @@ export class AgentTurnLoop {
             result = { ok: false, error: `Tool execution failed: ${err.message}` };
           }
           const durationMs = Date.now() - toolStart;
-          toolsTrace.push({ name: tc.name, durationMs, ok, error: !ok ? result?.error : undefined });
+          toolsTrace.push({ name: tc.name, durationMs, ok, error: !ok ? result?.error : undefined, arguments: tc.arguments });
           mutatingResults.push({ call: tc, result });
         }
 
@@ -754,12 +765,28 @@ export class AgentTurnLoop {
       throw signal.reason || new Error('Agent turn aborted');
     }
 
+    const historyEntries: ConversationTurnRecord[] = [
+      { role: 'customer', content: customerQuestion, turnId: command.turnId },
+    ];
+    if (toolsTrace.length > 0) {
+      const compactTools = toolsTrace
+        .map((t) => `${t.name}${t.ok ? ' (ok)' : ' (failed)'}`)
+        .join(', ');
+      historyEntries.push({
+        role: 'tool_summary',
+        content: `Executed: ${compactTools}`,
+        turnId: command.turnId,
+      });
+    }
+    historyEntries.push({
+      role: 'assistant',
+      content: finalAssistantText,
+      turnId: command.turnId,
+    });
+
     appendHistory(
       workspace,
-      [
-        { role: 'customer', content: customerQuestion, turnId: command.turnId },
-        { role: 'assistant', content: finalAssistantText, turnId: command.turnId },
-      ],
+      historyEntries,
       release.extensions?.dialoguePolicy?.history
     );
 
@@ -787,7 +814,7 @@ export class AgentTurnLoop {
       uiInstructions,
       executedCapabilities: toolsTrace.map((t) => ({
         toolId: t.name,
-        input: {},
+        input: (t as any).arguments || {},
         output: {},
         status: t.ok ? 'success' : 'failure',
         durationMs: t.durationMs,
