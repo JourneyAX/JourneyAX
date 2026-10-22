@@ -38,19 +38,58 @@ export interface ExtractOkfNotesOptions {
   customerQuestion: string;
   facts?: Record<string, any>;
   maxChars?: number;
+  agentRelationshipTypes?: string[] | Set<string>;
 }
 
-export const OKF_ALLOWED_RELATIONSHIP_TYPES = new Set([
+/**
+ * Default relationship types exposed to the agent loop.
+ * By default, every relationship type in the OKF schema is included except 'child_of' (which is structural hierarchy).
+ */
+export const DEFAULT_AGENT_RELATIONSHIP_TYPES: string[] = [
+  'relevant_to',
+  'solves',
+  'diagnoses',
   'requires',
-  'installed_with',
-  'cross_sell',
   'compatible_with',
   'incompatible_with',
   'alternative_to',
+  'installed_with',
   'care_for',
   'document_for',
   'escalates_to',
-]);
+  'cross_sell',
+];
+
+/**
+ * Resolves the allowed OKF relationship types for the agent.
+ * Precedence:
+ * 1. Explicit override passed directly (per invocation or agent configuration)
+ * 2. Agent configuration from business pack / release
+ * 3. Tenant OKF policy: okfContent.policy.agentRelationshipTypes
+ * 4. Default: all standard OKF relationship types except 'child_of'
+ */
+export function resolveAgentRelationshipTypes(
+  okfContent?: OkfReleaseContent | null,
+  overrideTypes?: string[] | Set<string>,
+  agentConfig?: { agentRelationshipTypes?: string[] } | null
+): Set<string> {
+  if (overrideTypes) {
+    return overrideTypes instanceof Set ? overrideTypes : new Set(overrideTypes);
+  }
+  if (Array.isArray(agentConfig?.agentRelationshipTypes) && agentConfig.agentRelationshipTypes.length > 0) {
+    return new Set(agentConfig.agentRelationshipTypes);
+  }
+  const policyTypes = (okfContent as any)?.policy?.agentRelationshipTypes;
+  if (Array.isArray(policyTypes) && policyTypes.length > 0) {
+    return new Set(policyTypes);
+  }
+  return new Set(DEFAULT_AGENT_RELATIONSHIP_TYPES);
+}
+
+/**
+ * @deprecated Use resolveAgentRelationshipTypes() or DEFAULT_AGENT_RELATIONSHIP_TYPES.
+ */
+export const OKF_ALLOWED_RELATIONSHIP_TYPES = new Set(DEFAULT_AGENT_RELATIONSHIP_TYPES);
 
 /**
  * Finds relevant OKF concepts for a given question or conceptId.
@@ -126,12 +165,16 @@ export function extractRelevantOkfNotes(
     }
   }
 
-  // 2. Relationships (keep only requires, installed_with, cross_sell, compatible_with, incompatible_with, alternative_to, care_for, document_for, escalates_to; exclude child_of)
+  // 2. Relationships (policy-driven agent relationship types, excluding child_of by default)
   const conceptMap = new Map<string, OkfConcept>(concepts.map((c) => [c.conceptId, c]));
   const activeIds = new Set<string>(activeConcepts.map((c) => c.conceptId));
+  const allowedRelationshipTypes = resolveAgentRelationshipTypes(
+    okfContent,
+    options.agentRelationshipTypes
+  );
 
   const relevantRels = relationships.filter(
-    (r) => (activeIds.has(r.from) || activeIds.has(r.to)) && OKF_ALLOWED_RELATIONSHIP_TYPES.has(r.type)
+    (r) => (activeIds.has(r.from) || activeIds.has(r.to)) && allowedRelationshipTypes.has(r.type)
   );
 
   for (const r of relevantRels) {

@@ -103,6 +103,7 @@ export const PlatformPolicySchema = z.object({
   agentMessages: z.array(z.string().min(1)).max(50),
   /** The named placeholders a message template may use, in addition to those its own platform default already uses. */
   messageVariables: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/)).max(50),
+  agentRelationshipTypes: z.array(z.string().min(1)).max(50).optional(),
 }).strict();
 
 const LocaleKeySchema = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/);
@@ -126,6 +127,7 @@ export const OkfTenantPolicySchema = z.object({
   coverage: CoveragePolicySchema.optional(),
   suggestions: SuggestionPolicySchema.optional(),
   messages: MessageMapSchema.optional(),
+  agentRelationshipTypes: z.array(z.string().min(1)).max(50).optional(),
 }).strict();
 
 export type OkfTenantPolicy = z.infer<typeof OkfTenantPolicySchema>;
@@ -243,6 +245,7 @@ export interface ResolvedOkfPolicy {
   coverage: CoveragePolicy;
   suggestions: { max: number; itemsPerGroup: number };
   messages: Record<string, string>;
+  agentRelationshipTypes: string[];
 }
 
 const placeholdersOf = (template: string): string[] => [...template.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map((match) => match[1]);
@@ -299,6 +302,21 @@ export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null, locale?: strin
   const roles = new Map<string, { roleId: string; label?: string; claimClasses: ClaimClass[] }>();
   for (const role of [...PLATFORM.verifierRoles, ...(tenant?.verifierRoles || [])]) roles.set(role.roleId, role);
 
+  const defaultAgentRelationshipTypes = [
+    'relevant_to',
+    'solves',
+    'diagnoses',
+    'requires',
+    'compatible_with',
+    'incompatible_with',
+    'alternative_to',
+    'installed_with',
+    'care_for',
+    'document_for',
+    'escalates_to',
+    'cross_sell',
+  ];
+
   const resolved: ResolvedOkfPolicy = {
     locale: (overlay ? localeKey : undefined) || tenant?.locale || PLATFORM.locale,
     matching: { ...PLATFORM.matching, ...(tenant?.matching || {}) },
@@ -311,6 +329,7 @@ export function resolveOkfPolicy(tenant?: OkfTenantPolicy | null, locale?: strin
     coverage: tenant?.coverage || PLATFORM.coverage,
     suggestions: { ...PLATFORM.suggestions, ...(tenant?.suggestions || {}) } as { max: number; itemsPerGroup: number },
     messages: { ...PLATFORM.messages, ...(tenant?.messages || {}), ...(overlay?.messages || {}) },
+    agentRelationshipTypes: tenant?.agentRelationshipTypes || PLATFORM.agentRelationshipTypes || defaultAgentRelationshipTypes,
   };
   perLocale.set(localeKey, resolved);
   return resolved;

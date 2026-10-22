@@ -6,7 +6,12 @@ import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from
 import { effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
-import { extractRelevantOkfNotes, findRelevantOkfConcepts, OKF_ALLOWED_RELATIONSHIP_TYPES } from '../kernel/business-knowledge';
+import {
+  extractRelevantOkfNotes,
+  findRelevantOkfConcepts,
+  resolveAgentRelationshipTypes,
+  OKF_ALLOWED_RELATIONSHIP_TYPES,
+} from '../kernel/business-knowledge';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
@@ -52,6 +57,7 @@ export interface AgentToolContext {
   handoffReason?: string;
   customerQuestion?: string;
   consultedConcepts?: Set<OkfConcept>;
+  agentRelationshipTypes?: string[] | Set<string>;
   signal?: AbortSignal;
   emitUiAction?: (action: { name: string; arguments: any }) => void;
   emitTrace?: (name: string, payload: any) => void;
@@ -714,9 +720,14 @@ export async function executeAgentTool(
       const relationships = ctx.okfContent.relationships || [];
       const conceptMap = new Map<string, OkfConcept>(concepts.map((c) => [c.conceptId, c]));
       const activeIds = new Set<string>(activeConcepts.map((c) => c.conceptId));
+      const agentOverride =
+        ctx.agentRelationshipTypes ||
+        (ctx.release as any)?.agentConfig?.agentRelationshipTypes ||
+        (ctx.release as any)?.extensions?.agentRelationshipTypes;
+      const allowedRelationshipTypes = resolveAgentRelationshipTypes(ctx.okfContent, agentOverride);
 
       const relevantRels = relationships.filter(
-        (r) => (activeIds.has(r.from) || activeIds.has(r.to)) && OKF_ALLOWED_RELATIONSHIP_TYPES.has(r.type)
+        (r) => (activeIds.has(r.from) || activeIds.has(r.to)) && allowedRelationshipTypes.has(r.type)
       );
 
       // 1. Descriptions

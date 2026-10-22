@@ -356,6 +356,7 @@ export class AgentTurnLoop {
       isHumanHandoffRequested: false,
       customerQuestion,
       consultedConcepts: new Set<OkfConcept>(),
+      agentRelationshipTypes: (resolvedAgent?.agent as any)?.agentRelationshipTypes,
       signal,
       emitTrace: (name, payload) => sink('trace', { [name]: payload }),
     };

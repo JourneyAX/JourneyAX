@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   formatBusinessProfile,
   extractRelevantOkfNotes,
+  DEFAULT_AGENT_RELATIONSHIP_TYPES,
+  resolveAgentRelationshipTypes,
 } from '../src/kernel/business-knowledge';
 import { shapeReply, type ShapeContext } from '../src/kernel/reply-shaper';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
@@ -210,5 +212,89 @@ test('Task B8: OKF as a Library for the AI', async (t) => {
     const shaped = shapeReply(textWithUnsupportedClaim, shapeContext);
     assert.ok(shaped.text.includes('These plasterboard sheets'));
     assert.ok(shaped.text.includes('assistance with screws'));
+  });
+
+  await t.test('R5: agentRelationshipTypes policy data and overrides', async (sub) => {
+    // 1. Default excludes child_of, includes standard relationship types
+    assert.equal(DEFAULT_AGENT_RELATIONSHIP_TYPES.includes('child_of'), false);
+    assert.ok(DEFAULT_AGENT_RELATIONSHIP_TYPES.includes('requires'));
+    assert.ok(DEFAULT_AGENT_RELATIONSHIP_TYPES.includes('compatible_with'));
+    assert.ok(DEFAULT_AGENT_RELATIONSHIP_TYPES.includes('cross_sell'));
+
+    // 2. resolveAgentRelationshipTypes resolution order
+    const contentWithoutPolicy = { ...sampleOkfContent, policy: undefined };
+    assert.deepEqual(resolveAgentRelationshipTypes(contentWithoutPolicy), new Set(DEFAULT_AGENT_RELATIONSHIP_TYPES));
+
+    // Tenant policy override
+    const contentWithPolicy: OkfReleaseContent = {
+      ...sampleOkfContent,
+      policy: {
+        agentRelationshipTypes: ['alternative_to', 'compatible_with'],
+      } as any,
+    };
+    assert.deepEqual(
+      resolveAgentRelationshipTypes(contentWithPolicy),
+      new Set(['alternative_to', 'compatible_with'])
+    );
+
+    // Agent config override beats tenant policy
+    assert.deepEqual(
+      resolveAgentRelationshipTypes(contentWithPolicy, undefined, { agentRelationshipTypes: ['installed_with'] }),
+      new Set(['installed_with'])
+    );
+
+    // Explicit override beats everything
+    assert.deepEqual(
+      resolveAgentRelationshipTypes(contentWithPolicy, ['requires'], { agentRelationshipTypes: ['installed_with'] }),
+      new Set(['requires'])
+    );
+
+    // 3. extractRelevantOkfNotes filters based on policy
+    const contentWithHierarchyAndRequires: OkfReleaseContent = {
+      ...sampleOkfContent,
+      relationships: [
+        ...sampleOkfContent.relationships,
+        {
+          relationshipId: 'rel-board-hierarchy',
+          from: 'concept://placemakers/plasterboard',
+          to: 'concept://placemakers/jointing_compound',
+          type: 'child_of',
+          strength: 'required',
+          scope: 'category',
+          confidence: 'high',
+          claimClasses: [],
+          contentHash: '0'.repeat(64),
+        } as any,
+      ],
+    };
+
+    // Default: child_of is excluded, requires is included
+    const defaultNotes = extractRelevantOkfNotes(contentWithHierarchyAndRequires, {
+      conceptId: 'concept://placemakers/plasterboard',
+      customerQuestion: 'what goes with plasterboard?',
+    });
+    assert.ok(!defaultNotes.includes('child_of'));
+    assert.ok(defaultNotes.includes('requires -> Drywall Screws'));
+
+    // Tenant policy restricts to alternative_to only (requires is filtered out)
+    const policyRestrictedContent: OkfReleaseContent = {
+      ...contentWithHierarchyAndRequires,
+      policy: {
+        agentRelationshipTypes: ['alternative_to'],
+      } as any,
+    };
+    const policyNotes = extractRelevantOkfNotes(policyRestrictedContent, {
+      conceptId: 'concept://placemakers/plasterboard',
+      customerQuestion: 'what goes with plasterboard?',
+    });
+    assert.ok(!policyNotes.includes('requires -> Drywall Screws'));
+
+    // Invocation options override restores requires
+    const overriddenNotes = extractRelevantOkfNotes(policyRestrictedContent, {
+      conceptId: 'concept://placemakers/plasterboard',
+      customerQuestion: 'what goes with plasterboard?',
+      agentRelationshipTypes: ['requires'],
+    });
+    assert.ok(overriddenNotes.includes('requires -> Drywall Screws'));
   });
 });

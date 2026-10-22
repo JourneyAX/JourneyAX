@@ -422,4 +422,18 @@ test('a decision separates what the agent must respect from what the customer ma
   assert.ok(decision.claims.notices.every((text) => !/rel-|Relationship '/.test(text)), 'relationship ids never become customer notices');
 });
 
+test('agentRelationshipTypes defaults to all types except child_of and can be overridden per tenant', () => {
+  const resolvedDefault = resolveOkfPolicy();
+  assert.ok(Array.isArray(resolvedDefault.agentRelationshipTypes));
+  assert.equal(resolvedDefault.agentRelationshipTypes.includes('child_of'), false);
+  assert.ok(resolvedDefault.agentRelationshipTypes.includes('requires'));
+  assert.ok(resolvedDefault.agentRelationshipTypes.includes('compatible_with'));
+  assert.ok(resolvedDefault.agentRelationshipTypes.includes('cross_sell'));
+
+  const tenantPolicy = { agentRelationshipTypes: ['alternative_to', 'compatible_with'] };
+  assert.deepEqual(validateOkfTenantPolicy(tenantPolicy), []);
+  const resolvedTenant = resolveOkfPolicy(tenantPolicy as any);
+  assert.deepEqual(resolvedTenant.agentRelationshipTypes, ['alternative_to', 'compatible_with']);
+});
+
 console.log(`✅ OKF policy suite: ${passed} passed, 0 failed`);
