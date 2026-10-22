@@ -277,6 +277,7 @@ export class BusinessPackPublicationService {
           modelPolicyRef: a.modelPolicyRef || compiledModelPolicy.defaultPolicy || 'default',
           maxTurns: a.maxTurns || 5,
           handoffConditions: Array.isArray(a.handoffConditions) ? a.handoffConditions : [],
+          ...(a.journeyPlaybook ? { journeyPlaybook: a.journeyPlaybook } : {}),
         }))
       : [
           {
@@ -308,6 +309,17 @@ export class BusinessPackPublicationService {
         for (const stage of Object.values<any>(j.stages)) {
           if (Array.isArray(stage.allowedCapabilities)) {
             stage.allowedCapabilities.forEach((t: string) => toolNames.add(t));
+          }
+        }
+      }
+    }
+    if (Array.isArray(doc.agents)) {
+      for (const agent of doc.agents) {
+        if (Array.isArray(agent?.allowedTools)) {
+          for (const t of agent.allowedTools) {
+            if (typeof t === 'string' && !t.includes('*')) {
+              toolNames.add(t);
+            }
           }
         }
       }

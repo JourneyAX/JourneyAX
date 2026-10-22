@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
-import type { BusinessPackRelease, BusinessPackContent } from '@journeyax/business-pack';
+import type { BusinessPackRelease, BusinessPackContent, JourneyPlaybookStage } from '@journeyax/business-pack';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
@@ -26,6 +26,7 @@ import type { CapabilityGateway } from '../kernel/capability.gateway';
 import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
+import { deriveJourneyChecklist } from './journey-checklist';
 
 export interface AgentToolContext {
   tenantId: string;
@@ -58,6 +59,8 @@ export interface AgentToolContext {
   customerQuestion?: string;
   consultedConcepts?: Set<OkfConcept>;
   agentRelationshipTypes?: string[] | Set<string>;
+  agentPlaybook?: JourneyPlaybookStage[];
+  customerEvent?: any;
   signal?: AbortSignal;
   emitUiAction?: (action: { name: string; arguments: any }) => void;
   emitTrace?: (name: string, payload: any) => void;
@@ -138,6 +141,7 @@ export function resolveBoundCapability(
     get_cart: 'cart.get',
     update_cart: 'cart.update',
     add_to_cart: 'cart.update',
+    get_journey_checklist: 'journey.checklist',
   };
 
   return neutralFallbacks[toolName] || toolName;
@@ -617,6 +621,20 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
       required: ['items'],
     },
   },
+  {
+    name: 'get_journey_checklist',
+    description: 'Inspect what has already happened in this conversation (e.g. products selected, accessories checked, guides read, quantity calculated, stock checked) and the progress through the agent playbook stages.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filter: {
+          type: 'string',
+          description: 'Optional filter for specific checklist aspects.',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -654,6 +672,10 @@ export async function executeAgentTool(
   delete args.environmentId;
 
   switch (toolName) {
+    case 'get_journey_checklist': {
+      return deriveJourneyChecklist(ctx);
+    }
+
     case 'consult_business_knowledge': {
       const topic = String(args.topic || '').trim();
       if (!ctx.okfContent || !topic) {

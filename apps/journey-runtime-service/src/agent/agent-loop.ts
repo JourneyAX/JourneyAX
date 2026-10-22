@@ -5,7 +5,7 @@ import type {
   Decision,
   UIInstruction,
 } from '@journeyax/journey-core';
-import type { BusinessPackRelease, AgentDefinition } from '@journeyax/business-pack';
+import { normalizePlaybookStages, type BusinessPackRelease, type AgentDefinition } from '@journeyax/business-pack';
 import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
 import {
   ModelGateway,
@@ -104,9 +104,11 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
 2. Unclear Requests: If the customer's request remains ambiguous or unclear even after considering the conversation history, ask a clarifying question rather than executing a blind or incomplete search.
 3. Whole-Conversation Tool Arguments: All tool arguments must be written by synthesizing information across the whole conversation, never relying solely on the latest isolated message.
 
-## Customer Action Events
+## Customer Action Events & Journey Playbook Rules
 1. Action Events: When a customer performs an action on an interactive card or interface element (such as adding an item to their cart or quote, selecting an option, or confirming a choice), you will receive a structured <customer_event> rather than a typed message.
-2. Acknowledgment & Guidance: Acknowledge the customer's action directly and concisely (referencing the chosen item, SKU, or selection), then proactively guide them on the logical next steps, complementary items, or follow-ups according to the merchant's catalogue and business scope.
+2. Acknowledgment & Guidance: Acknowledge the customer's action directly and concisely (referencing the chosen item, SKU, or selection).
+3. Playbook Follow-up: When a journey playbook is provided in your instructions, use the get_journey_checklist tool to inspect what has already happened in this conversation. After a selection event, work through the playbook's follow-up stages with tools before ending the turn.
+4. Clear Next Step: Always conclude your response with exactly one clear, actionable next step for the customer.
 
 ## Output Rules
 - Be concise, direct, helpful, and natural.
@@ -127,6 +129,19 @@ export function formatAgentInstructions(resolvedAgent: ResolvedAgent): string {
   }
   if (systemPrompt && systemPrompt !== agent.purpose) {
     parts.push(`\nInstructions:\n${systemPrompt}`);
+  }
+  if (agent.journeyPlaybook) {
+    const stages = normalizePlaybookStages(agent.journeyPlaybook);
+    if (stages.length > 0) {
+      parts.push('\n## Journey Playbook (Ordered Stages)');
+      parts.push('Follow these stages to guide the customer journey:');
+      stages.forEach((st, idx) => {
+        const toolsStr = st.tools && st.tools.length > 0 ? ` (Tools: ${st.tools.join(', ')})` : '';
+        parts.push(`${idx + 1}. **${st.name}**${toolsStr}`);
+        parts.push(`   - Goal: ${st.goal}`);
+        parts.push(`   - Exit condition: ${st.exitCondition}`);
+      });
+    }
   }
   if (Array.isArray(agent.handoffConditions) && agent.handoffConditions.length > 0) {
     parts.push(
@@ -367,6 +382,8 @@ export class AgentTurnLoop {
       customerQuestion,
       consultedConcepts: new Set<OkfConcept>(),
       agentRelationshipTypes: (resolvedAgent?.agent as any)?.agentRelationshipTypes,
+      agentPlaybook: normalizePlaybookStages(resolvedAgent?.agent?.journeyPlaybook),
+      customerEvent,
       signal,
       emitTrace: (name, payload) => sink('trace', { [name]: payload }),
     };

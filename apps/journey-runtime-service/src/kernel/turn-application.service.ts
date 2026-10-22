@@ -239,41 +239,42 @@ export class TurnApplicationService {
         throw new DuplicateTurnError(turnId);
       }
 
-      // 3-event. Customer Event Policy Check (Prompt P3)
+      // 3-event. Customer Event Policy Check (Prompt P3 & P4)
       const customerEvent = command.customerEvent || (command as any).customer_event;
       if (customerEvent && customerEvent.type) {
+        if (!workspace) {
+          workspace = await this.workspaceRepo.getOrCreate(
+            tenantId,
+            envId,
+            workspaceId,
+            'unassigned',
+            'initial',
+            undefined,
+            release.manifest.version || release.manifest.packId,
+            this.createWorkspacePins(release)
+          );
+        }
+
+        const recordedAt = new Date().toISOString();
+        workspace.facts['last_customer_event'] = {
+          value: customerEvent,
+          source: 'customer',
+          confidence: 1,
+          extractedAt: recordedAt,
+        };
+
+        const existingLog = Array.isArray(workspace.facts['customer_events_log']?.value)
+          ? workspace.facts['customer_events_log'].value
+          : [];
+        workspace.facts['customer_events_log'] = {
+          value: [...existingLog, customerEvent],
+          source: 'customer',
+          confidence: 1,
+          extractedAt: recordedAt,
+        };
+
         const eventAction = resolveCustomerEventAction(customerEvent.type, release);
         if (eventAction === 'record_only') {
-          if (!workspace) {
-            workspace = await this.workspaceRepo.getOrCreate(
-              tenantId,
-              envId,
-              workspaceId,
-              'unassigned',
-              'initial',
-              undefined,
-              release.manifest.version || release.manifest.packId,
-              this.createWorkspacePins(release)
-            );
-          }
-
-          const recordedAt = new Date().toISOString();
-          workspace.facts['last_customer_event'] = {
-            value: customerEvent,
-            source: 'customer',
-            confidence: 1,
-            extractedAt: recordedAt,
-          };
-
-          const existingLog = Array.isArray(workspace.facts['customer_events_log']?.value)
-            ? workspace.facts['customer_events_log'].value
-            : [];
-          workspace.facts['customer_events_log'] = {
-            value: [...existingLog, customerEvent],
-            source: 'customer',
-            confidence: 1,
-            extractedAt: recordedAt,
-          };
 
           // Append compact record to conversation history for history hygiene
           appendHistory(

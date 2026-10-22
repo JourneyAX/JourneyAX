@@ -49,31 +49,42 @@ export function createScriptedAgentExecutor() {
     const cardToolResult = toolMessages.find((m) => m.name === 'present_card');
     const knowledgeResult = toolMessages.find((m) => m.name === 'consult_business_knowledge');
     const guideResult = toolMessages.find((m) => m.name === 'search_guides');
+    const checklistResult = toolMessages.find((m) => m.name === 'get_journey_checklist');
 
     // ROUND 1: No tools executed yet
     if (toolMessages.length === 0) {
-      // Case 1-event: Customer Action Event (Prompt P3)
+      // Case 1-event: Customer Action Event (Prompt P3 & P4)
       if (userContent.includes('<customer_event>')) {
-        const typeMatch = userContent.match(/Type:\s*([^\n]+)/i);
-        const eventType = typeMatch ? typeMatch[1].trim() : '';
-        const payloadMatch = userContent.match(/Payload:\s*([\s\S]*?)<\/customer_event>/i);
-        let payload: any = null;
-        if (payloadMatch) {
-          try {
-            payload = JSON.parse(payloadMatch[1].trim());
-          } catch {}
-        }
-        const title = payload?.title || payload?.name || payload?.sku || 'item';
-        let ackText = '';
-        if (eventType.toLowerCase().includes('quote')) {
-          ackText = `I've added ${title} to your quote. You'll need screws and accessories next.`;
-        } else {
-          ackText = `I've added ${title} to your cart. You may also want to browse matching hoodies or accessories.`;
-        }
-        for (const w of ackText.split(' ')) {
-          onDelta?.(w + ' ');
-        }
-        return { content: ackText, toolCalls: [] };
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'tc-chk-evt-1',
+              name: 'get_journey_checklist',
+              arguments: {},
+            },
+          ],
+        };
+      }
+
+      // Case 1-checklist: Journey checklist & progress inquiry (Prompt P4)
+      if (
+        qLower.includes('checklist') ||
+        qLower.includes('progress') ||
+        qLower.includes('playbook') ||
+        qLower.includes('what has been done') ||
+        qLower.includes('what have we done')
+      ) {
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'tc-chk-1',
+              name: 'get_journey_checklist',
+              arguments: {},
+            },
+          ],
+        };
       }
 
       // Case 1a: Garbled / gibberish (e.g. asdkfj)
@@ -239,7 +250,34 @@ export function createScriptedAgentExecutor() {
     // FINAL ROUND: Write grounded, concise answer and stream tokens
     let finalAnswer = '';
 
-    if (knowledgeResult) {
+    if (checklistResult) {
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(checklistResult.content || '{}');
+      } catch {}
+      const summary = parsed.summary || 'Checked journey checklist progress.';
+      const nextStep = parsed.nextStep || 'Proceed with the next step.';
+
+      if (userContent.includes('<customer_event>')) {
+        const typeMatch = userContent.match(/Type:\s*([^\n]+)/i);
+        const eventType = typeMatch ? typeMatch[1].trim() : '';
+        const payloadMatch = userContent.match(/Payload:\s*([\s\S]*?)<\/customer_event>/i);
+        let payload: any = null;
+        if (payloadMatch) {
+          try {
+            payload = JSON.parse(payloadMatch[1].trim());
+          } catch {}
+        }
+        const title = payload?.title || payload?.name || payload?.sku || 'item';
+        if (eventType.toLowerCase().includes('quote')) {
+          finalAnswer = `I've added ${title} to your quote. ${summary} Now ${nextStep.toLowerCase()}`;
+        } else {
+          finalAnswer = `I've added ${title} to your cart. ${summary} Now ${nextStep.toLowerCase()}`;
+        }
+      } else {
+        finalAnswer = `Here is your current journey progress: ${summary} Now ${nextStep.toLowerCase()}`;
+      }
+    } else if (knowledgeResult) {
       if (qLower.includes('dwang') || qLower.includes('nogging')) {
         finalAnswer = 'A dwang, also known as a nogging or blocking, is a horizontal timber spacer fitted between vertical wall studs to prevent buckling and provide fixing support for wall linings.';
       } else if (qLower.includes('power outlets') || qLower.includes('load bearing') || qLower.includes('electrical')) {
