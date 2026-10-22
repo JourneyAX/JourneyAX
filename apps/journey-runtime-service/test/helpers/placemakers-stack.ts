@@ -78,6 +78,9 @@ export const products: any[] = [
   product('EP-1', 'Exterior wall paint 4L', 'Exterior Paint', 99),
   product('BR-1', 'Paint roller kit', 'Brushes & Rollers', 24),
   product('MK-1', 'Masking tape 36mm', 'Masking', 6),
+  // Discontinued and out of stock test products
+  product('DISC-1', 'Legacy discontinued framing timber', 'Composite Decking', 15, { discontinued: true, status: 'Discontinued', inStock: false }),
+  product('OOS-1', 'Heavy Duty Framing Nailer', 'Masonry  Anchors', 450, { inStock: false }),
   // Filed by category name only (no hierarchy path), as 14 of the real categories are.
   { projectId: TENANT, sku: register('LP-1'), name: 'Laundry tap set', category: 'Laundry Tapware & Plumbing', priceUSD: { min: 55 }, currency: 'NZD', inStock: true },
   // A same-named category in another department must never be pulled in by the bathroom/tools scopes.
@@ -179,6 +182,7 @@ export function projectDoc(agentMode = false) {
               'check_stock',
               'calculate_quantity',
               'create_quote',
+              'update_cart',
               'present_card',
             ],
             journeyPlaybook: [

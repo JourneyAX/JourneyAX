@@ -57,6 +57,32 @@ export const abercrombieProducts: any[] = [
     inStock: true,
     color: 'white',
   },
+  {
+    projectId: ABERCROMBIE_TENANT,
+    sku: 'ANF-HOODIE-DISC',
+    name: 'Vintage Arch Logo Hoodie',
+    title: 'Vintage Arch Logo Hoodie - Navy',
+    category: 'Hoodies & Sweatshirts',
+    categoryPath: ['Men', 'Tops', 'Hoodies & Sweatshirts'],
+    priceUSD: { min: 80 },
+    currency: 'USD',
+    inStock: false,
+    discontinued: true,
+    status: 'Discontinued',
+    color: 'navy',
+  },
+  {
+    projectId: ABERCROMBIE_TENANT,
+    sku: 'ANF-TEE-OOS',
+    name: 'Curve Love Graphic Tee',
+    title: 'Curve Love Graphic Tee - Green',
+    category: 'T-Shirts',
+    categoryPath: ['Men', 'Tops', 'T-Shirts'],
+    priceUSD: { min: 35 },
+    currency: 'USD',
+    inStock: false,
+    color: 'green',
+  },
 ];
 
 export function createAbercrombieRelease(): BusinessPackRelease {

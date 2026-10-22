@@ -99,8 +99,13 @@ export function shapeSentence(
     : isQuestion && (maxQ === 0 || questionsSeen >= maxQ);
 
   const lower = trimmed.toLowerCase();
+  const isToolNarration =
+    /^(?:i (?:will|shall) (?:now )?(?:search|consult|call|query|retrieve)|i (?:will|shall) now check|let me (?:search|consult|query|look up|retrieve|call)|searching the (?:catalogue|catalog|database|knowledge)|consulting (?:business )?knowledge|calling the \w+ tool)\b/i.test(trimmed);
+
   const reason =
-    trimmed.includes('`') || lower.includes('concept://') || ctx.compiledIds.some((id) => id.test(trimmed))
+    isToolNarration
+      ? 'tool narration'
+      : trimmed.includes('`') || lower.includes('concept://') || ctx.compiledIds.some((id) => id.test(trimmed))
       ? 'internal id'
       : questionDisallowed
       ? 'second question'

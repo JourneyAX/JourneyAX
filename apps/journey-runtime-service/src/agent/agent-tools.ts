@@ -99,6 +99,13 @@ export function hashPayload(val: unknown): string {
   }
 }
 
+export function isProductDiscontinued(p: any): boolean {
+  if (!p || typeof p !== 'object') return false;
+  if (p.discontinued === true) return true;
+  const status = String(p.status || p.lifecycle?.status || p.lifecycleStatus || '').toLowerCase();
+  return status === 'discontinued' || status === 'retired' || status === 'delisted';
+}
+
 /**
  * Resolves the bound capability ID for an agent tool from the Business Pack's tool bindings.
  * Returns the pack-configured toolId if bound, otherwise falls back to the neutral canonical capability ID.
@@ -949,7 +956,9 @@ export async function executeAgentTool(
       const result = await ctx.catalogSearchHandler.execute(searchInput, makeExecContext(ctx));
 
       const rawProducts = result.products || result.items || [];
-      const products = Array.isArray(rawProducts) ? rawProducts : [];
+      const products = (Array.isArray(rawProducts) ? rawProducts : []).filter(
+        (p: any) => !isProductDiscontinued(p)
+      );
       for (const p of products) {
         if (p.sku) {
           ctx.turnProductSkus.add(p.sku);
@@ -1002,6 +1011,20 @@ export async function executeAgentTool(
       ) || rawItems?.[0];
 
       if (found && found.sku) {
+        if (isProductDiscontinued(found)) {
+          return {
+            found: true,
+            isDiscontinued: true,
+            sku: found.sku,
+            product: {
+              sku: found.sku,
+              title: found.title || found.name,
+              status: 'Discontinued',
+            },
+            message: `Product SKU "${found.sku}" is discontinued and cannot be recommended, quoted, or added to cart. Please recommend active alternatives from the catalogue.`,
+          };
+        }
+
         ctx.turnProductSkus.add(found.sku);
         ctx.catalogProductCache.set(found.sku, found);
         ctx.allowedClaimClasses.add('catalog_fact');
@@ -1394,16 +1417,46 @@ export async function executeAgentTool(
       const sku = String(args.sku || '').trim();
       const branch = String(args.branch || 'Main Branch').trim();
 
-      const cached = ctx.catalogProductCache.get(sku);
+      let cached = ctx.catalogProductCache.get(sku);
+      if (!cached) {
+        try {
+          const res = await ctx.catalogSearchHandler.execute(
+            { query: sku, maxResults: 1 },
+            makeExecContext(ctx)
+          );
+          cached = (res.products || res.items || []).find(
+            (p: any) => String(p.sku).toLowerCase() === sku.toLowerCase()
+          );
+          if (cached) {
+            ctx.catalogProductCache.set(sku, cached);
+          }
+        } catch {}
+      }
+
       ctx.turnProductSkus.add(sku);
       ctx.allowedClaimClasses.add('catalog_fact');
       ctx.allowedClaimClasses.add('stock');
 
+      if (cached && isProductDiscontinued(cached)) {
+        return {
+          sku,
+          branch,
+          inStock: false,
+          isDiscontinued: true,
+          stockLevel: 'Discontinued (no longer stocked)',
+          message: `SKU ${sku} is discontinued and no longer stocked. Do not claim this item is in stock.`,
+        };
+      }
+
+      const inStock = cached ? Boolean(cached.inStock) : false;
       return {
         sku,
         branch,
-        inStock: cached ? Boolean(cached.inStock) : true,
-        stockLevel: cached?.stockLevel || (cached?.inStock ? 'Available (in stock)' : 'Special order / check branch'),
+        inStock,
+        stockLevel: cached?.stockLevel || (inStock ? 'Available (in stock)' : 'Out of stock / special order'),
+        message: inStock
+          ? `SKU ${sku} is verified IN STOCK at ${branch}.`
+          : `SKU ${sku} is currently OUT OF STOCK at ${branch}. Do not claim this item is in stock.`,
       };
     }
 
@@ -1494,12 +1547,19 @@ export async function executeAgentTool(
         }
       }
 
-      // 3. SKU Provenance Verification: Every product SKU must have been returned by a tool result this turn
+      // 3. SKU Provenance & Lifecycle Verification: Every product SKU must have been returned by a tool result and not discontinued
       for (const sku of referencedSkus) {
         if (!ctx.turnProductSkus.has(sku)) {
           return {
             ok: false,
             error: `Rejected card: SKU "${sku}" was not returned by a product search or lookup tool in this turn for tenant "${ctx.tenantId}". You must search or look up products first before presenting them.`,
+          };
+        }
+        const cached = ctx.catalogProductCache.get(sku);
+        if (cached && isProductDiscontinued(cached)) {
+          return {
+            ok: false,
+            error: `Rejected card: SKU "${sku}" is discontinued and cannot be presented to the customer.`,
           };
         }
       }
@@ -1626,6 +1686,12 @@ export async function executeAgentTool(
           return {
             ok: false,
             error: `Cannot create quote: SKU "${item.sku}" could not be verified in the catalogue.`,
+          };
+        }
+        if (prod && isProductDiscontinued(prod)) {
+          return {
+            ok: false,
+            error: `Cannot create quote: SKU "${item.sku}" is discontinued and cannot be added to a quote.`,
           };
         }
       }
@@ -2104,6 +2170,12 @@ export async function executeAgentTool(
           return {
             ok: false,
             error: `Cannot update cart: SKU "${item.sku}" could not be verified in the catalogue.`,
+          };
+        }
+        if (prod && isProductDiscontinued(prod)) {
+          return {
+            ok: false,
+            error: `Cannot update cart: SKU "${item.sku}" is discontinued and cannot be added to a cart.`,
           };
         }
       }
