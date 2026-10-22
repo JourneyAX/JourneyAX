@@ -158,7 +158,8 @@ export function extractRelevantOkfNotes(
   }
 
   // 4. Flow fields ONLY as hints ("good questions to ask", never forced)
-  const factMap = new Map((okfContent.facts || []).map((f) => [f.factKey, f]));
+  const factRegistry = (okfContent.factRegistry || (okfContent as any).facts || []) as Array<{ factKey: string; question?: string }>;
+  const factMap = new Map(factRegistry.map((f) => [f.factKey, f]));
   for (const c of activeConcepts) {
     const hintQuestions: string[] = [];
     if (Array.isArray(c.discriminators)) {

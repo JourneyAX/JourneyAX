@@ -274,6 +274,14 @@ export class RuntimeService {
     return this.appService.workspaceRepo.load(tenantId, environmentId, workspaceId);
   }
 
+  async getTranscript(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    workspaceId: string
+  ): Promise<any> {
+    return this.appService.transcriptStore.getTranscript(tenantId, workspaceId, environmentId);
+  }
+
   /**
    * Enforces the durable release activation record before any Business Pack is loaded or executed.
    *

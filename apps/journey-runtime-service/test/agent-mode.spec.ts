@@ -27,6 +27,7 @@ import {
   extractSearchSpecs,
 } from '../src/capabilities/handlers/catalog-search.handler';
 import { TurnApplicationService } from '../src/kernel/turn-application.service';
+import { TurnTranscriptStore, redactPii } from '../src/kernel/transcript.store';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
 import { AgentRouter } from '../src/kernel/agent.router';
@@ -2775,6 +2776,187 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
 
       assert.equal(scopedRes.count, 1);
       assert.equal(scopedRes.products[0].sku, 'SKU-DECK-1');
+    });
+  });
+
+  describe('Task A7: Durable Turn Transcript Store with Redaction and Tenant Isolation', () => {
+    test('redactPii sanitizes email, phone, credit card, and secret tokens', () => {
+      const input =
+        'Contact me at builder.bob@example.co.nz or +64 21 555 1234. Card: 4111 2222 3333 4444. Token: Bearer secret_token_abc123456789xyz';
+      const output = redactPii(input);
+
+      assert.ok(!output.includes('builder.bob@example.co.nz'));
+      assert.ok(output.includes('[REDACTED_EMAIL]'));
+      assert.ok(!output.includes('555 1234'));
+      assert.ok(output.includes('[REDACTED_PHONE]'));
+      assert.ok(!output.includes('4111 2222 3333 4444'));
+      assert.ok(output.includes('[REDACTED_CARD]'));
+      assert.ok(!output.includes('secret_token_abc123456789xyz'));
+      assert.ok(output.includes('[REDACTED_SECRET]'));
+    });
+
+    test('TurnTranscriptStore saves turn with PII redaction and pack-controlled retention', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+
+      const turn = await store.saveTurn(
+        {
+          tenantId: 'tenant-a',
+          environmentId: 'test',
+          workspaceId: 'ws-100',
+          turnId: 'turn-1',
+          sessionId: 'sess-100',
+          customerMessage: 'Call me at 021-555-9876 with price for 100x50 timber',
+          assistantReply: '100x50 timber is in stock. Sent email to quote@customer.co.nz',
+          timestamps: {
+            receivedAt: '2026-10-22T08:00:00.000Z',
+            completedAt: '2026-10-22T08:00:01.000Z',
+          },
+        },
+        30 // 30 days retention from pack
+      );
+
+      assert.equal(turn.turnId, 'turn-1');
+      assert.ok(!turn.customerMessage.includes('021-555-9876'));
+      assert.ok(turn.customerMessage.includes('[REDACTED_PHONE]'));
+      assert.ok(!turn.assistantReply.includes('quote@customer.co.nz'));
+      assert.ok(turn.assistantReply.includes('[REDACTED_EMAIL]'));
+
+      assert.ok(turn.retentionExpiresAt);
+      const diffDays = Math.round(
+        (turn.retentionExpiresAt.getTime() - Date.now()) / (24 * 3600 * 1000)
+      );
+      assert.ok(diffDays >= 29 && diffDays <= 31, `Expected ~30 days, got ${diffDays}`);
+    });
+
+    test('tenant isolation: queries for tenant-a never return tenant-b transcripts', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+
+      // Save turn for tenant-a
+      await store.saveTurn({
+        tenantId: 'tenant-a',
+        environmentId: 'test',
+        workspaceId: 'shared-workspace-id',
+        turnId: 'turn-1',
+        sessionId: 'shared-session-id',
+        customerMessage: 'Secret requirement for tenant A',
+        assistantReply: 'Confirmed for tenant A',
+        timestamps: {
+          receivedAt: '2026-10-22T08:00:00.000Z',
+          completedAt: '2026-10-22T08:00:01.000Z',
+        },
+      });
+
+      // Save turn for tenant-b with SAME workspace and session ID
+      await store.saveTurn({
+        tenantId: 'tenant-b',
+        environmentId: 'test',
+        workspaceId: 'shared-workspace-id',
+        turnId: 'turn-1',
+        sessionId: 'shared-session-id',
+        customerMessage: 'Secret requirement for tenant B',
+        assistantReply: 'Confirmed for tenant B',
+        timestamps: {
+          receivedAt: '2026-10-22T08:00:00.000Z',
+          completedAt: '2026-10-22T08:00:01.000Z',
+        },
+      });
+
+      // Query recent turns for tenant-a
+      const turnsA = await store.getRecentTurns('tenant-a', 'test', 'shared-workspace-id');
+      assert.equal(turnsA.length, 1);
+      assert.equal(turnsA[0].tenantId, 'tenant-a');
+      assert.equal(turnsA[0].customerMessage, 'Secret requirement for tenant A');
+
+      // Query recent turns for tenant-b
+      const turnsB = await store.getRecentTurns('tenant-b', 'test', 'shared-workspace-id');
+      assert.equal(turnsB.length, 1);
+      assert.equal(turnsB[0].tenantId, 'tenant-b');
+      assert.equal(turnsB[0].customerMessage, 'Secret requirement for tenant B');
+
+      // Query transcript for back office
+      const transcriptA = await store.getTranscript('tenant-a', 'shared-workspace-id');
+      assert.equal(transcriptA.found, true);
+      assert.equal(transcriptA.messages.length, 2);
+      assert.equal(transcriptA.messages[0].content, 'Secret requirement for tenant A');
+
+      const transcriptB = await store.getTranscript('tenant-b', 'shared-workspace-id');
+      assert.equal(transcriptB.found, true);
+      assert.equal(transcriptB.messages.length, 2);
+      assert.equal(transcriptB.messages[0].content, 'Secret requirement for tenant B');
+    });
+
+    test('AgentTurnLoop reads last N turns from durable transcript store into messages', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+
+      // Pre-populate 2 turns in durable store
+      await store.saveTurn({
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-history-test',
+        turnId: 'turn-1',
+        sessionId: 'sess-history',
+        customerMessage: 'I need 90x45 timber for wall framing',
+        assistantReply: 'Found 90x45 H1.2 framing timber. How many meters do you need?',
+        timestamps: {
+          receivedAt: '2026-10-22T08:10:00.000Z',
+          completedAt: '2026-10-22T08:10:02.000Z',
+        },
+      });
+
+      const loop = new AgentTurnLoop();
+      let capturedSystemPrompt = '';
+      let capturedMessages: any[] = [];
+
+      const mockModelGateway = new ModelGateway();
+      mockModelGateway.mockAgentExecutor = async (req: any) => {
+        capturedSystemPrompt = req.systemPrompt;
+        capturedMessages = req.messages;
+        return {
+          content: 'We have 4.8m lengths available.',
+          toolCalls: [],
+        };
+      };
+
+      const command: TurnCommand = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-history-test',
+        sessionId: 'sess-history',
+        correlationId: 'corr-history',
+        turnId: 'turn-2',
+        message: '48 meters please',
+      };
+
+      const workspace: WorkspaceState = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-history-test',
+        currentJourneyId: 'product-journey',
+        currentStage: 'products',
+        facts: {},
+        updatedAt: new Date().toISOString(),
+      };
+
+      const pack = createTestPack();
+      pack.extensions = { agentMode: true };
+
+      await loop.execute({
+        command,
+        release: pack,
+        workspace,
+        modelGateway: mockModelGateway,
+        catalogSearchHandler: new CatalogSearchHandler([]),
+        transcriptStore: store,
+        sink: () => {},
+      });
+
+      // Verify that capturedMessages contains conversation history loaded from durable transcript store
+      const historyMsg = capturedMessages.find(
+        (m) => m.role === 'user' && m.content.includes('[Previous Conversation History]')
+      );
+      assert.ok(historyMsg, 'Should inject [Previous Conversation History] from durable store');
+      assert.ok(historyMsg.content.includes('90x45 timber for wall framing'));
+      assert.ok(historyMsg.content.includes('Found 90x45 H1.2 framing timber'));
     });
   });
 });

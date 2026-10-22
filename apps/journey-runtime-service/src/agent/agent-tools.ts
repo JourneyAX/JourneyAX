@@ -632,7 +632,8 @@ export async function executeAgentTool(
       }
 
       // 6. Hints: flow fields (questions) only as hints, never forced questions or response modes
-      const factMap = new Map((ctx.okfContent.facts || []).map((f) => [f.factKey, f]));
+      const factRegistry = (ctx.okfContent.factRegistry || (ctx.okfContent as any).facts || []) as Array<{ factKey: string; question?: string }>;
+      const factMap = new Map(factRegistry.map((f) => [f.factKey, f]));
       const hints: string[] = [];
       for (const c of activeConcepts) {
         if (Array.isArray(c.discriminators)) {

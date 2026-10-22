@@ -202,6 +202,17 @@ export class RuntimeController {
     return workspace;
   }
 
+  @Get('transcripts/:workspaceId')
+  async getTranscript(
+    @Param('tenantId') tenantId: string,
+    @Param('environmentId') environmentId: string | undefined,
+    @Param('workspaceId') workspaceId: string,
+    @Req() req: any
+  ) {
+    const env = (environmentId || req.authContext?.environmentId || 'production') as any;
+    return this.runtimeService.getTranscript(req.authContext.tenantId, env, workspaceId);
+  }
+
   @Post('workspaces/:workspaceId/facts')
   @InternalOnly()
   async appendFact(

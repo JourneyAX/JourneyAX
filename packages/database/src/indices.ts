@@ -30,6 +30,7 @@ import {
   COLLECTION_OKF_ARTIFACT_POLICIES,
   COLLECTION_OKF_VERIFICATION_ATTESTATIONS,
   COLLECTION_OKF_VERIFIER_ROLES,
+  COLLECTION_TURN_TRANSCRIPTS,
 } from './types';
 
 async function safeCreateIndex(
@@ -188,4 +189,11 @@ export async function ensureDatabaseIndices(db: Db): Promise<void> {
   await safeCreateIndex(okfRevocations, { tenantId: 1, environmentId: 1, revocationId: 1, eventType: 1 }, { unique: true });
   await safeCreateIndex(db.collection(COLLECTION_OKF_REVOCATION_ARCHIVE), { tenantId: 1, environmentId: 1, revocationId: 1 });
   await safeCreateIndex(okfRevocations, { tenantId: 1, environmentId: 1, releaseId: 1, expiresAt: 1 });
+
+  // 20. Durable Turn Transcripts: per tenant, environment, workspace and turn, with retention TTL
+  const turnTranscripts = db.collection(COLLECTION_TURN_TRANSCRIPTS);
+  await safeCreateIndex(turnTranscripts, { tenantId: 1, environmentId: 1, workspaceId: 1, turnId: 1 }, { unique: true });
+  await safeCreateIndex(turnTranscripts, { tenantId: 1, environmentId: 1, workspaceId: 1, 'timestamps.receivedAt': -1 });
+  await safeCreateIndex(turnTranscripts, { tenantId: 1, sessionId: 1, 'timestamps.receivedAt': -1 });
+  await safeCreateIndex(turnTranscripts, { retentionExpiresAt: 1 }, { expireAfterSeconds: 0 });
 }

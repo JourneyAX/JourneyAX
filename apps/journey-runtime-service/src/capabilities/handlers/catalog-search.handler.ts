@@ -614,13 +614,9 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const isAgent = Boolean(
       input.isAgentMode ||
       (ctx as any).isAgentMode ||
-      ((ctx as any).release && (
-        (ctx as any).release.extensions?.agentMode === true ||
-        (ctx as any).release.extensions?.agentMode?.enabled === true ||
-        (ctx as any).release.extensions?.dialoguePolicy?.agentMode === true ||
-        (Array.isArray((ctx as any).release.agents) && (ctx as any).release.agents.length > 0 &&
-          (ctx as any).release.agentRouting?.enabled !== false && (ctx as any).release.extensions?.agentMode !== false)
-      ))
+      (ctx as any).release?.extensions?.agentMode === true ||
+      (ctx as any).release?.extensions?.agentMode?.enabled === true ||
+      (ctx as any).release?.extensions?.dialoguePolicy?.agentMode === true
     );
 
     const rawStopWords =

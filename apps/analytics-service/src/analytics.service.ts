@@ -22,6 +22,7 @@ import {
   COLLECTION_ANALYTICS_AUDIT_LOGS,
   COLLECTION_TOOL_APPROVALS,
   COLLECTION_NOTIFICATION_DELIVERIES,
+  COLLECTION_TURN_TRANSCRIPTS,
   AnalyticsEventRecord,
   CustomReportDefinition,
   AnalyticsAlertDefinition,
@@ -1390,6 +1391,38 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
   async getTranscript(projectId: string, sessionId: string): Promise<Record<string, unknown>> {
     const db = await this.getDb();
     if (!db) return { sessionId, messages: [], found: false };
+
+    // Check durable turn transcripts first (Task A7 for runtime tenants)
+    try {
+      const turnDocs = await db
+        .collection(COLLECTION_TURN_TRANSCRIPTS)
+        .find({
+          tenantId: projectId,
+          $or: [{ sessionId }, { workspaceId: sessionId }],
+        })
+        .sort({ 'timestamps.receivedAt': 1 })
+        .toArray();
+
+      if (turnDocs && turnDocs.length > 0) {
+        const messages = turnDocs.flatMap((t: any) => [
+          { role: 'user', content: t.customerMessage, timestamp: t.timestamps?.receivedAt },
+          { role: 'assistant', content: t.assistantReply, timestamp: t.timestamps?.completedAt },
+        ]);
+        const lastTurn = turnDocs[turnDocs.length - 1];
+        return {
+          tenantId: projectId,
+          sessionId,
+          messages: this.sanitizePII(messages),
+          turnCount: turnDocs.length,
+          createdAt: turnDocs[0].createdAt || turnDocs[0].timestamps?.receivedAt,
+          updatedAt: lastTurn.timestamps?.completedAt || lastTurn.createdAt,
+          found: true,
+        };
+      }
+    } catch {
+      // Fall through to legacy sessions collection
+    }
+
     const doc = await db.collection('sessions').findOne(
       { sessionId, tenantId: projectId },
       {

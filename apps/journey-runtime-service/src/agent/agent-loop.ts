@@ -34,6 +34,7 @@ import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plan
 import type { CapabilityGateway } from '../kernel/capability.gateway';
 import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
+import type { TurnTranscriptStore } from '../kernel/transcript.store';
 
 export interface AgentTurnOptions {
   command: TurnCommand;
@@ -47,6 +48,7 @@ export interface AgentTurnOptions {
   capabilityGateway?: CapabilityGateway;
   approvalService?: ApprovalService;
   executionRepo?: ExecutionRepository;
+  transcriptStore?: TurnTranscriptStore;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   sink: (event: string, data: any) => void;
@@ -286,6 +288,7 @@ export class AgentTurnLoop {
       capabilityGateway,
       approvalService,
       executionRepo,
+      transcriptStore,
       inMemoryQuotes,
       inMemoryCarts,
       sink = () => {},
@@ -376,10 +379,37 @@ export class AgentTurnLoop {
     // 4. Build Messages (Conversation History + New Customer Message)
     const messages: AgentMessage[] = [];
 
-    // History from Phase 1
-    const pastTurns = readHistory(workspace?.facts);
-    if (pastTurns.length > 0) {
-      const historyText = formatHistoryBlock(pastTurns);
+    // History from Durable Transcript Store (Task A7) with fallback to Phase 1 workspace facts
+    let historyText = '';
+    if (transcriptStore) {
+      try {
+        const recentTurns = await transcriptStore.getRecentTurns(
+          command.tenantId,
+          command.environmentId || 'production',
+          command.workspaceId,
+          5
+        );
+        if (recentTurns.length > 0) {
+          historyText = recentTurns
+            .map(
+              (t, idx) =>
+                `Turn ${idx + 1}:\nCustomer: ${sanitizeHistoryText(t.customerMessage)}\nAssistant: ${sanitizeHistoryText(t.assistantReply)}`
+            )
+            .join('\n\n');
+        }
+      } catch {
+        // Fallback to workspace facts on error
+      }
+    }
+
+    if (!historyText) {
+      const pastTurns = readHistory(workspace?.facts);
+      if (pastTurns.length > 0) {
+        historyText = formatHistoryBlock(pastTurns);
+      }
+    }
+
+    if (historyText) {
       messages.push({
         role: 'user',
         content: `[Previous Conversation History]\n${historyText}`,

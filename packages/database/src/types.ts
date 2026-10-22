@@ -36,6 +36,26 @@ export const COLLECTION_OKF_REVOCATION_ARCHIVE = 'okf_revocation_events_archive'
 export const COLLECTION_OKF_ARTIFACT_POLICIES = 'okf_artifact_policies';
 export const COLLECTION_OKF_VERIFICATION_ATTESTATIONS = 'okf_verification_attestations';
 export const COLLECTION_OKF_VERIFIER_ROLES = 'okf_verifier_roles';
+export const COLLECTION_TURN_TRANSCRIPTS = 'turn_transcripts';
+
+export interface TurnTranscriptRecord {
+  _id?: any;
+  tenantId: string;
+  environmentId: string;
+  workspaceId: string;
+  turnId: string;
+  sessionId?: string;
+  customerMessage: string;
+  assistantReply: string;
+  agentId?: string;
+  timestamps: {
+    receivedAt: string;
+    completedAt: string;
+  };
+  retentionExpiresAt?: Date;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
 
 export interface BusinessPackReleaseRecord {
   _id?: any;

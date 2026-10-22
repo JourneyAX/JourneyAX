@@ -46,6 +46,7 @@ import {
 import { formatBusinessProfile, extractRelevantOkfNotes } from './business-knowledge';
 import type { OkfGateDecision } from '@journeyax/knowledge';
 import { AgentTurnLoop, isAgentModeEnabled } from '../agent/agent-loop';
+import { TurnTranscriptStore } from './transcript.store';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
@@ -129,7 +130,8 @@ export class TurnApplicationService {
     private readonly interpreter: TurnInterpreter = new TurnInterpreter(modelGateway),
     private readonly factReducer: FactReducer = new FactReducer(),
     public readonly outcomeValidator: OutcomeValidator = new OutcomeValidator(),
-    public readonly knowledgeControlPlane: KnowledgeControlPlanePort = new OkfKnowledgeControlPlane()
+    public readonly knowledgeControlPlane: KnowledgeControlPlanePort = new OkfKnowledgeControlPlane(),
+    public readonly transcriptStore: TurnTranscriptStore = new TurnTranscriptStore()
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
@@ -308,6 +310,7 @@ export class TurnApplicationService {
               capabilityGateway: this.capabilityGateway,
               approvalService: this.approvalService,
               executionRepo: this.executionRepo,
+              transcriptStore: this.transcriptStore,
               sink: agentTimingSink,
               timeoutMs: turnDeadlineMs,
               signal: abortController.signal,
@@ -324,7 +327,20 @@ export class TurnApplicationService {
             tenantId,
             workspaceId,
             outcome.turnResult.decision.type,
-            command.correlationId
+            command.correlationId,
+            {
+              customerMessage: command.message || (command as any).userInput || (command as any).text || '',
+              assistantReply:
+                (typeof outcome.turnResult.assistantMessage === 'string'
+                  ? outcome.turnResult.assistantMessage
+                  : (outcome.turnResult.assistantMessage as any)?.content) ||
+                (outcome.turnResult as any).message ||
+                '',
+              turnStartTime,
+              sessionId: command.sessionId,
+              agentId: (outcome.turnResult as any).metadata?.agentId || (outcome as any).agent?.agentId,
+              release,
+            }
           );
           this.streamCommittedFinalEvents(
             command,
@@ -1781,9 +1797,45 @@ export class TurnApplicationService {
     tenantId: string,
     workspaceId: string,
     decisionType: string,
-    correlationId: string | undefined
+    correlationId: string | undefined,
+    transcriptMeta?: {
+      customerMessage?: string;
+      assistantReply?: string;
+      turnStartTime?: number;
+      sessionId?: string;
+      agentId?: string;
+      release?: BusinessPackRelease;
+    }
   ): Promise<void> {
     workspace.lastProcessedTurnId = turnId;
+
+    const saveDurableTranscript = async (s?: any) => {
+      if (turnId && transcriptMeta && (transcriptMeta.customerMessage || transcriptMeta.assistantReply)) {
+        const retentionDays =
+          (transcriptMeta.release?.conversationPolicy as any)?.retentionDays ||
+          (transcriptMeta.release as any)?.retentionDays;
+        await this.transcriptStore.saveTurn(
+          {
+            tenantId,
+            environmentId: envId,
+            workspaceId,
+            turnId,
+            sessionId: transcriptMeta.sessionId,
+            customerMessage: transcriptMeta.customerMessage || '',
+            assistantReply: transcriptMeta.assistantReply || '',
+            agentId: transcriptMeta.agentId,
+            timestamps: {
+              receivedAt: transcriptMeta.turnStartTime
+                ? new Date(transcriptMeta.turnStartTime).toISOString()
+                : new Date().toISOString(),
+              completedAt: new Date().toISOString(),
+            },
+          },
+          retentionDays,
+          s
+        );
+      }
+    };
 
     const isProdOrStaging =
       envId === 'production' ||
@@ -1817,6 +1869,7 @@ export class TurnApplicationService {
           );
         }
         await this.workspaceRepo.save(workspace);
+        await saveDurableTranscript();
         await this.outboxRepo.enqueueEvent(
           tenantId,
           envId,
@@ -1836,6 +1889,7 @@ export class TurnApplicationService {
       try {
         await session.withTransaction(async () => {
           await this.workspaceRepo.save(workspace, session);
+          await saveDurableTranscript(session);
           await this.outboxRepo.enqueueEvent(
             tenantId,
             envId,
@@ -1857,6 +1911,7 @@ export class TurnApplicationService {
 
     // In-memory or mock repo in dev/test (no URI configured)
     await this.workspaceRepo.save(workspace);
+    await saveDurableTranscript();
     await this.outboxRepo.enqueueEvent(
       tenantId,
       envId,
