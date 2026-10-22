@@ -426,6 +426,12 @@ export function runGuardSelfTest(): { ok: boolean; failedCases: string[] } {
       `const type = 'decking boards';`,
       `const product = 'plasterboard lining';`,
       `const fixture = 'bathroom tapware';`,
+      `const item = 'oversized hoodie';`,
+      `const shirt = 'graphic tee';`,
+      `const fabric = 'fleece jacket';`,
+      `const hardware = 'deck fasteners';`,
+      `const lumber = 'treated timber';`,
+      `const fixing = 'metal screw';`,
     ];
     for (const snippet of positiveIndustrySnippets) {
       const matched = industryRule.regex.test(snippet) && (!industryRule.ignoreIf || !industryRule.ignoreIf(snippet));

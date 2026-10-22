@@ -40,7 +40,7 @@ export function resolveTurnKind(input: ResolveTurnKindInput): TurnKind {
     conversationPlan?.action === 'recommend' ||
     conversationPlan?.action === 'show' ||
     Boolean(conversationPlan?.products && conversationPlan.products.length > 0) ||
-    /\b(recommend|recommendation|suggest|which\s+(?:one|product|option)|what\s+(?:screws|timber|nails|paint|tool|board|product)\s+(?:for|to|should)|best\s+for|options\s+for)\b/i.test(question);
+    /\b(recommend|recommendation|suggest|which\s+(?:one|product|option)|what\s+(?:item|items|product|products|option|options|one)\s+(?:for|to|should)|best\s+for|options\s+for)\b/i.test(question);
   if (isRecommend) {
     return 'recommend';
   }

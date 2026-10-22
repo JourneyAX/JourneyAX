@@ -217,7 +217,7 @@ export function deriveJourneyChecklist(ctx: AgentToolContext): DerivedJourneyChe
     if (
       c.includes('ran get_related_products') ||
       (c.includes('ran consult_business_knowledge') && (c.includes('accessor') || c.includes('relat') || c.includes('compatib') || c.includes('pair'))) ||
-      (c.includes('ran search_products') && (c.includes('accessor') || c.includes('hardware') || c.includes('relat') || c.includes('fixings') || c.includes('fasteners') || c.includes('trim') || c.includes('matching') || c.includes('screws') || c.includes('belt')))
+      (c.includes('ran search_products') && (c.includes('accessor') || c.includes('hardware') || c.includes('relat') || c.includes('trim') || c.includes('matching') || c.includes('addon') || c.includes('extra') || c.includes('pair') || c.includes('compatib')))
     ) {
       accessoriesChecked = true;
       break;
