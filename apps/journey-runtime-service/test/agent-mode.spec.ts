@@ -2585,6 +2585,198 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(durationMs < 200, `Catalog search took ${durationMs.toFixed(2)}ms; must be < 200ms`);
     });
   });
+
+  describe('Task A6: OKF as Knowledge Only in Agent Mode', () => {
+    test('consult_business_knowledge returns knowledge fields and flow fields strictly as hints', async () => {
+      const mockOkf: any = {
+        manifest: { releaseId: 'rel-okf-a6', tenantId: 'test-tenant' },
+        concepts: [
+          {
+            conceptId: 'concept://test/decking',
+            name: 'Decking Timber',
+            description: 'Hardwood and softwood decking timber for outdoor platforms.',
+            synonyms: ['decking boards', 'deck wood'],
+            customerPhrases: ['building a deck', 'decking timber'],
+            riskClass: 'standard',
+            searchScope: {
+              catalogCategoryIds: ['building-supplies.decking'],
+              catalogCategoryPaths: [['Building Supplies', 'Timber', 'Decking']],
+            },
+            discriminators: [{ factKey: 'deck_finish' }],
+            requiredFacts: [{ factKey: 'deck_exposure' }],
+            installNotes: 'Fix decking with 10 gauge stainless screws at 450mm joist centres.',
+            careNotes: 'Clean annually and apply protective decking oil.',
+            sourceRefs: ['src-deck-guide-1'],
+          },
+          {
+            conceptId: 'concept://test/decking-screws',
+            name: 'Decking Screws',
+            description: 'Stainless steel fasteners for exterior timber decks.',
+            synonyms: ['deck screws'],
+            searchScope: {
+              catalogCategoryIds: ['fasteners.screws.decking'],
+              catalogCategoryPaths: [['Fasteners', 'Screws', 'Decking Screws']],
+            },
+          },
+        ],
+        relationships: [
+          {
+            relationshipId: 'rel-deck-screws',
+            from: 'concept://test/decking',
+            to: 'concept://test/decking-screws',
+            type: 'requires',
+            customerLabel: 'requires Decking Screws',
+            claimClasses: [],
+          },
+          {
+            relationshipId: 'rel-deck-care',
+            from: 'concept://test/decking',
+            to: 'concept://test/decking',
+            type: 'care_for',
+            customerLabel: 'maintain with decking oil',
+            claimClasses: [],
+          },
+        ],
+        facts: [
+          {
+            factKey: 'deck_finish',
+            question: 'What finish are you looking for: smooth or grooved?',
+          },
+          {
+            factKey: 'deck_exposure',
+            question: 'Will the deck be fully exposed to weather or covered?',
+          },
+        ],
+        sources: [
+          {
+            sourceId: 'src-deck-guide-1',
+            title: 'Timber Decking Installation Guide 2026',
+            kind: 'installation_guide',
+            officialUri: 'https://docs.placemakers.co.nz/decking-guide.pdf',
+          },
+        ],
+        verifications: [
+          {
+            recordId: 'v-decking',
+            targetType: 'concept',
+            targetId: 'concept://test/decking',
+            status: 'verified',
+            verifiedAt: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const toolContext: any = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        correlationId: 'corr-a6-test',
+        release: createTestPack(),
+        okfContent: mockOkf,
+        catalogSearchHandler: new CatalogSearchHandler([]),
+        turnProductSkus: new Set<string>(),
+        catalogProductCache: new Map<string, any>(),
+        readSourceIds: new Set<string>(),
+        allowedClaimClasses: new Set<string>(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+      };
+
+      const result = await executeAgentTool(
+        'consult_business_knowledge',
+        { topic: 'decking boards' },
+        toolContext
+      );
+
+      assert.equal(result.found, true);
+      assert.equal(result.topic, 'decking boards');
+
+      // 1. Knowledge fields
+      assert.ok(result.descriptions.length >= 1);
+      assert.equal(result.descriptions[0].concept, 'Decking Timber');
+      assert.match(result.descriptions[0].description, /decking timber for outdoor platforms/);
+
+      assert.ok(result.synonyms.length >= 1);
+      assert.deepEqual(result.synonyms[0].synonyms, ['decking boards', 'deck wood']);
+
+      assert.ok(result.relationships.length >= 1);
+      const requiresRel = result.relationships.find((r: any) => r.type === 'requires');
+      assert.ok(requiresRel);
+      assert.equal(requiresRel.to, 'Decking Screws');
+
+      assert.ok(result.installAndCareNotes.length >= 1);
+      const installNote = result.installAndCareNotes.find((n: any) => n.type === 'install');
+      assert.ok(installNote);
+      assert.match(installNote.notes, /450mm joist centres/);
+
+      // 2. Evidence and sources
+      assert.ok(result.evidence.length >= 1);
+      assert.equal(result.evidence[0].sourceId, 'src-deck-guide-1');
+      assert.ok(result.sourceIds.includes('src-deck-guide-1'));
+
+      // 3. Flow fields strictly as hints (questions to ask), never forced
+      assert.ok(Array.isArray(result.hints));
+      assert.ok(result.hints.includes('What finish are you looking for: smooth or grooved?'));
+      assert.ok(result.hints.includes('Will the deck be fully exposed to weather or covered?'));
+      // No response modes or forced questions
+      assert.equal((result as any).mode, undefined);
+      assert.equal((result as any).forcedQuestion, undefined);
+
+      // 4. Shelf tree search scopes
+      assert.ok(result.searchScopes);
+      assert.ok(result.searchScopes.categoryIds.includes('building-supplies.decking'));
+      assert.ok(
+        result.searchScopes.categoryPaths.some((p: string[]) =>
+          p.join(' > ').includes('Decking')
+        )
+      );
+    });
+
+    test('search_products filters by categoryIds and categoryPaths from searchScopes', async () => {
+      const products = [
+        {
+          tenantId: 'test-tenant',
+          sku: 'SKU-DECK-1',
+          title: 'Premium Timber Decking Board 140x32',
+          category: 'building-supplies.decking',
+          inStock: true,
+        },
+        {
+          tenantId: 'test-tenant',
+          sku: 'SKU-FENCE-1',
+          title: 'Pine Timber Fence Paling 150x19',
+          category: 'building-supplies.fencing',
+          inStock: true,
+        },
+      ];
+
+      const catalogHandler = new CatalogSearchHandler(products);
+      const toolContext: any = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        correlationId: 'corr-a6-search',
+        release: createTestPack(),
+        catalogSearchHandler: catalogHandler,
+        turnProductSkus: new Set<string>(),
+        catalogProductCache: new Map<string, any>(),
+        readSourceIds: new Set<string>(),
+        allowedClaimClasses: new Set<string>(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+      };
+
+      const scopedRes = await executeAgentTool(
+        'search_products',
+        {
+          keywords: ['timber'],
+          categoryIds: ['building-supplies.decking'],
+        },
+        toolContext
+      );
+
+      assert.equal(scopedRes.count, 1);
+      assert.equal(scopedRes.products[0].sku, 'SKU-DECK-1');
+    });
+  });
 });
 
 

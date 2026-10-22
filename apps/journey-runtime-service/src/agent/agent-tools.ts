@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease } from '@journeyax/business-pack';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
-import { effectiveVerification, scopedClaims, verifiedEvidenceRefs } from '@journeyax/knowledge';
+import { effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
-import { extractRelevantOkfNotes, findRelevantOkfConcepts } from '../kernel/business-knowledge';
+import { extractRelevantOkfNotes, findRelevantOkfConcepts, OKF_ALLOWED_RELATIONSHIP_TYPES } from '../kernel/business-knowledge';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
@@ -170,6 +170,16 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         category: {
           type: 'string',
           description: 'Optional category name filter.',
+        },
+        categoryIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional category IDs for scoping search to specific shelf tree categories.',
+        },
+        categoryPaths: {
+          type: 'array',
+          items: { type: 'array', items: { type: 'string' } },
+          description: 'Optional category hierarchy paths for scoping search.',
         },
         minPrice: {
           type: 'number',
@@ -550,10 +560,130 @@ export async function executeAgentTool(
         }
       }
 
+      const concepts = ctx.okfContent.concepts || [];
+      const relationships = ctx.okfContent.relationships || [];
+      const conceptMap = new Map<string, OkfConcept>(concepts.map((c) => [c.conceptId, c]));
+      const activeIds = new Set<string>(activeConcepts.map((c) => c.conceptId));
+
+      const relevantRels = relationships.filter(
+        (r) => (activeIds.has(r.from) || activeIds.has(r.to)) && OKF_ALLOWED_RELATIONSHIP_TYPES.has(r.type)
+      );
+
+      // 1. Descriptions
+      const descriptions = activeConcepts
+        .filter((c) => c.description)
+        .map((c) => ({ concept: c.name, description: c.description! }));
+
+      // 2. Synonyms
+      const synonyms = activeConcepts
+        .filter((c) => Array.isArray(c.synonyms) && c.synonyms.length > 0)
+        .map((c) => ({ concept: c.name, synonyms: c.synonyms! }));
+
+      // 3. Relationships
+      const structuredRelationships = relevantRels.map((r) => {
+        const fromConcept = conceptMap.get(r.from);
+        const toConcept = conceptMap.get(r.to);
+        return {
+          relationshipId: r.relationshipId,
+          type: r.type,
+          from: fromConcept?.name || r.from,
+          to: toConcept?.name || r.to,
+          label: r.customerLabel || `${r.type} ${toConcept?.name || r.to}`,
+        };
+      });
+
+      // 4. Install and care notes
+      const installAndCareNotes: Array<{ concept: string; type: string; notes: string }> = [];
+      for (const c of activeConcepts) {
+        if ((c as any).installNotes) {
+          installAndCareNotes.push({ concept: c.name, type: 'install', notes: (c as any).installNotes });
+        }
+        if ((c as any).careNotes) {
+          installAndCareNotes.push({ concept: c.name, type: 'care', notes: (c as any).careNotes });
+        }
+      }
+      for (const r of relevantRels) {
+        if (['installed_with', 'care_for'].includes(r.type)) {
+          const fromConcept = conceptMap.get(r.from);
+          const toConcept = conceptMap.get(r.to);
+          installAndCareNotes.push({
+            concept: fromConcept?.name || r.from,
+            type: r.type,
+            notes: r.customerLabel || `${r.type} ${toConcept?.name || r.to}`,
+          });
+        }
+      }
+
+      // 5. Evidence
+      const evidence: Array<{ sourceId: string; title: string; kind?: string; uri?: string }> = [];
+      for (const c of activeConcepts) {
+        const refs = (c as any).evidenceRefs || (c as any).sourceRefs || [];
+        for (const refId of refs) {
+          const src = (ctx.okfContent.sources || []).find((s) => s.sourceId === refId);
+          if (src && !evidence.some((e) => e.sourceId === src.sourceId)) {
+            evidence.push({
+              sourceId: src.sourceId,
+              title: src.title,
+              kind: src.kind,
+              uri: (src as any).uri || (src as any).officialUri,
+            });
+          }
+        }
+      }
+
+      // 6. Hints: flow fields (questions) only as hints, never forced questions or response modes
+      const factMap = new Map((ctx.okfContent.facts || []).map((f) => [f.factKey, f]));
+      const hints: string[] = [];
+      for (const c of activeConcepts) {
+        if (Array.isArray(c.discriminators)) {
+          for (const d of c.discriminators) {
+            const f = factMap.get(d.factKey);
+            if (f?.question && !hints.includes(f.question)) {
+              hints.push(f.question);
+            }
+          }
+        }
+        if (Array.isArray(c.requiredFacts)) {
+          for (const rf of c.requiredFacts) {
+            const f = factMap.get(rf.factKey);
+            if (f?.question && !hints.includes(f.question)) {
+              hints.push(f.question);
+            }
+          }
+        }
+      }
+
+      // 7. Search scopes from the shelf tree (used only as a map for scoping a search)
+      const conceptScopes = activeConcepts
+        .filter((c) => c.searchScope)
+        .map((c) => ({
+          catalogCategoryIds: c.searchScope?.catalogCategoryIds || [],
+          catalogCategoryPaths: c.searchScope?.catalogCategoryPaths || [],
+        }));
+      const mergedScope = mergeSearchScopes(conceptScopes);
+      const searchScopes = {
+        categoryIds: mergedScope.categoryIds,
+        categoryPaths: mergedScope.categoryPaths,
+        byConcept: activeConcepts.map((c) => ({
+          conceptId: c.conceptId,
+          name: c.name,
+          categoryIds: c.searchScope?.catalogCategoryIds || [],
+          categoryPaths: c.searchScope?.catalogCategoryPaths || [],
+        })),
+      };
+
       return {
         found: true,
         topic,
         knowledge: notesBlock,
+        descriptions,
+        synonyms,
+        relationships: structuredRelationships,
+        installAndCareNotes,
+        evidence,
+        sourceIds: Array.from(ctx.readSourceIds),
+        hints,
+        searchScopes,
       };
     }
 
@@ -572,6 +702,12 @@ export async function executeAgentTool(
       const brand = args.brand ? String(args.brand).trim() : undefined;
       const filters = args.filters || {};
       const category = args.category ? String(args.category).trim() : (filters.category ? String(filters.category).trim() : undefined);
+      const categoryIds = Array.isArray(args.categoryIds)
+        ? args.categoryIds.map(String).filter(Boolean)
+        : (typeof args.categoryIds === 'string' && args.categoryIds.trim())
+          ? [args.categoryIds.trim()]
+          : undefined;
+      const categoryPaths = Array.isArray(args.categoryPaths) ? args.categoryPaths : undefined;
       const minPrice = args.minPrice ?? filters.minPrice;
       const maxPrice = args.maxPrice ?? filters.maxPrice;
       const inStockOnly = args.inStockOnly ?? filters.inStockOnly;
@@ -586,6 +722,8 @@ export async function executeAgentTool(
         brand,
         query: query || (keywords.length > 0 ? keywords.join(' ') : undefined),
         category,
+        categoryIds,
+        categoryPaths,
         minPriceCents: minPrice !== undefined ? Math.round(Number(minPrice) * 100) : undefined,
         maxPriceCents: maxPrice !== undefined ? Math.round(Number(maxPrice) * 100) : undefined,
         inStockOnly,

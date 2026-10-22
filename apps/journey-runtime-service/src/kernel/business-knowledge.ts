@@ -121,6 +121,9 @@ export function extractRelevantOkfNotes(
   // 1. Concept definitions and risk classes
   for (const c of activeConcepts) {
     addNote(`[concept: ${c.name}] (id: ${c.conceptId}, risk: ${c.riskClass || 'standard'}): ${c.description || ''}`);
+    if (Array.isArray(c.synonyms) && c.synonyms.length > 0) {
+      addNote(`[synonyms: ${c.name}]: ${c.synonyms.join(', ')}`);
+    }
   }
 
   // 2. Relationships (keep only requires, installed_with, cross_sell, compatible_with, incompatible_with, alternative_to, care_for, document_for, escalates_to; exclude child_of)
@@ -151,6 +154,31 @@ export function extractRelevantOkfNotes(
         const uri = (src as any).uri || (src as any).officialUri;
         addNote(`[source: ${src.sourceId}] (${src.kind}): ${src.title} ${uri ? `(${uri})` : ''}`);
       }
+    }
+  }
+
+  // 4. Flow fields ONLY as hints ("good questions to ask", never forced)
+  const factMap = new Map((okfContent.facts || []).map((f) => [f.factKey, f]));
+  for (const c of activeConcepts) {
+    const hintQuestions: string[] = [];
+    if (Array.isArray(c.discriminators)) {
+      for (const d of c.discriminators) {
+        const f = factMap.get(d.factKey);
+        if (f?.question && !hintQuestions.includes(f.question)) {
+          hintQuestions.push(f.question);
+        }
+      }
+    }
+    if (Array.isArray(c.requiredFacts)) {
+      for (const rf of c.requiredFacts) {
+        const f = factMap.get(rf.factKey);
+        if (f?.question && !hintQuestions.includes(f.question)) {
+          hintQuestions.push(f.question);
+        }
+      }
+    }
+    if (hintQuestions.length > 0) {
+      addNote(`[hint (good questions to ask for ${c.name})]: ${hintQuestions.join('; ')}`);
     }
   }
 
