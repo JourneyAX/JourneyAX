@@ -58,16 +58,20 @@ export class AgentRouter {
       selectedAgent = agents.find(Boolean);
     }
 
-    // 4. Default / primary agent match
+    // 4. Explicit default agent configuration (defaultAgentId or isDefault flag)
     if (!selectedAgent) {
-      selectedAgent = agents.find(
-        (a) => a.agentId.includes('primary') || a.agentId.includes('consultant') || a.agentId.includes('default')
-      );
+      const explicitDefaultId = (release as any).defaultAgentId || release.routingPolicy?.defaultAgentId;
+      if (explicitDefaultId) {
+        selectedAgent = agents.find((a) => a.agentId === explicitDefaultId);
+      }
+      if (!selectedAgent) {
+        selectedAgent = agents.find((a) => a.isDefault === true);
+      }
     }
 
     if (!selectedAgent) {
       throw new Error(
-        `[AgentRouter] Could not resolve specialist agent for stage '${workspace?.currentStage}' in journey '${workspace?.journeyId}'. Pack declares ${agents.length} agents without an explicit match or targetRole - failing closed.`
+        `[AgentRouter] Could not resolve specialist agent for stage '${workspace?.currentStage}' in journey '${workspace?.journeyId}'. Pack declares ${agents.length} agents without an explicit match, targetRole, defaultAgentId, or isDefault flag - failing closed.`
       );
     }
 

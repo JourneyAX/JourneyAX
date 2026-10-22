@@ -13,6 +13,7 @@ export const TurnCommandRequestSchema = z.object({
     })
     .optional(),
   inputFacts: z.record(z.string(), z.any()).optional(),
+  customerContext: z.record(z.string(), z.any()).optional(),
   approvalRequestId: z.string().optional(),
   idempotencyKey: z.string().optional(),
   tenantId: z.string().optional(),

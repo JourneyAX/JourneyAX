@@ -70,6 +70,46 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     });
   }
 
+  // 4c. Validate Agent Default Configuration (exactly one default when there are several agents)
+  const agents = pack.agents || [];
+  const configuredDefaultAgentId = (pack as any).defaultAgentId || pack.routingPolicy?.defaultAgentId;
+  const isDefaultAgents = agents.filter((a) => a.isDefault === true);
+
+  if (configuredDefaultAgentId && !agents.some((a) => a.agentId === configuredDefaultAgentId)) {
+    issues.push({
+      severity: 'error',
+      path: 'defaultAgentId',
+      message: `defaultAgentId '${configuredDefaultAgentId}' does not match any agent in the pack`,
+    });
+  }
+
+  if (agents.length > 1) {
+    const hasExplicitDefaultId = Boolean(configuredDefaultAgentId && agents.some((a) => a.agentId === configuredDefaultAgentId));
+    const hasSingleFlag = isDefaultAgents.length === 1;
+
+    if (!hasExplicitDefaultId && !hasSingleFlag) {
+      if (isDefaultAgents.length > 1) {
+        issues.push({
+          severity: 'error',
+          path: 'agents',
+          message: `Multiple agents marked with isDefault (${isDefaultAgents.map((a) => a.agentId).join(', ')}). Exactly one default agent is required when a pack declares several agents.`,
+        });
+      } else {
+        issues.push({
+          severity: 'error',
+          path: 'agents',
+          message: `Pack declares ${agents.length} agents but no default agent is designated. Provide defaultAgentId or mark exactly one agent with isDefault: true.`,
+        });
+      }
+    } else if (hasExplicitDefaultId && isDefaultAgents.length > 1) {
+      issues.push({
+        severity: 'error',
+        path: 'agents',
+        message: `Ambiguous default agents: defaultAgentId is '${configuredDefaultAgentId}' and multiple agents have isDefault: true (${isDefaultAgents.map((a) => a.agentId).join(', ')}).`,
+      });
+    }
+  }
+
   // 5. Validate Journeys and Stages
   for (const journey of pack.journeys) {
     const stageIds = new Set(Object.keys(journey.stages));

@@ -208,6 +208,30 @@ export interface WorkspaceState {
   pinsRebound?: boolean;
 }
 
+export interface CustomerContext {
+  isSignedIn?: boolean;
+  customerId?: string;
+  customerType?: string;
+  branch?: string;
+  store?: string;
+  region?: string;
+  locale?: string;
+  cart?: {
+    itemCount?: number;
+    total?: string | number;
+    items?: Array<{ sku: string; title?: string; quantity?: number; price?: number }>;
+    summary?: string;
+  } | string | Record<string, unknown>;
+  quote?: {
+    quoteId?: string;
+    itemCount?: number;
+    total?: string | number;
+    items?: Array<{ sku: string; title?: string; quantity?: number; price?: number }>;
+    summary?: string;
+  } | string | Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface TurnCommand {
   tenantId: string;
   environmentId: EnvironmentId;
@@ -222,6 +246,8 @@ export interface TurnCommand {
   message?: string;
   event?: ChannelEvent;
   inputFacts?: Record<string, unknown>;
+
+  customerContext?: CustomerContext;
 
   approvalRequestId?: string;
   idempotencyKey?: string;

@@ -26,7 +26,7 @@ import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
 import { ExecutionRepository } from '../src/kernel/execution.repository';
 import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
-import type { BusinessPackRelease } from '@journeyax/business-pack';
+import { type BusinessPackRelease, validateBusinessPack } from '@journeyax/business-pack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 
 // Helper fixtures for isolated tests
@@ -1516,13 +1516,105 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(roundsCount, 2, 'Should execute at most agent.maxTurns (2) rounds');
       assert.ok(outcome.durationMs >= 0);
     });
+
+    test('AgentRouter resolves default agent via defaultAgentId or isDefault flag without guessing by substrings', () => {
+      const router = new AgentRouter();
+      const workspace = createTestWorkspace();
+      delete (workspace as any).currentStage; // force default resolution
+
+      const multiAgentPack = createTestPack();
+      multiAgentPack.agents = [
+        {
+          agentId: 'sales_rep',
+          name: 'Sales Rep',
+          purpose: 'Sales and quotes',
+          modelPolicyRef: 'default',
+          allowedTools: [],
+          maxTurns: 3,
+          handoffConditions: [],
+        },
+        {
+          agentId: 'consultant_expert', // has 'consultant' in id
+          name: 'Consultant Expert',
+          purpose: 'Consulting',
+          modelPolicyRef: 'default',
+          allowedTools: [],
+          maxTurns: 3,
+          handoffConditions: [],
+          isDefault: true,
+        },
+      ];
+
+      // 1. Resolves consultant_expert because isDefault: true, NOT because of substring
+      const res = router.resolveAgent(multiAgentPack, workspace);
+      assert.equal(res.agent.agentId, 'consultant_expert');
+
+      // 2. Overrides via explicit defaultAgentId on pack
+      (multiAgentPack as any).defaultAgentId = 'sales_rep';
+      const resExplicit = router.resolveAgent(multiAgentPack, workspace);
+      assert.equal(resExplicit.agent.agentId, 'sales_rep');
+
+      // 3. Fails closed when neither defaultAgentId nor isDefault is set, even if agentId contains "primary", "consultant", "default"
+      delete (multiAgentPack as any).defaultAgentId;
+      delete (multiAgentPack.agents[1] as any).isDefault;
+      assert.throws(
+        () => router.resolveAgent(multiAgentPack, workspace),
+        /Pack declares 2 agents without an explicit match, targetRole, defaultAgentId, or isDefault flag - failing closed/
+      );
+    });
+
+    test('validateBusinessPack requires exactly one default agent when multiple agents are declared', () => {
+      const pack = createTestPack();
+      pack.capabilities = {
+        version: '1.0.0',
+        toolDefinitions: [{ toolId: 'catalog.search' }],
+        toolBindings: [{ toolId: 'catalog.search' }],
+      };
+      pack.modelPolicy = { version: '1.0.0', policies: [{ policyId: 'default', provider: 'test', model: 'test' }] };
+      pack.agents = [
+        {
+          agentId: 'agent_1',
+          purpose: 'Agent 1',
+          modelPolicyRef: 'default',
+          allowedTools: [],
+          maxTurns: 3,
+          handoffConditions: [],
+        },
+        {
+          agentId: 'agent_2',
+          purpose: 'Agent 2',
+          modelPolicyRef: 'default',
+          allowedTools: [],
+          maxTurns: 3,
+          handoffConditions: [],
+        },
+      ];
+
+      // Missing default -> fails
+      const validationMissing = validateBusinessPack(pack);
+      assert.equal(validationMissing.valid, false);
+      assert.ok(validationMissing.issues.some((i) => i.message.includes('no default agent is designated')));
+
+      // Multiple isDefault -> fails
+      pack.agents[0].isDefault = true;
+      pack.agents[1].isDefault = true;
+      const validationMultiple = validateBusinessPack(pack);
+      assert.equal(validationMultiple.valid, false);
+      assert.ok(validationMultiple.issues.some((i) => i.message.includes('Multiple agents marked with isDefault')));
+
+      // Exactly one isDefault -> passes
+      pack.agents[1].isDefault = false;
+      const validationValid = validateBusinessPack(pack);
+      assert.equal(validationValid.valid, true);
+    });
   });
 
   describe('Task A2: Customer Context Per Turn', () => {
-    test('formatCustomerContextMessage formats signed-in trade customer with active cart and quote', () => {
+    test('formatCustomerContextMessage formats signed-in customer with typed customerContext, cart, and quote', () => {
       const release = createTestPack();
       (release.profile as any).region = 'Auckland';
       release.profile.primaryLocale = 'en-NZ';
+      (release.profile as any).customerTypeMap = { trade: 'Trade', diy: 'DIY' };
 
       const command: TurnCommand = {
         tenantId: 'test-tenant',
@@ -1532,18 +1624,19 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         correlationId: 'corr-context-trade',
         message: 'Looking for framing timber',
         principalId: 'user-builder-77',
-      };
-      (command as any).customerType = 'trade';
-      (command as any).branch = 'Penrose';
-      (command as any).cart = {
-        items: [{ sku: 'SKU-TIMBER-1' }, { sku: 'SKU-FASTENER-2' }],
-        total: '$250.00',
-      };
-      (command as any).quote = {
-        quoteId: 'QT-8801',
-        status: 'draft',
-        items: [{ sku: 'SKU-TIMBER-1' }],
-        total: '$190.00',
+        customerContext: {
+          customerType: 'trade',
+          branch: 'Penrose',
+          cart: {
+            items: [{ sku: 'SKU-TIMBER-1' }, { sku: 'SKU-FASTENER-2' }],
+            total: '$250.00',
+          },
+          quote: {
+            quoteId: 'QT-8801',
+            items: [{ sku: 'SKU-TIMBER-1' }],
+            total: '$190.00',
+          },
+        },
       };
 
       const contextMsg = formatCustomerContextMessage({
@@ -1558,11 +1651,62 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.match(contextMsg, /Region: Auckland/);
       assert.match(contextMsg, /Locale: en-NZ/);
       assert.match(contextMsg, /Cart Summary: 2 items \(total: \$250\.00\)/);
-      assert.match(contextMsg, /Quote Summary: QT-8801 \[draft\]: 1 items \(total: \$190\.00\)/);
+      assert.match(contextMsg, /Quote Summary: QT-8801: 1 items \(total: \$190\.00\)/);
       assert.match(contextMsg, /<\/customer_context>/);
     });
 
-    test('formatCustomerContextMessage formats guest DIY customer with defaults', () => {
+    test('formatCustomerContextMessage passes raw customer type through without hardcoded word guessing', () => {
+      const release = createTestPack();
+
+      const command: TurnCommand = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-context-custom',
+        sessionId: 'sess-context-custom',
+        correlationId: 'corr-context-custom',
+        customerContext: {
+          customerType: 'Commercial_Wholesale_Tier1',
+          branch: 'Onehunga',
+        },
+      };
+
+      const contextMsg = formatCustomerContextMessage({
+        command,
+        release,
+      });
+
+      // Raw customer type passed through directly (no hardcoded word guessing)
+      assert.match(contextMsg, /Customer Type: Commercial_Wholesale_Tier1/);
+      assert.match(contextMsg, /Branch \/ Store: Onehunga/);
+    });
+
+    test('formatCustomerContextMessage maps customer type via pack customerTypeMap table', () => {
+      const release = createTestPack();
+      (release.profile as any).customerTypeMap = {
+        tier_3_contractor: 'Licensed Building Practitioner',
+      };
+
+      const command: TurnCommand = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-context-map',
+        sessionId: 'sess-context-map',
+        correlationId: 'corr-context-map',
+        customerContext: {
+          customerType: 'tier_3_contractor',
+        },
+      };
+
+      const contextMsg = formatCustomerContextMessage({
+        command,
+        release,
+      });
+
+      // Mapped via pack table
+      assert.match(contextMsg, /Customer Type: Licensed Building Practitioner/);
+    });
+
+    test('formatCustomerContextMessage formats guest customer with defaults', () => {
       const release = createTestPack();
       delete (release.profile as any).region;
       delete (release.profile as any).headquarters;
@@ -1575,8 +1719,10 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         correlationId: 'corr-context-guest',
         message: 'Need help fixing a deck',
         principalId: 'guest',
+        customerContext: {
+          customerType: 'diy',
+        },
       };
-      (command as any).customerType = 'diy';
 
       const contextMsg = formatCustomerContextMessage({
         command,
@@ -1585,7 +1731,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
 
       assert.match(contextMsg, /<customer_context>/);
       assert.match(contextMsg, /Signed-in: Guest \(not signed in\)/);
-      assert.match(contextMsg, /Customer Type: DIY/);
+      assert.match(contextMsg, /Customer Type: diy/);
       assert.match(contextMsg, /Branch \/ Store: Not selected/);
       assert.match(contextMsg, /Region: Not specified/);
       assert.match(contextMsg, /Cart Summary: Empty/);
@@ -1596,6 +1742,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     test('AgentTurnLoop.execute injects customer context message and assistant acknowledgment before customer question', async () => {
       const gateway = new ModelGateway();
       const release = createTestPack();
+      (release.profile as any).customerTypeMap = { trade: 'Trade' };
       const workspace = createTestWorkspace();
 
       let receivedMessages: any[] = [];
@@ -1615,9 +1762,11 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         correlationId: 'test-corr',
         message: 'What fasteners do you suggest?',
         principalId: 'builder-44',
+        customerContext: {
+          customerType: 'trade',
+          branch: 'Penrose',
+        },
       };
-      (command as any).customerType = 'trade';
-      (command as any).branch = 'Penrose';
 
       const agentLoop = new AgentTurnLoop();
       await agentLoop.execute({
@@ -1932,6 +2081,57 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(quoteTool, 'Unauthorized tool call must be tracked');
       assert.equal(quoteTool.ok, false);
       assert.match(quoteTool.error || '', /not in allowedTools|unauthorized/i);
+    });
+
+    test('create_quote crash-and-retry: started execution returns in_progress and does not create a second quote', async () => {
+      const release = createTestPack();
+      const executionRepo = new ExecutionRepository();
+      const inMemoryQuotes = new Map<string, any>();
+
+      const toolContext: AgentToolContext = {
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-quote-crash',
+        correlationId: 'corr-quote-crash',
+        idempotencyKey: 'idemp-quote-crash-1',
+        release,
+        catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
+        turnProductSkus: new Set(['SKU-TIMBER-100']),
+        catalogProductCache: new Map([
+          ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+        ]),
+        readSourceIds: new Set(),
+        allowedClaimClasses: new Set(),
+        presentedCards: [],
+        isHumanHandoffRequested: false,
+        executionRepo,
+        inMemoryQuotes,
+      };
+
+      const input = { items: [{ sku: 'SKU-TIMBER-100', quantity: 10 }] };
+
+      // Simulate first attempt that recorded 'started' and then crashed / was interrupted
+      await executionRepo.recordExecution({
+        tenantId: 'test-tenant',
+        environmentId: 'test',
+        workspaceId: 'ws-quote-crash',
+        correlationId: 'corr-quote-crash',
+        toolId: 'trade.quote_create',
+        idempotencyKey: 'idemp-quote-crash-1',
+        status: 'started',
+        inputPayload: input,
+        executedAt: new Date(),
+      });
+
+      // Second attempt (retry) calls create_quote with same idempotency key
+      const resRetry = await executeAgentTool('create_quote', input, toolContext);
+      assert.equal(resRetry.ok, true);
+      assert.equal(resRetry.status, 'in_progress');
+      assert.equal(resRetry.inProgress, true);
+      assert.match(resRetry.message, /in progress/i);
+
+      // Verify NO quote was created in inMemoryQuotes, avoiding double creation
+      assert.equal(inMemoryQuotes.size, 0, 'No duplicate quote must be created when previous execution is in progress');
     });
   });
 });

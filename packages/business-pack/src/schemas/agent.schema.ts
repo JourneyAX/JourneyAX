@@ -11,6 +11,7 @@ export const AgentDefinitionSchema = z.object({
   modelPolicyRef: z.string(),
   maxTurns: z.number().int().default(3),
   handoffConditions: z.array(z.string()).default([]),
+  isDefault: z.boolean().optional(),
 });
 
 export const AgentsCollectionSchema = z.object({

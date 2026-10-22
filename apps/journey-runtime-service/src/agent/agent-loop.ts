@@ -170,79 +170,62 @@ export function formatCustomerContextMessage(params: {
   release?: BusinessPackRelease;
 }): string {
   const { command, workspace, release } = params;
+  const ctx = command.customerContext || {};
   const inputFacts = command.inputFacts || {};
   const facts = workspace?.facts || {};
 
   // 1. Signed-in state
-  const rawPrincipal = command.principalId || (command as any).userId || (command as any).customerId;
-  const isSignedIn = Boolean(
-    rawPrincipal &&
-    rawPrincipal !== 'guest' &&
-    rawPrincipal !== 'anonymous'
-  ) || (command as any).signedIn === true;
+  const rawPrincipal = ctx.customerId || command.principalId || (command as any).userId;
+  const isSignedIn = ctx.isSignedIn !== undefined
+    ? ctx.isSignedIn
+    : Boolean(rawPrincipal && rawPrincipal !== 'guest' && rawPrincipal !== 'anonymous');
   const signedInStr = isSignedIn
     ? `Signed In${rawPrincipal ? ` (${rawPrincipal})` : ''}`
     : 'Guest (not signed in)';
 
-  // 2. Customer type (trade or DIY)
-  const rawType = String(
-    (command as any).customerType ||
-    (command as any).customerContext?.customerType ||
-    inputFacts.customerType ||
-    inputFacts.customer_type ||
-    facts.customer_type?.value ||
-    facts.customerType?.value ||
+  // 2. Customer type: pass raw customer type through or map via table from pack (zero hardcoded words)
+  const customerTypeMap: Record<string, string> =
+    (release?.profile as any)?.customerTypeMap ||
+    (release as any)?.customerTypeMap ||
+    (release as any)?.persona?.customerTypeMap ||
+    {};
+  const rawType =
+    ctx.customerType ||
+    (inputFacts.customerType ? String(inputFacts.customerType) : undefined) ||
+    (facts.customerType?.value ? String(facts.customerType.value) : undefined) ||
     command.principalRole ||
-    ''
-  ).toLowerCase();
-  let customerType = 'General';
-  if (rawType.includes('trade') || rawType.includes('builder') || rawType.includes('contractor') || rawType.includes('commercial')) {
-    customerType = 'Trade';
-  } else if (rawType.includes('diy') || rawType.includes('retail') || rawType.includes('homeowner')) {
-    customerType = 'DIY';
-  } else if (rawType) {
-    customerType = rawType;
-  }
+    '';
+  const customerType = rawType ? (customerTypeMap[rawType] || rawType) : 'General';
 
-  // 3. Branch or store
+  // 3. Branch or store (zero guessed fact-key aliases)
   const branch =
-    (command as any).branch ||
-    (command as any).store ||
-    (command as any).customerContext?.branch ||
-    (command as any).customerContext?.store ||
-    inputFacts.branch ||
-    inputFacts.store ||
-    facts.branch?.value ||
-    facts.store?.value ||
-    facts.preferred_branch?.value ||
+    ctx.branch ||
+    ctx.store ||
+    (inputFacts.branch ? String(inputFacts.branch) : undefined) ||
+    (inputFacts.store ? String(inputFacts.store) : undefined) ||
+    (facts.branch?.value ? String(facts.branch.value) : undefined) ||
+    (facts.store?.value ? String(facts.store.value) : undefined) ||
     'Not selected';
 
   // 4. Region
   const region =
-    (command as any).region ||
-    (command as any).customerContext?.region ||
-    inputFacts.region ||
-    facts.region?.value ||
+    ctx.region ||
+    (inputFacts.region ? String(inputFacts.region) : undefined) ||
+    (facts.region?.value ? String(facts.region.value) : undefined) ||
     (release?.profile as any)?.region ||
     release?.profile?.headquarters ||
     'Not specified';
 
   // 5. Locale
   const locale =
-    (command as any).locale ||
-    (command as any).customerContext?.locale ||
-    inputFacts.locale ||
-    facts.locale?.value ||
+    ctx.locale ||
+    (inputFacts.locale ? String(inputFacts.locale) : undefined) ||
+    (facts.locale?.value ? String(facts.locale.value) : undefined) ||
     release?.profile?.primaryLocale ||
     'en';
 
   // 6. Current cart or quote summary
-  const rawCart: any =
-    (command as any).cart ||
-    (command as any).customerContext?.cart ||
-    inputFacts.cart ||
-    facts.cart?.value ||
-    facts.cart_summary?.value;
+  const rawCart: any = ctx.cart ?? inputFacts.cart ?? facts.cart?.value;
   let cartSummary = 'Empty';
   if (rawCart) {
     if (typeof rawCart === 'string') {
@@ -250,17 +233,12 @@ export function formatCustomerContextMessage(params: {
     } else if (Array.isArray(rawCart.items)) {
       cartSummary = `${rawCart.items.length} items${rawCart.total != null ? ` (total: ${rawCart.total})` : ''}`;
     } else if (typeof rawCart === 'object') {
-      const itemCount = Array.isArray(rawCart.lines) ? rawCart.lines.length : undefined;
-      cartSummary = itemCount != null ? `${itemCount} items` : JSON.stringify(rawCart);
+      const itemCount = rawCart.itemCount ?? (Array.isArray(rawCart.lines) ? rawCart.lines.length : undefined);
+      cartSummary = rawCart.summary || (itemCount != null ? `${itemCount} items` : JSON.stringify(rawCart));
     }
   }
 
-  const rawQuote: any =
-    (command as any).quote ||
-    (command as any).customerContext?.quote ||
-    inputFacts.quote ||
-    facts.quote?.value ||
-    facts.quote_summary?.value;
+  const rawQuote: any = ctx.quote ?? inputFacts.quote ?? facts.quote?.value;
   let quoteSummary = 'None';
   if (rawQuote) {
     if (typeof rawQuote === 'string') {
@@ -268,8 +246,10 @@ export function formatCustomerContextMessage(params: {
     } else if (typeof rawQuote === 'object') {
       const qId = rawQuote.quoteId || rawQuote.id || 'draft';
       const qStatus = rawQuote.status ? ` [${rawQuote.status}]` : '';
-      const qItems = Array.isArray(rawQuote.items) ? `${rawQuote.items.length} items` : '';
-      quoteSummary = `${qId}${qStatus}${qItems ? `: ${qItems}` : ''}${rawQuote.total != null ? ` (total: ${rawQuote.total})` : ''}`;
+      const qItems = Array.isArray(rawQuote.items)
+        ? `${rawQuote.items.length} items`
+        : (rawQuote.itemCount != null ? `${rawQuote.itemCount} items` : '');
+      quoteSummary = rawQuote.summary || `${qId}${qStatus}${qItems ? `: ${qItems}` : ''}${rawQuote.total != null ? ` (total: ${rawQuote.total})` : ''}`;
     }
   }
 

@@ -1225,13 +1225,37 @@ export async function executeAgentTool(
           'trade.quote_create',
           idempotencyKey
         );
-        if (existing && existing.status === 'completed') {
-          return {
-            ok: true,
-            status: 'success',
-            quote: existing.outputPayload,
-            idempotentReplay: true,
-          };
+        if (existing) {
+          if (existing.status === 'completed') {
+            return {
+              ok: true,
+              status: 'success',
+              quote: existing.outputPayload,
+              idempotentReplay: true,
+            };
+          }
+          if (existing.status === 'started') {
+            return {
+              ok: true,
+              status: 'in_progress',
+              inProgress: true,
+              executionId: (existing as any).executionId,
+              message: 'Quote creation is currently in progress.',
+            };
+          }
+          if (existing.status === 'requires_approval') {
+            return {
+              ok: true,
+              status: 'requires_approval',
+              approvalRequestId: (existing as any).approvalRequestId,
+              quote: {
+                status: 'pending_approval',
+                items: inputPayload.items,
+              },
+              message: 'Trade quote request submitted and requires approval.',
+              idempotentReplay: true,
+            };
+          }
         }
 
         await ctx.executionRepo.recordExecution({
@@ -1432,13 +1456,33 @@ export async function executeAgentTool(
           'quote.update',
           idempotencyKey
         );
-        if (existing && existing.status === 'completed') {
-          return {
-            ok: true,
-            status: 'success',
-            quote: existing.outputPayload,
-            idempotentReplay: true,
-          };
+        if (existing) {
+          if (existing.status === 'completed') {
+            return {
+              ok: true,
+              status: 'success',
+              quote: existing.outputPayload,
+              idempotentReplay: true,
+            };
+          }
+          if (existing.status === 'started') {
+            return {
+              ok: true,
+              status: 'in_progress',
+              inProgress: true,
+              executionId: (existing as any).executionId,
+              message: 'Quote update is currently in progress.',
+            };
+          }
+          if (existing.status === 'requires_approval') {
+            return {
+              ok: true,
+              status: 'requires_approval',
+              approvalRequestId: (existing as any).approvalRequestId,
+              message: 'Quote update submitted and requires approval.',
+              idempotentReplay: true,
+            };
+          }
         }
 
         await ctx.executionRepo.recordExecution({
@@ -1652,13 +1696,24 @@ export async function executeAgentTool(
           'cart.update',
           idempotencyKey
         );
-        if (existing && existing.status === 'completed') {
-          return {
-            ok: true,
-            status: 'success',
-            cart: existing.outputPayload,
-            idempotentReplay: true,
-          };
+        if (existing) {
+          if (existing.status === 'completed') {
+            return {
+              ok: true,
+              status: 'success',
+              cart: existing.outputPayload,
+              idempotentReplay: true,
+            };
+          }
+          if (existing.status === 'started') {
+            return {
+              ok: true,
+              status: 'in_progress',
+              inProgress: true,
+              executionId: (existing as any).executionId,
+              message: 'Cart update is currently in progress.',
+            };
+          }
         }
 
         await ctx.executionRepo.recordExecution({

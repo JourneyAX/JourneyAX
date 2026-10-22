@@ -15,6 +15,7 @@ import { CatalogMappingSchema } from '../catalog-mapping';
 
 export const RoutingPolicySchema = z.object({
   defaultJourneyId: z.string().nullish(),
+  defaultAgentId: z.string().nullish(),
   fallbackOnCatalogSearch: z.boolean().nullish(),
 });
 
@@ -200,6 +201,7 @@ export const BusinessPackContentSchema = z.object({
   entities: EntitiesSchema,
   conversationPolicy: ConversationPolicySchema,
   modelPolicy: ModelPolicySchema,
+  defaultAgentId: z.string().optional(),
   agents: z.array(AgentDefinitionSchema).min(1),
   journeys: z.array(JourneyDefinitionSchema).min(1),
   rules: z.array(RuleDefinitionSchema),
