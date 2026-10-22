@@ -17,8 +17,16 @@ import {
 import {
   executeAgentTool,
   isToolAllowed,
+  getAgentToolDefinitions,
+  resolveBoundCapability,
+  AGENT_TOOL_DEFINITIONS,
   type AgentToolContext,
 } from '../src/agent/agent-tools';
+import {
+  evaluateFormula,
+  executeCalculator,
+  findMatchingCalculator,
+} from '../src/kernel/formula-evaluator';
 import {
   CatalogSearchHandler,
   resolveEquivalentSizes,
@@ -124,6 +132,21 @@ function createTestPack(overrides: Record<string, any> = {}): BusinessPackReleas
         handoffConditions: [],
       },
     ],
+    capabilities: {
+      toolDefinitions: [],
+      toolBindings: [
+        {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          toolId: 'trade.quote_create',
+          agentTool: 'create_quote',
+          bindingVersion: '1.0.0',
+          enabled: true,
+          executor: { type: 'native' },
+        },
+      ],
+      stageBindings: [],
+    },
     extensions: {
       agentMode: { enabled: true },
       dialoguePolicy: { agentMode: true },
@@ -2957,6 +2980,613 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(historyMsg, 'Should inject [Previous Conversation History] from durable store');
       assert.ok(historyMsg.content.includes('90x45 timber for wall framing'));
       assert.ok(historyMsg.content.includes('Found 90x45 H1.2 framing timber'));
+    });
+  });
+
+  describe('Tenant & Industry Neutrality (R6 - R9)', () => {
+    // Shared PlaceMakers calculators fixture defined as pack data
+    const pmDeckingCalculator = {
+      calculatorId: 'calc-pm-decking',
+      name: 'Decking Calculator',
+      description: 'Calculates linear metres and fixings for timber decking',
+      projectType: 'decking',
+      aliases: ['deck', 'decking-boards'],
+      verificationRef: 'verify-pm-decking-01',
+      claimClass: 'quantity_estimate',
+      inputs: [
+        { name: 'area', label: 'Deck Area', unit: 'm2', required: true, aliases: ['m2', 'deckArea'] },
+      ],
+      constants: {
+        boardWidthM: 0.14,
+        wasteMultiplier: 1.10,
+        screwsPerM2: 35,
+      },
+      formulaSteps: [
+        { outputVar: 'boardLinearMetres', expression: 'ceil((area / 0.14) * 1.10)' },
+        { outputVar: 'screwsCount', expression: 'ceil(area * 35)' },
+      ],
+      outputs: [
+        { varName: 'boardLinearMetres', label: '140mm Decking Boards', unit: 'm' },
+        { varName: 'screwsCount', label: 'Decking Screws (35/m2)', unit: 'screws' },
+      ],
+    };
+
+    const pmPlasterboardCalculator = {
+      calculatorId: 'calc-pm-plasterboard',
+      name: 'Plasterboard Calculator',
+      description: 'Calculates plasterboard sheets, compound and fixings',
+      projectType: 'plasterboard',
+      aliases: ['gib', 'drywall', 'wallboard'],
+      verificationRef: 'verify-pm-plasterboard-01',
+      claimClass: 'quantity_estimate',
+      inputs: [
+        { name: 'area', label: 'Wall Area', unit: 'm2', required: true, aliases: ['wallArea'] },
+      ],
+      constants: {
+        sheetArea: 2.88, // 2.4m x 1.2m
+        wasteMultiplier: 1.10,
+        compoundPerM2: 0.5,
+        screwsPerM2: 35,
+      },
+      formulaSteps: [
+        { outputVar: 'sheetsCount', expression: 'ceil((area / 2.88) * 1.10)' },
+        { outputVar: 'compoundKg', expression: 'round(area * 0.5)' },
+        { outputVar: 'screwsCount', expression: 'ceil(area * 35)' },
+      ],
+      outputs: [
+        { varName: 'sheetsCount', label: '2.4x1.2m Sheets Required', unit: 'sheets' },
+        { varName: 'compoundKg', label: 'Jointing Compound', unit: 'kg' },
+        { varName: 'screwsCount', label: 'Plasterboard Screws', unit: 'screws' },
+      ],
+    };
+
+    describe('R6: calculate_quantity as Pack Data and Safe Formula Evaluator', () => {
+      test('PlaceMakers plasterboard and decking calculators defined as pack data give expected numbers', async () => {
+        const pack = createTestPack();
+        pack.calculators = [pmDeckingCalculator, pmPlasterboardCalculator];
+
+        const toolContext: AgentToolContext = {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          correlationId: 'test-corr',
+          release: pack,
+          catalogSearchHandler: {} as any,
+          turnProductSkus: new Set(),
+          catalogProductCache: new Map(),
+          readSourceIds: new Set(),
+          allowedClaimClasses: new Set(),
+          presentedCards: [],
+          isHumanHandoffRequested: false,
+        };
+
+        // 1. Decking calculator with 20 m2
+        // boardLinearMetres = ceil((20 / 0.14) * 1.10) = ceil(157.14) = 158
+        // screwsCount = ceil(20 * 35) = 700
+        const deckingResult = await executeAgentTool(
+          'calculate_quantity',
+          { project: 'decking', measurements: { area: 20 } },
+          toolContext
+        );
+
+        assert.equal(deckingResult.ok, true);
+        assert.equal(deckingResult.calculatorId, 'calc-pm-decking');
+        assert.equal(deckingResult.outputs.boardLinearMetres, 158);
+        assert.equal(deckingResult.outputs.screwsCount, 700);
+        assert.equal(deckingResult.claimClass, 'quantity_estimate');
+        assert.ok(toolContext.allowedClaimClasses.has('quantity_estimate'), 'Verified calculator unlocks claim class');
+
+        // 2. Plasterboard calculator with 30 m2
+        // sheetsCount = ceil((30 / 2.88) * 1.10) = ceil(11.458) = 12
+        // compoundKg = round(30 * 0.5) = 15
+        // screwsCount = ceil(30 * 35) = 1050
+        const pbResult = await executeAgentTool(
+          'calculate_quantity',
+          { project: 'plasterboard', measurements: { area: 30 } },
+          toolContext
+        );
+
+        assert.equal(pbResult.ok, true);
+        assert.equal(pbResult.calculatorId, 'calc-pm-plasterboard');
+        assert.equal(pbResult.outputs.sheetsCount, 12);
+        assert.equal(pbResult.outputs.compoundKg, 15);
+        assert.equal(pbResult.outputs.screwsCount, 1050);
+      });
+
+      test('missing input returns { ok: false, missing: [...] } and never defaults', async () => {
+        const pack = createTestPack();
+        pack.calculators = [pmDeckingCalculator];
+
+        const toolContext: AgentToolContext = {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          correlationId: 'test-corr',
+          release: pack,
+          catalogSearchHandler: {} as any,
+          turnProductSkus: new Set(),
+          catalogProductCache: new Map(),
+          readSourceIds: new Set(),
+          allowedClaimClasses: new Set(),
+          presentedCards: [],
+          isHumanHandoffRequested: false,
+        };
+
+        // Call without area or with empty measurements
+        const res = await executeAgentTool(
+          'calculate_quantity',
+          { project: 'decking', measurements: {} },
+          toolContext
+        );
+
+        assert.equal(res.ok, false);
+        assert.deepEqual(res.missing, ['area']);
+        assert.match(res.message, /Missing required measurements for Decking Calculator: area/i);
+        assert.equal(toolContext.allowedClaimClasses.has('quantity_estimate'), false, 'Never unlocks claim class on missing input');
+      });
+
+      test('tenant without calculators does not expose calculate_quantity in getAgentToolDefinitions', () => {
+        const pack = createTestPack();
+        pack.calculators = []; // No calculators
+
+        const toolDefs = getAgentToolDefinitions(pack);
+        const hasCalc = toolDefs.some((t) => t.name === 'calculate_quantity');
+        assert.equal(hasCalc, false, 'calculate_quantity must not be exposed when pack has no calculators');
+
+        // Also when pack.calculators is undefined
+        delete pack.calculators;
+        const toolDefs2 = getAgentToolDefinitions(pack);
+        assert.equal(toolDefs2.some((t) => t.name === 'calculate_quantity'), false);
+      });
+
+      test('unverified calculator without verificationRef does not unlock claim class', async () => {
+        const unverifiedCalc = {
+          ...pmDeckingCalculator,
+          calculatorId: 'calc-unverified',
+          verificationRef: undefined, // Not verified!
+        };
+
+        const pack = createTestPack();
+        pack.calculators = [unverifiedCalc];
+
+        const toolContext: AgentToolContext = {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          correlationId: 'test-corr',
+          release: pack,
+          catalogSearchHandler: {} as any,
+          turnProductSkus: new Set(),
+          catalogProductCache: new Map(),
+          readSourceIds: new Set(),
+          allowedClaimClasses: new Set(),
+          presentedCards: [],
+          isHumanHandoffRequested: false,
+        };
+
+        const res = await executeAgentTool(
+          'calculate_quantity',
+          { project: 'decking', measurements: { area: 20 } },
+          toolContext
+        );
+
+        assert.equal(res.ok, true);
+        assert.equal(res.claimClass, undefined, 'Unverified calculator must not return claimClass');
+        assert.equal(toolContext.allowedClaimClasses.has('quantity_estimate'), false, 'Must NOT unlock claim class');
+      });
+    });
+
+    describe('R7: Generic attributes in search_products per Tenant', () => {
+      test('generates dynamic attributes for building materials tenant (size, treatment, rValue)', () => {
+        const buildingPack = createTestPack();
+        buildingPack.catalogMapping = {
+          attributeAliases: {
+            size: ['dimension', 'dimensions'],
+            treatment: ['preservative', 'hazardClass'],
+            rValue: ['thermalRating', 'insulationValue'],
+          },
+          attributeDefinitions: {
+            size: { description: 'Nominal timber cross section or panel size' },
+            treatment: { description: 'Chemical treatment preservative rating' },
+            rValue: { description: 'Thermal resistance rating for insulation' },
+          },
+        } as any;
+
+        const tools = getAgentToolDefinitions(buildingPack);
+        const searchTool = tools.find((t) => t.name === 'search_products')!;
+        assert.ok(searchTool);
+
+        const attrs = (searchTool.parameters.properties as any).attributes;
+        assert.ok(attrs, 'Should have attributes object');
+        assert.ok(attrs.properties.size, 'Should expose size attribute');
+        assert.ok(attrs.properties.treatment, 'Should expose treatment attribute');
+        assert.ok(attrs.properties.rValue, 'Should expose rValue attribute');
+        assert.match(attrs.properties.size.description, /timber cross section/i);
+        assert.match(attrs.properties.treatment.description, /treatment preservative/i);
+      });
+
+      test('generates dynamic attributes for apparel tenant (colour, size, fit)', () => {
+        const apparelPack = createTestPack();
+        apparelPack.manifest.tenantId = 'apparel-tenant';
+        apparelPack.profile.industry = 'Apparel & Fashion';
+        apparelPack.catalogMapping = {
+          attributeAliases: {
+            colour: ['color', 'shade'],
+            size: ['garmentSize', 'clothingSize'],
+            fit: ['cut', 'silhouette'],
+          },
+          attributeDefinitions: {
+            colour: { description: 'Garment primary color', examples: ['Navy', 'Black', 'Olive'] },
+            size: { description: 'Standard garment size code', examples: ['S', 'M', 'L', 'XL'] },
+            fit: { description: 'Garment tailored cut', examples: ['Slim', 'Regular', 'Relaxed'] },
+          },
+        } as any;
+
+        const tools = getAgentToolDefinitions(apparelPack);
+        const searchTool = tools.find((t) => t.name === 'search_products')!;
+        assert.ok(searchTool);
+
+        const attrs = (searchTool.parameters.properties as any).attributes;
+        assert.ok(attrs, 'Should have attributes object');
+        assert.ok(attrs.properties.colour, 'Should expose colour attribute');
+        assert.ok(attrs.properties.size, 'Should expose size attribute');
+        assert.ok(attrs.properties.fit, 'Should expose fit attribute');
+        assert.deepEqual(attrs.properties.colour.examples, ['Navy', 'Black', 'Olive']);
+        assert.deepEqual(attrs.properties.fit.examples, ['Slim', 'Regular', 'Relaxed']);
+
+        // Assert no building specific attributes were generated for the apparel tenant
+        assert.equal(attrs.properties.treatment, undefined);
+        assert.equal(attrs.properties.rValue, undefined);
+      });
+
+      test('tool descriptions contain no industry examples unless from the pack', () => {
+        for (const tool of AGENT_TOOL_DEFINITIONS) {
+          assert.doesNotMatch(tool.description, /\b(decking|plasterboard|tapware|timber|framing|screws|100x50|H3\.2)\b/i);
+          for (const [propName, propDef] of Object.entries((tool.parameters.properties as any) || {})) {
+            const desc = (propDef as any).description || '';
+            assert.doesNotMatch(desc, /\b(decking|plasterboard|tapware|timber|framing|100x50|H3\.2)\b/i, `Prop ${propName} in ${tool.name} has industry word`);
+          }
+        }
+      });
+
+      test('search_products execution forwards generic attributes to catalog search handler', async () => {
+        let capturedInput: any = null;
+        const mockCatalog = {
+          execute: async (input: any) => {
+            capturedInput = input;
+            return { products: [] };
+          },
+        };
+
+        const toolContext: AgentToolContext = {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          correlationId: 'test-corr',
+          release: createTestPack(),
+          catalogSearchHandler: mockCatalog as any,
+          turnProductSkus: new Set(),
+          catalogProductCache: new Map(),
+          readSourceIds: new Set(),
+          allowedClaimClasses: new Set(),
+          presentedCards: [],
+          isHumanHandoffRequested: false,
+        };
+
+        await executeAgentTool(
+          'search_products',
+          {
+            keywords: ['jacket'],
+            attributes: { colour: 'Navy', size: 'M', fit: 'Slim' },
+          },
+          toolContext
+        );
+
+        assert.ok(capturedInput);
+        assert.deepEqual(capturedInput.attributeFilters, { colour: 'Navy', size: 'M', fit: 'Slim' });
+      });
+    });
+
+    describe('R8: Removal of Industry Words and Pack-Driven Capability Mappings', () => {
+      test('tool definitions and generic operating prompt contain no forbidden industry words', () => {
+        const forbiddenWords = ['trade', 'decking', 'plasterboard', 'tapware'];
+        const toolsJson = JSON.stringify(AGENT_TOOL_DEFINITIONS);
+
+        for (const word of forbiddenWords) {
+          assert.doesNotMatch(
+            toolsJson,
+            new RegExp(`\\b${word}\\b`, 'i'),
+            `AGENT_TOOL_DEFINITIONS must not contain industry word "${word}"`
+          );
+          assert.doesNotMatch(
+            GENERIC_PLATFORM_OPERATING_PROMPT,
+            new RegExp(`\\b${word}\\b`, 'i'),
+            `GENERIC_PLATFORM_OPERATING_PROMPT must not contain industry word "${word}"`
+          );
+        }
+      });
+
+      test('tool names resolve to capability IDs dynamically from pack tool bindings', () => {
+        // 1. Pack with custom tool binding (e.g. trade.quote_create bound to create_quote)
+        const packA = createTestPack();
+        packA.capabilities = {
+          toolDefinitions: [],
+          toolBindings: [
+            {
+              tenantId: 'test-tenant',
+              environmentId: 'test',
+              toolId: 'trade.quote_create',
+              agentTool: 'create_quote',
+              bindingVersion: '1.0.0',
+              enabled: true,
+              executor: { type: 'native' },
+            },
+          ],
+          stageBindings: [],
+        };
+
+        const capIdA = resolveBoundCapability(packA, 'create_quote');
+        assert.equal(capIdA, 'trade.quote_create', 'Should resolve bound capability from pack');
+
+        // 2. Pack without custom bindings uses neutral platform default
+        const packB = createTestPack();
+        packB.capabilities = { toolDefinitions: [], toolBindings: [], stageBindings: [] };
+
+        const capIdB = resolveBoundCapability(packB, 'create_quote');
+        assert.equal(capIdB, 'quote.create', 'Should fall back to neutral canonical platform capability ID');
+
+        const capStock = resolveBoundCapability(packB, 'check_stock');
+        assert.equal(capStock, 'stock.check', 'Should fall back to neutral canonical platform capability ID');
+      });
+    });
+
+    describe('R9: Second Fixture Tenant Neutrality (Apparel, Cart Mode)', () => {
+      function createApparelTestPack(): BusinessPackRelease {
+        return {
+          manifest: {
+            packId: 'apparel-pack',
+            tenantId: 'apparel-retail',
+            environmentId: 'test',
+            version: '1.0.0',
+            name: 'Urban Apparel Co',
+            description: 'Contemporary clothing, footwear, and accessories',
+            status: 'active',
+            publishedAt: new Date().toISOString(),
+            publishedBy: 'test',
+            checksum: 'chk-apparel-123',
+          },
+          profile: {
+            companyName: 'Urban Apparel Co',
+            industry: 'Apparel & Footwear',
+            primaryCurrency: 'NZD',
+            supportedCurrencies: ['NZD'],
+            primaryLocale: 'en-NZ',
+            supportedLocales: ['en-NZ'],
+            sellingScope: {
+              inScope: ['jackets', 'shirts', 'trousers', 'shoes', 'knitwear'],
+              outOfScope: ['building materials', 'hardware', 'groceries', 'electronics'],
+            },
+          },
+          vocabulary: {
+            version: '1.0.0',
+            terms: [],
+            acronyms: {},
+            slotSynonyms: {},
+            slotMappings: {},
+            prohibitedTerms: [],
+          },
+          entities: { version: '1.0.0', entities: [] },
+          conversationPolicy: {
+            fencingRules: [],
+            prohibitedTopics: [],
+            escalationThresholds: { sentimentFloor: -0.6, maxTurnsWithoutProgress: 4 },
+            replyStyle: {
+              maxSentences: 3,
+              dropListLines: false,
+              dropCompanyName: false,
+              forbiddenPhrases: [],
+              rules: [],
+            },
+          },
+          journeys: [
+            {
+              journeyId: 'shopping_journey',
+              version: '1.0.0',
+              goals: ['Assist shopping'],
+              initialStage: 'stage_browse',
+              stages: {
+                stage_browse: {
+                  stageId: 'stage_browse',
+                  displayName: 'Browse',
+                  requiredFacts: [],
+                  allowedCapabilities: ['catalog.search'],
+                  nextDecisionPolicy: 'dependency-first',
+                  exitConditions: [],
+                },
+              },
+            },
+          ],
+          agents: [
+            {
+              agentId: 'fashion_advisor',
+              name: 'Style Advisor',
+              purpose: 'Helping shoppers find apparel, footwear, and outfit combinations',
+              systemPromptTemplate: 'You are an Urban Apparel style advisor. Recommend stylish clothing matching the customer preferences.',
+              allowedTools: [
+                'search_products',
+                'get_product',
+                'get_cart',
+                'update_cart',
+                'present_card',
+                'hand_off_to_human',
+              ],
+              modelPolicyRef: 'default',
+              maxTurns: 5,
+              handoffConditions: [],
+            },
+          ],
+          capabilities: {
+            toolDefinitions: [],
+            toolBindings: [
+              {
+                tenantId: 'apparel-retail',
+                environmentId: 'test',
+                toolId: 'cart.update',
+                agentTool: 'update_cart',
+                bindingVersion: '1.0.0',
+                enabled: true,
+                executor: { type: 'native' },
+              },
+              {
+                tenantId: 'apparel-retail',
+                environmentId: 'test',
+                toolId: 'cart.get',
+                agentTool: 'get_cart',
+                bindingVersion: '1.0.0',
+                enabled: true,
+                executor: { type: 'native' },
+              },
+            ],
+            stageBindings: [],
+          },
+          catalogMapping: {
+            attributeAliases: {
+              colour: ['color', 'shade'],
+              size: ['garmentSize'],
+              fit: ['cut'],
+            },
+            attributeDefinitions: {
+              colour: { description: 'Garment color' },
+              size: { description: 'Garment size' },
+              fit: { description: 'Garment fit' },
+            },
+          },
+          extensions: {
+            agentMode: { enabled: true },
+          },
+        } as any;
+      }
+
+      test('apparel tenant loop runs with scripted model and asserts zero building supplier words and absent quote tools', async () => {
+        const apparelPack = createApparelTestPack();
+        const workspace = createTestWorkspace('apparel-retail');
+        const gateway = new ModelGateway();
+
+        const mockApparelProducts = [
+          {
+            sku: 'SKU-COAT-001',
+            title: 'Classic Wool Trench Coat Navy',
+            name: 'Classic Wool Trench Coat Navy',
+            priceUSD: { min: 189.0 },
+            currency: 'NZD',
+            inStock: true,
+            category: 'Jackets & Coats',
+            description: 'Timeless double-breasted wool trench coat in navy blue.',
+          },
+        ];
+
+        const catalogHandler = {
+          execute: async () => ({ products: mockApparelProducts, totalCount: 1 }),
+        } as any;
+
+        let capturedSystemPrompt = '';
+        let capturedToolDefinitions: any[] = [];
+        let rounds = 0;
+
+        gateway.mockAgentExecutor = async (req) => {
+          rounds++;
+          if (rounds === 1) {
+            capturedSystemPrompt = req.systemPrompt;
+            capturedToolDefinitions = req.tools || [];
+            return {
+              content: '',
+              toolCalls: [
+                {
+                  id: 'call_search_apparel',
+                  name: 'search_products',
+                  arguments: {
+                    keywords: ['trench coat'],
+                    attributes: { colour: 'Navy', size: 'M' },
+                  },
+                },
+              ],
+            };
+          } else if (rounds === 2) {
+            return {
+              content: '',
+              toolCalls: [
+                {
+                  id: 'call_card_apparel',
+                  name: 'present_card',
+                  arguments: {
+                    cardType: 'products',
+                    state: {
+                      heading: 'Recommended Coats',
+                      products: [
+                        { sku: 'SKU-COAT-001', title: 'Classic Wool Trench Coat Navy' },
+                      ],
+                    },
+                  },
+                },
+              ],
+            };
+          } else {
+            return {
+              content: 'Here is the navy wool trench coat in size M. It is in stock and ready to order.',
+              toolCalls: [],
+            };
+          }
+        };
+
+        const agentLoop = new AgentTurnLoop();
+        const outcome = await agentLoop.execute({
+          command: {
+            tenantId: 'apparel-retail',
+            environmentId: 'test',
+            workspaceId: workspace.workspaceId,
+            sessionId: 'sess-apparel',
+            correlationId: 'corr-apparel',
+            message: 'Looking for a navy wool coat in size M',
+          },
+          release: apparelPack,
+          workspace,
+          modelGateway: gateway,
+          catalogSearchHandler: catalogHandler,
+        });
+
+        // 1. Assert quote tools and calculator tools are completely ABSENT from tool definitions
+        const toolNames = capturedToolDefinitions.map((t: any) => t.name);
+        assert.ok(toolNames.includes('search_products'));
+        assert.ok(toolNames.includes('present_card'));
+        assert.ok(toolNames.includes('update_cart'));
+        assert.equal(toolNames.includes('create_quote'), false, 'create_quote must be absent for apparel pack');
+        assert.equal(toolNames.includes('update_quote'), false, 'update_quote must be absent for apparel pack');
+        assert.equal(toolNames.includes('add_to_quote'), false, 'add_to_quote must be absent for apparel pack');
+        assert.equal(toolNames.includes('calculate_quantity'), false, 'calculate_quantity must be absent for pack without calculators');
+
+        // 2. Assert rendered system prompt contains NONE of the building supplier industry words
+        const buildingIndustryWords = ['timber', 'decking', 'plasterboard', 'tapware', 'screws', 'framing', 'trade'];
+        for (const word of buildingIndustryWords) {
+          assert.doesNotMatch(
+            capturedSystemPrompt,
+            new RegExp(`\\b${word}\\b`, 'i'),
+            `Rendered system prompt must not contain building industry word "${word}"`
+          );
+        }
+
+        // 3. Assert tool definitions contain NONE of the building supplier industry words
+        const toolsJson = JSON.stringify(capturedToolDefinitions);
+        for (const word of buildingIndustryWords) {
+          assert.doesNotMatch(
+            toolsJson,
+            new RegExp(`\\b${word}\\b`, 'i'),
+            `Offered tool definitions must not contain building industry word "${word}"`
+          );
+        }
+
+        // 4. Assert assistant reply and tool results contain no building supplier words
+        const reply = outcome.turnResult.assistantMessage || '';
+        assert.match(reply, /navy wool trench coat/i);
+        for (const word of buildingIndustryWords) {
+          assert.doesNotMatch(reply, new RegExp(`\\b${word}\\b`, 'i'));
+        }
+      });
     });
   });
 });

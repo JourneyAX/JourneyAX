@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
-import type { BusinessPackRelease } from '@journeyax/business-pack';
+import type { BusinessPackRelease, BusinessPackContent } from '@journeyax/business-pack';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
@@ -10,9 +10,13 @@ import { extractRelevantOkfNotes, findRelevantOkfConcepts, OKF_ALLOWED_RELATIONS
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
-import { TradeQuoteCreateHandler } from '../capabilities/handlers/trade-quote-create.handler';
+import { QuoteCreateHandler } from '../capabilities/handlers/quote-create.handler';
 import { QuoteUpdateHandler } from '../capabilities/handlers/quote-update.handler';
 import { CartUpdateHandler } from '../capabilities/handlers/cart-update.handler';
+import {
+  executeCalculator,
+  findMatchingCalculator,
+} from '../kernel/formula-evaluator';
 import type { CapabilityGateway } from '../kernel/capability.gateway';
 import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
@@ -84,41 +88,195 @@ export function hashPayload(val: unknown): string {
   }
 }
 
-export const TOOL_CAPABILITY_ALIASES: Record<string, string[]> = {
-  search_products: ['catalog.search', 'catalog_search', 'catalog.*', 'search_products'],
-  get_product: ['catalog.search', 'catalog_search', 'catalog.get', 'catalog_get', 'catalog.*', 'get_product'],
-  get_related_products: ['catalog.search', 'catalog_search', 'catalog.related', 'catalog.*', 'get_related_products'],
-  check_stock: ['branch.stock_check', 'branch_stock_check', 'inventory.check', 'inventory_check', 'stock.*', 'check_stock'],
-  consult_business_knowledge: ['knowledge.search', 'knowledge_search', 'knowledge.*', 'consult_business_knowledge'],
-  search_guides: ['knowledge.search', 'knowledge_search', 'knowledge.*', 'search_guides'],
-  get_warranty: ['knowledge.search', 'knowledge_search', 'knowledge.*', 'get_warranty'],
-  calculate_quantity: ['calculator.*', 'quantity.calculate', 'calculate_quantity'],
-  present_card: ['ui.present_card', 'ui_cards', 'cards.*', 'present_card'],
-  hand_off_to_human: ['handoff.*', 'human_handoff', 'agent.handoff', 'hand_off_to_human'],
-  create_quote: ['trade.quote_create', 'quote.create', 'quote', 'create_quote', 'quotes.*'],
-  update_quote: ['quote.update', 'quote_update', 'quote.*', 'update_quote', 'quotes.*'],
-  add_to_quote: ['quote.update', 'quote_update', 'quote.*', 'add_to_quote', 'quotes.*'],
-  get_cart: ['cart.get', 'cart.*', 'get_cart', 'cart'],
-  update_cart: ['cart.update', 'cart_update', 'cart.*', 'update_cart', 'add_to_cart'],
-  add_to_cart: ['cart.update', 'cart_update', 'cart.*', 'add_to_cart', 'update_cart'],
-};
+/**
+ * Resolves the bound capability ID for an agent tool from the Business Pack's tool bindings.
+ * Returns the pack-configured toolId if bound, otherwise falls back to the neutral canonical capability ID.
+ */
+export function resolveBoundCapability(
+  release: BusinessPackContent | null | undefined,
+  toolName: string
+): string {
+  const toolBindings = release?.capabilities?.toolBindings || [];
 
-export function isToolAllowed(toolName: string, allowedTools?: string[]): boolean {
+  // 1. Explicit binding with agentTool === toolName
+  const explicit = toolBindings.find((b: any) => b.agentTool === toolName);
+  if (explicit?.toolId) return explicit.toolId;
+
+  // 2. Direct match on toolId === toolName
+  const direct = toolBindings.find((b: any) => b.toolId === toolName);
+  if (direct?.toolId) return direct.toolId;
+
+  // 3. Match from pack toolBindings (e.g. pack binding toolId matching toolName)
+  const normTool = toolName.toLowerCase().replace(/[_.]/g, '');
+  const boundMatch = toolBindings.find((b: any) => {
+    const normBound = (b.toolId || '').toLowerCase().replace(/[_.]/g, '');
+    return normBound.endsWith(normTool) || normTool.endsWith(normBound) || normBound.includes(normTool);
+  });
+  if (boundMatch?.toolId) return boundMatch.toolId;
+
+  // 4. Neutral canonical platform fallback
+  const neutralFallbacks: Record<string, string> = {
+    search_products: 'catalog.search',
+    get_product: 'catalog.get',
+    get_related_products: 'catalog.related',
+    check_stock: 'stock.check',
+    consult_business_knowledge: 'knowledge.search',
+    search_guides: 'knowledge.search',
+    get_warranty: 'knowledge.search',
+    calculate_quantity: 'quantity.calculate',
+    present_card: 'ui.present_card',
+    hand_off_to_human: 'agent.handoff',
+    create_quote: 'quote.create',
+    update_quote: 'quote.update',
+    add_to_quote: 'quote.update',
+    get_cart: 'cart.get',
+    update_cart: 'cart.update',
+    add_to_cart: 'cart.update',
+  };
+
+  return neutralFallbacks[toolName] || toolName;
+}
+
+export function isToolAllowed(
+  toolName: string,
+  allowedTools?: string[],
+  release?: BusinessPackContent | null
+): boolean {
   if (!allowedTools || allowedTools.length === 0) return false;
   if (allowedTools.includes('*') || allowedTools.includes('all')) return true;
   if (allowedTools.includes(toolName)) return true;
 
-  const aliases = TOOL_CAPABILITY_ALIASES[toolName] || [toolName];
+  const boundCap = resolveBoundCapability(release, toolName);
+  if (allowedTools.includes(boundCap)) return true;
+
   for (const allowed of allowedTools) {
-    if (aliases.includes(allowed)) return true;
     if (allowed.endsWith('.*')) {
       const prefix = allowed.slice(0, -2);
-      if (toolName.startsWith(prefix) || aliases.some((a) => a.startsWith(prefix))) {
+      if (
+        toolName.startsWith(prefix) ||
+        boundCap.startsWith(prefix) ||
+        boundCap.includes(prefix)
+      ) {
         return true;
       }
     }
   }
+
+  const toolBindings = release?.capabilities?.toolBindings || [];
+  for (const b of toolBindings as any[]) {
+    if (
+      (b.agentTool === toolName || b.toolId === toolName || b.toolId === boundCap) &&
+      allowedTools.includes(b.toolId)
+    ) {
+      return true;
+    }
+  }
+
   return false;
+}
+
+/**
+ * Dynamically specializes search_products parameters for the specific tenant based on
+ * catalogue mapping (attributeAliases) and entity definitions.
+ */
+export function specializeSearchProductsTool(
+  baseTool: AgentToolDefinition,
+  release?: BusinessPackContent | null
+): AgentToolDefinition {
+  const specialized: AgentToolDefinition = {
+    ...baseTool,
+    parameters: {
+      ...baseTool.parameters,
+      properties: { ...baseTool.parameters.properties },
+    },
+  };
+
+  const catalogMapping = release?.catalogMapping;
+  const attributeAliases = catalogMapping?.attributeAliases;
+  const attributeDefs = (catalogMapping as any)?.attributeDefinitions || {};
+  const entities = (release as any)?.entities?.entities || [];
+
+  const properties: Record<string, any> = {};
+
+  if (attributeAliases && typeof attributeAliases === 'object') {
+    for (const [attrName, aliases] of Object.entries(attributeAliases)) {
+      const def = attributeDefs[attrName];
+      const desc =
+        def?.description ||
+        (Array.isArray(aliases) && aliases.length > 0
+          ? `Filter by ${attrName} (aliases: ${aliases.join(', ')})`
+          : `Filter by ${attrName}`);
+      properties[attrName] = {
+        type: 'string',
+        description: desc,
+        ...(def?.examples ? { examples: def.examples } : {}),
+      };
+    }
+  }
+
+  if (attributeDefs && typeof attributeDefs === 'object') {
+    for (const [attrName, def] of Object.entries<any>(attributeDefs)) {
+      if (!properties[attrName]) {
+        properties[attrName] = {
+          type: 'string',
+          description: def?.description || `Filter by ${attrName}`,
+          ...(def?.examples ? { examples: def.examples } : {}),
+        };
+      }
+    }
+  }
+
+  for (const entity of entities) {
+    if (Array.isArray(entity.slots)) {
+      for (const slot of entity.slots) {
+        if (!properties[slot.name]) {
+          properties[slot.name] = {
+            type: slot.type || 'string',
+            description: slot.description || `Filter by ${slot.name}`,
+            ...(slot.examples ? { examples: slot.examples } : {}),
+          };
+        }
+      }
+    }
+  }
+
+  if (Object.keys(properties).length > 0) {
+    specialized.parameters.properties.attributes = {
+      type: 'object',
+      description: `Structured product attribute filters matching this catalogue: ${Object.keys(properties).join(', ')}.`,
+      properties,
+    };
+  }
+
+  return specialized;
+}
+
+/**
+ * Returns available agent tool definitions tailored to the tenant's pack and OKF release.
+ * If the pack defines no calculators, calculate_quantity is omitted.
+ */
+export function getAgentToolDefinitions(
+  release?: BusinessPackContent | null,
+  okfContent?: any
+): AgentToolDefinition[] {
+  const calculators =
+    (release as any)?.calculators ||
+    (okfContent as any)?.calculators ||
+    [];
+
+  const hasCalculators = Array.isArray(calculators) && calculators.length > 0;
+
+  return AGENT_TOOL_DEFINITIONS.filter((tool) => {
+    if (tool.name === 'calculate_quantity' && !hasCalculators) {
+      return false;
+    }
+    return true;
+  }).map((tool) => {
+    if (tool.name === 'search_products') {
+      return specializeSearchProductsTool(tool, release);
+    }
+    return tool;
+  });
 }
 
 export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
@@ -130,7 +288,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
       properties: {
         topic: {
           type: 'string',
-          description: 'The project, product category, or technical question to consult (e.g. decking, plasterboard, tapware, screws).',
+          description: 'The project, product category, or technical question to consult.',
         },
       },
       required: ['topic'],
@@ -138,30 +296,22 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'search_products',
-    description: "Search the product catalogue using structured parameters and exact dimension/treatment specifications. Copy codes like 'H3.2', 'R2.6', and '100x50' exactly as written by the customer. Returns matching products with SKU, title, price, category, and description. To check branch inventory availability or whether an item is in stock, use check_stock.",
+    description: 'Search the product catalogue using keywords, categories, and structured product attributes. Returns matching products with SKU, title, price, category, and description. To check branch inventory availability or whether an item is in stock, use check_stock.',
     parameters: {
       type: 'object',
       properties: {
         keywords: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Search keywords or phrases for products (e.g. ["composite decking", "screws"]).',
+          description: 'Search keywords or phrases for products.',
         },
         productType: {
           type: 'string',
-          description: 'Product type or general noun (e.g. "timber", "screws", "insulation", "decking").',
+          description: 'Product type or category name.',
         },
-        size: {
-          type: 'string',
-          description: 'Dimension or size specification. Copy exactly as written (e.g. "100x50", "90x45", "150x50", "4x2").',
-        },
-        treatment: {
-          type: 'string',
-          description: 'Treatment grade or level. Copy code exactly as written (e.g. "H3.2", "H1.2", "H4", "CCA", "Boron", "Untreated").',
-        },
-        rValue: {
-          type: 'string',
-          description: 'Thermal resistance rating code. Copy code exactly as written (e.g. "R2.2", "R2.6", "R3.2").',
+        attributes: {
+          type: 'object',
+          description: 'Structured product attribute filters (e.g. key-value pairs matching product specifications).',
         },
         brand: {
           type: 'string',
@@ -267,17 +417,17 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'calculate_quantity',
-    description: 'Deterministically calculate material quantities, sheet counts, linear metres, fixings, or paint coverage for a project with waste factors.',
+    description: 'Deterministically calculate material quantities, item counts, or coverage for a project from customer measurements using verified data-defined formulas. Returns missing inputs if required measurements are not provided.',
     parameters: {
       type: 'object',
       properties: {
         project: {
           type: 'string',
-          description: 'The project type (e.g. decking, plasterboard, painting, tiling).',
+          description: 'The project or calculation type matching an available calculator.',
         },
         measurements: {
           type: 'object',
-          description: 'Key-value pairs of project measurements (e.g. area, length, width, height, studSpacing).',
+          description: 'Key-value pairs of project measurements (e.g. area, length, width, height).',
         },
       },
       required: ['project', 'measurements'],
@@ -354,7 +504,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'create_quote',
-    description: 'Request creation of a formal trade quote for specified items and quantities. The server verifies items against catalogue pricing, applies trade account terms, and checks required approvals. The model proposes, the server decides.',
+    description: 'Request creation of a formal quote for specified items and quantities. The server verifies items against catalogue pricing, applies customer account terms, and checks required approvals. The model proposes, the server decides.',
     parameters: {
       type: 'object',
       properties: {
@@ -371,17 +521,17 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
             required: ['sku', 'quantity'],
           },
         },
-        tradeCategory: { type: 'string', description: 'Optional trade category or project classification.' },
+        category: { type: 'string', description: 'Optional project or item classification category.' },
         projectDimensions: { type: 'string', description: 'Optional project specifications or measurements.' },
         currency: { type: 'string', description: 'Optional currency code (must match pack currency).' },
-        accountNumber: { type: 'string', description: 'Optional trade account number.' },
+        accountNumber: { type: 'string', description: 'Optional customer account number.' },
       },
       required: ['items'],
     },
   },
   {
     name: 'update_quote',
-    description: 'Update an existing trade quote with revised specifications, quantities, or line items. Modifying finalized quotes or exceeding approval thresholds triggers server approval.',
+    description: 'Update an existing quote with revised specifications, quantities, or line items. Modifying finalized quotes or exceeding approval thresholds triggers server approval.',
     parameters: {
       type: 'object',
       properties: {
@@ -406,7 +556,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'add_to_quote',
-    description: 'Add new items or specifications to an existing trade quote.',
+    description: 'Add new items or specifications to an existing quote.',
     parameters: {
       type: 'object',
       properties: {
@@ -697,9 +847,6 @@ export async function executeAgentTool(
           : [];
       const query = String(args.query || '').trim();
       const productType = args.productType ? String(args.productType).trim() : undefined;
-      const size = args.size ? String(args.size).trim() : undefined;
-      const treatment = args.treatment ? String(args.treatment).trim() : undefined;
-      const rValue = args.rValue ? String(args.rValue).trim() : undefined;
       const brand = args.brand ? String(args.brand).trim() : undefined;
       const filters = args.filters || {};
       const category = args.category ? String(args.category).trim() : (filters.category ? String(filters.category).trim() : undefined);
@@ -713,6 +860,26 @@ export async function executeAgentTool(
       const maxPrice = args.maxPrice ?? filters.maxPrice;
       const inStockOnly = args.inStockOnly ?? filters.inStockOnly;
 
+      // Generic attributes resolution (R7)
+      const rawAttrs = args.attributes || {};
+      const attributes: Record<string, any> = { ...rawAttrs };
+
+      // Fold top-level attributes into attributes map
+      const knownTopLevel = new Set([
+        'keywords', 'productType', 'brand', 'category', 'categoryIds',
+        'categoryPaths', 'minPrice', 'maxPrice', 'inStockOnly', 'query',
+        'filters', 'attributes',
+      ]);
+      for (const [k, v] of Object.entries(args)) {
+        if (!knownTopLevel.has(k) && v !== undefined && v !== null && v !== '') {
+          attributes[k] = v;
+        }
+      }
+
+      const size = attributes.size ? String(attributes.size).trim() : undefined;
+      const treatment = attributes.treatment ? String(attributes.treatment).trim() : undefined;
+      const rValue = attributes.rValue ? String(attributes.rValue).trim() : undefined;
+
       const searchInput: any = {
         isAgentMode: true,
         keywords: keywords.length > 0 ? keywords : undefined,
@@ -721,6 +888,7 @@ export async function executeAgentTool(
         treatment,
         rValue,
         brand,
+        attributeFilters: Object.keys(attributes).length > 0 ? attributes : undefined,
         query: query || (keywords.length > 0 ? keywords.join(' ') : undefined),
         category,
         categoryIds,
@@ -742,7 +910,11 @@ export async function executeAgentTool(
         }
       }
 
-      const displayQuery = query || keywords.join(' ') || [productType, size, treatment, rValue, brand].filter(Boolean).join(' ') || 'catalogue search';
+      const displayQuery =
+        query ||
+        keywords.join(' ') ||
+        [productType, brand, ...Object.values(attributes).map(String)].filter(Boolean).join(' ') ||
+        'catalogue search';
 
       if (products.length === 0) {
         return {
@@ -1090,68 +1262,47 @@ export async function executeAgentTool(
     }
 
     case 'calculate_quantity': {
-      const project = String(args.project || '').toLowerCase();
-      const m = args.measurements || {};
+      const project = String(args.project || args.calculatorId || '').trim();
+      const rawMeasurements = args.measurements || {};
+      const calculators =
+        (ctx.release as any)?.calculators ||
+        (ctx.okfContent as any)?.calculators ||
+        [];
 
-      let result: any;
-      if (project.includes('deck')) {
-        // Deck calculation: length (m) * width (m) => area
-        const length = Number(m.length || m.l || 0);
-        const width = Number(m.width || m.w || 0);
-        const area = Number(m.area) || (length > 0 && width > 0 ? length * width : 12);
-        const boardWidthM = Number(m.boardWidthMm || 140) / 1000;
-        const wasteFactor = 1.1; // 10% waste
-        const linearMetres = Math.ceil((area / boardWidthM) * wasteFactor);
-        const screwsCount = Math.ceil(area * 35); // ~35 screws per m²
-
-        result = {
-          project: 'decking',
-          areaSquareMetres: area,
-          boardLinearMetres: linearMetres,
-          screwsCount,
-          wasteFactorPercentage: 10,
-          recommendation: `For ${area}m² of decking, order approximately ${linearMetres} linear metres of 140mm board (includes 10% cut waste) and ${screwsCount} decking screws.`,
-        };
-      } else if (project.includes('plaster') || project.includes('wall') || project.includes('sheet')) {
-        // Plasterboard / Wallboard calculation: area / 2.88 (standard 2.4x1.2 sheet)
-        const area = Number(m.area || (Number(m.length || 0) * Number(m.height || 2.4)) || 20);
-        const sheetArea = 2.4 * 1.2; // 2.88m²
-        const sheetCount = Math.ceil((area / sheetArea) * 1.1); // 10% waste
-        const screwsCount = sheetCount * 30; // 30 screws per sheet
-        const compoundKg = Math.ceil(area * 0.5); // ~0.5kg per m²
-
-        result = {
-          project: 'plasterboard',
-          areaSquareMetres: area,
-          sheetCount,
-          screwsCount,
-          jointCompoundKg: compoundKg,
-          recommendation: `For ${area}m² of wall area, you will need ${sheetCount} sheets of 2.4x1.2m board, ${screwsCount} wallboard screws, and approximately ${compoundKg}kg of joint compound.`,
-        };
-      } else if (project.includes('paint')) {
-        // Paint calculation: area * coats / coverage (14m²/L)
-        const area = Number(m.area || 30);
-        const coats = Number(m.coats || 2);
-        const litres = Math.ceil(((area * coats) / 14) * 1.1);
-
-        result = {
-          project: 'painting',
-          areaSquareMetres: area,
-          coats,
-          litresRequired: litres,
-          recommendation: `For ${area}m² with ${coats} coats, you need approximately ${litres} litres of paint (assuming 14m²/L coverage with 10% reserve).`,
-        };
-      } else {
-        const area = Number(m.area || 10);
-        result = {
-          project,
-          areaSquareMetres: area,
-          recommendation: `Estimated project coverage based on ${area}m².`,
+      const calc = findMatchingCalculator(calculators, project);
+      if (!calc) {
+        const available = calculators.map((c: any) => c.name || c.calculatorId).join(', ');
+        return {
+          ok: false,
+          error: `No calculator available for "${project}".${available ? ` Available calculators: ${available}.` : ' No calculators defined for this tenant.'}`,
         };
       }
 
-      ctx.allowedClaimClasses.add('requirement');
-      return result;
+      const execRes = executeCalculator(calc, rawMeasurements);
+      if (!execRes.ok || (execRes.missing && execRes.missing.length > 0)) {
+        return {
+          ok: false,
+          calculatorId: calc.calculatorId,
+          calculatorName: calc.name,
+          missing: execRes.missing,
+          message: execRes.message || `Missing required measurements for ${calc.name}: ${(execRes.missing || []).join(', ')}.`,
+        };
+      }
+
+      // Unlock claim class only for a verified calculator
+      if (execRes.verificationRef && execRes.claimClass) {
+        ctx.allowedClaimClasses.add(execRes.claimClass as any);
+      }
+
+      return {
+        ok: true,
+        project: calc.name,
+        calculatorId: calc.calculatorId,
+        outputs: execRes.outputs,
+        source: execRes.source,
+        verificationRef: execRes.verificationRef,
+        claimClass: execRes.claimClass,
+      };
     }
 
     case 'check_stock': {
@@ -1394,6 +1545,7 @@ export async function executeAgentTool(
         }
       }
 
+      const targetCapabilityId = resolveBoundCapability(ctx.release, 'create_quote');
       const inputPayload = {
         items: items.map((it: any) => ({
           sku: it.sku,
@@ -1401,7 +1553,7 @@ export async function executeAgentTool(
           name: it.name,
         })),
         projectDimensions: args.projectDimensions,
-        tradeCategory: args.tradeCategory,
+        category: args.category || (args as any)?.classification || (args as any)?.projectCategory,
         currency: args.currency || ctx.release.profile?.primaryCurrency,
         accountNumber: args.accountNumber,
       };
@@ -1416,7 +1568,7 @@ export async function executeAgentTool(
           ctx.tenantId,
           ctx.environmentId,
           ctx.workspaceId || 'agent_workspace',
-          'trade.quote_create',
+          targetCapabilityId,
           idempotencyKey
         );
         if (existing) {
@@ -1446,7 +1598,7 @@ export async function executeAgentTool(
                 status: 'pending_approval',
                 items: inputPayload.items,
               },
-              message: 'Trade quote request submitted and requires approval.',
+              message: 'Quote request submitted and requires approval.',
               idempotentReplay: true,
             };
           }
@@ -1457,7 +1609,7 @@ export async function executeAgentTool(
           environmentId: ctx.environmentId,
           workspaceId: ctx.workspaceId || 'agent_workspace',
           correlationId: ctx.correlationId,
-          toolId: 'trade.quote_create',
+          toolId: targetCapabilityId,
           idempotencyKey,
           status: 'started',
           inputPayload,
@@ -1469,12 +1621,12 @@ export async function executeAgentTool(
       // 2. Server Approval Gate: The model proposes, the server decides
       const requiresApproval =
         args.requiresApproval === true ||
-        (ctx.release as any)?.conversationPolicy?.requiresApproval?.includes('trade.quote_create') ||
+        (ctx.release as any)?.conversationPolicy?.requiresApproval?.includes(targetCapabilityId) ||
         (ctx.release as any)?.conversationPolicy?.requiresApproval?.includes('create_quote');
 
       if (requiresApproval && ctx.approvalService) {
         const pending = await ctx.approvalService.createPending(
-          'trade.quote_create',
+          targetCapabilityId,
           inputPayload,
           makeExecContext(ctx)
         );
@@ -1485,7 +1637,7 @@ export async function executeAgentTool(
             environmentId: ctx.environmentId,
             workspaceId: ctx.workspaceId || 'agent_workspace',
             correlationId: ctx.correlationId,
-            toolId: 'trade.quote_create',
+            toolId: targetCapabilityId,
             idempotencyKey,
             status: 'requires_approval',
             inputPayload,
@@ -1503,7 +1655,7 @@ export async function executeAgentTool(
             approvalRequestId: pending.approvalRequestId,
             items: inputPayload.items,
           },
-          message: 'Trade quote request submitted and requires approval.',
+          message: 'Quote request submitted and requires approval.',
         };
       }
 
@@ -1514,13 +1666,13 @@ export async function executeAgentTool(
         if (ctx.capabilityGateway) {
           const execRes = await ctx.capabilityGateway.executeCapability(
             ctx.release,
-            'trade.quote_create',
+            targetCapabilityId,
             inputPayload,
             makeExecContext(ctx)
           );
           if (execRes.status === 'requires_approval') {
             const pending = await ctx.approvalService?.createPending(
-              'trade.quote_create',
+              targetCapabilityId,
               inputPayload,
               makeExecContext(ctx)
             );
@@ -1530,7 +1682,7 @@ export async function executeAgentTool(
                 environmentId: ctx.environmentId,
                 workspaceId: ctx.workspaceId || 'agent_workspace',
                 correlationId: ctx.correlationId,
-                toolId: 'trade.quote_create',
+                toolId: targetCapabilityId,
                 idempotencyKey,
                 status: 'requires_approval',
                 inputPayload,
@@ -1547,20 +1699,23 @@ export async function executeAgentTool(
                 approvalRequestId: pending?.approvalRequestId || execRes.approvalRequestId,
                 items: inputPayload.items,
               },
-              message: execRes.error || 'Trade quote request requires approval.',
+              message: execRes.error || 'Quote request requires approval.',
             };
           } else if (execRes.status === 'success') {
             quoteOutcome = execRes.output;
           } else {
-            const nativeHandler = ctx.capabilityGateway.getNativeHandler('trade.quote_create');
+            const nativeHandler =
+              ctx.capabilityGateway.getNativeHandler(targetCapabilityId) ||
+              ctx.capabilityGateway.getNativeHandler('quote.create') ||
+              ctx.capabilityGateway.getNativeHandler('quote');
             if (nativeHandler) {
               quoteOutcome = await nativeHandler.execute(inputPayload, makeExecContext(ctx));
             } else {
-              throw new Error(execRes.error || 'trade.quote_create capability execution failed');
+              throw new Error(execRes.error || `${targetCapabilityId} capability execution failed`);
             }
           }
         } else {
-          const handler = new TradeQuoteCreateHandler(
+          const handler = new QuoteCreateHandler(
             undefined,
             (ctx.inMemoryQuotes as any) || undefined,
             Array.from(ctx.catalogProductCache.values())
@@ -1575,7 +1730,7 @@ export async function executeAgentTool(
             environmentId: ctx.environmentId,
             workspaceId: ctx.workspaceId || 'agent_workspace',
             correlationId: ctx.correlationId,
-            toolId: 'trade.quote_create',
+            toolId: targetCapabilityId,
             idempotencyKey,
             status: 'completed',
             inputPayload,
@@ -1594,7 +1749,7 @@ export async function executeAgentTool(
           ok: true,
           status: 'success',
           quote: quoteOutcome,
-          message: `Successfully created trade quote ${quoteOutcome?.quoteId || ''}.`,
+          message: `Successfully created quote ${quoteOutcome?.quoteId || ''}.`,
         };
       } catch (err: any) {
         const durationMs = Date.now() - startTime;
@@ -1604,7 +1759,7 @@ export async function executeAgentTool(
             environmentId: ctx.environmentId,
             workspaceId: ctx.workspaceId || 'agent_workspace',
             correlationId: ctx.correlationId,
-            toolId: 'trade.quote_create',
+            toolId: targetCapabilityId,
             idempotencyKey,
             status: 'failed',
             inputPayload,

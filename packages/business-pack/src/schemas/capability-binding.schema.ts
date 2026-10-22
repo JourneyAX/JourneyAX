@@ -209,6 +209,7 @@ export const ToolBindingSchema = z
     inputMapping: z.record(z.string(), z.string()).optional(),
     outputFactMapping: z.record(z.string(), z.string()).optional(),
     policyOverrides: z.record(z.string(), z.any()).optional(),
+    agentTool: z.string().optional(),
     policy: ToolPolicySchema.default({
       requiredRole: 'customer',
       requiresConfirmation: false,

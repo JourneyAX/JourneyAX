@@ -15,6 +15,7 @@ import {
 } from '../kernel/model.gateway';
 import {
   AGENT_TOOL_DEFINITIONS,
+  getAgentToolDefinitions,
   executeAgentTool,
   isReadOnlyTool,
   isToolAllowed,
@@ -368,7 +369,8 @@ export class AgentTurnLoop {
 
     // 4. Offer only tools in agent.allowedTools
     const allowedTools = resolvedAgent.allowedTools || [];
-    const availableTools = AGENT_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name, allowedTools));
+    const toolDefs = getAgentToolDefinitions(release, okfContent);
+    const availableTools = toolDefs.filter((t) => isToolAllowed(t.name, allowedTools, release));
 
     // 5. Honour maxTurns from resolved agent
     const agentMaxTurns = resolvedAgent.agent.maxTurns ?? 5;
@@ -563,12 +565,12 @@ export class AgentTurnLoop {
       // If the model called tools
       if (roundToolCalls.length > 0) {
         // Enforce allowed tools: partition into authorized and unauthorized
-        const authorizedCalls = roundToolCalls.filter((tc) => isToolAllowed(tc.name, allowedTools));
-        const unauthorizedCalls = roundToolCalls.filter((tc) => !isToolAllowed(tc.name, allowedTools));
+        const authorizedCalls = roundToolCalls.filter((tc) => isToolAllowed(tc.name, allowedTools, release));
+        const unauthorizedCalls = roundToolCalls.filter((tc) => !isToolAllowed(tc.name, allowedTools, release));
 
         // Record rejection in trace for unauthorized or unknown tools
         for (const tc of unauthorizedCalls) {
-          const isKnownTool = AGENT_TOOL_DEFINITIONS.some((d) => d.name === tc.name);
+          const isKnownTool = toolDefs.some((d) => d.name === tc.name) || AGENT_TOOL_DEFINITIONS.some((d) => d.name === tc.name);
           const errorMsg = isKnownTool
             ? `Tool '${tc.name}' is not in allowedTools for agent '${resolvedAgent.agent.agentId}'.`
             : `Unknown tool: '${tc.name}'`;
@@ -594,7 +596,7 @@ export class AgentTurnLoop {
 
         // Append error results for unauthorized calls
         for (const tc of unauthorizedCalls) {
-          const isKnownTool = AGENT_TOOL_DEFINITIONS.some((d) => d.name === tc.name);
+          const isKnownTool = toolDefs.some((d) => d.name === tc.name) || AGENT_TOOL_DEFINITIONS.some((d) => d.name === tc.name);
           const errorMsg = isKnownTool
             ? `Tool '${tc.name}' is unauthorized for agent '${resolvedAgent.agent.agentId}'. Authorized tools: ${allowedTools.join(', ')}`
             : `Unknown tool '${tc.name}' is not recognized.`;

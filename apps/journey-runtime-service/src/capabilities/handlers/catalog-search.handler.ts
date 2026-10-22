@@ -1001,6 +1001,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         if (requestedCurrency && !unpriced && item.currency !== requestedCurrency) return false;
         if (input.inStockOnly && item.inStock !== true) return false;
         for (const [k, expectedVal] of Object.entries(attributeFilters)) {
+          if (isAgent && reservedStructuredKeys.has(k)) continue;
           const actualVal = readAttribute(item, k, mapping);
           if (actualVal === undefined || actualVal === null) return false;
           if (String(actualVal).trim().toLowerCase() !== String(expectedVal).trim().toLowerCase()) return false;

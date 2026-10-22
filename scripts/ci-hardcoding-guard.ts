@@ -54,6 +54,7 @@ const RULES: Array<{
   regex: RegExp;
   reason: string;
   ignoreIf?: (line: string) => boolean;
+  matchFile?: (relPath: string) => boolean;
 }> = [
   {
     name: 'Fake SKU/Document/Quote Defaults in Generic Runtime',
@@ -195,6 +196,13 @@ const RULES: Array<{
     reason: 'Tenant names and vocabulary must not appear in generic runtime source code.',
     ignoreIf: (line) => line.includes('@deprecated') || line.includes('title:'),
   },
+  {
+    name: 'Hardcoded Industry Words in Agent Source',
+    regex: /\b(?:trade|decking|plasterboard|tapware)\b/i,
+    reason: 'Industry words (trade, decking, plasterboard, tapware) must not appear in src/agent; wording must be neutral and capability mappings must come from pack bindings.',
+    matchFile: (relPath) => relPath.includes('src/agent/'),
+    ignoreIf: (line) => line.includes('//') || line.includes('test') || line.includes('/*'),
+  },
 ];
 
 function stripComments(line: string): string {
@@ -259,6 +267,9 @@ function scanDirectory(dirPath: string, rootDir: string): Violation[] {
         }
 
         for (const rule of RULES) {
+          if (rule.matchFile && !rule.matchFile(relPath)) {
+            continue;
+          }
           if (rule.regex.test(codeOnly)) {
             if (rule.ignoreIf && rule.ignoreIf(codeOnly)) {
               continue;
@@ -325,13 +336,41 @@ export function runGuardSelfTest(): { ok: boolean; failedCases: string[] } {
     }
   }
 
+  const industryRule = RULES.find((r) => r.name === 'Hardcoded Industry Words in Agent Source');
+  if (industryRule) {
+    const positiveIndustrySnippets = [
+      `const prompt = 'trade specialist';`,
+      `const type = 'decking boards';`,
+      `const product = 'plasterboard lining';`,
+      `const fixture = 'bathroom tapware';`,
+    ];
+    for (const snippet of positiveIndustrySnippets) {
+      const matched = industryRule.regex.test(snippet) && (!industryRule.ignoreIf || !industryRule.ignoreIf(snippet));
+      if (!matched) {
+        failedCases.push(`Expected industry violation but passed: "${snippet}"`);
+      }
+    }
+    const negativeIndustrySnippets = [
+      `const prompt = 'quote specialist';`,
+      `const type = 'flooring materials';`,
+      `const product = 'wall lining';`,
+      `const fixture = 'bathroom items';`,
+    ];
+    for (const snippet of negativeIndustrySnippets) {
+      const matched = industryRule.regex.test(snippet) && (!industryRule.ignoreIf || !industryRule.ignoreIf(snippet));
+      if (matched) {
+        failedCases.push(`Expected pass but flagged industry violation: "${snippet}"`);
+      }
+    }
+  }
+
   if (failedCases.length > 0) {
     console.error('❌ Guard Self-Test FAILED on cases:');
     failedCases.forEach((c) => console.error(`   - ${c}`));
     return { ok: false, failedCases };
   }
 
-  console.log('✅ Guard Self-Test PASSED: All forbidden currency fallbacks and legitimate patterns correctly verified.\n');
+  console.log('✅ Guard Self-Test PASSED: All forbidden currency fallbacks, industry words, and legitimate patterns correctly verified.\n');
   return { ok: true, failedCases: [] };
 }
 

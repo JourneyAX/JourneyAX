@@ -11,6 +11,7 @@ import { CapabilityBindingsCollectionSchema } from './capability-binding.schema'
 import { ExperienceSchema } from './experience.schema';
 import { EvaluationSuiteSchema } from './evaluation.schema';
 import { SpacePlannerExtensionSchema } from './space-planner.schema';
+import { CalculatorDefinitionSchema } from './calculator.schema';
 import { CatalogMappingSchema } from '../catalog-mapping';
 
 export const RoutingPolicySchema = z.object({
@@ -148,6 +149,7 @@ export const CANONICAL_CONTENT_KEYS = [
   'evaluations',
   'extensions',
   'factRegistry',
+  'calculators',
   'knowledgeModel',
   'catalogMapping',
   'checksumSchemaVersion',
@@ -214,6 +216,7 @@ export const BusinessPackContentSchema = z.object({
     })
     .catchall(z.any()),
   factRegistry: FactRegistrySchema.optional(),
+  calculators: z.array(CalculatorDefinitionSchema).optional(),
   knowledgeModel: KnowledgeModelRefSchema.optional(),
   catalogMapping: CatalogMappingSchema.optional(),
   checksumSchemaVersion: ChecksumSchemaVersionSchema.optional(),
@@ -275,6 +278,7 @@ export const BusinessPackEnvelopeSchema = z
     evaluations: ArraySlot.optional(),
     extensions: PlainObjectSlot.optional(),
     factRegistry: PlainObjectSlot.optional(),
+    calculators: ArraySlot.optional(),
     knowledgeModel: PlainObjectSlot.optional(),
     catalogMapping: PlainObjectSlot.optional(),
     checksumSchemaVersion: ChecksumSchemaVersionSchema.optional(),

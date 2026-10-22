@@ -140,3 +140,7 @@ export class TradeQuoteCreateHandler implements NativeCapabilityHandler {
     return quoteRecord;
   }
 }
+
+export const QuoteCreateHandler = TradeQuoteCreateHandler;
+export type QuoteCreateInput = TradeQuoteCreateInput;
+

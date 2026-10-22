@@ -10,4 +10,5 @@ export * from './capability-binding.schema';
 export * from './experience.schema';
 export * from './evaluation.schema';
 export * from './space-planner.schema';
+export * from './calculator.schema';
 export * from './business-pack.schema';
