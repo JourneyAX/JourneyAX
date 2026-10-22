@@ -1,0 +1,12 @@
+{
+  "forbiddenIndustryTerms": [
+    "trade",
+    "decking",
+    "plasterboard",
+    "tapware"
+  ],
+  "forbiddenAttributeNames": [
+    "treatment",
+    "rValue"
+  ]
+}

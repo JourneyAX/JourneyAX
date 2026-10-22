@@ -2191,7 +2191,7 @@ export class TurnApplicationService {
           `5. If the customer continues an open question topic (such as a pending measurement), guide them on specifying it and invite them to answer the pending options.`,
           isExplicitTechnicalDocQuery && verifiedDocs.length === 0
             ? `6. If no verified technical information was found after search, truthfully state: "I don't have verified technical documentation for that specific requirement. Could you provide more details about your project?"`
-            : `6. If answering trade, troubleshooting, or product inquiries, provide helpful practical guidance and ask clarifying questions to diagnose the issue (e.g. cause, location, materials involved). Do NOT mention missing technical documentation unless the customer explicitly asked for technical certificates or specification sheets.`,
+            : `6. If answering troubleshooting or product inquiries, provide helpful practical guidance and ask clarifying questions to diagnose the issue (e.g. cause, location, materials involved). Do NOT mention missing technical documentation unless the customer explicitly asked for technical certificates or specification sheets.`,
           `7. NEVER invent products, SKUs, prices, compliance claims, inventory, quotes, or installation requirements.`,
           `8. Do NOT generate or claim a quote was assembled unless the customer explicitly requested a quote.`,
           `9. NEVER expose internal stage IDs, capability names, fact names, internal policy names, or release IDs.`,

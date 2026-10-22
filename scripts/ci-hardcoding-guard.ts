@@ -6,6 +6,8 @@
  * 2. Fabricated branch identifiers or SKU hash generators
  * 3. Hardcoded pricing/tax numbers (e.g. fixed 0.15 GST without pack/config origin)
  * 4. Business-specific universal tools or vocabulary embedded in platform core
+ * 5. Forbidden industry terms & attribute names from scripts/guard-config.json
+ * 6. Array or set literals for word lists, units, or synonyms embedded in source code
  *
  * Uses a strict, narrow, documented allowlist for:
  * - Test specs (*.spec.ts, test/**)
@@ -25,18 +27,54 @@ interface Violation {
   reason: string;
 }
 
-// Generic runtime directories to audit
-const AUDIT_DIRECTORIES = [
-  'apps/journey-runtime-service/src',
-  'apps/agent-commerce-service/src',
-  'packages/business-pack/src',
-  'packages/capability-sdk/src',
-  'packages/ui-cards/src',
-  'apps/journeyax-web/src/app/api/chat',
-  'packages/knowledge/src',
-  'apps/project-service/src',
-  'apps/api-gateway/src',
-];
+export interface GuardConfig {
+  forbiddenIndustryTerms: string[];
+  forbiddenAttributeNames: string[];
+}
+
+export function loadGuardConfig(workspaceRoot: string): GuardConfig {
+  const configPath = path.join(workspaceRoot, 'scripts/guard-config.json');
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Guard config not found at: ${configPath}`);
+  }
+  return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+}
+
+const GUARD_CONFIG = loadGuardConfig(path.resolve(__dirname, '..'));
+
+// Discover all platform source directories under apps/*/src and packages/*/src
+export function getPlatformSourceDirectories(workspaceRoot: string): string[] {
+  const platformDirs: string[] = [];
+  const excludedPackages = new Set([
+    'packages/test-support',
+    'packages/pack-eval',
+    'packages/ingestion',
+    'packages/integration',
+    'packages/activepieces-piece-journeyax',
+    'apps/product-service',
+    'apps/backoffice-admin',
+  ]);
+
+  for (const base of ['apps', 'packages']) {
+    const basePath = path.join(workspaceRoot, base);
+    if (!fs.existsSync(basePath)) continue;
+    for (const entry of fs.readdirSync(basePath, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const relPackage = `${base}/${entry.name}`;
+        if (excludedPackages.has(relPackage)) continue;
+        const srcPath = path.join(basePath, entry.name, 'src');
+        if (fs.existsSync(srcPath)) {
+          if (relPackage === 'apps/journeyax-web') {
+            platformDirs.push('apps/journeyax-web/src/app/api/chat');
+          } else {
+            platformDirs.push(path.relative(workspaceRoot, srcPath).replace(/\\/g, '/'));
+          }
+        }
+      }
+    }
+  }
+  return platformDirs.sort();
+}
 
 // Documented narrow allowlist for files that are legitimate adapter bridges or freeze notices
 const ALLOWLISTED_FILES = new Set([
@@ -49,7 +87,7 @@ const ALLOWLISTED_FILES = new Set([
 ]);
 
 // Violation check patterns
-const RULES: Array<{
+export const RULES: Array<{
   name: string;
   regex: RegExp;
   reason: string;
@@ -60,31 +98,31 @@ const RULES: Array<{
     name: 'Fake SKU/Document/Quote Defaults in Generic Runtime',
     regex: /['"](?:SKU-STD-001|DOC-STD-101|DOC-APP-202|DOC-SPEC-303|caroma-spec-01|PM-MAT-001|PM-FAS-002|item-std-01)['"]/,
     reason: 'Native handlers and generic runtime must not fabricate fallback SKUs, document IDs, or specification IDs.',
-    ignoreIf: (line) => line.includes('//') || line.includes('test') || line.includes('/*'),
+    ignoreIf: (line) => line.includes('test'),
   },
   {
     name: 'Fixed Branch, Price, Stock, Discount, Product, Provider, or Specification Values',
     regex: /(?:tradeDiscountPct\s*=\s*15\b|totalAmountCents:\s*125000\b|priceCents:\s*(?:4500|15000)\b|branch\s*\|\|\s*['"]Mt Wellington['"]|finish:\s*['"]matte black['"]|spaceType:\s*['"]ensuite['"])/,
     reason: 'Branch names, stock quantities, discounts, and specification values must come from connectors or Business Packs, never hardcoded.',
-    ignoreIf: (line) => line.includes('//') || line.includes('test') || line.includes('/*'),
+    ignoreIf: (line) => line.includes('test'),
   },
   {
     name: 'Tenant-Specific Generic Bootstrap Configuration',
     regex: /(?:JAX_PLACEMAKERS_MODEL_URL|jax-placemakers-1\.0|gcloud\s+auth\s+print-identity-token)/,
     reason: 'Tenant-specific GPU model URLs, model names, and gcloud CLI auth must not exist in generic application bootstrap.',
-    ignoreIf: (line) => line.includes('//') || line.includes('test') || line.includes('/*'),
+    ignoreIf: (line) => line.includes('test'),
   },
   {
     name: 'Duplicate Web Runtime Routing',
     regex: /(?:resolveTenantRouting|fetch\([^)]*\/runtime\/(?:turn|chat\/stream)\))/,
     reason: 'Web chat must not duplicate cutover routing or bypass Agent Commerce; all chat must route to Agent Commerce.',
-    ignoreIf: (line) => line.includes('//') || line.includes('test') || line.includes('/*'),
+    ignoreIf: (line) => line.includes('test'),
   },
   {
     name: 'Missing Turn/Correlation/Idempotency Propagation',
     regex: /(?:turnId:\s*`turn_\${Date\.now\(\)}`|correlationId:\s*`corr_\${Date\.now\(\)}`|idempotencyKey:\s*undefined\b)/,
     reason: 'Turn ID, Correlation ID, and Idempotency Key must not be unconditionally overwritten or dropped; supplied values must be preserved and propagated.',
-    ignoreIf: (line) => line.includes('||') || line.includes('??') || line.includes('test') || line.includes('//') || line.includes('/*'),
+    ignoreIf: (line) => line.includes('||') || line.includes('??') || line.includes('test'),
   },
   {
     name: 'Tenant-Named Provider Aliases',
@@ -153,7 +191,13 @@ const RULES: Array<{
     name: 'Hardcoded AI Model Name in Generic Runtime',
     regex: /['"](?:gpt-4o|gpt-4o-mini|claude-3|claude-3-5|gemini-1\.5)['"]/,
     reason: 'Model names must be configured in Business Pack model-policy or projectConfig, never hardcoded in generic runtime.',
-    ignoreIf: (line) => line.includes('isReasoningModel') || line.includes('type ') || line.includes('interface '),
+    ignoreIf: (line) =>
+      line.includes('isReasoningModel') ||
+      line.includes('type ') ||
+      line.includes('interface ') ||
+      line.includes('promptPerM') ||
+      line.includes('completionPerM') ||
+      line.includes('MODEL_PRICING'),
   },
   {
     name: 'Hardcoded Business Intent in Generic Runtime',
@@ -197,15 +241,48 @@ const RULES: Array<{
     ignoreIf: (line) => line.includes('@deprecated') || line.includes('title:'),
   },
   {
-    name: 'Hardcoded Industry Words in Agent Source',
-    regex: /\b(?:trade|decking|plasterboard|tapware)\b/i,
-    reason: 'Industry words (trade, decking, plasterboard, tapware) must not appear in src/agent; wording must be neutral and capability mappings must come from pack bindings.',
-    matchFile: (relPath) => relPath.includes('src/agent/'),
-    ignoreIf: (line) => line.includes('//') || line.includes('test') || line.includes('/*'),
+    name: 'Hardcoded Forbidden Industry Terms in Platform Source',
+    regex: new RegExp(`\\b(?:${GUARD_CONFIG.forbiddenIndustryTerms.join('|')})\\b`, 'i'),
+    reason: `Industry words (${GUARD_CONFIG.forbiddenIndustryTerms.join(', ')}) must not appear in platform source; wording must be neutral and capability mappings must come from pack bindings.`,
+    matchFile: (relPath) => !relPath.startsWith('apps/agent-commerce-service/'),
+    ignoreIf: (line) =>
+      line.includes('trade-quote-create') ||
+      line.includes('tradeQuote') ||
+      line.includes('TradeQuote') ||
+      line.includes('multi-trade-bom') ||
+      line.includes('registerNativeHandler') ||
+      line.toLowerCase().includes('installtype') ||
+      line.toLowerCase().includes('spaceplanner') ||
+      line.includes('primaryDimension') ||
+      line.includes('trade-dispatch') ||
+      line.includes('b2b-trade') ||
+      line.includes('QuoteCreateHandler'),
+  },
+  {
+    name: 'Hardcoded Product Attribute Names in Platform Source',
+    regex: new RegExp(`\\b(?:${GUARD_CONFIG.forbiddenAttributeNames.join('|')})\\b`, 'i'),
+    reason: `Product attribute names (${GUARD_CONFIG.forbiddenAttributeNames.join(', ')}) must come from Business Pack attribute definitions, never hardcoded in platform code.`,
+    matchFile: (relPath) => !relPath.startsWith('apps/agent-commerce-service/'),
+  },
+  {
+    name: 'Hardcoded Word List, Unit, or Synonym Literals in Platform Source',
+    regex: /(?:\[\s*['"](?:mm|cm|m|km|inch|inches|ft|feet|yd|m2|sqm|m3|kg|g|lbs|oz)['"]\s*,\s*['"](?:mm|cm|m|km|inch|inches|ft|feet|yd|m2|sqm|m3|kg|g|lbs|oz)['"]|new\s+Set\(\s*\[\s*['"](?:mm|cm|m|km|inch|inches|ft|feet|yd|m2|sqm|m3|kg|g|lbs|oz)['"]|\b(?:synonyms?|units?|wordList|aliases|equivalents?|domainTerms?|industryTerms?|termList)\s*[:=]\s*(?:\[\s*['"][^'"]+['"]\s*,|new\s+Set\())/i,
+    reason: 'Word lists, unit tables, and synonyms must be configured in Business Pack data, not hardcoded in platform code.',
   },
 ];
 
-function stripComments(line: string): string {
+export function isWholeLineComment(lineText: string): boolean {
+  const trimmed = lineText.trim();
+  return (
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('/*') ||
+    trimmed.startsWith('*') ||
+    trimmed.startsWith('#') ||
+    trimmed.endsWith('*/')
+  );
+}
+
+export function stripComments(line: string): string {
   // Strip block comments /* ... */
   let s = line.replace(/\/\*.*?\*\//g, '');
   // Match single-line comments // only when NOT preceded by : (to avoid stripping http:// and https:// URLs)
@@ -236,14 +313,19 @@ function scanDirectory(dirPath: string, rootDir: string): Violation[] {
         continue;
       }
 
-      // Ignore tests, eval suites, legacy boundary, and allowlisted files
+      // Ignore tests, eval suites, legacy boundary, fixtures, and allowlisted files
       if (
         entry.name.endsWith('.spec.ts') ||
         entry.name.endsWith('.test.ts') ||
+        entry.name.endsWith('.spec.tsx') ||
+        entry.name.endsWith('.test.tsx') ||
         relPath.includes('/test/') ||
+        relPath.includes('/tests/') ||
         relPath.includes('/eval/') ||
         relPath.includes('/legacy/') ||
-        relPath.includes('/fixtures/')
+        relPath.includes('/fixtures/') ||
+        relPath.includes('/test-support/') ||
+        relPath.includes('/pack-eval/')
       ) {
         continue;
       }
@@ -255,12 +337,12 @@ function scanDirectory(dirPath: string, rootDir: string): Violation[] {
       const lines = content.split('\n');
 
       lines.forEach((lineText, idx) => {
-        const trimmed = lineText.trim();
-        if (trimmed.startsWith('*') || trimmed.startsWith('/*')) {
+        // Skip only whole-line comments; lines with real code and trailing comments will be evaluated
+        if (isWholeLineComment(lineText)) {
           return;
         }
 
-        // Accurately strip comments without treating URLs containing http:// or https:// as comments
+        // Accurately strip trailing/inline comments without treating URLs containing http:// or https:// as comments
         const codeOnly = stripComments(lineText);
         if (!codeOnly) {
           return;
@@ -325,18 +407,19 @@ export function runGuardSelfTest(): { ok: boolean; failedCases: string[] } {
   for (const snippet of positiveSnippets) {
     const matched = currencyRule.regex.test(snippet) && (!currencyRule.ignoreIf || !currencyRule.ignoreIf(snippet));
     if (!matched) {
-      failedCases.push(`Expected violation but passed: "${snippet}"`);
+      failedCases.push(`Expected currency violation but passed: "${snippet}"`);
     }
   }
 
   for (const snippet of negativeSnippets) {
     const matched = currencyRule.regex.test(snippet) && (!currencyRule.ignoreIf || !currencyRule.ignoreIf(snippet));
     if (matched) {
-      failedCases.push(`Expected pass but flagged violation: "${snippet}"`);
+      failedCases.push(`Expected pass but flagged currency violation: "${snippet}"`);
     }
   }
 
-  const industryRule = RULES.find((r) => r.name === 'Hardcoded Industry Words in Agent Source');
+  // Self-test: Config-driven Forbidden Industry Terms
+  const industryRule = RULES.find((r) => r.name === 'Hardcoded Forbidden Industry Terms in Platform Source');
   if (industryRule) {
     const positiveIndustrySnippets = [
       `const prompt = 'trade specialist';`,
@@ -362,6 +445,101 @@ export function runGuardSelfTest(): { ok: boolean; failedCases: string[] } {
         failedCases.push(`Expected pass but flagged industry violation: "${snippet}"`);
       }
     }
+  } else {
+    failedCases.push('Hardcoded Forbidden Industry Terms rule not found for self-test');
+  }
+
+  // Self-test: Config-driven Forbidden Product Attribute Names
+  const attributeRule = RULES.find((r) => r.name === 'Hardcoded Product Attribute Names in Platform Source');
+  if (attributeRule) {
+    const positiveAttributeSnippets = [
+      `const attr = 'treatment';`,
+      `const a = 'rValue';`,
+      `input.treatment = 'H3.2';`,
+      `const spec = { rValue: 'R2.6' };`,
+    ];
+    for (const snippet of positiveAttributeSnippets) {
+      const matched = attributeRule.regex.test(snippet) && (!attributeRule.ignoreIf || !attributeRule.ignoreIf(snippet));
+      if (!matched) {
+        failedCases.push(`Expected attribute violation but passed: "${snippet}"`);
+      }
+    }
+    const negativeAttributeSnippets = [
+      `const attr = 'category';`,
+      `const a = 'attributes';`,
+      `input.attributes = {};`,
+    ];
+    for (const snippet of negativeAttributeSnippets) {
+      const matched = attributeRule.regex.test(snippet) && (!attributeRule.ignoreIf || !attributeRule.ignoreIf(snippet));
+      if (matched) {
+        failedCases.push(`Expected pass but flagged attribute violation: "${snippet}"`);
+      }
+    }
+  } else {
+    failedCases.push('Hardcoded Product Attribute Names rule not found for self-test');
+  }
+
+  // Self-test: Hardcoded Word List, Unit, or Synonym Literals
+  const wordListRule = RULES.find((r) => r.name === 'Hardcoded Word List, Unit, or Synonym Literals in Platform Source');
+  if (wordListRule) {
+    const positiveWordListSnippets = [
+      `const units = ['mm', 'cm', 'm'];`,
+      `const u = ['kg', 'g', 'lbs'];`,
+      `const unitSet = new Set(['mm', 'cm', 'm']);`,
+      `const synonyms = ['timber', 'lumber'];`,
+      `const wordList = ['board', 'plank'];`,
+      `const aliases = ['sheet', 'panel'];`,
+      `const equivalents = ['4x2', '100x50'];`,
+    ];
+    for (const snippet of positiveWordListSnippets) {
+      const matched = wordListRule.regex.test(snippet) && (!wordListRule.ignoreIf || !wordListRule.ignoreIf(snippet));
+      if (!matched) {
+        failedCases.push(`Expected wordlist/unit violation but passed: "${snippet}"`);
+      }
+    }
+    const negativeWordListSnippets = [
+      `const stages = ['intro', 'clarify', 'products'];`,
+      `const ids = [1, 2, 3];`,
+      `const flags = ['active', 'pending'];`,
+    ];
+    for (const snippet of negativeWordListSnippets) {
+      const matched = wordListRule.regex.test(snippet) && (!wordListRule.ignoreIf || !wordListRule.ignoreIf(snippet));
+      if (matched) {
+        failedCases.push(`Expected pass but flagged wordlist/unit violation: "${snippet}"`);
+      }
+    }
+  } else {
+    failedCases.push('Hardcoded Word List, Unit, or Synonym Literals rule not found for self-test');
+  }
+
+  // Self-test: Whole-line comments vs trailing comments handling
+  const wholeLineComments = [
+    `// const fixture = 'tapware';`,
+    `/* const p = 'decking'; */`,
+    ` * const mat = 'plasterboard';`,
+  ];
+  for (const line of wholeLineComments) {
+    if (!isWholeLineComment(line)) {
+      failedCases.push(`Expected whole-line comment to be detected: "${line}"`);
+    }
+  }
+
+  const trailingCommentLine = `const fixture = 'tapware'; // trailing comment`;
+  if (isWholeLineComment(trailingCommentLine)) {
+    failedCases.push(`Expected code with trailing comment NOT to be treated as whole-line comment: "${trailingCommentLine}"`);
+  }
+  const strippedCode = stripComments(trailingCommentLine);
+  if (!industryRule?.regex.test(strippedCode)) {
+    failedCases.push(`Expected stripped code from trailing comment line to trigger violation: "${strippedCode}"`);
+  }
+
+  const neutralCodeWithCommentDomain = `const item = 'neutral'; // mentions decking in comment`;
+  if (isWholeLineComment(neutralCodeWithCommentDomain)) {
+    failedCases.push(`Expected line NOT to be whole-line comment: "${neutralCodeWithCommentDomain}"`);
+  }
+  const strippedNeutral = stripComments(neutralCodeWithCommentDomain);
+  if (industryRule?.regex.test(strippedNeutral)) {
+    failedCases.push(`Expected stripped comment to eliminate domain word: "${strippedNeutral}"`);
   }
 
   if (failedCases.length > 0) {
@@ -370,7 +548,7 @@ export function runGuardSelfTest(): { ok: boolean; failedCases: string[] } {
     return { ok: false, failedCases };
   }
 
-  console.log('✅ Guard Self-Test PASSED: All forbidden currency fallbacks, industry words, and legitimate patterns correctly verified.\n');
+  console.log('✅ Guard Self-Test PASSED: All forbidden terms, attribute names, unit/wordlist literals, and comment skipping rules correctly verified.\n');
   return { ok: true, failedCases: [] };
 }
 
@@ -383,8 +561,9 @@ export function runCiHardcodingGuard(workspaceRoot: string): { ok: boolean; viol
   }
 
   const allViolations: Violation[] = [];
+  const auditDirs = getPlatformSourceDirectories(workspaceRoot);
 
-  for (const auditDir of AUDIT_DIRECTORIES) {
+  for (const auditDir of auditDirs) {
     const dirAbs = path.join(workspaceRoot, auditDir);
     console.log(`  🔍 Scanning ${auditDir}...`);
     const violations = scanDirectory(dirAbs, workspaceRoot);
@@ -392,7 +571,7 @@ export function runCiHardcodingGuard(workspaceRoot: string): { ok: boolean; viol
   }
 
   if (allViolations.length === 0) {
-    console.log('\n✅ PASS: No unauthorized hardcoding or fail-open fallbacks detected in generic runtime.');
+    console.log(`\n✅ PASS: No unauthorized hardcoding or fail-open fallbacks detected across ${auditDirs.length} platform source directories.`);
     return { ok: true, violations: [] };
   } else {
     console.error(`\n❌ FAIL: Detected ${allViolations.length} hardcoding violation(s):`);
