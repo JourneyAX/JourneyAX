@@ -526,7 +526,9 @@ export default function ChatPanel() {
       // CLIENT-MINIMAL CONTRACT: the browser sends only the NEW user message + the
       // sessionId. The server owns the transcript and journey state and
       // reconstructs everything (no conversation/state is shipped from the client).
-      const newUserMessage = [...newMessages].reverse().find(m => m.role === 'user')?.content || '';
+      const lastUserMsg = [...newMessages].reverse().find(m => m.role === 'user');
+      const newUserMessage = lastUserMsg?.content || '';
+      const customerEvent = (lastUserMsg as any)?.customerEvent;
 
       // Session id is the only durable handle the client keeps, per tenant.
       // Per CONVERSATION, not per project: each thread carries its own server
@@ -537,6 +539,8 @@ export default function ChatPanel() {
 
       const requestBody = JSON.stringify({
         message: newUserMessage,
+        customer_event: customerEvent,
+        customerEvent: customerEvent,
         sessionId: existingSessionId,
         // Sample-customer demo: the profile picked in the header binds the
         // server-side identity the history tools read by (a demo stand-in
@@ -547,7 +551,8 @@ export default function ChatPanel() {
 
       // Working strip (v3 Card CMS): visible the instant the turn starts, not
       // only once the first tool call streams back.
-      dispatch({ type: 'SET_WORKING', working: { startedAt: myWorkingStartedAt, heard: newUserMessage, steps: [] } });
+      const heardText = customerEvent ? `Action: ${customerEvent.type}` : newUserMessage;
+      dispatch({ type: 'SET_WORKING', working: { startedAt: myWorkingStartedAt, heard: heardText, steps: [] } });
       abortControllerRef.current = new AbortController();
 
       // Try streaming first; on ANY failure fall back to the buffered endpoint
@@ -848,7 +853,16 @@ export default function ChatPanel() {
   // warranty) can send a follow-up message to advance the journey.
   useEffect(() => {
     (window as any).__journeySend = (text: string) => append({ role: 'user', content: text });
-    return () => { delete (window as any).__journeySend; };
+    (window as any).__journeySendEvent = (customerEvent: any) =>
+      append({
+        role: 'user',
+        content: customerEvent?.payload?.title ? `[${customerEvent.type}: ${customerEvent.payload.title}]` : `[${customerEvent.type}]`,
+        customerEvent,
+      } as any);
+    return () => {
+      delete (window as any).__journeySend;
+      delete (window as any).__journeySendEvent;
+    };
   }, [append]);
 
   useEffect(() => {

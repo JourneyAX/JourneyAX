@@ -100,6 +100,10 @@ export function createAbercrombieRelease(): BusinessPackRelease {
       fencingRules: [],
       prohibitedTopics: [],
       escalationThresholds: { sentimentFloor: -0.6, maxTurnsWithoutProgress: 4 },
+      customerEvents: {
+        autoTurnEvents: ['addToCart', 'cart.added'],
+        recordOnlyEvents: ['removeFromCart', 'cart.removed', 'like'],
+      },
     },
     modelPolicy: {
       version: '1.0.0',

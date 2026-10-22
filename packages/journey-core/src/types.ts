@@ -232,6 +232,21 @@ export interface CustomerContext {
   metadata?: Record<string, unknown>;
 }
 
+export interface CustomerEventSourceCard {
+  id?: string;
+  cardType?: string;
+  actionId?: string;
+  [key: string]: any;
+}
+
+export interface CustomerEvent {
+  type: string;
+  payload?: any;
+  sourceCard?: CustomerEventSourceCard | string;
+  timestamp?: string;
+  metadata?: Record<string, any>;
+}
+
 export interface TurnCommand {
   tenantId: string;
   environmentId: EnvironmentId;
@@ -245,6 +260,8 @@ export interface TurnCommand {
 
   message?: string;
   event?: ChannelEvent;
+  customerEvent?: CustomerEvent;
+  customer_event?: CustomerEvent;
   inputFacts?: Record<string, unknown>;
 
   customerContext?: CustomerContext;

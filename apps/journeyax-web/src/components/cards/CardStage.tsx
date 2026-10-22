@@ -64,6 +64,25 @@ function findCardProduct(cards: CardInstance[], sku: string): { sku: string; nam
   return undefined;
 }
 
+function postCustomerEvent(event: { type: string; payload?: any; sourceCard?: any }) {
+  if (typeof window !== 'undefined') {
+    const w = window as any;
+    if (typeof w.__journeySendEvent === 'function') {
+      w.__journeySendEvent(event);
+    } else {
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: w.__journeySessionId,
+          workspaceId: w.__journeyWorkspaceId,
+          customer_event: event,
+        }),
+      }).catch(() => {});
+    }
+  }
+}
+
 export function useCardActions() {
   const { state, dispatch, handleApprove, addToCart, removeFromCart, setQuantity, setCartOpen } = useJourney();
   const cfg = useStorefrontConfig();
@@ -93,6 +112,12 @@ export function useCardActions() {
         dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value });
 
         const cardId = params?.cardId ? String(params.cardId) : undefined;
+        postCustomerEvent({
+          type: 'selectOption',
+          payload: { questionId, value },
+          sourceCard: { id: cardId, cardType: 'clarify' },
+        });
+
         const card = cardId
           ? state.cards.find((c) => c.id === cardId)
           : [...state.cards].reverse().find((c) => c.cardType === 'clarify');
@@ -153,6 +178,12 @@ export function useCardActions() {
         const value = String(params?.value ?? params?.id ?? params?.key ?? '').trim();
         const questionId = String(params?.questionId ?? '').trim();
 
+        postCustomerEvent({
+          type: 'selectItem',
+          payload: { sku, title, value, questionId },
+          sourceCard: { id: params?.cardId, cardType: 'selection' },
+        });
+
         if (questionId && (value || title)) {
           dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value: value || title });
         }
@@ -170,6 +201,11 @@ export function useCardActions() {
       case 'selectTheme':
       case 'selectDesign': {
         const label = String(params?.name || params?.title || params?.label || params?.theme || params?.design || params?.value || params?.id || 'this design').trim();
+        postCustomerEvent({
+          type: 'selectDesign',
+          payload: { label, ...params },
+          sourceCard: { id: params?.cardId },
+        });
         w.__journeySend?.(`I choose ${label}`);
         break;
       }
@@ -178,11 +214,21 @@ export function useCardActions() {
       case 'proceed':
       case 'continue': {
         const text = String(params?.text || params?.label || params?.step || 'Continue to next step').trim();
+        postCustomerEvent({
+          type: 'nextStep',
+          payload: { text, ...params },
+          sourceCard: { id: params?.cardId },
+        });
         w.__journeySend?.(text);
         break;
       }
       case 'viewProduct': {
         const sku = String(params?.sku ?? '');
+        postCustomerEvent({
+          type: 'viewProduct',
+          payload: { sku },
+          sourceCard: { id: params?.cardId },
+        });
         // The tapped tile may belong to a bundle, comparison or accessories
         // card whose items never entered recommendedProducts — fall back to
         // whatever card is showing that SKU, so every tile opens its detail.
@@ -228,8 +274,14 @@ export function useCardActions() {
         const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
         const name = title || p?.name || (p as any)?.title || sku;
 
-        // Optimistic UI feedback: immediately mark inBag so the button becomes 'Added ✓'
         const cardId = params?.cardId ? String(params.cardId) : undefined;
+        postCustomerEvent({
+          type: 'addToCart',
+          payload: { sku, quantity: qty, title: name },
+          sourceCard: { id: cardId, cardType: 'products' },
+        });
+
+        // Optimistic UI feedback: immediately mark inBag so the button becomes 'Added ✓'
         if (cardId) {
           const card = state.cards.find((c) => c.id === cardId);
           if (card && card.cardType === 'products') {
@@ -255,6 +307,11 @@ export function useCardActions() {
       case 'addAllToCart': {
         const items = Array.isArray(params?.items) ? (params!.items as any[]) : [];
         if (items.length > 0) {
+          postCustomerEvent({
+            type: 'addAllToCart',
+            payload: { items: items.map((i) => ({ sku: i?.sku, quantity: i?.quantity ?? i?.qty, title: i?.title || i?.name })) },
+            sourceCard: { cardType: 'products' },
+          });
           (async () => {
             for (const item of items) {
               const sku = String(item?.sku || '').trim();
@@ -278,6 +335,11 @@ export function useCardActions() {
         const sku = String(params?.sku ?? '').trim();
         const qty = Math.max(0, Math.floor(Number(params?.qty ?? params?.quantity) || 0));
         if (sku) {
+          postCustomerEvent({
+            type: 'setQuantity',
+            payload: { sku, quantity: qty },
+            sourceCard: { cardType: 'cart' },
+          });
           setQuantity(sku, qty);
         }
         break;
@@ -285,6 +347,11 @@ export function useCardActions() {
       case 'removeFromCart': {
         const sku = String(params?.sku ?? '').trim();
         if (sku) {
+          postCustomerEvent({
+            type: 'removeFromCart',
+            payload: { sku },
+            sourceCard: { cardType: 'cart' },
+          });
           removeFromCart(sku);
         }
         break;
@@ -292,6 +359,11 @@ export function useCardActions() {
       case 'selectBranch': {
         const branchId = String(params?.branchId ?? '');
         if (!branchId) break;
+        postCustomerEvent({
+          type: 'selectBranch',
+          payload: { branchId },
+          sourceCard: { cardType: 'fulfilment' },
+        });
         (async () => {
           try {
             const res = await fetch('/api/branch-stock' + window.location.search, {

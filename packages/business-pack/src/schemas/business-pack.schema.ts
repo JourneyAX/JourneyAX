@@ -168,6 +168,13 @@ export type ChecksumSchemaVersion = typeof SUPPORTED_CHECKSUM_SCHEMA_VERSIONS[nu
 
 export const ChecksumSchemaVersionSchema = z.union([z.literal(1), z.literal(2)]);
 
+export const CustomerEventsPolicySchema = z.object({
+  autoTurnEvents: z.array(z.string()).default([]),
+  recordOnlyEvents: z.array(z.string()).default([]),
+});
+
+export type CustomerEventsPolicy = z.infer<typeof CustomerEventsPolicySchema>;
+
 export const ConversationPolicySchema = z.object({
   fencingRules: z.array(z.string()).default([]),
   prohibitedTopics: z.array(z.string()).default([]),
@@ -181,6 +188,8 @@ export const ConversationPolicySchema = z.object({
     sentimentFloor: -0.6,
     maxTurnsWithoutProgress: 4,
   }),
+  customerEvents: CustomerEventsPolicySchema.optional(),
+  eventPolicy: CustomerEventsPolicySchema.optional(),
 });
 
 /**

@@ -1,5 +1,26 @@
 import { z } from 'zod';
 
+export const CustomerEventRequestSchema = z.object({
+  type: z.string().min(1, 'event type is required'),
+  payload: z.any().optional(),
+  sourceCard: z
+    .union([
+      z.string(),
+      z
+        .object({
+          id: z.string().optional(),
+          cardType: z.string().optional(),
+          actionId: z.string().optional(),
+        })
+        .passthrough(),
+    ])
+    .optional(),
+  timestamp: z.string().optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
+});
+
+export type CustomerEventRequest = z.infer<typeof CustomerEventRequestSchema>;
+
 export const TurnCommandRequestSchema = z.object({
   sessionId: z.string().min(1, 'sessionId is required'),
   workspaceId: z.string().optional(),
@@ -12,6 +33,8 @@ export const TurnCommandRequestSchema = z.object({
       payload: z.any(),
     })
     .optional(),
+  customerEvent: CustomerEventRequestSchema.optional(),
+  customer_event: CustomerEventRequestSchema.optional(),
   inputFacts: z.record(z.string(), z.any()).optional(),
   customerContext: z.record(z.string(), z.any()).optional(),
   approvalRequestId: z.string().optional(),

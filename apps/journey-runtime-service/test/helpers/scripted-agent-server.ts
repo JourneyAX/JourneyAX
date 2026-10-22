@@ -52,6 +52,30 @@ export function createScriptedAgentExecutor() {
 
     // ROUND 1: No tools executed yet
     if (toolMessages.length === 0) {
+      // Case 1-event: Customer Action Event (Prompt P3)
+      if (userContent.includes('<customer_event>')) {
+        const typeMatch = userContent.match(/Type:\s*([^\n]+)/i);
+        const eventType = typeMatch ? typeMatch[1].trim() : '';
+        const payloadMatch = userContent.match(/Payload:\s*([\s\S]*?)<\/customer_event>/i);
+        let payload: any = null;
+        if (payloadMatch) {
+          try {
+            payload = JSON.parse(payloadMatch[1].trim());
+          } catch {}
+        }
+        const title = payload?.title || payload?.name || payload?.sku || 'item';
+        let ackText = '';
+        if (eventType.toLowerCase().includes('quote')) {
+          ackText = `I've added ${title} to your quote. You'll need screws and accessories next.`;
+        } else {
+          ackText = `I've added ${title} to your cart. You may also want to browse matching hoodies or accessories.`;
+        }
+        for (const w of ackText.split(' ')) {
+          onDelta?.(w + ' ');
+        }
+        return { content: ackText, toolCalls: [] };
+      }
+
       // Case 1a: Garbled / gibberish (e.g. asdkfj)
       if (qLower.includes('asdkfj') || rawQuestion.length < 3) {
         const text = "I'm sorry, I didn't quite catch that. Could you please clarify which materials or products you are looking for?";

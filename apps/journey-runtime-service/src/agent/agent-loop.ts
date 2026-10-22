@@ -104,6 +104,10 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
 2. Unclear Requests: If the customer's request remains ambiguous or unclear even after considering the conversation history, ask a clarifying question rather than executing a blind or incomplete search.
 3. Whole-Conversation Tool Arguments: All tool arguments must be written by synthesizing information across the whole conversation, never relying solely on the latest isolated message.
 
+## Customer Action Events
+1. Action Events: When a customer performs an action on an interactive card or interface element (such as adding an item to their cart or quote, selecting an option, or confirming a choice), you will receive a structured <customer_event> rather than a typed message.
+2. Acknowledgment & Guidance: Acknowledge the customer's action directly and concisely (referencing the chosen item, SKU, or selection), then proactively guide them on the logical next steps, complementary items, or follow-ups according to the merchant's catalogue and business scope.
+
 ## Output Rules
 - Be concise, direct, helpful, and natural.
 - Adhere strictly to the merchant persona, brand voice, and role instructions below.
@@ -306,11 +310,12 @@ export class AgentTurnLoop {
     }
 
     const loopStart = Date.now();
+    const customerEvent = command.customerEvent || (command as any).customer_event;
     const customerQuestion = (
       command.message ||
       (command as any).userInput ||
       (command as any).text ||
-      ''
+      (customerEvent ? `[Event: ${customerEvent.type}]` : '')
     ).trim();
 
     // 0. Resolve specialist agent from release.agents via AgentRouter
@@ -443,12 +448,34 @@ export class AgentTurnLoop {
       content: 'I acknowledge the customer context, branch location, and session details.',
     });
 
-    // Current Customer Message (escaped data block)
-    const sanitizedCustomer = sanitizeHistoryText(customerQuestion);
-    messages.push({
-      role: 'user',
-      content: `<customer_message>\n${sanitizedCustomer}\n</customer_message>`,
-    });
+    // Current Customer Message or Event (Prompt P3)
+    if (customerEvent && customerEvent.type) {
+      const eventLines = [
+        '<customer_event>',
+        `Type: ${customerEvent.type}`,
+      ];
+      if (customerEvent.sourceCard) {
+        const sc = typeof customerEvent.sourceCard === 'string'
+          ? customerEvent.sourceCard
+          : JSON.stringify(customerEvent.sourceCard);
+        eventLines.push(`Source Card: ${sc}`);
+      }
+      if (customerEvent.payload) {
+        eventLines.push(`Payload: ${JSON.stringify(customerEvent.payload, null, 2)}`);
+      }
+      eventLines.push('</customer_event>');
+      messages.push({
+        role: 'user',
+        content: eventLines.join('\n'),
+      });
+    } else {
+      // Current Customer Message (escaped data block)
+      const sanitizedCustomer = sanitizeHistoryText(customerQuestion);
+      messages.push({
+        role: 'user',
+        content: `<customer_message>\n${sanitizedCustomer}\n</customer_message>`,
+      });
+    }
 
     // 5. Reply Shaper & Claim Guard Setup
     const interpPolicy = resolveInterpretationPolicy(release);
@@ -765,8 +792,11 @@ export class AgentTurnLoop {
       throw signal.reason || new Error('Agent turn aborted');
     }
 
+    const customerContent = customerEvent
+      ? `[Action: ${customerEvent.type}${customerEvent.payload?.title || customerEvent.payload?.name ? ` - ${customerEvent.payload.title || customerEvent.payload.name}` : ''}]`
+      : customerQuestion;
     const historyEntries: ConversationTurnRecord[] = [
-      { role: 'customer', content: customerQuestion, turnId: command.turnId },
+      { role: 'customer', content: customerContent, turnId: command.turnId },
     ];
     if (toolsTrace.length > 0) {
       const compactTools = toolsTrace

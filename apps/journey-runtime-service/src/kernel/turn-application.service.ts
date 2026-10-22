@@ -50,6 +50,7 @@ import { TurnTranscriptStore } from './transcript.store';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
+import { resolveCustomerEventAction } from './customer-event-policy';
 
 export interface TurnTiming {
   tenantId?: string;
@@ -236,6 +237,114 @@ export class TurnApplicationService {
       // 3a. Turn Replay Rejection — Duplicate turnId is rejected unconditionally regardless of tool execution!
       if (turnId && workspace && workspace.lastProcessedTurnId === turnId) {
         throw new DuplicateTurnError(turnId);
+      }
+
+      // 3-event. Customer Event Policy Check (Prompt P3)
+      const customerEvent = command.customerEvent || (command as any).customer_event;
+      if (customerEvent && customerEvent.type) {
+        const eventAction = resolveCustomerEventAction(customerEvent.type, release);
+        if (eventAction === 'record_only') {
+          if (!workspace) {
+            workspace = await this.workspaceRepo.getOrCreate(
+              tenantId,
+              envId,
+              workspaceId,
+              'unassigned',
+              'initial',
+              undefined,
+              release.manifest.version || release.manifest.packId,
+              this.createWorkspacePins(release)
+            );
+          }
+
+          const recordedAt = new Date().toISOString();
+          workspace.facts['last_customer_event'] = {
+            value: customerEvent,
+            source: 'customer',
+            confidence: 1,
+            extractedAt: recordedAt,
+          };
+
+          const existingLog = Array.isArray(workspace.facts['customer_events_log']?.value)
+            ? workspace.facts['customer_events_log'].value
+            : [];
+          workspace.facts['customer_events_log'] = {
+            value: [...existingLog, customerEvent],
+            source: 'customer',
+            confidence: 1,
+            extractedAt: recordedAt,
+          };
+
+          // Append compact record to conversation history for history hygiene
+          appendHistory(
+            workspace,
+            [
+              {
+                role: 'system',
+                content: `[Customer Event: ${customerEvent.type}${customerEvent.sourceCard ? ` from ${typeof customerEvent.sourceCard === 'string' ? customerEvent.sourceCard : customerEvent.sourceCard.cardType || customerEvent.sourceCard.id}` : ''}]`,
+                turnId,
+                timestamp: recordedAt,
+              },
+            ],
+            release.extensions?.dialoguePolicy?.history
+          );
+
+          await this.commitWorkspace(
+            workspace,
+            turnId,
+            envId,
+            tenantId,
+            workspaceId,
+            'record_event' as any,
+            command.correlationId,
+            {
+              customerMessage: `[Event: ${customerEvent.type}]`,
+              assistantReply: '',
+              turnStartTime,
+              sessionId: command.sessionId,
+            }
+          );
+
+          timingSink('done', {
+            sessionId: command.sessionId || workspaceId,
+            workspaceId,
+            turnId,
+            decision: {
+              type: 'record_event',
+              reason: `Customer event '${customerEvent.type}' recorded without agent turn per tenant policy`,
+            },
+            trace: {
+              stage: workspace.currentStage || 'initial',
+              transitions: [],
+              decisionsMade: [],
+              engine: 'agent',
+              eventRecorded: true,
+              eventType: customerEvent.type,
+            },
+          });
+
+          return {
+            workspace,
+            decision: {
+              decisionId: `dec_event_${Date.now()}`,
+              type: 'record_event' as any,
+              reason: `Customer event '${customerEvent.type}' recorded without agent turn per tenant policy`,
+              payload: { event: customerEvent },
+              createdAt: recordedAt,
+            },
+            assistantMessage: undefined,
+            uiInstructions: [],
+            executedCapabilities: [],
+            trace: {
+              stage: workspace.currentStage || 'initial',
+              transitions: [],
+              decisionsMade: [],
+              engine: 'agent',
+              eventRecorded: true,
+              eventType: customerEvent.type,
+            },
+          };
+        }
       }
 
       // 3b. Agent Mode: autonomous AI-led turn with multi-round tool execution and streaming

@@ -174,7 +174,13 @@ export function projectDoc(agentMode = false) {
           },
         ]
       : undefined,
-    extensions: agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true } } : {},
+    extensions: {
+      ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true } } : {}),
+      customerEvents: {
+        autoTurnEvents: ['addToQuote', 'quote.added', 'addToCart'],
+        recordOnlyEvents: ['removeFromQuote', 'removeFromCart', 'like'],
+      },
+    },
     persona: {
       systemName: 'PlaceMakers assistant', systemPromptOverrides: 'Help customers find products.',
       journeyGraph: {
