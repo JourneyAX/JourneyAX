@@ -11,6 +11,7 @@ import {
   readPath,
   resolveCatalogMapping,
   type ResolvedCatalogMapping,
+  type AttributeDefinition,
 } from '@journeyax/business-pack';
 
 export type VectorSearchFunction = (
@@ -28,9 +29,6 @@ export interface CatalogSearchInput {
   isAgentMode?: boolean;
   keywords?: string[];
   productType?: string;
-  size?: string;
-  treatment?: string;
-  rValue?: string;
   brand?: string;
   query?: string;
   category?: string;
@@ -43,7 +41,9 @@ export interface CatalogSearchInput {
   maxPriceCents?: number;
   inStockOnly?: boolean;
   requiredCertifications?: string[];
+  attributes?: Record<string, any>;
   attributeFilters?: Record<string, any>;
+  attributeDefinitions?: Record<string, AttributeDefinition>;
   currency?: string;
   requireAuthoritativePrice?: boolean;
   /** Every query word must match (instead of any), for existence probes such as classifying a bare noun. */
@@ -64,18 +64,16 @@ export interface CatalogSearchInput {
     excludeCategoryIds?: string[];
     maxItems?: number;
   }>;
+  [key: string]: any;
 }
 
 export interface StructuredSearchSpecs {
-  size?: string;
-  sizeVariants?: string[];
-  treatment?: string;
-  treatmentVariants?: string[];
-  rValue?: string;
-  rValueVariants?: string[];
+  attributes: Record<string, string>;
+  attributeVariants: Record<string, string[]>;
   brand?: string;
   productType?: string;
   keywords?: string[];
+  [key: string]: any;
 }
 
 export interface QueryToken {
@@ -86,180 +84,73 @@ export interface QueryToken {
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export function resolveEquivalentSizes(rawSize: string, glossaryIndex?: Map<string, string[]>): string[] {
-  if (!rawSize) return [];
-  const clean = rawSize.trim().toLowerCase().replace(/\s+/g, ' ');
-  const variants = new Set<string>();
-  variants.add(clean);
-  variants.add(clean.replace(/\s+/g, ''));
 
-  const imperialToMetric: Record<string, { canonical: string; nominal: string; gauged: string; imperialVariants: string[] }> = {
-    '4x2': {
-      canonical: '100x50',
-      nominal: '100 x 50',
-      gauged: '90 x 45',
-      imperialVariants: ['4x2', '4 x 2', '4 by 2', '2x4', '2 x 4'],
-    },
-    '6x2': {
-      canonical: '150x50',
-      nominal: '150 x 50',
-      gauged: '140 x 45',
-      imperialVariants: ['6x2', '6 x 2', '6 by 2'],
-    },
-    '3x2': {
-      canonical: '75x50',
-      nominal: '75 x 50',
-      gauged: '70 x 45',
-      imperialVariants: ['3x2', '3 x 2', '3 by 2'],
-    },
-    '8x2': {
-      canonical: '200x50',
-      nominal: '200 x 50',
-      gauged: '190 x 45',
-      imperialVariants: ['8x2', '8 x 2', '8 by 2'],
-    },
-    '4x4': {
-      canonical: '100x100',
-      nominal: '100 x 100',
-      gauged: '88 x 88',
-      imperialVariants: ['4x4', '4 x 4'],
-    },
-    '10x2': {
-      canonical: '250x50',
-      nominal: '250 x 50',
-      gauged: '240 x 45',
-      imperialVariants: ['10x2', '10 x 2'],
-    },
-    '12x2': {
-      canonical: '300x50',
-      nominal: '300 x 50',
-      gauged: '290 x 45',
-      imperialVariants: ['12x2', '12 x 2'],
-    },
-  };
 
-  const impKey = clean.replace(/\s*(?:by|x|\*|×)\s*/i, 'x');
-  if (imperialToMetric[impKey]) {
-    const entry = imperialToMetric[impKey];
-    for (const iv of entry.imperialVariants) variants.add(iv);
-    variants.add(entry.canonical);
-    variants.add(entry.nominal);
-    variants.add(`${entry.canonical}mm`);
-    variants.add(`${entry.nominal}mm`);
-    variants.add(entry.gauged.replace(/\s+/g, ''));
-    variants.add(entry.gauged);
-    variants.add(`${entry.gauged.replace(/\s+/g, '')}mm`);
-    variants.add(`${entry.gauged}mm`);
+/**
+ * Normalizes an attribute value according to the pack attribute definition normalizer.
+ */
+export function normalizeAttributeValue(val: string, normalizer?: string): string {
+  if (!val) return '';
+  const clean = val.trim();
+  switch (normalizer) {
+    case 'lowercase':
+      return clean.toLowerCase();
+    case 'uppercase':
+      return clean.toUpperCase();
+    case 'remove_spaces':
+      return clean.replace(/\s+/g, '');
+    case 'metric_dimension':
+      return clean.toLowerCase().replace(/\s*(?:by|x|\*|×)\s*/i, 'x').replace(/\s+/g, '');
+    default:
+      return clean;
   }
-
-  const metricMatch = clean.match(/^(\d{2,4})\s*[xX*×]\s*(\d{2,4})(?:\s*[xX*×]\s*(\d{2,4}))?(?:\s*mm)?$/);
-  if (metricMatch) {
-    const w = metricMatch[1];
-    const h = metricMatch[2];
-    const d = metricMatch[3];
-    const noSpace = d ? `${w}x${h}x${d}` : `${w}x${h}`;
-    const withSpace = d ? `${w} x ${h} x ${d}` : `${w} x ${h}`;
-    variants.add(noSpace);
-    variants.add(withSpace);
-    variants.add(`${noSpace}mm`);
-    variants.add(`${withSpace}mm`);
-
-    for (const entry of Object.values(imperialToMetric)) {
-      if (
-        entry.canonical === noSpace ||
-        entry.gauged.replace(/\s+/g, '') === noSpace ||
-        entry.nominal === withSpace ||
-        entry.gauged === withSpace
-      ) {
-        for (const iv of entry.imperialVariants) variants.add(iv);
-        variants.add(entry.canonical);
-        variants.add(entry.nominal);
-        variants.add(`${entry.canonical}mm`);
-        variants.add(`${entry.nominal}mm`);
-        variants.add(entry.gauged.replace(/\s+/g, ''));
-        variants.add(entry.gauged);
-        variants.add(`${entry.gauged.replace(/\s+/g, '')}mm`);
-        variants.add(`${entry.gauged}mm`);
-      }
-    }
-  }
-
-  if (glossaryIndex) {
-    for (const v of Array.from(variants)) {
-      const syns = glossaryIndex.get(v.toLowerCase());
-      if (syns) {
-        for (const s of syns) variants.add(s.toLowerCase());
-      }
-    }
-  }
-
-  return Array.from(variants);
 }
 
-export function resolveEquivalentTreatments(rawTreatment: string, glossaryIndex?: Map<string, string[]>): string[] {
-  if (!rawTreatment) return [];
-  const clean = rawTreatment.trim();
+/**
+ * Resolves equivalent forms for an attribute value using the pack's equivalenceTable and glossary.
+ */
+export function resolveAttributeEquivalence(
+  attrName: string,
+  rawValue: string,
+  attrDef?: AttributeDefinition,
+  glossaryIndex?: Map<string, string[]>
+): string[] {
+  if (!rawValue) return [];
   const variants = new Set<string>();
+  const clean = rawValue.trim();
   variants.add(clean);
 
-  const hMatch = clean.match(/^H\s*([1-6])(?:\.([1-2]))?$/i);
-  if (hMatch) {
-    const major = hMatch[1];
-    const minor = hMatch[2];
-    if (minor) {
-      variants.add(`H${major}.${minor}`);
-      variants.add(`H${major}${minor}`);
-      variants.add(`H${major} ${minor}`);
-      variants.add(`H${major}-${minor}`);
-      variants.add(`H ${major}.${minor}`);
-    } else {
-      variants.add(`H${major}`);
-      variants.add(`H ${major}`);
-      variants.add(`H-${major}`);
-    }
-  } else if (/^cca$/i.test(clean)) {
-    variants.add('CCA');
-    variants.add('C.C.A.');
-  } else if (/^boron$/i.test(clean)) {
-    variants.add('Boron');
-  } else if (/^untreated|ut$/i.test(clean)) {
-    variants.add('Untreated');
-    variants.add('UT');
-    variants.add('Non-Treated');
-  }
+  const norm = normalizeAttributeValue(clean, attrDef?.normalizer);
+  if (norm) variants.add(norm);
 
-  if (glossaryIndex) {
-    for (const v of Array.from(variants)) {
-      const syns = glossaryIndex.get(v.toLowerCase());
-      if (syns) {
-        for (const s of syns) variants.add(s);
+  const table = attrDef?.equivalenceTable;
+  if (table && typeof table === 'object') {
+    for (const [key, cluster] of Object.entries(table)) {
+      if (Array.isArray(cluster)) {
+        const matchesKey =
+          key.toLowerCase() === clean.toLowerCase() ||
+          key.toLowerCase().replace(/\s+/g, '') === norm.toLowerCase();
+        const matchesCluster = cluster.some(
+          (c) => c.toLowerCase() === clean.toLowerCase() || c.toLowerCase().replace(/\s+/g, '') === norm.toLowerCase()
+        );
+        if (matchesKey || matchesCluster) {
+          variants.add(key);
+          for (const v of cluster) variants.add(v);
+        }
       }
     }
   }
 
-  return Array.from(variants);
-}
-
-export function resolveEquivalentRValues(rawRValue: string, glossaryIndex?: Map<string, string[]>): string[] {
-  if (!rawRValue) return [];
-  const clean = rawRValue.trim();
-  const variants = new Set<string>();
-  variants.add(clean);
-
-  const rMatch = clean.match(/^R\s*([0-9])(?:\.([0-9]))?$/i);
-  if (rMatch) {
-    const major = rMatch[1];
-    const minor = rMatch[2];
-    if (minor) {
-      variants.add(`R${major}.${minor}`);
-      variants.add(`R${major}${minor}`);
-      variants.add(`R ${major}.${minor}`);
-      variants.add(`R${major}-${minor}`);
-      variants.add(`R ${major} ${minor}`);
-    } else {
-      variants.add(`R${major}`);
-      variants.add(`R ${major}`);
-      variants.add(`R-${major}`);
+  if (attrDef?.normalizer === 'metric_dimension' || attrDef?.normalizer === 'remove_spaces') {
+    for (const v of Array.from(variants)) {
+      const dimMatch = v.match(/^(\d{2,4})\s*[xX*×]\s*(\d{2,4})(?:\s*mm)?$/i);
+      if (dimMatch) {
+        const [, w, h] = dimMatch;
+        variants.add(`${w}x${h}`);
+        variants.add(`${w} x ${h}`);
+        variants.add(`${w}x${h}mm`);
+        variants.add(`${w} x ${h}mm`);
+      }
     }
   }
 
@@ -272,53 +163,74 @@ export function resolveEquivalentRValues(rawRValue: string, glossaryIndex?: Map<
     }
   }
 
-  return Array.from(variants);
+  return Array.from(variants).sort((a, b) => b.length - a.length);
 }
 
+/**
+ * Extracts structured attributes generically using patterns and equivalence definitions from pack data.
+ */
 export function extractSearchSpecs(params: {
   query?: string;
   keywords?: string[];
   productType?: string;
-  size?: string;
-  treatment?: string;
-  rValue?: string;
   brand?: string;
+  attributes?: Record<string, any>;
+  attributeDefinitions?: Record<string, AttributeDefinition>;
   glossaryIndex?: Map<string, string[]>;
+  [key: string]: any;
 }): StructuredSearchSpecs {
   const fullText = [params.query, ...(params.keywords || [])].filter(Boolean).join(' ');
+  const hasDefs = (d: any): d is Record<string, AttributeDefinition> =>
+    d && typeof d === 'object' && Object.keys(d).length > 0;
+  const attrDefs = hasDefs(params.attributeDefinitions)
+    ? params.attributeDefinitions
+    : {};
+  const extractedAttrs: Record<string, string> = {
+    ...(params.attributes || {}),
+  };
 
-  let size = params.size?.trim();
-  if (!size && fullText) {
-    const metric = fullText.match(/\b(\d{2,4})\s*[xX*×]\s*(\d{2,4})(?:\s*[xX*×]\s*(\d{2,4}))?(?:\s*mm)?\b/i);
-    if (metric) {
-      size = metric[0];
-    } else {
-      const imperial = fullText.match(/\b([2-9]|10|12)\s*[xX*×]\s*([1-9]|10|12)\b/i);
-      if (imperial) {
-        size = imperial[0];
+  for (const k of Object.keys(attrDefs)) {
+    if (params[k] && !extractedAttrs[k]) {
+      extractedAttrs[k] = String(params[k]);
+    }
+  }
+
+  let residual = params.query || '';
+
+  for (const [attrName, def] of Object.entries(attrDefs)) {
+    let current = extractedAttrs[attrName]?.trim();
+    if (!current && fullText && Array.isArray(def.extractionPatterns)) {
+      for (const pattern of def.extractionPatterns) {
+        try {
+          const match = fullText.match(new RegExp(pattern, 'i'));
+          if (match) {
+            current = (match[1] || match[0]).trim();
+            break;
+          }
+        } catch {
+          // ignore pattern syntax error
+        }
       }
     }
-  }
 
-  let treatment = params.treatment?.trim();
-  if (!treatment && fullText) {
-    const treat = fullText.match(/\b(H[1-6](?:\.[1-2])?|CCA|Boron|LOSP|Untreated)\b/i);
-    if (treat) {
-      treatment = treat[0];
+    if (current) {
+      const norm = normalizeAttributeValue(current, def.normalizer);
+      extractedAttrs[attrName] = norm;
+      residual = residual.replace(new RegExp(`\\b${escapeRegex(current)}\\b`, 'i'), ' ');
     }
   }
 
-  let rValue = params.rValue?.trim();
-  if (!rValue && fullText) {
-    const rMatch = fullText.match(/\b(R\s*[0-9](?:\.[0-9])?)\b/i);
-    if (rMatch) {
-      rValue = rMatch[0].replace(/\s+/g, '');
+  const attributeVariants: Record<string, string[]> = {};
+  for (const [attrName, val] of Object.entries(extractedAttrs)) {
+    if (val) {
+      attributeVariants[attrName] = resolveAttributeEquivalence(
+        attrName,
+        val,
+        attrDefs[attrName],
+        params.glossaryIndex
+      );
     }
   }
-
-  const sizeVariants = size ? resolveEquivalentSizes(size, params.glossaryIndex) : undefined;
-  const treatmentVariants = treatment ? resolveEquivalentTreatments(treatment, params.glossaryIndex) : undefined;
-  const rValueVariants = rValue ? resolveEquivalentRValues(rValue, params.glossaryIndex) : undefined;
 
   const keywords: string[] = [];
   if (params.keywords && params.keywords.length > 0) {
@@ -326,27 +238,26 @@ export function extractSearchSpecs(params: {
   } else if (params.productType) {
     keywords.push(params.productType);
   } else if (params.query) {
-    let residual = params.query;
-    if (size) residual = residual.replace(size, ' ');
-    if (treatment) residual = residual.replace(new RegExp(`\\b${escapeRegex(treatment)}\\b`, 'i'), ' ');
-    if (rValue) residual = residual.replace(new RegExp(`\\b${escapeRegex(rValue)}\\b`, 'i'), ' ');
     const words = residual.trim().split(/\s+/).filter((w) => w.length > 1);
     if (words.length > 0) {
       keywords.push(...words);
     }
   }
 
-  return {
-    size,
-    sizeVariants,
-    treatment,
-    treatmentVariants,
-    rValue,
-    rValueVariants,
+  const result: StructuredSearchSpecs = {
+    attributes: extractedAttrs,
+    attributeVariants,
     brand: params.brand?.trim(),
     productType: params.productType?.trim(),
     keywords: keywords.length > 0 ? keywords : undefined,
   };
+
+  for (const [k, v] of Object.entries(extractedAttrs)) {
+    result[k] = v;
+    result[`${k}Variants`] = attributeVariants[k];
+  }
+
+  return result;
 }
 
 export function buildGlossaryIndex(sources: {
@@ -629,20 +540,42 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         ? rawStopWords
         : undefined;
 
+    const hasDefs = (d: any): d is Record<string, AttributeDefinition> =>
+      d && typeof d === 'object' && Object.keys(d).length > 0;
+
+    const attrDefs: Record<string, AttributeDefinition> =
+      (hasDefs(input.attributeDefinitions) ? input.attributeDefinitions : undefined) ||
+      (hasDefs((mapping as any).attributeDefinitions) ? (mapping as any).attributeDefinitions : undefined) ||
+      (hasDefs((ctx as any)?.release?.catalogMapping?.attributeDefinitions) ? (ctx as any).release.catalogMapping.attributeDefinitions : undefined) ||
+      (hasDefs((ctx as any)?.packSettings?.catalogMapping?.attributeDefinitions) ? (ctx as any).packSettings.catalogMapping.attributeDefinitions : undefined) ||
+      {};
+
+    const rawInputAttrs: Record<string, any> = {
+      ...(input.attributes || {}),
+      ...(input.attributeFilters || {}),
+      ...Object.fromEntries(
+        Object.keys(attrDefs)
+          .filter((k) => input[k] !== undefined && input[k] !== null && input[k] !== '')
+          .map((k) => [k, input[k]])
+      ),
+    };
+
     const specs = isAgent ? extractSearchSpecs({
       query,
       keywords: input.keywords,
       productType: input.productType,
-      size: input.size,
-      treatment: input.treatment,
-      rValue: input.rValue,
       brand: input.brand,
+      attributes: rawInputAttrs,
+      attributeDefinitions: attrDefs,
       glossaryIndex,
     }) : undefined;
 
     // Top-level input keys that the tenant mapping declares as attributes behave as attribute filters.
     const declaredFilterKeys = Object.keys(mapping.attributeAliases);
-    const reservedStructuredKeys = new Set(['size', 'treatment', 'rValue', 'brand', 'keywords', 'productType']);
+    const reservedStructuredKeys = new Set([
+      'brand', 'keywords', 'productType',
+      ...Object.keys(attrDefs),
+    ]);
     const attributeFilters: Record<string, any> = {
       ...(input.attributeFilters || {}),
       ...Object.fromEntries(declaredFilterKeys
@@ -658,18 +591,6 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       .map((value) => (Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value)))
       .join(' ')
       .toLowerCase();
-
-    const sizeRegex = specs?.sizeVariants?.length
-      ? new RegExp(`(?:^|[^a-z0-9])(?:${specs.sizeVariants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i')
-      : undefined;
-
-    const treatmentRegex = specs?.treatmentVariants?.length
-      ? new RegExp(`(?:^|[^a-z0-9])(?:${specs.treatmentVariants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i')
-      : undefined;
-
-    const rValueRegex = specs?.rValueVariants?.length
-      ? new RegExp(`(?:^|[^a-z0-9])(?:${specs.rValueVariants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i')
-      : undefined;
 
     if (this.inMemoryProducts) {
       if (isAgent) {
@@ -695,28 +616,16 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             if (!brandMatch) return false;
           }
 
-          if (sizeRegex) {
-            const title = textOf(p, mapping.titlePaths);
-            const search = textOf(p, mapping.searchPaths);
-            const attr = readAttribute(p, 'size', mapping) || p.size || p.attributes?.size;
-            const matchesSize = sizeRegex.test(title) || sizeRegex.test(search) || (attr && sizeRegex.test(String(attr)));
-            if (!matchesSize) return false;
-          }
-
-          if (treatmentRegex) {
-            const title = textOf(p, mapping.titlePaths);
-            const search = textOf(p, mapping.searchPaths);
-            const attr = readAttribute(p, 'treatment', mapping) || p.treatment || p.attributes?.treatment;
-            const matchesTreatment = treatmentRegex.test(title) || treatmentRegex.test(search) || (attr && treatmentRegex.test(String(attr)));
-            if (!matchesTreatment) return false;
-          }
-
-          if (rValueRegex) {
-            const title = textOf(p, mapping.titlePaths);
-            const search = textOf(p, mapping.searchPaths);
-            const attr = readAttribute(p, 'rValue', mapping) || p.rValue || p.attributes?.rValue;
-            const matchesR = rValueRegex.test(title) || rValueRegex.test(search) || (attr && rValueRegex.test(String(attr)));
-            if (!matchesR) return false;
+          if (specs?.attributeVariants) {
+            for (const [attrName, variants] of Object.entries(specs.attributeVariants)) {
+              if (!variants || variants.length === 0) continue;
+              const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
+              const title = textOf(p, mapping.titlePaths);
+              const search = textOf(p, mapping.searchPaths);
+              const attr = readAttribute(p, attrName, mapping) || p[attrName] || p.attributes?.[attrName];
+              const matchesAttr = regex.test(title) || regex.test(search) || (attr != null && regex.test(String(attr)));
+              if (!matchesAttr) return false;
+            }
           }
 
           if (specs?.keywords && specs.keywords.length > 0) {
@@ -803,35 +712,19 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               ],
             });
           }
-          if (sizeRegex) {
-            and.push({
-              $or: [
-                ...anyOf(mapping.titlePaths, sizeRegex),
-                ...anyOf(mapping.searchPaths, sizeRegex),
-                ...mapping.attributeContainers.map((c) => ({ [`${c}.size`]: sizeRegex })),
-                { size: sizeRegex },
-              ],
-            });
-          }
-          if (treatmentRegex) {
-            and.push({
-              $or: [
-                ...anyOf(mapping.titlePaths, treatmentRegex),
-                ...anyOf(mapping.searchPaths, treatmentRegex),
-                ...mapping.attributeContainers.map((c) => ({ [`${c}.treatment`]: treatmentRegex })),
-                { treatment: treatmentRegex },
-              ],
-            });
-          }
-          if (rValueRegex) {
-            and.push({
-              $or: [
-                ...anyOf(mapping.titlePaths, rValueRegex),
-                ...anyOf(mapping.searchPaths, rValueRegex),
-                ...mapping.attributeContainers.map((c) => ({ [`${c}.rValue`]: rValueRegex })),
-                { rValue: rValueRegex },
-              ],
-            });
+          if (specs?.attributeVariants) {
+            for (const [attrName, variants] of Object.entries(specs.attributeVariants)) {
+              if (!variants || variants.length === 0) continue;
+              const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
+              and.push({
+                $or: [
+                  ...anyOf(mapping.titlePaths, regex),
+                  ...anyOf(mapping.searchPaths, regex),
+                  ...mapping.attributeContainers.map((c) => ({ [`${c}.${attrName}`]: regex })),
+                  { [attrName]: regex },
+                ],
+              });
+            }
           }
           if (specs?.keywords && specs.keywords.length > 0) {
             for (const kw of specs.keywords) {

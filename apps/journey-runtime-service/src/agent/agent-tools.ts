@@ -876,18 +876,12 @@ export async function executeAgentTool(
         }
       }
 
-      const size = attributes.size ? String(attributes.size).trim() : undefined;
-      const treatment = attributes.treatment ? String(attributes.treatment).trim() : undefined;
-      const rValue = attributes.rValue ? String(attributes.rValue).trim() : undefined;
-
       const searchInput: any = {
         isAgentMode: true,
         keywords: keywords.length > 0 ? keywords : undefined,
         productType,
-        size,
-        treatment,
-        rValue,
         brand,
+        attributes: Object.keys(attributes).length > 0 ? attributes : undefined,
         attributeFilters: Object.keys(attributes).length > 0 ? attributes : undefined,
         query: query || (keywords.length > 0 ? keywords.join(' ') : undefined),
         category,

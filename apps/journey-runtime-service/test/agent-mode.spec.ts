@@ -29,11 +29,9 @@ import {
 } from '../src/kernel/formula-evaluator';
 import {
   CatalogSearchHandler,
-  resolveEquivalentSizes,
-  resolveEquivalentTreatments,
-  resolveEquivalentRValues,
   extractSearchSpecs,
 } from '../src/capabilities/handlers/catalog-search.handler';
+import { PLACEMAKERS_ATTRIBUTE_DEFINITIONS } from './fixtures/placemakers-attributes.fixture';
 import { TurnApplicationService } from '../src/kernel/turn-application.service';
 import { TurnTranscriptStore, redactPii } from '../src/kernel/transcript.store';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
@@ -146,6 +144,15 @@ function createTestPack(overrides: Record<string, any> = {}): BusinessPackReleas
         },
       ],
       stageBindings: [],
+    },
+    catalogMapping: {
+      version: '1.0.0',
+      attributeAliases: {
+        size: ['dimension', 'dimensions'],
+        treatment: ['preservative', 'hazardClass'],
+        rValue: ['thermalRating', 'insulationValue'],
+      },
+      attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
     },
     extensions: {
       agentMode: { enabled: true },
@@ -2316,7 +2323,10 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
   describe('Task A5: Structured Search, Deterministic Extraction, and Performance (Prompts 1, 4, 8, 28, 30)', () => {
     test('deterministic extraction of size, treatment, and rValue from prompt text', () => {
       // Prompt 1
-      const specs1 = extractSearchSpecs({ query: 'Do you have 100x50 H3.2 treated timber in stock?' });
+      const specs1 = extractSearchSpecs({
+        query: 'Do you have 100x50 H3.2 treated timber in stock?',
+        attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+      });
       assert.equal(specs1.size, '100x50');
       assert.equal(specs1.treatment, 'H3.2');
       assert.ok(specs1.sizeVariants?.includes('100x50'));
@@ -2328,7 +2338,10 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(specs1.treatmentVariants?.includes('H32'));
 
       // Prompt 4
-      const specs4 = extractSearchSpecs({ query: 'Looking for 150x50 treated pine for a deck frame' });
+      const specs4 = extractSearchSpecs({
+        query: 'Looking for 150x50 treated pine for a deck frame',
+        attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+      });
       assert.equal(specs4.size, '150x50');
       assert.ok(specs4.sizeVariants?.includes('150x50'));
       assert.ok(specs4.sizeVariants?.includes('150 x 50'));
@@ -2336,13 +2349,19 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(specs4.sizeVariants?.includes('140x45'));
 
       // Prompt 8
-      const specs8 = extractSearchSpecs({ query: 'Can I get H1.2 treated timber for interior framing?' });
+      const specs8 = extractSearchSpecs({
+        query: 'Can I get H1.2 treated timber for interior framing?',
+        attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+      });
       assert.equal(specs8.treatment, 'H1.2');
       assert.ok(specs8.treatmentVariants?.includes('H1.2'));
       assert.ok(specs8.treatmentVariants?.includes('H12'));
 
       // Prompt 28
-      const specs28 = extractSearchSpecs({ query: 'What insulation do you recommend for ceiling, R2.2 or R2.6?' });
+      const specs28 = extractSearchSpecs({
+        query: 'What insulation do you recommend for ceiling, R2.2 or R2.6?',
+        attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+      });
       assert.equal(specs28.rValue, 'R2.2');
       assert.ok(specs28.rValueVariants?.includes('R2.2'));
       assert.ok(specs28.rValueVariants?.includes('R22'));
@@ -2361,7 +2380,14 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       };
 
       const handler = new CatalogSearchHandler([product1002835]);
-      const ctx: any = { tenantId: 'test-tenant', packSettings: {} };
+      const ctx: any = {
+        tenantId: 'test-tenant',
+        packSettings: {
+          catalogMapping: {
+            attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+          },
+        },
+      };
 
       // Sizing equivalence forms: 100x50, 4x2, 100 x 50, 100x50mm
       const testSizes = ['100x50', '4x2', '100 x 50', '100x50mm'];
@@ -2474,7 +2500,11 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       const handler = new CatalogSearchHandler(evalProducts);
       const ctx: any = {
         tenantId: 'placemakers',
-        packSettings: {},
+        packSettings: {
+          catalogMapping: {
+            attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+          },
+        },
         vocabulary: {
           synonyms: {
             timber: ['radiata', 'pine', 'wood', 'framing'],
@@ -2590,7 +2620,11 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       const handler = new CatalogSearchHandler(products);
       const ctx: any = {
         tenantId: 'test-speed',
-        packSettings: {},
+        packSettings: {
+          catalogMapping: {
+            attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+          },
+        },
         vocabulary: {
           synonyms: {
             timber: ['radiata', 'pine', 'wood', 'framing'],
@@ -3280,6 +3314,126 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
 
         assert.ok(capturedInput);
         assert.deepEqual(capturedInput.attributeFilters, { colour: 'Navy', size: 'M', fit: 'Slim' });
+      });
+
+      test('second fixture tenant (apparel: colour, size, fit) works with zero code changes', async () => {
+        const apparelAttributeDefs = {
+          colour: {
+            description: 'Garment colour',
+            extractionPatterns: ['\\b(navy(?:\\s*blue)?|olive(?:\\s*green)?|white|black)\\b'],
+            normalizer: 'lowercase',
+            equivalenceTable: {
+              navy: ['navy', 'navy blue', 'dark blue'],
+              olive: ['olive', 'olive green', 'army green'],
+            },
+          },
+          size: {
+            description: 'Garment size code',
+            extractionPatterns: ['\\b(xs|s|m|l|xl|xxl|small|medium|large|extra\\s*large)\\b'],
+            normalizer: 'uppercase',
+            equivalenceTable: {
+              'S': ['s', 'small'],
+              'M': ['m', 'medium'],
+              'L': ['l', 'large'],
+              'XL': ['xl', 'extra large', 'extra-large'],
+            },
+          },
+          fit: {
+            description: 'Garment fit cut',
+            extractionPatterns: ['\\b(slim(?:\\s*fit)?|regular(?:\\s*fit)?|relaxed(?:\\s*fit)?)\\b'],
+            normalizer: 'lowercase',
+            equivalenceTable: {
+              'slim': ['slim', 'slim fit', 'tailored'],
+              'regular': ['regular', 'regular fit', 'classic', 'classic fit'],
+            },
+          },
+        };
+
+        const apparelProducts = [
+          {
+            tenantId: 'apparel-tenant',
+            sku: 'SKU-SHIRT-001',
+            title: 'Classic Oxford Cotton Shirt Navy Blue M Regular Fit',
+            description: 'Breathable oxford cotton shirt.',
+            category: 'Shirts',
+            attributes: { colour: 'navy', size: 'M', fit: 'regular' },
+            price: { amount: 89, currency: 'NZD' },
+            inStock: true,
+          },
+          {
+            tenantId: 'apparel-tenant',
+            sku: 'SKU-SHIRT-002',
+            title: 'Slim Fit Linen Shirt Olive Green XL',
+            description: 'Lightweight summer linen shirt.',
+            category: 'Shirts',
+            attributes: { colour: 'olive', size: 'XL', fit: 'slim' },
+            price: { amount: 99, currency: 'NZD' },
+            inStock: true,
+          },
+          {
+            tenantId: 'apparel-tenant',
+            sku: 'SKU-POLO-003',
+            title: 'Pique Cotton Polo Shirt White Large Slim Fit',
+            description: 'Classic polo with ribbed collar.',
+            category: 'Polo Shirts',
+            attributes: { colour: 'white', size: 'L', fit: 'slim' },
+            price: { amount: 65, currency: 'NZD' },
+            inStock: true,
+          },
+        ];
+
+        // 1. Deterministic extraction and equivalence resolution with apparel pack definitions
+        const specs = extractSearchSpecs({
+          query: 'Looking for a slim fit navy blue shirt in medium',
+          attributeDefinitions: apparelAttributeDefs,
+        });
+
+        assert.equal(specs.attributes?.colour, 'navy blue');
+        assert.equal(specs.attributes?.size, 'MEDIUM');
+        assert.equal(specs.attributes?.fit, 'slim fit');
+        assert.ok(specs.attributeVariants?.colour?.includes('navy'));
+        assert.ok(specs.attributeVariants?.colour?.includes('dark blue'));
+        assert.ok(specs.attributeVariants?.size?.includes('M'));
+        assert.ok(specs.attributeVariants?.size?.includes('medium'));
+        assert.ok(specs.attributeVariants?.fit?.includes('slim'));
+        assert.ok(specs.attributeVariants?.fit?.includes('tailored'));
+
+        // 2. Generic execution through CatalogSearchHandler with apparel pack context
+        const handler = new CatalogSearchHandler(apparelProducts);
+        const ctx: any = {
+          tenantId: 'apparel-tenant',
+          release: {
+            catalogMapping: {
+              attributeDefinitions: apparelAttributeDefs,
+            },
+          },
+        };
+
+        // Querying "white polo large" extracts colour: white, size: L (from "large"), keywords: [polo]
+        const poloRes = await handler.execute({
+          isAgentMode: true,
+          query: 'white polo large',
+        }, ctx);
+
+        assert.equal(poloRes.items.length, 1);
+        assert.equal(poloRes.items[0].sku, 'SKU-POLO-003');
+
+        // Querying with dark blue and regular fit matches SKU-SHIRT-001 via equivalence
+        const shirtRes = await handler.execute({
+          isAgentMode: true,
+          attributes: { colour: 'dark blue', fit: 'classic' },
+        }, ctx);
+
+        assert.equal(shirtRes.items.length, 1);
+        assert.equal(shirtRes.items[0].sku, 'SKU-SHIRT-001');
+
+        // Querying for slim fit navy shirt yields 0 results (SKU-SHIRT-001 is regular fit)
+        const mismatchRes = await handler.execute({
+          isAgentMode: true,
+          attributes: { colour: 'navy', fit: 'slim' },
+        }, ctx);
+
+        assert.equal(mismatchRes.items.length, 0);
       });
     });
 

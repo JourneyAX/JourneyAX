@@ -22,6 +22,17 @@ export const ComponentCategoryRuleSchema = z.object({
   deny: z.array(z.string().min(1)).optional(),
 }).strict();
 
+export const AttributeDefinitionSchema = z.object({
+  description: z.string().optional(),
+  type: z.string().optional(),
+  examples: z.array(z.string()).optional(),
+  extractionPatterns: z.array(z.string()).optional(),
+  normalizer: z.string().optional(),
+  equivalenceTable: z.record(z.string(), z.array(z.string())).optional(),
+}).passthrough();
+
+export type AttributeDefinition = z.infer<typeof AttributeDefinitionSchema>;
+
 export const CatalogMappingSchema = z.object({
   version: z.string().optional(),
   tenantFields: Paths.optional(),
@@ -46,6 +57,7 @@ export const CatalogMappingSchema = z.object({
     unpricedStatuses: z.array(z.string().min(1)).optional(),
   }).optional(),
   attributeAliases: z.record(z.string(), z.array(z.string().min(1))).optional(),
+  attributeDefinitions: z.record(z.string(), AttributeDefinitionSchema).optional(),
   attributeContainers: Paths.optional(),
   imagePaths: Paths.optional(),
   certificationPaths: Paths.optional(),
@@ -73,6 +85,7 @@ export interface ResolvedCatalogMapping {
   stock: { booleanPaths: string[]; countPaths: string[] };
   availability: { excludeFlagPaths: string[]; statusPaths: string[]; excludedStatuses: string[]; unpricedStatuses: string[] };
   attributeAliases: Record<string, string[]>;
+  attributeDefinitions: Record<string, AttributeDefinition>;
   attributeContainers: string[];
   imagePaths: string[];
   certificationPaths: string[];
@@ -97,6 +110,7 @@ export function resolveCatalogMapping(tenant?: unknown): ResolvedCatalogMapping 
     },
     stock: { ...base.stock, ...stripUndefined(parsed.stock) },
     availability: { ...base.availability, ...stripUndefined(parsed.availability) },
+    attributeDefinitions: parsed.attributeDefinitions ?? base.attributeDefinitions ?? {},
   } as ResolvedCatalogMapping;
 }
 
