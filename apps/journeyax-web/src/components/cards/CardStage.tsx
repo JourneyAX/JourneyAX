@@ -224,15 +224,18 @@ export function useCardActions() {
       }
       case 'viewProduct': {
         const sku = String(params?.sku ?? '');
-        postCustomerEvent({
-          type: 'viewProduct',
-          payload: { sku },
-          sourceCard: { id: params?.cardId },
-        });
         // The tapped tile may belong to a bundle, comparison or accessories
         // card whose items never entered recommendedProducts — fall back to
         // whatever card is showing that SKU, so every tile opens its detail.
         const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
+        // The event names the product, not just its code: the thread then reads "View product: <name>" and the agent
+        // knows which one the customer is looking at without having to guess from the last list it showed.
+        const viewedTitle = p ? String((p as any).name || (p as any).title || '').trim() : '';
+        postCustomerEvent({
+          type: 'viewProduct',
+          payload: { sku, ...(viewedTitle ? { title: viewedTitle } : {}) },
+          sourceCard: { id: params?.cardId },
+        });
         if (p) {
           const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
           const rawSpecs = (p as any).specs || {};

@@ -4913,6 +4913,12 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
     });
   });
 
+  test('the platform prompt tells the agent how to treat a view event: look the SKU up, explain it, never ask which product', () => {
+    assert.ok(GENERIC_PLATFORM_OPERATING_PROMPT.includes('A view event'));
+    assert.ok(GENERIC_PLATFORM_OPERATING_PROMPT.includes('never ask which product they mean'));
+    assert.ok(GENERIC_PLATFORM_OPERATING_PROMPT.includes('do not present it again'));
+  });
+
   test('a joining word in a product type is skipped only for a locale that defines it', async () => {
     const product = { tenantId: 'test-tenant', sku: 'P1', title: 'PVC Elbow 20mm', name: 'PVC Elbow 20mm', category: 'PVC Pipe & Fittings', price: { amount: 3, currency: 'NZD' }, inStock: true };
     const handler = new CatalogSearchHandler([product]);
