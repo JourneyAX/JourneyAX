@@ -15,8 +15,8 @@ import {
 export class FeedRowToProductConverter extends AbstractConverter<FeedRow, CanonicalProduct> {
   readonly id = 'feed-row->product';
 
-  constructor() {
-    super(defaultProductPopulators());
+  constructor(attributeDefinitions?: Record<string, any>) {
+    super(defaultProductPopulators(attributeDefinitions));
   }
 
   createTarget(row: FeedRow, ctx?: ConversionContext): CanonicalProduct {
@@ -26,6 +26,7 @@ export class FeedRowToProductConverter extends AbstractConverter<FeedRow, Canoni
       isSublimation: Boolean(ctx?.flags?.sublimation),
       colors: [], sizes: [], images: [], swatchImages: [], sizeChartImages: [], videos: [],
       variants: [], variantCount: 0,
+      attributes: {},
     };
   }
 }

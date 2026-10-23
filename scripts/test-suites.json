@@ -28,7 +28,8 @@
       "tsc:journeyax-web",
       "tsc:backoffice-admin",
       "tsc:canary",
-      "tsc:public-path"
+      "tsc:public-path",
+      "tsc:ingestion"
     ],
     "extended": [
       "agent-commerce-service",
@@ -97,6 +98,10 @@
     },
     "tsc:knowledge": {
       "cwd": "packages/knowledge",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:ingestion": {
+      "cwd": "packages/ingestion",
       "command": "npx tsc --noEmit -p ."
     },
     "tsc:capability-sdk": {

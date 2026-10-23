@@ -45,6 +45,8 @@ import { ApprovalStore } from '../src/approval/approval.store';
 import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema } from '@journeyax/business-pack';
 import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
+import { extractProductAttributes, FeedRowToProductConverter } from '@journeyax/ingestion';
+import { reindexProductAttributes } from '../../../scripts/reindex-product-attributes';
 
 // Helper fixtures for isolated tests
 function createTestPack(overrides: Record<string, any> = {}): BusinessPackRelease {
@@ -3979,6 +3981,139 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.equal(result.count, 0);
         assert.equal(result.products.length, 0);
         assert.match(result.message, /Could not find any products matching/i);
+      });
+    });
+
+    describe('Task S3: Index-Time Extraction & Stored Field Retrieval', () => {
+      test('extractProductAttributes extracts structured attributes using catalogue definitions', () => {
+        const doc = {
+          name: 'Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm',
+          description: 'SG8 framing timber H3.2 treated for outdoor use with Pink Batts R2.2 insulation compatible.',
+          specs: {
+            'Dimensions': '100 x 50mm',
+            'Hazard Class': 'H3.2',
+            'Thermal': 'R2.2',
+          },
+        };
+
+        const extracted = extractProductAttributes(doc, PLACEMAKERS_ATTRIBUTE_DEFINITIONS);
+        assert.equal(extracted.size, '100x50');
+        assert.equal(extracted.treatment, 'H3.2');
+        assert.equal(extracted.rValue, 'R2.2');
+      });
+
+      test('FeedRowToProductConverter extracts structured attributes at feed ingest time', async () => {
+        const converter = new FeedRowToProductConverter(PLACEMAKERS_ATTRIBUTE_DEFINITIONS);
+        const row = {
+          Parent_SKU: 'TIMBER-001',
+          Item_SKU: '1002835',
+          Item_Name: 'Radiata Framing Timber 100 x 50mm H3.2',
+          Item_Description: 'Outdoor framing timber treated H3.2 CCA',
+          Category: 'Timber',
+          MSRP: '15.50',
+        };
+
+        const product = await converter.convert(row);
+        assert.ok(product.attributes);
+        assert.equal(product.attributes.size, '100x50');
+        assert.equal(product.attributes.treatment, 'H3.2');
+      });
+
+      test('CatalogSearchHandler uses stored pre-extracted attribute fields directly', async () => {
+        const product = {
+          tenantId: 'test-tenant',
+          sku: '1002835',
+          title: 'Framing Timber Product',
+          category: 'Timber',
+          price: { amount: 15, currency: 'NZD' },
+          inStock: true,
+          attributes: {
+            size: '100x50',
+            treatment: 'H3.2',
+          },
+        };
+
+        const handler = new CatalogSearchHandler([product]);
+        const ctx: any = {
+          tenantId: 'test-tenant',
+          packSettings: {
+            catalogMapping: {
+              attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+            },
+          },
+        };
+
+        const res = await handler.execute({
+          isAgentMode: true,
+          size: '4x2',
+        }, ctx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, '1002835');
+      });
+
+      test('reindexProductAttributes re-indexes products and updates attributes on product documents', async () => {
+        const fakeDocs = [
+          {
+            _id: 'prod-1',
+            projectId: 'test-tenant',
+            sku: 'SKU-001',
+            title: 'Radiata Timber 100 x 50mm H3.2 CCA Treated',
+            category: 'Timber',
+          },
+          {
+            _id: 'prod-2',
+            projectId: 'test-tenant',
+            sku: 'SKU-002',
+            title: 'Pink Batts Insulation R2.2 Ceiling Blanket',
+            category: 'Insulation',
+          },
+          {
+            _id: 'prod-3',
+            projectId: 'test-tenant',
+            sku: 'SKU-003',
+            title: 'Plain Hammer Steel',
+            category: 'Hand Tools',
+          },
+        ];
+
+        const updatedDocs: Record<string, any> = {};
+        const mockCollection = {
+          find: () => {
+            let idx = 0;
+            return {
+              hasNext: async () => idx < fakeDocs.length,
+              next: async () => fakeDocs[idx++],
+            };
+          },
+          bulkWrite: async (ops: any[]) => {
+            for (const op of ops) {
+              const id = op.updateOne.filter._id;
+              updatedDocs[id] = op.updateOne.update.$set;
+            }
+          },
+        };
+
+        const mockDb = {
+          collection: () => mockCollection,
+        };
+
+        const result = await reindexProductAttributes({
+          db: mockDb,
+          tenantId: 'test-tenant',
+          attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+        });
+
+        assert.equal(result.totalScanned, 3);
+        assert.equal(result.totalUpdated, 2);
+        assert.equal(result.extractedCounts.size, 1);
+        assert.equal(result.extractedCounts.treatment, 1);
+        assert.equal(result.extractedCounts.rValue, 1);
+
+        assert.equal(updatedDocs['prod-1']?.attributes?.size, '100x50');
+        assert.equal(updatedDocs['prod-1']?.attributes?.treatment, 'H3.2');
+        assert.equal(updatedDocs['prod-2']?.attributes?.rValue, 'R2.2');
+        assert.equal(updatedDocs['prod-3'], undefined);
       });
     });
   });

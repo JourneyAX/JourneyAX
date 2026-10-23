@@ -643,6 +643,13 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             if (activeSpecs?.attributeVariants) {
               for (const [attrName, variants] of Object.entries(activeSpecs.attributeVariants)) {
                 if (!variants || variants.length === 0) continue;
+                // Fast path: Check stored pre-extracted attribute on product first!
+                const storedAttr = p.attributes?.[attrName] ?? p[attrName] ?? readAttribute(p, attrName, mapping);
+                if (storedAttr != null && storedAttr !== '') {
+                  const storedNorm = String(storedAttr).trim().toLowerCase().replace(/\s+/g, '');
+                  const matchesStored = variants.some((v) => v.toLowerCase().replace(/\s+/g, '') === storedNorm);
+                  if (matchesStored) continue;
+                }
                 const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
                 const title = textOf(p, mapping.titlePaths);
                 const search = textOf(p, mapping.searchPaths);
@@ -751,10 +758,13 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                 const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
                 and.push({
                   $or: [
+                    { [`attributes.${attrName}`]: { $in: variants } },
+                    { [attrName]: { $in: variants } },
+                    { [`attributes.${attrName}`]: regex },
+                    { [attrName]: regex },
+                    ...mapping.attributeContainers.map((c) => ({ [`${c}.${attrName}`]: regex })),
                     ...anyOf(mapping.titlePaths, regex),
                     ...anyOf(mapping.searchPaths, regex),
-                    ...mapping.attributeContainers.map((c) => ({ [`${c}.${attrName}`]: regex })),
-                    { [attrName]: regex },
                   ],
                 });
               }
