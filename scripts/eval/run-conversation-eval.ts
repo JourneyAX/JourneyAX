@@ -850,7 +850,7 @@ async function main() {
     const allowedClasses = (useAgentMode && lastResult?.trace?.allowedClaimClasses)
       ? lastResult.trace.allowedClaimClasses
       : ['suggestion'];
-    const claimCheck = validateOkfGeneratedClaims(assistantMessage, allowedClasses);
+    const claimCheck = validateOkfGeneratedClaims(assistantMessage, allowedClasses, stack.pack);
     const forbiddenClaimsAbsent = claimCheck.valid;
 
     // SKU / Attribute check for product lookups

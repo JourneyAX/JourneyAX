@@ -5,6 +5,25 @@
   "version": "1.3.2-draft",
   "status": "draft",
   "defaultAgentId": "placemakers_product_advisor",
+  "conversationPolicy": {
+    "referrals": {
+      "en-NZ": [
+        "consult a licensed",
+        "consult a registered",
+        "consult a professional",
+        "consult an engineer",
+        "consult a structural engineer",
+        "refer to a licensed",
+        "refer to a professional",
+        "speak with a licensed",
+        "speak with a professional",
+        "check with a licensed",
+        "check with a professional",
+        "ask a professional",
+        "ask a licensed"
+      ]
+    }
+  },
   "agents": [
     {
       "agentId": "placemakers_product_advisor",

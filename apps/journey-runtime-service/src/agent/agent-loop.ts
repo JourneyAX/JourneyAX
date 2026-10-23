@@ -636,7 +636,8 @@ function extractToolResultCount(result: any): number | undefined {
           timeToFirstTextMs = Date.now() - loopStart;
         }
         sink('token', { delta });
-      }
+      },
+      release
     );
 
     // 6. Multi-Round Tool Loop (at most 5 rounds)

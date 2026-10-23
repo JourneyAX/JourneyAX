@@ -145,6 +145,25 @@ export function projectDoc(agentMode = false) {
     projectId: TENANT, name: 'PlaceMakers', companyName: 'PlaceMakers', ai,
     pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' }, catalogMapping,
     routingPolicy: { defaultJourneyId: 'placemakers_shop', fallbackOnCatalogSearch: true },
+    conversationPolicy: {
+      referrals: {
+        'en-NZ': [
+          'consult a licensed',
+          'consult a registered',
+          'consult a professional',
+          'consult an engineer',
+          'consult a structural engineer',
+          'refer to a licensed',
+          'refer to a professional',
+          'speak with a licensed',
+          'speak with a professional',
+          'check with a licensed',
+          'check with a professional',
+          'ask a professional',
+          'ask a licensed',
+        ],
+      },
+    },
     vocabulary: {
       version: '1.0.0',
       terms: [

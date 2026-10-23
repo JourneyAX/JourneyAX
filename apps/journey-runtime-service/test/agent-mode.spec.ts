@@ -100,6 +100,23 @@ function createTestPack(overrides: Record<string, any> = {}): BusinessPackReleas
         forbiddenPhrases: [],
         rules: [],
       },
+      referrals: {
+        'en-NZ': [
+          'consult a licensed',
+          'consult a registered',
+          'consult a professional',
+          'consult an engineer',
+          'consult a structural engineer',
+          'refer to a licensed',
+          'refer to a professional',
+          'speak with a licensed',
+          'speak with a professional',
+          'check with a licensed',
+          'check with a professional',
+          'ask a professional',
+          'ask a licensed',
+        ],
+      },
     },
     journeys: [
       {

@@ -190,6 +190,9 @@ export const ConversationPolicySchema = z.object({
   }),
   customerEvents: CustomerEventsPolicySchema.optional(),
   eventPolicy: CustomerEventsPolicySchema.optional(),
+  referrals: z.union([z.array(z.string()), z.record(z.string(), z.array(z.string()))]).optional(),
+  extraClaimPatterns: z.record(z.string(), z.union([z.array(z.string()), z.record(z.string(), z.array(z.string()))])).optional(),
+  withheldAnswerMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
 });
 
 /**

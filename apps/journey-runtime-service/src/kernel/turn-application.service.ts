@@ -2488,11 +2488,11 @@ export class TurnApplicationService {
           content = `${renderOkfMessage(interpretationMessages, 'measurement_clarification')} ${content}`;
         }
         if (release.knowledgeModel?.type === 'okf_release') {
-          const checked = validateOkfGeneratedClaims(content, knowledgeGate?.claims.allowedClasses || []);
+          const checked = validateOkfGeneratedClaims(content, knowledgeGate?.claims.allowedClasses || [], release);
           if (!checked.valid) {
             // Never stream a sentence that asserts an unsupported claim. The rest of the reply is kept; if nothing is left, the question
             // or card still goes out with the tenant's own wording for "I can't confirm that".
-            const withheld = withholdUnsupportedClaims(content, knowledgeGate?.claims.allowedClasses || []);
+            const withheld = withholdUnsupportedClaims(content, knowledgeGate?.claims.allowedClasses || [], release);
             console.warn(`[ClaimGuard] withheld ${withheld.removed.length} sentence(s) asserting ${[...new Set(withheld.removed.flatMap((entry) => entry.classes))].join(', ')} from the model reply; kept ${withheld.text ? 'the rest' : 'nothing'}. First withheld: "${withheld.removed[0]?.sentence.slice(0, 140)}"`);
             return {
               message: shape(withheld.text) || decision.payload?.question || knowledgeGate?.clarification?.question || renderOkfMessage(interpretationMessages, 'claim_withheld'),

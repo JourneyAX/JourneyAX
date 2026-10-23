@@ -67,13 +67,49 @@ assert.ok(
   'electrical advice near power outlets must be withheld'
 );
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+const placemakersDraft = JSON.parse(
+  readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8')
+);
+const packOptions = {
+  locale: 'en-NZ',
+  referrals: placemakersDraft.conversationPolicy?.referrals,
+};
+
+// V1: Claim guard hole - referral may exempt only the referral clause
+// "This board has a 15-year warranty, ask a professional if unsure." must be withheld
+const sentenceWithHole = 'This board has a 15-year warranty, ask a professional if unsure.';
+assert.ok(
+  validateOkfGeneratedClaims(sentenceWithHole, ['suggestion'], packOptions).forbidden.includes('warranty'),
+  'sentence asserting warranty with tacked-on referral must be rejected'
+);
+const withheldHole = withholdUnsupportedClaims(sentenceWithHole, ['suggestion'], packOptions);
+assert.equal(withheldHole.text, '', 'sentence asserting warranty with referral must be withheld');
+assert.equal(withheldHole.removed.length, 1);
+assert.deepEqual(withheldHole.removed[0].classes, ['warranty']);
+
+// "For load-bearing beams please consult a licensed engineer." must pass
+const validReferral = 'For load-bearing beams please consult a licensed engineer.';
+assert.deepEqual(
+  validateOkfGeneratedClaims(validReferral, ['suggestion'], packOptions).forbidden,
+  [],
+  '"For load-bearing beams please consult a licensed engineer." must pass'
+);
+assert.equal(
+  withholdUnsupportedClaims(validReferral, ['suggestion'], packOptions).text,
+  validReferral,
+  'valid referral must be preserved'
+);
+
 // Verified professional referrals must NOT be withheld as claims
 const referral1 = 'For load-bearing beams, please consult a licensed professional or engineer.';
 const referral2 = 'For structural calculations, electrical wiring, gas fitting, or building consent questions, please consult a licensed professional or engineer.';
-assert.deepEqual(validateOkfGeneratedClaims(referral1, ['suggestion']).forbidden, [], 'referral to licensed professional is allowed');
-assert.deepEqual(validateOkfGeneratedClaims(referral2, ['suggestion']).forbidden, [], 'general professional referral is allowed');
-assert.equal(withholdUnsupportedClaims(referral1, ['suggestion']).text, referral1);
-assert.equal(withholdUnsupportedClaims(referral2, ['suggestion']).text, referral2);
+assert.deepEqual(validateOkfGeneratedClaims(referral1, ['suggestion'], packOptions).forbidden, [], 'referral to licensed professional is allowed');
+assert.deepEqual(validateOkfGeneratedClaims(referral2, ['suggestion'], packOptions).forbidden, [], 'general professional referral is allowed');
+assert.equal(withholdUnsupportedClaims(referral1, ['suggestion'], packOptions).text, referral1);
+assert.equal(withholdUnsupportedClaims(referral2, ['suggestion'], packOptions).text, referral2);
 
-console.log('✅ OKF claim validator: all tests passed including U1 structural & electrical assertions');
+console.log('✅ OKF claim validator: all tests passed including V1 clause splitting and pack-data referrals');
 
