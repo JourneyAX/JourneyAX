@@ -22,6 +22,7 @@ import {
   type AgentToolContext,
 } from './agent-tools';
 import agentLoopDefaults from '../defaults/agent-loop.json';
+import { chooseCardSkus } from './auto-card';
 import { formatBusinessProfile } from '../kernel/business-knowledge';
 import { AgentRouter, type ResolvedAgent } from '../kernel/agent.router';
 import { readHistory, appendHistory, formatHistoryBlock, type ConversationTurnRecord } from '../conversation';
@@ -1005,6 +1006,35 @@ function extractToolResultCount(result: any): number | undefined {
       sink('token', { replace: finalAssistantText, delta: finalAssistantText });
     }
 
+    // 6b. The products the reply is about are shown on a card after it. Asking the model for a separate present_card call cost a
+    // round trip on every recommendation and sometimes never came, leaving a recommended product the customer could not see or
+    // add. A turn started by an interface action is left alone: the interface has already shown what the customer acted on.
+    if (
+      !toolContext.isHumanHandoffRequested &&
+      !customerEvent &&
+      finalAssistantText &&
+      toolContext.presentedCards.length === 0 &&
+      !toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok)
+    ) {
+      const picked = chooseCardSkus({
+        text: finalAssistantText,
+        turnSkus: toolContext.turnProductSkus,
+        catalog: toolContext.catalogProductCache,
+        last: toolContext.lastProducts,
+      });
+      if (picked.skus.length > 0) {
+        const started = Date.now();
+        let ok = true;
+        try {
+          const shown = await executeAgentTool('present_card', { cardType: 'products', state: { products: picked.skus.map((sku) => ({ sku })) } }, toolContext);
+          if (shown && typeof shown === 'object' && shown.ok === false) ok = false;
+        } catch {
+          ok = false;
+        }
+        toolsTrace.push({ name: 'present_card', durationMs: Date.now() - started, ok, arguments: { auto: picked.basis, skus: picked.skus }, resultCount: picked.skus.length });
+      }
+    }
+
     // 7. Determine Final Decision
     let decision: Decision;
     if (toolContext.isHumanHandoffRequested) {
@@ -1048,12 +1078,22 @@ function extractToolResultCount(result: any): number | undefined {
       { role: 'customer', content: customerContent, turnId: command.turnId },
     ];
     if (toolsTrace.length > 0) {
+      // What was looked up is kept, not just that a lookup happened: the next turn ("it's for a bathroom wall") needs to know
+      // which group of products the customer is talking about, and what was already searched for, to carry on from there.
+      const lookedUp = (args: any): string => {
+        const parts = ['productType', 'topic', 'keywords', 'query', 'sku']
+          .map((key) => (args?.[key] === undefined ? '' : `${key}: ${Array.isArray(args[key]) ? args[key].join(' ') : String(args[key])}`))
+          .filter(Boolean);
+        return parts.length > 0 ? ` [${parts.join('; ').slice(0, 120)}]` : '';
+      };
       const compactTools = toolsTrace
-        .map((t) => `${t.name}${t.ok ? ' (ok)' : ' (failed)'}`)
+        .filter((t) => !(t.arguments && (t.arguments as any).auto))
+        .map((t) => `${t.name}${t.ok ? ' (ok)' : ' (failed)'}${lookedUp(t.arguments)}`)
         .join(', ');
+      const group = toolContext.lastRangeGroup;
       historyEntries.push({
         role: 'tool_summary',
-        content: `Executed: ${compactTools}`,
+        content: `Executed: ${compactTools}${group ? `. Product group shown to the customer: ${group.name} (${group.path.join(' > ')})` : ''}`,
         turnId: command.turnId,
       });
     }

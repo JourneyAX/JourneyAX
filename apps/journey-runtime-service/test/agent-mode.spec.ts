@@ -51,6 +51,7 @@ import { ApprovalStore } from '../src/approval/approval.store';
 import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema } from '@journeyax/business-pack';
 import { MemoryDb } from '@journeyax/test-support';
 import { browseRange, matchRangeConcepts } from '../src/agent/range-browser';
+import { chooseCardSkus } from '../src/agent/auto-card';
 import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 import { extractProductAttributes, FeedRowToProductConverter } from '@journeyax/ingestion';
@@ -5159,6 +5160,7 @@ describe('browse_range: describing what the range holds for a broad request', ()
     const res: any = await executeAgentTool('browse_range', { topic: 'gib' }, ctx);
     assert.equal(res.found, true);
     assert.ok(ctx.turnProductSkus.has('S1') && ctx.turnProductSkus.has('X1'));
+    assert.deepEqual(ctx.lastRangeGroup, { name: 'Wallboard', path: ['Building', 'Wallboard'] }, 'the group shown is remembered for the next turn');
     assert.ok(ctx.allowedClaimClasses.has('catalog_fact'));
     const none: any = await executeAgentTool('browse_range', { topic: 'zzzzz' }, ctx);
     assert.equal(none.found, false);
@@ -5166,5 +5168,95 @@ describe('browse_range: describing what the range holds for a broad request', ()
     const slip: any = await executeAgentTool('browse_range', { topic: 'jib' }, ctx);
     assert.equal(slip.found, true);
     assert.ok(/"jib" as "gib"/.test(slip.message), 'the agent is told which word was used, so it can say so');
+  });
+});
+
+describe('the products a reply is about are shown on a card', () => {
+  const catalog = new Map<string, any>([
+    ['2800027', { sku: '2800027', title: 'Standard Wallboard 2400 x 1200 x 10mm Taper Edge' }],
+    ['2800651', { sku: '2800651', title: 'Aqualine Wallboard 2400 x 1350 x 10mm Taper Edge/Square Edge' }],
+    ['2800407', { sku: '2800407', title: 'Fyreline Wallboard 2700 x 1200 x 16mm Taper Edge' }],
+    ['9000001', { sku: '9000001', title: 'Screws' }],
+  ]);
+  const skus = [...catalog.keys()];
+
+  test('a product named by its title, by a shortened title or by its SKU is chosen, in the order the reply names them', () => {
+    const picked = chooseCardSkus({ text: 'The Fyreline Wallboard 2700 x 1200 x 16mm Taper Edge suits a fire-rated wall; for a wet room look at the Aqualine Wallboard 2400 x 1350 x 10mm, or ask me about 2800027.', turnSkus: skus, catalog });
+    assert.deepEqual(picked, { skus: ['2800407', '2800651', '2800027'], basis: 'named' });
+  });
+
+  test('a title too short to be specific does not count as a mention', () => {
+    const picked = chooseCardSkus({ text: 'You will need screws for this.', turnSkus: skus, catalog });
+    assert.equal(picked.skus.includes('9000001'), false);
+  });
+
+  test('when no product is named, the last lookup\'s matches are shown; alternatives the search settled for are not', () => {
+    const exact = chooseCardSkus({ text: 'Here is what I found for your wall.', turnSkus: skus, catalog, last: { skus: ['2800027', '2800651', '2800407', '9000001', '1'], relaxed: false } });
+    assert.deepEqual(exact, { skus: ['2800027', '2800651', '2800407', '9000001'], basis: 'searched' });
+    const relaxed = chooseCardSkus({ text: 'Here is what I found for your wall.', turnSkus: skus, catalog, last: { skus: ['2800027'], relaxed: true } });
+    assert.deepEqual(relaxed, { skus: [], basis: 'none' });
+  });
+
+  const run = async (opts: { message: string; searchResult: any; reply: string; customerEvent?: any; alsoPresent?: boolean }) => {
+    const gateway = new ModelGateway();
+    const release = createTestPack();
+    const workspace = createTestWorkspace();
+    let round = 0;
+    gateway.mockAgentExecutor = async (_req, onDelta) => {
+      round++;
+      if (round === 1) {
+        return { content: '', toolCalls: [{ id: 'c1', name: 'search_products', arguments: { keywords: ['board'] } }], usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+      }
+      if (round === 2 && opts.alsoPresent) {
+        return { content: '', toolCalls: [{ id: 'c2', name: 'present_card', arguments: { cardType: 'products', state: { products: [{ sku: '2800027' }] } } }], usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+      }
+      onDelta?.(opts.reply);
+      return { content: opts.reply, toolCalls: [], usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+    };
+    const outcome = await new AgentTurnLoop().execute({
+      command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 's-card', correlationId: 'c-card', message: opts.message, ...(opts.customerEvent ? { customerEvent: opts.customerEvent } : {}) },
+      release,
+      workspace,
+      modelGateway: gateway,
+      catalogSearchHandler: { execute: async () => opts.searchResult } as any,
+      sink: () => {},
+    } as any);
+    const cards = (outcome.turnResult.uiInstructions || []).filter((u: any) => u.component === 'products');
+    return { cards, skus: cards.flatMap((c: any) => (c.props.products || []).map((p: any) => p.sku)), calls: round, history: ((workspace as any).facts?.conversation_history?.value || []) as Array<{ role: string; content: string }> };
+  };
+  const found = { items: [...catalog.values()].filter((p) => p.sku !== '9000001').map((p) => ({ ...p, name: p.title, price: 30 })), total: 3 };
+
+  test('a reply that names a product gets a card with that product, without another model call', async () => {
+    const result = await run({ message: 'plasterboard for a wet room', searchResult: found, reply: 'For a wet room use the Aqualine Wallboard 2400 x 1350 x 10mm Taper Edge/Square Edge: it has a water-resistant core.' });
+    assert.deepEqual(result.skus, ['2800651']);
+    assert.equal(result.calls, 2, 'one round to search, one to answer: the card cost no round trip');
+  });
+
+  test('a reply that names nothing still gets a card of what the search found', async () => {
+    const result = await run({ message: 'plasterboard', searchResult: found, reply: 'Here is what I found. Where will it be used?' });
+    assert.deepEqual(result.skus, ['2800027', '2800651', '2800407']);
+  });
+
+  test('alternatives the search had to settle for are not shown when the reply names none of them', async () => {
+    const result = await run({ message: 'plasterboard', searchResult: { ...found, relaxedConstraints: ['productType'] }, reply: 'I could not find an exact match. What size do you need?' });
+    assert.deepEqual(result.skus, []);
+  });
+
+  test('a card the model presented itself is not repeated', async () => {
+    const result = await run({ message: 'plasterboard', searchResult: found, reply: 'The Standard Wallboard 2400 x 1200 x 10mm Taper Edge is the usual choice.', alsoPresent: true });
+    assert.equal(result.cards.length, 1);
+    assert.deepEqual(result.skus, ['2800027']);
+  });
+
+  test('the conversation keeps what was looked up, so the next turn can carry on from it', async () => {
+    const result = await run({ message: 'plasterboard for a wet room', searchResult: found, reply: 'Here is what I found. Where will it be used?' });
+    const summary = result.history.find((entry) => entry.role === 'tool_summary')?.content || '';
+    assert.match(summary, /search_products \(ok\) \[keywords: board\]/);
+    assert.doesNotMatch(summary, /present_card/, 'a card the platform added on its own is not something the agent did');
+  });
+
+  test('a turn started by an interface action is left alone, the interface has already shown the product', async () => {
+    const result = await run({ message: '', customerEvent: { type: 'viewProduct', payload: { sku: '2800027', title: 'Standard Wallboard' } }, searchResult: found, reply: 'You have opened the Standard Wallboard 2400 x 1200 x 10mm Taper Edge.' });
+    assert.deepEqual(result.skus, []);
   });
 });

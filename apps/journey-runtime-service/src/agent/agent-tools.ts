@@ -29,6 +29,7 @@ import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plan
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
 import { browseRange } from './range-browser';
+import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
   tenantId: string;
@@ -54,6 +55,10 @@ export interface AgentToolContext {
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   turnProductSkus: Set<string>;
   catalogProductCache: Map<string, any>;
+  /** What the latest product lookup of the turn found, so the reply's products can be shown even if the reply names none. */
+  lastProducts?: LastProducts;
+  /** The product group the turn's range overview was mainly about, kept in the conversation so the next turn can narrow within it. */
+  lastRangeGroup?: { name: string; path: string[] };
   readSourceIds: Set<string>;
   allowedClaimClasses: Set<ClaimClass>;
   presentedCards: Array<{ cardType: string; state: any }>;
@@ -963,13 +968,17 @@ export async function executeAgentTool(
         return { found: false, topic, message: 'No product group in the knowledge matches this. Use search_products with the customer\'s own words.' };
       }
       ctx.allowedClaimClasses.add('catalog_fact');
+      const leadGroup = result.nodes.find((node) => node.match === 'direct' && node.path) || result.nodes.find((node) => node.path);
+      if (leadGroup?.path) ctx.lastRangeGroup = { name: leadGroup.name, path: leadGroup.path };
       const hasExamples = result.nodes.some((node) => (node.children || [node]).some((group) => (group.examples || []).length > 0));
       const messages: string[] = [];
       if (result.interpretedAs) {
         messages.push(`The word was not found as written; the closest known word was used instead (${result.interpretedAs.changes.map((c: any) => `"${c.from}" as "${c.to}"`).join(', ')}). Tell the customer which word you took it as, in one short clause, so they can correct you.`);
       }
       if (hasExamples) {
-        messages.push('Next, call present_card (cardType products) with SKUs taken from these examples, then write your reply. The card shows the products with their photos, so do not list products, prices or SKUs in your text.');
+        const exampleSkus = result.nodes.flatMap((node) => (node.children && node.children.length > 0 ? node.children : [node]).flatMap((group) => (group.examples || []).map((example) => example.sku)));
+        ctx.lastProducts = { skus: [...new Set(exampleSkus)], relaxed: false };
+        messages.push('The example products are shown to the customer on a card right after your reply, with their photos, so write the reply now and do not list products, prices or SKUs in your text.');
       }
       return messages.length > 0 ? { ...result, message: messages.join(' ') } : result;
     }
@@ -1040,6 +1049,9 @@ export async function executeAgentTool(
           ctx.turnProductSkus.add(p.sku);
           ctx.catalogProductCache.set(p.sku, p);
         }
+      }
+      if (products.length > 0) {
+        ctx.lastProducts = { skus: products.map((p: any) => p.sku).filter(Boolean), relaxed: Boolean(result.relaxedConstraints?.length) };
       }
 
       const displayQuery =
