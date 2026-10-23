@@ -479,9 +479,11 @@ async function main() {
   const p95Ttft = percentile(ttftValues, 95);
   const p50Total = percentile(totalMsValues, 50);
   const p95Total = percentile(totalMsValues, 95);
+  const maxTotal = totalMsValues.length > 0 ? Math.max(...totalMsValues) : 0;
   const avgModelCalls = modelCallsValues.reduce((a, b) => a + b, 0) / (total || 1);
   const totalToolCalls = evalResults.reduce((acc, r) => acc + (r.toolCalls || 0), 0);
   const avgToolCalls = totalToolCalls / (total || 1);
+  const slowTurns = evalResults.filter((r) => (r.timing.totalMs || 0) > 20000);
 
   // Category Breakdown
   const categoriesMap = new Map<string, { total: number; passed: number }>();
@@ -560,8 +562,22 @@ async function main() {
     `| p95 Time to First Text | ${p95Ttft.toFixed(1)} ms |`,
     `| p50 Total Turn Latency | ${p50Total.toFixed(1)} ms |`,
     `| p95 Total Turn Latency | ${p95Total.toFixed(1)} ms |`,
+    `| Max Total Turn Latency | ${maxTotal.toFixed(1)} ms |`,
     `| Average Model Calls / Turn | ${avgModelCalls.toFixed(2)} |`,
     `| Average Tool Calls / Turn | ${avgToolCalls.toFixed(2)} |`,
+    ``,
+    `## Slow Turns Audit (> 20s)`,
+    ``,
+    slowTurns.length === 0
+      ? `- **Zero turns exceeded 20s** (max turn latency: ${maxTotal.toFixed(1)} ms). All turns completed within the 20s SLA threshold.`
+      : [
+          `- **${slowTurns.length} turn(s) exceeded the 20s SLA threshold**:`,
+          ``,
+          ...slowTurns.map(
+            (r) =>
+              `- **#${r.id}** [${r.category} | ${r.promptType}] (${(r.timing.totalMs / 1000).toFixed(2)}s, ${r.timing.modelCalls} model call(s), tools: [${r.toolsCalled.join(', ')}]): "${Array.isArray(r.prompt) ? r.prompt.join(' -> ') : r.prompt}"`
+          ),
+        ].join('\n'),
     ``,
     `## Pass Rate by Prompt Type`,
     ``,
@@ -617,7 +633,12 @@ async function main() {
   console.log(`============================================================`);
   console.log(`Pass Rate: ${overallPassRate.toFixed(1)}% (${passedCount}/${total})`);
   console.log(`p50 Time to First Text: ${p50Ttft.toFixed(1)} ms | p95: ${p95Ttft.toFixed(1)} ms`);
+  console.log(`p50 Turn Latency: ${p50Total.toFixed(1)} ms | p95: ${p95Total.toFixed(1)} ms | Max: ${maxTotal.toFixed(1)} ms`);
   console.log(`Model Calls/Turn: ${avgModelCalls.toFixed(2)} | Tool Calls/Turn: ${avgToolCalls.toFixed(2)}`);
+  console.log(`Slow Turns (> 20s): ${slowTurns.length === 0 ? '0 (all within SLA)' : `${slowTurns.length} turns`}`);
+  for (const st of slowTurns) {
+    console.log(`  - Turn #${st.id} [${st.category}]: ${(st.timing.totalMs / 1000).toFixed(2)}s, tools: [${st.toolsCalled.join(', ')}]`);
+  }
   console.log(`\nPrompt Type Breakdown:`);
   for (const p of promptTypeStats) {
     console.log(`  - ${p.type.padEnd(20)}: ${p.passed}/${p.total} (${p.passRate.toFixed(1)}%)`);
