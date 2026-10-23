@@ -945,7 +945,6 @@ export async function executeAgentTool(
                   title: p.title || p.name,
                   price: p.priceUSD?.min ?? p.price ?? null,
                   currency: p.currency || ctx.release.profile?.primaryCurrency,
-                  imageUrl: p.imageUrl || null,
                 };
               }),
           }));
@@ -964,7 +963,15 @@ export async function executeAgentTool(
         return { found: false, topic, message: 'No product group in the knowledge matches this. Use search_products with the customer\'s own words.' };
       }
       ctx.allowedClaimClasses.add('catalog_fact');
-      return result;
+      const hasExamples = result.nodes.some((node) => (node.children || [node]).some((group) => (group.examples || []).length > 0));
+      const messages: string[] = [];
+      if (result.interpretedAs) {
+        messages.push(`The word was not found as written; the closest known word was used instead (${result.interpretedAs.changes.map((c: any) => `"${c.from}" as "${c.to}"`).join(', ')}). Tell the customer which word you took it as, in one short clause, so they can correct you.`);
+      }
+      if (hasExamples) {
+        messages.push('Next, call present_card (cardType products) with SKUs taken from these examples, then write your reply. The card shows the products with their photos, so do not list products, prices or SKUs in your text.');
+      }
+      return messages.length > 0 ? { ...result, message: messages.join(' ') } : result;
     }
 
     case 'search_products': {

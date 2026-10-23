@@ -51,7 +51,7 @@ export interface RangeBrowseDeps {
 const CATEGORY_TYPE = 'product_category';
 const SUGGESTION_RELATIONSHIPS = new Set(['cross_sell']);
 /** A group is worth showing when its best term scores at least this (0 to 1)... */
-const MIN_MATCH_SCORE = 0.25;
+const MIN_MATCH_SCORE = 0.3;
 /** ...and at least this fraction of the best group's score. */
 const RELATIVE_CUTOFF = 0.45;
 /** At or above this a group is what the customer asked for; below it, a group that shares only part of their words. */
@@ -94,7 +94,8 @@ export interface RangeMatch {
 export function matchRangeConcepts(okf: OkfReleaseContent | null | undefined, topic: string, locale: string | undefined, max = 4): RangeMatch[] {
   if (!okf || !topic) return [];
   const joiners = connectorWordsForLocale(locale);
-  const topicWords = wordsOf(topic).filter((w) => !joiners.has(w));
+  // A size, a count or any word with a digit names no group, so it neither finds one nor gets corrected.
+  const topicWords = wordsOf(topic).filter((w) => !joiners.has(w) && !/\d/.test(w));
   if (topicWords.length === 0) return [];
   const matcher = (word: string) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${stemPatternForLocale(word, locale)}(?:$|[^\\p{L}\\p{N}])`, 'iu');
   const topicMatchers = topicWords.map(matcher);
@@ -150,6 +151,58 @@ export function matchRangeConcepts(okf: OkfReleaseContent | null | undefined, to
   return scored.filter((entry) => entry.score >= top * RELATIVE_CUTOFF).slice(0, max);
 }
 
+/** Edit distance of at most one: a letter changed, added or dropped, or two neighbouring letters swapped. */
+function withinOneEdit(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  if (a.length === b.length) {
+    let first = -1;
+    let differing = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] === b[i]) continue;
+      if (first < 0) first = i;
+      if (++differing > 2) return false;
+    }
+    return differing === 1 || (differing === 2 && a[first] === b[first + 1] && a[first + 1] === b[first]);
+  }
+  const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
+  let i = 0;
+  while (i < shorter.length && shorter[i] === longer[i]) i++;
+  return shorter.slice(i) === longer.slice(i + 1);
+}
+
+export interface TopicCorrection {
+  topic: string;
+  changes: Array<{ from: string; to: string }>;
+}
+
+/**
+ * For a customer's word that no group uses: the word the groups do use that is one slip away (a changed, missing, extra or swapped
+ * letter), preferring the one more groups use. Null when every word is already known or nothing is close.
+ */
+export function correctTopic(okf: OkfReleaseContent | null | undefined, topic: string, locale: string | undefined): TopicCorrection | null {
+  if (!okf || !topic) return null;
+  const joiners = connectorWordsForLocale(locale);
+  // A size, a count or any word with a digit names no group, so it neither finds one nor gets corrected.
+  const topicWords = wordsOf(topic).filter((w) => !joiners.has(w) && !/\d/.test(w));
+  const usedBy = new Map<string, number>();
+  for (const concept of okf.concepts || []) {
+    if (concept.type !== CATEGORY_TYPE || concept.lifecycle?.status === 'retired' || !pathOf(concept)) continue;
+    const words = new Set([concept.name, ...(concept.synonyms || []), ...(concept.customerPhrases || [])].flatMap((term) => wordsOf(String(term || ''))));
+    for (const word of words) usedBy.set(word, (usedBy.get(word) || 0) + 1);
+  }
+  const changes: TopicCorrection['changes'] = [];
+  const corrected = topicWords.map((word) => {
+    const known = new RegExp(`^${stemPatternForLocale(word, locale)}$`, 'i');
+    if (word.length < 3 || [...usedBy.keys()].some((key) => known.test(key))) return word;
+    const near = [...usedBy.entries()].filter(([key]) => key.length >= 3 && withinOneEdit(word, key)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    if (near.length === 0) return word;
+    changes.push({ from: word, to: near[0][0] });
+    return near[0][0];
+  });
+  return changes.length > 0 ? { topic: corrected.join(' '), changes } : null;
+}
+
 function childrenOf(okf: OkfReleaseContent, concept: OkfConcept): OkfConcept[] {
   const byId = new Map((okf.concepts || []).map((c) => [c.conceptId, c]));
   const ids = new Set<string>(((concept as any).broadQueryPolicy?.groupConceptIds as string[] | undefined) || []);
@@ -177,10 +230,11 @@ function suggestionsFor(okf: OkfReleaseContent, concept: OkfConcept): Array<{ co
 
 const groupOf = (concept: OkfConcept): RangeGroup => ({ name: concept.name, conceptId: concept.conceptId, path: pathOf(concept) });
 
-export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boolean; topic?: string; nodes: RangeNode[] }> {
+export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boolean; topic?: string; interpretedAs?: TopicCorrection; nodes: RangeNode[] }> {
   const { okf } = deps;
   const topic = String(deps.topic || '').trim();
   if (!okf) return { found: false, topic, nodes: [] };
+  let interpretedAs: TopicCorrection | undefined;
 
   let matches: RangeMatch[] = [];
   if (deps.path && deps.path.length > 0) {
@@ -191,6 +245,14 @@ export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boole
     }).slice(0, 1).map((concept) => ({ concept, score: 1 }));
   }
   if (matches.length === 0 && topic) matches = matchRangeConcepts(okf, topic, deps.locale, deps.maxNodes ?? 4);
+  if (matches.length === 0 && topic) {
+    // A word no group uses may be a slip of the keyboard for one they do: try the closest known word, and say so.
+    const fix = correctTopic(okf, topic, deps.locale);
+    if (fix) {
+      matches = matchRangeConcepts(okf, fix.topic, deps.locale, deps.maxNodes ?? 4);
+      if (matches.length > 0) interpretedAs = fix;
+    }
+  }
   if (matches.length === 0) return { found: false, topic, nodes: [] };
 
   // A group inside another match is already described by it.
@@ -241,5 +303,5 @@ export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boole
   }
 
   // A group with nothing in the catalogue is not worth a customer's time.
-  return { found: true, topic, nodes: nodes.filter((node) => node.productCount === undefined || node.productCount > 0) };
+  return { found: true, topic, ...(interpretedAs ? { interpretedAs } : {}), nodes: nodes.filter((node) => node.productCount === undefined || node.productCount > 0) };
 }

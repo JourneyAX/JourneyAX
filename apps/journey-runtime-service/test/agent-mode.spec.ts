@@ -5097,10 +5097,16 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.equal(matchRangeConcepts(okf, 'wallboard', 'en-NZ')[0].concept.name, 'Wallboard');
   });
 
-  test('a word no group uses finds nothing', async () => {
-    assert.deepEqual(matchRangeConcepts(okf, 'jib', 'en-NZ'), []);
-    const result = await browseRange(deps('jib'));
-    assert.equal(result.found, false);
+  test('a word no group uses finds nothing, unless it is one slip from a word they do use', async () => {
+    assert.deepEqual(matchRangeConcepts(okf, 'jib', 'en-NZ'), [], 'as written, no group uses it');
+    const slip = await browseRange(deps('jib'));
+    assert.equal(slip.found, true);
+    assert.deepEqual(slip.interpretedAs?.changes, [{ from: 'jib', to: 'gib' }], 'and the answer says which word was used instead');
+    assert.equal(slip.nodes[0].name, 'Wallboard');
+    const far = await browseRange(deps('zzzzz'));
+    assert.equal(far.found, false);
+    const known = await browseRange(deps('gib'));
+    assert.equal(known.interpretedAs, undefined, 'a word the groups use is never corrected');
   });
 
   test('the asked-for group lists its smaller groups with live counts and real examples, and what is bought with them', async () => {
@@ -5154,8 +5160,11 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.equal(res.found, true);
     assert.ok(ctx.turnProductSkus.has('S1') && ctx.turnProductSkus.has('X1'));
     assert.ok(ctx.allowedClaimClasses.has('catalog_fact'));
-    const none: any = await executeAgentTool('browse_range', { topic: 'jib' }, ctx);
+    const none: any = await executeAgentTool('browse_range', { topic: 'zzzzz' }, ctx);
     assert.equal(none.found, false);
     assert.ok(/search_products/.test(none.message), 'it says what to do instead');
+    const slip: any = await executeAgentTool('browse_range', { topic: 'jib' }, ctx);
+    assert.equal(slip.found, true);
+    assert.ok(/"jib" as "gib"/.test(slip.message), 'the agent is told which word was used, so it can say so');
   });
 });
