@@ -284,6 +284,19 @@ async function main() {
     });
   });
 
+  await suite.test('group counts are kept for a while, so a repeated overview does not count the catalogue again', async () => {
+    const { db, calls } = await databaseOf(catalogue);
+    const handler = new CatalogSearchHandler(undefined, async () => db);
+    const first = await handler.countInCategoryPaths([['Plumbing'], ['Plumbing', 'Pipes']], searchCtx);
+    assert.deepEqual(first, [3, 2]);
+    assert.equal(calls.count, 2);
+    assert.deepEqual(await handler.countInCategoryPaths([['Plumbing'], ['Plumbing', 'Pipes']], searchCtx), [3, 2]);
+    assert.equal(calls.count, 2, 'the repeat came from memory');
+    assert.deepEqual(await handler.countInCategoryPaths([['Tools']], searchCtx), [1]);
+    assert.equal(calls.count, 3, 'a path not asked before is counted');
+    assert.deepEqual(await new CatalogSearchHandler(undefined, async () => db).countInCategoryPaths([['Plumbing']], { ...searchCtx, tenantId: 'other' }), [1], 'another tenant is counted on its own, never from the first tenant\'s kept figure');
+  });
+
   await suite.test('while the copy is still loading, a search is answered by the database', async () => {
     const { db, calls } = await databaseOf(catalogue);
     await withIndexOn(async () => {

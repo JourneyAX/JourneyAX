@@ -20,7 +20,8 @@ const SCALARS_FIELD = '__scalars';
 const NUMERIC_SEGMENT = /^\d+$/;
 /** A reload whose result is smaller than this share of the copy in use is treated as a failed load. */
 const MIN_RELOAD_SHARE = 0.5;
-const DEFAULT_REFRESH_MS = 10 * 60 * 1000;
+/** A full reload costs the database about 20 s of work, so the copy is refreshed hourly unless CATALOGUE_INDEX_REFRESH_MS says otherwise. */
+const DEFAULT_REFRESH_MS = 60 * 60 * 1000;
 const DEFAULT_RETRY_MS = 60 * 1000;
 const DEFAULT_MAX_DOCS = 150_000;
 /** Yield to other work after this many products so a load never holds the process for long. */

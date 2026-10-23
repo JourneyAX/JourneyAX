@@ -1100,6 +1100,9 @@ export async function executeAgentTool(
           currency: p.currency || ctx.release.profile?.primaryCurrency,
           category: p.category,
           excerpt: p.description?.slice(0, 140),
+          // What the catalogue's own record says beyond the name: why it might suit the job, and any warning it gives about its use.
+          ...(Array.isArray(p.highlights) && p.highlights.length > 0 ? { highlights: p.highlights.slice(0, 3) } : {}),
+          ...(Array.isArray(p.cautions) && p.cautions.length > 0 ? { caution: p.cautions[0] } : {}),
         })),
       };
 
@@ -1159,6 +1162,9 @@ export async function executeAgentTool(
             currency: found.currency || ctx.release.profile?.primaryCurrency,
             category: found.category,
             specs: found.specs || found.attributes,
+            ...(Array.isArray(found.highlights) && found.highlights.length > 0 ? { highlights: found.highlights } : {}),
+            ...(Array.isArray(found.cautions) && found.cautions.length > 0 ? { cautions: found.cautions } : {}),
+            ...(typeof found.rating === 'number' ? { rating: found.rating, ratingCount: found.ratingCount } : {}),
           },
         };
       }

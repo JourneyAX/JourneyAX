@@ -477,6 +477,13 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
   ) {}
 
   private readonly indexCollections = new WeakMap<any[], MemoryProductCollection>();
+  /**
+   * Group counts for the range overview. Each is a pattern count over the catalogue (seconds of database work), the counts move only
+   * when the catalogue is reloaded, and every broad question asks for a dozen of them, so they are kept for a while.
+   */
+  private readonly countCache = new Map<string, { at: number; count: number }>();
+  private static readonly COUNT_TTL_MS = 30 * 60 * 1000;
+  private static readonly COUNT_CACHE_MAX = 2000;
 
   /** The tenant's in-memory catalogue copy as a collection, when CATALOGUE_INDEX is on and the copy is loaded; otherwise undefined. */
   private indexedProducts(tenantId: string, mapping: ResolvedCatalogMapping): MemoryProductCollection | undefined {
@@ -550,9 +557,15 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       const products = this.productCollection(db, this.indexedProducts(tenantId, mapping));
       return await Promise.all(scopes.map(async (categoryPaths) => {
         if (categoryPaths.length === 0) return 0;
+        const key = `${tenantId}\u0001${JSON.stringify(categoryPaths)}`;
+        const hit = this.countCache.get(key);
+        if (hit && Date.now() - hit.at < CatalogSearchHandler.COUNT_TTL_MS) return hit.count;
         const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
         const scoped: any = { ...filter, $and: [...and, ...buildCategoryScopeClauses(mapping, { categoryIds: [], categoryPaths, excludeCategoryIds: [] })] };
-        return products.countDocuments(scoped);
+        const count: number = await products.countDocuments(scoped);
+        if (this.countCache.size >= CatalogSearchHandler.COUNT_CACHE_MAX) this.countCache.delete(this.countCache.keys().next().value as string);
+        this.countCache.set(key, { at: Date.now(), count });
+        return count;
       }));
     } catch (err: any) {
       console.warn(`[CatalogSearchHandler] category count failed: ${err?.message || err}`);
