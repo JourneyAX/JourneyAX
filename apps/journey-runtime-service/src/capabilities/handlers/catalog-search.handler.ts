@@ -88,9 +88,6 @@ import { connectorWordsForLocale, stemPatternForLocale } from './locale-stemmer'
 import { CatalogueIndexRegistry, openCatalogueDatabase } from '../catalogue-index';
 import { MemoryProductCollection, UnsupportedFilter } from '../catalogue-filter';
 
-/** The most products of one shelf read when the search runs on the in-memory copy. */
-const INDEXED_SHELF_LIMIT = 5000;
-
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -510,7 +507,6 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       }
     };
     return {
-      isIndex: true,
       find: (filter: any) => ({
         limit: (count: number) => ({ toArray: () => viaIndex((source) => source.find(filter).limit(count).toArray()) }),
         toArray: () => viaIndex((source) => source.find(filter).toArray()),
@@ -1031,8 +1027,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                   .filter((entry) => entry.values.length > 0);
                 if (named.length > 0) shelfClauses = [{ $or: named.map((entry) => ({ [entry.field]: { $in: entry.values } })) }];
               }
-              // From the in-memory copy the whole shelf is cheap to read, so it is not cut to a window of the database's choosing.
-              const shelfLimit = (products as any).isIndex ? INDEXED_SHELF_LIMIT : mapping.candidateLimit * 4;
+              const shelfLimit = mapping.candidateLimit * 4;
               const shelf = shelfClauses
                 ? await runFind(shelfClauses, shelfLimit, and.filter((clause) => clause !== typeClause))
                 : await runFind([], shelfLimit);
@@ -1045,7 +1040,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               docs = shelf.filter((doc) => {
                 const text = textOf(doc, textPaths);
                 return wordMatchers.some((rx) => rx.test(text));
-              }).slice(0, (products as any).isIndex ? INDEXED_SHELF_LIMIT : mapping.candidateLimit);
+              }).slice(0, mapping.candidateLimit);
             } else {
               // Only the first `candidateLimit` hits are ranked, so which fields count decides what can be found at all. A word that is
               // common in descriptions and keyword lists ("plasterboard", a brand) would fill the limit with incidental matches and
