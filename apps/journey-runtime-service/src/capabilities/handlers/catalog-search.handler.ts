@@ -625,6 +625,9 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
     // A product type the model names ("PVC pipe fittings", "clothesline") rarely equals the catalogue's category text ("PVC Pipe & Fittings",
     // "Clotheslines"). Match when every word of it appears in the text, whatever the punctuation, plural or word order.
+    // A product type names a department as readily as a shelf ("plasterboard" is the parent of "Standard Board"), so it is
+    // looked for in the category's own text and in every level of its path.
+    const typePaths = [...new Set([...mapping.categoryPaths, ...mapping.categoryHierarchyPaths])];
     const connectorWords = connectorWordsForLocale(primaryLocale);
     const typeWordsOf = (value: string): string[] =>
       value.toLowerCase().replace(/[®™]/g, '').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1 && !connectorWords.has(w));
@@ -680,7 +683,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
-            if (activeCategory && !typeMatches(activeCategory, textOf(p, mapping.categoryPaths)) && !typeMatches(activeCategory, textOf(p, mapping.titlePaths))) return false;
+            if (activeCategory && !typeMatches(activeCategory, textOf(p, typePaths)) && !typeMatches(activeCategory, textOf(p, mapping.titlePaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
 
             if (activeSpecs?.brand) {
@@ -767,7 +770,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
-            if (activeCategory && !typeMatches(activeCategory, textOf(p, mapping.categoryPaths))) return false;
+            if (activeCategory && !typeMatches(activeCategory, textOf(p, typePaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
             if (query) {
               const text = textOf(p, mapping.searchPaths);
@@ -808,7 +811,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               : new RegExp(escapeRegex(activeCategory), 'i');
             and.push({
               $or: [
-                ...anyOf(mapping.categoryPaths, regex),
+                ...anyOf(typePaths, regex),
                 ...anyOf(mapping.titlePaths, regex),
               ],
             });
@@ -844,18 +847,21 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                 });
               }
             }
-            if (activeSpecs?.keywords && activeSpecs.keywords.length > 0) {
+            // The clauses that require the keywords (every one, or any, per kwMode) to appear in `paths`.
+            const keywordList = activeSpecs?.keywords || [];
+            const keywordClausesFor = (paths: string[]): any[] => {
               const kwClauses: any[] = [];
+              if (keywordList.length === 0) return kwClauses;
               const buildWordMatcher = (w: string) => {
                 const wClean = w.toLowerCase().replace(/[®™]/g, '').trim();
                 const syns = glossaryIndex.get(wClean) || [];
                 const patterns = [stem(wClean), ...syns.map(stem)].filter(Boolean);
                 const rx = new RegExp(`\\b(?:${patterns.join('|')})\\b`, 'i');
-                return { $or: anyOf(mapping.searchPaths, rx) };
+                return { $or: anyOf(paths, rx) };
               };
 
               if (options.allowTokenDisjunction) {
-                const words = activeSpecs.keywords
+                const words = keywordList
                   .flatMap((kw) => kw.replace(/[®™]/g, '').split(/\s+/))
                   .map((w) => w.trim())
                   .filter((w) => w.length > 2);
@@ -863,7 +869,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                   kwClauses.push(buildWordMatcher(w));
                 }
               } else {
-                for (const kw of activeSpecs.keywords) {
+                for (const kw of keywordList) {
                   const kwClean = kw.trim();
                   if (!kwClean) continue;
                   const syns = glossaryIndex.get(kwClean.toLowerCase()) || [];
@@ -875,31 +881,49 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                     kwClauses.push({
                       $or: [
                         { $and: wordClauses },
-                        ...anyOf(mapping.searchPaths, phraseRegex),
+                        ...anyOf(paths, phraseRegex),
                       ],
                     });
                   } else {
                     const patterns = [stem(kwClean), ...syns.map(stem)].filter(Boolean);
                     const kwRegex = new RegExp(`\\b(?:${patterns.join('|')})\\b`, 'i');
-                    kwClauses.push({ $or: anyOf(mapping.searchPaths, kwRegex) });
+                    kwClauses.push({ $or: anyOf(paths, kwRegex) });
                   }
                 }
               }
 
-              if (kwClauses.length > 0) {
-                if (kwMode === 'all') {
-                  and.push(...kwClauses);
-                } else {
-                  and.push({ $or: kwClauses });
-                }
+              return kwClauses.length === 0 ? [] : kwMode === 'all' ? kwClauses : [{ $or: kwClauses }];
+            };
+
+            const runFind = (extra: any[]) => {
+              const clauses = [...and, ...extra];
+              const scoped: any = { ...filter };
+              if (clauses.length > 0) scoped.$and = clauses; else delete scoped.$and;
+              return db.collection(COLLECTION_PRODUCTS).find(scoped).limit(mapping.candidateLimit).toArray();
+            };
+
+            if (keywordList.length === 0) {
+              docs = await runFind([]);
+            } else {
+              // Only the first `candidateLimit` hits are ranked, so which fields count decides what can be found at all. A word that is
+              // common in descriptions and keyword lists ("plasterboard", a brand) would fill the limit with incidental matches and
+              // push out the products it names in their title, brand or category. Look in those fields first, then fill the rest
+              // from every searchable field.
+              const strongPaths = [...new Set([
+                ...mapping.titlePaths, ...mapping.brandPaths, ...mapping.categoryPaths, ...mapping.categoryHierarchyPaths, ...mapping.identifierPaths,
+              ])];
+              const [strongDocs, anyFieldDocs] = await Promise.all([
+                runFind(keywordClausesFor(strongPaths)),
+                runFind(keywordClausesFor(mapping.searchPaths)),
+              ]);
+              const keyOf = (doc: any) => String(doc?._id ?? doc?.parentSku ?? doc?.sku);
+              const seen = new Set(strongDocs.map(keyOf));
+              docs = [...strongDocs];
+              for (const doc of anyFieldDocs) {
+                if (docs.length >= mapping.candidateLimit) break;
+                if (!seen.has(keyOf(doc))) docs.push(doc);
               }
             }
-            if (and.length === 0) delete filter.$and;
-
-            docs = await db.collection(COLLECTION_PRODUCTS)
-              .find(filter)
-              .limit(mapping.candidateLimit)
-              .toArray();
           } else {
             if (query) {
               const matchers = tokens.length > 0
@@ -1033,7 +1057,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           const rows = docs.map((d) => ({
             d,
             name: textOf(d, mapping.titlePaths),
-            cat: textOf(d, mapping.categoryPaths),
+            // What the product is and who makes it (its shelf, every level above it, its brand) counts as much as where it sits.
+            cat: textOf(d, [...typePaths, ...mapping.brandPaths]),
             rest: textOf(d, mapping.searchPaths),
           }));
           const weights = regexes.map((rx) => {

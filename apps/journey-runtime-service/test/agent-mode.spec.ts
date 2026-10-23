@@ -49,6 +49,7 @@ import { ExecutionRepository } from '../src/kernel/execution.repository';
 import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
 import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema } from '@journeyax/business-pack';
+import { MemoryDb } from '@journeyax/test-support';
 import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 import { extractProductAttributes, FeedRowToProductConverter } from '@journeyax/ingestion';
@@ -4877,6 +4878,38 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
     const rx = new RegExp(stemPattern('150x50', 'en-NZ'), 'i');
     for (const spelled of ['150 x 50mm', '150X50mm', '150*50', '150x50']) assert.ok(rx.test(spelled), `${spelled} should match`);
     assert.ok(!rx.test('100 x 50mm'));
+  });
+
+  describe('keywords find the products that name them before the ones that merely mention them', () => {
+    const make = (sku: string, name: string, extra: Record<string, unknown> = {}) => ({
+      projectId: 'test-tenant', sku, parentSku: sku, name, title: name, category: 'General', description: '', price: { amount: 10, currency: 'NZD' }, inStock: true, ...extra,
+    });
+    const storeWith = async (products: any[]) => {
+      const db = new MemoryDb();
+      await db.collection('products').insertMany(products.map((p) => ({ ...p })));
+      return new CatalogSearchHandler(undefined, async () => db as any);
+    };
+    const ctx: any = { tenantId: 'test-tenant', packSettings: { catalogMapping: { candidateLimit: 3 } } };
+
+    test('a brand named only in the brand field is found even when other products mention it more often than the candidate limit', async () => {
+      const decoys = [1, 2, 3, 4, 5].map((n) => make(`D${n}`, `Moulding ${n}`, { description: 'Neat finish next to gib walls' }));
+      const real = [make('G1', 'Standard Wallboard 2400 x 1200', { brandCode: 'GIB' }), make('G2', 'Fyreline Wallboard 2700 x 1200', { brandCode: 'GIB' })];
+      const handler = await storeWith([...decoys, ...real]);
+      const res = await handler.execute({ isAgentMode: true, keywords: ['gib'], maxResults: 10 } as any, ctx);
+      const skus = res.items.map((i: any) => i.sku);
+      assert.ok(skus.includes('G1') && skus.includes('G2'), `both branded products must be found, got ${skus}`);
+      assert.deepEqual(skus.slice(0, 2).sort(), ['G1', 'G2'], 'and they come before the products that only mention the word');
+    });
+
+    test('a product type matches the department above a shelf, so "plasterboard" finds products on the Standard Board shelf', async () => {
+      const board = make('B1', 'Standard Wallboard 2400 x 1200 x 10mm', { category: 'Standard Board', categoryPath: ['Building Products', 'Plasterboard', 'Standard Board'], brandCode: 'GIB' });
+      const other = make('P1', 'Standard Aluminium Post', { category: 'Posts', categoryPath: ['Fencing', 'Posts'] });
+      for (const handler of [new CatalogSearchHandler([board, other] as any), await storeWith([board, other])]) {
+        const res = await handler.execute({ isAgentMode: true, productType: 'Plasterboard', keywords: ['standard'] } as any, { tenantId: 'test-tenant' } as any);
+        assert.deepEqual(res.items.map((i: any) => i.sku), ['B1']);
+        assert.equal(res.relaxedConstraints, undefined, 'the type matched without being relaxed');
+      }
+    });
   });
 
   test('a joining word in a product type is skipped only for a locale that defines it', async () => {
