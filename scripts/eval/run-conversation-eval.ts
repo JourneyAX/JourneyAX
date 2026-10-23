@@ -328,6 +328,18 @@ export async function loadPlacemakersCsvProducts(db: any): Promise<number> {
     relax_column_count: true,
   });
 
+  // The live products carry their full category path; the CSV only has the leaf. When the crawl master is available, use it so
+  // category-path filters behave here as they do on the real catalogue.
+  const hierarchy = new Map<string, string[]>();
+  const masterPath = process.env.PLACEMAKERS_MASTER_JSONL;
+  if (masterPath && fs.existsSync(masterPath)) {
+    let rest = '';
+    const take = (line: string) => { if (!line) return; try { const o = JSON.parse(line); if (o.sku && Array.isArray(o.categoryPathNames) && Array.isArray(o.categoryPathNames[0])) hierarchy.set(String(o.sku), o.categoryPathNames[0].map(String)); } catch {} };
+    const fd = fs.openSync(masterPath, 'r'); const buf = Buffer.alloc(1 << 20); let n: number;
+    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) { rest += buf.toString('utf8', 0, n); let i: number; while ((i = rest.indexOf('\n')) >= 0) { take(rest.slice(0, i)); rest = rest.slice(i + 1); } }
+    take(rest); fs.closeSync(fd);
+  }
+
   const products: any[] = [];
 
   for (const r of records) {
@@ -369,7 +381,7 @@ export async function loadPlacemakersCsvProducts(db: any): Promise<number> {
       title: name,
       brand,
       category,
-      categoryPath: [category],
+      categoryPath: hierarchy.get(sku) || [category],
       description: brand ? `${brand} ${description}` : description,
       features: (r.Features || '').trim() || undefined,
       priceUSD: { min: price },

@@ -35,6 +35,9 @@ const authoringSpec = read('scripts/okf/tenants/placemakers.authoring.json');
 const scenarioFile = read('scripts/okf/tenants/placemakers.scenarios.json');
 export const catalogMapping = read('docs/migrations/placemakers-catalog-mapping.json').catalogMapping;
 export const TENANT = 'placemakers';
+/** The exact data files the pack is published from, so the evaluation measures the real instructions and reply style. */
+const agentDraft = read('docs/agent-instructions/placemakers-draft.json');
+const agentSettings = read('docs/agent-instructions/placemakers-agent-settings.json');
 export const ENVIRONMENT = 'test';
 
 // ── catalogue fixture, shaped like the real products collection (path, category, price in priceUSD.min, currency per product) ──
@@ -139,48 +142,13 @@ export class FixedGateway extends ModelGateway {
 export function projectDoc(agentMode = false) {
   const trigger = (id: string, label: string) => ({ id: `t-${id}`, data: { kind: 'trigger.intent', stageId: `${id}_start`, label } });
   const ai = process.env.OPENAI_API_KEY
-    ? { provider: 'openai', model: process.env.MODEL_NAME || 'gpt-4o-mini' }
+    ? { provider: 'openai', model: process.env.MODEL_NAME || 'gpt-4o-mini', ...(agentSettings.modelPolicyOverrides ? { policyOverrides: agentSettings.modelPolicyOverrides } : {}) }
     : { provider: 'anthropic', model: 'claude-3-5-sonnet' };
   return {
     projectId: TENANT, name: 'PlaceMakers', companyName: 'PlaceMakers', ai,
     pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' }, catalogMapping,
     routingPolicy: { defaultJourneyId: 'placemakers_shop', fallbackOnCatalogSearch: true },
-    conversationPolicy: {
-      referrals: {
-        'en-NZ': [
-          'consult a licensed',
-          'consult a registered',
-          'consult a professional',
-          'consult an engineer',
-          'consult a structural engineer',
-          'refer to a licensed',
-          'refer to a professional',
-          'speak with a licensed',
-          'speak with a professional',
-          'check with a licensed',
-          'check with a professional',
-          'ask a professional',
-          'ask a licensed',
-        ],
-      },
-      extraClaimPatterns: {
-        safety_instruction: [
-          'load-bearing',
-          'load bearing',
-          'structural (?:grade|grades|beam|beams|support|member|wall|application|applications)',
-          'handle the load',
-          'stress associated with structural',
-          '(?:near|around) (?:power )?outlets?',
-          'electrical (?:wiring|circuit|cables?|shocks?)',
-          'mains (?:power|wiring|supply)',
-          'wire to',
-          'wiring to',
-          'connect to mains',
-        ],
-      },
-      withheldAnswerMessage:
-        'We can provide verified product specifications from our catalogue, but cannot advise on structural design or electrical safety. For structural calculations, electrical wiring, gas fitting, or building consent questions, please consult a licensed professional or engineer. Would you like me to connect you with a specialist consultant or store staff member?',
-    },
+    conversationPolicy: agentDraft.conversationPolicy,
     vocabulary: {
       version: '1.0.0',
       terms: [
@@ -202,63 +170,22 @@ export function projectDoc(agentMode = false) {
     },
     capabilities: ['catalog.search'],
     agents: agentMode
-      ? [
-          {
-            agentId: 'placemakers_trade_consultant',
-            name: 'PlaceMakers Trade Consultant',
-            purpose: 'Guides Kiwi builders and DIYers through multi-trade material estimation, compliance, and trade quote delivery.',
-            toolFirst: true,
-            modelPolicyRef: 'complex_reasoning',
-            allowedTools: [
-              'catalog.search',
-              'search_products',
-              'get_journey_checklist',
-              'consult_business_knowledge',
-              'search_guides',
-              'get_warranty',
-              'check_stock',
-              'calculate_quantity',
-              'create_quote',
-              'update_cart',
-              'present_card',
-            ],
-            journeyPlaybook: [
-              {
-                id: 'stage_spec',
-                name: 'Specification & Discovery',
-                goal: 'Identify required building materials and verify sizing or specifications.',
-                tools: ['catalog.search', 'search_products', 'get_journey_checklist'],
-                exitCondition: 'Target material product is identified and added to quote or selection.',
-              },
-              {
-                id: 'stage_fixings',
-                name: 'Fixings & Accessory Verification',
-                goal: 'Identify compatible fixings, fasteners, and installation accessories.',
-                tools: ['consult_business_knowledge', 'search_products'],
-                exitCondition: 'Required accessories or fixings are confirmed or quoted.',
-              },
-              {
-                id: 'stage_quantity_stock',
-                name: 'Quantity Calculation & Branch Stock',
-                goal: 'Calculate project quantities and confirm branch stock availability.',
-                tools: ['calculate_quantity', 'check_stock'],
-                exitCondition: 'Quantities are calculated and branch availability is checked.',
-              },
-              {
-                id: 'stage_quote_delivery',
-                name: 'Quote Delivery & Order Readiness',
-                goal: 'Finalize quote summary and provide clear next step for pickup or delivery.',
-                tools: ['create_quote', 'present_card'],
-                exitCondition: 'Quote is finalized and delivery/pickup next steps are confirmed.',
-              },
-            ],
-            systemPromptTemplate:
-              'You are the official PlaceMakers Trade Consultant for PlaceMakers NZ. Ground all advice in PlaceMakers catalogue products.',
-          },
-        ]
+      ? agentDraft.agents.map((agent: any) => ({
+          agentId: agent.agentId,
+          name: agent.name,
+          purpose: agent.purpose,
+          systemPromptTemplate: agent.systemPromptTemplate,
+          modelPolicyRef: agent.modelPolicyRef || 'complex_reasoning',
+          allowedTools: agent.allowedTools,
+          maxTurns: agent.maxTurns || 5,
+          handoffConditions: agent.handoffConditions || [],
+          ...(agent.isDefault ? { isDefault: true } : {}),
+          ...(typeof agent.toolFirst === 'boolean' ? { toolFirst: agent.toolFirst } : {}),
+          ...(agent.agentId === agentDraft.defaultAgentId ? { journeyPlaybook: agentSettings.journeyPlaybook } : {}),
+        }))
       : undefined,
     extensions: {
-      ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true } } : {}),
+      ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true }, interpretationPolicy: agentSettings.interpretationPolicy } : {}),
       customerEvents: {
         autoTurnEvents: ['addToQuote', 'quote.added', 'addToCart'],
         recordOnlyEvents: ['removeFromQuote', 'removeFromCart', 'like'],
