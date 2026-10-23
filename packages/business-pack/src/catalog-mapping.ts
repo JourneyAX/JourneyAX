@@ -62,6 +62,15 @@ export const CatalogMappingSchema = z.object({
   imagePaths: Paths.optional(),
   certificationPaths: Paths.optional(),
   quantityPaths: Paths.optional(),
+  /** Lists of short feature statements on a product, shown on its card as why it fits. */
+  highlightPaths: Paths.optional(),
+  /** Patterns (case-insensitive) marking a feature statement as a warning ("should not be used where..."): shown as a caution, never as a reason to buy. */
+  cautionPatterns: z.array(z.string().min(1).max(200)).optional(),
+  ratingValuePaths: Paths.optional(),
+  ratingCountPaths: Paths.optional(),
+  /** Branches holding the product, and the branches asked, for an availability line. */
+  branchAvailablePaths: Paths.optional(),
+  branchTotalPaths: Paths.optional(),
   candidateLimit: z.number().int().min(1).max(1000).optional(),
   /** Which catalogue categories may fill which planner component categories (publication-time integrity). */
   componentCategoryRules: z.record(z.string().min(1), ComponentCategoryRuleSchema).optional(),
@@ -90,6 +99,12 @@ export interface ResolvedCatalogMapping {
   imagePaths: string[];
   certificationPaths: string[];
   quantityPaths: string[];
+  highlightPaths: string[];
+  cautionPatterns: string[];
+  ratingValuePaths: string[];
+  ratingCountPaths: string[];
+  branchAvailablePaths: string[];
+  branchTotalPaths: string[];
   candidateLimit: number;
   componentCategoryRules: Record<string, { allow?: string[]; deny?: string[] }>;
 }
@@ -205,6 +220,47 @@ export interface NormalizedCatalogProduct {
   imageUrl: string;
   availability: CatalogAvailabilityState;
   attributes: Record<string, unknown>;
+  /** Short feature statements the catalogue lists for this product (at most eight). */
+  highlights: string[];
+  /** Feature statements that read as warnings (at most two), kept apart from the highlights. */
+  cautions: string[];
+  rating?: number;
+  ratingCount?: number;
+  branchesAvailable?: number;
+  branchesTotal?: number;
+}
+
+const MAX_HIGHLIGHTS = 8;
+const HIGHLIGHT_LENGTH = { min: 3, max: 160 };
+
+function firstNumber(doc: unknown, paths: string[]): number | undefined {
+  for (const path of paths) {
+    const value = readPath(doc, path);
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function highlightsOf(doc: unknown, paths: string[], cautionPatterns: string[]): { highlights: string[]; cautions: string[] } {
+  const cautionTests = cautionPatterns.flatMap((source) => { try { return [new RegExp(source, 'i')]; } catch { return []; } });
+  for (const path of paths) {
+    const value = readPath(doc, path);
+    if (!Array.isArray(value)) continue;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const entry of value) {
+      const text = typeof entry === 'string' ? entry.replace(/\s+/g, ' ').trim() : '';
+      if (text.length < HIGHLIGHT_LENGTH.min || text.length > HIGHLIGHT_LENGTH.max || seen.has(text.toLowerCase())) continue;
+      seen.add(text.toLowerCase());
+      out.push(text);
+      if (out.length >= MAX_HIGHLIGHTS) break;
+    }
+    if (out.length > 0) {
+      const isCaution = (text: string) => cautionTests.some((test) => test.test(text));
+      return { highlights: out.filter((text) => !isCaution(text)), cautions: out.filter(isCaution).slice(0, 2) };
+    }
+  }
+  return { highlights: [], cautions: [] };
 }
 
 function declaredCurrency(doc: unknown, mapping: ResolvedCatalogMapping): string | undefined {
@@ -244,6 +300,11 @@ export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMappin
     imageUrl: typeof imageValue === 'string' ? imageValue : '',
     availability,
     attributes,
+    ...highlightsOf(doc, mapping.highlightPaths, mapping.cautionPatterns),
+    rating: firstNumber(doc, mapping.ratingValuePaths),
+    ratingCount: firstNumber(doc, mapping.ratingCountPaths),
+    branchesAvailable: firstNumber(doc, mapping.branchAvailablePaths),
+    branchesTotal: firstNumber(doc, mapping.branchTotalPaths),
   };
 }
 

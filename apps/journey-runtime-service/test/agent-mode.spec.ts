@@ -388,6 +388,38 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.equal(result.query, 'timber');
   });
 
+  test('card tests: present_card joins what the catalogue says about each product, never model-written text', async () => {
+    const toolContext: AgentToolContext = {
+      tenantId: 'test-tenant',
+      environmentId: 'test',
+      correlationId: 'test-corr',
+      release: createTestPack(),
+      catalogSearchHandler: {} as any,
+      customerQuestion: "it's for a bathroom wall, about 12 square metres",
+      turnProductSkus: new Set(['SKU-A', 'SKU-B']),
+      catalogProductCache: new Map<string, any>([
+        ['SKU-A', { sku: 'SKU-A', title: 'Wet Area Board', price: 40, inStock: true, highlights: ['Suitable for bathrooms and laundries', 'Water resistant core'], rating: 4.9, ratingCount: 88, branchesAvailable: 22, branchesTotal: 87 }],
+        ['SKU-B', { sku: 'SKU-B', title: 'Standard Board', price: 20, inStock: true, highlights: ['General purpose lining'] }],
+      ]),
+      readSourceIds: new Set(),
+      allowedClaimClasses: new Set(),
+      presentedCards: [],
+      isHumanHandoffRequested: false,
+    };
+    const result = await executeAgentTool('present_card', {
+      cardType: 'products',
+      state: { products: [{ sku: 'SKU-A' }, { sku: 'SKU-B', reason: 'A cheaper general-purpose option' }] },
+    }, toolContext);
+    assert.equal(result.ok, true);
+    const [a, b]: any[] = (toolContext.presentedCards[0].state as any).products;
+    assert.equal(a.reason, 'Suitable for bathrooms and laundries', 'the feature that answers the request');
+    assert.deepEqual(a.highlights, ['Water resistant core']);
+    assert.deepEqual([a.rating, a.ratingCount, a.branchesAvailable, a.branchesTotal], [4.9, 88, 22, 87]);
+    assert.equal(b.reason, 'A cheaper general-purpose option', 'a reason the agent gave is kept');
+    assert.deepEqual(b.highlights, ['General purpose lining']);
+    assert.equal(b.rating, undefined, 'no rating is shown for a product without one');
+  });
+
   test('card tests: present_card rejects unverified SKUs not returned by tools this turn', async () => {
     const toolContext: AgentToolContext = {
       tenantId: 'test-tenant',

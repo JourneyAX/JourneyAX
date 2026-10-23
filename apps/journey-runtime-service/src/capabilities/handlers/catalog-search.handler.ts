@@ -1231,6 +1231,12 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             availableQuantity: normalized.availableQuantity,
             certifications: normalized.certifications,
             imageUrl: normalized.imageUrl,
+            ...(normalized.highlights.length > 0 ? { highlights: normalized.highlights } : {}),
+            ...(normalized.cautions.length > 0 ? { cautions: normalized.cautions } : {}),
+            ...(normalized.rating !== undefined ? { rating: normalized.rating } : {}),
+            ...(normalized.ratingCount !== undefined ? { ratingCount: normalized.ratingCount } : {}),
+            ...(normalized.branchesAvailable !== undefined ? { branchesAvailable: normalized.branchesAvailable } : {}),
+            ...(normalized.branchesTotal !== undefined ? { branchesTotal: normalized.branchesTotal } : {}),
           };
         })
         .filter((item: any) => {

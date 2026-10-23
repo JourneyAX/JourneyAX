@@ -29,6 +29,7 @@ import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plan
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
 import { browseRange, resolveCatalogPaths } from './range-browser';
+import { productCardFacts } from './card-facts';
 import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
@@ -1688,8 +1689,18 @@ export async function executeAgentTool(
         if (!p || typeof p !== 'object' || !p.sku) return p;
         const cached = ctx.catalogProductCache.get(p.sku);
         if (!cached) return p;
+        // What the catalogue says about the product, and which of it answers what the customer asked for: never model-written.
+        const facts = productCardFacts(cached.highlights, { customerText: ctx.customerQuestion, locale: (ctx.release as any)?.profile?.primaryLocale });
+        const offered = typeof p.reason === 'string' ? p.reason.trim() : '';
         return {
           ...p,
+          ...(offered ? {} : facts.reason ? { reason: facts.reason } : {}),
+          ...(facts.highlights.length > 0 ? { highlights: facts.highlights } : {}),
+          ...(Array.isArray(cached.cautions) && cached.cautions.length > 0 ? { cautions: cached.cautions.slice(0, 1) } : {}),
+          ...(typeof cached.rating === 'number' ? { rating: cached.rating } : {}),
+          ...(typeof cached.ratingCount === 'number' ? { ratingCount: cached.ratingCount } : {}),
+          ...(typeof cached.branchesAvailable === 'number' ? { branchesAvailable: cached.branchesAvailable } : {}),
+          ...(typeof cached.branchesTotal === 'number' ? { branchesTotal: cached.branchesTotal } : {}),
           title: cached.title || cached.name || p.title,
           price: cached.priceUSD?.min ?? cached.price ?? p.price,
           currency: cached.currency || ctx.release.profile?.primaryCurrency || p.currency,
