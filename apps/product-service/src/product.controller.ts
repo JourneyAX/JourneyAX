@@ -35,6 +35,29 @@ export class ProductController {
    * its host allowlist from. Read-only and non-secret: hosts, id patterns,
    * palette and zone names. No credentials live here.
    */
+  /**
+   * Demo-only branch stock, for a project with no inventory connector yet. It is OFF unless the project is named in
+   * DEMO_INVENTORY_TENANTS, and every answer is labelled source "demo". The numbers come from a fixed function of sku and branch,
+   * so the same question always gets the same answer; they are not real stock.
+   */
+  @Get('inventory')
+  async inventory(@Param('projectId') projectId: string, @Query('sku') sku?: string, @Query('branch') branch?: string) {
+    const demoTenants = String(process.env.DEMO_INVENTORY_TENANTS || '').split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+    if (!demoTenants.includes(String(projectId || '').toLowerCase())) {
+      throw new HttpException('No inventory connector is configured for this project', HttpStatus.NOT_FOUND);
+    }
+    if (!sku || !branch) throw new HttpException('sku and branch are required', HttpStatus.BAD_REQUEST);
+    let hash = 5381;
+    for (const ch of `${sku}|${String(branch).toLowerCase()}`) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
+    const inStock = hash % 100 < 88;
+    const stockQty = inStock ? 3 + (hash % 118) : 0;
+    return {
+      sku,
+      source: 'demo',
+      branches: [{ branchName: branch, branchCode: branch, inStock, stockQty, clickAndCollectReady: inStock, collectionTimeframe: 'within 60 minutes' }],
+    };
+  }
+
   /** What else can hang in this kit, grouped by the catalogue's garment types. */
   @Get('rack')
   async rack(@Param('projectId') projectId: string) {
