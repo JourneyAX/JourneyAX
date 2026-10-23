@@ -86,6 +86,10 @@ export interface QueryToken {
 
 import { connectorWordsForLocale, stemPatternForLocale } from './locale-stemmer';
 import { CatalogueIndexRegistry, openCatalogueDatabase } from '../catalogue-index';
+import { MemoryProductCollection, UnsupportedFilter } from '../catalogue-filter';
+
+/** The most products of one shelf read when the search runs on the in-memory copy. */
+const INDEXED_SHELF_LIMIT = 5000;
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -456,12 +460,12 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
   private readonly categoryValueCache = new Map<string, { at: number; values: Record<string, string[]> }>();
   private static readonly CATEGORY_VALUE_TTL_MS = 10 * 60 * 1000;
 
-  private async distinctCategoryValues(db: any, key: string, tenantFilter: any, fields: string[]): Promise<Record<string, string[]>> {
+  private async distinctCategoryValues(products: { distinct: (field: string, filter?: any) => Promise<any[]> }, key: string, tenantFilter: any, fields: string[]): Promise<Record<string, string[]>> {
     const cached = this.categoryValueCache.get(key);
     if (cached && Date.now() - cached.at < CatalogSearchHandler.CATEGORY_VALUE_TTL_MS) return cached.values;
     const values: Record<string, string[]> = {};
     await Promise.all(fields.map(async (field) => {
-      const found = await db.collection(COLLECTION_PRODUCTS).distinct(field, tenantFilter);
+      const found = await products.distinct(field, tenantFilter);
       values[field] = found.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0);
     }));
     this.categoryValueCache.set(key, { at: Date.now(), values });
@@ -475,13 +479,45 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     private readonly vectorSearcher?: VectorSearchFunction,
   ) {}
 
+  private readonly indexCollections = new WeakMap<any[], MemoryProductCollection>();
+
+  /** The tenant's in-memory catalogue copy as a collection, when CATALOGUE_INDEX is on and the copy is loaded; otherwise undefined. */
+  private indexedProducts(tenantId: string, mapping: ResolvedCatalogMapping): MemoryProductCollection | undefined {
+    if (this.inMemoryProducts) return undefined;
+    const docs = CatalogueIndexRegistry.shared().productsFor({ tenantId, mapping, getDb: () => openCatalogueDatabase(this.dbProvider) });
+    if (!docs) return undefined;
+    let collection = this.indexCollections.get(docs);
+    if (!collection) { collection = new MemoryProductCollection(docs); this.indexCollections.set(docs, collection); }
+    return collection;
+  }
+
   /**
-   * The products to search in this process: the list this handler was given, else the tenant's in-memory catalogue copy when that
-   * is switched on and loaded. Undefined means search the database.
+   * The products collection to query: the in-memory copy when there is one, falling back to the database for a filter the copy
+   * cannot evaluate, so the answer is always the database's.
    */
-  private memoryProducts(tenantId: string, mapping: ResolvedCatalogMapping): any[] | undefined {
-    if (this.inMemoryProducts) return this.inMemoryProducts;
-    return CatalogueIndexRegistry.shared().productsFor({ tenantId, mapping, getDb: () => openCatalogueDatabase(this.dbProvider) });
+  private productCollection(db: any, index: MemoryProductCollection | undefined, onIndexUse?: () => void): any {
+    const real = () => db.collection(COLLECTION_PRODUCTS);
+    if (!index) return real();
+    const viaIndex = async <T>(run: (source: any) => Promise<T>): Promise<T> => {
+      try {
+        const answer = await run(index);
+        onIndexUse?.();
+        return answer;
+      } catch (err) {
+        if (!(err instanceof UnsupportedFilter)) throw err;
+        console.warn(`[CatalogueIndex] ${err.message}; asking the database`);
+        return run(real());
+      }
+    };
+    return {
+      isIndex: true,
+      find: (filter: any) => ({
+        limit: (count: number) => ({ toArray: () => viaIndex((source) => source.find(filter).limit(count).toArray()) }),
+        toArray: () => viaIndex((source) => source.find(filter).toArray()),
+      }),
+      countDocuments: (filter: any) => viaIndex((source) => source.countDocuments(filter)),
+      distinct: (field: string, filter: any) => viaIndex((source) => source.distinct(field, filter)),
+    };
   }
 
   /**
@@ -498,9 +534,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const tenantId = ctx.tenantId;
     const scopes = paths.map((path) => cleanCategoryPaths([path]));
 
-    const memory = this.memoryProducts(tenantId, mapping);
-    if (memory) {
-      const visible = memory.filter((p) => {
+    if (this.inMemoryProducts) {
+      const visible = this.inMemoryProducts.filter((p) => {
         const owner = mapping.tenantFields.map((field) => readPath(p, field)).find((value) => value !== undefined);
         return !(owner !== undefined && owner !== tenantId) && classifyAvailability(p, mapping) !== 'excluded';
       });
@@ -516,11 +551,12 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       const db = this.dbProvider
         ? await this.dbProvider()
         : (await connectToDatabase(uri!, process.env.MONGODB_DB_NAME || 'journeyx')).db;
+      const products = this.productCollection(db, this.indexedProducts(tenantId, mapping));
       return await Promise.all(scopes.map(async (categoryPaths) => {
         if (categoryPaths.length === 0) return 0;
         const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
         const scoped: any = { ...filter, $and: [...and, ...buildCategoryScopeClauses(mapping, { categoryIds: [], categoryPaths, excludeCategoryIds: [] })] };
-        return db.collection(COLLECTION_PRODUCTS).countDocuments(scoped);
+        return products.countDocuments(scoped);
       }));
     } catch (err: any) {
       console.warn(`[CatalogSearchHandler] category count failed: ${err?.message || err}`);
@@ -569,8 +605,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     }
 
     const tenantId = ctx.tenantId;
-    const memory = this.memoryProducts(tenantId, mapping);
     const query = input.query || '';
+    let servedFromIndex = false;
     const category = input.category || input.productType || '';
     const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
     const categoryPaths = cleanCategoryPaths(input.categoryPaths);
@@ -723,7 +759,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         .join(' ')
         .toLowerCase();
 
-      if (memory) {
+      if (this.inMemoryProducts) {
         if (isAgent) {
           const wordRegexCache = new Map<string, RegExp[]>();
           const getWordRegexes = (w: string): RegExp[] => {
@@ -751,7 +787,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             }
           }
 
-          docs = memory.filter((p) => {
+          docs = this.inMemoryProducts.filter((p) => {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
@@ -838,7 +874,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             return true;
           });
         } else {
-          docs = memory.filter((p) => {
+          docs = this.inMemoryProducts.filter((p) => {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
@@ -874,6 +910,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           }
 
           const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
+          const products = this.productCollection(db, this.indexedProducts(tenantId, mapping), () => { servedFromIndex = true; });
           const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
           const strongSearchPaths = (): string[] => [...new Set([
             ...mapping.titlePaths, ...mapping.brandPaths, ...mapping.categoryPaths, ...mapping.categoryHierarchyPaths, ...mapping.identifierPaths,
@@ -976,7 +1013,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               const clauses = [...base, ...extra];
               const scoped: any = { ...filter };
               if (clauses.length > 0) scoped.$and = clauses; else delete scoped.$and;
-              return db.collection(COLLECTION_PRODUCTS).find(scoped).limit(limit).toArray();
+              return products.find(scoped).limit(limit).toArray();
             };
 
             if (keywordList.length === 0) {
@@ -988,15 +1025,17 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               // every product. Only if no category names it does the pattern over titles and paths decide.
               let shelfClauses: any[] | undefined;
               if (activeCategory && typeClause) {
-                const categoryValues = await this.distinctCategoryValues(db, `${tenantId}:${COLLECTION_PRODUCTS}`, { $or: filter.$or }, typePaths);
+                const categoryValues = await this.distinctCategoryValues(products, `${tenantId}:${COLLECTION_PRODUCTS}`, { $or: filter.$or }, typePaths);
                 const named = typePaths
                   .map((field) => ({ field, values: (categoryValues[field] || []).filter((value) => typeMatches(activeCategory, value.toLowerCase())) }))
                   .filter((entry) => entry.values.length > 0);
                 if (named.length > 0) shelfClauses = [{ $or: named.map((entry) => ({ [entry.field]: { $in: entry.values } })) }];
               }
+              // From the in-memory copy the whole shelf is cheap to read, so it is not cut to a window of the database's choosing.
+              const shelfLimit = (products as any).isIndex ? INDEXED_SHELF_LIMIT : mapping.candidateLimit * 4;
               const shelf = shelfClauses
-                ? await runFind(shelfClauses, mapping.candidateLimit * 4, and.filter((clause) => clause !== typeClause))
-                : await runFind([], mapping.candidateLimit * 4);
+                ? await runFind(shelfClauses, shelfLimit, and.filter((clause) => clause !== typeClause))
+                : await runFind([], shelfLimit);
               const wordMatchers = [...new Set(keywordList
                 .flatMap((kw) => kw.replace(/[®™]/g, '').split(/\s+/))
                 .map((w) => w.trim().toLowerCase())
@@ -1006,7 +1045,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               docs = shelf.filter((doc) => {
                 const text = textOf(doc, textPaths);
                 return wordMatchers.some((rx) => rx.test(text));
-              }).slice(0, mapping.candidateLimit);
+              }).slice(0, (products as any).isIndex ? INDEXED_SHELF_LIMIT : mapping.candidateLimit);
             } else {
               // Only the first `candidateLimit` hits are ranked, so which fields count decides what can be found at all. A word that is
               // common in descriptions and keyword lists ("plasterboard", a brand) would fill the limit with incidental matches and
@@ -1048,7 +1087,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             }
             if (and.length === 0) delete filter.$and;
 
-            docs = await db.collection(COLLECTION_PRODUCTS)
+            docs = await products
               .find(filter)
               .limit(mapping.candidateLimit)
               .toArray();
@@ -1382,7 +1421,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       total: items.length,
       ...(relaxedConstraints.length > 0 ? { relaxedConstraints } : {}),
       ...(stockFilterDropped ? { stockFilterDropped: true } : {}),
-      ...(memory && !this.inMemoryProducts ? { source: 'index' } : {}),
+      ...(servedFromIndex ? { source: 'index' } : {}),
     };
   }
 }
