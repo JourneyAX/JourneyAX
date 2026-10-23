@@ -50,7 +50,7 @@ import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
 import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema } from '@journeyax/business-pack';
 import { MemoryDb } from '@journeyax/test-support';
-import { browseRange, matchRangeConcepts } from '../src/agent/range-browser';
+import { browseRange, matchRangeConcepts, resolveCatalogPaths } from '../src/agent/range-browser';
 import { chooseCardSkus } from '../src/agent/auto-card';
 import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
@@ -5107,6 +5107,19 @@ describe('browse_range: describing what the range holds for a broad request', ()
       ...extra,
     };
   };
+
+  test('a category scope the model composed itself is turned into the real path of the group it names, so the search is not emptied', () => {
+    const real = ['Building', 'Wallboard', 'Specialist Board'];
+    assert.deepEqual(resolveCatalogPaths(okf, [real]), [real], 'a real path is kept as written');
+    assert.deepEqual(resolveCatalogPaths(okf, [['building', 'wallboard', 'specialist board']]), [['building', 'wallboard', 'specialist board']], 'case does not make a path unreal');
+    assert.deepEqual(resolveCatalogPaths(okf, [['GIB', 'Specialist Board']]), [real], 'the customer\'s word plus a group name resolves to that group');
+    assert.deepEqual(resolveCatalogPaths(okf, [['Specialist Board']]), [real], 'a bare group name resolves too');
+    assert.deepEqual(resolveCatalogPaths(okf, [['GIB', 'Specialist Board'], real]), [real], 'duplicates collapse');
+    assert.deepEqual(resolveCatalogPaths(okf, [['Somewhere', 'Unlisted Shelf']]), [['Somewhere', 'Unlisted Shelf']], 'a shelf the knowledge does not list is left alone');
+    assert.equal(resolveCatalogPaths(okf, undefined), undefined);
+    assert.equal(resolveCatalogPaths(okf, [[], ['', ' ']]), undefined, 'empty paths are no scope');
+    assert.deepEqual(resolveCatalogPaths(undefined, [['A', 'B']]), [['A', 'B']], 'without knowledge there is nothing to check against');
+  });
 
   test('a customer word that one group uses as its own phrase finds that group first, in a plain word or a whole sentence', () => {
     assert.equal(matchRangeConcepts(okf, 'gib', 'en-NZ')[0].concept.name, 'Wallboard');

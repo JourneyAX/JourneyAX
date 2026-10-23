@@ -28,7 +28,7 @@ import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
-import { browseRange } from './range-browser';
+import { browseRange, resolveCatalogPaths } from './range-browser';
 import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
@@ -332,7 +332,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         },
         productType: {
           type: 'string',
-          description: 'Product type or category name.',
+          description: 'The kind of product, as a group or shelf name the catalogue or an earlier overview uses. A brand goes in brand, and what it is for or where it goes belongs in keywords. A name that matches no group makes the search drop this filter.',
         },
         attributes: {
           type: 'object',
@@ -340,7 +340,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         },
         brand: {
           type: 'string',
-          description: 'Brand name filter.',
+          description: 'Brand name filter, for a brand the customer named.',
         },
         category: {
           type: 'string',
@@ -1010,7 +1010,8 @@ export async function executeAgentTool(
         : (typeof args.categoryIds === 'string' && args.categoryIds.trim())
           ? [args.categoryIds.trim()]
           : undefined;
-      const categoryPaths = Array.isArray(args.categoryPaths) ? args.categoryPaths : undefined;
+      // A scope the model composed itself (rather than copied from an overview) would match nothing and hide every product.
+      const categoryPaths = resolveCatalogPaths(ctx.okfContent, args.categoryPaths);
       const minPrice = args.minPrice ?? filters.minPrice;
       const maxPrice = args.maxPrice ?? filters.maxPrice;
       const inStockOnly = args.inStockOnly ?? filters.inStockOnly;

@@ -73,6 +73,41 @@ const pathOf = (concept: OkfConcept): string[] | undefined => {
   return Array.isArray(paths) && Array.isArray(paths[0]) && paths[0].length > 0 ? paths[0].map(String) : undefined;
 };
 
+/**
+ * A category scope the model writes is often its own composition (the customer's word plus a group name), not a path the
+ * catalogue has, and a scope that matches nothing hides every product. A path the knowledge lists is kept as written; one it does
+ * not is replaced by the real path(s) of the group its last name belongs to; a name the knowledge does not know is left alone,
+ * since the knowledge may not list every shelf.
+ */
+export function resolveCatalogPaths(okf: OkfReleaseContent | null | undefined, requested: unknown): string[][] | undefined {
+  if (!Array.isArray(requested)) return undefined;
+  const asked = requested
+    .filter(Array.isArray)
+    .map((path: unknown[]) => path.map((segment) => String(segment ?? '').trim()).filter(Boolean))
+    .filter((path) => path.length > 0);
+  if (asked.length === 0) return undefined;
+  const known: string[][] = (okf?.concepts || [])
+    .filter((c) => c.type === CATEGORY_TYPE && c.lifecycle?.status !== 'retired')
+    .flatMap((c) => ((c.searchScope as any)?.catalogCategoryPaths || []) as unknown[])
+    .filter((path): path is unknown[] => Array.isArray(path) && path.length > 0)
+    .map((path) => path.map(String));
+  if (known.length === 0) return asked;
+  const keyOf = (path: string[]) => path.map((segment) => segment.toLowerCase()).join('\u0001');
+  const knownKeys = new Set(known.map(keyOf));
+  const resolved: string[][] = [];
+  for (const path of asked) {
+    if (knownKeys.has(keyOf(path))) { resolved.push(path); continue; }
+    const last = path[path.length - 1].toLowerCase();
+    const named = known.filter((candidate) => candidate[candidate.length - 1].toLowerCase() === last);
+    if (named.length === 0) { resolved.push(path); continue; }
+    const shared = (candidate: string[]) => path.filter((segment) => candidate.some((c) => c.toLowerCase() === segment.toLowerCase())).length;
+    const best = Math.max(...named.map(shared));
+    resolved.push(...named.filter((candidate) => shared(candidate) === best).slice(0, 3));
+  }
+  const seen = new Set<string>();
+  return resolved.filter((path) => !seen.has(keyOf(path)) && Boolean(seen.add(keyOf(path))));
+}
+
 /** Description is the merchant's words only when its own provenance says it did not come from the catalogue structure. */
 function aboutOf(concept: OkfConcept): string | undefined {
   const text = String(concept.description || '').trim();
