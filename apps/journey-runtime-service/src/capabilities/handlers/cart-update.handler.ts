@@ -1,5 +1,6 @@
 import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability-sdk';
 import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
+import { buildCatalogueBaseFilter, readPath, resolveCatalogMapping } from '@journeyax/business-pack';
 
 export interface CartUpdateInput {
   items?: any[];
@@ -54,11 +55,16 @@ export class CartUpdateHandler implements NativeCapabilityHandler {
       // Validate SKUs against authoritative product catalogue
       const skus = items.map((i: any) => i.sku).filter(Boolean);
       if (skus.length > 0) {
+        // The tenant's own catalogue mapping says which fields identify a product and which fields mark its owner; nothing is assumed.
+        const mapping = resolveCatalogMapping((ctx as any).packSettings?.catalogMapping ?? (ctx as any).release?.catalogMapping);
+        const { filter } = buildCatalogueBaseFilter(mapping, tenantId);
         const verified = await db
           .collection(COLLECTION_PRODUCTS)
-          .find({ projectId: tenantId, sku: { $in: skus } })
+          .find({ ...filter, $and: [...(filter.$and || []), { $or: mapping.identifierPaths.map((path) => ({ [path]: { $in: skus } })) }] })
           .toArray();
-        if (verified.length !== skus.length) {
+        const known = new Set<string>();
+        for (const doc of verified) for (const path of mapping.identifierPaths) { const value = readPath(doc, path); if (value !== undefined && value !== null) known.add(String(value)); }
+        if (!skus.every((sku: string) => known.has(String(sku)))) {
           throw new Error(`[CartUpdateHandler] One or more cart SKUs could not be verified in tenant catalog`);
         }
       }

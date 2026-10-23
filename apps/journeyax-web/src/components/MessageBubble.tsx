@@ -78,13 +78,23 @@ function brandInitials(name: string): string {
   return base.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+/** A customer action the interface records as "[addToCart: Item]" is shown as a readable line ("Add to cart: Item"), never as a code-like tag. */
+const ACTION_EVENT_RE = /^\[([A-Za-z][A-Za-z0-9_.]*)(?::\s*([\s\S]+))?\]$/;
+function readableUserText(text: string): string {
+  const match = String(text || '').trim().match(ACTION_EVENT_RE);
+  if (!match) return text;
+  const words = match[1].replace(/[._]/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  const label = words.charAt(0).toUpperCase() + words.slice(1);
+  return match[2] ? `${label}: ${match[2]}` : label;
+}
+
 export default function MessageBubble({ message }: Props) {
   const cfg = useStorefrontConfig();
 
   if (message.role === 'user') {
     return (
       <div className="msg msg--user">
-        <div className="msg__bubble--user">{sanitizeMessageText(message.text)}</div>
+        <div className="msg__bubble--user">{sanitizeMessageText(readableUserText(message.text))}</div>
       </div>
     );
   }

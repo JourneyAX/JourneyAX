@@ -2864,13 +2864,15 @@ export class ProductService {
       const db = await this.getDb();
       const rows = await db.collection('products').find(
         { projectId: brand, parentSku: { $in: styles } },
-        { projection: { parentSku: 1, leadTimeDays: 1, colors: 1, sizes: 1, rating: 1, completeTheLook: 1, originalPrice: 1 } },
+        { projection: { parentSku: 1, leadTimeDays: 1, colors: 1, sizes: 1, rating: 1, completeTheLook: 1, originalPrice: 1, imageUrl: 1 } },
       ).toArray();
       const byStyle = new Map(rows.map((r: any) => [String(r.parentSku).toUpperCase(), r]));
       for (const [sku, item] of bySku) {
         const r: any = byStyle.get(styleOf(sku));
         if (!r) continue;
         if (typeof r.leadTimeDays === 'number') item.leadTimeDays = r.leadTimeDays;
+        // The product record is the authority for its picture; the search corpus keeps whatever link it was indexed with.
+        if (typeof r.imageUrl === 'string' && r.imageUrl) item.imageUrl = r.imageUrl;
         // ANF-98: the variant axis lives on the products collection — surface it so
         // grounded cards get real colour swatches + size pills.
         if (Array.isArray(r.colors) && r.colors.length) item.colors = r.colors;

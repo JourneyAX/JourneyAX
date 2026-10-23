@@ -1593,6 +1593,8 @@ export async function executeAgentTool(
           currency: cached.currency || ctx.release.profile?.primaryCurrency || p.currency,
           inStock: cached.inStock !== undefined ? Boolean(cached.inStock) : p.inStock,
           availability: cached.inStock ? 'in_stock' : 'out_of_stock',
+          // The picture is a catalogue fact too: taken from the catalogue record, never from model-written text.
+          imageUrl: cached.imageUrl || undefined,
         };
       };
 
