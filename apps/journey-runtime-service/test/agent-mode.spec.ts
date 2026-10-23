@@ -4116,6 +4116,79 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.equal(updatedDocs['prod-3'], undefined);
       });
     });
+
+    describe('Task S4: Tool Execution Tracing with Arguments and Result Count', () => {
+      test('AgentTurnLoop records arguments and resultCount for every executed tool call', async () => {
+        const release = createTestPack();
+        const catalogSearchHandler = {
+          execute: async () => ({
+            products: [
+              { sku: 'SKU-TIMBER-1', title: '100x50 H3.2 Timber' },
+              { sku: 'SKU-TIMBER-2', title: '150x50 H3.2 Timber' },
+            ],
+            count: 2,
+          }),
+        };
+
+        const gateway = new ModelGateway();
+        let rounds = 0;
+        gateway.mockAgentExecutor = async (req, onDelta) => {
+          rounds++;
+          if (rounds === 1) {
+            return {
+              content: '',
+              toolCalls: [
+                {
+                  id: 'call_search_1',
+                  name: 'search_products',
+                  arguments: { query: 'timber 100x50' },
+                },
+              ],
+            };
+          } else {
+            const text = 'We have 100x50 timber in stock.';
+            onDelta?.(text);
+            return {
+              content: text,
+              toolCalls: [],
+            };
+          }
+        };
+
+        const command: TurnCommand = {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          workspaceId: 'ws-s4-trace',
+          turnId: 'turn-s4-1',
+          message: 'Find 100x50 timber',
+        };
+
+        const agentLoop = new AgentTurnLoop();
+        const outcome = await agentLoop.execute({
+          command,
+          workspace: null,
+          release,
+          modelGateway: gateway,
+          catalogSearchHandler: catalogSearchHandler as any,
+          sink: () => {},
+        });
+
+        assert.ok(outcome.toolsCalled.length >= 1);
+        const searchCall = outcome.toolsCalled.find((t) => t.name === 'search_products');
+        assert.ok(searchCall, 'search_products tool call must be recorded in toolsCalled');
+        assert.equal(searchCall.ok, true);
+        assert.deepEqual(searchCall.arguments, { query: 'timber 100x50' });
+        assert.equal(searchCall.resultCount, 2);
+
+        // Also check turnResult.trace.toolsCalled
+        const traceTools = outcome.turnResult.trace.toolsCalled;
+        assert.ok(traceTools && traceTools.length >= 1);
+        const traceSearch = traceTools.find((t: any) => t.name === 'search_products');
+        assert.ok(traceSearch);
+        assert.deepEqual(traceSearch.arguments, { query: 'timber 100x50' });
+        assert.equal(traceSearch.resultCount, 2);
+      });
+    });
   });
 });
 

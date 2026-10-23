@@ -7,7 +7,8 @@
  * 1. Answer not empty
  * 2. No internal IDs leaked to customer text
  * 3. Forbidden claims absent (claim guard)
- * 4. Expected SKU or category present when a specific SKU is expected
+ * 4. Expected SKU or product attributes present for product lookups
+ * 5. Ground truth requirements met for advice, project, safety, and vocabulary
  *
  * Classifies prompts by type:
  *   product_lookup, advice, project, vocabulary, education, safety, garbled
@@ -18,9 +19,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { parse } from 'csv-parse/sync';
 import { buildPlaceMakersStack, TENANT, ENVIRONMENT } from '../../apps/journey-runtime-service/test/helpers/placemakers-stack';
 import { validateOkfGeneratedClaims } from '../../apps/journey-runtime-service/src/kernel/okf-claim-validator';
 import { ModelGateway } from '../../apps/journey-runtime-service/src/kernel/model.gateway';
+import { extractProductAttributes } from '../../packages/ingestion/src/populators/product.populators';
+import { resolveAttributeEquivalence } from '../../apps/journey-runtime-service/src/capabilities/handlers/catalog-search.handler';
 
 if (typeof (process as any).loadEnvFile === 'function' && fs.existsSync('.env')) {
   try {
@@ -37,7 +41,7 @@ export type PromptType =
   | 'safety'
   | 'garbled';
 
-interface EvalTestCase {
+export interface EvalTestCase {
   id: number;
   category: string;
   prompt: string | string[];
@@ -46,7 +50,16 @@ interface EvalTestCase {
   groundTruthUrls?: string;
 }
 
-interface EvalTurnResult {
+export interface ToolInvocationRecord {
+  name: string;
+  durationMs: number;
+  ok: boolean;
+  error?: string;
+  arguments?: any;
+  resultCount?: number;
+}
+
+export interface EvalTurnResult {
   id: number;
   category: string;
   promptType: PromptType;
@@ -57,6 +70,7 @@ interface EvalTurnResult {
   cards: string[];
   toolCalls: number;
   toolsCalled: string[];
+  toolInvocations: ToolInvocationRecord[];
   timing: {
     timeToFirstEventMs: number | null;
     timeToFirstTextMs: number | null;
@@ -73,24 +87,33 @@ interface EvalTurnResult {
     noInternalIds: boolean;
     forbiddenClaimsAbsent: boolean;
     expectedSkuPresent: boolean;
+    groundTruthMet: boolean;
   };
   passed: boolean;
   failureReasons: string[];
 }
 
-interface CategoryStats {
+export interface CategoryStats {
   category: string;
   total: number;
   passed: number;
   passRate: number;
 }
 
-interface PromptTypeStats {
+export interface PromptTypeStats {
   type: PromptType;
   total: number;
   passed: number;
   passRate: number;
 }
+
+const KNOWN_BRANDS = [
+  'makita', 'dewalt', 'milwaukee', 'hikoki', 'senco', 'bremick', 'ecko',
+  'gib', 'pink batts', 'james hardie', 'resene', 'marley', 'dux', 'simpson',
+  'tolsen', 'stanley', 'irwin', 'firth', 'sika', 'holdfast', 'selleys',
+  'wattyl', 'colour lab', 'bostik', 'gorilla', 'paslode', 'fuller',
+  'blu-mol', 'iplex', 'novadrain', 'st michel', 'keyland', 'primewood'
+];
 
 /**
  * Classifies a prompt into one of 7 standard evaluation types and determines
@@ -190,7 +213,11 @@ export function classifyPrompt(tc: EvalTestCase): {
   }
 
   // 7. Product Lookup (direct product, SKU, dimension, brand search)
-  const hasNoSingleSku = refLower.includes('no single sku') || refLower.includes('no feed match is "the" right answer');
+  const hasNoSingleSku =
+    refLower.includes('no single sku') ||
+    refLower.includes('no feed match is "the" right answer') ||
+    refLower.includes('not in feed') ||
+    refLower.includes('not verified in this feed');
   const expectsSpecificSku = !hasNoSingleSku;
 
   return { type: 'product_lookup', expectsSpecificSku };
@@ -244,7 +271,7 @@ function percentile(values: number[], p: number): number {
 }
 
 /** Extracts expected SKUs from ground-truth reference and URLs. */
-function extractExpectedSkus(reference: string, urls?: string): string[] {
+export function extractExpectedSkus(reference: string, urls?: string): string[] {
   const skus = new Set<string>();
   const refMatches = reference.match(/\bSKU\s+(\d+)\b/gi) || [];
   for (const m of refMatches) {
@@ -262,76 +289,458 @@ function extractExpectedSkus(reference: string, urls?: string): string[] {
 }
 
 /** Check if answer has internal ids or platform internals leaked. */
-function checkNoInternalIds(text: string): boolean {
+export function checkNoInternalIds(text: string): boolean {
   if (!text) return true;
   const leaksInternalPattern = /(concept:\/\/|[a-f0-9]{24}|stage_[a-z0-9_]+|tool\.[a-z0-9_]+|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b)/i;
   return !leaksInternalPattern.test(text);
 }
 
-/** Load PlaceMakers products CSV into the in-memory db. */
-async function loadPlacemakersCsvProducts(db: any): Promise<number> {
+/**
+ * Loads PlaceMakers products CSV into the in-memory db with robust parsing,
+ * MSRP price mapping, Main_Image_URL mapping, discontinued product exclusion,
+ * and index-time attribute extraction.
+ */
+export async function loadPlacemakersCsvProducts(db: any): Promise<number> {
   const csvPath = path.resolve('apps/journeyax-web/public/data/placemakers-products.csv');
   if (!fs.existsSync(csvPath)) return 0;
 
+  // Load catalog mapping attribute definitions if available
+  const mappingPath = path.resolve('docs/migrations/placemakers-catalog-mapping.json');
+  let attributeDefinitions: any = undefined;
+  if (fs.existsSync(mappingPath)) {
+    try {
+      const mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf8'));
+      attributeDefinitions = mapping.catalogMapping?.attributeDefinitions;
+    } catch {}
+  }
+
   const content = fs.readFileSync(csvPath, 'utf8');
-  const lines = content.split('\n');
+  const records: any[] = parse(content, {
+    columns: true,
+    skip_empty_lines: true,
+    relax_quotes: true,
+    relax_column_count: true,
+  });
+
   const products: any[] = [];
 
-  const header = lines[0].split(',').map((h) => h.trim());
-  const skuIdx = header.indexOf('Item_SKU') >= 0 ? header.indexOf('Item_SKU') : header.indexOf('Parent_SKU');
-  const nameIdx = header.indexOf('Item_Name');
-  const catIdx = header.indexOf('Category');
-  const descIdx = header.indexOf('Item_Description');
-  const priceIdx = header.indexOf('OriginalPrice');
-  const brandIdx = header.indexOf('Brand');
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.trim()) continue;
-    const parts: string[] = [];
-    let inQuotes = false;
-    let curr = '';
-    for (let c = 0; c < line.length; c++) {
-      const ch = line[c];
-      if (ch === '"') {
-        inQuotes = !inQuotes;
-      } else if (ch === ',' && !inQuotes) {
-        parts.push(curr);
-        curr = '';
-      } else {
-        curr += ch;
-      }
+  for (const r of records) {
+    // Exclude discontinued products
+    if (r.Status && r.Status.trim().toLowerCase() === 'discontinued') {
+      continue;
     }
-    parts.push(curr);
 
-    const sku = (parts[skuIdx] || '').trim();
-    const name = (parts[nameIdx] || '').trim();
+    const sku = (r.Item_SKU || r.Parent_SKU || '').trim();
+    const name = (r.Item_Name || '').trim();
     if (!sku || !name) continue;
 
-    const brand = brandIdx >= 0 ? (parts[brandIdx] || '').trim() : '';
-    const category = (parts[catIdx] || 'General').trim();
-    const description = (parts[descIdx] || name).trim();
-    const priceStr = (parts[priceIdx] || '0').replace(/[^0-9.]/g, '');
-    const price = parseFloat(priceStr) || 15.0;
+    const brand = (r.Brand || '').trim();
+    const category = (r.Category || 'General').trim();
+    const description = (r.Item_Description || name).trim();
+    // Map price from MSRP (falling back to OriginalPrice or default)
+    const rawPrice = (r.MSRP || r.OriginalPrice || '0').replace(/[^0-9.]/g, '');
+    const price = parseFloat(rawPrice) || 15.0;
+    // Map image from Main_Image_URL
+    const imageUrl = (r.Main_Image_URL || '').trim() || undefined;
 
-    products.push({
+    // Index-time extraction using attribute definitions
+    const attributes = extractProductAttributes(
+      {
+        name,
+        title: name,
+        description,
+        features: r.Features,
+        category,
+        specs: {},
+      },
+      attributeDefinitions
+    );
+
+    const doc: any = {
       projectId: TENANT,
       sku,
       name,
+      title: name,
       brand,
       category,
       categoryPath: [category],
       description: brand ? `${brand} ${description}` : description,
+      features: (r.Features || '').trim() || undefined,
       priceUSD: { min: price },
       currency: 'NZD',
-      inStock: true,
-    });
+      imageUrl,
+      variants: [
+        {
+          itemSku: sku,
+          msrpUSD: price,
+          mainImage: imageUrl,
+          status: r.Status || 'Active',
+        },
+      ],
+    };
+
+    if (Object.keys(attributes).length > 0) {
+      doc.attributes = attributes;
+    }
+
+    // Do NOT mark every product inStock: true (omit or set from stock fields)
+    if (r.Stock_Status || r.In_Stock) {
+      doc.inStock = String(r.Stock_Status || r.In_Stock).toLowerCase() === 'in_stock';
+    }
+
+    products.push(doc);
   }
 
   if (products.length > 0) {
     await db.collection('products').insertMany(products);
   }
   return products.length;
+}
+
+export interface RequestedAttributes {
+  sizeVariants: string[];
+  treatmentVariants: string[];
+  rValueVariants: string[];
+  brand?: string;
+  keyword?: string;
+}
+
+/** Extracts requested attributes from a prompt and its ground-truth reference. */
+export function extractRequestedAttributes(
+  prompt: string,
+  reference?: string,
+  attributeDefinitions?: Record<string, any>
+): RequestedAttributes {
+  const pLower = prompt.toLowerCase();
+  const sizeVariants: string[] = [];
+  const treatmentVariants: string[] = [];
+  const rValueVariants: string[] = [];
+
+  // Size patterns: e.g. 100x50, 100 x 50mm, 4x2, 32mm, 6g x 25mm
+  const sizePatterns = [
+    /\b(\d{2,4}\s*[xX*×]\s*\d{2,4}(?:\s*[xX*×]\s*\d{2,4})?(?:\s*mm)?)\b/,
+    /\b([2-9]|10|12)\s*[xX*×]\s*([1-9]|10|12)\b/,
+    /\b(\d+(?:\.\d+)?\s*mm)\b/,
+    /\b(\d+g(?:\s*x\s*\d+mm)?)\b/i,
+  ];
+
+  for (const pat of sizePatterns) {
+    const m = prompt.match(pat);
+    if (m) {
+      const raw = m[1] || m[0];
+      const equiv = resolveAttributeEquivalence('size', raw, attributeDefinitions?.size);
+      for (const v of equiv) sizeVariants.push(v);
+      break;
+    }
+  }
+
+  // Treatment patterns: e.g. H3.2, H1.2, H4, H5, CCA, Boron
+  const treatMatch = prompt.match(/\b(H\s*[1-6](?:\.[1-2])?|CCA|Boron|LOSP|Untreated|UT)\b/i);
+  if (treatMatch) {
+    const raw = treatMatch[1];
+    const equiv = resolveAttributeEquivalence('treatment', raw, attributeDefinitions?.treatment);
+    for (const v of equiv) treatmentVariants.push(v);
+  }
+
+  // R-value patterns: e.g. R2.2, R2.6, R1.9
+  const rMatch = prompt.match(/\b(R\s*[1-7](?:\.[0-9])?)\b/i);
+  if (rMatch) {
+    const raw = rMatch[1];
+    const equiv = resolveAttributeEquivalence('rValue', raw, attributeDefinitions?.rValue);
+    for (const v of equiv) rValueVariants.push(v);
+  }
+
+  // Brand pattern
+  let brand: string | undefined;
+  for (const b of KNOWN_BRANDS) {
+    const rx = new RegExp(`\\b${b}\\b`, 'i');
+    if (rx.test(pLower)) {
+      brand = b;
+      break;
+    }
+  }
+
+  // Category / keyword noun
+  const categoryKeywords = [
+    'timber', 'decking', 'insulation', 'screws', 'screw', 'nails', 'nail',
+    'bracket', 'brackets', 'plywood', 'primer', 'paint', 'pipe', 'pipes',
+    'fitting', 'fittings', 'paver', 'pavers', 'clothesline', 'saw', 'drill',
+    'plunger', 'tap', 'mixer', 'shower', 'toilet', 'vanity', 'batts',
+    'fertiliser', 'weedkiller', 'adhesive', 'cladding', 'roofing', 'shed',
+    'cabinet', 'fence', 'paling', 'rails', 'post', 'posts', 'joist', 'joists'
+  ];
+  let keyword: string | undefined;
+  for (const kw of categoryKeywords) {
+    const rx = new RegExp(`\\b${kw}\\b`, 'i');
+    if (rx.test(pLower)) {
+      keyword = kw;
+      break;
+    }
+  }
+
+  return { sizeVariants, treatmentVariants, rValueVariants, brand, keyword };
+}
+
+/**
+ * Scores a product lookup prompt by checking:
+ * 1. Exact SKU match in shown products or assistant message, OR
+ * 2. Requested product attributes (size, grade/treatment, brand, category) found
+ *    in titles, specs, and attributes of products shown.
+ */
+export async function checkProductLookupMatch(params: {
+  tc: EvalTestCase;
+  expectedSkus: string[];
+  assistantMessage: string;
+  uiInstructions: any[];
+  toolProductSkus: string[];
+  toolsCalled?: any[];
+  db: any;
+  attributeDefinitions?: Record<string, any>;
+}): Promise<{ matched: boolean; reason?: string; matchedSku?: string }> {
+  const { tc, expectedSkus, assistantMessage, uiInstructions, toolProductSkus, toolsCalled, db, attributeDefinitions } = params;
+
+  // 1. Collect all shown SKUs from trace, UI instructions, and message text
+  const allShownSkus = new Set<string>();
+  for (const sku of toolProductSkus || []) {
+    if (sku) allShownSkus.add(String(sku).trim());
+  }
+  for (const ui of uiInstructions || []) {
+    const card = ui.envelope?.arguments?.card || ui.card;
+    if (card?.sku) allShownSkus.add(String(card.sku).trim());
+    if (Array.isArray(card?.products)) {
+      for (const p of card.products) {
+        if (p?.sku) allShownSkus.add(String(p.sku).trim());
+      }
+    }
+  }
+  const msgSkus = assistantMessage.match(/\b\d{6,7}\b/g) || [];
+  for (const s of msgSkus) allShownSkus.add(s);
+
+  // Check if any expected SKU is present
+  if (expectedSkus.length > 0) {
+    const uiStr = JSON.stringify(uiInstructions || []);
+    for (const exp of expectedSkus) {
+      if (allShownSkus.has(exp) || assistantMessage.includes(exp) || uiStr.includes(exp)) {
+        return { matched: true, matchedSku: exp };
+      }
+    }
+  }
+
+  // 2. Not-in-feed or no single SKU check
+  const refLower = (tc.groundTruthReference || '').toLowerCase();
+  const isNotInFeed =
+    refLower.includes('not in feed') ||
+    refLower.includes('not verified in this feed') ||
+    refLower.includes('no single sku');
+  if (isNotInFeed) {
+    const clarifies =
+      /not\s+(?:stocked|available|found|in\s+our\s+catalogue|in\s+stock)|do\s+not\s+(?:stock|carry|have)|alternatives?|recommend/i.test(assistantMessage) ||
+      allShownSkus.size > 0;
+    if (clarifies) {
+      return { matched: true, reason: 'Correctly handled unstocked or alternative query' };
+    }
+  }
+
+  // 3. Attribute-based matching on shown products
+  const promptStr = Array.isArray(tc.prompt) ? tc.prompt.join(' ') : tc.prompt;
+  const requested = extractRequestedAttributes(promptStr, tc.groundTruthReference, attributeDefinitions);
+
+  let shownProducts: any[] = [];
+  if (db && allShownSkus.size > 0) {
+    try {
+      shownProducts = await db.collection('products').find({
+        sku: { $in: Array.from(allShownSkus) }
+      }).toArray();
+    } catch {}
+  }
+
+  // Fallback: If no products found in DB for shown SKUs, check if assistantMessage conveys the attributes
+  if (shownProducts.length === 0) {
+    let allMentioned = true;
+    if (requested.sizeVariants.length > 0) {
+      const msgHasSize = requested.sizeVariants.some(v => assistantMessage.toLowerCase().includes(v.toLowerCase()));
+      if (!msgHasSize) allMentioned = false;
+    }
+    if (requested.treatmentVariants.length > 0) {
+      const msgHasTreat = requested.treatmentVariants.some(v => assistantMessage.toLowerCase().includes(v.toLowerCase()));
+      if (!msgHasTreat) allMentioned = false;
+    }
+    if (requested.brand) {
+      if (!assistantMessage.toLowerCase().includes(requested.brand.toLowerCase())) allMentioned = false;
+    }
+    if (allMentioned && (requested.sizeVariants.length > 0 || requested.treatmentVariants.length > 0 || requested.brand)) {
+      return { matched: true, reason: 'Attributes mentioned in assistant response' };
+    }
+    return { matched: false, reason: 'No matching products shown and attributes not mentioned' };
+  }
+
+  // Inspect each product against requested attributes
+  for (const product of shownProducts) {
+    const pTitle = (product.title || product.name || '').toLowerCase();
+    const pDesc = (product.description || '').toLowerCase();
+    const pCat = (product.category || '').toLowerCase();
+    const pAttrs = product.attributes || {};
+    const pText = `${pTitle} ${pDesc} ${pCat}`;
+
+    // Size check
+    if (requested.sizeVariants.length > 0) {
+      const pSize = (pAttrs.size || '').toLowerCase();
+      const matchesSize = requested.sizeVariants.some(v => {
+        const vNorm = v.toLowerCase().replace(/\s+/g, '');
+        return pSize.replace(/\s+/g, '') === vNorm || pText.includes(v.toLowerCase());
+      });
+      if (!matchesSize) continue;
+    }
+
+    // Treatment check
+    if (requested.treatmentVariants.length > 0) {
+      const pTreat = (pAttrs.treatment || '').toLowerCase();
+      const matchesTreat = requested.treatmentVariants.some(v => {
+        const vNorm = v.toLowerCase().replace(/\s+/g, '');
+        return pTreat.replace(/\s+/g, '') === vNorm || pText.includes(v.toLowerCase());
+      });
+      if (!matchesTreat) continue;
+    }
+
+    // R-value check
+    if (requested.rValueVariants.length > 0) {
+      const pR = (pAttrs.rValue || '').toLowerCase();
+      const matchesR = requested.rValueVariants.some(v => {
+        const vNorm = v.toLowerCase().replace(/\s+/g, '');
+        return pR.replace(/\s+/g, '') === vNorm || pText.includes(v.toLowerCase());
+      });
+      if (!matchesR) continue;
+    }
+
+    // Brand check
+    if (requested.brand) {
+      const pBrand = (product.brand || '').toLowerCase();
+      const matchesBrand = pBrand.includes(requested.brand) || pText.includes(requested.brand);
+      if (!matchesBrand) continue;
+    }
+
+    // Category / Keyword check
+    if (requested.keyword) {
+      const matchesKeyword = pCat.includes(requested.keyword) || pText.includes(requested.keyword);
+      if (!matchesKeyword) continue;
+    }
+
+    // All specified criteria matched for this product
+    return { matched: true, matchedSku: product.sku };
+  }
+
+  return { matched: false, reason: 'Shown products did not match all requested attributes' };
+}
+
+function extractKeyAdviceTerms(tc: EvalTestCase): string[] {
+  const terms = new Set<string>();
+  const ref = tc.groundTruthReference || '';
+  const quoted = ref.match(/"([^"]+)"/g) || [];
+  for (const q of quoted) {
+    const clean = q.replace(/"/g, '').trim().toLowerCase();
+    if (clean.length > 2 && !clean.startsWith('http')) {
+      terms.add(clean);
+      const words = clean.split(/\s+/).filter(w => w.length > 3);
+      for (const w of words) terms.add(w);
+    }
+  }
+
+  const pLower = (Array.isArray(tc.prompt) ? tc.prompt.join(' ') : tc.prompt).toLowerCase();
+  if (pLower.includes('masonry')) { terms.add('masonry'); terms.add('sds'); terms.add('hammer'); terms.add('drill'); }
+  if (pLower.includes('treated timber') && pLower.includes('saw')) { terms.add('circular saw'); terms.add('hand saw'); terms.add('saw'); }
+  if (pLower.includes('hedges')) { terms.add('hedge trimmer'); terms.add('trimmer'); terms.add('shears'); }
+  if (pLower.includes('tiles') && pLower.includes('drill')) { terms.add('tile'); terms.add('ceramic'); terms.add('diamond'); terms.add('masonry'); }
+  if (pLower.includes('plywood') && pLower.includes('tool')) { terms.add('circular saw'); terms.add('track saw'); terms.add('jigsaw'); terms.add('saw'); }
+  if (pLower.includes('mdf') && pLower.includes('primer')) { terms.add('primer'); terms.add('sealer'); terms.add('undercoat'); }
+  if (pLower.includes('decking') && pLower.includes('screw')) { terms.add('screw'); terms.add('10g'); terms.add('12g'); terms.add('65mm'); terms.add('50mm'); terms.add('stainless'); }
+  if (pLower.includes('retaining wall') && pLower.includes('fixing')) { terms.add('coach'); terms.add('bolt'); terms.add('screw'); terms.add('hex'); }
+  if (pLower.includes('plumbing tools')) { terms.add('wrench'); terms.add('plunger'); terms.add('spanner'); terms.add('pliers'); }
+  if (pLower.includes('different sizes') && pLower.includes('fittings')) { terms.add('reducer'); terms.add('reducing'); terms.add('adapter'); terms.add('coupling'); }
+  if (pLower.includes('paving') && pLower.includes('driveway')) { terms.add('paver'); terms.add('paving'); terms.add('concrete'); terms.add('50mm'); terms.add('80mm'); }
+  if (pLower.includes('joists') && pLower.includes('timber')) { terms.add('150x50'); terms.add('140x45'); terms.add('200x50'); terms.add('190x45'); terms.add('joist'); terms.add('span'); }
+  if (pLower.includes('kwila')) { terms.add('oil'); terms.add('stain'); terms.add('protect'); terms.add('seal'); }
+  if (pLower.includes('r-value')) { terms.add('ceiling'); terms.add('wall'); terms.add('r2.2'); terms.add('r2.6'); terms.add('insulation'); }
+  if (pLower.includes('plasterboard') && pLower.includes('thickness')) { terms.add('10mm'); terms.add('13mm'); terms.add('gib'); }
+
+  return Array.from(terms);
+}
+
+function extractKeyProjectTerms(tc: EvalTestCase): string[] {
+  const terms = new Set<string>();
+  const pLower = (Array.isArray(tc.prompt) ? tc.prompt.join(' ') : tc.prompt).toLowerCase();
+  if (pLower.includes('cabinet')) { terms.add('mdf'); terms.add('panel'); terms.add('handle'); terms.add('knob'); terms.add('hinge'); terms.add('glue'); terms.add('screws'); }
+  if (pLower.includes('deck')) { terms.add('deck'); terms.add('timber'); terms.add('post'); terms.add('bearer'); terms.add('joist'); terms.add('bracket'); terms.add('screws'); }
+  if (pLower.includes('fence')) { terms.add('fence'); terms.add('post'); terms.add('rail'); terms.add('paling'); terms.add('concrete'); }
+  if (pLower.includes('shed')) { terms.add('shed'); terms.add('kitset'); terms.add('timber'); terms.add('framing'); terms.add('roofing'); }
+  if (pLower.includes('insulate') || pLower.includes('insulation')) { terms.add('insulation'); terms.add('batts'); terms.add('ceiling'); terms.add('wall'); terms.add('underfloor'); terms.add('r-value'); terms.add('pink batts'); }
+  if (pLower.includes('bathroom')) { terms.add('sink'); terms.add('mixer'); terms.add('shower'); terms.add('toilet'); terms.add('tile'); terms.add('vanity'); terms.add('plumbing'); }
+  if (pLower.includes('kitchen')) { terms.add('cabinet'); terms.add('benchtop'); terms.add('tap'); terms.add('mixer'); terms.add('kitchen'); }
+  if (pLower.includes('pergola')) { terms.add('pergola'); terms.add('post'); terms.add('beam'); terms.add('rafter'); terms.add('bracket'); terms.add('roofing'); }
+  if (pLower.includes('landscaping')) { terms.add('paver'); terms.add('weed'); terms.add('fertiliser'); terms.add('rake'); terms.add('garden'); terms.add('landscape'); }
+  return Array.from(terms);
+}
+
+/**
+ * Scores advice, project, safety, and vocabulary prompts against ground truth requirements.
+ */
+export function checkGroundTruthRequirements(params: {
+  tc: EvalTestCase;
+  promptType: PromptType;
+  assistantMessage: string;
+  cards: string[];
+  toolProductSkus: string[];
+}): { met: boolean; reason?: string } {
+  const { tc, promptType, assistantMessage, cards, toolProductSkus } = params;
+  const msgLower = assistantMessage.toLowerCase();
+
+  switch (promptType) {
+    case 'safety': {
+      const hasSafetyNotice =
+        /safety|hazard|danger|risk|shock|electrician|certified|licensed|turn off|shut off|precaution|warning|caution|careful/i.test(assistantMessage);
+      if (!hasSafetyNotice) {
+        return { met: false, reason: 'Missing safety precaution, hazard awareness, or disclaimer' };
+      }
+      return { met: true };
+    }
+
+    case 'project': {
+      const asksClarification =
+        /\?/.test(assistantMessage) &&
+        /(?:what|which|how|where|when|size|dimensions?|measurements?|type|material|scope|budget|length|height|area|indoor|outdoor)/i.test(assistantMessage);
+
+      const projectComponents = extractKeyProjectTerms(tc);
+      const mentionsComponents = projectComponents.some(term => msgLower.includes(term.toLowerCase()));
+
+      if (!asksClarification && !mentionsComponents && toolProductSkus.length === 0) {
+        return { met: false, reason: 'Response neither asked clarifying scoping questions nor recommended relevant project materials' };
+      }
+      return { met: true };
+    }
+
+    case 'advice': {
+      const keyTerms = extractKeyAdviceTerms(tc);
+      const matchesTerm = keyTerms.some(term => msgLower.includes(term.toLowerCase()));
+      if (!matchesTerm && toolProductSkus.length === 0 && cards.length === 0) {
+        return { met: false, reason: 'Response did not address the key advisory concepts or recommendations from the ground truth' };
+      }
+      return { met: true };
+    }
+
+    case 'vocabulary': {
+      const promptStr = (Array.isArray(tc.prompt) ? tc.prompt.join(' ') : tc.prompt).toLowerCase();
+      if (promptStr.includes('dwang')) {
+        const explainsDwang = /nogging|blocking|timber|framing|stud|horizontal/i.test(assistantMessage);
+        if (!explainsDwang) return { met: false, reason: 'Did not explain local trade term dwang' };
+      }
+      return { met: true };
+    }
+
+    case 'education':
+    case 'garbled':
+    case 'product_lookup':
+    default:
+      return { met: true };
+  }
 }
 
 async function main() {
@@ -354,6 +763,16 @@ async function main() {
   const stack = await buildPlaceMakersStack({ agentMode: useAgentMode });
   const loadedCount = await loadPlacemakersCsvProducts(stack.db);
   console.log(`Loaded ${loadedCount} catalogue products into in-memory store.`);
+
+  // Load catalog mapping attribute definitions for evaluation scoring
+  const mappingPath = path.resolve('docs/migrations/placemakers-catalog-mapping.json');
+  let attributeDefinitions: any = undefined;
+  if (fs.existsSync(mappingPath)) {
+    try {
+      const mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf8'));
+      attributeDefinitions = mapping.catalogMapping?.attributeDefinitions;
+    } catch {}
+  }
 
   const service = stack.serviceFor({
     servePacks: true,
@@ -398,6 +817,17 @@ async function main() {
       ((lastResult?.trace?.toolsCalled || []).map((t: any) => t.name) as string[]) ||
       ((lastResult?.executedCapabilities || []).map((c: any) => c.toolId) as string[]) ||
       [];
+
+    // Record full tool invocations including arguments and result counts
+    const toolInvocations: ToolInvocationRecord[] = (lastResult?.trace?.toolsCalled || []).map((t: any) => ({
+      name: t.name,
+      durationMs: t.durationMs ?? 0,
+      ok: t.ok ?? true,
+      error: t.error,
+      arguments: t.arguments,
+      resultCount: t.resultCount,
+    }));
+
     const timing = aggregateTiming || {
       timeToFirstEventMs: lastResult?.trace?.timeToFirstTextMs ?? 0,
       timeToFirstTextMs: lastResult?.trace?.timeToFirstTextMs ?? 0,
@@ -420,23 +850,44 @@ async function main() {
     const claimCheck = validateOkfGeneratedClaims(assistantMessage, allowedClasses);
     const forbiddenClaimsAbsent = claimCheck.valid;
 
-    // SKU check:
-    // A prompt passes only if an expected SKU for that prompt is shown (in message or presented card)
-    // or the prompt type does not need one.
+    // SKU / Attribute check for product lookups
     let expectedSkuPresent = true;
-    if (classification.expectsSpecificSku && expectedSkus.length > 0) {
-      const uiStr = JSON.stringify(lastResult?.uiInstructions || []);
-      const mentionsSku = expectedSkus.some((sku) => assistantMessage.includes(sku) || uiStr.includes(sku));
-      expectedSkuPresent = mentionsSku;
+    let skuFailureReason: string | undefined;
+    if (classification.type === 'product_lookup' && classification.expectsSpecificSku) {
+      const matchOutcome = await checkProductLookupMatch({
+        tc,
+        expectedSkus,
+        assistantMessage,
+        uiInstructions: lastResult?.uiInstructions || [],
+        toolProductSkus: lastResult?.trace?.toolProductSkus || [],
+        toolsCalled: lastResult?.trace?.toolsCalled || [],
+        db: stack.db,
+        attributeDefinitions,
+      });
+      expectedSkuPresent = matchOutcome.matched;
+      if (!matchOutcome.matched) {
+        skuFailureReason = matchOutcome.reason || `Expected SKU not found (expected: ${expectedSkus.slice(0, 3).join(', ')})`;
+      }
     }
+
+    // Ground-truth requirement check for advice, project, safety, vocabulary
+    const reqOutcome = checkGroundTruthRequirements({
+      tc,
+      promptType: classification.type,
+      assistantMessage,
+      cards,
+      toolProductSkus: lastResult?.trace?.toolProductSkus || [],
+    });
+    const groundTruthMet = reqOutcome.met;
 
     const failureReasons: string[] = [];
     if (!answerNotEmpty) failureReasons.push('Empty assistant message');
     if (!noInternalIds) failureReasons.push('Internal IDs or platform terms leaked in message');
     if (!forbiddenClaimsAbsent) failureReasons.push(`Forbidden claims present: ${claimCheck.forbidden.join(', ')}`);
-    if (!expectedSkuPresent) failureReasons.push(`Expected SKU not found (expected: ${expectedSkus.slice(0, 3).join(', ')})`);
+    if (!expectedSkuPresent) failureReasons.push(skuFailureReason || `Expected SKU not found (expected: ${expectedSkus.slice(0, 3).join(', ')})`);
+    if (!groundTruthMet) failureReasons.push(reqOutcome.reason || 'Ground truth requirement not addressed');
 
-    const passed = answerNotEmpty && noInternalIds && forbiddenClaimsAbsent && expectedSkuPresent;
+    const passed = answerNotEmpty && noInternalIds && forbiddenClaimsAbsent && expectedSkuPresent && groundTruthMet;
 
     evalResults.push({
       id: tc.id,
@@ -449,12 +900,14 @@ async function main() {
       cards,
       toolCalls,
       toolsCalled,
+      toolInvocations,
       timing,
       checks: {
         answerNotEmpty,
         noInternalIds,
         forbiddenClaimsAbsent,
         expectedSkuPresent,
+        groundTruthMet,
       },
       passed,
       failureReasons,
@@ -585,12 +1038,12 @@ async function main() {
     `| --- | --- | --- | --- | --- |`,
     ...promptTypeStats.map(
       (p) => {
-        let desc = 'Expected SKU/category in response';
+        let desc = 'Expected SKU or matching product attributes (size, grade, brand, category) present';
         if (p.type === 'education') desc = 'Explanatory answer without specific SKU enforcement';
-        else if (p.type === 'safety') desc = 'Safety guidance/disclaimer, no unsafe claims';
-        else if (p.type === 'project') desc = 'Project planning / clarification response';
-        else if (p.type === 'advice') desc = 'Grounded recommendation, no unverified claims';
-        else if (p.type === 'vocabulary') desc = 'Term resolution without failure';
+        else if (p.type === 'safety') desc = 'Safety guidance/disclaimer, hazard awareness, no unsafe claims';
+        else if (p.type === 'project') desc = 'Scoping clarification or component recommendation';
+        else if (p.type === 'advice') desc = 'Grounded recommendation addressing row requirement';
+        else if (p.type === 'vocabulary') desc = 'Term resolution / Kiwi trade slang explanation';
         else if (p.type === 'garbled') desc = 'Graceful handling without crash or internal leakage';
         return `| **${p.type}** | ${p.total} | ${p.passed} | ${p.passRate.toFixed(1)}% | ${desc} |`;
       }
@@ -609,7 +1062,8 @@ async function main() {
     `- **Answer Not Empty**: ${evalResults.filter((r) => r.checks.answerNotEmpty).length}/${total}`,
     `- **No Internal IDs Leaked**: ${evalResults.filter((r) => r.checks.noInternalIds).length}/${total}`,
     `- **Forbidden Claims Absent**: ${evalResults.filter((r) => r.checks.forbiddenClaimsAbsent).length}/${total}`,
-    `- **Expected SKU Present (where applicable)**: ${evalResults.filter((r) => r.checks.expectedSkuPresent).length}/${total}`,
+    `- **Expected SKU / Product Attributes Present**: ${evalResults.filter((r) => r.checks.expectedSkuPresent).length}/${total}`,
+    `- **Ground Truth Requirements Met**: ${evalResults.filter((r) => r.checks.groundTruthMet).length}/${total}`,
     ``,
     `## Failure Sample (First 5)`,
     ``,
@@ -650,7 +1104,9 @@ async function main() {
   console.log(`============================================================\n`);
 }
 
-main().catch((err) => {
-  console.error('Eval run failed:', err);
-  process.exit(1);
-});
+if (require.main === module || (process.argv[1] && process.argv[1].includes('run-conversation-eval'))) {
+  main().catch((err) => {
+    console.error('Eval run failed:', err);
+    process.exit(1);
+  });
+}

@@ -62,7 +62,14 @@ export interface AgentTurnOptions {
 
 export interface AgentTurnOutcome {
   turnResult: TurnResult;
-  toolsCalled: Array<{ name: string; durationMs: number; ok: boolean; error?: string }>;
+  toolsCalled: Array<{
+    name: string;
+    durationMs: number;
+    ok: boolean;
+    error?: string;
+    arguments?: any;
+    resultCount?: number;
+  }>;
   okfNotesRead: string[];
   tokens: { prompt: number; completion: number; total: number };
   durationMs: number;
@@ -542,7 +549,26 @@ export class AgentTurnLoop {
       turnKind,
     };
 
-    const toolsTrace: Array<{ name: string; durationMs: number; ok: boolean; error?: string; arguments?: any }> = [];
+function extractToolResultCount(result: any): number | undefined {
+  if (!result || typeof result !== 'object') return undefined;
+  if (typeof result.count === 'number') return result.count;
+  if (Array.isArray(result.products)) return result.products.length;
+  if (Array.isArray(result.results)) return result.results.length;
+  if (Array.isArray(result.articles)) return result.articles.length;
+  if (Array.isArray(result.items)) return result.items.length;
+  if (result.found !== undefined) return result.found ? 1 : 0;
+  if (result.ok === false) return 0;
+  return undefined;
+}
+
+    const toolsTrace: Array<{
+      name: string;
+      durationMs: number;
+      ok: boolean;
+      error?: string;
+      arguments?: any;
+      resultCount?: number;
+    }> = [];
     const totalTokens = { prompt: 0, completion: 0, total: 0 };
     let finalAssistantText = '';
     let isFinished = false;
@@ -653,6 +679,8 @@ export class AgentTurnLoop {
             durationMs: 0,
             ok: false,
             error: errorMsg,
+            arguments: tc.arguments,
+            resultCount: 0,
           });
         }
 
@@ -711,7 +739,14 @@ export class AgentTurnLoop {
               result = { ok: false, error: `Tool execution failed: ${err.message}` };
             }
             const durationMs = Date.now() - toolStart;
-            toolsTrace.push({ name: tc.name, durationMs, ok, error: !ok ? result?.error : undefined, arguments: tc.arguments });
+            toolsTrace.push({
+              name: tc.name,
+              durationMs,
+              ok,
+              error: !ok ? result?.error : undefined,
+              arguments: tc.arguments,
+              resultCount: extractToolResultCount(result),
+            });
             return { call: tc, result };
           })
         );
@@ -738,7 +773,14 @@ export class AgentTurnLoop {
             result = { ok: false, error: `Tool execution failed: ${err.message}` };
           }
           const durationMs = Date.now() - toolStart;
-          toolsTrace.push({ name: tc.name, durationMs, ok, error: !ok ? result?.error : undefined, arguments: tc.arguments });
+          toolsTrace.push({
+            name: tc.name,
+            durationMs,
+            ok,
+            error: !ok ? result?.error : undefined,
+            arguments: tc.arguments,
+            resultCount: extractToolResultCount(result),
+          });
           mutatingResults.push({ call: tc, result });
         }
 
@@ -819,6 +861,8 @@ export class AgentTurnLoop {
         name: 'hand_off_to_human',
         durationMs: 0,
         ok: true,
+        arguments: {},
+        resultCount: 1,
       });
     }
 
