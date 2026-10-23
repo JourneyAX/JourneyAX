@@ -27,6 +27,8 @@ export type VectorSearchFunction = (
 
 export interface CatalogSearchInput {
   isAgentMode?: boolean;
+  /** When a search finds nothing, loosen the keywords (any of them) before dropping the product type. */
+  relaxKeywordsFirst?: boolean;
   keywords?: string[];
   productType?: string;
   brand?: string;
@@ -449,6 +451,21 @@ function scoreDocumentRelevance(doc: any, tokens: QueryToken[], mapping: Resolve
 
 export class CatalogSearchHandler implements NativeCapabilityHandler {
   private readonly okfConceptCache = new Map<string, Array<{ name?: string; synonyms?: string[]; customerPhrases?: string[] }>>();
+  /** The distinct category texts a tenant's catalogue holds, per field (a few hundred values, read from an index). */
+  private readonly categoryValueCache = new Map<string, { at: number; values: Record<string, string[]> }>();
+  private static readonly CATEGORY_VALUE_TTL_MS = 10 * 60 * 1000;
+
+  private async distinctCategoryValues(db: any, key: string, tenantFilter: any, fields: string[]): Promise<Record<string, string[]>> {
+    const cached = this.categoryValueCache.get(key);
+    if (cached && Date.now() - cached.at < CatalogSearchHandler.CATEGORY_VALUE_TTL_MS) return cached.values;
+    const values: Record<string, string[]> = {};
+    await Promise.all(fields.map(async (field) => {
+      const found = await db.collection(COLLECTION_PRODUCTS).distinct(field, tenantFilter);
+      values[field] = found.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0);
+    }));
+    this.categoryValueCache.set(key, { at: Date.now(), values });
+    return values;
+  }
 
   constructor(
     private readonly inMemoryProducts?: any[],
@@ -684,7 +701,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       activeSpecs?: StructuredSearchSpecs,
       activeCategory?: string,
       kwMode: 'all' | 'any' = 'all',
-      options: { filterInStock?: boolean; allowTokenDisjunction?: boolean } = {}
+      options: { filterInStock?: boolean; allowTokenDisjunction?: boolean; keywordsInMemory?: boolean } = {}
     ): Promise<any[]> => {
       let docs: any[] = [];
       const tokens = (!isAgent && query) ? tokenizeQuery(query, glossaryIndex, stopWords) : [];
@@ -846,18 +863,23 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
           const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
           const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
+          const strongSearchPaths = (): string[] => [...new Set([
+            ...mapping.titlePaths, ...mapping.brandPaths, ...mapping.categoryPaths, ...mapping.categoryHierarchyPaths, ...mapping.identifierPaths,
+          ])];
 
+          let typeClause: Record<string, unknown> | undefined;
           if (activeCategory) {
             const words = typeWordsOf(activeCategory);
             const regex = words.length > 0
               ? new RegExp(words.map((w) => `(?=.*\\b${stem(w)})`).join(''), 'i')
               : new RegExp(escapeRegex(activeCategory), 'i');
-            and.push({
+            typeClause = {
               $or: [
                 ...anyOf(typePaths, regex),
                 ...anyOf(mapping.titlePaths, regex),
               ],
-            });
+            };
+            and.push(typeClause);
           }
           and.push(...buildCategoryScopeClauses(mapping, { categoryIds, categoryPaths, excludeCategoryIds }));
 
@@ -938,23 +960,47 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               return kwClauses.length === 0 ? [] : kwMode === 'all' ? kwClauses : [{ $or: kwClauses }];
             };
 
-            const runFind = (extra: any[]) => {
-              const clauses = [...and, ...extra];
+            const runFind = (extra: any[], limit: number = mapping.candidateLimit, base: any[] = and) => {
+              const clauses = [...base, ...extra];
               const scoped: any = { ...filter };
               if (clauses.length > 0) scoped.$and = clauses; else delete scoped.$and;
-              return db.collection(COLLECTION_PRODUCTS).find(scoped).limit(mapping.candidateLimit).toArray();
+              return db.collection(COLLECTION_PRODUCTS).find(scoped).limit(limit).toArray();
             };
 
             if (keywordList.length === 0) {
               docs = await runFind([]);
+            } else if (options.keywordsInMemory) {
+              // Matching loose words against every product's description makes the database read all of them (seconds). The product
+              // type narrows the shelf cheaply, so take that shelf and look for the words in the products themselves.
+              // The shelf is every category whose text names the type; matching those exact values is far cheaper than a pattern over
+              // every product. Only if no category names it does the pattern over titles and paths decide.
+              let shelfClauses: any[] | undefined;
+              if (activeCategory && typeClause) {
+                const categoryValues = await this.distinctCategoryValues(db, `${tenantId}:${COLLECTION_PRODUCTS}`, { $or: filter.$or }, typePaths);
+                const named = typePaths
+                  .map((field) => ({ field, values: (categoryValues[field] || []).filter((value) => typeMatches(activeCategory, value.toLowerCase())) }))
+                  .filter((entry) => entry.values.length > 0);
+                if (named.length > 0) shelfClauses = [{ $or: named.map((entry) => ({ [entry.field]: { $in: entry.values } })) }];
+              }
+              const shelf = shelfClauses
+                ? await runFind(shelfClauses, mapping.candidateLimit * 4, and.filter((clause) => clause !== typeClause))
+                : await runFind([], mapping.candidateLimit * 4);
+              const wordMatchers = [...new Set(keywordList
+                .flatMap((kw) => kw.replace(/[®™]/g, '').split(/\s+/))
+                .map((w) => w.trim().toLowerCase())
+                .filter((w) => w.length > 2))]
+                .map((w) => new RegExp(`\\b(?:${[stem(w), ...(glossaryIndex.get(w) || []).map(stem)].filter(Boolean).join('|')})\\b`, 'i'));
+              const textPaths = [...new Set([...strongSearchPaths(), ...mapping.searchPaths])];
+              docs = shelf.filter((doc) => {
+                const text = textOf(doc, textPaths);
+                return wordMatchers.some((rx) => rx.test(text));
+              }).slice(0, mapping.candidateLimit);
             } else {
               // Only the first `candidateLimit` hits are ranked, so which fields count decides what can be found at all. A word that is
               // common in descriptions and keyword lists ("plasterboard", a brand) would fill the limit with incidental matches and
               // push out the products it names in their title, brand or category. Look in those fields first, then fill the rest
               // from every searchable field.
-              const strongPaths = [...new Set([
-                ...mapping.titlePaths, ...mapping.brandPaths, ...mapping.categoryPaths, ...mapping.categoryHierarchyPaths, ...mapping.identifierPaths,
-              ])];
+              const strongPaths = strongSearchPaths();
               const [strongDocs, anyFieldDocs] = await Promise.all([
                 runFind(keywordClausesFor(strongPaths)),
                 runFind(keywordClausesFor(mapping.searchPaths)),
@@ -1206,6 +1252,23 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             relaxedConstraints.push('inStockOnly');
           }
           relaxedConstraints.push('attributes');
+        }
+      }
+
+      // Step 1b (on request): loosen the keywords to "any of them" but KEEP the product type. A type is a steadier anchor than a
+      // phrase the customer's own words made up ("bathroom wall"), and dropping it returns products from unrelated shelves.
+      if (items.length === 0 && input.relaxKeywordsFirst && hasType && hasKeywords) {
+        const typeKeptSpecs: StructuredSearchSpecs = { ...specs, attributes: {}, attributeVariants: {} };
+        const relaxedItems = await fetchCandidates(typeKeptSpecs, category, 'any', { filterInStock: false, allowTokenDisjunction: true, keywordsInMemory: true });
+        if (relaxedItems.length > 0) {
+          items = relaxedItems;
+          if (input.inStockOnly && !relaxedConstraints.includes('inStockOnly')) {
+            relaxedConstraints.push('inStockOnly');
+          }
+          if (specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
+            relaxedConstraints.push('attributes');
+          }
+          relaxedConstraints.push('keywords');
         }
       }
 

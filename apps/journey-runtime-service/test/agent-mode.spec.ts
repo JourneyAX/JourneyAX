@@ -4000,6 +4000,22 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.deepEqual(res.relaxedConstraints, ['attributes', 'productType', 'keywords']);
       });
 
+      test('relaxKeywordsFirst loosens the keywords but keeps the product type, so other shelves do not fill the answer', async () => {
+        const products = [
+          { tenantId: 'test-tenant', sku: 'PB-1', title: 'Moisture Resistant Board 10mm', category: 'Plasterboard', description: 'Lining for the walls of a bathroom', price: { amount: 20, currency: 'NZD' }, inStock: true },
+          { tenantId: 'test-tenant', sku: 'PL-1', title: 'Bathroom Wall Tap Set', category: 'Plumbing & Pipes', price: { amount: 30, currency: 'NZD' }, inStock: true },
+        ];
+        const ctx: any = { tenantId: 'test-tenant', packSettings: { catalogMapping: { attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS } } };
+        const request = { isAgentMode: true, productType: 'Plasterboard', keywords: ['bathroom wall', 'Unobtainium'] };
+
+        const keepsType = await new CatalogSearchHandler(products).execute({ ...request, relaxKeywordsFirst: true }, ctx);
+        assert.deepEqual(keepsType.items.map((item: any) => item.sku), ['PB-1']);
+        assert.deepEqual(keepsType.relaxedConstraints, ['keywords']);
+
+        const dropsType = await new CatalogSearchHandler(products).execute(request, ctx);
+        assert.ok(dropsType.items.some((item: any) => item.sku === 'PL-1'), 'without the option the product type is dropped first');
+      });
+
       test('search_products tool returns relaxedConstraints and explanation message to AI', async () => {
         const product = {
           tenantId: 'test-tenant',

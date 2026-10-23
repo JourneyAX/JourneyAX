@@ -1045,6 +1045,8 @@ export async function executeAgentTool(
         minPriceCents: minPrice !== undefined ? Math.round(Number(minPrice) * 100) : undefined,
         maxPriceCents: maxPrice !== undefined ? Math.round(Number(maxPrice) * 100) : undefined,
         inStockOnly,
+        // The agent often writes the room or job into the keywords; keep the product type rather than fall to unrelated shelves.
+        relaxKeywordsFirst: true,
         maxResults: 6,
       };
 
