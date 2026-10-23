@@ -19,7 +19,7 @@ import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-r
 import { ReleaseValidationPort } from './release-validation.port';
 import { assertOkfReferenceReady, validateOkfJourneyReferences } from '@journeyax/knowledge';
 import { UNATTRIBUTED_PRINCIPAL } from '@journeyax/shared-types';
-import { isComponentCategoryCompatible, resolveCatalogMapping } from '@journeyax/business-pack';
+import { isComponentCategoryCompatible, resolveCatalogMapping, CatalogMappingSchema } from '@journeyax/business-pack';
 
 export type PublicationEnvironment = 'dev' | 'test' | 'staging' | 'production';
 const PUBLICATION_ENVIRONMENTS: readonly PublicationEnvironment[] = ['dev', 'test', 'staging', 'production'];
@@ -513,6 +513,18 @@ export class BusinessPackPublicationService {
       ? { primaryLocale: doc.profile.primaryLocale, supportedLocales: [...new Set([doc.profile.primaryLocale, ...(doc.profile.supportedLocales ?? [])])] }
       : {};
 
+    let validatedCatalogMapping: any = undefined;
+    if ((doc as any).catalogMapping) {
+      const parsedMapping = CatalogMappingSchema.safeParse((doc as any).catalogMapping);
+      if (!parsedMapping.success) {
+        return {
+          success: false,
+          message: `Publish blocked: invalid catalogMapping: ${parsedMapping.error.issues.map((i: any) => `${i.path.join('.')} ${i.message}`).join('; ')}`,
+        };
+      }
+      validatedCatalogMapping = parsedMapping.data;
+    }
+
     const businessPack = {
       manifest: {
         packId: `pack_${pid}`,
@@ -563,7 +575,7 @@ export class BusinessPackPublicationService {
       },
       ...((doc as any).factRegistry ? { factRegistry: (doc as any).factRegistry } : {}),
       ...((doc as any).knowledgeModel ? { knowledgeModel: (doc as any).knowledgeModel } : {}),
-      ...((doc as any).catalogMapping ? { catalogMapping: (doc as any).catalogMapping } : {}),
+      ...(validatedCatalogMapping ? { catalogMapping: validatedCatalogMapping } : {}),
       modelPolicy: compiledModelPolicy,
       agents: compiledAgents,
       journeys: validatedJourneys,

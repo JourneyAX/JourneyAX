@@ -483,6 +483,7 @@ export function createAbercrombieRelease(): BusinessPackRelease {
         },
       },
     ],
+    catalogMapping: ABERCROMBIE_CATALOG_MAPPING,
     extensions: {
       agentMode: {
         enabled: true,
@@ -493,6 +494,67 @@ export function createAbercrombieRelease(): BusinessPackRelease {
     },
   };
 }
+
+export const ABERCROMBIE_CATALOG_MAPPING = {
+  version: '1.0.0',
+  attributeAliases: {
+    colour: ['color', 'shade', 'wash'],
+    color: ['colour', 'shade', 'wash'],
+    size: ['garmentSize', 'apparelSize'],
+    fit: ['cut', 'silhouette', 'styleFit'],
+  },
+  attributeDefinitions: {
+    colour: {
+      description: 'Apparel color or wash shade',
+      extractionPatterns: ['\\b(black|grey|gray|white|navy|green|blue|red|beige|olive)\\b'],
+      normalizer: 'lowercase',
+      equivalenceTable: {
+        black: ['black', 'blk', 'noir'],
+        grey: ['grey', 'gray', 'heather grey'],
+        white: ['white', 'wht'],
+        navy: ['navy', 'dark blue'],
+        green: ['green', 'olive'],
+      },
+    },
+    color: {
+      description: 'Apparel color or wash shade',
+      extractionPatterns: ['\\b(black|grey|gray|white|navy|green|blue|red|beige|olive)\\b'],
+      normalizer: 'lowercase',
+      equivalenceTable: {
+        black: ['black', 'blk', 'noir'],
+        grey: ['grey', 'gray', 'heather grey'],
+        white: ['white', 'wht'],
+        navy: ['navy', 'dark blue'],
+        green: ['green', 'olive'],
+      },
+    },
+    size: {
+      description: 'Apparel garment size',
+      extractionPatterns: ['\\b(XXS|XS|S|M|L|XL|XXL|2XL|3XL|Small|Medium|Large)\\b'],
+      normalizer: 'uppercase',
+      equivalenceTable: {
+        XS: ['XS', 'Extra Small'],
+        S: ['S', 'Small'],
+        M: ['M', 'Medium'],
+        L: ['L', 'Large'],
+        XL: ['XL', 'Extra Large'],
+        XXL: ['XXL', '2XL'],
+      },
+    },
+    fit: {
+      description: 'Apparel cut and silhouette style',
+      extractionPatterns: ['\\b(slim|regular|relaxed|oversized|curve love|loose|classic|popover)\\b'],
+      normalizer: 'lowercase',
+      equivalenceTable: {
+        slim: ['slim', 'skinny'],
+        regular: ['regular', 'classic', 'standard'],
+        relaxed: ['relaxed', 'loose', 'oversized'],
+        'curve love': ['curve love', 'curvelove'],
+        popover: ['popover', 'pullover'],
+      },
+    },
+  },
+};
 
 export async function buildAbercrombieStack() {
   const db = new MemoryDb();

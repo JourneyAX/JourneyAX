@@ -77,7 +77,7 @@ export interface MappingForm {
   attributeAliases: Array<{ key: string; aliases: string }>;
   candidateLimit: string;
   /** Parts of the mapping this form does not edit; they are carried through unchanged. */
-  preserved: { version?: string; componentCategoryRules?: Record<string, unknown> };
+  preserved: { version?: string; componentCategoryRules?: Record<string, unknown>; attributeDefinitions?: Record<string, unknown> };
 }
 
 export const emptyPriceSource = (): PriceSourceForm => ({ path: "", unit: "", currencyMode: "field", currencyPath: "", currency: "", rangeKey: "" });
@@ -110,6 +110,7 @@ export function fromMapping(mapping: Record<string, any> | null | undefined): Ma
   form.preserved = {
     ...(mapping.version ? { version: mapping.version } : {}),
     ...(mapping.componentCategoryRules ? { componentCategoryRules: mapping.componentCategoryRules } : {}),
+    ...(mapping.attributeDefinitions ? { attributeDefinitions: mapping.attributeDefinitions } : {}),
   };
   return form;
 }
@@ -139,6 +140,7 @@ export function toMapping(form: MappingForm): Record<string, any> | null {
   if (aliases.length) set("attributeAliases", Object.fromEntries(aliases.map((entry) => [entry.key.trim(), parseList(entry.aliases)])));
   if (form.candidateLimit.trim()) set("candidateLimit", Number(form.candidateLimit));
   if (form.preserved.componentCategoryRules) set("componentCategoryRules", form.preserved.componentCategoryRules);
+  if (form.preserved.attributeDefinitions) set("attributeDefinitions", form.preserved.attributeDefinitions);
   if (Object.keys(mapping).length && form.preserved.version) set("version", form.preserved.version);
   return Object.keys(mapping).length ? mapping : null;
 }

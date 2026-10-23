@@ -31,7 +31,8 @@ import {
   CatalogSearchHandler,
   extractSearchSpecs,
 } from '../src/capabilities/handlers/catalog-search.handler';
-import { PLACEMAKERS_ATTRIBUTE_DEFINITIONS } from './fixtures/placemakers-attributes.fixture';
+import { catalogMapping as placemakersCatalogMapping } from './helpers/placemakers-stack';
+const PLACEMAKERS_ATTRIBUTE_DEFINITIONS = placemakersCatalogMapping.attributeDefinitions || {};
 import { TurnApplicationService } from '../src/kernel/turn-application.service';
 import { TurnTranscriptStore, redactPii } from '../src/kernel/transcript.store';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
@@ -41,7 +42,8 @@ import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
 import { ExecutionRepository } from '../src/kernel/execution.repository';
 import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
-import { type BusinessPackRelease, validateBusinessPack } from '@journeyax/business-pack';
+import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema } from '@journeyax/business-pack';
+import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 
 // Helper fixtures for isolated tests
@@ -3740,6 +3742,49 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         for (const word of buildingIndustryWords) {
           assert.doesNotMatch(reply, new RegExp(`\\b${word}\\b`, 'i'));
         }
+      });
+    });
+
+    describe('Task S1: Catalog Mapping Attribute Definitions & Validation', () => {
+      test('PlaceMakers attribute definitions are loaded from real catalogue mapping data and pass CatalogMappingSchema', () => {
+        assert.ok(placemakersCatalogMapping.attributeDefinitions, 'placemakers mapping must contain attributeDefinitions');
+        const sizeDef = placemakersCatalogMapping.attributeDefinitions.size;
+        const treatmentDef = placemakersCatalogMapping.attributeDefinitions.treatment;
+        const rValueDef = placemakersCatalogMapping.attributeDefinitions.rValue;
+
+        assert.ok(sizeDef?.extractionPatterns?.length, 'size attribute must have extraction patterns');
+        assert.ok(treatmentDef?.extractionPatterns?.length, 'treatment attribute must have extraction patterns');
+        assert.ok(rValueDef?.extractionPatterns?.length, 'rValue attribute must have extraction patterns');
+
+        assert.ok(sizeDef?.equivalenceTable?.['100x50'], 'size equivalence table must contain 100x50');
+        assert.ok(treatmentDef?.equivalenceTable?.['H3.2'], 'treatment equivalence table must contain H3.2');
+        assert.ok(rValueDef?.equivalenceTable?.['R2.2'], 'rValue equivalence table must contain R2.2');
+
+        const parsed = CatalogMappingSchema.safeParse(placemakersCatalogMapping);
+        assert.equal(parsed.success, true, 'placemakers catalog mapping must validate against CatalogMappingSchema');
+      });
+
+      test('Apparel fixture tenant (Abercrombie) defines colour, size, and fit attributes validated by CatalogMappingSchema', () => {
+        assert.ok(ABERCROMBIE_CATALOG_MAPPING.attributeDefinitions, 'abercrombie mapping must contain attributeDefinitions');
+        const colourDef = ABERCROMBIE_CATALOG_MAPPING.attributeDefinitions.colour;
+        const sizeDef = ABERCROMBIE_CATALOG_MAPPING.attributeDefinitions.size;
+        const fitDef = ABERCROMBIE_CATALOG_MAPPING.attributeDefinitions.fit;
+
+        assert.ok(colourDef?.extractionPatterns?.length, 'colour attribute must have extraction patterns');
+        assert.ok(sizeDef?.extractionPatterns?.length, 'size attribute must have extraction patterns');
+        assert.ok(fitDef?.extractionPatterns?.length, 'fit attribute must have extraction patterns');
+
+        const parsed = CatalogMappingSchema.safeParse(ABERCROMBIE_CATALOG_MAPPING);
+        assert.equal(parsed.success, true, 'abercrombie catalog mapping must validate against CatalogMappingSchema');
+
+        // Test extraction for apparel
+        const specs = extractSearchSpecs({
+          query: 'Looking for a black popover hoodie in size M',
+          attributeDefinitions: ABERCROMBIE_CATALOG_MAPPING.attributeDefinitions as any,
+        });
+        assert.equal(specs.attributes?.colour || specs.attributes?.color, 'black');
+        assert.equal(specs.attributes?.size, 'M');
+        assert.equal(specs.attributes?.fit, 'popover');
       });
     });
   });
