@@ -21,8 +21,8 @@ In accordance with strict grounding and zero-hallucination principles, agent pro
 
 | Calculator / Formula | Unverified Constants / Assumptions | Verification Reference | Action / Status |
 |---|---|---|---|
-| Plasterboard sheet estimator | Sheet dimensions: 2.4m x 1.2m (2.88 m²)<br>Wastage allowance: 10% | `okf:placemakers-trade-calc#plasterboard-standard` | Moved to `docs/agent-instructions/calculators.placemakers.json`; requires verifier sign-off |
-| Decking linear metre estimator | Board width: 90mm, 140mm<br>Gap spacing: 4mm–6mm<br>Wastage allowance: 10% | `okf:placemakers-trade-calc#decking-standard` | Moved to `docs/agent-instructions/calculators.placemakers.json`; requires verifier sign-off |
+| Plasterboard sheet estimator | Sheet dimensions: 2.4m x 1.2m (2.88 m²)<br>Wastage allowance: 10% / 0.85–0.88 factors | `okf:placemakers-trade-calc#plasterboard-standard` | Unverified; moved to worklist; excluded from live pack until verified against authoritative source |
+| Decking linear metre estimator | Board width: 90mm, 140mm<br>Gap spacing: 4mm–6mm<br>Wastage allowance: 10% / 0.85–0.88 factors | `okf:placemakers-trade-calc#decking-standard` | Unverified; moved to worklist; excluded from live pack until verified against authoritative source |
 
 ---
 

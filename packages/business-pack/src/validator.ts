@@ -335,6 +335,43 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     }
   }
 
+  // 12. Validate Calculators: Reject any calculator with an unresolved verificationRef
+  const knownVerificationIds = new Set<string>();
+  if (Array.isArray((pack as any).factRegistry?.verifications)) {
+    for (const v of (pack as any).factRegistry.verifications) {
+      if (v.recordId) knownVerificationIds.add(v.recordId);
+      if (v.id) knownVerificationIds.add(v.id);
+    }
+  }
+  if (Array.isArray((pack as any).knowledgeModel?.verifications)) {
+    for (const v of (pack as any).knowledgeModel.verifications) {
+      if (v.recordId) knownVerificationIds.add(v.recordId);
+      if (v.id) knownVerificationIds.add(v.id);
+    }
+  }
+  if (Array.isArray((pack as any).verifications)) {
+    for (const v of (pack as any).verifications) {
+      if (v.recordId) knownVerificationIds.add(v.recordId);
+      if (v.id) knownVerificationIds.add(v.id);
+    }
+  }
+
+  for (const calc of pack.calculators || []) {
+    if (!calc.verificationRef) {
+      issues.push({
+        severity: 'error',
+        path: `calculators[${calc.calculatorId}].verificationRef`,
+        message: `Calculator '${calc.calculatorId}' must have an authoritative verificationRef to be included in a release`,
+      });
+    } else if (!knownVerificationIds.has(calc.verificationRef)) {
+      issues.push({
+        severity: 'error',
+        path: `calculators[${calc.calculatorId}].verificationRef`,
+        message: `Calculator '${calc.calculatorId}' references unresolved verificationRef '${calc.verificationRef}'`,
+      });
+    }
+  }
+
   return {
     valid: !issues.some((i) => i.severity === 'error'),
     issues,
