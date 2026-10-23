@@ -4870,3 +4870,77 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
 });
 
 
+
+describe('Agent quality: repair round, size spelling and ranking', () => {
+  test('a size written 150x50 matches however the catalogue spells it, and only that size', () => {
+    const rx = new RegExp(stemPattern('150x50', 'en-NZ'), 'i');
+    for (const spelled of ['150 x 50mm', '150X50mm', '150*50', '150x50']) assert.ok(rx.test(spelled), `${spelled} should match`);
+    assert.ok(!rx.test('100 x 50mm'));
+  });
+
+  test('keyword search ranks a product that matches the rare word (the size) above one that matches only the common word', async () => {
+    const make = (sku: string, title: string) => ({ tenantId: 'test-tenant', sku, title, name: title, category: 'Treated Timber', description: 'Treated framing timber', price: { amount: 15, currency: 'NZD' }, inStock: true });
+    const products = [
+      make('A1', 'Radiata H3.2 CCA Treated 100 x 50mm'),
+      make('A2', 'Radiata H3.2 CCA Treated 200 x 50mm'),
+      make('A3', 'Radiata H3.2 CCA Treated 100 x 100mm'),
+      make('B1', 'Radiata SG8 H3.2 CCA Treated 150 x 50mm (140 x 45mm)'),
+    ];
+    const handler = new CatalogSearchHandler(products);
+    const res = await handler.execute({ isAgentMode: true, keywords: ['150x50', 'treated', 'pine'] } as any, { tenantId: 'test-tenant' } as any);
+    assert.equal(res.items[0].sku, 'B1', 'the 150 x 50 product ranks first even though "pine" matches nothing');
+  });
+
+  test('when the claim guard leaves almost nothing, the model gets one repair round and a clean rewrite replaces the answer', async () => {
+    const gateway = new ModelGateway();
+    const release = createTestPack();
+    const workspace = createTestWorkspace();
+    let calls = 0;
+    const repairedText = "I don't have verified information on that. Which product do you mean, and where will it be used? I can also connect you with a person at the branch.";
+    gateway.mockAgentExecutor = async (req, onDelta) => {
+      calls++;
+      const text = calls === 1 ? 'These boards carry a 25 year warranty.' : repairedText;
+      onDelta?.(text);
+      return { content: text, toolCalls: [], usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 } };
+    };
+    const outcome = await new AgentTurnLoop().execute({
+      command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 's-repair', correlationId: 'c-repair', message: 'Is there a warranty on these boards?' },
+      release,
+      workspace,
+      modelGateway: gateway,
+      catalogSearchHandler: { search: async () => ({ products: [], total: 0 }) } as any,
+      sink: () => {},
+    } as any);
+    assert.equal(calls >= 2, true, 'a repair round was made');
+    assert.equal(outcome.turnResult.assistantMessage, repairedText);
+    assert.ok(!/25 year/.test(outcome.turnResult.assistantMessage));
+  });
+
+  test('a handoff that arrives with no words gets one explanation round, then the handoff message follows', async () => {
+    const gateway = new ModelGateway();
+    const release = createTestPack();
+    const workspace = createTestWorkspace();
+    let calls = 0;
+    const explanation = "I can't confirm structural advice from the information I have. The span and the loads are things a licensed engineer looks at, and a team member will pick this up with you.";
+    gateway.mockAgentExecutor = async (req, onDelta) => {
+      calls++;
+      if (calls === 1) {
+        return { content: '', toolCalls: [{ id: 'h1', name: 'hand_off_to_human', arguments: { reason: 'structural question' } }], usage: { promptTokens: 5, completionTokens: 5, totalTokens: 10 } };
+      }
+      assert.equal(req.tools, undefined, 'the explanation round offers no tools');
+      onDelta?.(explanation);
+      return { content: explanation, toolCalls: [], usage: { promptTokens: 5, completionTokens: 5, totalTokens: 10 } };
+    };
+    const outcome = await new AgentTurnLoop().execute({
+      command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 's-h', correlationId: 'c-h', message: 'What timber grade should I use for load-bearing beams?' },
+      release,
+      workspace,
+      modelGateway: gateway,
+      catalogSearchHandler: { search: async () => ({ products: [], total: 0 }) } as any,
+      sink: () => {},
+    } as any);
+    assert.equal(calls, 2);
+    assert.ok(outcome.turnResult.assistantMessage.startsWith(explanation));
+    assert.ok(/notified|assist/i.test(outcome.turnResult.assistantMessage), 'the handoff message follows the explanation');
+  });
+});
