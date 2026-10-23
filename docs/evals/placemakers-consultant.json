@@ -1,0 +1,69 @@
+[
+  {
+    "id": 201,
+    "category": "Consultant flow",
+    "prompt": "gib",
+    "purpose": "A customer names a brand word only: the agent should explain the plasterboard range, name the groups and supporting products, and ask what is needed.",
+    "groundTruthReference": "Broad request. Expect: one plain sentence on what the group is, the main groups with counts, what usually goes with it (tape, compound, screws, trims) as suggestions, one combined question, and only a few example products.",
+    "expectedType": "advice"
+  },
+  {
+    "id": 202,
+    "category": "Consultant flow",
+    "prompt": "jib",
+    "purpose": "A misspelling of the same word.",
+    "groundTruthReference": "Broad request with a typo. Expect the agent to recognise the likely word, explain the range and ask, not answer with a product list or a bare clarification.",
+    "expectedType": "advice"
+  },
+  {
+    "id": 203,
+    "category": "Consultant flow",
+    "prompt": "I need plasterboard for a bathroom",
+    "purpose": "A broad request with one fact given (wet area).",
+    "groundTruthReference": "Expect: explanation of board groups with the wet-area fact used to point at the right group, supporting products, and one question for what is still unknown (size, ceiling or wall).",
+    "expectedType": "advice"
+  },
+  {
+    "id": 204,
+    "category": "Consultant flow",
+    "prompt": "decking",
+    "purpose": "A single group word.",
+    "groundTruthReference": "Broad request. Expect the groups (composite, hardwood, radiata, accessories) with counts, what goes with decking, and a question about the project.",
+    "expectedType": "advice"
+  },
+  {
+    "id": 205,
+    "category": "Consultant flow",
+    "prompt": "screws",
+    "purpose": "A very broad fixing word.",
+    "groundTruthReference": "Broad request. Expect groups of screws (wood, metal), the drill and driver bits that go with them, and a question about what they are fixing.",
+    "expectedType": "advice"
+  },
+  {
+    "id": 206,
+    "category": "Consultant flow",
+    "prompt": "Standard Wallboard 2400 x 1200 x 10mm",
+    "purpose": "A narrow request naming an exact item.",
+    "groundTruthReference": "Narrow request. Expect matching products straight away, with price, and a next step; no range lecture.",
+    "expectedType": "advice"
+  },
+  {
+    "id": 207,
+    "category": "Consultant flow",
+    "prompt": [
+      "gib",
+      "it's for a bathroom wall, about 12 square metres"
+    ],
+    "purpose": "A broad ask followed by the customer's answer.",
+    "groundTruthReference": "Second turn should narrow to the right board with a reason each, name the supporting products by job, work out a quantity if a calculator exists, and end with one next step.",
+    "expectedType": "advice"
+  },
+  {
+    "id": 208,
+    "category": "Consultant flow",
+    "prompt": "insulation",
+    "purpose": "A broad material word.",
+    "groundTruthReference": "Broad request. Expect the groups (polystyrene, polyester, fibreglass, wool) with counts and a question about where it goes.",
+    "expectedType": "advice"
+  }
+]

@@ -3,7 +3,7 @@
   "agentMode": true,
   "interpretationPolicy": {
     "replyStyle": {
-      "maxSentences": 8,
+      "maxSentences": 14,
       "dropListLines": false,
       "dropCompanyName": false,
       "allowFollowUpQuestion": true,
@@ -12,9 +12,51 @@
       "rules": [
         "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
         "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
-        "Never ask for something the customer has already told you."
+        "Never ask for something the customer has already told you.",
+        "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+        "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
       ],
-      "turnStyles": {}
+      "turnStyles": {
+        "answer": {
+          "maxSentences": 14,
+          "dropListLines": false,
+          "allowFollowUpQuestion": true,
+          "maxQuestions": 5,
+          "rules": [
+            "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+            "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+            "Never ask for something the customer has already told you.",
+            "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+            "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
+          ]
+        },
+        "recommend": {
+          "maxSentences": 14,
+          "dropListLines": false,
+          "allowFollowUpQuestion": true,
+          "maxQuestions": 5,
+          "rules": [
+            "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+            "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+            "Never ask for something the customer has already told you.",
+            "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+            "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
+          ]
+        },
+        "howto": {
+          "maxSentences": 14,
+          "dropListLines": false,
+          "allowFollowUpQuestion": true,
+          "maxQuestions": 5,
+          "rules": [
+            "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+            "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+            "Never ask for something the customer has already told you.",
+            "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+            "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
+          ]
+        }
+      }
     }
   },
   "routingPolicy": {
@@ -22,6 +64,16 @@
     "fallbackOnCatalogSearch": true
   },
   "journeyPlaybook": [
+    {
+      "id": "orient",
+      "name": "Orient the customer",
+      "goal": "For a broad request, explain what the range holds (the main groups, how many products each, what usually goes with it) before asking what is needed.",
+      "tools": [
+        "browse_range",
+        "consult_business_knowledge"
+      ],
+      "exitCondition": "The customer has heard what the range holds and been asked what is needed to narrow it down."
+    },
     {
       "id": "understand",
       "name": "Understand the job",
