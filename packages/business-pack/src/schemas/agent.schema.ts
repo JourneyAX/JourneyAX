@@ -48,6 +48,7 @@ export const AgentDefinitionSchema = z.object({
   maxTurns: z.number().int().default(3),
   handoffConditions: z.array(z.string()).default([]),
   isDefault: z.boolean().optional(),
+  toolFirst: z.boolean().optional(),
   journeyPlaybook: JourneyPlaybookUnionSchema.optional(),
 });
 

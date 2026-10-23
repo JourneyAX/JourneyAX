@@ -207,6 +207,7 @@ export function projectDoc(agentMode = false) {
             agentId: 'placemakers_trade_consultant',
             name: 'PlaceMakers Trade Consultant',
             purpose: 'Guides Kiwi builders and DIYers through multi-trade material estimation, compliance, and trade quote delivery.',
+            toolFirst: true,
             modelPolicyRef: 'complex_reasoning',
             allowedTools: [
               'catalog.search',

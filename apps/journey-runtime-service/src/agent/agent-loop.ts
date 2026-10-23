@@ -176,44 +176,7 @@ export function hasOnlyQuestions(text: string): boolean {
   return sentences.length === 0 || sentences.every((s) => s.endsWith('?'));
 }
 
-/**
- * Detects questions asking what to buy, build, or what materials/components are needed.
- * In agent mode, such questions must call consult_business_knowledge and search_products before answering.
- */
-export function isWhatToBuyOrBuildQuery(message: string): boolean {
-  const lower = (message || '').toLowerCase();
-  return (
-    /\b(?:what(?:'s|\s+is)?\s+needed|what\s+do\s+i\s+need|what\s+to\s+buy|what\s+should\s+i\s+buy|what\s+materials\s+do\s+i\s+need|what\s+components\s+do\s+i\s+need|how\s+to\s+build|what\s+is\s+required\s+to\s+build)\b/i.test(lower) ||
-    /^(?:what(?:'s|\s+is)?\s+needed|what\s+do\s+i\s+need|what\s+fittings|what\s+supplies|what\s+hardware)/i.test(lower)
-  );
-}
 
-/**
- * Validates that an answer to a "what do I need / what to buy or build" question was grounded
- * by calling consult_business_knowledge and search_products.
- */
-export function validateWhatToBuyToolRequirement(
-  toolsCalled: string[] | Array<{ name: string }>,
-  query: string
-): { valid: boolean; reason?: string } {
-  if (!isWhatToBuyOrBuildQuery(query)) {
-    return { valid: true };
-  }
-  const toolNames = toolsCalled.map((t) => (typeof t === 'string' ? t : t.name));
-  const hasConsultKnowledge = toolNames.includes('consult_business_knowledge');
-  const hasSearchProducts = toolNames.includes('search_products');
-  if (!hasConsultKnowledge || !hasSearchProducts) {
-    const missing = [
-      !hasConsultKnowledge && 'consult_business_knowledge',
-      !hasSearchProducts && 'search_products',
-    ].filter(Boolean);
-    return {
-      valid: false,
-      reason: `Questions about what to buy or build must call consult_business_knowledge and search_products before answering. Missing: ${missing.join(', ')}`,
-    };
-  }
-  return { valid: true };
-}
 
 /**
  * @deprecated Backwards-compatible alias for GENERIC_PLATFORM_OPERATING_PROMPT
@@ -731,24 +694,38 @@ function extractToolResultCount(result: any): number | undefined {
 
       // If the model called no tools, check if this is the final customer-facing answer
       if (roundToolCalls.length === 0) {
-        if (
-          round === 0 &&
-          isWhatToBuyOrBuildQuery(command.message || '') &&
-          availableTools.some((t) => t.name === 'search_products')
-        ) {
-          console.warn(
-            '[AgentTurnLoop] "What do I need / what to buy or build" question received answer without tools. Enforcing tool execution.'
+        if (round === 0 && resolvedAgent?.toolFirst) {
+          // Ask the model one small structured question:
+          // "does answering this message need a catalogue or knowledge lookup? yes or no"
+          const checkPrompt = `Message: "${command.message || ''}"\nDoes answering this message need a catalogue or knowledge lookup? Answer with yes or no.`;
+          const checkResponse = await modelGateway.executeAgentStream(
+            release,
+            {
+              taskType: 'agent_turn',
+              systemPrompt: '',
+              messages: [{ role: 'user', content: checkPrompt }],
+              policyRef: resolvedAgent.modelPolicyRef || 'agent_turn',
+            },
+            () => {},
+            signal
           );
-          messages.push({
-            role: 'assistant',
-            content: roundContent,
-          });
-          messages.push({
-            role: 'user',
-            content:
-              'Any question about what to buy or build must call consult_business_knowledge and search_products before answering. Please execute the required tools now.',
-          });
-          continue;
+
+          const checkAnswer = (checkResponse.content || '').trim().toLowerCase();
+          const needsLookup = /\byes\b/i.test(checkAnswer);
+
+          if (needsLookup) {
+            console.warn(
+              `[AgentTurnLoop] toolFirst agent '${resolvedAgent.agent.agentId}' returned text without tools in round 0, but lookup check was '${checkAnswer}'. Enforcing tool execution.`
+            );
+            // Discard the text and force tool use
+            roundContent = '';
+            messages.push({
+              role: 'user',
+              content:
+                'Answering this message requires a catalogue or knowledge lookup. Please execute the appropriate tools now before answering.',
+            });
+            continue;
+          }
         }
 
         // If deltas weren't streamed by the executor (e.g. non-streaming mock or direct content), pass roundContent

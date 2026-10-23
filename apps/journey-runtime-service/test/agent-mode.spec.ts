@@ -14,8 +14,6 @@ import {
   formatCustomerContextMessage,
   GENERIC_PLATFORM_OPERATING_PROMPT,
   SAFE_WITHHELD_FALLBACK_ANSWER,
-  isWhatToBuyOrBuildQuery,
-  validateWhatToBuyToolRequirement,
 } from '../src/agent/agent-loop';
 import {
   executeAgentTool,
@@ -4464,38 +4462,23 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       });
     });
 
-    describe('Task U2: Tool-first for "what do I need" questions (#22)', () => {
-      test('validateWhatToBuyToolRequirement fails when a "what do I need" answer is given without tool calls', () => {
-        const query = "What's needed to build a deck from scratch - framing, boards, fixings?";
-        assert.equal(isWhatToBuyOrBuildQuery(query), true);
-
-        // Fails with no tools called
-        const resNoTools = validateWhatToBuyToolRequirement([], query);
-        assert.equal(resNoTools.valid, false);
-        assert.ok(resNoTools.reason?.includes('must call consult_business_knowledge and search_products'));
-
-        // Fails with only search_products
-        const resOnlySearch = validateWhatToBuyToolRequirement(['search_products'], query);
-        assert.equal(resOnlySearch.valid, false);
-        assert.ok(resOnlySearch.reason?.includes('consult_business_knowledge'));
-
-        // Fails with only consult_business_knowledge
-        const resOnlyKnowledge = validateWhatToBuyToolRequirement(['consult_business_knowledge'], query);
-        assert.equal(resOnlyKnowledge.valid, false);
-        assert.ok(resOnlyKnowledge.reason?.includes('search_products'));
-
-        // Succeeds when both tools are called
-        const resBoth = validateWhatToBuyToolRequirement(['consult_business_knowledge', 'search_products'], query);
-        assert.equal(resBoth.valid, true);
-      });
-
-      test('#22: AgentTurnLoop rejects text-only answer in round 0 and enforces consult_business_knowledge and search_products', async () => {
+    describe('Task U2 / V3: Language-free toolFirst design', () => {
+      test('#22: toolFirst agent with product inquiry asks structured question, discards text on yes, and enforces tool use', async () => {
         const gateway = new ModelGateway();
         const release = createTestPack();
+        release.agents[0].toolFirst = true;
         const workspace = createTestWorkspace();
 
         let round = 0;
-        gateway.mockAgentExecutor = async (_req, onDelta) => {
+        gateway.mockAgentExecutor = async (req, onDelta) => {
+          if (req.messages.some((m) => (m.content || '').includes('Does answering this message need a catalogue or knowledge lookup?'))) {
+            return {
+              content: 'yes',
+              toolCalls: [],
+              usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+            };
+          }
+
           round++;
           if (round === 1) {
             // Model attempts to answer immediately without calling tools
@@ -4546,9 +4529,94 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
 
         assert.ok(outcome.toolsCalled.some((t) => t.name === 'consult_business_knowledge'), 'Must call consult_business_knowledge');
         assert.ok(outcome.toolsCalled.some((t) => t.name === 'search_products'), 'Must call search_products');
-        const validation = validateWhatToBuyToolRequirement(outcome.toolsCalled, "What's needed to build a deck from scratch - framing, boards, fixings?");
-        assert.equal(validation.valid, true);
         assert.ok(outcome.turnResult.assistantMessage.includes('1010784'));
+      });
+
+      test('toolFirst agent with conversational greeting asks structured question and accepts text on "no" with 0 tools', async () => {
+        const gateway = new ModelGateway();
+        const release = createTestPack();
+        release.agents[0].toolFirst = true;
+        const workspace = createTestWorkspace();
+
+        let structuredCheckCalled = false;
+        gateway.mockAgentExecutor = async (req) => {
+          if (req.messages.some((m) => (m.content || '').includes('Does answering this message need a catalogue or knowledge lookup?'))) {
+            structuredCheckCalled = true;
+            return {
+              content: 'no',
+              toolCalls: [],
+              usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+            };
+          }
+
+          return {
+            content: 'Kia ora! Welcome to PlaceMakers. How can I help with your project today?',
+            toolCalls: [],
+            usage: { promptTokens: 30, completionTokens: 20, totalTokens: 50 },
+          };
+        };
+
+        const agentLoop = new AgentTurnLoop();
+        const outcome = await agentLoop.execute({
+          command: {
+            tenantId: 'test-tenant',
+            environmentId: 'test',
+            workspaceId: workspace.workspaceId,
+            sessionId: 'test-session-greeting',
+            correlationId: 'test-corr-greeting',
+            message: 'Kia ora, good morning!',
+          },
+          release,
+          workspace,
+          modelGateway: gateway,
+          catalogSearchHandler: { search: async () => ({ products: [], total: 0 }) } as any,
+          sink: () => {},
+        });
+
+        assert.equal(structuredCheckCalled, true, 'Structured check must be asked for toolFirst agent');
+        assert.equal(outcome.toolsCalled.length, 0, 'No tools should be called for greeting');
+        assert.match(outcome.turnResult.assistantMessage, /Kia ora! Welcome to PlaceMakers/);
+      });
+
+      test('agent without toolFirst accepts round-0 text without asking structured question', async () => {
+        const gateway = new ModelGateway();
+        const release = createTestPack();
+        release.agents[0].toolFirst = false;
+        const workspace = createTestWorkspace();
+
+        let structuredCheckCalled = false;
+        gateway.mockAgentExecutor = async (req) => {
+          if (req.messages.some((m) => (m.content || '').includes('Does answering this message need a catalogue or knowledge lookup?'))) {
+            structuredCheckCalled = true;
+            return { content: 'yes', toolCalls: [] };
+          }
+
+          return {
+            content: 'General FAQ answer without tools.',
+            toolCalls: [],
+          };
+        };
+
+        const agentLoop = new AgentTurnLoop();
+        const outcome = await agentLoop.execute({
+          command: {
+            tenantId: 'test-tenant',
+            environmentId: 'test',
+            workspaceId: workspace.workspaceId,
+            sessionId: 'test-session-notoolfirst',
+            correlationId: 'test-corr-notoolfirst',
+            message: 'What are your store hours?',
+          },
+          release,
+          workspace,
+          modelGateway: gateway,
+          catalogSearchHandler: { search: async () => ({ products: [], total: 0 }) } as any,
+          sink: () => {},
+        });
+
+        assert.equal(structuredCheckCalled, false, 'Structured check must NOT be asked when toolFirst is false');
+        assert.equal(outcome.toolsCalled.length, 0);
+        assert.equal(outcome.turnResult.assistantMessage, 'General FAQ answer without tools.');
       });
     });
 

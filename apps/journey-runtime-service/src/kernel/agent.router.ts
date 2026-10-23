@@ -6,6 +6,7 @@ export interface ResolvedAgent {
   systemPrompt: string;
   modelPolicyRef: string;
   allowedTools: string[];
+  toolFirst?: boolean;
 }
 
 export class AgentRouter {
@@ -80,6 +81,7 @@ export class AgentRouter {
       systemPrompt: selectedAgent.systemPromptTemplate || selectedAgent.purpose,
       modelPolicyRef: selectedAgent.modelPolicyRef,
       allowedTools: selectedAgent.allowedTools || [],
+      toolFirst: Boolean((selectedAgent as any)?.toolFirst),
     };
   }
 
