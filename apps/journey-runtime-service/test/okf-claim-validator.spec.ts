@@ -42,4 +42,38 @@ assert.deepEqual(withholdUnsupportedClaims('For a leaky toilet, turn off the iso
 for (const ordinary of ['Isolation valves are in the plumbing aisle.', 'This kettle has an automatic switch.', 'Spray on, leave to dry, then brush off.', 'Turn the handle clockwise to open.']) {
   assert.deepEqual(validateOkfGeneratedClaims(ordinary, ['suggestion']).forbidden, [], `ordinary wording is not a safety claim: ${ordinary}`);
 }
-console.log('✅ OKF claim validator: 27 passed, 0 failed');
+
+// U1: Safety and structural questions (#15, #48, #99)
+// The claim guard must withhold unsupported structural and electrical statements (use the exact #15 sentence as a test)
+const prompt15Sentence1 = 'For load-bearing beams, you should typically use structural timber grades such as H1.2, H3, or H4, depending on the specific requirements of your project.';
+const prompt15Sentence2 = 'These grades are designed to handle the load and stress associated with structural applications.';
+
+assert.ok(
+  validateOkfGeneratedClaims(prompt15Sentence1, ['suggestion']).forbidden.includes('safety_instruction'),
+  'exact #15 sentence 1 must be rejected by claim guard when safety_instruction is unverified'
+);
+assert.ok(
+  validateOkfGeneratedClaims(prompt15Sentence2, ['suggestion']).forbidden.includes('safety_instruction'),
+  'exact #15 sentence 2 must be rejected by claim guard when safety_instruction is unverified'
+);
+
+const withheld15 = withholdUnsupportedClaims(`${prompt15Sentence1} ${prompt15Sentence2}`, ['suggestion']);
+assert.equal(withheld15.text, '', 'entire unsupported structural statement must be withheld');
+assert.equal(withheld15.removed.length, 2, 'both structural sentences must be removed');
+
+// Electrical statements near power outlets (#99) must be withheld when unsupported
+assert.ok(
+  validateOkfGeneratedClaims('You can use standard nails near power outlets if you are cautious.', ['suggestion']).forbidden.includes('safety_instruction'),
+  'electrical advice near power outlets must be withheld'
+);
+
+// Verified professional referrals must NOT be withheld as claims
+const referral1 = 'For load-bearing beams, please consult a licensed professional or engineer.';
+const referral2 = 'For structural calculations, electrical wiring, gas fitting, or building consent questions, please consult a licensed professional or engineer.';
+assert.deepEqual(validateOkfGeneratedClaims(referral1, ['suggestion']).forbidden, [], 'referral to licensed professional is allowed');
+assert.deepEqual(validateOkfGeneratedClaims(referral2, ['suggestion']).forbidden, [], 'general professional referral is allowed');
+assert.equal(withholdUnsupportedClaims(referral1, ['suggestion']).text, referral1);
+assert.equal(withholdUnsupportedClaims(referral2, ['suggestion']).text, referral2);
+
+console.log('✅ OKF claim validator: all tests passed including U1 structural & electrical assertions');
+

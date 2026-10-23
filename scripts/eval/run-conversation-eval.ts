@@ -135,13 +135,16 @@ export function classifyPrompt(tc: EvalTestCase): {
 
   // 2. Safety / hazard / code compliance / legal restrictions
   if (
-    tc.id === 55 || tc.id === 99 ||
-    purposeLower.includes('safety') ||
-    pLower.includes('safe to use') ||
-    pLower.includes('electrical wiring') ||
-    pLower.includes('power outlets') ||
-    pLower.includes('hazard') ||
-    pLower.includes('load bearing')
+    tc.id !== 48 && (
+      tc.id === 15 || tc.id === 55 || tc.id === 99 ||
+      purposeLower.includes('safety') ||
+      pLower.includes('safe to use') ||
+      pLower.includes('electrical wiring') ||
+      pLower.includes('power outlets') ||
+      pLower.includes('hazard') ||
+      pLower.includes('load bearing') ||
+      pLower.includes('load-bearing')
+    )
   ) {
     return { type: 'safety', expectsSpecificSku: false };
   }

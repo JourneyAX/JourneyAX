@@ -1,5 +1,11 @@
 import type { ClaimClass } from '@journeyax/knowledge';
 
+/**
+ * Legitimate referrals to licensed professionals (e.g. LBP, electrician, engineer) are safe
+ * disclaimers and compliance guidance, not affirmative unsupported claims.
+ */
+const IS_PROFESSIONAL_REFERRAL = /\b(?:consult|refer to|speak with|check with|ask)\b.*\b(?:licensed|professional|engineer|electrician|practitioner|lbp|specialist)\b/i;
+
 const CLAIM_PATTERNS: ReadonlyArray<[ClaimClass, RegExp]> = [
   ['warranty', /\b(?:warrant(?:y|ies|ed)|guarantee(?:d|s)?|covered for \d+)\b/i],
   ['legal_requirement', /\b(?:compli(?:ant|ance|es|ed|y)|building code|regulat(?:ion|ory)|legally|by law|certified to)\b/i],
@@ -7,7 +13,10 @@ const CLAIM_PATTERNS: ReadonlyArray<[ClaimClass, RegExp]> = [
   ['substitution', /\b(?:equivalent|substitut(?:e|ion)|interchangeable|replacement for)\b/i],
   ['installation_step', /\b(?:install|mount|attach|drill|wire|fix(?:ing)? to|connect to|fasten)\b/i],
   ['care_safety', /\b(?:dilut(?:e|es|ed|ing|ion)|abrasive|chemical|ventilat(?:e|es|ed|ing|ion)|clean(?:er|ing)? safely)\b/i],
-  ['safety_instruction', /\b(?:safe to|unsafe|hazard|danger|isolat(?:e|es|ing) (?:the |your |it |them )?\w+|(?:turn|switch|shut)(?: \w+){0,3}? off|(?:avoid|stop) using|(?:do not|don't|never) use|protective equipment|(?:wear|use) (?:\w+ ){0,2}(?:respirators?|masks?|gloves|goggles|glasses|protective))\b/i],
+  [
+    'safety_instruction',
+    /\b(?:safe to|unsafe|hazard|danger|isolat(?:e|es|ing) (?:the |your |it |them )?\w+|(?:turn|switch|shut)(?: \w+){0,3}? off|(?:avoid|stop) using|(?:do not|don't|never) use|protective equipment|(?:wear|use) (?:\w+ ){0,2}(?:respirators?|masks?|gloves|goggles|glasses|protective)|load-bearing|load bearing|structural (?:grade|grades|beam|beams|support|member|wall|application|applications)|handle the load|stress associated with structural|(?:near|around) (?:power )?outlets?|electrical (?:wiring|circuit|cables?|shocks?)|mains (?:power|wiring|supply)|wire to|wiring to|connect to mains)\b/i,
+  ],
   ['requirement', /\b(?:must|mandatory|required|requires?|need(?:s)? to|necessary)\b/i],
   ['catalog_fact', /(?:\$\s?\d|\b(?:sku\s*[:#]|costs?\s+\d|price(?:d)? at)\b)/i],
   ['stock', /\b(?:in stock|out of stock|in-stock|out-of-stock|available now)\b/i],
@@ -27,6 +36,7 @@ export function validateOkfGeneratedClaims(text: string, allowedClasses: ClaimCl
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     const trimmed = sentence.trim();
     if (!trimmed || trimmed.endsWith('?')) continue;
+    if (IS_PROFESSIONAL_REFERRAL.test(trimmed)) continue;
     for (const [claim, pattern] of CLAIM_PATTERNS) {
       if (!allowed.has(claim) && pattern.test(trimmed)) forbidden.add(claim);
     }
@@ -50,6 +60,7 @@ export function withholdUnsupportedClaims(text: string, allowedClasses: ClaimCla
       const trimmed = sentence.trim();
       if (!trimmed) return false;
       if (trimmed.endsWith('?')) return true;
+      if (IS_PROFESSIONAL_REFERRAL.test(trimmed)) return true;
       const classes = CLAIM_PATTERNS.filter(([claim, pattern]) => !allowed.has(claim) && pattern.test(trimmed)).map(([claim]) => claim);
       if (classes.length === 0) return true;
       removed.push({ sentence: trimmed, classes });

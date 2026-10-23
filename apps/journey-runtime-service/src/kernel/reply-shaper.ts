@@ -179,6 +179,20 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
 }
 
 /**
+ * Detects vacuous filler phrases (such as "Would you like assistance with something else")
+ * that must not replace a withheld answer.
+ */
+export function isFillerQuestion(sentence: string): boolean {
+  const trimmed = sentence.trim();
+  return (
+    /^(?:would you like|can i help you with|is there|do you need) (?:assistance with|help with|anything else|something else|guidance on a related topic|an alternative|further assistance)[^a-zA-Z0-9]*$/i.test(trimmed) ||
+    /^(?:would you like assistance with (?:something|anything) else(?:\s+or\s+perhaps\s+guidance\s+on\s+a\s+related\s+topic)?\??)$/i.test(trimmed) ||
+    /^(?:would you like assistance with anything else\??)$/i.test(trimmed) ||
+    /^(?:would you like assistance with something else\??)$/i.test(trimmed)
+  );
+}
+
+/**
  * Incremental sentence-by-sentence streaming processor.
  * Buffers chunks from executeStream, detects completed sentences, validates them against
  * OKF claim safety and reply shaping rules, and emits approved sentences.
@@ -186,6 +200,7 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
 export class IncrementalSentenceShaper {
   private buffer = '';
   private emittedSentences: string[] = [];
+  private withheldSentences: string[] = [];
   private streamedText = '';
   private compiledShape: CompiledShapeContext;
   private questionsSeen = 0;
@@ -201,6 +216,14 @@ export class IncrementalSentenceShaper {
 
   updateAllowedClaims(claims: ClaimClass[] | Set<ClaimClass>): void {
     this.allowedClaims = claims;
+  }
+
+  getWithheldCount(): number {
+    return this.withheldSentences.length;
+  }
+
+  getWithheldSentences(): string[] {
+    return [...this.withheldSentences];
   }
 
   processDelta(chunk: string): void {
@@ -232,9 +255,16 @@ export class IncrementalSentenceShaper {
       const allowed = this.allowedClaims instanceof Set ? Array.from(this.allowedClaims) : this.allowedClaims;
       const claimResult = validateOkfGeneratedClaims(sentence, allowed);
       if (!claimResult.valid) {
+        this.withheldSentences.push(sentence);
         console.warn(`[ClaimGuard] withheld sentence during stream: "${sentence}" asserting ${claimResult.forbidden.join(', ')}`);
         return;
       }
+    }
+
+    // A withheld answer must never be replaced by a filler such as "Would you like assistance with something else" (#99)
+    if (this.withheldSentences.length > 0 && isFillerQuestion(sentence)) {
+      console.warn(`[ClaimGuard] dropped filler sentence following withheld sentence: "${sentence}"`);
+      return;
     }
 
     const shaped = shapeSentence(sentence, this.compiledShape, this.emittedSentences.length, this.questionsSeen);
