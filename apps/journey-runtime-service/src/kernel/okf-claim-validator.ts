@@ -15,7 +15,7 @@ const CLAIM_PATTERNS: ReadonlyArray<[ClaimClass, RegExp]> = [
   ['care_safety', /\b(?:dilut(?:e|es|ed|ing|ion)|abrasive|chemical|ventilat(?:e|es|ed|ing|ion)|clean(?:er|ing)? safely)\b/i],
   [
     'safety_instruction',
-    /\b(?:safe to|unsafe|hazard|danger|isolat(?:e|es|ing) (?:the |your |it |them )?\w+|(?:turn|switch|shut)(?: \w+){0,3}? off|(?:avoid|stop) using|(?:do not|don't|never) use|protective equipment|(?:wear|use) (?:\w+ ){0,2}(?:respirators?|masks?|gloves|goggles|glasses|protective)|load-bearing|load bearing|structural (?:grade|grades|beam|beams|support|member|wall|application|applications)|handle the load|stress associated with structural|(?:near|around) (?:power )?outlets?|electrical (?:wiring|circuit|cables?|shocks?)|mains (?:power|wiring|supply)|wire to|wiring to|connect to mains)\b/i,
+    /\b(?:safe to|unsafe|hazard|danger|isolat(?:e|es|ing) (?:the |your |it |them )?\w+|(?:turn|switch|shut)(?: \w+){0,3}? off|(?:avoid|stop) using|(?:do not|don't|never) use|protective equipment|(?:wear|use) (?:\w+ ){0,2}(?:respirators?|masks?|gloves|goggles|glasses|protective))\b/i,
   ],
   ['requirement', /\b(?:must|mandatory|required|requires?|need(?:s)? to|necessary)\b/i],
   ['catalog_fact', /(?:\$\s?\d|\b(?:sku\s*[:#]|costs?\s+\d|price(?:d)? at)\b)/i],
@@ -54,12 +54,38 @@ export function extractReferralPatterns(options?: ClaimValidatorOptions | any): 
   });
 }
 
+export function extractExtraClaimPatterns(options?: ClaimValidatorOptions | any): ReadonlyArray<[ClaimClass, RegExp]> {
+  if (!options) return [];
+  const extra =
+    options.extraClaimPatterns ||
+    options.conversationPolicy?.extraClaimPatterns ||
+    options.profile?.extraClaimPatterns ||
+    options.extensions?.claimGuard?.extraClaimPatterns ||
+    options.pack?.conversationPolicy?.extraClaimPatterns;
+
+  if (!extra || typeof extra !== 'object') return [];
+
+  const result: Array<[ClaimClass, RegExp]> = [];
+  for (const [claimClass, patterns] of Object.entries(extra)) {
+    if (!Array.isArray(patterns)) continue;
+    for (const pat of patterns) {
+      if (typeof pat === 'string') {
+        const regex = pat.includes('\\b') ? new RegExp(pat, 'i') : new RegExp(`\\b${pat}\\b`, 'i');
+        result.push([claimClass as ClaimClass, regex]);
+      } else if (pat instanceof RegExp) {
+        result.push([claimClass as ClaimClass, pat]);
+      }
+    }
+  }
+  return result;
+}
+
 function isIntroductoryTopicPhrase(clause: string): boolean {
   const trimmed = clause.trim();
   if (!/^(?:for|regarding|as for|in case of|with respect to|when considering)\b/i.test(trimmed)) {
     return false;
   }
-  if (/\b(?:is|are|has|have|was|were|must|requires?|install|drill|mount|wire|fasten|fits?|suitable|use|apply)\b/i.test(trimmed)) {
+  if (/\b(?:is|are|has|have|was|were|must|should|requires?|install|drill|mount|wire|fasten|fits?|suitable|use|apply)\b/i.test(trimmed)) {
     return false;
   }
   return true;
@@ -166,11 +192,13 @@ export function validateOkfGeneratedClaims(
   const allowed = new Set(allowedClasses);
   const forbidden = new Set<ClaimClass>();
   const referralPatterns = extractReferralPatterns(options);
+  const extraPatterns = extractExtraClaimPatterns(options);
+  const claimPatterns = extraPatterns.length > 0 ? [...CLAIM_PATTERNS, ...extraPatterns] : CLAIM_PATTERNS;
 
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     const trimmed = sentence.trim();
     if (!trimmed || trimmed.endsWith('?')) continue;
-    const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, CLAIM_PATTERNS);
+    const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, claimPatterns);
     for (const c of sentenceForbidden) forbidden.add(c);
   }
   return { valid: forbidden.size === 0, forbidden: [...forbidden] };
@@ -195,6 +223,8 @@ export function withholdUnsupportedClaims(
   const allowed = new Set(allowedClasses);
   const removed: WithheldSentence[] = [];
   const referralPatterns = extractReferralPatterns(options);
+  const extraPatterns = extractExtraClaimPatterns(options);
+  const claimPatterns = extraPatterns.length > 0 ? [...CLAIM_PATTERNS, ...extraPatterns] : CLAIM_PATTERNS;
 
   const lines = text
     .split(/\n+/)
@@ -203,7 +233,7 @@ export function withholdUnsupportedClaims(
         const trimmed = sentence.trim();
         if (!trimmed) return false;
         if (trimmed.endsWith('?')) return true;
-        const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, CLAIM_PATTERNS);
+        const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, claimPatterns);
         if (sentenceForbidden.length === 0) return true;
         removed.push({ sentence: trimmed, classes: sentenceForbidden });
         return false;

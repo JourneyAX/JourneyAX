@@ -117,6 +117,23 @@ function createTestPack(overrides: Record<string, any> = {}): BusinessPackReleas
           'ask a licensed',
         ],
       },
+      extraClaimPatterns: {
+        safety_instruction: [
+          'load-bearing',
+          'load bearing',
+          'structural (?:grade|grades|beam|beams|support|member|wall|application|applications)',
+          'handle the load',
+          'stress associated with structural',
+          '(?:near|around) (?:power )?outlets?',
+          'electrical (?:wiring|circuit|cables?|shocks?)',
+          'mains (?:power|wiring|supply)',
+          'wire to',
+          'wiring to',
+          'connect to mains',
+        ],
+      },
+      withheldAnswerMessage:
+        'We can provide verified product specifications from our catalogue, but cannot advise on structural design or electrical safety. For structural calculations, electrical wiring, gas fitting, or building consent questions, please consult a licensed professional or engineer. Would you like me to connect you with a specialist consultant or store staff member?',
     },
     journeys: [
       {
@@ -3767,6 +3784,59 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           assert.doesNotMatch(reply, new RegExp(`\\b${word}\\b`, 'i'));
         }
       });
+
+      test('V2: apparel tenant withheld answer contains zero building words', async () => {
+        const apparelPack = createApparelTestPack();
+        const workspace = createTestWorkspace('apparel-retail');
+        const gateway = new ModelGateway();
+
+        // Model returns an ungrounded warranty claim that gets withheld
+        const ungroundedClaim = 'This jacket has a 10-year warranty.';
+        gateway.mockAgentExecutor = async () => ({
+          content: ungroundedClaim,
+          toolCalls: [],
+        });
+
+        const agentLoop = new AgentTurnLoop();
+        const outcome = await agentLoop.execute({
+          command: {
+            tenantId: 'apparel-retail',
+            environmentId: 'test',
+            workspaceId: workspace.workspaceId,
+            sessionId: 'sess-apparel-withheld',
+            correlationId: 'corr-apparel-withheld',
+            message: 'Is this coat covered by warranty?',
+          },
+          release: apparelPack,
+          workspace,
+          modelGateway: gateway,
+          catalogSearchHandler: { execute: async () => ({ products: [], totalCount: 0 }) } as any,
+        });
+
+        const reply = outcome.turnResult.assistantMessage || '';
+        assert.ok(reply.length > 0, 'withheld fallback answer must be emitted');
+        const forbiddenBuildingWords = [
+          'structural',
+          'beam',
+          'beams',
+          'lintel',
+          'bearer',
+          'gas',
+          'waterproofing',
+          'building consent',
+          'electrical wiring',
+          'timber',
+          'framing',
+        ];
+        for (const word of forbiddenBuildingWords) {
+          assert.doesNotMatch(
+            reply,
+            new RegExp(`\\b${word}\\b`, 'i'),
+            `Apparel withheld fallback answer must never contain building word "${word}"`
+          );
+        }
+        assert.equal(reply, SAFE_WITHHELD_FALLBACK_ANSWER);
+      });
     });
 
     describe('Task S1: Catalog Mapping Attribute Definitions & Validation', () => {
@@ -4330,7 +4400,8 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           sink: () => {},
         });
 
-        assert.equal(outcome.turnResult.assistantMessage, SAFE_WITHHELD_FALLBACK_ANSWER);
+        const expectedWithheld = (release.conversationPolicy as any).withheldAnswerMessage;
+        assert.equal(outcome.turnResult.assistantMessage, expectedWithheld);
         assert.ok(!outcome.turnResult.assistantMessage.includes('H1.2'));
         assert.ok(!outcome.turnResult.assistantMessage.includes('structural timber grades'));
         assert.ok(outcome.turnResult.assistantMessage.includes('licensed professional or engineer'));
@@ -4371,7 +4442,8 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           sink: () => {},
         });
 
-        assert.equal(outcome.turnResult.assistantMessage, SAFE_WITHHELD_FALLBACK_ANSWER);
+        const expectedWithheld = (release.conversationPolicy as any).withheldAnswerMessage;
+        assert.equal(outcome.turnResult.assistantMessage, expectedWithheld);
         assert.ok(!outcome.turnResult.assistantMessage.includes('Would you like assistance with something else'));
         assert.ok(!outcome.turnResult.assistantMessage.includes('guidance on a related topic'));
       });

@@ -25,7 +25,7 @@ import { formatBusinessProfile } from '../kernel/business-knowledge';
 import { AgentRouter, type ResolvedAgent } from '../kernel/agent.router';
 import { readHistory, appendHistory, formatHistoryBlock, type ConversationTurnRecord } from '../conversation';
 import { sanitizeHistoryText } from '../conversation/history';
-import { IncrementalSentenceShaper, isFillerQuestion, type ShapeContext } from '../kernel/reply-shaper';
+import { IncrementalSentenceShaper, type ShapeContext } from '../kernel/reply-shaper';
 import { resolveTurnKind } from '../turn/turn-kind';
 import { resolveInterpretationPolicy } from '../turn/fact-semantics';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
@@ -119,8 +119,7 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
    - Product prices and availability displayed on cards are server-authoritative.
 6. Scope & Boundaries:
    - If a customer asks for items or services outside the merchant's declared scope (see business profile), explain clearly and politely and offer assistance or human handoff if appropriate.
-   - For structural, electrical, gas, and waterproofing-consent questions: give only verified general information, explain what to check, and refer to a licensed professional or engineer.
-   - Never advise on structural calculations, spans, or load-bearing specifications (such as beams, lintels, or bearers). Explain what parameters to verify and refer to a licensed professional or engineer.
+   - For safety-critical or regulatory questions outside verified knowledge: give only verified general information, explain what parameters must be verified, and refer to a qualified specialist or licensed professional.
 7. Knowledge Verification & Unverified Topics:
    - When consult_business_knowledge, search_guides, or get_warranty return nothing (found: false or 0 results) for a requested topic, product, or question:
      a. You MUST explicitly state that you have no verified information on that topic.
@@ -145,11 +144,37 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
 - Never output internal tool narration (e.g. "I will now search the catalogue"). Speak directly to the customer.`;
 
 /**
- * Short safe fallback answer when claims are withheld by ClaimGuard:
- * states what we can say, what needs a professional, and an offer of a person.
+ * Neutral safe fallback answer when claims are withheld by ClaimGuard:
+ * contains one neutral sentence with no industry words.
  */
 export const SAFE_WITHHELD_FALLBACK_ANSWER =
-  'We can provide verified product specifications from our catalogue, but cannot advise on structural design or electrical safety. For structural calculations, electrical wiring, gas fitting, or building consent questions, please consult a licensed professional or engineer. Would you like me to connect you with a specialist consultant or store staff member?';
+  'We can only provide verified product specifications from our catalogue and cannot provide unverified technical guidance; please consult a qualified specialist for assistance.';
+
+export function getWithheldFallbackMessage(release?: any, locale = 'en-NZ'): string {
+  const custom =
+    release?.conversationPolicy?.withheldAnswerMessage ||
+    release?.profile?.withheldAnswerMessage ||
+    release?.extensions?.claimGuard?.withheldAnswerMessage;
+
+  if (typeof custom === 'string' && custom.trim()) {
+    return custom;
+  }
+  if (custom && typeof custom === 'object') {
+    const loc = locale || release?.profile?.primaryLocale || 'en-NZ';
+    const msg = custom[loc] || custom[loc.split('-')[0]] || custom['default'] || Object.values(custom)[0];
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+
+  return SAFE_WITHHELD_FALLBACK_ANSWER;
+}
+
+export function hasOnlyQuestions(text: string): boolean {
+  const sentences = text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return sentences.length === 0 || sentences.every((s) => s.endsWith('?'));
+}
 
 /**
  * Detects questions asking what to buy, build, or what materials/components are needed.
@@ -899,10 +924,10 @@ function extractToolResultCount(result: any): number | undefined {
         finalAssistantText = handoffMsg;
         sink('token', { replace: finalAssistantText, delta: finalAssistantText });
       }
-    } else if (!finalAssistantText || (shaper.getWithheldCount() > 0 && (!finalAssistantText || isFillerQuestion(finalAssistantText)))) {
-      // If sentences were withheld by claim guard (or replaced by filler / empty text),
-      // provide a short safe answer: what we can say, what needs a professional, and an offer of a person.
-      finalAssistantText = SAFE_WITHHELD_FALLBACK_ANSWER;
+    } else if (!finalAssistantText || (shaper.getWithheldCount() > 0 && hasOnlyQuestions(finalAssistantText))) {
+      // If sentences were withheld by claim guard and what remains has no statement (only questions or empty),
+      // provide the pack's withheld answer message (or industry-neutral default).
+      finalAssistantText = getWithheldFallbackMessage(release, (command as any).locale);
       sink('token', { replace: finalAssistantText, delta: finalAssistantText });
     }
 

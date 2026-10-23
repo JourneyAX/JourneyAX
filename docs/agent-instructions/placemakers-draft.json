@@ -22,7 +22,23 @@
         "ask a professional",
         "ask a licensed"
       ]
-    }
+    },
+    "extraClaimPatterns": {
+      "safety_instruction": [
+        "load-bearing",
+        "load bearing",
+        "structural (?:grade|grades|beam|beams|support|member|wall|application|applications)",
+        "handle the load",
+        "stress associated with structural",
+        "(?:near|around) (?:power )?outlets?",
+        "electrical (?:wiring|circuit|cables?|shocks?)",
+        "mains (?:power|wiring|supply)",
+        "wire to",
+        "wiring to",
+        "connect to mains"
+      ]
+    },
+    "withheldAnswerMessage": "We can provide verified product specifications from our catalogue, but cannot advise on structural design or electrical safety. For structural calculations, electrical wiring, gas fitting, or building consent questions, please consult a licensed professional or engineer. Would you like me to connect you with a specialist consultant or store staff member?"
   },
   "agents": [
     {
