@@ -73,21 +73,40 @@ check('availability is stated as the record states it', () => {
 
 check('related products skip the product itself, retired ones, duplicates and anything without a name; at most four', () => {
   const rel = (sku: string, extra: any = {}) => ({ parentSku: sku, name: `Item ${sku}`, priceUSD: { min: 10 }, currency: 'NZD', imageUrl: `http://localhost:8099/${sku}.jpg`, ...extra });
-  const detail = buildProductDetail(board, [
+  const detail = buildProductDetail(board, { related: [
     rel('3400582'), rel('A1'), rel('A1'), rel('A2', { discontinued: true }), rel('A3', { status: 'Delisted' }), { parentSku: 'A4' },
     rel('B1'), rel('B2'), rel('B3'), rel('B4'),
-  ]);
+  ] });
   assert.deepEqual(detail.related.map((r) => r.sku), ['A1', 'B1', 'B2', 'B3']);
   assert.deepEqual(toRelated(rel('Z9')), { sku: 'Z9', title: 'Item Z9', price: 10, currency: 'NZD', imageUrl: 'http://localhost:8099/Z9.jpg' });
+});
+
+check('what the catalogue suggests alongside is kept apart from similar products, and nothing is listed twice', () => {
+  const rel = (sku: string) => ({ parentSku: sku, name: `Item ${sku}`, priceUSD: { min: 5 }, currency: 'NZD' });
+  const detail = buildProductDetail(board, { suggested: [rel('T1'), rel('T2'), rel('3400582')], related: [rel('T2'), rel('S1'), rel('S2')] });
+  assert.deepEqual(detail.suggested.map((r) => r.sku), ['T1', 'T2']);
+  assert.deepEqual(detail.related.map((r) => r.sku), ['S1', 'S2'], 'T2 is already under suggestions');
 });
 
 check('a record with almost nothing still builds, and shows only what is there', () => {
   const detail = buildProductDetail({ parentSku: 'X1', name: 'Plain item' });
   assert.equal(detail.title, 'Plain item');
-  assert.deepEqual([detail.features, detail.specs, detail.documents, detail.related], [[], [], [], []]);
+  assert.deepEqual([detail.features, detail.specs, detail.documents, detail.suggested, detail.related], [[], [], [], [], []]);
   assert.equal(detail.description, undefined);
   assert.equal(detail.availability, undefined);
   assert.equal(detail.price, null);
+});
+
+check('bullet points the description repeats from the feature list are shown once, as features', () => {
+  const detail = buildProductDetail({
+    parentSku: 'X3', name: 'Repeats',
+    description: 'A water resistant lining for wet rooms, with a strong core. Suitable for bathrooms and showers Water resistant core Ideal tiling substrate',
+    featuresList: ['Suitable for bathrooms and showers', 'Water resistant core', 'Ideal tiling substrate'],
+  });
+  assert.equal(detail.description, 'A water resistant lining for wet rooms, with a strong core.');
+  assert.equal(detail.features.length, 3);
+  const noFeatures = buildProductDetail({ parentSku: 'X4', name: 'Plain', description: 'Only a description here, nothing repeated at all in this one.' });
+  assert.equal(noFeatures.description, 'Only a description here, nothing repeated at all in this one.');
 });
 
 check('a long description is cut at a sentence, not mid-word', () => {

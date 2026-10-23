@@ -3041,13 +3041,16 @@ export class ProductService {
       const products = db.collection('products');
       const doc = await products.findOne({ projectId: brand, $or: [{ parentSku: clean }, { sku: clean }] });
       if (!doc || isRetired(doc)) return null;
-      const relatedSkus = (Array.isArray(doc.related) ? doc.related : []).map(String).filter((s: string) => s && s !== clean).slice(0, MAX_RELATED * 3);
-      const relatedDocs = relatedSkus.length
-        ? await products.find({ projectId: brand, parentSku: { $in: relatedSkus } }, { projection: { parentSku: 1, name: 1, priceUSD: 1, currency: 1, imageUrl: 1, discontinued: 1, delisted: 1, status: 1 } }).toArray()
+      const skusOf = (list: unknown): string[] => (Array.isArray(list) ? list : []).map((entry: any) => String(typeof entry === 'string' ? entry : entry?.sku ?? '')).filter((s: string) => s && s !== clean).slice(0, MAX_RELATED * 3);
+      const suggestedSkus = skusOf(doc.accessories);
+      const relatedSkus = skusOf(doc.related);
+      const wanted = [...new Set([...suggestedSkus, ...relatedSkus])];
+      const found = wanted.length
+        ? await products.find({ projectId: brand, parentSku: { $in: wanted } }, { projection: { parentSku: 1, name: 1, priceUSD: 1, currency: 1, imageUrl: 1, discontinued: 1, delisted: 1, status: 1 } }).toArray()
         : [];
-      // Keep the order the record gives them in.
-      relatedDocs.sort((a: any, b: any) => relatedSkus.indexOf(a.parentSku) - relatedSkus.indexOf(b.parentSku));
-      return buildProductDetail(doc, relatedDocs);
+      // Each list keeps the order the record gives it in.
+      const inOrder = (skus: string[]) => skus.map((sku) => found.find((d: any) => d.parentSku === sku)).filter(Boolean);
+      return buildProductDetail(doc, { suggested: inOrder(suggestedSkus), related: inOrder(relatedSkus) });
     }, { ttlSeconds: 600 });
   }
 

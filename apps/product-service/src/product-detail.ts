@@ -27,6 +27,9 @@ export interface ProductDetail {
   features: string[];
   specs: Array<{ label: string; value: string }>;
   documents: Array<{ title: string; url: string; kind?: string }>;
+  /** What the catalogue itself suggests alongside this product ("Have you considered?"). Suggestions only, never a statement of fit. */
+  suggested: ProductDetailRelated[];
+  /** Similar products and other sizes of the same line. */
   related: ProductDetailRelated[];
   /** Branch availability as the record states it. `inStock` is true when at least one branch has it. */
   availability?: { label: string; inStock: boolean; branchesWithStock: number; branchCount: number };
@@ -113,7 +116,7 @@ export function toRelated(doc: any): ProductDetailRelated | undefined {
 export const isRetired = (doc: any): boolean =>
   doc?.discontinued === true || doc?.delisted === true || ['discontinued', 'delisted', 'retired'].includes(String(doc?.status || '').toLowerCase());
 
-export function buildProductDetail(doc: any, relatedDocs: any[] = []): ProductDetail {
+export function buildProductDetail(doc: any, linked: { related?: any[]; suggested?: any[] } = {}): ProductDetail {
   const amount = doc?.priceUSD?.min ?? doc?.price?.amount ?? (typeof doc?.price === 'number' ? doc.price : undefined);
 
   const features: string[] = [];
@@ -151,13 +154,22 @@ export function buildProductDetail(doc: any, relatedDocs: any[] = []): ProductDe
   }
 
   const self = String(doc?.parentSku ?? doc?.sku ?? '');
-  const related: ProductDetailRelated[] = [];
-  for (const candidate of relatedDocs) {
-    if (isRetired(candidate)) continue;
-    const item = toRelated(candidate);
-    if (item && item.sku !== self && !related.some((r) => r.sku === item.sku)) related.push(item);
-    if (related.length >= MAX_RELATED) break;
-  }
+  // Other products named by the record: skip this product, retired ones, repeats and anything shown in an earlier list.
+  const shown = new Set<string>([self]);
+  const products = (docs: any[] = []): ProductDetailRelated[] => {
+    const out: ProductDetailRelated[] = [];
+    for (const candidate of docs) {
+      if (isRetired(candidate)) continue;
+      const item = toRelated(candidate);
+      if (!item || shown.has(item.sku)) continue;
+      shown.add(item.sku);
+      out.push(item);
+      if (out.length >= MAX_RELATED) break;
+    }
+    return out;
+  };
+  const suggested = products(linked.suggested);
+  const related = products(linked.related);
 
   const stock = doc?.stock;
   let availability: ProductDetail['availability'];
@@ -174,7 +186,11 @@ export function buildProductDetail(doc: any, relatedDocs: any[] = []): ProductDe
     };
   }
 
-  const description = clip(tidy(doc?.description) || tidy(doc?.narrative), MAX_DESCRIPTION_CHARS);
+  // A record's description often ends with the same bullet points its feature list repeats; they are shown once, as features.
+  let fullDescription = tidy(doc?.description) || tidy(doc?.narrative);
+  const firstFeature = features.map((f) => fullDescription.indexOf(f)).filter((i) => i > 40).sort((a, b) => a - b)[0];
+  if (firstFeature !== undefined) fullDescription = fullDescription.slice(0, firstFeature).replace(/[\s,;:–-]+$/, '').trim();
+  const description = clip(fullDescription, MAX_DESCRIPTION_CHARS);
   const path = Array.isArray(doc?.categoryPath) ? doc.categoryPath.map(String) : undefined;
   const productUrl = [doc?.web?.productUrl, doc?.url].find(isHttp);
 
@@ -191,6 +207,7 @@ export function buildProductDetail(doc: any, relatedDocs: any[] = []): ProductDe
     features,
     specs,
     documents,
+    suggested,
     related,
     ...(availability ? { availability } : {}),
     ...(productUrl ? { productUrl } : {}),
