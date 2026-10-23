@@ -14,6 +14,8 @@ import {
   formatCustomerContextMessage,
   GENERIC_PLATFORM_OPERATING_PROMPT,
   SAFE_WITHHELD_FALLBACK_ANSWER,
+  isWhatToBuyOrBuildQuery,
+  validateWhatToBuyToolRequirement,
 } from '../src/agent/agent-loop';
 import {
   executeAgentTool,
@@ -4370,6 +4372,94 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.notEqual(classification.type, 'safety');
         assert.equal(classification.type, 'product_lookup');
         assert.equal(classification.expectsSpecificSku, true);
+      });
+    });
+
+    describe('Task U2: Tool-first for "what do I need" questions (#22)', () => {
+      test('validateWhatToBuyToolRequirement fails when a "what do I need" answer is given without tool calls', () => {
+        const query = "What's needed to build a deck from scratch - framing, boards, fixings?";
+        assert.equal(isWhatToBuyOrBuildQuery(query), true);
+
+        // Fails with no tools called
+        const resNoTools = validateWhatToBuyToolRequirement([], query);
+        assert.equal(resNoTools.valid, false);
+        assert.ok(resNoTools.reason?.includes('must call consult_business_knowledge and search_products'));
+
+        // Fails with only search_products
+        const resOnlySearch = validateWhatToBuyToolRequirement(['search_products'], query);
+        assert.equal(resOnlySearch.valid, false);
+        assert.ok(resOnlySearch.reason?.includes('consult_business_knowledge'));
+
+        // Fails with only consult_business_knowledge
+        const resOnlyKnowledge = validateWhatToBuyToolRequirement(['consult_business_knowledge'], query);
+        assert.equal(resOnlyKnowledge.valid, false);
+        assert.ok(resOnlyKnowledge.reason?.includes('search_products'));
+
+        // Succeeds when both tools are called
+        const resBoth = validateWhatToBuyToolRequirement(['consult_business_knowledge', 'search_products'], query);
+        assert.equal(resBoth.valid, true);
+      });
+
+      test('#22: AgentTurnLoop rejects text-only answer in round 0 and enforces consult_business_knowledge and search_products', async () => {
+        const gateway = new ModelGateway();
+        const release = createTestPack();
+        const workspace = createTestWorkspace();
+
+        let round = 0;
+        gateway.mockAgentExecutor = async (_req, onDelta) => {
+          round++;
+          if (round === 1) {
+            // Model attempts to answer immediately without calling tools
+            return {
+              content: "To build a deck from scratch, you'll need framing, boards, and fixings.",
+              toolCalls: [],
+              usage: { promptTokens: 40, completionTokens: 25, totalTokens: 65 },
+            };
+          } else if (round === 2) {
+            // Model received steering message demanding tools, calls consult_business_knowledge and search_products
+            return {
+              content: '',
+              toolCalls: [
+                { id: 'call_know', name: 'consult_business_knowledge', arguments: { topic: 'deck construction requirements' } },
+                { id: 'call_search', name: 'search_products', arguments: { query: 'decking' } },
+              ],
+              usage: { promptTokens: 60, completionTokens: 30, totalTokens: 90 },
+            };
+          } else {
+            // Model generates final answer grounded in tool outputs
+            const finalReply = 'Here are the recommended options from the catalogue: Pine Decking 100 x 25mm H3.2 (SKU 1010784) and Bremick Decking Screws (SKU 4066403).';
+            onDelta?.(finalReply);
+            return {
+              content: finalReply,
+              toolCalls: [],
+              usage: { promptTokens: 80, completionTokens: 40, totalTokens: 120 },
+            };
+          }
+        };
+
+        const agentLoop = new AgentTurnLoop();
+        const outcome = await agentLoop.execute({
+          command: {
+            tenantId: 'test-tenant',
+            environmentId: 'test',
+            workspaceId: workspace.workspaceId,
+            sessionId: 'test-session-22',
+            correlationId: 'test-corr-22',
+            message: "What's needed to build a deck from scratch - framing, boards, fixings?",
+          },
+          release,
+          workspace,
+          modelGateway: gateway,
+          catalogSearchHandler: { search: async () => ({ products: [{ sku: '1010784', name: 'Pine Decking' }], total: 1 }) } as any,
+          knowledgeSearchHandler: { search: async () => [{ title: 'Decking Guide', snippet: 'Use H3.2 for decking' }] } as any,
+          sink: () => {},
+        });
+
+        assert.ok(outcome.toolsCalled.some((t) => t.name === 'consult_business_knowledge'), 'Must call consult_business_knowledge');
+        assert.ok(outcome.toolsCalled.some((t) => t.name === 'search_products'), 'Must call search_products');
+        const validation = validateWhatToBuyToolRequirement(outcome.toolsCalled, "What's needed to build a deck from scratch - framing, boards, fixings?");
+        assert.equal(validation.valid, true);
+        assert.ok(outcome.turnResult.assistantMessage.includes('1010784'));
       });
     });
   });

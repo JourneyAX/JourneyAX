@@ -103,13 +103,16 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
 2. Tool Narration Prohibition:
    - Tool narration must not be spoken to the customer.
    - Never say "I will now search the catalogue", "Let me consult business knowledge", "Checking our database", or describe internal tool calls or operational mechanics. Answer the customer directly with verified facts, advice, and actionable next steps.
-3. Search & Stock Truth:
+3. Tool-First for "What do I need" and Purchasing Inquiries:
+   - Any question about what to buy or build (e.g. "what do I need", "what's needed to build...", "what materials do I need") MUST call consult_business_knowledge and search_products before answering.
+   - Never answer a question about what to buy or build with plain text alone without calling tools.
+4. Search & Stock Truth:
    - When a product search returns no items, state that no matching products were found in the catalogue. Never claim or imply that an item is out of stock when search returns no results.
    - In-stock claims must ONLY be made if check_stock returned inStock: true. Never state or imply that an item is in stock without verifying via check_stock. If check_stock returns inStock: false, inform the customer that the item is currently out of stock or requires special ordering.
-4. Product Lifecycle & Discontinued Items:
+5. Product Lifecycle & Discontinued Items:
    - Discontinued, retired, or inactive products CANNOT be recommended to customers and CANNOT be added to any cart or quote.
    - If a discontinued item is mentioned or searched for, recommend active alternatives from the catalogue instead.
-5. UI Presentation:
+6. UI Presentation:
    - Present interactive UI cards via the present_card tool using supported card types.
    - Never output raw HTML or custom UI syntax.
    - Every product SKU referenced on a card MUST have been returned by a tool result in this turn. Discontinued products must never appear on cards.
@@ -147,6 +150,45 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
  */
 export const SAFE_WITHHELD_FALLBACK_ANSWER =
   'We can provide verified product specifications from our catalogue, but cannot advise on structural design or electrical safety. For structural calculations, electrical wiring, gas fitting, or building consent questions, please consult a licensed professional or engineer. Would you like me to connect you with a specialist consultant or store staff member?';
+
+/**
+ * Detects questions asking what to buy, build, or what materials/components are needed.
+ * In agent mode, such questions must call consult_business_knowledge and search_products before answering.
+ */
+export function isWhatToBuyOrBuildQuery(message: string): boolean {
+  const lower = (message || '').toLowerCase();
+  return (
+    /\b(?:what(?:'s|\s+is)?\s+needed|what\s+do\s+i\s+need|what\s+to\s+buy|what\s+should\s+i\s+buy|what\s+materials\s+do\s+i\s+need|what\s+components\s+do\s+i\s+need|how\s+to\s+build|what\s+is\s+required\s+to\s+build)\b/i.test(lower) ||
+    /^(?:what(?:'s|\s+is)?\s+needed|what\s+do\s+i\s+need|what\s+fittings|what\s+supplies|what\s+hardware)/i.test(lower)
+  );
+}
+
+/**
+ * Validates that an answer to a "what do I need / what to buy or build" question was grounded
+ * by calling consult_business_knowledge and search_products.
+ */
+export function validateWhatToBuyToolRequirement(
+  toolsCalled: string[] | Array<{ name: string }>,
+  query: string
+): { valid: boolean; reason?: string } {
+  if (!isWhatToBuyOrBuildQuery(query)) {
+    return { valid: true };
+  }
+  const toolNames = toolsCalled.map((t) => (typeof t === 'string' ? t : t.name));
+  const hasConsultKnowledge = toolNames.includes('consult_business_knowledge');
+  const hasSearchProducts = toolNames.includes('search_products');
+  if (!hasConsultKnowledge || !hasSearchProducts) {
+    const missing = [
+      !hasConsultKnowledge && 'consult_business_knowledge',
+      !hasSearchProducts && 'search_products',
+    ].filter(Boolean);
+    return {
+      valid: false,
+      reason: `Questions about what to buy or build must call consult_business_knowledge and search_products before answering. Missing: ${missing.join(', ')}`,
+    };
+  }
+  return { valid: true };
+}
 
 /**
  * @deprecated Backwards-compatible alias for GENERIC_PLATFORM_OPERATING_PROMPT
@@ -661,13 +703,32 @@ function extractToolResultCount(result: any): number | undefined {
       roundContent = response.content;
       roundToolCalls = response.toolCalls || [];
 
-      // If deltas weren't streamed by the executor (e.g. non-streaming mock or direct content), pass roundContent
-      if (roundStreamedChunks === 0 && roundContent) {
-        shaper.processDelta(roundContent);
-      }
-
-      // If the model called no tools, this is the final customer-facing answer
+      // If the model called no tools, check if this is the final customer-facing answer
       if (roundToolCalls.length === 0) {
+        if (
+          round === 0 &&
+          isWhatToBuyOrBuildQuery(command.message || '') &&
+          availableTools.some((t) => t.name === 'search_products')
+        ) {
+          console.warn(
+            '[AgentTurnLoop] "What do I need / what to buy or build" question received answer without tools. Enforcing tool execution.'
+          );
+          messages.push({
+            role: 'assistant',
+            content: roundContent,
+          });
+          messages.push({
+            role: 'user',
+            content:
+              'Any question about what to buy or build must call consult_business_knowledge and search_products before answering. Please execute the required tools now.',
+          });
+          continue;
+        }
+
+        // If deltas weren't streamed by the executor (e.g. non-streaming mock or direct content), pass roundContent
+        if (roundStreamedChunks === 0 && roundContent) {
+          shaper.processDelta(roundContent);
+        }
         isFinished = true;
         break;
       }
