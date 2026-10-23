@@ -49,6 +49,8 @@ import { AgentTurnLoop, isAgentModeEnabled } from '../agent/agent-loop';
 import { TurnTranscriptStore } from './transcript.store';
 import { KnowledgeGapRepository } from './knowledge-gap.repository';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
+import { CatalogueIndexRegistry, openCatalogueDatabase } from '../capabilities/catalogue-index';
+import { resolveCatalogMapping } from '@journeyax/business-pack';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
 import { resolveCustomerEventAction } from './customer-event-policy';
@@ -138,6 +140,24 @@ export class TurnApplicationService {
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
+    }
+  }
+
+  /**
+   * Loads the in-memory catalogue copy of the tenants named in CATALOGUE_INDEX_WARM_TENANTS (comma separated), so their first
+   * customer does not wait for it. Does nothing when the index is off; a tenant that fails to load is only logged.
+   */
+  async warmCatalogueIndex(): Promise<void> {
+    const registry = CatalogueIndexRegistry.shared();
+    if (!registry.isEnabled()) return;
+    const tenants = (process.env.CATALOGUE_INDEX_WARM_TENANTS || '').split(',').map((tenant) => tenant.trim()).filter(Boolean);
+    for (const tenantId of tenants) {
+      try {
+        const release = await this.packRepo.loadActivePack(tenantId, 'production');
+        await registry.warm({ tenantId, mapping: resolveCatalogMapping((release as any).catalogMapping), getDb: () => openCatalogueDatabase() });
+      } catch (err: any) {
+        console.warn(`[CatalogueIndex] could not warm tenant=${tenantId}: ${err?.message || err}`);
+      }
     }
   }
 
