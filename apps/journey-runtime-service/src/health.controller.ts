@@ -1,5 +1,5 @@
 import { Controller, Get, Query, Param, Optional, Inject } from '@nestjs/common';
-import { Public } from './auth/auth.guard';
+import { Public, InternalOnly } from './auth/auth.guard';
 import { OutboxWorkerService } from './kernel/outbox-worker.service';
 import { RuntimeService } from './runtime.service';
 
@@ -50,7 +50,7 @@ export class HealthController {
     };
   }
 
-  @Public()
+  @InternalOnly()
   @Get('api/v1/runtime/engine-mode/:tenantId')
   async getEngineMode(
     @Param('tenantId') tenantId: string,

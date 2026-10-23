@@ -24,7 +24,8 @@
     "test:guard": "node scripts/run-all-tests.mjs --group guard",
     "okf:snapshot": "node --env-file=.env --import tsx scripts/okf/snapshot-catalogue.ts",
     "okf:ingest": "tsx scripts/okf/ingest-taxonomy.ts",
-    "inventory": "node --env-file=.env --import tsx scripts/inventory/placemakers-inventory.ts"
+    "inventory": "node --env-file=.env --import tsx scripts/inventory/placemakers-inventory.ts",
+    "agent:smoke": "tsx scripts/agent-smoke.ts"
   },
   "packageManager": "npm@10.9.2",
   "devDependencies": {

@@ -96,6 +96,7 @@ export class RuntimeController {
     }
   }
 
+  @InternalOnly()
   @Get('engine-mode')
   async getEngineMode(
     @Param('tenantId') tenantId: string,

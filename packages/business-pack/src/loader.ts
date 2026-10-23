@@ -241,11 +241,7 @@ export class BusinessPackLoader {
         (parsed.data.modelPolicy as any)?.id ||
         parsed.data.modelPolicy?.defaultPolicy ||
         'unspecified';
-      const ext = parsed.data.extensions;
-      const isAgent =
-        ext?.agentMode?.enabled !== false &&
-        ext?.agentMode !== false &&
-        (ext?.agentMode?.enabled === true || ext?.agentMode === true || ext?.dialoguePolicy?.agentMode === true);
+      const isAgent = isAgentModeEnabled(parsed.data);
       const engineMode = isAgent ? 'agent' : 'rule-based';
       console.log(
         `[BusinessPackLoader] Loaded active release: source=database tenant='${tenantId}' env='${environmentId}' version='${targetVersion}' checksum='${rawChecksum.slice(0, 16)}...' modelPolicyId='${modelPolicyId}' engineMode='${engineMode}'`
@@ -332,4 +328,18 @@ export class BusinessPackLoader {
     const cacheKey = `${tenantId}:${environmentId}:latest`;
     return this.cache.has(cacheKey);
   }
+}
+
+/**
+ * Authoritative helper to determine if agent mode is enabled for a pack release.
+ * Evaluates extensions.agentMode and fallback dialoguePolicy settings.
+ */
+export function isAgentModeEnabled(release?: any): boolean {
+  if (!release) return false;
+  const ext = release.extensions;
+  if (!ext) return false;
+  if (ext.agentMode === false || ext.agentMode?.enabled === false) return false;
+  if (ext.agentMode === true || ext.agentMode?.enabled === true) return true;
+  if (ext.dialoguePolicy?.agentMode === true) return true;
+  return false;
 }

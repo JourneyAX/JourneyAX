@@ -43,6 +43,7 @@ import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
 import { AgentRouter } from '../src/kernel/agent.router';
 import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
+import { IS_INTERNAL_ONLY_KEY, IS_PUBLIC_KEY } from '../src/auth/auth.guard';
 import { ExecutionRepository } from '../src/kernel/execution.repository';
 import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
@@ -4361,6 +4362,10 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.equal(res.tenantId, 'my-tenant');
         assert.equal(res.engineMode, 'agent');
         assert.ok(res.toolCount > 0);
+
+        // T3: Engine-mode endpoint must be behind service/admin auth middleware
+        assert.equal(Reflect.getMetadata(IS_INTERNAL_ONLY_KEY, HealthController.prototype.getEngineMode), true);
+        assert.equal(Reflect.getMetadata(IS_PUBLIC_KEY, HealthController.prototype.getEngineMode), undefined);
       });
     });
 
