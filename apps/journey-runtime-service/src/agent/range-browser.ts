@@ -41,11 +41,14 @@ export interface RangeBrowseDeps {
   okf: OkfReleaseContent | null | undefined;
   locale?: string;
   topic?: string;
+  /** What the customer actually wrote, when the agent trimmed it down to a topic: the words it dropped still narrow the request. */
+  alsoSaid?: string;
   /** A category path from an earlier answer, to open one group directly. */
   path?: string[];
   maxNodes?: number;
   count: (paths: string[][]) => Promise<number[]>;
-  examples: (groups: Array<{ conceptId: string; label: string; categoryPaths: string[][]; maxItems: number }>) => Promise<Array<{ conceptId: string; items: RangeExample[] }>>;
+  /** `prefer` are words the customer used that the group's own name does not: examples that carry them come first, where there are any. */
+  examples: (groups: Array<{ conceptId: string; label: string; categoryPaths: string[][]; maxItems: number }>, prefer: string[]) => Promise<Array<{ conceptId: string; items: RangeExample[] }>>;
 }
 
 const CATEGORY_TYPE = 'product_category';
@@ -203,6 +206,33 @@ export function correctTopic(okf: OkfReleaseContent | null | undefined, topic: s
   return changes.length > 0 ? { topic: corrected.join(' '), changes } : null;
 }
 
+/**
+ * Words of the customer's request that the matched group does not account for but that other groups do use (a material, a
+ * treatment, a colour, a use). They narrow the request beyond a range overview, so the answer has to come from a search. Words no
+ * group uses at all ("need", "instead") are just talk and are ignored.
+ */
+export function uncoveredQualifiers(okf: OkfReleaseContent, topic: string, locale: string | undefined, lead: OkfConcept): string[] {
+  const joiners = connectorWordsForLocale(locale);
+  const words = [...new Set(wordsOf(topic).filter((w) => w.length >= 4 && !joiners.has(w) && !/\d/.test(w)))];
+  const matcher = (word: string) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${stemPatternForLocale(word, locale)}(?:$|[^\\p{L}\\p{N}])`, 'iu');
+  const textOf = (concept: OkfConcept) => ` ${[concept.name, ...(concept.synonyms || []), ...(concept.customerPhrases || [])].flatMap((term) => wordsOf(String(term || ''))).join(' ')} `;
+  const leadText = textOf(lead);
+  const others = (okf.concepts || []).filter((c) => c.type === CATEGORY_TYPE && c.conceptId !== lead.conceptId && pathOf(c)).map(textOf);
+  return words.filter((word) => {
+    const rx = matcher(word);
+    return !rx.test(leadText) && others.some((text) => rx.test(text));
+  }).slice(0, 4);
+}
+
+/** The customer's words that the group's own name does not contain but the catalogue's groups do use (a material, a finish): examples should carry them. */
+function preferredWords(okf: OkfReleaseContent, said: string, locale: string | undefined, lead: OkfConcept): string[] {
+  const joiners = connectorWordsForLocale(locale);
+  const matcher = (word: string) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${stemPatternForLocale(word, locale)}(?:$|[^\\p{L}\\p{N}])`, 'iu');
+  const nameText = ` ${wordsOf(lead.name).join(' ')} `;
+  const vocabulary = ` ${(okf.concepts || []).filter((c) => c.type === CATEGORY_TYPE).flatMap((c) => [c.name, ...(c.synonyms || []), ...(c.customerPhrases || [])]).flatMap((term) => wordsOf(String(term || ''))).join(' ')} `;
+  return [...new Set(wordsOf(said).filter((w) => w.length >= 4 && !joiners.has(w) && !/\d/.test(w) && !matcher(w).test(nameText) && matcher(w).test(vocabulary)))].slice(0, 3);
+}
+
 function childrenOf(okf: OkfReleaseContent, concept: OkfConcept): OkfConcept[] {
   const byId = new Map((okf.concepts || []).map((c) => [c.conceptId, c]));
   const ids = new Set<string>(((concept as any).broadQueryPolicy?.groupConceptIds as string[] | undefined) || []);
@@ -230,7 +260,7 @@ function suggestionsFor(okf: OkfReleaseContent, concept: OkfConcept): Array<{ co
 
 const groupOf = (concept: OkfConcept): RangeGroup => ({ name: concept.name, conceptId: concept.conceptId, path: pathOf(concept) });
 
-export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boolean; topic?: string; interpretedAs?: TopicCorrection; nodes: RangeNode[] }> {
+export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boolean; topic?: string; interpretedAs?: TopicCorrection; qualifiers?: string[]; nodes: RangeNode[] }> {
   const { okf } = deps;
   const topic = String(deps.topic || '').trim();
   if (!okf) return { found: false, topic, nodes: [] };
@@ -254,6 +284,8 @@ export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boole
     }
   }
   if (matches.length === 0) return { found: false, topic, nodes: [] };
+  const said = [interpretedAs?.topic ?? topic, deps.alsoSaid].filter(Boolean).join(' ');
+  const qualifiers = deps.path && deps.path.length > 0 ? [] : uncoveredQualifiers(okf, said, deps.locale, matches[0].concept);
 
   // A group inside another match is already described by it.
   const inside = (path: string[], ancestor: string[]) => ancestor.length < path.length && ancestor.every((segment, i) => segment === path[i]);
@@ -295,7 +327,10 @@ export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boole
   const lead = nodes[0];
   const sampled = (lead.children && lead.children.length > 0 ? lead.children : [lead]).filter((group) => group.path && (group.productCount ?? 0) > 0);
   if (sampled.length > 0) {
-    const results = await deps.examples(sampled.map((group) => ({ conceptId: group.conceptId, label: group.name, categoryPaths: [group.path!], maxItems: EXAMPLES_PER_GROUP })));
+    const results = await deps.examples(
+      sampled.map((group) => ({ conceptId: group.conceptId, label: group.name, categoryPaths: [group.path!], maxItems: EXAMPLES_PER_GROUP })),
+      topic ? preferredWords(okf, said, deps.locale, matches[0].concept) : [],
+    );
     for (const result of results) {
       const group = sampled.find((entry) => entry.conceptId === result.conceptId);
       if (group && result.items.length > 0) group.examples = result.items;
@@ -303,5 +338,5 @@ export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boole
   }
 
   // A group with nothing in the catalogue is not worth a customer's time.
-  return { found: true, topic, ...(interpretedAs ? { interpretedAs } : {}), nodes: nodes.filter((node) => node.productCount === undefined || node.productCount > 0) };
+  return { found: true, topic, ...(interpretedAs ? { interpretedAs } : {}), ...(qualifiers.length > 0 ? { qualifiers } : {}), nodes: nodes.filter((node) => node.productCount === undefined || node.productCount > 0) };
 }

@@ -5123,6 +5123,14 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.ok(!lead.about, 'a description that only restates the catalogue is not passed off as the merchant\'s words');
   });
 
+  test('words the matched group does not cover, but other groups do use, mean the request is more specific than an overview', async () => {
+    const withMaterial = await browseRange(deps('gib timber'));
+    assert.deepEqual(withMaterial.qualifiers, ['timber']);
+    assert.equal((await browseRange(deps('gib'))).qualifiers, undefined);
+    assert.equal((await browseRange(deps('gib please'))).qualifiers, undefined, 'talk no group uses is ignored');
+    assert.equal((await browseRange(deps('', { path: ['Building', 'Tape'] }))).qualifiers, undefined);
+  });
+
   test('a group that shares only part of the words is named but not spelled out, and an empty one is left out', async () => {
     const result = await browseRange(deps('wallboard'));
     const names = result.nodes.map((n) => n.name);
@@ -5162,6 +5170,14 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.ok(ctx.turnProductSkus.has('S1') && ctx.turnProductSkus.has('X1'));
     assert.deepEqual(ctx.lastRangeGroup, { name: 'Wallboard', path: ['Building', 'Wallboard'] }, 'the group shown is remembered for the next turn');
     assert.ok(ctx.allowedClaimClasses.has('catalog_fact'));
+    const specific: any = await executeAgentTool('browse_range', { topic: 'gib timber' }, { ...ctx, lastProducts: undefined, turnProductSkus: new Set(), catalogProductCache: new Map(), allowedClaimClasses: new Set() });
+    assert.match(specific.message, /search_products/, 'a request that says more than a group is sent to search');
+    assert.doesNotMatch(specific.message, /shown to the customer on a card/, 'and no example products are put forward for it');
+    const fresh = () => ({ ...ctx, lastProducts: undefined, lastRangeGroup: undefined, turnProductSkus: new Set(), catalogProductCache: new Map(), allowedClaimClasses: new Set() });
+    const preferring: any = await executeAgentTool('browse_range', { topic: 'wallboard aqua' }, fresh());
+    const examplesOf = (name: string) => (preferring.nodes[0].children.find((c: any) => c.name === name)?.examples || []).map((e: any) => e.sku).sort();
+    assert.deepEqual(examplesOf('Specialist Board'), ['X1'], 'a word the customer used that the group name lacks puts the products that carry it first');
+    assert.deepEqual(examplesOf('Standard Board'), ['S1', 'S2'], 'a group with none that carry it shows its usual examples');
     const none: any = await executeAgentTool('browse_range', { topic: 'zzzzz' }, ctx);
     assert.equal(none.found, false);
     assert.ok(/search_products/.test(none.message), 'it says what to do instead');

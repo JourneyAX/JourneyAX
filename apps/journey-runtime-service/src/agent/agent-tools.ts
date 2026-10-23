@@ -377,7 +377,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'browse_range',
-    description: 'Describe what the range holds when the customer names a group of products rather than one item (a general word, a department, a material). Returns the product groups that match, the smaller groups each one splits into, how many products are in each, a few real example products, and the groups customers commonly buy with it. Use it first for a broad request, explain the groups to the customer, and ask what you need to narrow down; then call search_products with a returned group path as categoryPaths. goesWith entries are suggestions only, not confirmed compatible or required.',
+    description: 'Describe what the range holds when the customer names a group of products rather than one item (a general word, a department, a material). Returns the product groups that match, the smaller groups each one splits into, how many products are in each, a few real example products, and the groups customers commonly buy with it. Use it only when the request is a general group word with nothing that narrows it down (no variant, brand or purpose): explain the groups to the customer and ask what you need to narrow down. A request that names any of those goes straight to search_products. After an overview, narrow with search_products, using a returned group path as categoryPaths if useful. goesWith entries are suggestions only, not confirmed compatible or required.',
     parameters: {
       type: 'object',
       properties: {
@@ -933,11 +933,19 @@ export async function executeAgentTool(
         okf: ctx.okfContent,
         locale: (ctx.release as any)?.profile?.primaryLocale,
         topic,
+        alsoSaid: ctx.customerQuestion,
         path,
         count: (paths) => ctx.catalogSearchHandler.countInCategoryPaths(paths, execCtx),
-        examples: async (groups) => {
-          const searched = await ctx.catalogSearchHandler.execute({ isAgentMode: true, groups } as any, execCtx);
-          return (Array.isArray(searched.groups) ? searched.groups : []).map((group: any) => ({
+        examples: async (groups, prefer) => {
+          const lookUp = async (subset: typeof groups, keywords: string[]) => {
+            const searched = await ctx.catalogSearchHandler.execute({ isAgentMode: true, groups: subset, ...(keywords.length > 0 ? { keywords } : {}) } as any, execCtx);
+            return (Array.isArray(searched.groups) ? searched.groups : []) as any[];
+          };
+          // Examples that carry the customer's own extra words come first; a group with none of those shows its usual examples.
+          let found = await lookUp(groups, prefer);
+          const empty = prefer.length > 0 ? groups.filter((group) => !(found.find((f) => f.conceptId === group.conceptId)?.items || []).length) : [];
+          if (empty.length > 0) found = [...found.filter((f) => (f.items || []).length > 0), ...(await lookUp(empty, []))];
+          return found.map((group: any) => ({
             conceptId: group.conceptId,
             items: (Array.isArray(group.items) ? group.items : [])
               .filter((p: any) => p?.sku && !isProductDiscontinued(p))
@@ -970,12 +978,14 @@ export async function executeAgentTool(
       ctx.allowedClaimClasses.add('catalog_fact');
       const leadGroup = result.nodes.find((node) => node.match === 'direct' && node.path) || result.nodes.find((node) => node.path);
       if (leadGroup?.path) ctx.lastRangeGroup = { name: leadGroup.name, path: leadGroup.path };
-      const hasExamples = result.nodes.some((node) => (node.children || [node]).some((group) => (group.examples || []).length > 0));
       const messages: string[] = [];
       if (result.interpretedAs) {
         messages.push(`The word was not found as written; the closest known word was used instead (${result.interpretedAs.changes.map((c: any) => `"${c.from}" as "${c.to}"`).join(', ')}). Tell the customer which word you took it as, in one short clause, so they can correct you.`);
       }
-      if (hasExamples) {
+      if (result.qualifiers && result.qualifiers.length > 0) {
+        // The request says more than a group: an overview would show products that do not fit what was asked for.
+        messages.push(`The request also says ${result.qualifiers.map((q: string) => `"${q}"`).join(', ')}, which this overview does not cover, so it is not the answer. Call search_products with productType set to the group's name and those words as keywords, and answer from what it returns.`);
+      } else if (result.nodes.some((node) => (node.children || [node]).some((group) => (group.examples || []).length > 0))) {
         const exampleSkus = result.nodes.flatMap((node) => (node.children && node.children.length > 0 ? node.children : [node]).flatMap((group) => (group.examples || []).map((example) => example.sku)));
         ctx.lastProducts = { skus: [...new Set(exampleSkus)], relaxed: false };
         messages.push('The example products are shown to the customer on a card right after your reply, with their photos, so write the reply now and do not list products, prices or SKUs in your text.');
