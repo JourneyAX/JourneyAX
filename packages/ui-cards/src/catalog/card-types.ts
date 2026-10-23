@@ -34,6 +34,15 @@ export const ProductFact = z.object({
   badges: z.array(z.string()).optional(),
   rating: z.number().optional(),
   ratingCount: z.number().optional(),
+  /** Short feature statements from the catalogue record (never model-written), shown under the product's name. */
+  highlights: z.array(z.string()).optional(),
+  /** A warning the catalogue's own record gives about this product ("should not be used where..."), shown as a caution and never as a reason. */
+  cautions: z.array(z.string()).optional(),
+  /** Branches holding the product and branches asked, for an availability line the storefront words. */
+  branchesAvailable: z.number().optional(),
+  branchesTotal: z.number().optional(),
+  /** Set by the storefront while the customer has this product ticked for comparison. */
+  comparing: z.boolean().optional(),
   variants: z.array(z.record(z.string(), z.unknown())).optional(),
   attributes: z.record(z.string(), z.unknown()).optional(),
   reason: z.string().optional(),
