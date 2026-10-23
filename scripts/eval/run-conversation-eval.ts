@@ -48,6 +48,8 @@ export interface EvalTestCase {
   purpose: string;
   groundTruthReference: string;
   groundTruthUrls?: string;
+  expectedType?: PromptType;
+  expectedTypeReason?: string;
 }
 
 export interface ToolInvocationRecord {
@@ -123,35 +125,38 @@ export function classifyPrompt(tc: EvalTestCase): {
   type: PromptType;
   expectsSpecificSku: boolean;
 } {
+  // If the test case specifies an expectedType explicitly, honor it directly
+  if (tc.expectedType) {
+    const expectsSpecificSku = tc.expectedType === 'product_lookup';
+    return { type: tc.expectedType, expectsSpecificSku };
+  }
+
   const promptStr = Array.isArray(tc.prompt) ? tc.prompt.join(' ') : tc.prompt;
   const pLower = promptStr.toLowerCase();
   const purposeLower = tc.purpose.toLowerCase();
   const refLower = tc.groundTruthReference.toLowerCase();
 
   // 1. Garbled / gibberish
-  if (tc.id === 100 || pLower.includes('asdkfj')) {
+  if (pLower.includes('asdkfj') || purposeLower.includes('gibberish')) {
     return { type: 'garbled', expectsSpecificSku: false };
   }
 
   // 2. Safety / hazard / code compliance / legal restrictions
   if (
-    tc.id !== 48 && (
-      tc.id === 15 || tc.id === 55 || tc.id === 99 ||
-      purposeLower.includes('safety') ||
-      pLower.includes('safe to use') ||
-      pLower.includes('electrical wiring') ||
-      pLower.includes('power outlets') ||
-      pLower.includes('hazard') ||
-      pLower.includes('load bearing') ||
-      pLower.includes('load-bearing')
-    )
+    purposeLower.includes('safety') ||
+    purposeLower.includes('structural advice boundary') ||
+    purposeLower.includes('hazard') ||
+    pLower.includes('safe to use') ||
+    pLower.includes('electrical wiring') ||
+    pLower.includes('power outlets') ||
+    pLower.includes('load bearing') ||
+    pLower.includes('load-bearing')
   ) {
     return { type: 'safety', expectsSpecificSku: false };
   }
 
   // 3. Vocabulary / local trade slang / terminology
   if (
-    tc.id === 96 || tc.id === 97 || tc.id === 98 ||
     purposeLower.includes('colloquial') ||
     purposeLower.includes('jargon') ||
     purposeLower.includes('synonym') ||
@@ -164,7 +169,6 @@ export function classifyPrompt(tc: EvalTestCase): {
 
   // 4. Education / comparative concepts
   if (
-    tc.id === 3 || tc.id === 17 || tc.id === 57 ||
     purposeLower.includes('comparative') ||
     purposeLower.includes('educational') ||
     purposeLower.includes('not a direct product search') ||
@@ -176,7 +180,6 @@ export function classifyPrompt(tc: EvalTestCase): {
 
   // 5. Project / broad planning
   if (
-    (tc.id >= 86 && tc.id <= 95) ||
     tc.category === 'Vague DIY Project Prompts' ||
     purposeLower.includes('vague project') ||
     purposeLower.includes('project starter') ||
