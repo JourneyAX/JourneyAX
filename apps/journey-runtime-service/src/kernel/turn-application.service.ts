@@ -219,6 +219,8 @@ export class TurnApplicationService {
       // This eliminates the double loadActivePack call and guarantees the exact
       // version and checksum that was validated is what executes — no TOCTOU window.
       const release = effectiveRelease ?? await this.packRepo.loadActivePack(tenantId, envId);
+      const activeEngineMode = isAgentModeEnabled(release) ? 'agent' : 'rule-based';
+      console.log(`[EngineStatus] Active engine mode for tenant='${tenantId}' (${envId}): mode='${activeEngineMode}'`);
 
       // 3. Load existing Workspace State (if present)
       let workspace =

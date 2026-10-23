@@ -34,6 +34,8 @@ import {
 import { catalogMapping as placemakersCatalogMapping } from './helpers/placemakers-stack';
 const PLACEMAKERS_ATTRIBUTE_DEFINITIONS = placemakersCatalogMapping.attributeDefinitions || {};
 import { TurnApplicationService } from '../src/kernel/turn-application.service';
+import { RuntimeService } from '../src/runtime.service';
+import { HealthController } from '../src/health.controller';
 import { TurnTranscriptStore, redactPii } from '../src/kernel/transcript.store';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
@@ -4187,6 +4189,89 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.ok(traceSearch);
         assert.deepEqual(traceSearch.arguments, { query: 'timber 100x50' });
         assert.equal(traceSearch.resultCount, 2);
+      });
+    });
+
+    describe('Task S6: Switchable Agent Mode & Runtime Status Endpoints', () => {
+      test('isAgentModeEnabled strictly respects explicit false disabling even if dialoguePolicy is true', () => {
+        assert.equal(isAgentModeEnabled({ extensions: { agentMode: { enabled: true } } }), true);
+        assert.equal(isAgentModeEnabled({ extensions: { agentMode: { enabled: false }, dialoguePolicy: { agentMode: true } } }), false);
+        assert.equal(isAgentModeEnabled({ extensions: { agentMode: false, dialoguePolicy: { agentMode: true } } }), false);
+        assert.equal(isAgentModeEnabled({ extensions: { dialoguePolicy: { agentMode: true } } }), true);
+        assert.equal(isAgentModeEnabled({ extensions: { agentMode: { enabled: false } } }), false);
+      });
+
+      test('RuntimeService.getEngineMode returns engineMode, defaultAgentId, and toolCount for agent tenant', async () => {
+        const agentPack = createTestPack();
+        (agentPack.extensions as any) = { agentMode: { enabled: true, defaultAgentId: 'specialist-agent' } };
+        agentPack.agents = [
+          {
+            agentId: 'specialist-agent',
+            name: 'Specialist Agent',
+            purpose: 'Specialist advice',
+            instructions: 'Help customers',
+            modelPolicyRef: 'complex_reasoning',
+            allowedTools: ['search_products', 'consult_business_knowledge'],
+          },
+        ];
+
+        const mockAppService = {
+          packRepo: {
+            loadActivePack: async (tId: string) => (tId === 'agent-tenant' ? agentPack : null),
+          },
+        } as any;
+
+        const runtimeService = new RuntimeService(mockAppService);
+        const res = await runtimeService.getEngineMode('agent-tenant', 'test');
+
+        assert.equal(res.status, 'ok');
+        assert.equal(res.tenantId, 'agent-tenant');
+        assert.equal(res.environmentId, 'test');
+        assert.equal(res.engineMode, 'agent');
+        assert.equal(res.defaultAgentId, 'specialist-agent');
+        assert.ok(res.toolCount > 0);
+        assert.ok(res.availableTools.includes('search_products'));
+      });
+
+      test('RuntimeService.getEngineMode returns rule-based for tenant with agentMode: false', async () => {
+        const rulePack = createTestPack();
+        (rulePack.extensions as any) = { agentMode: { enabled: false } };
+        rulePack.capabilities = [{ capabilityId: 'cap-legacy' }] as any;
+
+        const mockAppService = {
+          packRepo: {
+            loadActivePack: async (tId: string) => (tId === 'rule-tenant' ? rulePack : null),
+          },
+        } as any;
+
+        const runtimeService = new RuntimeService(mockAppService);
+        const res = await runtimeService.getEngineMode('rule-tenant', 'production');
+
+        assert.equal(res.status, 'ok');
+        assert.equal(res.tenantId, 'rule-tenant');
+        assert.equal(res.engineMode, 'rule-based');
+        assert.equal(res.toolCount, 1);
+        assert.deepEqual(res.availableTools, ['cap-legacy']);
+      });
+
+      test('HealthController.getEngineMode returns engine mode payload', async () => {
+        const agentPack = createTestPack();
+        (agentPack.extensions as any) = { agentMode: { enabled: true } };
+
+        const mockAppService = {
+          packRepo: {
+            loadActivePack: async () => agentPack,
+          },
+        } as any;
+
+        const runtimeService = new RuntimeService(mockAppService);
+        const healthController = new HealthController(undefined, runtimeService);
+
+        const res: any = await healthController.getEngineMode('my-tenant', 'test');
+        assert.equal(res.status, 'ok');
+        assert.equal(res.tenantId, 'my-tenant');
+        assert.equal(res.engineMode, 'agent');
+        assert.ok(res.toolCount > 0);
       });
     });
   });

@@ -35,6 +35,8 @@ import {
 } from '@journeyax/business-pack';
 import { isInCanaryBucket } from '@journeyax/journey-core';
 import { idleRepinHours, isIdleBeyond, packHostsWorkspace } from './kernel/pin-lifecycle';
+import { isAgentModeEnabled } from './agent/agent-loop';
+import { getAgentToolDefinitions } from './agent/agent-tools';
 
 
 
@@ -833,6 +835,69 @@ export class RuntimeService {
    */
   async getOutboxMetrics(tenantId?: string): Promise<{ pending: number; leased: number; published: number; deadLetter: number }> {
     return this.appService.outboxRepo.getMetrics(tenantId);
+  }
+
+  /**
+   * Retrieves active engine mode, default agent ID, and tool count for a tenant.
+   */
+  async getEngineMode(
+    tenantId: string,
+    environmentId: EnvironmentId = 'production'
+  ): Promise<{
+    status: string;
+    tenantId: string;
+    environmentId: EnvironmentId;
+    engineMode: 'agent' | 'rule-based';
+    defaultAgentId?: string;
+    toolCount: number;
+    availableTools: string[];
+    packVersion?: string;
+  }> {
+    let pack: any = null;
+    try {
+      pack = await this.appService.packRepo.loadActivePack(tenantId, environmentId);
+    } catch {
+      // pack not found
+    }
+
+    if (!pack) {
+      return {
+        status: 'not_found',
+        tenantId,
+        environmentId,
+        engineMode: 'rule-based',
+        toolCount: 0,
+        availableTools: [],
+      };
+    }
+
+    const isAgent = isAgentModeEnabled(pack);
+    const engineMode: 'agent' | 'rule-based' = isAgent ? 'agent' : 'rule-based';
+    const defaultAgentId =
+      (pack.extensions?.agentMode as any)?.defaultAgentId ||
+      pack.routingPolicy?.defaultAgentId ||
+      (Array.isArray(pack.agents) && pack.agents.length === 1 ? pack.agents.find(Boolean)?.agentId : undefined);
+
+    const tools = isAgent ? getAgentToolDefinitions(pack) : [];
+    const toolCount = isAgent ? tools.length : (pack.capabilities || []).length;
+    const availableTools = isAgent
+      ? tools.map((t) => t.name)
+      : (pack.capabilities || []).map((c: any) => c.capabilityId || c.name || c.id || String(c));
+
+    console.log(
+      `[EngineStatus] Active engine mode for tenant='${tenantId}' (${environmentId}): mode='${engineMode}' agentId='${defaultAgentId || 'none'}' toolsCount=${toolCount}`
+    );
+
+    return {
+      status: 'ok',
+      tenantId,
+      environmentId,
+      engineMode,
+      defaultAgentId,
+      toolCount,
+      availableTools,
+      packVersion: pack.manifest?.version || pack.manifest?.packId,
+    };
   }
 }
 

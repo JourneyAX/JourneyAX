@@ -241,8 +241,14 @@ export class BusinessPackLoader {
         (parsed.data.modelPolicy as any)?.id ||
         parsed.data.modelPolicy?.defaultPolicy ||
         'unspecified';
+      const ext = parsed.data.extensions;
+      const isAgent =
+        ext?.agentMode?.enabled !== false &&
+        ext?.agentMode !== false &&
+        (ext?.agentMode?.enabled === true || ext?.agentMode === true || ext?.dialoguePolicy?.agentMode === true);
+      const engineMode = isAgent ? 'agent' : 'rule-based';
       console.log(
-        `[BusinessPackLoader] Loaded active release: source=database tenant='${tenantId}' env='${environmentId}' version='${targetVersion}' checksum='${rawChecksum.slice(0, 16)}...' modelPolicyId='${modelPolicyId}'`
+        `[BusinessPackLoader] Loaded active release: source=database tenant='${tenantId}' env='${environmentId}' version='${targetVersion}' checksum='${rawChecksum.slice(0, 16)}...' modelPolicyId='${modelPolicyId}' engineMode='${engineMode}'`
       );
 
       return parsed.data;

@@ -96,6 +96,16 @@ export class RuntimeController {
     }
   }
 
+  @Get('engine-mode')
+  async getEngineMode(
+    @Param('tenantId') tenantId: string,
+    @Param('environmentId') environmentId: string | undefined,
+    @Req() req: any
+  ) {
+    const env = (environmentId || req.authContext?.environmentId || 'production') as any;
+    return this.runtimeService.getEngineMode(tenantId, env);
+  }
+
   /**
    * SSE Event Streaming Boundary
    *

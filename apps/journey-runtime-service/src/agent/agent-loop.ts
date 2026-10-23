@@ -83,6 +83,7 @@ export interface AgentTurnOutcome {
 export function isAgentModeEnabled(release?: any): boolean {
   if (!release) return false;
   const ext = release.extensions;
+  if (ext?.agentMode?.enabled === false || ext?.agentMode === false) return false;
   if (ext?.agentMode?.enabled === true || ext?.agentMode === true) return true;
   if (ext?.dialoguePolicy?.agentMode === true) return true;
   return false;
