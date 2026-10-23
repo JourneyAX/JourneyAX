@@ -278,6 +278,8 @@ export class BusinessPackPublicationService {
           maxTurns: a.maxTurns || 5,
           handoffConditions: Array.isArray(a.handoffConditions) ? a.handoffConditions : [],
           ...(a.journeyPlaybook ? { journeyPlaybook: a.journeyPlaybook } : {}),
+          ...(a.isDefault === true ? { isDefault: true } : {}),
+          ...(typeof a.toolFirst === 'boolean' ? { toolFirst: a.toolFirst } : {}),
         }))
       : [
           {
