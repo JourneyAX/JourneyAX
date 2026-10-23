@@ -30,6 +30,22 @@ LOCALE_STEMMING_RULES['en-us'] = LOCALE_STEMMING_RULES['en'];
 LOCALE_STEMMING_RULES['en-gb'] = LOCALE_STEMMING_RULES['en'];
 
 /**
+ * Words that only join two others ("pipe and fittings"), per language. A product type is matched on its content
+ * words, so the joiner must not be required to appear in the catalogue text. Keyed by language; region variants
+ * fall back to it. Any unknown or unmapped locale has none.
+ */
+export const LOCALE_CONNECTOR_WORDS: Record<string, readonly string[]> = {
+  en: ['and'],
+};
+
+export function connectorWordsForLocale(locale?: string): ReadonlySet<string> {
+  if (!locale) return new Set();
+  const norm = locale.toLowerCase().trim();
+  const lang = norm.split(/[-_]/)[0];
+  return new Set(LOCALE_CONNECTOR_WORDS[norm] || LOCALE_CONNECTOR_WORDS[lang] || []);
+}
+
+/**
  * Transforms a word into a regex pattern matching singular/plural forms based on locale.
  * If locale is unknown, empty, or unmapped, returns the cleaned escaped word with NO stemming.
  */

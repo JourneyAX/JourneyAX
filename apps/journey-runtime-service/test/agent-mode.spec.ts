@@ -4878,6 +4878,17 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
     assert.ok(!rx.test('100 x 50mm'));
   });
 
+  test('a joining word in a product type is skipped only for a locale that defines it', async () => {
+    const product = { tenantId: 'test-tenant', sku: 'P1', title: 'PVC Elbow 20mm', name: 'PVC Elbow 20mm', category: 'PVC Pipe & Fittings', price: { amount: 3, currency: 'NZD' }, inStock: true };
+    const handler = new CatalogSearchHandler([product]);
+    const search = (locale: string) => handler.execute({ isAgentMode: true, productType: 'PVC pipe and fittings', keywords: ['elbow'] } as any, { tenantId: 'test-tenant', locale } as any);
+    const english = await search('en-NZ');
+    assert.equal(english.items.length, 1);
+    assert.ok(!(english.relaxedConstraints || []).includes('productType'), '"and" is a joiner in English, so the category written with "&" matches without relaxing');
+    const other = await search('de');
+    assert.ok((other.relaxedConstraints || []).includes('productType'), 'a locale with no joining words keeps every word, so the type only matches once relaxed');
+  });
+
   test('keyword search ranks a product that matches the rare word (the size) above one that matches only the common word', async () => {
     const make = (sku: string, title: string) => ({ tenantId: 'test-tenant', sku, title, name: title, category: 'Treated Timber', description: 'Treated framing timber', price: { amount: 15, currency: 'NZD' }, inStock: true });
     const products = [

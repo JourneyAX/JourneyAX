@@ -82,7 +82,7 @@ export interface QueryToken {
   synonyms?: string[];
 }
 
-import { stemPatternForLocale } from './locale-stemmer';
+import { connectorWordsForLocale, stemPatternForLocale } from './locale-stemmer';
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -625,8 +625,9 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
     // A product type the model names ("PVC pipe fittings", "clothesline") rarely equals the catalogue's category text ("PVC Pipe & Fittings",
     // "Clotheslines"). Match when every word of it appears in the text, whatever the punctuation, plural or word order.
+    const connectorWords = connectorWordsForLocale(primaryLocale);
     const typeWordsOf = (value: string): string[] =>
-      value.toLowerCase().replace(/[®™]/g, '').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1 && w !== 'and');
+      value.toLowerCase().replace(/[®™]/g, '').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1 && !connectorWords.has(w));
     const typeMatchers = (value: string): RegExp[] => typeWordsOf(value).map((w) => new RegExp(`\\b${stem(w)}`, 'i'));
     const typeMatches = (value: string, haystack: string): boolean => {
       const matchers = typeMatchers(value);
