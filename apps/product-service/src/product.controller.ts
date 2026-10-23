@@ -187,6 +187,28 @@ export class ProductController {
     return this.productService.getBySkus(brand, body?.skus || []);
   }
 
+  /**
+   * One product as a customer reads it: description, features, specifications, documents, what goes with it and its branch
+   * availability. Called by the storefront's own server route when a customer opens a product, so it takes the internal key.
+   */
+  @Get('detail')
+  async detail(
+    @Param('projectId') projectId: string,
+    @Headers('x-internal-key') internalKeyHeader: string,
+    @Query('sku') sku?: string,
+  ) {
+    const key = internalKey();
+    if (!key || internalKeyHeader !== key) {
+      throw new HttpException('product detail is internal-only', HttpStatus.FORBIDDEN);
+    }
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
+    if (!sku || !String(sku).trim()) throw new HttpException('sku is required', HttpStatus.BAD_REQUEST);
+    const detail = await this.productService.getProductDetail(brand, String(sku));
+    if (!detail) throw new HttpException('No such product in this catalogue', HttpStatus.NOT_FOUND);
+    return detail;
+  }
+
   /** Find the school / athletic programme a customer is buying for (AUG-15). */
   @Post('teams')
   async teams(

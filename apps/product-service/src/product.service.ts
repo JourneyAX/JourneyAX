@@ -38,6 +38,7 @@ import { resolveNeeds, isReliableCharacter } from './needs-vocabulary';
 import { getDomainGlossary, expandWithGlossary } from './domain-glossary';
 import { fuzzyWordMatch, emphasizePrimaryClause } from './query-shaping';
 import { RenderService } from './render.service';
+import { buildProductDetail, isRetired, MAX_RELATED, type ProductDetail } from './product-detail';
 
 const VECTOR_INDEX_NAME = 'vector_index';
 const EMBEDDING_MODEL = 'text-embedding-3-small';
@@ -3026,6 +3027,30 @@ export class ProductService {
    * `documents` for any tenant/item not present there — so tenants that were
    * already working this way keep working unchanged.
    */
+  /**
+   * One product as a customer reads it: its description, features, specifications, documents, the products bought with it and
+   * its branch availability, taken from the catalogue record and cleaned for display (see product-detail.ts). Null when the
+   * SKU is not in this tenant's catalogue or is no longer sold. Cached per project like the pricebook, and dropped with it.
+   */
+  async getProductDetail(projectId: string, sku: string): Promise<ProductDetail | null> {
+    const brand = (projectId || '').toLowerCase().trim();
+    const clean = String(sku || '').trim();
+    if (!brand || !clean) return null;
+    return getOrSet(cacheKey(brand, 'product-detail', { sku: clean }), async () => {
+      const db = await this.getDb();
+      const products = db.collection('products');
+      const doc = await products.findOne({ projectId: brand, $or: [{ parentSku: clean }, { sku: clean }] });
+      if (!doc || isRetired(doc)) return null;
+      const relatedSkus = (Array.isArray(doc.related) ? doc.related : []).map(String).filter((s: string) => s && s !== clean).slice(0, MAX_RELATED * 3);
+      const relatedDocs = relatedSkus.length
+        ? await products.find({ projectId: brand, parentSku: { $in: relatedSkus } }, { projection: { parentSku: 1, name: 1, priceUSD: 1, currency: 1, imageUrl: 1, discontinued: 1, delisted: 1, status: 1 } }).toArray()
+        : [];
+      // Keep the order the record gives them in.
+      relatedDocs.sort((a: any, b: any) => relatedSkus.indexOf(a.parentSku) - relatedSkus.indexOf(b.parentSku));
+      return buildProductDetail(doc, relatedDocs);
+    }, { ttlSeconds: 600 });
+  }
+
   async getCatalogueItem(projectId: string, url: string) {
     const db = await this.getDb();
     const p = await db.collection('products').findOne({ projectId, url });
