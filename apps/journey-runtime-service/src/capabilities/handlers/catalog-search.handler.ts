@@ -82,23 +82,16 @@ export interface QueryToken {
   synonyms?: string[];
 }
 
+import { stemPatternForLocale } from './locale-stemmer';
+
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Generic English plural and suffix stemming pattern for regex creation.
- * Transforms words into regex patterns that match singular and regular plural forms.
+ * Locale-keyed plural and suffix stemming pattern for regex creation.
+ * Uses the pack's primaryLocale (or provided locale). An unknown locale has no stemming.
  */
-export function stemPattern(word: string): string {
-  const clean = escapeRegex(word.toLowerCase().replace(/[®™]/g, '').trim());
-  if (!clean) return '';
-  if (clean.endsWith('ies') && clean.length > 4) return clean.slice(0, -3) + '(?:y|ies)';
-  if (clean.endsWith('es') && (clean.endsWith('shes') || clean.endsWith('ches') || clean.endsWith('xes') || clean.endsWith('zes'))) {
-    return clean.slice(0, -2) + '(?:es)?';
-  }
-  if (clean.endsWith('s') && !clean.endsWith('ss') && clean.length > 2) {
-    return clean.slice(0, -1) + '(?:s)?';
-  }
-  return clean;
+export function stemPattern(word: string, locale: string = 'en'): string {
+  return stemPatternForLocale(word, locale);
 }
 
 
@@ -620,6 +613,16 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             .map((key) => [key, (input as any)[key]])),
         };
 
+    const primaryLocale =
+      (ctx as any)?.release?.profile?.primaryLocale ||
+      (ctx as any)?.packSettings?.profile?.primaryLocale ||
+      (ctx as any)?.release?.primaryLocale ||
+      (ctx as any)?.packSettings?.primaryLocale ||
+      (ctx as any)?.locale ||
+      input.locale ||
+      'en';
+    const stem = (w: string) => stemPatternForLocale(w, primaryLocale);
+
     const fetchCandidates = async (
       activeSpecs?: StructuredSearchSpecs,
       activeCategory?: string,
@@ -636,6 +639,32 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
       if (this.inMemoryProducts) {
         if (isAgent) {
+          const wordRegexCache = new Map<string, RegExp[]>();
+          const getWordRegexes = (w: string): RegExp[] => {
+            const wClean = w.toLowerCase().replace(/[®™]/g, '').trim();
+            if (!wClean) return [];
+            let cached = wordRegexCache.get(wClean);
+            if (!cached) {
+              const syns = glossaryIndex.get(wClean) || [];
+              const patterns = [stem(wClean), ...syns.map(stem)].filter(Boolean);
+              cached = patterns.map((pat) => new RegExp(`\\b${pat}\\b`, 'i'));
+              wordRegexCache.set(wClean, cached);
+            }
+            return cached;
+          };
+
+          const attrRegexMap = new Map<string, RegExp>();
+          if (activeSpecs?.attributeVariants) {
+            for (const [attrName, variants] of Object.entries(activeSpecs.attributeVariants)) {
+              if (variants && variants.length > 0) {
+                attrRegexMap.set(
+                  attrName,
+                  new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i')
+                );
+              }
+            }
+          }
+
           docs = this.inMemoryProducts.filter((p) => {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
@@ -668,12 +697,14 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                   const matchesStored = variants.some((v) => v.toLowerCase().replace(/\s+/g, '') === storedNorm);
                   if (matchesStored) continue;
                 }
-                const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
-                const title = textOf(p, mapping.titlePaths);
-                const search = textOf(p, mapping.searchPaths);
-                const attr = readAttribute(p, attrName, mapping) || p[attrName] || p.attributes?.[attrName];
-                const matchesAttr = regex.test(title) || regex.test(search) || (attr != null && regex.test(String(attr)));
-                if (!matchesAttr) return false;
+                const regex = attrRegexMap.get(attrName);
+                if (regex) {
+                  const title = textOf(p, mapping.titlePaths);
+                  const search = textOf(p, mapping.searchPaths);
+                  const attr = readAttribute(p, attrName, mapping) || p[attrName] || p.attributes?.[attrName];
+                  const matchesAttr = regex.test(title) || regex.test(search) || (attr != null && regex.test(String(attr)));
+                  if (!matchesAttr) return false;
+                }
               }
             }
 
@@ -685,12 +716,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               const allText = `${title} ${cat} ${brand} ${search}`.toLowerCase().replace(/[®™]/g, '');
 
               const matchesWord = (w: string): boolean => {
-                const wClean = w.toLowerCase().replace(/[®™]/g, '').trim();
-                if (!wClean) return false;
-                const rx = new RegExp(`\\b${stemPattern(wClean)}\\b`, 'i');
-                if (rx.test(allText)) return true;
-                const syns = glossaryIndex.get(wClean) || [];
-                return syns.some((s) => new RegExp(`\\b${stemPattern(s)}\\b`, 'i').test(allText));
+                const rxs = getWordRegexes(w);
+                return rxs.some((rx) => rx.test(allText));
               };
 
               const matchesKw = (kw: string): boolean => {
@@ -808,7 +835,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               const buildWordMatcher = (w: string) => {
                 const wClean = w.toLowerCase().replace(/[®™]/g, '').trim();
                 const syns = glossaryIndex.get(wClean) || [];
-                const patterns = [stemPattern(wClean), ...syns.map(stemPattern)].filter(Boolean);
+                const patterns = [stem(wClean), ...syns.map(stem)].filter(Boolean);
                 const rx = new RegExp(`\\b(?:${patterns.join('|')})\\b`, 'i');
                 return { $or: anyOf(mapping.searchPaths, rx) };
               };
@@ -838,7 +865,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                       ],
                     });
                   } else {
-                    const patterns = [stemPattern(kwClean), ...syns.map(stemPattern)].filter(Boolean);
+                    const patterns = [stem(kwClean), ...syns.map(stem)].filter(Boolean);
                     const kwRegex = new RegExp(`\\b(?:${patterns.join('|')})\\b`, 'i');
                     kwClauses.push({ $or: anyOf(mapping.searchPaths, kwRegex) });
                   }
@@ -1159,10 +1186,13 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       }
     }
 
+    const stockFilterDropped = relaxedConstraints.includes('inStockOnly');
+
     return {
       items,
       total: items.length,
       ...(relaxedConstraints.length > 0 ? { relaxedConstraints } : {}),
+      ...(stockFilterDropped ? { stockFilterDropped: true } : {}),
     };
   }
 }

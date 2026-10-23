@@ -31,6 +31,7 @@ import {
 import {
   CatalogSearchHandler,
   extractSearchSpecs,
+  stemPattern,
 } from '../src/capabilities/handlers/catalog-search.handler';
 import { catalogMapping as placemakersCatalogMapping } from './helpers/placemakers-stack';
 const PLACEMAKERS_ATTRIBUTE_DEFINITIONS = placemakersCatalogMapping.attributeDefinitions || {};
@@ -4783,6 +4784,81 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.equal(res.items.length, 1);
         assert.equal(res.items[0].sku, 'BRACKET-01');
         assert.ok(res.relaxedConstraints?.includes('keywords'));
+      });
+    });
+
+    describe('Task V7: Stock Honesty & Locale-Keyed Stemming', () => {
+      const mockSearchCtx: any = { tenantId: 'test-tenant', packSettings: {} };
+
+      test('1. CatalogSearchHandler returns stockFilterDropped: true when inStockOnly is dropped in step 0', async () => {
+        const product = {
+          projectId: 'test-tenant',
+          sku: 'STOCK-01',
+          name: 'Radiata SG8 100 x 50mm H3.2',
+          category: 'Timber',
+        };
+        const handler = new CatalogSearchHandler([product]);
+        const res = await handler.execute({
+          isAgentMode: true,
+          keywords: ['Radiata'],
+          inStockOnly: true,
+        }, mockSearchCtx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, 'STOCK-01');
+        assert.equal(res.stockFilterDropped, true);
+        assert.deepEqual(res.relaxedConstraints, ['inStockOnly']);
+      });
+
+      test('2. executeAgentTool search_products includes stockFilterDropped: true and guidance message', async () => {
+        const product = {
+          projectId: 'placemakers',
+          sku: 'STOCK-02',
+          name: 'Pine Decking Board 100 x 25mm',
+          category: 'Decking',
+        };
+        const mockToolCtx: any = {
+          tenantId: 'placemakers',
+          release: {
+            profile: { primaryCurrency: 'NZD', primaryLocale: 'en-NZ' },
+          },
+          catalogSearchHandler: new CatalogSearchHandler([product]),
+          allowedClaimClasses: new Set(),
+          turnProductSkus: new Set(),
+          catalogProductCache: new Map(),
+        };
+
+        const res = await executeAgentTool('search_products', {
+          keywords: ['Decking'],
+          inStockOnly: true,
+        }, mockToolCtx);
+
+        assert.equal(res.count, 1);
+        assert.equal(res.stockFilterDropped, true);
+        assert.ok(res.message.includes('Stock filter was dropped'));
+        assert.ok(res.message.includes('inventory availability has NOT been verified'));
+      });
+
+      test('3. stemPattern applies English suffix rules for en/en-NZ and returns unchanged for unknown locales', () => {
+        // en-NZ locale
+        assert.equal(stemPattern('screws', 'en-NZ'), 'screw(?:s)?');
+        assert.equal(stemPattern('boxes', 'en-NZ'), 'box(?:es)?');
+        assert.equal(stemPattern('batteries', 'en-NZ'), 'batter(?:y|ies)');
+
+        // en generic locale
+        assert.equal(stemPattern('screws', 'en'), 'screw(?:s)?');
+
+        // unknown locale (e.g. de, fr, unknown) -> no stemming
+        assert.equal(stemPattern('screws', 'de'), 'screws');
+        assert.equal(stemPattern('boxes', 'fr'), 'boxes');
+        assert.equal(stemPattern('batteries', 'jp'), 'batteries');
+        assert.equal(stemPattern('screws', ''), 'screws');
+      });
+
+      test('4. GENERIC_PLATFORM_OPERATING_PROMPT enforces strict stock honesty and dropped stock filter notice', () => {
+        assert.ok(GENERIC_PLATFORM_OPERATING_PROMPT.includes('Strict Stock Honesty'));
+        assert.ok(GENERIC_PLATFORM_OPERATING_PROMPT.includes('NEVER say or imply that a product is in stock'));
+        assert.ok(GENERIC_PLATFORM_OPERATING_PROMPT.includes('stockFilterDropped: true'));
       });
     });
   });

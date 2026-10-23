@@ -984,9 +984,11 @@ export async function executeAgentTool(
       ctx.allowedClaimClasses.add('catalog_fact');
 
       const relaxedConstraints: string[] | undefined = result.relaxedConstraints;
+      const stockFilterDropped = Boolean(result.stockFilterDropped || relaxedConstraints?.includes('inStockOnly'));
       const response: any = {
         query: displayQuery,
         count: products.length,
+        ...(stockFilterDropped ? { stockFilterDropped: true } : {}),
         products: products.map((p) => ({
           sku: p.sku,
           title: p.title || p.name,
@@ -1000,7 +1002,13 @@ export async function executeAgentTool(
 
       if (relaxedConstraints && relaxedConstraints.length > 0) {
         response.relaxedConstraints = relaxedConstraints;
-        response.message = `No exact match found. The following search constraints were relaxed: ${relaxedConstraints.join(', ')}. Inform the customer that these close alternatives were found.`;
+        let msg = `No exact match found. The following search constraints were relaxed: ${relaxedConstraints.join(', ')}. Inform the customer that these close alternatives were found.`;
+        if (stockFilterDropped) {
+          msg += ` Stock filter was dropped: inventory availability has NOT been verified. You must NOT say or imply products are in stock, and should offer check_stock.`;
+        }
+        response.message = msg;
+      } else if (stockFilterDropped) {
+        response.message = `Stock filter was dropped: inventory availability has NOT been verified. You must NOT say or imply products are in stock, and should offer check_stock.`;
       }
 
       return response;
