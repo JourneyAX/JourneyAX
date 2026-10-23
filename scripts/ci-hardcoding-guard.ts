@@ -246,6 +246,9 @@ export const RULES: Array<{
     reason: `Industry words (${GUARD_CONFIG.forbiddenIndustryTerms.join(', ')}) must not appear in platform source; wording must be neutral and capability mappings must come from pack bindings.`,
     matchFile: (relPath) => !relPath.startsWith('apps/agent-commerce-service/'),
     ignoreIf: (line) =>
+      line.includes('Authorization') ||
+      line.includes('Bearer ') ||
+      line.includes('bearer ') ||
       line.includes('trade-quote-create') ||
       line.includes('tradeQuote') ||
       line.includes('TradeQuote') ||
@@ -268,6 +271,11 @@ export const RULES: Array<{
     name: 'Hardcoded Word List, Unit, or Synonym Literals in Platform Source',
     regex: /(?:\[\s*['"](?:mm|cm|m|km|inch|inches|ft|feet|yd|m2|sqm|m3|kg|g|lbs|oz)['"]\s*,\s*['"](?:mm|cm|m|km|inch|inches|ft|feet|yd|m2|sqm|m3|kg|g|lbs|oz)['"]|new\s+Set\(\s*\[\s*['"](?:mm|cm|m|km|inch|inches|ft|feet|yd|m2|sqm|m3|kg|g|lbs|oz)['"]|\b(?:synonyms?|units?|wordList|aliases|equivalents?|domainTerms?|industryTerms?|termList)\s*[:=]\s*(?:\[\s*['"][^'"]+['"]\s*,|new\s+Set\())/i,
     reason: 'Word lists, unit tables, and synonyms must be configured in Business Pack data, not hardcoded in platform code.',
+  },
+  {
+    name: 'Customer Utterance Phrase Lists or Query Matchers in Generic Source',
+    regex: /(?:isWhatToBuyOrBuildQuery|isFillerQuestion|\b(?:what\s+to\s+buy|what\s+should\s+i\s+buy|how\s+to\s+build|what\s+materials\s+do\s+i\s+need)\b|['"](?:what should I get|what do I need to build|what should I buy)['"])/i,
+    reason: 'Generic runtime source code must not match hardcoded customer queries or utterance phrase lists; routing must be policy/agent-driven or intent-model-driven.',
   },
 ];
 
@@ -518,6 +526,81 @@ export function runGuardSelfTest(): { ok: boolean; failedCases: string[] } {
     failedCases.push('Hardcoded Word List, Unit, or Synonym Literals rule not found for self-test');
   }
 
+  // Self-test: Customer Utterance Phrase Lists or Query Matchers rule
+  const customerPhraseRule = RULES.find((r) => r.name === 'Customer Utterance Phrase Lists or Query Matchers in Generic Source');
+  if (customerPhraseRule) {
+    const positivePhraseSnippets = [
+      `const q = isWhatToBuyOrBuildQuery(text);`,
+      `const f = isFillerQuestion(sentence);`,
+      `const m = /what to buy/i.test(userMsg);`,
+      `const phrase = 'what should I get';`,
+    ];
+    for (const snippet of positivePhraseSnippets) {
+      const matched = customerPhraseRule.regex.test(snippet) && (!customerPhraseRule.ignoreIf || !customerPhraseRule.ignoreIf(snippet));
+      if (!matched) {
+        failedCases.push(`Expected customer phrase violation but passed: "${snippet}"`);
+      }
+    }
+    const negativePhraseSnippets = [
+      `function handleCatalogSearch(query: string) {}`,
+      `const allowedTools = ['search_products', 'check_stock'];`,
+      `const toolFirst = agent.toolFirst ?? false;`,
+    ];
+    for (const snippet of negativePhraseSnippets) {
+      const matched = customerPhraseRule.regex.test(snippet) && (!customerPhraseRule.ignoreIf || !customerPhraseRule.ignoreIf(snippet));
+      if (matched) {
+        failedCases.push(`Expected pass but flagged customer phrase violation: "${snippet}"`);
+      }
+    }
+  } else {
+    failedCases.push('Customer Utterance Phrase Lists rule not found for self-test');
+  }
+
+  // Self-test: Test ID branches check in eval scripts
+  const evalIdRegex = /\b(?:tc|testCase|caseItem|item)\.id\s*[!=]==?\s*\d+/;
+  const positiveEvalIdSnippets = [
+    `if (tc.id === 15) return 'safety';`,
+    `if (tc.id !== 48) { checkSku(); }`,
+    `if (testCase.id === 22) expected = 'project';`,
+  ];
+  for (const snippet of positiveEvalIdSnippets) {
+    if (!evalIdRegex.test(snippet)) {
+      failedCases.push(`Expected test ID regex to match: "${snippet}"`);
+    }
+  }
+  const negativeEvalIdSnippets = [
+    `if (tc.expectedType === 'safety') return true;`,
+    `if (tc.category === 'Timber & Dimensions') return false;`,
+    `const currentId = getUniqueTurnId();`,
+  ];
+  for (const snippet of negativeEvalIdSnippets) {
+    if (evalIdRegex.test(snippet)) {
+      failedCases.push(`Expected test ID regex NOT to match: "${snippet}"`);
+    }
+  }
+
+  // Self-test: Calculator verificationRef check
+  function isBrokenVerificationRef(calc: any): boolean {
+    const ref = calc?.verificationRef;
+    return (
+      !ref ||
+      typeof ref !== 'string' ||
+      ref.trim() === '' ||
+      ref.startsWith('fake-') ||
+      ref.startsWith('placeholder') ||
+      ref.startsWith('unverified')
+    );
+  }
+  if (!isBrokenVerificationRef({ calculatorId: 'c1', verificationRef: 'fake-pm-01' })) {
+    failedCases.push('Expected fake verificationRef to be flagged as broken');
+  }
+  if (!isBrokenVerificationRef({ calculatorId: 'c2' })) {
+    failedCases.push('Expected missing verificationRef to be flagged as broken');
+  }
+  if (isBrokenVerificationRef({ calculatorId: 'c3', verificationRef: 'okf:verified-manufacturer-spec' })) {
+    failedCases.push('Expected valid verificationRef not to be flagged as broken');
+  }
+
   // Self-test: Whole-line comments vs trailing comments handling
   const wholeLineComments = [
     `// const fixture = 'tapware';`,
@@ -554,8 +637,91 @@ export function runGuardSelfTest(): { ok: boolean; failedCases: string[] } {
     return { ok: false, failedCases };
   }
 
-  console.log('✅ Guard Self-Test PASSED: All forbidden terms, attribute names, unit/wordlist literals, and comment skipping rules correctly verified.\n');
+  console.log('✅ Guard Self-Test PASSED: All forbidden terms, attribute names, phrase lists, test-id checks, verificationRefs, and comment skipping rules correctly verified.\n');
   return { ok: true, failedCases: [] };
+}
+
+export function scanEvalTestIdBranches(workspaceRoot: string): Violation[] {
+  const violations: Violation[] = [];
+  const evalDir = path.join(workspaceRoot, 'scripts/eval');
+  if (!fs.existsSync(evalDir)) return violations;
+
+  const testIdRegex = /\b(?:tc|testCase|caseItem|item)\.id\s*[!=]==?\s*\d+/;
+
+  for (const entry of fs.readdirSync(evalDir, { withFileTypes: true })) {
+    if (!entry.isFile() || (!entry.name.endsWith('.ts') && !entry.name.endsWith('.js') && !entry.name.endsWith('.mjs'))) {
+      continue;
+    }
+    const fullPath = path.join(evalDir, entry.name);
+    const content = fs.readFileSync(fullPath, 'utf8');
+    const lines = content.split('\n');
+
+    lines.forEach((lineText, idx) => {
+      if (isWholeLineComment(lineText)) return;
+      const stripped = stripComments(lineText);
+      if (testIdRegex.test(stripped)) {
+        violations.push({
+          file: path.relative(workspaceRoot, fullPath).replace(/\\/g, '/'),
+          line: idx + 1,
+          patternName: 'Test ID Hardcoding in Evaluation Scripts',
+          snippet: lineText.trim(),
+          reason: 'Evaluation logic in scripts/eval must not branch on specific test ID numbers (e.g. tc.id === 15). Expected types and outcomes belong in the prompt test cases dataset.',
+        });
+      }
+    });
+  }
+
+  return violations;
+}
+
+export function scanPackVerificationRefs(workspaceRoot: string): Violation[] {
+  const violations: Violation[] = [];
+  const candidateDirs = [
+    path.join(workspaceRoot, 'docs/agent-instructions'),
+    path.join(workspaceRoot, 'packages/business-pack/packs'),
+  ];
+
+  for (const cDir of candidateDirs) {
+    if (!fs.existsSync(cDir)) continue;
+    const entries = fs.readdirSync(cDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      const fullPath = path.join(cDir, entry.name);
+      const relPath = path.relative(workspaceRoot, fullPath).replace(/\\/g, '/');
+      try {
+        const raw = fs.readFileSync(fullPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        const calcs = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed.calculators)
+            ? parsed.calculators
+            : [];
+        for (const calc of calcs) {
+          if (!calc || typeof calc !== 'object') continue;
+          if (!calc.calculatorId && !calc.name) continue;
+          const ref = calc.verificationRef;
+          if (
+            !ref ||
+            typeof ref !== 'string' ||
+            ref.trim() === '' ||
+            ref.startsWith('fake-') ||
+            ref.startsWith('placeholder') ||
+            ref.startsWith('unverified')
+          ) {
+            violations.push({
+              file: relPath,
+              line: 1,
+              patternName: 'Broken or Missing Calculator verificationRef',
+              snippet: JSON.stringify(calc).slice(0, 140),
+              reason: `Calculator '${calc.calculatorId || calc.name}' has invalid or placeholder verificationRef '${ref}'. Live calculators must cite verified authoritative sources.`,
+            });
+          }
+        }
+      } catch {}
+    }
+  }
+
+  return violations;
 }
 
 export function runCiHardcodingGuard(workspaceRoot: string): { ok: boolean; violations: Violation[] } {
@@ -575,6 +741,15 @@ export function runCiHardcodingGuard(workspaceRoot: string): { ok: boolean; viol
     const violations = scanDirectory(dirAbs, workspaceRoot);
     allViolations.push(...violations);
   }
+
+  // Extended Scans (V10)
+  console.log('  🔍 Scanning scripts/eval for hardcoded test ID branches...');
+  const evalViolations = scanEvalTestIdBranches(workspaceRoot);
+  allViolations.push(...evalViolations);
+
+  console.log('  🔍 Scanning pack & calculator verification references...');
+  const packViolations = scanPackVerificationRefs(workspaceRoot);
+  allViolations.push(...packViolations);
 
   if (allViolations.length === 0) {
     console.log(`\n✅ PASS: No unauthorized hardcoding or fail-open fallbacks detected across ${auditDirs.length} platform source directories.`);

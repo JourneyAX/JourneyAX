@@ -126,7 +126,7 @@
     },
     "hardcoding-guard": {
       "cwd": ".",
-      "command": "npx tsx scripts/ci-hardcoding-guard.ts"
+      "command": "npx tsx scripts/ci-hardcoding-guard.ts && npx tsx tests/ci-hardcoding-guard.spec.ts"
     },
     "tsc:agent-commerce-service": {
       "cwd": "apps/agent-commerce-service",

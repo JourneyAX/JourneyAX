@@ -19,7 +19,18 @@
     "screws",
     "nails",
     "toilet",
-    "basin"
+    "basin",
+    "load-bearing",
+    "structural beam",
+    "timber bearer",
+    "subfloor bearer",
+    "lintel",
+    "joist",
+    "dwang",
+    "paling",
+    "waterproofing",
+    "electrical wiring",
+    "power outlet"
   ],
   "forbiddenAttributeNames": [
     "treatment",
