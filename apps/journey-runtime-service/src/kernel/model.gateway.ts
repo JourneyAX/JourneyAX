@@ -543,6 +543,7 @@ export class ModelGateway {
         payload.stream_options = { include_usage: true };
         if (isReasoningOrGpt5) {
           if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
+          if (route.reasoningEffort) payload.reasoning_effort = route.reasoningEffort;
         } else {
           if (route.temperature !== undefined) payload.temperature = route.temperature;
           else payload.temperature = 0.2;
@@ -784,6 +785,7 @@ export class ModelGateway {
         payload.stream_options = { include_usage: true };
         if (isReasoningOrGpt5) {
           if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
+          if (route.reasoningEffort) payload.reasoning_effort = route.reasoningEffort;
         } else {
           if (route.temperature !== undefined) payload.temperature = route.temperature;
           else payload.temperature = 0.2;
@@ -1045,6 +1047,7 @@ export class ModelGateway {
 
         if (isReasoningOrGpt5) {
           if (route.maxOutputTokens) payload.max_completion_tokens = route.maxOutputTokens;
+          if (route.reasoningEffort) payload.reasoning_effort = route.reasoningEffort;
         } else {
           if (route.temperature !== undefined) payload.temperature = route.temperature;
           else payload.temperature = 0.2;

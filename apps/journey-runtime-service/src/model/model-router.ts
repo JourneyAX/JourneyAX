@@ -14,6 +14,7 @@ export interface ModelRouteResult {
   provider: 'openai' | 'anthropic' | 'google' | 'open-model' | 'custom';
   model: string;
   temperature?: number;
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
   dataResidency: string;
   maxInputTokens: number;
   maxOutputTokens: number;
@@ -109,6 +110,7 @@ export class ModelRouter {
         provider: configuredPrimary.provider as ModelRouteResult['provider'],
         model: configuredPrimary.model,
         temperature: configuredPrimary.temperature,
+        ...(configuredPrimary.reasoningEffort ? { reasoningEffort: configuredPrimary.reasoningEffort } : {}),
         dataResidency: policy.dataResidency,
         maxInputTokens: policy.maxInputTokens,
         maxOutputTokens: policy.maxOutputTokens,
@@ -134,6 +136,7 @@ export class ModelRouter {
       provider: selected.provider as ModelRouteResult['provider'],
       model: selected.model,
       temperature: selected.temperature,
+        ...(selected.reasoningEffort ? { reasoningEffort: selected.reasoningEffort } : {}),
       dataResidency: policy.dataResidency,
       maxInputTokens: policy.maxInputTokens,
       maxOutputTokens: policy.maxOutputTokens,
@@ -210,6 +213,7 @@ export class ModelRouter {
         provider: configuredPrimary.provider as ModelRouteResult['provider'],
         model: configuredPrimary.model,
         temperature: configuredPrimary.temperature,
+        ...(configuredPrimary.reasoningEffort ? { reasoningEffort: configuredPrimary.reasoningEffort } : {}),
         dataResidency: policy.dataResidency,
         maxInputTokens: policy.maxInputTokens,
         maxOutputTokens: policy.maxOutputTokens,
@@ -228,6 +232,7 @@ export class ModelRouter {
       provider: candidate.provider as ModelRouteResult['provider'],
       model: candidate.model,
       temperature: candidate.temperature,
+        ...(candidate.reasoningEffort ? { reasoningEffort: candidate.reasoningEffort } : {}),
       dataResidency: policy.dataResidency,
       maxInputTokens: policy.maxInputTokens,
       maxOutputTokens: policy.maxOutputTokens,
