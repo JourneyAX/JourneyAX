@@ -195,6 +195,17 @@ export const ConversationPolicySchema = z.object({
   withheldAnswerMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
   /** How long a whole agent turn may take before the customer is handed to a person (default 20 s when unset). */
   turnDeadlineMs: z.number().int().min(5000).max(120000).optional(),
+  /**
+   * When the claim guard removes statements from an answer, the model gets one chance to answer again without them.
+   * `thinBelowChars`: an answer left shorter than this counts as gutted and is repaired.
+   * `minChars`: a rewrite replaces the answer only if it is at least this long. Platform defaults apply when unset.
+   */
+  repair: z
+    .object({
+      thinBelowChars: z.number().int().min(20).max(2000).optional(),
+      minChars: z.number().int().min(10).max(1000).optional(),
+    })
+    .optional(),
 });
 
 /**

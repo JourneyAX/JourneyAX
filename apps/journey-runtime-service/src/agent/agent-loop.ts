@@ -21,6 +21,7 @@ import {
   isToolAllowed,
   type AgentToolContext,
 } from './agent-tools';
+import agentLoopDefaults from '../defaults/agent-loop.json';
 import { formatBusinessProfile } from '../kernel/business-knowledge';
 import { AgentRouter, type ResolvedAgent } from '../kernel/agent.router';
 import { readHistory, appendHistory, formatHistoryBlock, type ConversationTurnRecord } from '../conversation';
@@ -173,9 +174,18 @@ export function getWithheldFallbackMessage(release?: any, locale = 'en-NZ'): str
   return SAFE_WITHHELD_FALLBACK_ANSWER;
 }
 
-/** Below this many characters, an answer the claim guard cut down is treated as gutted and repaired. */
-const REPAIR_THIN_CHARS = 120;
-const REPAIR_MIN_CHARS = 40;
+/**
+ * Limits of the repair round: an answer the claim guard cut down to fewer than `thin` characters is treated as gutted and
+ * rewritten once, and the rewrite replaces it only if it has at least `min` characters. The pack's conversationPolicy.repair
+ * overrides the platform defaults.
+ */
+export function repairLimits(release?: BusinessPackRelease): { thin: number; min: number } {
+  const own = (release?.conversationPolicy as any)?.repair;
+  return {
+    thin: Number.isFinite(own?.thinBelowChars) ? own.thinBelowChars : agentLoopDefaults.repair.thinBelowChars,
+    min: Number.isFinite(own?.minChars) ? own.minChars : agentLoopDefaults.repair.minChars,
+  };
+}
 
 export function hasOnlyQuestions(text: string): boolean {
   const sentences = text
@@ -932,7 +942,7 @@ function extractToolResultCount(result: any): number | undefined {
     if (
       !toolContext.isHumanHandoffRequested &&
       shaper.getWithheldCount() > 0 &&
-      finalAssistantText.length < REPAIR_THIN_CHARS &&
+      finalAssistantText.length < repairLimits(release).thin &&
       !toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok) &&
       (!options.timeoutMs || Date.now() - loopStart < options.timeoutMs * 0.7)
     ) {
@@ -959,7 +969,7 @@ function extractToolResultCount(result: any): number | undefined {
         repairShaper.flush();
         const repaired = repairShaper.getStreamedText().trim();
         // Only a clean rewrite replaces the answer: if the guard had to cut it again, the pack's own message is used.
-        if (repaired.length >= REPAIR_MIN_CHARS && repairShaper.getWithheldCount() === 0) {
+        if (repaired.length >= repairLimits(release).min && repairShaper.getWithheldCount() === 0) {
           finalAssistantText = repaired;
           repairedByModel = true;
           sink('token', { replace: repaired, delta: repaired });

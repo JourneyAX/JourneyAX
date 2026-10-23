@@ -9,6 +9,7 @@ import {
 } from '../src/kernel/model.gateway';
 import {
   AgentTurnLoop,
+  repairLimits,
   isAgentModeEnabled,
   buildAgentSystemPrompt,
   formatCustomerContextMessage,
@@ -4925,6 +4926,52 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
     assert.equal(calls >= 2, true, 'a repair round was made');
     assert.equal(outcome.turnResult.assistantMessage, repairedText);
     assert.ok(!/25 year/.test(outcome.turnResult.assistantMessage));
+  });
+
+  describe('repair limits come from the pack, with platform defaults', () => {
+    const repairedText = "I don't have verified information on that. Which product do you mean, and where will it be used? I can also connect you with a person at the branch.";
+    const runRepairCase = async (draft: string, repair?: { thinBelowChars?: number; minChars?: number }) => {
+      const gateway = new ModelGateway();
+      const release: any = createTestPack();
+      if (repair) release.conversationPolicy = { ...(release.conversationPolicy || {}), repair };
+      const workspace = createTestWorkspace();
+      let calls = 0;
+      gateway.mockAgentExecutor = async (req, onDelta) => {
+        calls++;
+        const text = calls === 1 ? draft : repairedText;
+        onDelta?.(text);
+        return { content: text, toolCalls: [], usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 } };
+      };
+      const outcome = await new AgentTurnLoop().execute({
+        command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 's-limits', correlationId: 'c-limits', message: 'Is there a warranty on these boards?' },
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: { search: async () => ({ products: [], total: 0 }) } as any,
+        sink: () => {},
+      } as any);
+      return { calls, text: outcome.turnResult.assistantMessage };
+    };
+    const draft = 'Happy to help with that. These boards carry a 25 year warranty.';
+
+    test('platform defaults repair an answer left shorter than the default', async () => {
+      assert.deepEqual(repairLimits(createTestPack() as any), { thin: 120, min: 40 });
+      const result = await runRepairCase(draft);
+      assert.equal(result.calls, 2);
+      assert.equal(result.text, repairedText);
+    });
+
+    test('a pack that lowers thinBelowChars keeps a short but clean answer without a repair round', async () => {
+      const result = await runRepairCase(draft, { thinBelowChars: 20 });
+      assert.equal(result.calls, 1, 'no repair round');
+      assert.ok(!/25 year/.test(result.text));
+    });
+
+    test('a pack that raises minChars refuses a rewrite that is too short', async () => {
+      const result = await runRepairCase(draft, { minChars: 900 });
+      assert.equal(result.calls, 2, 'the repair round was made');
+      assert.notEqual(result.text, repairedText, 'but the short rewrite did not replace the answer');
+    });
   });
 
   test('a handoff that arrives with no words gets one explanation round, then the handoff message follows', async () => {
