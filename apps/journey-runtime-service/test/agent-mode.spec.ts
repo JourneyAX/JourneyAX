@@ -5258,6 +5258,11 @@ describe('the products a reply is about are shown on a card', () => {
     assert.deepEqual(result.skus, []);
   });
 
+  test('a search that only had to drop the stock filter still found the products asked for, so they are shown', async () => {
+    const result = await run({ message: 'plasterboard in stock', searchResult: { ...found, relaxedConstraints: ['inStockOnly'], stockFilterDropped: true }, reply: 'Here is what I found. I cannot confirm stock yet.' });
+    assert.deepEqual(result.skus, ['2800027', '2800651', '2800407']);
+  });
+
   test('a card the model presented itself is not repeated', async () => {
     const result = await run({ message: 'plasterboard', searchResult: found, reply: 'The Standard Wallboard 2400 x 1200 x 10mm Taper Edge is the usual choice.', alsoPresent: true });
     assert.equal(result.cards.length, 1);

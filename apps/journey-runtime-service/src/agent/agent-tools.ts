@@ -1061,7 +1061,8 @@ export async function executeAgentTool(
         }
       }
       if (products.length > 0) {
-        ctx.lastProducts = { skus: products.map((p: any) => p.sku).filter(Boolean), relaxed: Boolean(result.relaxedConstraints?.length) };
+        // Dropping the stock filter says nothing about whether these are the products asked for; dropping anything else does.
+        ctx.lastProducts = { skus: products.map((p: any) => p.sku).filter(Boolean), relaxed: Boolean((result.relaxedConstraints || []).some((c: string) => c !== 'inStockOnly')) };
       }
 
       const displayQuery =
