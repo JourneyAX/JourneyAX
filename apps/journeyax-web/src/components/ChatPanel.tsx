@@ -15,6 +15,7 @@ import CartDrawer from './CartDrawer';
 import ProjectPanel from './ProjectPanel';
 import { uiActionToCards } from '@/lib/cards/uiActionToCards';
 import { CardTile, useCardActions } from './cards/CardStage';
+import CompareTray from './cards/CompareTray';
 import type { CardInstance } from '@/lib/types';
 
 /** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
@@ -46,6 +47,24 @@ const TOOL_TRACE_LABEL: Record<string, string> = {
   researchSchool: 'Researching your school',
   showConfigurator: 'Opening the designer',
   readRoster: 'Reading your roster',
+  // The consultant agent's own tools, in the words a customer would use for what is happening.
+  consult_business_knowledge: 'Checking what we know about this',
+  search_products: 'Looking through the product range',
+  browse_range: 'Seeing how the range is organised',
+  get_product: 'Reading the product details',
+  get_related_products: 'Checking what goes with it',
+  search_guides: 'Looking up installation guidance',
+  get_warranty: 'Checking warranty information',
+  calculate_quantity: 'Working out how much you need',
+  check_stock: 'Checking stock at your branch',
+  present_card: 'Putting the options together',
+  create_quote: 'Building your quote',
+  update_quote: 'Updating your quote',
+  add_to_quote: 'Adding to your quote',
+  get_cart: 'Checking your quote so far',
+  update_cart: 'Updating your quote',
+  get_journey_checklist: 'Checking what is left to cover',
+  hand_off_to_human: 'Getting a person to help',
 };
 function traceLabel(name: string): string {
   return TOOL_TRACE_LABEL[name] || `Running ${name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()}`;
@@ -1284,6 +1303,7 @@ export default function ChatPanel() {
 
         {/* ChatGPT-style Input Area */}
         <div className="chat-input-area">
+          <CompareTray onCompare={(skus) => onCardAction('compareProducts', { skus })} />
           {state.phase === 'intro' && messages.length === 0 && (demoProfile?.tryAsking?.length || introStarters.length > 0) && (
             <div className="chat-suggestions">
               {(demoProfile?.tryAsking?.length

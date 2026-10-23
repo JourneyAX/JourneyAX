@@ -23,6 +23,7 @@ export interface ServerProductDetail {
   related?: Array<{ sku: string; title: string; price?: number | null; currency?: string; imageUrl?: string | null }>;
   availability?: { label: string; inStock: boolean; branchesWithStock: number; branchCount: number };
   productUrl?: string;
+  rating?: { value: number; count?: number };
 }
 
 /** The tile data a tap starts from (a RecommendedProduct or a card item). */
@@ -97,5 +98,8 @@ export function buildDetailProduct(tile: TileProduct | undefined, detail: Server
     stockWarn: availability ? !availability.inStock : false,
     productUrl: detail?.productUrl,
     hasProductUrl: Boolean(detail?.productUrl),
+    rating: detail?.rating?.value,
+    ratingCount: detail?.rating?.count,
+    hasRating: typeof detail?.rating?.value === 'number',
   };
 }

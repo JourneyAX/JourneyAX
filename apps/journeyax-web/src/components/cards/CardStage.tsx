@@ -19,6 +19,9 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
 import { mapClarifyCard } from '@/lib/cards/mappers';
 import { buildDetailProduct, fetchProductDetail } from '@/lib/cards/productDetail';
+import { MAX_COMPARE, clearCompare, getCompareSelection, toggleCompare, useCompareSelection } from '@/lib/cards/compareStore';
+import { decorateProductRows } from '@/lib/cards/productTiles';
+import { buildComparisonCard, toCompareSource } from '@/lib/cards/comparison';
 import type { CardInstance } from '@/lib/types';
 
 /**
@@ -232,6 +235,8 @@ export function useCardActions() {
         // The event names the product, not just its code: the thread then reads "View product: <name>" and the agent
         // knows which one the customer is looking at without having to guess from the last list it showed.
         const viewedTitle = p ? String((p as any).name || (p as any).title || '').trim() : '';
+        // The details sit right under the customer's own "View product" line, ahead of the consultant's reply (see compareProducts).
+        const at = String(((typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined) ?? 0) + 1);
         postCustomerEvent({
           type: 'viewProduct',
           payload: { sku, ...(viewedTitle ? { title: viewedTitle } : {}) },
@@ -243,7 +248,6 @@ export function useCardActions() {
         void (async () => {
           const detail = await fetchProductDetail(sku, cfgRef.current.projectId);
           if (!p && !detail) return;
-          const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
           const product = buildDetailProduct(p as any, detail, sku);
           dispatch({
             type: 'PUSH_CARD',
@@ -255,7 +259,39 @@ export function useCardActions() {
                 closing,
                 handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: String(product.title || ''), category: product.category as string | undefined }),
               },
-              createdAt: String(count ?? 0),
+              createdAt: at,
+            },
+          });
+        })();
+        break;
+      }
+      case 'toggleCompare': {
+        const sku = String(params?.sku ?? '').trim();
+        if (sku) toggleCompare({ sku, title: String(params?.title ?? '') });
+        break;
+      }
+      case 'compareProducts': {
+        const named = Array.isArray(params?.skus) ? (params!.skus as unknown[]).map((entry) => String(entry).trim()).filter(Boolean) : [];
+        const skus = [...new Set(named.length > 0 ? named : getCompareSelection().map((entry) => entry.sku))].slice(0, MAX_COMPARE);
+        if (skus.length < 2) break;
+        const ticked = getCompareSelection();
+        const tiles = skus.map((sku) => state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku));
+        const titles = skus.map((sku, i) => String((tiles[i] as any)?.name || (tiles[i] as any)?.title || ticked.find((entry) => entry.sku === sku)?.title || sku));
+        // The table belongs right under the customer's own "Compare products" line, before the consultant's reply: the position is
+        // the thread length once that line is added, taken now because the reply starts streaming before the records come back.
+        const at = String(((typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined) ?? 0) + 1);
+        // The consultant is told which products are being compared, so it can say which one fits what the customer asked for.
+        postCustomerEvent({ type: 'compareProducts', payload: { skus, titles, title: titles.join(' vs ') }, sourceCard: { id: params?.cardId } });
+        clearCompare();
+        void (async () => {
+          const details = await Promise.all(skus.map((sku) => fetchProductDetail(sku, cfgRef.current.projectId)));
+          dispatch({
+            type: 'PUSH_CARD',
+            card: {
+              id: `comparison-${skus.join('-')}-${Date.now()}`,
+              cardType: 'comparison',
+              state: buildComparisonCard(skus.map((sku, i) => toCompareSource(tiles[i] as any, details[i], sku))),
+              createdAt: at,
             },
           });
         })();
@@ -420,12 +456,18 @@ function dedupeSkuLists<T extends Record<string, unknown>>(state: T): T {
 /** One card, rendered inline at its place in the conversation thread. */
 export function CardTile({ card, onAction }: { card: CardInstance; onAction: (name: string, params?: Record<string, unknown>) => void }) {
   const cfg = useStorefrontConfig();
+  const ticked = useCompareSelection();
+  const base = dedupeSkuLists(card.state as Record<string, unknown>) as Record<string, unknown>;
+  // Product rows carry what depends on this customer's moment: ticked for comparison, how many branches hold it, no price to show.
+  const state = card.cardType === 'products' && Array.isArray(base.products)
+    ? { ...base, products: decorateProductRows(base.products as any[], { comparing: new Set(ticked.map((entry) => entry.sku)) }) }
+    : base;
   return (
     <div className="jx-root chat-inline-card" data-card-type={card.cardType}>
       <CardRenderer
         template={resolveTemplate(cfg, card.cardType)}
         // The brand's own logo backs any tile whose catalogue has no picture ("Image coming soon").
-        state={{ ...dedupeSkuLists(card.state as Record<string, unknown>), brandLogo: cfg.theme?.logoUrl || null }}
+        state={{ ...state, brandLogo: cfg.theme?.logoUrl || null }}
         settings={cfg.uiTheme?.cards?.[card.cardType]?.options}
         onAction={(name, params) => onAction(name, { ...params, cardId: card.id })}
         stateKey={card.id}
