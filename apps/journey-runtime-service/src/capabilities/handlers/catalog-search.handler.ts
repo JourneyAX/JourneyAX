@@ -85,6 +85,7 @@ export interface QueryToken {
 }
 
 import { connectorWordsForLocale, stemPatternForLocale } from './locale-stemmer';
+import { CatalogueIndexRegistry, openCatalogueDatabase } from '../catalogue-index';
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -475,6 +476,15 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
   ) {}
 
   /**
+   * The products to search in this process: the list this handler was given, else the tenant's in-memory catalogue copy when that
+   * is switched on and loaded. Undefined means search the database.
+   */
+  private memoryProducts(tenantId: string, mapping: ResolvedCatalogMapping): any[] | undefined {
+    if (this.inMemoryProducts) return this.inMemoryProducts;
+    return CatalogueIndexRegistry.shared().productsFor({ tenantId, mapping, getDb: () => openCatalogueDatabase(this.dbProvider) });
+  }
+
+  /**
    * How many products sit under each category path (a path covers everything below it), counted with the same tenant, availability
    * and scope rules a search applies. Used to describe a range to the customer; it returns counts only.
    */
@@ -488,8 +498,9 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const tenantId = ctx.tenantId;
     const scopes = paths.map((path) => cleanCategoryPaths([path]));
 
-    if (this.inMemoryProducts) {
-      const visible = this.inMemoryProducts.filter((p) => {
+    const memory = this.memoryProducts(tenantId, mapping);
+    if (memory) {
+      const visible = memory.filter((p) => {
         const owner = mapping.tenantFields.map((field) => readPath(p, field)).find((value) => value !== undefined);
         return !(owner !== undefined && owner !== tenantId) && classifyAvailability(p, mapping) !== 'excluded';
       });
@@ -558,6 +569,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     }
 
     const tenantId = ctx.tenantId;
+    const memory = this.memoryProducts(tenantId, mapping);
     const query = input.query || '';
     const category = input.category || input.productType || '';
     const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
@@ -711,7 +723,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         .join(' ')
         .toLowerCase();
 
-      if (this.inMemoryProducts) {
+      if (memory) {
         if (isAgent) {
           const wordRegexCache = new Map<string, RegExp[]>();
           const getWordRegexes = (w: string): RegExp[] => {
@@ -739,7 +751,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             }
           }
 
-          docs = this.inMemoryProducts.filter((p) => {
+          docs = memory.filter((p) => {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
@@ -826,7 +838,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             return true;
           });
         } else {
-          docs = this.inMemoryProducts.filter((p) => {
+          docs = memory.filter((p) => {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
@@ -1370,6 +1382,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       total: items.length,
       ...(relaxedConstraints.length > 0 ? { relaxedConstraints } : {}),
       ...(stockFilterDropped ? { stockFilterDropped: true } : {}),
+      ...(memory && !this.inMemoryProducts ? { source: 'index' } : {}),
     };
   }
 }
