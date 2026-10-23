@@ -34,7 +34,12 @@ LOCALE_STEMMING_RULES['en-gb'] = LOCALE_STEMMING_RULES['en'];
  * If locale is unknown, empty, or unmapped, returns the cleaned escaped word with NO stemming.
  */
 export function stemPatternForLocale(word: string, locale?: string): string {
-  const clean = escapeRegex(word.toLowerCase().replace(/[®™]/g, '').trim());
+  const raw = word.toLowerCase().replace(/[®™]/g, '').trim();
+  // A size written as numbers joined by x (150x50, 6x2, 2.4x1.2) matches however the catalogue spaces or spells the separator.
+  if (/^\d+(?:\.\d+)?(?:\s*[x×*]\s*\d+(?:\.\d+)?)+$/.test(raw)) {
+    return raw.split(/\s*[x×*]\s*/).map((n) => n.replace(/\./g, '\\.')).join('\\s*[x×*]\\s*');
+  }
+  const clean = escapeRegex(raw);
   if (!clean) return '';
   if (!locale) return clean; // Unknown locale = no stemming
 

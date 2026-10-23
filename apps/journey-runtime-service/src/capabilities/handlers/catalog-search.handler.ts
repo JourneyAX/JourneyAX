@@ -623,6 +623,16 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       'en';
     const stem = (w: string) => stemPatternForLocale(w, primaryLocale);
 
+    // A product type the model names ("PVC pipe fittings", "clothesline") rarely equals the catalogue's category text ("PVC Pipe & Fittings",
+    // "Clotheslines"). Match when every word of it appears in the text, whatever the punctuation, plural or word order.
+    const typeWordsOf = (value: string): string[] =>
+      value.toLowerCase().replace(/[®™]/g, '').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1 && w !== 'and');
+    const typeMatchers = (value: string): RegExp[] => typeWordsOf(value).map((w) => new RegExp(`\\b${stem(w)}`, 'i'));
+    const typeMatches = (value: string, haystack: string): boolean => {
+      const matchers = typeMatchers(value);
+      return matchers.length === 0 ? haystack.includes(value.toLowerCase()) : matchers.every((rx) => rx.test(haystack));
+    };
+
     const fetchCandidates = async (
       activeSpecs?: StructuredSearchSpecs,
       activeCategory?: string,
@@ -669,7 +679,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
-            if (activeCategory && !textOf(p, mapping.categoryPaths).includes(activeCategory.toLowerCase()) && !textOf(p, mapping.titlePaths).includes(activeCategory.toLowerCase())) return false;
+            if (activeCategory && !typeMatches(activeCategory, textOf(p, mapping.categoryPaths)) && !typeMatches(activeCategory, textOf(p, mapping.titlePaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
 
             if (activeSpecs?.brand) {
@@ -756,7 +766,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
             if (owner !== undefined && owner !== tenantId) return false;
             if (classifyAvailability(p, mapping) === 'excluded') return false;
-            if (activeCategory && !textOf(p, mapping.categoryPaths).includes(activeCategory.toLowerCase())) return false;
+            if (activeCategory && !typeMatches(activeCategory, textOf(p, mapping.categoryPaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
             if (query) {
               const text = textOf(p, mapping.searchPaths);
@@ -791,7 +801,10 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
 
           if (activeCategory) {
-            const regex = new RegExp(escapeRegex(activeCategory), 'i');
+            const words = typeWordsOf(activeCategory);
+            const regex = words.length > 0
+              ? new RegExp(words.map((w) => `(?=.*\\b${stem(w)})`).join(''), 'i')
+              : new RegExp(escapeRegex(activeCategory), 'i');
             and.push({
               $or: [
                 ...anyOf(mapping.categoryPaths, regex),
@@ -1001,6 +1014,38 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
         fused.sort((a, b) => b.finalScore - a.finalScore);
         docs = fused.map((f) => f.doc);
+      }
+
+      // Agent searches carry their words as keywords, not as a free-text query, so nothing ranked them: the best matches could sit
+      // anywhere in the candidates. Rank by how many of the asked words each product matches, counting a word that few candidates
+      // contain (a size, a brand) for more than one nearly all of them contain (a treatment, a material).
+      if (isAgent && activeSpecs?.keywords && activeSpecs.keywords.length > 0 && docs.length > 1) {
+        const words = [...new Set(activeSpecs.keywords
+          .flatMap((kw) => kw.replace(/[®™]/g, '').split(/\s+/))
+          .map((w) => w.trim().toLowerCase())
+          .filter((w) => w.length > 1 && !(stopWords && (stopWords as Set<string>).has?.(w))))];
+        if (words.length > 0) {
+          const regexes = words.map((w) => {
+            const alternatives = [stem(w), ...(glossaryIndex.get(w) || []).map(stem)].filter(Boolean);
+            return new RegExp(`\\b(?:${alternatives.join('|')})`, 'i');
+          });
+          const rows = docs.map((d) => ({
+            d,
+            name: textOf(d, mapping.titlePaths),
+            cat: textOf(d, mapping.categoryPaths),
+            rest: textOf(d, mapping.searchPaths),
+          }));
+          const weights = regexes.map((rx) => {
+            const df = rows.filter((r) => rx.test(`${r.name} ${r.cat} ${r.rest}`)).length;
+            return Math.log((rows.length + 1) / (df + 0.5));
+          });
+          const scored = rows.map((r) => ({
+            d: r.d,
+            s: regexes.reduce((sum, rx, i) => sum + (rx.test(r.name) ? 3 : rx.test(r.cat) ? 2 : rx.test(r.rest) ? 1 : 0) * weights[i], 0),
+          }));
+          scored.sort((x, y) => y.s - x.s);
+          docs = scored.map((x) => x.d);
+        }
       }
 
       const requestedCurrency = input.currency ? input.currency.toUpperCase() : undefined;
