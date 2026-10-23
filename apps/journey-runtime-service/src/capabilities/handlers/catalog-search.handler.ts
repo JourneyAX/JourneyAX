@@ -185,20 +185,34 @@ export function extractSearchSpecs(params: {
   const attrDefs = hasDefs(params.attributeDefinitions)
     ? params.attributeDefinitions
     : {};
-  const extractedAttrs: Record<string, string> = {
+  const rawAttrs: Record<string, any> = {
     ...(params.attributes || {}),
   };
 
   for (const k of Object.keys(attrDefs)) {
-    if (params[k] && !extractedAttrs[k]) {
-      extractedAttrs[k] = String(params[k]);
+    if (params[k] && !rawAttrs[k]) {
+      rawAttrs[k] = String(params[k]);
+    }
+  }
+
+  // Task S2: An attribute that has no definition is never a hard filter: treat its value as plain keywords.
+  const definedAttrs: Record<string, string> = {};
+  const undefinedAttrKeywords: string[] = [];
+
+  for (const [k, v] of Object.entries(rawAttrs)) {
+    if (v != null && v !== '') {
+      if (attrDefs[k]) {
+        definedAttrs[k] = String(v).trim();
+      } else {
+        undefinedAttrKeywords.push(String(v).trim());
+      }
     }
   }
 
   let residual = params.query || '';
 
   for (const [attrName, def] of Object.entries(attrDefs)) {
-    let current = extractedAttrs[attrName]?.trim();
+    let current = definedAttrs[attrName]?.trim();
     if (!current && fullText && Array.isArray(def.extractionPatterns)) {
       for (const pattern of def.extractionPatterns) {
         try {
@@ -215,13 +229,13 @@ export function extractSearchSpecs(params: {
 
     if (current) {
       const norm = normalizeAttributeValue(current, def.normalizer);
-      extractedAttrs[attrName] = norm;
+      definedAttrs[attrName] = norm;
       residual = residual.replace(new RegExp(`\\b${escapeRegex(current)}\\b`, 'i'), ' ');
     }
   }
 
   const attributeVariants: Record<string, string[]> = {};
-  for (const [attrName, val] of Object.entries(extractedAttrs)) {
+  for (const [attrName, val] of Object.entries(definedAttrs)) {
     if (val) {
       attributeVariants[attrName] = resolveAttributeEquivalence(
         attrName,
@@ -243,16 +257,19 @@ export function extractSearchSpecs(params: {
       keywords.push(...words);
     }
   }
+  if (undefinedAttrKeywords.length > 0) {
+    keywords.push(...undefinedAttrKeywords);
+  }
 
   const result: StructuredSearchSpecs = {
-    attributes: extractedAttrs,
+    attributes: definedAttrs,
     attributeVariants,
     brand: params.brand?.trim(),
     productType: params.productType?.trim(),
-    keywords: keywords.length > 0 ? keywords : undefined,
+    keywords: keywords.length > 0 ? [...new Set(keywords)] : undefined,
   };
 
-  for (const [k, v] of Object.entries(extractedAttrs)) {
+  for (const [k, v] of Object.entries(definedAttrs)) {
     result[k] = v;
     result[`${k}Variants`] = attributeVariants[k];
   }
@@ -472,7 +489,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
     const tenantId = ctx.tenantId;
     const query = input.query || '';
-    const category = input.category || '';
+    const category = input.category || input.productType || '';
     const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
     const categoryPaths = cleanCategoryPaths(input.categoryPaths);
     // A scope that was supplied but is unusable must narrow to nothing, never silently widen to the whole catalogue.
@@ -576,342 +593,446 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       'brand', 'keywords', 'productType',
       ...Object.keys(attrDefs),
     ]);
-    const attributeFilters: Record<string, any> = {
-      ...(input.attributeFilters || {}),
-      ...Object.fromEntries(declaredFilterKeys
-        .filter((key) => !isAgent || !reservedStructuredKeys.has(key))
-        .filter((key) => (input as any)[key] !== undefined && (input as any)[key] !== null && (input as any)[key] !== '')
-        .map((key) => [key, (input as any)[key]])),
-    };
+    const attributeFilters: Record<string, any> = isAgent
+      ? {}
+      : {
+          ...(input.attributeFilters || {}),
+          ...Object.fromEntries(declaredFilterKeys
+            .filter((key) => !reservedStructuredKeys.has(key))
+            .filter((key) => (input as any)[key] !== undefined && (input as any)[key] !== null && (input as any)[key] !== '')
+            .map((key) => [key, (input as any)[key]])),
+        };
 
-    let docs: any[] = [];
-    const tokens = (!isAgent && query) ? tokenizeQuery(query, glossaryIndex, stopWords) : [];
-    const textOf = (doc: any, paths: string[]): string => paths
-      .map((path) => readPath(doc, path))
-      .map((value) => (Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value)))
-      .join(' ')
-      .toLowerCase();
+    const fetchCandidates = async (
+      activeSpecs?: StructuredSearchSpecs,
+      activeCategory?: string,
+      kwMode: 'all' | 'any' = 'all'
+    ): Promise<any[]> => {
+      let docs: any[] = [];
+      const tokens = (!isAgent && query) ? tokenizeQuery(query, glossaryIndex, stopWords) : [];
+      const textOf = (doc: any, paths: string[]): string => paths
+        .map((path) => readPath(doc, path))
+        .map((value) => (Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value)))
+        .join(' ')
+        .toLowerCase();
 
-    if (this.inMemoryProducts) {
-      if (isAgent) {
-        docs = this.inMemoryProducts.filter((p) => {
-          const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
-          if (owner !== undefined && owner !== tenantId) return false;
-          if (classifyAvailability(p, mapping) === 'excluded') return false;
-          if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
-          if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
+      if (this.inMemoryProducts) {
+        if (isAgent) {
+          docs = this.inMemoryProducts.filter((p) => {
+            const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
+            if (owner !== undefined && owner !== tenantId) return false;
+            if (classifyAvailability(p, mapping) === 'excluded') return false;
+            if (activeCategory && !textOf(p, mapping.categoryPaths).includes(activeCategory.toLowerCase()) && !textOf(p, mapping.titlePaths).includes(activeCategory.toLowerCase())) return false;
+            if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
 
-          if (specs?.brand) {
-            const cleanBrand = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-            const brandTarget = cleanBrand(specs.brand);
-            const brandText = textOf(p, mapping.brandPaths);
-            const brandAttr = readAttribute(p, 'brand', mapping);
-            const title = textOf(p, mapping.titlePaths);
-            const search = textOf(p, mapping.searchPaths);
-            const brandMatch =
-              cleanBrand(brandText).includes(brandTarget) ||
-              (brandAttr && cleanBrand(String(brandAttr)).includes(brandTarget)) ||
-              cleanBrand(title).includes(brandTarget) ||
-              cleanBrand(search).includes(brandTarget);
-            if (!brandMatch) return false;
-          }
-
-          if (specs?.attributeVariants) {
-            for (const [attrName, variants] of Object.entries(specs.attributeVariants)) {
-              if (!variants || variants.length === 0) continue;
-              const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
+            if (activeSpecs?.brand) {
+              const cleanBrand = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+              const brandTarget = cleanBrand(activeSpecs.brand);
+              const brandText = textOf(p, mapping.brandPaths);
+              const brandAttr = readAttribute(p, 'brand', mapping);
               const title = textOf(p, mapping.titlePaths);
               const search = textOf(p, mapping.searchPaths);
-              const attr = readAttribute(p, attrName, mapping) || p[attrName] || p.attributes?.[attrName];
-              const matchesAttr = regex.test(title) || regex.test(search) || (attr != null && regex.test(String(attr)));
-              if (!matchesAttr) return false;
+              const brandMatch =
+                cleanBrand(brandText).includes(brandTarget) ||
+                (brandAttr && cleanBrand(String(brandAttr)).includes(brandTarget)) ||
+                cleanBrand(title).includes(brandTarget) ||
+                cleanBrand(search).includes(brandTarget);
+              if (!brandMatch) return false;
             }
-          }
 
-          if (specs?.keywords && specs.keywords.length > 0) {
-            const search = textOf(p, mapping.searchPaths);
-            const title = textOf(p, mapping.titlePaths);
-            const cat = textOf(p, mapping.categoryPaths);
-            const allText = `${title} ${cat} ${search}`.toLowerCase();
-            for (const kw of specs.keywords) {
-              const kwLower = kw.toLowerCase().trim();
-              if (!kwLower) continue;
-              if (!allText.includes(kwLower)) {
-                const syns = glossaryIndex.get(kwLower);
-                const hasSyn = syns && syns.some((s) => allText.includes(s.toLowerCase()));
-                if (!hasSyn) {
-                  const words = kwLower.split(/\s+/).filter(Boolean);
-                  if (words.length > 1) {
-                    const allWordsMatch = words.every((w) => allText.includes(w) || (glossaryIndex.get(w)?.some((s) => allText.includes(s.toLowerCase()))));
-                    if (!allWordsMatch) return false;
-                  } else {
-                    return false;
-                  }
-                }
+            if (activeSpecs?.attributeVariants) {
+              for (const [attrName, variants] of Object.entries(activeSpecs.attributeVariants)) {
+                if (!variants || variants.length === 0) continue;
+                const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
+                const title = textOf(p, mapping.titlePaths);
+                const search = textOf(p, mapping.searchPaths);
+                const attr = readAttribute(p, attrName, mapping) || p[attrName] || p.attributes?.[attrName];
+                const matchesAttr = regex.test(title) || regex.test(search) || (attr != null && regex.test(String(attr)));
+                if (!matchesAttr) return false;
               }
             }
-          }
 
-          return true;
-        });
-        // In agent mode, no JS scoring comparator: database / natural order preserved
-      } else {
-        docs = this.inMemoryProducts.filter((p) => {
-          const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
-          if (owner !== undefined && owner !== tenantId) return false;
-          if (classifyAvailability(p, mapping) === 'excluded') return false;
-          if (category && !textOf(p, mapping.categoryPaths).includes(category.toLowerCase())) return false;
-          if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
-          if (query) {
-            const text = textOf(p, mapping.searchPaths);
-            if (tokens.length > 0) {
-              const hit = (t: QueryToken) => t.regex.test(text);
-              if (!(input.matchAllTokens ? tokens.every(hit) : tokens.some(hit))) return false;
-            } else if (!text.includes(query.toLowerCase())) {
-              return false;
+            if (activeSpecs?.keywords && activeSpecs.keywords.length > 0) {
+              const search = textOf(p, mapping.searchPaths);
+              const title = textOf(p, mapping.titlePaths);
+              const cat = textOf(p, mapping.categoryPaths);
+              const allText = `${title} ${cat} ${search}`.toLowerCase();
+
+              const matchesKw = (kw: string): boolean => {
+                const kwLower = kw.toLowerCase().trim();
+                if (!kwLower) return false;
+                if (allText.includes(kwLower)) return true;
+                const syns = glossaryIndex.get(kwLower);
+                if (syns && syns.some((s) => allText.includes(s.toLowerCase()))) return true;
+                const words = kwLower.split(/\s+/).filter(Boolean);
+                if (words.length > 1) {
+                  return words.every((w) => allText.includes(w) || (glossaryIndex.get(w)?.some((s) => allText.includes(s.toLowerCase()))));
+                }
+                return false;
+              };
+
+              if (kwMode === 'all') {
+                for (const kw of activeSpecs.keywords) {
+                  if (!matchesKw(kw)) return false;
+                }
+              } else {
+                const hasAny = activeSpecs.keywords.some(matchesKw);
+                if (!hasAny) return false;
+              }
             }
-          }
-          return true;
-        });
 
-        if (tokens.length > 0 && docs.length > 0) {
-          docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
-        }
-      }
-    } else {
-      const uri = process.env.MONGODB_URI;
-      if (!uri && !this.dbProvider) {
-        return { items: [], total: 0, error: 'Database connection required for catalog search' };
-      }
-
-      try {
-        if (!db) {
-          db = this.dbProvider
-            ? await this.dbProvider()
-            : (await connectToDatabase(uri!, process.env.MONGODB_DB_NAME || 'journeyx')).db;
-        }
-
-        const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
-        const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
-
-        if (category) {
-          const regex = new RegExp(escapeRegex(category), 'i');
-          and.push({ $or: anyOf(mapping.categoryPaths, regex) });
-        }
-        and.push(...buildCategoryScopeClauses(mapping, { categoryIds, categoryPaths, excludeCategoryIds }));
-
-        if (isAgent) {
-          if (specs?.brand) {
-            const brandPattern = escapeRegex(specs.brand).replace(/\s+/g, '[^a-zA-Z0-9]*');
-            const brandRegex = new RegExp(brandPattern, 'i');
-            and.push({
-              $or: [
-                ...anyOf(mapping.brandPaths, brandRegex),
-                ...anyOf(mapping.searchPaths, brandRegex),
-                ...anyOf(mapping.titlePaths, brandRegex),
-              ],
-            });
-          }
-          if (specs?.attributeVariants) {
-            for (const [attrName, variants] of Object.entries(specs.attributeVariants)) {
-              if (!variants || variants.length === 0) continue;
-              const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
-              and.push({
-                $or: [
-                  ...anyOf(mapping.titlePaths, regex),
-                  ...anyOf(mapping.searchPaths, regex),
-                  ...mapping.attributeContainers.map((c) => ({ [`${c}.${attrName}`]: regex })),
-                  { [attrName]: regex },
-                ],
-              });
-            }
-          }
-          if (specs?.keywords && specs.keywords.length > 0) {
-            for (const kw of specs.keywords) {
-              const kwClean = kw.trim();
-              if (!kwClean) continue;
-              const syns = glossaryIndex.get(kwClean.toLowerCase()) || [];
-              const patterns = [escapeRegex(kwClean), ...syns.map(escapeRegex)];
-              const kwRegex = new RegExp(`\\b(?:${patterns.join('|')})`, 'i');
-              and.push({ $or: anyOf(mapping.searchPaths, kwRegex) });
-            }
-          }
-          if (and.length === 0) delete filter.$and;
-
-          docs = await db.collection(COLLECTION_PRODUCTS)
-            .find(filter)
-            .limit(mapping.candidateLimit)
-            .toArray();
-          // In agent mode, no JS scoring comparators applied!
+            return true;
+          });
         } else {
-          if (query) {
-            const matchers = tokens.length > 0
-              ? tokens.map((t) => t.regex)
-              : [new RegExp(escapeRegex(query), 'i')];
-            if (input.matchAllTokens && tokens.length > 0) {
-              for (const regex of matchers) and.push({ $or: anyOf(mapping.searchPaths, regex) });
-            } else {
-              and.push({ $or: matchers.flatMap((regex) => anyOf(mapping.searchPaths, regex)) });
+          docs = this.inMemoryProducts.filter((p) => {
+            const owner = mapping.tenantFields.map((path) => readPath(p, path)).find((value) => value !== undefined);
+            if (owner !== undefined && owner !== tenantId) return false;
+            if (classifyAvailability(p, mapping) === 'excluded') return false;
+            if (activeCategory && !textOf(p, mapping.categoryPaths).includes(activeCategory.toLowerCase())) return false;
+            if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
+            if (query) {
+              const text = textOf(p, mapping.searchPaths);
+              if (tokens.length > 0) {
+                const hit = (t: QueryToken) => t.regex.test(text);
+                if (!(input.matchAllTokens ? tokens.every(hit) : tokens.some(hit))) return false;
+              } else if (!text.includes(query.toLowerCase())) {
+                return false;
+              }
             }
-          }
-          for (const [filterKey, filterVal] of Object.entries(attributeFilters)) {
-            const regex = new RegExp(`^${escapeRegex(String(filterVal))}$`, 'i');
-            const keys = [filterKey, ...(mapping.attributeAliases[filterKey] || [])];
-            and.push({
-              $or: keys.flatMap((key) => [
-                ...mapping.attributeContainers.map((container) => ({ [`${container}.${key}`]: regex })),
-                { [key]: regex },
-              ]),
-            });
-          }
-          if (and.length === 0) delete filter.$and;
-
-          docs = await db.collection(COLLECTION_PRODUCTS)
-            .find(filter)
-            .limit(mapping.candidateLimit)
-            .toArray();
+            return true;
+          });
 
           if (tokens.length > 0 && docs.length > 0) {
             docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
           }
         }
-      } catch (err: any) {
-        console.warn('[CatalogSearchHandler] Failed to query catalog:', err.message);
-        return { items: [], total: 0, error: err.message };
-      }
-    }
+      } else {
+        const uri = process.env.MONGODB_URI;
+        if (!uri && !this.dbProvider) {
+          return [];
+        }
 
-    // Hybrid retrieval: Atlas vector search through existing product-service logic or equivalent, plus keyword search, then rerank
-    let vectorResults: Array<{ doc: any; score: number }> = [];
-    const searcher = input.vectorSearcher || (ctx as any).vectorSearcher || this.vectorSearcher;
-    if (searcher && query) {
-      try {
-        vectorResults = await searcher(query, {
-          tenantId,
-          limit: limit * 2,
-          categoryIds,
-          categoryPaths,
-          excludeCategoryIds,
-        });
-      } catch (err: any) {
-        console.warn('[CatalogSearchHandler] Vector search failed, falling back to keyword only:', err.message);
+        try {
+          if (!db) {
+            db = this.dbProvider
+              ? await this.dbProvider()
+              : (await connectToDatabase(uri!, process.env.MONGODB_DB_NAME || 'journeyx')).db;
+          }
+
+          const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
+          const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
+
+          if (activeCategory) {
+            const regex = new RegExp(escapeRegex(activeCategory), 'i');
+            and.push({
+              $or: [
+                ...anyOf(mapping.categoryPaths, regex),
+                ...anyOf(mapping.titlePaths, regex),
+              ],
+            });
+          }
+          and.push(...buildCategoryScopeClauses(mapping, { categoryIds, categoryPaths, excludeCategoryIds }));
+
+          if (isAgent) {
+            if (activeSpecs?.brand) {
+              const brandPattern = escapeRegex(activeSpecs.brand).replace(/\s+/g, '[^a-zA-Z0-9]*');
+              const brandRegex = new RegExp(brandPattern, 'i');
+              and.push({
+                $or: [
+                  ...anyOf(mapping.brandPaths, brandRegex),
+                  ...anyOf(mapping.searchPaths, brandRegex),
+                  ...anyOf(mapping.titlePaths, brandRegex),
+                ],
+              });
+            }
+            if (activeSpecs?.attributeVariants) {
+              for (const [attrName, variants] of Object.entries(activeSpecs.attributeVariants)) {
+                if (!variants || variants.length === 0) continue;
+                const regex = new RegExp(`(?:^|[^a-z0-9])(?:${variants.map(escapeRegex).join('|')})(?:[^a-z0-9]|$)`, 'i');
+                and.push({
+                  $or: [
+                    ...anyOf(mapping.titlePaths, regex),
+                    ...anyOf(mapping.searchPaths, regex),
+                    ...mapping.attributeContainers.map((c) => ({ [`${c}.${attrName}`]: regex })),
+                    { [attrName]: regex },
+                  ],
+                });
+              }
+            }
+            if (activeSpecs?.keywords && activeSpecs.keywords.length > 0) {
+              const kwClauses: any[] = [];
+              for (const kw of activeSpecs.keywords) {
+                const kwClean = kw.trim();
+                if (!kwClean) continue;
+                const syns = glossaryIndex.get(kwClean.toLowerCase()) || [];
+                const patterns = [escapeRegex(kwClean), ...syns.map(escapeRegex)];
+                const kwRegex = new RegExp(`\\b(?:${patterns.join('|')})`, 'i');
+                kwClauses.push({ $or: anyOf(mapping.searchPaths, kwRegex) });
+              }
+              if (kwClauses.length > 0) {
+                if (kwMode === 'all') {
+                  and.push(...kwClauses);
+                } else {
+                  and.push({ $or: kwClauses.flatMap((c) => c.$or) });
+                }
+              }
+            }
+            if (and.length === 0) delete filter.$and;
+
+            docs = await db.collection(COLLECTION_PRODUCTS)
+              .find(filter)
+              .limit(mapping.candidateLimit)
+              .toArray();
+          } else {
+            if (query) {
+              const matchers = tokens.length > 0
+                ? tokens.map((t) => t.regex)
+                : [new RegExp(escapeRegex(query), 'i')];
+              if (input.matchAllTokens && tokens.length > 0) {
+                for (const regex of matchers) and.push({ $or: anyOf(mapping.searchPaths, regex) });
+              } else {
+                and.push({ $or: matchers.flatMap((regex) => anyOf(mapping.searchPaths, regex)) });
+              }
+            }
+            for (const [filterKey, filterVal] of Object.entries(attributeFilters)) {
+              const regex = new RegExp(`^${escapeRegex(String(filterVal))}$`, 'i');
+              const keys = [filterKey, ...(mapping.attributeAliases[filterKey] || [])];
+              and.push({
+                $or: keys.flatMap((key) => [
+                  ...mapping.attributeContainers.map((container) => ({ [`${container}.${key}`]: regex })),
+                  { [key]: regex },
+                ]),
+              });
+            }
+            if (and.length === 0) delete filter.$and;
+
+            docs = await db.collection(COLLECTION_PRODUCTS)
+              .find(filter)
+              .limit(mapping.candidateLimit)
+              .toArray();
+
+            if (tokens.length > 0 && docs.length > 0) {
+              docs.sort((a, b) => scoreDocumentRelevance(b, tokens, mapping) - scoreDocumentRelevance(a, tokens, mapping));
+            }
+          }
+        } catch (err: any) {
+          console.warn('[CatalogSearchHandler] Failed to query catalog:', err.message);
+          return [];
+        }
       }
-    } else if (db && input.queryEmbedding && query) {
-      try {
-        const vectorPipeline: object[] = [
-          {
-            $vectorSearch: {
-              index: 'vector_index',
-              path: 'embedding',
-              queryVector: input.queryEmbedding,
-              numCandidates: Math.max(limit * 3, 20),
-              limit: limit * 2,
+
+      // Hybrid retrieval: Atlas vector search through existing product-service logic or equivalent, plus keyword search, then rerank
+      let vectorResults: Array<{ doc: any; score: number }> = [];
+      const searcher = input.vectorSearcher || (ctx as any).vectorSearcher || this.vectorSearcher;
+      if (searcher && query) {
+        try {
+          vectorResults = await searcher(query, {
+            tenantId,
+            limit: limit * 2,
+            categoryIds,
+            categoryPaths,
+            excludeCategoryIds,
+          });
+        } catch (err: any) {
+          console.warn('[CatalogSearchHandler] Vector search failed, falling back to keyword only:', err.message);
+        }
+      } else if (db && input.queryEmbedding && query) {
+        try {
+          const vectorPipeline: object[] = [
+            {
+              $vectorSearch: {
+                index: 'vector_index',
+                path: 'embedding',
+                queryVector: input.queryEmbedding,
+                numCandidates: Math.max(limit * 3, 20),
+                limit: limit * 2,
+              },
             },
-          },
-          { $addFields: { score: { $meta: 'vectorSearchScore' } } },
-          { $project: { embedding: 0 } },
-        ];
-        const rawVec = await db.collection(COLLECTION_PRODUCTS).aggregate(vectorPipeline).toArray();
-        vectorResults = rawVec.map((d: any) => ({ doc: d, score: d.score || 0 }));
-      } catch {
-        // Fallback silently when vector index is not configured
+            { $addFields: { score: { $meta: 'vectorSearchScore' } } },
+            { $project: { embedding: 0 } },
+          ];
+          const rawVec = await db.collection(COLLECTION_PRODUCTS).aggregate(vectorPipeline).toArray();
+          vectorResults = rawVec.map((d: any) => ({ doc: d, score: d.score || 0 }));
+        } catch {
+          // Fallback silently when vector index is not configured
+        }
+      }
+
+      // Reciprocal Rank Fusion (RRF) reranking when vector results exist
+      if (vectorResults.length > 0) {
+        const docMap = new Map<string, any>();
+        const kwRankMap = new Map<string, number>();
+        const vecRankMap = new Map<string, number>();
+        const kwScoreMap = new Map<string, number>();
+
+        docs.forEach((doc, rank) => {
+          const idPath = mapping.identifierPaths?.[0];
+          const key = (idPath ? readPath(doc, idPath) : undefined) || doc.sku || String(doc._id);
+          docMap.set(key, doc);
+          kwRankMap.set(key, rank);
+          if (!isAgent) {
+            kwScoreMap.set(key, scoreDocumentRelevance(doc, tokens, mapping));
+          }
+        });
+
+        vectorResults.forEach(({ doc, score }, rank) => {
+          const idPath = mapping.identifierPaths?.[0];
+          const key = (idPath ? readPath(doc, idPath) : undefined) || doc.sku || String(doc._id);
+          if (!docMap.has(key)) docMap.set(key, doc);
+          vecRankMap.set(key, rank);
+        });
+
+        const fused = Array.from(docMap.values()).map((doc) => {
+          const idPath = mapping.identifierPaths?.[0];
+          const key = (idPath ? readPath(doc, idPath) : undefined) || doc.sku || String(doc._id);
+          const kwRank = kwRankMap.has(key) ? kwRankMap.get(key)! : -1;
+          const vecRank = vecRankMap.has(key) ? vecRankMap.get(key)! : -1;
+          const rrf = (kwRank >= 0 ? 1 / (60 + kwRank) : 0) + (vecRank >= 0 ? 1 / (60 + vecRank) : 0);
+          if (isAgent) {
+            return { doc, finalScore: rrf };
+          }
+          const kwScore = kwScoreMap.get(key) || scoreDocumentRelevance(doc, tokens, mapping);
+          const finalScore = rrf * 1000 + kwScore;
+          return { doc, finalScore };
+        });
+
+        fused.sort((a, b) => b.finalScore - a.finalScore);
+        docs = fused.map((f) => f.doc);
+      }
+
+      const requestedCurrency = input.currency ? input.currency.toUpperCase() : undefined;
+      return docs
+        .map((doc: any) => {
+          const normalized = normalizeCatalogProduct(doc, mapping, { title: 'Product', category: 'General' });
+          return {
+            ...normalized.attributes,
+            sku: normalized.sku,
+            title: normalized.title,
+            name: normalized.title,
+            description: normalized.description,
+            category: normalized.category,
+            priceCents: normalized.priceCents,
+            price: normalized.price,
+            // Only a currency the product (or the tenant mapping) declared; the request currency is a filter, never a label.
+            currency: normalized.currency,
+            currencyUndeclared: normalized.currencyUndeclared,
+            inStock: normalized.inStock,
+            attributes: normalized.attributes,
+            availableQuantity: normalized.availableQuantity,
+            certifications: normalized.certifications,
+            imageUrl: normalized.imageUrl,
+          };
+        })
+        .filter((item: any) => {
+          const unpriced = item.priceCents == null || item.priceCents <= 0;
+          if (unpriced && (input.requireAuthoritativePrice || input.minPriceCents != null || input.maxPriceCents != null)) {
+            return false;
+          }
+          if (input.minPriceCents != null && (item.priceCents == null || item.priceCents < input.minPriceCents)) return false;
+          if (input.maxPriceCents != null && (item.priceCents == null || item.priceCents > input.maxPriceCents)) return false;
+          // A price in another or an unknown currency can never satisfy a currency-constrained request.
+          if (requestedCurrency && !unpriced && item.currency !== requestedCurrency) return false;
+          if (input.inStockOnly && item.inStock !== true) return false;
+          for (const [k, expectedVal] of Object.entries(attributeFilters)) {
+            if (isAgent && reservedStructuredKeys.has(k)) continue;
+            const actualVal = readAttribute(item, k, mapping);
+            if (actualVal === undefined || actualVal === null) return false;
+            if (String(actualVal).trim().toLowerCase() !== String(expectedVal).trim().toLowerCase()) return false;
+          }
+          if (input.requiredCertifications && input.requiredCertifications.length > 0) {
+            const hasAll = input.requiredCertifications.every((cert) =>
+              item.certifications.some((c: string) => c.toLowerCase() === cert.toLowerCase())
+            );
+            if (!hasAll) return false;
+          }
+          return true;
+        })
+        .slice(0, limit);
+    };
+
+    let items = await fetchCandidates(specs, category, 'all');
+    const relaxedConstraints: string[] = [];
+
+    // Task S2: Graceful degradation, generic.
+    // If a search returns no results, relax the least important constraints in order
+    // (attributes, then product type, then keywords), keep the vector and keyword fallback,
+    // and return which constraints were relaxed so the AI can tell the customer.
+    // Only when relaxation also fails may the tool say nothing was found.
+    if (items.length === 0 && (specs || category)) {
+      const hasKeywords = Boolean(specs?.keywords && specs.keywords.length > 0);
+      const hasType = Boolean(category || specs?.productType);
+      const canRelaxAttributes = hasKeywords || hasType;
+
+      // Step 1: Relax attributes (only if there are keywords or product type anchoring the search)
+      if (canRelaxAttributes && specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
+        const noAttrSpecs: StructuredSearchSpecs = {
+          ...specs,
+          attributes: {},
+          attributeVariants: {},
+        };
+        const relaxedItems = await fetchCandidates(noAttrSpecs, category, 'all');
+        if (relaxedItems.length > 0) {
+          items = relaxedItems;
+          relaxedConstraints.push('attributes');
+        }
+      }
+
+      // Step 2: Relax product type / category (only if there are keywords anchoring the search)
+      if (items.length === 0 && hasType && hasKeywords) {
+        const noTypeKeywords = specs?.keywords?.filter((k) =>
+          !specs.productType || k.toLowerCase() !== specs.productType.toLowerCase()
+        );
+        const noTypeSpecs: StructuredSearchSpecs = {
+          ...(specs
+            ? {
+                ...specs,
+                attributes: {},
+                attributeVariants: {},
+                productType: undefined,
+                keywords: noTypeKeywords && noTypeKeywords.length > 0 ? noTypeKeywords : undefined,
+              }
+            : { attributes: {}, attributeVariants: {} }),
+        };
+        const relaxedItems = await fetchCandidates(noTypeSpecs, undefined, 'all');
+        if (relaxedItems.length > 0) {
+          items = relaxedItems;
+          if (specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
+            relaxedConstraints.push('attributes');
+          }
+          relaxedConstraints.push('productType');
+        }
+      }
+
+      // Step 3: Relax keywords
+      if (items.length === 0 && hasKeywords) {
+        const anyKwSpecs: StructuredSearchSpecs = {
+          ...(specs
+            ? {
+                ...specs,
+                attributes: {},
+                attributeVariants: {},
+                productType: undefined,
+              }
+            : { attributes: {}, attributeVariants: {} }),
+        };
+        const relaxedItems = await fetchCandidates(anyKwSpecs, undefined, 'any');
+        if (relaxedItems.length > 0) {
+          items = relaxedItems;
+          if (specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
+            relaxedConstraints.push('attributes');
+          }
+          if (hasType) {
+            relaxedConstraints.push('productType');
+          }
+          relaxedConstraints.push('keywords');
+        }
       }
     }
-
-    // Reciprocal Rank Fusion (RRF) reranking when vector results exist
-    if (vectorResults.length > 0) {
-      const docMap = new Map<string, any>();
-      const kwRankMap = new Map<string, number>();
-      const vecRankMap = new Map<string, number>();
-      const kwScoreMap = new Map<string, number>();
-
-      docs.forEach((doc, rank) => {
-        const idPath = mapping.identifierPaths?.[0];
-        const key = (idPath ? readPath(doc, idPath) : undefined) || doc.sku || String(doc._id);
-        docMap.set(key, doc);
-        kwRankMap.set(key, rank);
-        if (!isAgent) {
-          kwScoreMap.set(key, scoreDocumentRelevance(doc, tokens, mapping));
-        }
-      });
-
-      vectorResults.forEach(({ doc, score }, rank) => {
-        const idPath = mapping.identifierPaths?.[0];
-        const key = (idPath ? readPath(doc, idPath) : undefined) || doc.sku || String(doc._id);
-        if (!docMap.has(key)) docMap.set(key, doc);
-        vecRankMap.set(key, rank);
-      });
-
-      const fused = Array.from(docMap.values()).map((doc) => {
-        const idPath = mapping.identifierPaths?.[0];
-        const key = (idPath ? readPath(doc, idPath) : undefined) || doc.sku || String(doc._id);
-        const kwRank = kwRankMap.has(key) ? kwRankMap.get(key)! : -1;
-        const vecRank = vecRankMap.has(key) ? vecRankMap.get(key)! : -1;
-        const rrf = (kwRank >= 0 ? 1 / (60 + kwRank) : 0) + (vecRank >= 0 ? 1 / (60 + vecRank) : 0);
-        if (isAgent) {
-          return { doc, finalScore: rrf };
-        }
-        const kwScore = kwScoreMap.get(key) || scoreDocumentRelevance(doc, tokens, mapping);
-        const finalScore = rrf * 1000 + kwScore;
-        return { doc, finalScore };
-      });
-
-      fused.sort((a, b) => b.finalScore - a.finalScore);
-      docs = fused.map((f) => f.doc);
-    }
-
-    const requestedCurrency = input.currency ? input.currency.toUpperCase() : undefined;
-    const items = docs
-      .map((doc: any) => {
-        const normalized = normalizeCatalogProduct(doc, mapping, { title: 'Product', category: 'General' });
-        return {
-          ...normalized.attributes,
-          sku: normalized.sku,
-          title: normalized.title,
-          name: normalized.title,
-          description: normalized.description,
-          category: normalized.category,
-          priceCents: normalized.priceCents,
-          price: normalized.price,
-          // Only a currency the product (or the tenant mapping) declared; the request currency is a filter, never a label.
-          currency: normalized.currency,
-          currencyUndeclared: normalized.currencyUndeclared,
-          inStock: normalized.inStock,
-          attributes: normalized.attributes,
-          availableQuantity: normalized.availableQuantity,
-          certifications: normalized.certifications,
-          imageUrl: normalized.imageUrl,
-        };
-      })
-      .filter((item: any) => {
-        const unpriced = item.priceCents == null || item.priceCents <= 0;
-        if (unpriced && (input.requireAuthoritativePrice || input.minPriceCents != null || input.maxPriceCents != null)) {
-          return false;
-        }
-        if (input.minPriceCents != null && (item.priceCents == null || item.priceCents < input.minPriceCents)) return false;
-        if (input.maxPriceCents != null && (item.priceCents == null || item.priceCents > input.maxPriceCents)) return false;
-        // A price in another or an unknown currency can never satisfy a currency-constrained request.
-        if (requestedCurrency && !unpriced && item.currency !== requestedCurrency) return false;
-        if (input.inStockOnly && item.inStock !== true) return false;
-        for (const [k, expectedVal] of Object.entries(attributeFilters)) {
-          if (isAgent && reservedStructuredKeys.has(k)) continue;
-          const actualVal = readAttribute(item, k, mapping);
-          if (actualVal === undefined || actualVal === null) return false;
-          if (String(actualVal).trim().toLowerCase() !== String(expectedVal).trim().toLowerCase()) return false;
-        }
-        if (input.requiredCertifications && input.requiredCertifications.length > 0) {
-          const hasAll = input.requiredCertifications.every((cert) =>
-            item.certifications.some((c: string) => c.toLowerCase() === cert.toLowerCase())
-          );
-          if (!hasAll) return false;
-        }
-        return true;
-      })
-      .slice(0, limit);
 
     return {
       items,
       total: items.length,
+      ...(relaxedConstraints.length > 0 ? { relaxedConstraints } : {}),
     };
   }
 }

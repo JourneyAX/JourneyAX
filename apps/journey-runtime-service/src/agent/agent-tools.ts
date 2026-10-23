@@ -983,7 +983,8 @@ export async function executeAgentTool(
 
       ctx.allowedClaimClasses.add('catalog_fact');
 
-      return {
+      const relaxedConstraints: string[] | undefined = result.relaxedConstraints;
+      const response: any = {
         query: displayQuery,
         count: products.length,
         products: products.map((p) => ({
@@ -995,6 +996,13 @@ export async function executeAgentTool(
           excerpt: p.description?.slice(0, 140),
         })),
       };
+
+      if (relaxedConstraints && relaxedConstraints.length > 0) {
+        response.relaxedConstraints = relaxedConstraints;
+        response.message = `No exact match found. The following search constraints were relaxed: ${relaxedConstraints.join(', ')}. Inform the customer that these close alternatives were found.`;
+      }
+
+      return response;
     }
 
     case 'get_product': {

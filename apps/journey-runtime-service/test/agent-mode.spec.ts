@@ -3787,6 +3787,200 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.equal(specs.attributes?.fit, 'popover');
       });
     });
+
+    describe('Task S2: Graceful Degradation & Generic Attribute Handling', () => {
+      test('An attribute that has no definition is never a hard filter: treated as plain keywords', () => {
+        const specs = extractSearchSpecs({
+          query: 'outdoor deck screws',
+          attributes: {
+            finish: 'galvanised',
+            size: '100x50',
+          },
+          attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+        });
+
+        assert.equal(specs.attributes?.size, '100x50');
+        assert.ok(specs.attributeVariants?.size?.includes('100x50'));
+        assert.equal(specs.attributes?.finish, undefined);
+        assert.equal(specs.attributeVariants?.finish, undefined);
+        assert.ok(specs.keywords?.includes('galvanised'), 'undefined attribute value must be added to keywords');
+      });
+
+      test('Graceful degradation relaxes attributes first when no exact match', async () => {
+        const product = {
+          tenantId: 'test-tenant',
+          sku: '1002835',
+          title: 'Radiata Structural Grade 8 Framing Timber 100 x 50mm H3.2',
+          category: 'Framing Timber',
+          price: { amount: 15, currency: 'NZD' },
+          inStock: true,
+        };
+
+        const handler = new CatalogSearchHandler([product]);
+        const ctx: any = {
+          tenantId: 'test-tenant',
+          packSettings: {
+            catalogMapping: {
+              attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+            },
+          },
+        };
+
+        const res = await handler.execute({
+          isAgentMode: true,
+          productType: 'Framing Timber',
+          keywords: ['Radiata'],
+          attributes: { size: '200x50' },
+        }, ctx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, '1002835');
+        assert.deepEqual(res.relaxedConstraints, ['attributes']);
+      });
+
+      test('Graceful degradation relaxes productType second when attributes relaxation still yields 0 results', async () => {
+        const product = {
+          tenantId: 'test-tenant',
+          sku: '1002835',
+          title: 'Radiata Structural Grade 8 Framing Timber 100 x 50mm H3.2',
+          category: 'Framing Timber',
+          price: { amount: 15, currency: 'NZD' },
+          inStock: true,
+        };
+
+        const handler = new CatalogSearchHandler([product]);
+        const ctx: any = {
+          tenantId: 'test-tenant',
+          packSettings: {
+            catalogMapping: {
+              attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+            },
+          },
+        };
+
+        const res = await handler.execute({
+          isAgentMode: true,
+          productType: 'Plumbing & Pipes',
+          keywords: ['Radiata'],
+          attributes: { size: '200x50' },
+        }, ctx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, '1002835');
+        assert.deepEqual(res.relaxedConstraints, ['attributes', 'productType']);
+      });
+
+      test('Graceful degradation relaxes keywords third when productType relaxation still yields 0 results', async () => {
+        const product = {
+          tenantId: 'test-tenant',
+          sku: '1002835',
+          title: 'Radiata Structural Grade 8 Framing Timber 100 x 50mm H3.2',
+          category: 'Framing Timber',
+          price: { amount: 15, currency: 'NZD' },
+          inStock: true,
+        };
+
+        const handler = new CatalogSearchHandler([product]);
+        const ctx: any = {
+          tenantId: 'test-tenant',
+          packSettings: {
+            catalogMapping: {
+              attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
+            },
+          },
+        };
+
+        const res = await handler.execute({
+          isAgentMode: true,
+          productType: 'Plumbing & Pipes',
+          keywords: ['Radiata', 'Unobtainium'],
+          attributes: { size: '200x50' },
+        }, ctx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, '1002835');
+        assert.deepEqual(res.relaxedConstraints, ['attributes', 'productType', 'keywords']);
+      });
+
+      test('search_products tool returns relaxedConstraints and explanation message to AI', async () => {
+        const product = {
+          tenantId: 'test-tenant',
+          sku: '1002835',
+          title: 'Radiata Structural Grade 8 Framing Timber 100 x 50mm H3.2',
+          category: 'Framing Timber',
+          price: { amount: 15, currency: 'NZD' },
+          inStock: true,
+        };
+
+        const handler = new CatalogSearchHandler([product]);
+        const toolCtx: AgentToolContext = {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          correlationId: 'corr-degradation',
+          release: createTestPack(),
+          catalogSearchHandler: handler,
+          turnProductSkus: new Set<string>(),
+          catalogProductCache: new Map<string, any>(),
+          readSourceIds: new Set<string>(),
+          allowedClaimClasses: new Set<any>(),
+          presentedCards: [],
+          isHumanHandoffRequested: false,
+        };
+
+        const result = await executeAgentTool(
+          'search_products',
+          {
+            keywords: ['Radiata'],
+            productType: 'Framing Timber',
+            attributes: { size: '200x50' },
+          },
+          toolCtx
+        );
+
+        assert.equal(result.count, 1);
+        assert.deepEqual(result.relaxedConstraints, ['attributes']);
+        assert.match(result.message, /search constraints were relaxed/i);
+        assert.match(result.message, /attributes/i);
+      });
+
+      test('Only when all relaxation steps fail does the tool say nothing was found', async () => {
+        const product = {
+          tenantId: 'test-tenant',
+          sku: '1002835',
+          title: 'Radiata Structural Grade 8 Framing Timber 100 x 50mm H3.2',
+          category: 'Framing Timber',
+          price: { amount: 15, currency: 'NZD' },
+          inStock: true,
+        };
+
+        const handler = new CatalogSearchHandler([product]);
+        const toolCtx: AgentToolContext = {
+          tenantId: 'test-tenant',
+          environmentId: 'test',
+          correlationId: 'corr-none-found',
+          release: createTestPack(),
+          catalogSearchHandler: handler,
+          turnProductSkus: new Set<string>(),
+          catalogProductCache: new Map<string, any>(),
+          readSourceIds: new Set<string>(),
+          allowedClaimClasses: new Set<any>(),
+          presentedCards: [],
+          isHumanHandoffRequested: false,
+        };
+
+        const result = await executeAgentTool(
+          'search_products',
+          {
+            keywords: ['CompletelyUnrelatedTermXYZ123'],
+          },
+          toolCtx
+        );
+
+        assert.equal(result.count, 0);
+        assert.equal(result.products.length, 0);
+        assert.match(result.message, /Could not find any products matching/i);
+      });
+    });
   });
 });
 
