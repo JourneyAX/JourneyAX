@@ -1,0 +1,94 @@
+{
+  "_comment": "PlaceMakers agent-mode settings. Data only: how the assistant's own words are shaped, and that the agent runs. The platform caps are 8 sentences and 5 questions per reply.",
+  "agentMode": true,
+  "interpretationPolicy": {
+    "replyStyle": {
+      "maxSentences": 8,
+      "dropListLines": false,
+      "dropCompanyName": false,
+      "allowFollowUpQuestion": true,
+      "maxQuestions": 5,
+      "forbiddenPhrases": [],
+      "rules": [
+        "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+        "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+        "Never ask for something the customer has already told you."
+      ],
+      "turnStyles": {}
+    }
+  },
+  "routingPolicy": {
+    "defaultJourneyId": "placemakers_shop",
+    "fallbackOnCatalogSearch": true
+  },
+  "journeyPlaybook": [
+    {
+      "id": "understand",
+      "name": "Understand the job",
+      "goal": "Find out what the customer is building, renovating or repairing, and consult the business knowledge for it.",
+      "tools": [
+        "consult_business_knowledge"
+      ],
+      "exitCondition": "The job is understood well enough to search for products, or the scoping questions have been asked."
+    },
+    {
+      "id": "recommend",
+      "name": "Recommend products",
+      "goal": "Search the catalogue and show real matching products with their price and image.",
+      "tools": [
+        "search_products",
+        "get_product"
+      ],
+      "exitCondition": "The customer has seen products that match what they asked for."
+    },
+    {
+      "id": "complete_system",
+      "name": "Complete the system",
+      "goal": "Offer the accessories, fixings and related products that go with the chosen product, from the relationships in the knowledge and the catalogue.",
+      "tools": [
+        "get_related_products",
+        "consult_business_knowledge",
+        "search_products"
+      ],
+      "exitCondition": "The related products the job needs have been offered."
+    },
+    {
+      "id": "install_and_warranty",
+      "name": "Installation and warranty",
+      "goal": "Explain installation from the guides on file and state warranty only from documents on file; say plainly when nothing is on file.",
+      "tools": [
+        "search_guides",
+        "get_warranty"
+      ],
+      "exitCondition": "Installation and warranty information has been given or its absence stated."
+    },
+    {
+      "id": "quantity_and_stock",
+      "name": "Quantity and stock",
+      "goal": "Work out quantities where a calculator exists and check stock for the chosen items.",
+      "tools": [
+        "calculate_quantity",
+        "check_stock"
+      ],
+      "exitCondition": "Quantities and availability have been given or their absence stated."
+    },
+    {
+      "id": "next_step",
+      "name": "Next step",
+      "goal": "Offer one clear next step: add to the cart or a quote, check another item, or connect the customer with a person.",
+      "tools": [
+        "update_cart",
+        "create_quote",
+        "present_card",
+        "hand_off_to_human"
+      ],
+      "exitCondition": "The customer has a clear next step."
+    }
+  ],
+  "modelPolicyOverrides": {
+    "complex_reasoning": {
+      "reasoningEffort": "none",
+      "timeoutMs": 30000
+    }
+  }
+}
