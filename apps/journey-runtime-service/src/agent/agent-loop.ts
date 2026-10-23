@@ -645,11 +645,18 @@ function extractToolResultCount(result: any): number | undefined {
       const isLastAllowedRound = round === maxToolRounds - 1;
 
       // Pass model deltas directly to the IncrementalSentenceShaper as they arrive.
-      // Sentences are filtered through shapeSentence which drops any tool narration.
+      // For toolFirst agents in round 0, hold streamed deltas until round 0 ends and release only if accepted.
       let roundStreamedChunks = 0;
+      let roundBufferedDeltas: string[] = [];
+      const isBufferingRoundZero = round === 0 && Boolean(resolvedAgent?.toolFirst);
+
       const onDelta = (delta: string) => {
         roundStreamedChunks++;
-        shaper.processDelta(delta);
+        if (isBufferingRoundZero) {
+          roundBufferedDeltas.push(delta);
+        } else {
+          shaper.processDelta(delta);
+        }
       };
 
       let response: AgentExecutionResponse;
@@ -717,7 +724,8 @@ function extractToolResultCount(result: any): number | undefined {
             console.warn(
               `[AgentTurnLoop] toolFirst agent '${resolvedAgent.agent.agentId}' returned text without tools in round 0, but lookup check was '${checkAnswer}'. Enforcing tool execution.`
             );
-            // Discard the text and force tool use
+            // Discard the text and force tool use. Clear buffered round-0 deltas so nothing leaks to customer.
+            roundBufferedDeltas = [];
             roundContent = '';
             messages.push({
               role: 'user',
@@ -728,13 +736,21 @@ function extractToolResultCount(result: any): number | undefined {
           }
         }
 
-        // If deltas weren't streamed by the executor (e.g. non-streaming mock or direct content), pass roundContent
-        if (roundStreamedChunks === 0 && roundContent) {
+        // Release buffered round-0 text if accepted (e.g. conversational greeting)
+        if (isBufferingRoundZero && roundBufferedDeltas.length > 0) {
+          for (const delta of roundBufferedDeltas) {
+            shaper.processDelta(delta);
+          }
+        } else if (roundStreamedChunks === 0 && roundContent) {
+          // If deltas weren't streamed by the executor (e.g. non-streaming mock or direct content), pass roundContent
           shaper.processDelta(roundContent);
         }
         isFinished = true;
         break;
       }
+
+      // If the model called tools, discard any round-0 buffered deltas
+      roundBufferedDeltas = [];
 
       // If the model called tools
       if (roundToolCalls.length > 0) {

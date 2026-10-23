@@ -4620,6 +4620,85 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       });
     });
 
+    describe('Task V4: Streaming buffer for toolFirst agents in round 0', () => {
+      test('round-0 streamed text is buffered and discarded when tools are required, emitting exactly one final grounded answer', async () => {
+        const gateway = new ModelGateway();
+        const release = createTestPack();
+        release.agents[0].toolFirst = true;
+        const workspace = createTestWorkspace();
+
+        const ungroundedSentence = 'You should use 50mm bright steel drywall nails for framing.';
+        const groundedAnswer = 'For timber framing, recommended fasteners are Bremick 10g x 75mm Galvanised Screws (SKU 123456).';
+
+        let round = 0;
+        gateway.mockAgentExecutor = async (req, onDelta) => {
+          if (req.messages.some((m) => (m.content || '').includes('Does answering this message need a catalogue or knowledge lookup?'))) {
+            return {
+              content: 'yes',
+              toolCalls: [],
+            };
+          }
+
+          round++;
+          if (round === 1) {
+            // Model attempts to stream an ungrounded hallucination in round 0
+            onDelta?.('You should use 50mm ');
+            onDelta?.('bright steel drywall nails for framing.');
+            return {
+              content: ungroundedSentence,
+              toolCalls: [],
+            };
+          } else if (round === 2) {
+            // Model executes tools after structured steering
+            return {
+              content: '',
+              toolCalls: [
+                { id: 'call_search', name: 'search_products', arguments: { query: 'framing screws' } },
+              ],
+            };
+          } else {
+            // Model streams the final grounded answer in round 2
+            onDelta?.('For timber framing, recommended fasteners are ');
+            onDelta?.('Bremick 10g x 75mm Galvanised Screws (SKU 123456).');
+            return {
+              content: groundedAnswer,
+              toolCalls: [],
+            };
+          }
+        };
+
+        const streamedDeltas: string[] = [];
+        const agentLoop = new AgentTurnLoop();
+        const outcome = await agentLoop.execute({
+          command: {
+            tenantId: 'test-tenant',
+            environmentId: 'test',
+            workspaceId: workspace.workspaceId,
+            sessionId: 'test-session-v4',
+            correlationId: 'test-corr-v4',
+            message: 'What fasteners do I need for framing?',
+          },
+          release,
+          workspace,
+          modelGateway: gateway,
+          catalogSearchHandler: { search: async () => ({ products: [{ sku: '123456', name: 'Bremick Framing Screws' }], total: 1 }) } as any,
+          sink: (type, payload) => {
+            if (type === 'token' && payload.delta) {
+              streamedDeltas.push(payload.delta);
+            }
+          },
+        });
+
+        const fullStreamedOutput = streamedDeltas.join('');
+        // Assert ungrounded sentence was NEVER emitted to the sink/customer
+        assert.equal(fullStreamedOutput.includes('drywall nails'), false, 'Ungrounded sentence must never leak to customer');
+        assert.equal(fullStreamedOutput.includes('50mm bright steel'), false, 'Ungrounded sentence must never leak to customer');
+        // Assert grounded answer was emitted
+        assert.ok(fullStreamedOutput.includes('123456'), 'Grounded answer must be emitted');
+        assert.ok(outcome.turnResult.assistantMessage.includes('123456'));
+      });
+    });
+
     describe('Task U3: 10 Lookup Misses & Generic Search Graceful Degradation', () => {
       const mockSearchCtx: any = { tenantId: 'test-tenant', packSettings: {} };
 
