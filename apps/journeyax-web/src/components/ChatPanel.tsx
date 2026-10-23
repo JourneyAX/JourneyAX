@@ -61,11 +61,16 @@ async function streamChat(
   newMessages: any[],
   setMessages: (m: any[]) => void,
   tenantId?: string,
-  dispatch?: (action: any) => void,
+  panelDispatch?: (action: any) => void,
   heardText?: string,
   signal?: AbortSignal,
   startedAt: number = Date.now(),
+  isCurrent: () => boolean = () => true,
 ): Promise<any> {
+  // Every panel update this stream makes goes through here, so a reply for a
+  // thread the customer has already left cannot paint its cards, phase or
+  // working strip onto the thread they are in now.
+  const dispatch = panelDispatch ? (action: any) => { if (isCurrent()) panelDispatch(action); } : undefined;
   const res = await fetch('/api/chat/stream', {
     method: 'POST',
     // Pin the chat to the tenant this storefront resolved (multi-storefront routing).
@@ -452,6 +457,9 @@ export default function ChatPanel() {
   /* Start a clean thread: new conversation id, so the next turn opens a NEW
    * server session and the agent begins with no memory of the last brief. */
   const startNewConversation = useCallback(() => {
+    // A reply still streaming belongs to the thread being left: stop it, so its
+    // cards cannot land here and the new thread is free to send straight away.
+    abortControllerRef.current?.abort();
     const id = newId();
     const next = [{ id, title: 'New conversation', updatedAt: Date.now() }, ...convos];
     saveConversations(cfg.projectId, next);
@@ -473,6 +481,7 @@ export default function ChatPanel() {
    * would belong to a different conversation. */
   const openConversation = useCallback((id: string) => {
     if (id === convoId) { setConvoMenuOpen(false); return; }
+    abortControllerRef.current?.abort(); // same reason as startNewConversation
     setActiveConversation(cfg.projectId, id);
     setConvoId(id);
     let restored: any[] = [];
@@ -559,7 +568,7 @@ export default function ChatPanel() {
       // so the storefront keeps working exactly as before.
       let data: any;
       try {
-        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId, dispatch, newUserMessage, abortControllerRef.current.signal, myWorkingStartedAt);
+        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId, dispatch, newUserMessage, abortControllerRef.current.signal, myWorkingStartedAt, isCurrent);
       } catch (streamErr) {
         if ((streamErr as any)?.name === 'AbortError') {
           if (isCurrent()) { dispatch({ type: 'SET_THINKING', thinking: false }); dispatch({ type: 'SET_WORKING', working: null }); }
