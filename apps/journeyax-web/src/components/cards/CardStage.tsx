@@ -17,7 +17,8 @@ import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
-import { mapClarifyCard, usableImage } from '@/lib/cards/mappers';
+import { mapClarifyCard } from '@/lib/cards/mappers';
+import { buildDetailProduct, fetchProductDetail } from '@/lib/cards/productDetail';
 import type { CardInstance } from '@/lib/types';
 
 /**
@@ -236,37 +237,28 @@ export function useCardActions() {
           payload: { sku, ...(viewedTitle ? { title: viewedTitle } : {}) },
           sourceCard: { id: params?.cardId },
         });
-        if (p) {
+        // The tile only knows a title, a price and a picture. The catalogue knows the rest (description, features,
+        // specifications, documents, what goes with it, availability): ask for it, and open the card with whatever came back.
+        // If the catalogue cannot answer, the card opens with the tile's own facts, as it always did.
+        void (async () => {
+          const detail = await fetchProductDetail(sku, cfgRef.current.projectId);
+          if (!p && !detail) return;
           const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
-          const rawSpecs = (p as any).specs || {};
-          const specList = Array.isArray((p as any).specList) && (p as any).specList.length > 0
-            ? (p as any).specList
-            : Object.entries(rawSpecs).map(([label, value]) => ({ label, value: String(value) }));
+          const product = buildDetailProduct(p as any, detail, sku);
           dispatch({
             type: 'PUSH_CARD',
             card: {
               id: `productDetail-${sku}-${Date.now()}`,
               cardType: 'productDetail',
               state: {
-                product: {
-                  sku,
-                  title: p.name || (p as any).title,
-                  description: p.description || (p as any).narrative,
-                  imageUrl: usableImage(p.imageUrl) || (p as any).image,
-                  price: p.price ?? null,
-                  category: p.category,
-                  specs: rawSpecs,
-                  specList,
-                  featuresList: (p as any).featuresList || [],
-                  documents: (p as any).documents || [],
-                },
+                product,
                 closing,
-                handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: p.name, category: p.category }),
+                handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: String(product.title || ''), category: product.category as string | undefined }),
               },
               createdAt: String(count ?? 0),
             },
           });
-        }
+        })();
         break;
       }
       case 'addToCart': {
