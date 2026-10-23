@@ -990,6 +990,7 @@ export async function executeAgentTool(
         products: products.map((p) => ({
           sku: p.sku,
           title: p.title || p.name,
+          brand: p.brand || p.Brand || (p.attributes as any)?.brand || (p.attributes as any)?.Brand || undefined,
           price: p.priceUSD?.min ?? p.price ?? null,
           currency: p.currency || ctx.release.profile?.primaryCurrency,
           category: p.category,

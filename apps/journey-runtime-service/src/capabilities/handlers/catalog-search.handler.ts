@@ -84,6 +84,23 @@ export interface QueryToken {
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * Generic English plural and suffix stemming pattern for regex creation.
+ * Transforms words into regex patterns that match singular and regular plural forms.
+ */
+export function stemPattern(word: string): string {
+  const clean = escapeRegex(word.toLowerCase().replace(/[®™]/g, '').trim());
+  if (!clean) return '';
+  if (clean.endsWith('ies') && clean.length > 4) return clean.slice(0, -3) + '(?:y|ies)';
+  if (clean.endsWith('es') && (clean.endsWith('shes') || clean.endsWith('ches') || clean.endsWith('xes') || clean.endsWith('zes'))) {
+    return clean.slice(0, -2) + '(?:es)?';
+  }
+  if (clean.endsWith('s') && !clean.endsWith('ss') && clean.length > 2) {
+    return clean.slice(0, -1) + '(?:s)?';
+  }
+  return clean;
+}
+
 
 
 /**
@@ -606,7 +623,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const fetchCandidates = async (
       activeSpecs?: StructuredSearchSpecs,
       activeCategory?: string,
-      kwMode: 'all' | 'any' = 'all'
+      kwMode: 'all' | 'any' = 'all',
+      options: { filterInStock?: boolean; allowTokenDisjunction?: boolean } = {}
     ): Promise<any[]> => {
       let docs: any[] = [];
       const tokens = (!isAgent && query) ? tokenizeQuery(query, glossaryIndex, stopWords) : [];
@@ -663,22 +681,38 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               const search = textOf(p, mapping.searchPaths);
               const title = textOf(p, mapping.titlePaths);
               const cat = textOf(p, mapping.categoryPaths);
-              const allText = `${title} ${cat} ${search}`.toLowerCase();
+              const brand = textOf(p, mapping.brandPaths);
+              const allText = `${title} ${cat} ${brand} ${search}`.toLowerCase().replace(/[®™]/g, '');
 
-              const matchesKw = (kw: string): boolean => {
-                const kwLower = kw.toLowerCase().trim();
-                if (!kwLower) return false;
-                if (allText.includes(kwLower)) return true;
-                const syns = glossaryIndex.get(kwLower);
-                if (syns && syns.some((s) => allText.includes(s.toLowerCase()))) return true;
-                const words = kwLower.split(/\s+/).filter(Boolean);
-                if (words.length > 1) {
-                  return words.every((w) => allText.includes(w) || (glossaryIndex.get(w)?.some((s) => allText.includes(s.toLowerCase()))));
-                }
-                return false;
+              const matchesWord = (w: string): boolean => {
+                const wClean = w.toLowerCase().replace(/[®™]/g, '').trim();
+                if (!wClean) return false;
+                const rx = new RegExp(`\\b${stemPattern(wClean)}\\b`, 'i');
+                if (rx.test(allText)) return true;
+                const syns = glossaryIndex.get(wClean) || [];
+                return syns.some((s) => new RegExp(`\\b${stemPattern(s)}\\b`, 'i').test(allText));
               };
 
-              if (kwMode === 'all') {
+              const matchesKw = (kw: string): boolean => {
+                const kwClean = kw.toLowerCase().replace(/[®™]/g, '').trim();
+                if (!kwClean) return false;
+                if (allText.includes(kwClean)) return true;
+                const syns = glossaryIndex.get(kwClean);
+                if (syns && syns.some((s) => allText.includes(s.toLowerCase()))) return true;
+                const words = kwClean.split(/\s+/).filter(Boolean);
+                if (words.length > 1) {
+                  return words.every(matchesWord);
+                }
+                return matchesWord(kwClean);
+              };
+
+              if (options.allowTokenDisjunction) {
+                const words = activeSpecs.keywords
+                  .flatMap((kw) => kw.replace(/[®™]/g, '').split(/\s+/))
+                  .map((w) => w.trim())
+                  .filter((w) => w.length > 2);
+                if (words.length > 0 && !words.some(matchesWord)) return false;
+              } else if (kwMode === 'all') {
                 for (const kw of activeSpecs.keywords) {
                   if (!matchesKw(kw)) return false;
                 }
@@ -771,19 +805,51 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             }
             if (activeSpecs?.keywords && activeSpecs.keywords.length > 0) {
               const kwClauses: any[] = [];
-              for (const kw of activeSpecs.keywords) {
-                const kwClean = kw.trim();
-                if (!kwClean) continue;
-                const syns = glossaryIndex.get(kwClean.toLowerCase()) || [];
-                const patterns = [escapeRegex(kwClean), ...syns.map(escapeRegex)];
-                const kwRegex = new RegExp(`\\b(?:${patterns.join('|')})`, 'i');
-                kwClauses.push({ $or: anyOf(mapping.searchPaths, kwRegex) });
+              const buildWordMatcher = (w: string) => {
+                const wClean = w.toLowerCase().replace(/[®™]/g, '').trim();
+                const syns = glossaryIndex.get(wClean) || [];
+                const patterns = [stemPattern(wClean), ...syns.map(stemPattern)].filter(Boolean);
+                const rx = new RegExp(`\\b(?:${patterns.join('|')})\\b`, 'i');
+                return { $or: anyOf(mapping.searchPaths, rx) };
+              };
+
+              if (options.allowTokenDisjunction) {
+                const words = activeSpecs.keywords
+                  .flatMap((kw) => kw.replace(/[®™]/g, '').split(/\s+/))
+                  .map((w) => w.trim())
+                  .filter((w) => w.length > 2);
+                for (const w of words) {
+                  kwClauses.push(buildWordMatcher(w));
+                }
+              } else {
+                for (const kw of activeSpecs.keywords) {
+                  const kwClean = kw.trim();
+                  if (!kwClean) continue;
+                  const syns = glossaryIndex.get(kwClean.toLowerCase()) || [];
+                  const words = kwClean.replace(/[®™]/g, '').split(/\s+/).map((w) => w.trim()).filter(Boolean);
+                  if (words.length > 1) {
+                    const wordClauses = words.map(buildWordMatcher);
+                    const phrasePatterns = [escapeRegex(kwClean.replace(/[®™]/g, '')), ...syns.map((s) => escapeRegex(s.replace(/[®™]/g, '')))];
+                    const phraseRegex = new RegExp(`\\b(?:${phrasePatterns.join('|')})`, 'i');
+                    kwClauses.push({
+                      $or: [
+                        { $and: wordClauses },
+                        ...anyOf(mapping.searchPaths, phraseRegex),
+                      ],
+                    });
+                  } else {
+                    const patterns = [stemPattern(kwClean), ...syns.map(stemPattern)].filter(Boolean);
+                    const kwRegex = new RegExp(`\\b(?:${patterns.join('|')})\\b`, 'i');
+                    kwClauses.push({ $or: anyOf(mapping.searchPaths, kwRegex) });
+                  }
+                }
               }
+
               if (kwClauses.length > 0) {
                 if (kwMode === 'all') {
                   and.push(...kwClauses);
                 } else {
-                  and.push({ $or: kwClauses.flatMap((c) => c.$or) });
+                  and.push({ $or: kwClauses });
                 }
               }
             }
@@ -919,6 +985,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             sku: normalized.sku,
             title: normalized.title,
             name: normalized.title,
+            brand: doc.brand || doc.Brand || readAttribute(doc, 'brand', mapping) || (normalized.attributes as any)?.brand || (normalized.attributes as any)?.Brand || undefined,
             description: normalized.description,
             category: normalized.category,
             priceCents: normalized.priceCents,
@@ -942,7 +1009,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           if (input.maxPriceCents != null && (item.priceCents == null || item.priceCents > input.maxPriceCents)) return false;
           // A price in another or an unknown currency can never satisfy a currency-constrained request.
           if (requestedCurrency && !unpriced && item.currency !== requestedCurrency) return false;
-          if (input.inStockOnly && item.inStock !== true) return false;
+          const shouldFilterStock = options.filterInStock ?? Boolean(input.inStockOnly);
+          if (shouldFilterStock && item.inStock !== true) return false;
           for (const [k, expectedVal] of Object.entries(attributeFilters)) {
             if (isAgent && reservedStructuredKeys.has(k)) continue;
             const actualVal = readAttribute(item, k, mapping);
@@ -963,15 +1031,25 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     let items = await fetchCandidates(specs, category, 'all');
     const relaxedConstraints: string[] = [];
 
+    // Step 0: Relax inStockOnly (if requested but returned 0 items, e.g. feed does not track stock or branch-only stock)
+    if (items.length === 0 && input.inStockOnly) {
+      const relaxedStock = await fetchCandidates(specs, category, 'all', { filterInStock: false });
+      if (relaxedStock.length > 0) {
+        items = relaxedStock;
+        relaxedConstraints.push('inStockOnly');
+      }
+    }
+
     // Task S2: Graceful degradation, generic.
     // If a search returns no results, relax the least important constraints in order
     // (attributes, then product type, then keywords), keep the vector and keyword fallback,
     // and return which constraints were relaxed so the AI can tell the customer.
     // Only when relaxation also fails may the tool say nothing was found.
-    if (items.length === 0 && (specs || category)) {
+    if (items.length === 0 && (specs || category || input.inStockOnly)) {
       const hasKeywords = Boolean(specs?.keywords && specs.keywords.length > 0);
       const hasType = Boolean(category || specs?.productType);
       const canRelaxAttributes = hasKeywords || hasType;
+      const noStockFilter = { filterInStock: false };
 
       // Step 1: Relax attributes (only if there are keywords or product type anchoring the search)
       if (canRelaxAttributes && specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
@@ -980,9 +1058,12 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           attributes: {},
           attributeVariants: {},
         };
-        const relaxedItems = await fetchCandidates(noAttrSpecs, category, 'all');
+        const relaxedItems = await fetchCandidates(noAttrSpecs, category, 'all', noStockFilter);
         if (relaxedItems.length > 0) {
           items = relaxedItems;
+          if (input.inStockOnly && !relaxedConstraints.includes('inStockOnly')) {
+            relaxedConstraints.push('inStockOnly');
+          }
           relaxedConstraints.push('attributes');
         }
       }
@@ -1003,9 +1084,12 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               }
             : { attributes: {}, attributeVariants: {} }),
         };
-        const relaxedItems = await fetchCandidates(noTypeSpecs, undefined, 'all');
+        const relaxedItems = await fetchCandidates(noTypeSpecs, undefined, 'all', noStockFilter);
         if (relaxedItems.length > 0) {
           items = relaxedItems;
+          if (input.inStockOnly && !relaxedConstraints.includes('inStockOnly')) {
+            relaxedConstraints.push('inStockOnly');
+          }
           if (specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
             relaxedConstraints.push('attributes');
           }
@@ -1013,7 +1097,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         }
       }
 
-      // Step 3: Relax keywords
+      // Step 3: Relax keywords to 'any'
       if (items.length === 0 && hasKeywords) {
         const anyKwSpecs: StructuredSearchSpecs = {
           ...(specs
@@ -1025,9 +1109,12 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               }
             : { attributes: {}, attributeVariants: {} }),
         };
-        const relaxedItems = await fetchCandidates(anyKwSpecs, undefined, 'any');
+        const relaxedItems = await fetchCandidates(anyKwSpecs, undefined, 'any', noStockFilter);
         if (relaxedItems.length > 0) {
           items = relaxedItems;
+          if (input.inStockOnly && !relaxedConstraints.includes('inStockOnly')) {
+            relaxedConstraints.push('inStockOnly');
+          }
           if (specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
             relaxedConstraints.push('attributes');
           }
@@ -1035,6 +1122,39 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             relaxedConstraints.push('productType');
           }
           relaxedConstraints.push('keywords');
+        }
+      }
+
+      // Step 4: Relax compound keywords to individual token disjunction
+      if (items.length === 0 && hasKeywords) {
+        const tokenSpecs: StructuredSearchSpecs = {
+          ...(specs
+            ? {
+                ...specs,
+                attributes: {},
+                attributeVariants: {},
+                productType: undefined,
+              }
+            : { attributes: {}, attributeVariants: {} }),
+        };
+        const relaxedItems = await fetchCandidates(tokenSpecs, undefined, 'any', {
+          filterInStock: false,
+          allowTokenDisjunction: true,
+        });
+        if (relaxedItems.length > 0) {
+          items = relaxedItems;
+          if (input.inStockOnly && !relaxedConstraints.includes('inStockOnly')) {
+            relaxedConstraints.push('inStockOnly');
+          }
+          if (specs?.attributeVariants && Object.keys(specs.attributeVariants).length > 0) {
+            relaxedConstraints.push('attributes');
+          }
+          if (hasType) {
+            relaxedConstraints.push('productType');
+          }
+          if (!relaxedConstraints.includes('keywords')) {
+            relaxedConstraints.push('keywords');
+          }
         }
       }
     }

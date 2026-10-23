@@ -4462,6 +4462,91 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.ok(outcome.turnResult.assistantMessage.includes('1010784'));
       });
     });
+
+    describe('Task U3: 10 Lookup Misses & Generic Search Graceful Degradation', () => {
+      const mockSearchCtx: any = { tenantId: 'test-tenant', packSettings: {} };
+
+      test('1. inStockOnly relaxes when catalogue feed has unmapped stock and records inStockOnly in relaxedConstraints', async () => {
+        const product = {
+          projectId: 'test-tenant',
+          sku: 'TRELLIS-01',
+          name: 'Radiata Trellis Fencetop Oriental Long',
+          category: 'Fence Trellis & Panels',
+        };
+        const handler = new CatalogSearchHandler([product]);
+        const res = await handler.execute({
+          isAgentMode: true,
+          keywords: ['fence trellis panel'],
+          inStockOnly: true,
+        }, mockSearchCtx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, 'TRELLIS-01');
+        assert.ok(res.relaxedConstraints?.includes('inStockOnly'));
+      });
+
+      test('2. Plural and compound token conjunction matches multi-word phrases and plurals', async () => {
+        const products = [
+          { projectId: 'test-tenant', sku: 'POST-01', name: 'Radiata Rough Sawn Fence Post H4', category: 'Posts' },
+          { projectId: 'test-tenant', sku: 'ALUM-01', name: 'Mansion Fence Panel 1200 x 2250mm Aluminium', category: 'Fence Panels' },
+        ];
+        const handler = new CatalogSearchHandler(products);
+
+        // "fence posts" (plural) matches "Fence Post"
+        const postRes = await handler.execute({
+          isAgentMode: true,
+          keywords: ['fence posts'],
+        }, mockSearchCtx);
+        assert.equal(postRes.items.length, 1);
+        assert.equal(postRes.items[0].sku, 'POST-01');
+
+        // "aluminium fence panels" (plural with different word order) matches "Mansion Fence Panel ... Aluminium"
+        const alumRes = await handler.execute({
+          isAgentMode: true,
+          keywords: ['aluminium fence panels'],
+        }, mockSearchCtx);
+        assert.equal(alumRes.items.length, 1);
+        assert.equal(alumRes.items[0].sku, 'ALUM-01');
+      });
+
+      test('3. Brand matching normalizes registered trademark symbols (Pink® Batts®) and preserves brand in output', async () => {
+        const product = {
+          projectId: 'test-tenant',
+          sku: 'PB-01',
+          name: 'Steel Framing Wall Insulation R2.6',
+          brand: 'Pink® Batts®',
+          category: 'Fibreglass',
+        };
+        const handler = new CatalogSearchHandler([product]);
+        const res = await handler.execute({
+          isAgentMode: true,
+          keywords: ['Pink Batts'],
+        }, mockSearchCtx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, 'PB-01');
+        assert.equal((res.items[0] as any).brand, 'Pink® Batts®');
+      });
+
+      test('4. Graceful degradation relaxes compound keyword tokens when literal phrase yields no results', async () => {
+        const product = {
+          projectId: 'test-tenant',
+          sku: 'BRACKET-01',
+          name: 'Post Bracket 38 x 25mm Aluminum',
+          category: 'Fencing Accessories',
+        };
+        const handler = new CatalogSearchHandler([product]);
+        // "pergola brackets" has no literal "pergola", but token relaxation matches "brackets"
+        const res = await handler.execute({
+          isAgentMode: true,
+          keywords: ['pergola brackets'],
+        }, mockSearchCtx);
+
+        assert.equal(res.items.length, 1);
+        assert.equal(res.items[0].sku, 'BRACKET-01');
+        assert.ok(res.relaxedConstraints?.includes('keywords'));
+      });
+    });
   });
 });
 
