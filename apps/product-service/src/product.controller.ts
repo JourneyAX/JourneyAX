@@ -9,6 +9,12 @@ import { TryOnService, TryOnInput } from './tryon.service';
 // undefined and reject every internal caller (the quote engine's pricebook call).
 const internalKey = () => process.env.INTERNAL_API_KEY;
 
+// Shape of the demo-only branch stock answers (see `inventory` below): about this share of branch/sku pairs are in stock,
+// with a quantity between DEMO_MIN_QTY and DEMO_MIN_QTY + DEMO_QTY_SPREAD - 1.
+const DEMO_IN_STOCK_PERCENT = 88;
+const DEMO_MIN_QTY = 3;
+const DEMO_QTY_SPREAD = 118;
+
 @Controller('api/v1/:projectId/products')
 export class ProductController {
   constructor(
@@ -49,12 +55,14 @@ export class ProductController {
     if (!sku || !branch) throw new HttpException('sku and branch are required', HttpStatus.BAD_REQUEST);
     let hash = 5381;
     for (const ch of `${sku}|${String(branch).toLowerCase()}`) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
-    const inStock = hash % 100 < 88;
-    const stockQty = inStock ? 3 + (hash % 118) : 0;
+    const inStock = hash % 100 < DEMO_IN_STOCK_PERCENT;
+    const stockQty = inStock ? DEMO_MIN_QTY + (hash % DEMO_QTY_SPREAD) : 0;
+    // The pickup wording is configuration, not code. Unset, the field is left out and the caller's own fallback applies.
+    const collectionTimeframe = String(process.env.DEMO_INVENTORY_COLLECTION_TIMEFRAME || '').trim();
     return {
       sku,
       source: 'demo',
-      branches: [{ branchName: branch, branchCode: branch, inStock, stockQty, clickAndCollectReady: inStock, collectionTimeframe: 'within 60 minutes' }],
+      branches: [{ branchName: branch, branchCode: branch, inStock, stockQty, clickAndCollectReady: inStock, ...(collectionTimeframe ? { collectionTimeframe } : {}) }],
     };
   }
 
