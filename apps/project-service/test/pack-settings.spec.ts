@@ -38,6 +38,16 @@ async function createService(extra: Record<string, unknown> = {}) {
 }
 
 async function main() {
+  await suite.test('a reply may be as long as 16 sentences and lines, no longer, so a range overview with a list is not cut off', () => {
+    const ask = (maxSentences: number) => validatePackSettings({ interpretationPolicy: { replyStyle: { maxSentences } } }).ok;
+    assert.equal(ask(14), true);
+    assert.equal(ask(16), true);
+    assert.equal(ask(17), false);
+    assert.equal(ask(0), false);
+    assert.equal(validatePackSettings({ interpretationPolicy: { replyStyle: { turnStyles: { answer: { maxSentences: 12 } } } } }).ok, true);
+    assert.equal(validatePackSettings({ interpretationPolicy: { replyStyle: { turnStyles: { answer: { maxSentences: 20 } } } } }).ok, false);
+  });
+
   await suite.test('catalogMapping is validated and normalised before storage', () => {
     assert.equal(validatePackSettings({ catalogMapping: { searchPaths: ['$where'] } }).ok, false);
     assert.equal(validatePackSettings({ catalogMapping: { surprise: true } }).ok, false);

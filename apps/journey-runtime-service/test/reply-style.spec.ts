@@ -172,7 +172,7 @@ async function main() {
       interpretationPolicy: {
         replyStyle: {
           turnStyles: {
-            howto: { maxSentences: 15 },
+            howto: { maxSentences: 17 },
           },
         },
       },
