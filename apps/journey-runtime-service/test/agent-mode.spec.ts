@@ -50,6 +50,7 @@ import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
 import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema } from '@journeyax/business-pack';
 import { MemoryDb } from '@journeyax/test-support';
+import { browseRange, matchRangeConcepts } from '../src/agent/range-browser';
 import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 import { extractProductAttributes, FeedRowToProductConverter } from '@journeyax/ingestion';
@@ -5033,5 +5034,122 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
     assert.equal(calls, 2);
     assert.ok(outcome.turnResult.assistantMessage.startsWith(explanation));
     assert.ok(/notified|assist/i.test(outcome.turnResult.assistantMessage), 'the handoff message follows the explanation');
+  });
+});
+
+describe('browse_range: describing what the range holds for a broad request', () => {
+  const concept = (id: string, name: string, path: string[], extra: Record<string, any> = {}) => ({
+    conceptId: `concept://test/${id}`, tenantId: 'test-tenant', type: 'product_category', name, description: `${name}: products from the catalogue taxonomy.`,
+    synonyms: [], customerPhrases: [], lens: 'product', lifecycle: { status: 'active_draft' }, searchScope: { catalogCategoryPaths: [path] },
+    extensions: { 'x-journeyax-provenance': { structure: { kind: 'catalogue_taxonomy' } } }, ...extra,
+  });
+  const boards = concept('boards', 'Wallboard', ['Building', 'Wallboard'], { customerPhrases: ['gib', 'wallboard sheets'], broadQueryPolicy: { groupConceptIds: ['concept://test/standard', 'concept://test/specialist'] } });
+  const okf: any = {
+    concepts: [
+      boards,
+      concept('standard', 'Standard Board', ['Building', 'Wallboard', 'Standard Board']),
+      concept('specialist', 'Specialist Board', ['Building', 'Wallboard', 'Specialist Board']),
+      concept('tape', 'Jointing Tape', ['Building', 'Tape'], { customerPhrases: ['paper tape'] }),
+      concept('saw', 'Hand Saws', ['Tools', 'Saws'], { customerPhrases: ['wallboard saw'] }),
+      concept('timber', 'Framing Timber', ['Timber', 'Framing'], { customerPhrases: ['timber board'] }),
+      concept('paint', 'Paint', ['Paint'], { customerPhrases: ['wall paint'] }),
+      concept('empty', 'Empty Shelf', ['Building', 'Empty'], { customerPhrases: ['wallboard offcuts'] }),
+    ],
+    relationships: [
+      { relationshipId: 'r1', type: 'child_of', from: 'concept://test/standard', to: 'concept://test/boards' },
+      { relationshipId: 'r2', type: 'child_of', from: 'concept://test/specialist', to: 'concept://test/boards' },
+      { relationshipId: 'r3', type: 'cross_sell', from: 'concept://test/specialist', to: 'concept://test/tape', customerLabel: 'Finish the joins' },
+    ],
+  };
+  const product = (sku: string, name: string, path: string[]) => ({ projectId: 'test-tenant', sku, parentSku: sku, name, title: name, category: path[path.length - 1], categoryPath: path, price: { amount: 10, currency: 'NZD' }, inStock: true });
+  const products = [
+    product('S1', 'Standard Wallboard 10mm', ['Building', 'Wallboard', 'Standard Board']),
+    product('S2', 'Standard Wallboard 13mm', ['Building', 'Wallboard', 'Standard Board']),
+    product('S3', 'Standard Wallboard 16mm', ['Building', 'Wallboard', 'Standard Board']),
+    product('X1', 'Aqua Wallboard 10mm', ['Building', 'Wallboard', 'Specialist Board']),
+    product('T1', 'Paper Tape 75m', ['Building', 'Tape']),
+    product('W1', 'Pull Saw', ['Tools', 'Saws']),
+    product('F1', 'Framing 90x45', ['Timber', 'Framing']),
+  ];
+  const deps = (topic: string, extra: Record<string, any> = {}) => {
+    const handler = new CatalogSearchHandler(products);
+    const ctx: any = { tenantId: 'test-tenant', packSettings: {} };
+    return {
+      okf, locale: 'en-NZ', topic,
+      count: (paths: string[][]) => handler.countInCategoryPaths(paths, ctx),
+      examples: async (groups: any[]) => {
+        const searched: any = await handler.execute({ isAgentMode: true, groups } as any, ctx);
+        return searched.groups.map((g: any) => ({ conceptId: g.conceptId, items: g.items.map((p: any) => ({ sku: p.sku, title: p.title })) }));
+      },
+      ...extra,
+    };
+  };
+
+  test('a customer word that one group uses as its own phrase finds that group first, in a plain word or a whole sentence', () => {
+    assert.equal(matchRangeConcepts(okf, 'gib', 'en-NZ')[0].concept.name, 'Wallboard');
+    assert.equal(matchRangeConcepts(okf, 'I need some gib for my hallway ceiling', 'en-NZ')[0].concept.name, 'Wallboard');
+    assert.equal(matchRangeConcepts(okf, 'wallboard', 'en-NZ')[0].concept.name, 'Wallboard');
+  });
+
+  test('a word no group uses finds nothing', async () => {
+    assert.deepEqual(matchRangeConcepts(okf, 'jib', 'en-NZ'), []);
+    const result = await browseRange(deps('jib'));
+    assert.equal(result.found, false);
+  });
+
+  test('the asked-for group lists its smaller groups with live counts and real examples, and what is bought with them', async () => {
+    const result = await browseRange(deps('gib'));
+    assert.equal(result.found, true);
+    const lead = result.nodes[0];
+    assert.equal(lead.name, 'Wallboard');
+    assert.equal(lead.match, 'direct');
+    assert.equal(lead.productCount, 4);
+    assert.deepEqual((lead.children || []).map((c) => [c.name, c.productCount]), [['Standard Board', 3], ['Specialist Board', 1]], 'biggest first');
+    assert.deepEqual((lead.children || []).find((c) => c.name === 'Standard Board')?.examples?.map((e) => e.sku).sort(), ['S1', 'S2'], 'two real examples per group');
+    assert.deepEqual((lead.goesWith || []).map((g) => [g.name, g.label, g.productCount]), [['Jointing Tape', 'Finish the joins', 1]], 'a suggestion on a smaller group is offered with the whole group');
+    assert.ok(!lead.about, 'a description that only restates the catalogue is not passed off as the merchant\'s words');
+  });
+
+  test('a group that shares only part of the words is named but not spelled out, and an empty one is left out', async () => {
+    const result = await browseRange(deps('wallboard'));
+    const names = result.nodes.map((n) => n.name);
+    assert.ok(!names.includes('Empty Shelf'), 'nothing in the catalogue under it');
+    const saw = result.nodes.find((n) => n.name === 'Hand Saws');
+    if (saw) {
+      assert.equal(saw.match, 'related');
+      assert.equal(saw.children, undefined);
+    }
+    assert.ok(!names.includes('Standard Board'), 'a group inside another match is described by it');
+  });
+
+  test('a group path from an earlier answer opens that group directly', async () => {
+    const result = await browseRange(deps('', { path: ['Building', 'Tape'] }));
+    assert.equal(result.nodes[0].name, 'Jointing Tape');
+    assert.equal(result.nodes[0].productCount, 1);
+  });
+
+  test('merchant-authored description is passed on, a catalogue-derived one is not', async () => {
+    const authored: any = { ...okf, concepts: okf.concepts.map((c: any) => (c.name === 'Wallboard'
+      ? { ...c, description: 'Lining for internal walls and ceilings.', extensions: { 'x-journeyax-provenance': { description: { kind: 'merchant_document' } } } }
+      : c)) };
+    const result = await browseRange(deps('gib', { okf: authored }));
+    assert.equal(result.nodes[0].about, 'Lining for internal walls and ceilings.');
+  });
+
+  test('the tool registers the example products so they can go on a card this turn', async () => {
+    const ctx: any = {
+      tenantId: 'test-tenant', environmentId: 'test', correlationId: 'c',
+      release: { profile: { primaryCurrency: 'NZD', primaryLocale: 'en-NZ' } },
+      okfContent: okf,
+      catalogSearchHandler: new CatalogSearchHandler(products),
+      allowedClaimClasses: new Set(), turnProductSkus: new Set(), catalogProductCache: new Map(),
+    };
+    const res: any = await executeAgentTool('browse_range', { topic: 'gib' }, ctx);
+    assert.equal(res.found, true);
+    assert.ok(ctx.turnProductSkus.has('S1') && ctx.turnProductSkus.has('X1'));
+    assert.ok(ctx.allowedClaimClasses.has('catalog_fact'));
+    const none: any = await executeAgentTool('browse_range', { topic: 'jib' }, ctx);
+    assert.equal(none.found, false);
+    assert.ok(/search_products/.test(none.message), 'it says what to do instead');
   });
 });

@@ -457,6 +457,49 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     private readonly vectorSearcher?: VectorSearchFunction,
   ) {}
 
+  /**
+   * How many products sit under each category path (a path covers everything below it), counted with the same tenant, availability
+   * and scope rules a search applies. Used to describe a range to the customer; it returns counts only.
+   */
+  async countInCategoryPaths(paths: string[][], ctx: ExecutionContext): Promise<number[]> {
+    let mapping: ResolvedCatalogMapping;
+    try {
+      mapping = resolveCatalogMapping(ctx.packSettings?.catalogMapping);
+    } catch {
+      return paths.map(() => 0);
+    }
+    const tenantId = ctx.tenantId;
+    const scopes = paths.map((path) => cleanCategoryPaths([path]));
+
+    if (this.inMemoryProducts) {
+      const visible = this.inMemoryProducts.filter((p) => {
+        const owner = mapping.tenantFields.map((field) => readPath(p, field)).find((value) => value !== undefined);
+        return !(owner !== undefined && owner !== tenantId) && classifyAvailability(p, mapping) !== 'excluded';
+      });
+      return scopes.map((categoryPaths) =>
+        categoryPaths.length === 0
+          ? 0
+          : visible.filter((p) => categoryScopeMatches(mapping, { categoryIds: [], categoryPaths, excludeCategoryIds: [] }, p)).length);
+    }
+
+    const uri = process.env.MONGODB_URI;
+    if (!this.dbProvider && !uri) return paths.map(() => 0);
+    try {
+      const db = this.dbProvider
+        ? await this.dbProvider()
+        : (await connectToDatabase(uri!, process.env.MONGODB_DB_NAME || 'journeyx')).db;
+      return await Promise.all(scopes.map(async (categoryPaths) => {
+        if (categoryPaths.length === 0) return 0;
+        const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
+        const scoped: any = { ...filter, $and: [...and, ...buildCategoryScopeClauses(mapping, { categoryIds: [], categoryPaths, excludeCategoryIds: [] })] };
+        return db.collection(COLLECTION_PRODUCTS).countDocuments(scoped);
+      }));
+    } catch (err: any) {
+      console.warn(`[CatalogSearchHandler] category count failed: ${err?.message || err}`);
+      return paths.map(() => 0);
+    }
+  }
+
   async execute(input: CatalogSearchInput, ctx: ExecutionContext): Promise<any> {
     if (input.groups?.length) {
       const groups = [];

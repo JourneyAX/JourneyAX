@@ -28,6 +28,7 @@ import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
+import { browseRange } from './range-browser';
 
 export interface AgentToolContext {
   tenantId: string;
@@ -365,6 +366,24 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         query: {
           type: 'string',
           description: 'Optional raw query keywords if not passing structured keywords array.',
+        },
+      },
+    },
+  },
+  {
+    name: 'browse_range',
+    description: 'Describe what the range holds when the customer names a group of products rather than one item (a general word, a department, a material). Returns the product groups that match, the smaller groups each one splits into, how many products are in each, a few real example products, and the groups customers commonly buy with it. Use it first for a broad request, explain the groups to the customer, and ask what you need to narrow down; then call search_products with a returned group path as categoryPaths. goesWith entries are suggestions only, not confirmed compatible or required.',
+    parameters: {
+      type: 'object',
+      properties: {
+        topic: {
+          type: 'string',
+          description: 'The customer\'s own word or phrase for the range.',
+        },
+        path: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'A group path returned by an earlier browse_range call, to open that group.',
         },
       },
     },
@@ -896,6 +915,56 @@ export async function executeAgentTool(
         hints,
         searchScopes,
       };
+    }
+
+    case 'browse_range': {
+      const topic = String(args.topic || '').trim();
+      const path = Array.isArray(args.path) ? args.path.map(String).map((segment: string) => segment.trim()).filter(Boolean) : undefined;
+      if (!topic && !(path && path.length > 0)) {
+        return { found: false, message: 'Give a topic (the customer\'s own word for the range) or a group path from an earlier result.' };
+      }
+      const execCtx: any = makeExecContext(ctx);
+      const result = await browseRange({
+        okf: ctx.okfContent,
+        locale: (ctx.release as any)?.profile?.primaryLocale,
+        topic,
+        path,
+        count: (paths) => ctx.catalogSearchHandler.countInCategoryPaths(paths, execCtx),
+        examples: async (groups) => {
+          const searched = await ctx.catalogSearchHandler.execute({ isAgentMode: true, groups } as any, execCtx);
+          return (Array.isArray(searched.groups) ? searched.groups : []).map((group: any) => ({
+            conceptId: group.conceptId,
+            items: (Array.isArray(group.items) ? group.items : [])
+              .filter((p: any) => p?.sku && !isProductDiscontinued(p))
+              .map((p: any) => {
+                // The same registration a search does, so these products can be put on a card this turn.
+                ctx.turnProductSkus.add(p.sku);
+                ctx.catalogProductCache.set(p.sku, p);
+                return {
+                  sku: p.sku,
+                  title: p.title || p.name,
+                  price: p.priceUSD?.min ?? p.price ?? null,
+                  currency: p.currency || ctx.release.profile?.primaryCurrency,
+                  imageUrl: p.imageUrl || null,
+                };
+              }),
+          }));
+        },
+      });
+      if (!result.found) {
+        if (ctx.knowledgeGapRepo && topic) {
+          ctx.knowledgeGapRepo.recordGap({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            topic,
+            toolName: 'browse_range',
+            conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+          }).catch(() => {});
+        }
+        return { found: false, topic, message: 'No product group in the knowledge matches this. Use search_products with the customer\'s own words.' };
+      }
+      ctx.allowedClaimClasses.add('catalog_fact');
+      return result;
     }
 
     case 'search_products': {
