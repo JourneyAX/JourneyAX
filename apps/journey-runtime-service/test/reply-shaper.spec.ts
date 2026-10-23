@@ -41,6 +41,12 @@ async function main() {
     assert.ok(reasons.includes('sends the customer elsewhere'));
   });
 
+  await suite.test('prose after a list starts a new paragraph instead of running on from the last item', () => {
+    const listStyle: any = { ...style, dropListLines: false, maxSentences: 14, forbiddenPhrases: [], dropCompanyName: false };
+    const shaped = shapeReply('Here is the range:\n- Standard board (15 products)\n- Specialist board (65 products)\nCustomers usually also need tape and compound.', context({ style: listStyle }));
+    assert.equal(shaped.text, 'Here is the range:\n- Standard board (15 products)\n- Specialist board (65 products)\n\nCustomers usually also need tape and compound.');
+  });
+
   await suite.test('good replies are left alone, word for word', () => {
     for (const reply of ['Here are a few for the job.', 'These are what we have for floors. Have a look through them.', 'Sure, here are some options.']) {
       const shaped = shapeReply(reply, context({ questionCardShown: true }));

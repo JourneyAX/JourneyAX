@@ -169,7 +169,7 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
     formatted = limited.reduce((acc, curr, idx) => {
       if (idx === 0) return curr;
       if (LIST_LINE.test(curr)) return `${acc}\n${curr}`;
-      return `${acc} ${curr}`;
+      return LIST_LINE.test(limited[idx - 1]) ? `${acc}\n\n${curr}` : `${acc} ${curr}`;
     }, '').replace(/\s+([,.;:!?])/g, '$1').trim();
   } else {
     formatted = limited.join(' ').replace(/\s+([,.;:!?])/g, '$1').trim();
@@ -258,8 +258,12 @@ export class IncrementalSentenceShaper {
       this.questionsSeen++;
     }
 
+    const previous = this.emittedSentences[this.emittedSentences.length - 1];
     this.emittedSentences.push(sentence);
-    const separator = LIST_LINE.test(sentence) ? '\n' : (this.streamedText ? ' ' : '');
+    // A list line stands on its own line; prose that follows a list starts a new paragraph instead of running on from the last item.
+    const separator = LIST_LINE.test(sentence)
+      ? '\n'
+      : (this.streamedText ? (previous !== undefined && LIST_LINE.test(previous) ? '\n\n' : ' ') : '');
     const delta = separator + sentence;
     this.streamedText += delta;
     this.onApprovedSentence(sentence, delta);
