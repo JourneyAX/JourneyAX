@@ -34,6 +34,8 @@ export interface ProductDetail {
   /** Branch availability as the record states it. `inStock` is true when at least one branch has it. */
   availability?: { label: string; inStock: boolean; branchesWithStock: number; branchCount: number };
   productUrl?: string;
+  /** The catalogue's own rating, only when the record carries one (a few products do). */
+  rating?: { value: number; count?: number };
 }
 
 const MAX_DESCRIPTION_CHARS = 900;
@@ -193,6 +195,11 @@ export function buildProductDetail(doc: any, linked: { related?: any[]; suggeste
   const description = clip(fullDescription, MAX_DESCRIPTION_CHARS);
   const path = Array.isArray(doc?.categoryPath) ? doc.categoryPath.map(String) : undefined;
   const productUrl = [doc?.web?.productUrl, doc?.url].find(isHttp);
+  const ratingValue = Number(doc?.rating?.value);
+  const ratingCount = Number(doc?.rating?.count);
+  const rating: ProductDetail['rating'] = Number.isFinite(ratingValue) && ratingValue > 0 && ratingValue <= 5
+    ? { value: ratingValue, ...(Number.isFinite(ratingCount) && ratingCount > 0 ? { count: ratingCount } : {}) }
+    : undefined;
 
   return {
     sku: self,
@@ -211,5 +218,6 @@ export function buildProductDetail(doc: any, linked: { related?: any[]; suggeste
     related,
     ...(availability ? { availability } : {}),
     ...(productUrl ? { productUrl } : {}),
+    ...(rating ? { rating } : {}),
   };
 }

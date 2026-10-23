@@ -116,4 +116,12 @@ check('a long description is cut at a sentence, not mid-word', () => {
   assert.match(detail.description!, /(useful\.|…)$/);
 });
 
+check('a rating is carried only when the record has a real one', () => {
+  assert.deepEqual(buildProductDetail({ parentSku: 'R1', name: 'Rated', rating: { value: 4.9, count: 88 } }).rating, { value: 4.9, count: 88 });
+  assert.deepEqual(buildProductDetail({ parentSku: 'R2', name: 'Rated', rating: { value: 4 } }).rating, { value: 4 });
+  for (const rating of [undefined, null, {}, { value: 0, count: 5 }, { value: 7, count: 5 }, { value: 'high' }]) {
+    assert.equal(buildProductDetail({ parentSku: 'R3', name: 'Unrated', rating } as any).rating, undefined, JSON.stringify(rating));
+  }
+});
+
 console.log(`✅ product-service: product detail: ${passed} passed, 0 failed`);
