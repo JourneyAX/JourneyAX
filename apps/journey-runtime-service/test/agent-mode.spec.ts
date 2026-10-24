@@ -51,7 +51,7 @@ import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
 import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema, SkillDefinitionSchema } from '@journeyax/business-pack';
 import { MemoryDb } from '@journeyax/test-support';
-import { browseRange, exampleOrder, matchRangeConcepts, resolveCatalogPaths } from '../src/agent/range-browser';
+import { browseRange, exampleOrder, goesWithForTrail, matchRangeConcepts, resolveCatalogPaths } from '../src/agent/range-browser';
 import { chooseCardSkus } from '../src/agent/auto-card';
 import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
@@ -5322,6 +5322,27 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.deepEqual((lead.children || []).find((c) => c.name === 'Standard Board')?.examples?.map((e) => e.sku).sort(), ['S1', 'S2'], 'two real examples per group');
     assert.deepEqual((lead.goesWith || []).map((g) => [g.name, g.label, g.productCount]), [['Jointing Tape', 'Finish the joins', 1]], 'a suggestion on a smaller group is offered with the whole group');
     assert.ok(!lead.about, 'a description that only restates the catalogue is not passed off as the merchant\'s words');
+  });
+
+  test('accessories: a product gets the groups customers buy with its shelf, from the knowledge, each with real products, and nothing invented when there are none', async () => {
+    const contextFor = (): AgentToolContext => ({
+      // The platform's default catalogue mapping, which reads the product's shelf from `categoryPath`.
+      tenantId: 'test-tenant', environmentId: 'test', correlationId: 'c', release: { ...createTestPack(), catalogMapping: undefined } as any, okfContent: okf,
+      catalogSearchHandler: new CatalogSearchHandler(products), turnProductSkus: new Set(), catalogProductCache: new Map(),
+      readSourceIds: new Set(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false,
+    });
+    const ctx = contextFor();
+    const withLink: any = await executeAgentTool('get_related_products', { sku: 'X1' }, ctx);
+    assert.equal(withLink.grounded, true);
+    assert.deepEqual(withLink.groups.map((group: any) => [group.label, group.items.map((item: any) => item.sku)]), [['Finish the joins', ['T1']]]);
+    assert.ok(ctx.turnProductSkus.has('T1'), 'the accessory can be shown on a card this turn');
+    assert.ok(!withLink.relatedProducts.some((p: any) => p.sku === 'X1'), 'the product is not its own accessory');
+    const without: any = await executeAgentTool('get_related_products', { sku: 'F1' }, contextFor());
+    assert.equal(without.grounded, false);
+    assert.deepEqual(without.relatedProducts, [], 'a shelf with no goes-with link gets no made-up accessories');
+    assert.match(without.message, /Never present the product's own alternatives as accessories/);
+    assert.deepEqual(goesWithForTrail(okf, ['Building', 'Wallboard', 'Specialist Board', 'Deeper']).map((g) => g.name), ['Jointing Tape'], 'a link on a shelf above the product still applies');
+    assert.deepEqual(goesWithForTrail(okf, undefined), []);
   });
 
   test('words the matched group does not cover, but other groups do use, mean the request is more specific than an overview', async () => {

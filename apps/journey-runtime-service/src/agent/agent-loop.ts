@@ -258,6 +258,12 @@ export function formatPersonaAndVoice(release: BusinessPackRelease, agent?: Agen
   return parts.length > 0 ? `# Persona & Brand Voice\n${parts.join('\n')}` : '';
 }
 
+/** For reading a run by eye: with AGENT_TRACE_RESULTS=1 each tool trace carries the start of what the tool returned. Off by default (transcripts stay small). */
+function tracePreview(result: unknown): { resultPreview?: string } {
+  if (process.env.AGENT_TRACE_RESULTS !== '1') return {};
+  try { return { resultPreview: JSON.stringify(result).slice(0, 1500) }; } catch { return {}; }
+}
+
 /**
  * The skills an agent carries, as prompt text. Skills of tier "always" are written out; skills of tier "on_demand" are listed with their
  * descriptions so the agent can open the one a request calls for with use_skill. The wording of every skill is tenant data.
@@ -889,6 +895,7 @@ function extractToolResultCount(result: any): number | undefined {
               error: !ok ? result?.error : undefined,
               arguments: tc.arguments,
               resultCount: extractToolResultCount(result),
+              ...tracePreview(result),
             });
             return { call: tc, result };
           })
@@ -923,6 +930,7 @@ function extractToolResultCount(result: any): number | undefined {
             error: !ok ? result?.error : undefined,
             arguments: tc.arguments,
             resultCount: extractToolResultCount(result),
+            ...tracePreview(result),
           });
           mutatingResults.push({ call: tc, result });
         }

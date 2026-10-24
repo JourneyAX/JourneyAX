@@ -41,6 +41,8 @@ export interface CatalogSearchInput {
   categoryPaths?: string[][];
   excludeCategoryIds?: string[];
   maxResults?: number;
+  /** A wide sample of the matching products, for working out what they differ by, not for showing to a customer. */
+  facetSample?: boolean;
   minPriceCents?: number;
   maxPriceCents?: number;
   inStockOnly?: boolean;
@@ -105,6 +107,9 @@ export function stemPattern(word: string, locale: string = 'en'): string {
 /**
  * Normalizes an attribute value according to the pack attribute definition normalizer.
  */
+/** Largest sample a facet request may read; ordinary searches stay at 50. */
+const FACET_SAMPLE_LIMIT = 800;
+
 export function normalizeAttributeValue(val: string, normalizer?: string): string {
   if (!val) return '';
   const clean = val.trim();
@@ -627,7 +632,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       return { items: [], total: 0, error: 'invalid_category_scope' };
     }
     const excludeCategoryIds = Array.isArray(input.excludeCategoryIds) ? input.excludeCategoryIds.filter(Boolean) : [];
-    const limit = Math.min(input.maxResults || 10, 50);
+    const limit = Math.min(input.maxResults || 10, input.facetSample ? FACET_SAMPLE_LIMIT : 50);
 
     // Dynamic glossary expansion from tenant's OKF release or pack vocabulary
     let okfConcepts = (ctx as any).okfConcepts || (ctx as any).okfRelease?.concepts || (ctx as any).okfContent?.concepts;
@@ -805,6 +810,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             if (classifyAvailability(p, mapping) === 'excluded') return false;
             if (activeCategory && !typeMatches(activeCategory, textOf(p, typePaths)) && !typeMatches(activeCategory, textOf(p, mapping.titlePaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
+            if (exactId && !mapping.identifierPaths.some((path) => String(readPath(p, path) ?? '') === exactId)) return false;
 
             if (activeSpecs?.brand) {
               const cleanBrand = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1258,6 +1264,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             availableQuantity: normalized.availableQuantity,
             certifications: normalized.certifications,
             imageUrl: normalized.imageUrl,
+            ...(normalized.categoryTrail.length > 0 ? { categoryTrail: normalized.categoryTrail } : {}),
             ...(normalized.highlights.length > 0 ? { highlights: normalized.highlights } : {}),
             ...(normalized.cautions.length > 0 ? { cautions: normalized.cautions } : {}),
             ...(normalized.rating !== undefined ? { rating: normalized.rating } : {}),

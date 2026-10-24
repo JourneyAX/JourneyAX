@@ -294,6 +294,33 @@ function suggestionsFor(okf: OkfReleaseContent, concept: OkfConcept): Array<{ co
 }
 
 /**
+ * The groups customers commonly buy with the shelf a product sits on, from the knowledge's "goes with" links. The product's own
+ * group is tried first, then each group above it, so a link written for "paint" still serves a product three shelves down.
+ * Suggestions only: nothing here is confirmed compatible or required.
+ */
+export function goesWithForTrail(okf: OkfReleaseContent | null | undefined, trail: string[] | undefined): Array<RangeGroup & { label?: string }> {
+  if (!okf || !Array.isArray(trail) || trail.length === 0) return [];
+  const keyOf = (path: string[]) => path.map((segment) => segment.toLowerCase()).join('\u0001');
+  const byPath = new Map<string, OkfConcept>();
+  for (const concept of okf.concepts || []) {
+    const path = concept.type === CATEGORY_TYPE && concept.lifecycle?.status !== 'retired' ? pathOf(concept) : undefined;
+    if (path) byPath.set(keyOf(path), concept);
+  }
+  const seen = new Set<string>();
+  const out: Array<RangeGroup & { label?: string }> = [];
+  for (let depth = trail.length; depth >= 1; depth--) {
+    const concept = byPath.get(keyOf(trail.slice(0, depth)));
+    if (!concept) continue;
+    for (const suggestion of suggestionsFor(okf, concept)) {
+      if (seen.has(suggestion.concept.conceptId)) continue;
+      seen.add(suggestion.concept.conceptId);
+      out.push({ ...groupOf(suggestion.concept), ...(suggestion.label ? { label: suggestion.label } : {}) });
+    }
+  }
+  return out;
+}
+
+/**
  * The order the example products of an overview are shown in: the groups whose own name carries a word the customer used come
  * first ("paint" puts Interior Paint and Aerosol Paint ahead of Woodcare, which only sits under Paint), then the first example of
  * every group before the second example of any, so a handful of cards shows the range rather than two groups of it.

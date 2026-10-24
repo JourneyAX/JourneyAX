@@ -228,6 +228,8 @@ export interface NormalizedCatalogProduct {
   ratingCount?: number;
   branchesAvailable?: number;
   branchesTotal?: number;
+  /** The product's shelf, from the broadest group down to the one it sits in (empty when the record carries none). */
+  categoryTrail: string[];
 }
 
 const MAX_HIGHLIGHTS = 8;
@@ -269,6 +271,14 @@ function declaredCurrency(doc: unknown, mapping: ResolvedCatalogMapping): string
   return value ? value.toUpperCase() : undefined;
 }
 
+function categoryTrailOf(doc: unknown, mapping: ResolvedCatalogMapping): string[] {
+  for (const path of mapping.categoryHierarchyPaths) {
+    const value = readPath(doc, path);
+    if (Array.isArray(value) && value.length > 0 && value.every((segment) => typeof segment === 'string')) return value as string[];
+  }
+  return [];
+}
+
 export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMapping, labels: { title: string; category: string }): NormalizedCatalogProduct {
   const priced = extractPrice(doc, mapping);
   const availability = classifyAvailability(doc, mapping);
@@ -305,6 +315,7 @@ export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMappin
     ratingCount: firstNumber(doc, mapping.ratingCountPaths),
     branchesAvailable: firstNumber(doc, mapping.branchAvailablePaths),
     branchesTotal: firstNumber(doc, mapping.branchTotalPaths),
+    categoryTrail: categoryTrailOf(doc, mapping),
   };
 }
 

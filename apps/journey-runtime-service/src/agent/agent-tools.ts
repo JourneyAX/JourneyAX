@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease, BusinessPackContent, JourneyPlaybookStage } from '@journeyax/business-pack';
-import { resolveAgentSkills } from '@journeyax/business-pack';
+import { resolveAgentSkills, resolveCatalogMapping } from '@journeyax/business-pack';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
@@ -13,7 +13,7 @@ import {
   resolveAgentRelationshipTypes,
   OKF_ALLOWED_RELATIONSHIP_TYPES,
 } from '../kernel/business-knowledge';
-import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
+import { CatalogSearchHandler, extractSearchSpecs } from '../capabilities/handlers/catalog-search.handler';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
 import { QuoteCreateHandler } from '../capabilities/handlers/quote-create.handler';
@@ -29,8 +29,9 @@ import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
-import { browseRange, exampleOrder, resolveCatalogPaths } from './range-browser';
+import { browseRange, exampleOrder, goesWithForTrail, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
+import { summariseOptions } from './option-facets';
 import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
@@ -409,6 +410,20 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
           items: { type: 'string' },
           description: 'A group path returned by an earlier browse_range call, to open that group.',
         },
+      },
+    },
+  },
+  {
+    name: 'explore_options',
+    description:
+      'See what a group of products can be told apart by in this shop: the real brands, sizes, pack sizes and range variants (usually colours or finishes) the matching products come in, with counts. ' +
+      'Use it for a broad request before you ask the customer anything, so every option you offer is one the shop really has. Give the same scope you would give search_products (productType, keywords, categoryPaths copied from browse_range).',
+    parameters: {
+      type: 'object',
+      properties: {
+        productType: { type: 'string', description: 'The group\'s name, as browse_range returned it.' },
+        keywords: { type: 'array', items: { type: 'string' }, description: 'Words the product names contain (a range, a brand, a feature the products state).' },
+        categoryPaths: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Group paths returned by browse_range, to look inside those groups only.' },
       },
     },
   },
@@ -1028,6 +1043,44 @@ export async function executeAgentTool(
       return messages.length > 0 ? { ...result, message: messages.join(' ') } : result;
     }
 
+    case 'explore_options': {
+      const keywordsRaw = args.keywords;
+      const keywords: string[] = Array.isArray(keywordsRaw) ? keywordsRaw.map(String).map((k) => k.trim()).filter(Boolean) : [];
+      const productType = args.productType ? String(args.productType).trim() : undefined;
+      const categoryPaths = resolveCatalogPaths(ctx.okfContent, args.categoryPaths);
+      if (keywords.length === 0 && !productType && !(categoryPaths && categoryPaths.length > 0)) {
+        return { ok: false, error: 'Give a productType, keywords or categoryPaths so there is a group of products to look at.' };
+      }
+      const sample = await ctx.catalogSearchHandler.execute({
+        isAgentMode: true,
+        keywords: keywords.length > 0 ? keywords : undefined,
+        productType,
+        categoryPaths,
+        relaxKeywordsFirst: true,
+        facetSample: true,
+        maxResults: 800,
+      } as any, makeExecContext(ctx));
+      const products = (Array.isArray(sample.items) ? sample.items : sample.products || []).filter((p: any) => !isProductDiscontinued(p));
+      if (products.length === 0) return { ok: true, matched: 0, facets: [], message: 'No products match this scope, so there is nothing to ask the customer to choose between yet.' };
+      let mapping: any;
+      try { mapping = resolveCatalogMapping((ctx.release as any)?.catalogMapping); } catch { mapping = undefined; }
+      const attributeDefinitions = mapping?.attributeDefinitions || (ctx.release as any)?.catalogMapping?.attributeDefinitions || {};
+      const summary = summariseOptions(products, {
+        attributesFromTitle: Object.keys(attributeDefinitions).length > 0
+          ? (title) => extractSearchSpecs({ query: title, attributeDefinitions }).attributes || {}
+          : undefined,
+      });
+      ctx.allowedClaimClasses.add('catalog_fact');
+      return {
+        ok: true,
+        matched: summary.matched,
+        facets: summary.facets,
+        message: summary.facets.length === 0
+          ? 'The matching products do not differ in anything the names show, so ask the customer about the job (where, how much) instead.'
+          : 'Offer the customer only values listed here, for the facets that matter to their job; a facet that covers few of the products (low coverage) is a weak thing to ask about.',
+      };
+    }
+
     case 'search_products': {
       const keywordsRaw = args.keywords;
       const keywords: string[] = Array.isArray(keywordsRaw)
@@ -1225,58 +1278,48 @@ export async function executeAgentTool(
         }
       }
 
-      // Check OKF relationships if available
-      const relatedTerms: string[] = [];
-      if (ctx.okfContent?.relationships && Array.isArray(ctx.okfContent.relationships)) {
-        for (const rel of ctx.okfContent.relationships) {
-          const isMatch =
-            (rel.from && mainProd?.category && rel.from.toLowerCase().includes(mainProd.category.toLowerCase())) ||
-            (rel.from && mainProd?.name && rel.from.toLowerCase().includes(mainProd.name.toLowerCase()));
-          if (isMatch) {
-            relatedTerms.push(rel.to);
-            const relVer = rel.verificationRef
-              ? (ctx.okfContent.verifications || []).find((v) => v.recordId === rel.verificationRef)
-              : undefined;
-            if (effectiveVerification(relVer, new Date()) === 'verified') {
-              for (const cc of rel.claimClasses || ['compatibility']) {
-                ctx.allowedClaimClasses.add(cc);
-              }
-            }
+      // What customers commonly buy with this product's shelf, from the knowledge's own goes-with links (suggestions, not requirements).
+      const goesWith = goesWithForTrail(ctx.okfContent, mainProd?.categoryTrail);
+      const execCtx: any = makeExecContext(ctx);
+      let groups: Array<{ key: string; label: string; hint?: string; items: any[] }> = [];
+      if (goesWith.length > 0) {
+        const looked = await ctx.catalogSearchHandler.execute({
+          isAgentMode: true,
+          groups: goesWith.filter((group) => group.path).slice(0, 6).map((group) => ({ conceptId: group.conceptId, label: group.name, categoryPaths: [group.path!], maxItems: 3 })),
+        } as any, execCtx);
+        const byConcept = new Map<string, any[]>(((Array.isArray(looked.groups) ? looked.groups : []) as any[]).map((entry: any) => [entry.conceptId, entry.items || []]));
+        groups = goesWith
+          .map((group) => ({
+            key: group.conceptId,
+            label: group.label || group.name,
+            items: (byConcept.get(group.conceptId) || []).filter((p: any) => p?.sku && p.sku !== sku && !isProductDiscontinued(p)),
+          }))
+          .filter((group) => group.items.length > 0);
+        for (const group of groups) {
+          for (const it of group.items) {
+            ctx.turnProductSkus.add(it.sku);
+            ctx.catalogProductCache.set(it.sku, it);
           }
         }
       }
-
-      // If no explicit OKF relationships, search related products by category or keywords
-      const searchQuery = relatedTerms.length > 0 ? relatedTerms.join(' ') : mainProd?.category || 'accessories';
-      const searchRes = await ctx.catalogSearchHandler.execute(
-        { query: searchQuery, maxResults: 4 },
-        makeExecContext(ctx)
-      );
-
-      const rawItems = searchRes.products || searchRes.items || [];
-      const items = (rawItems || []).filter((p: any) => p.sku !== sku);
-      for (const it of items) {
-        if (it.sku) {
-          ctx.turnProductSkus.add(it.sku);
-          ctx.catalogProductCache.set(it.sku, it);
-        }
-      }
-
-      if (items.length > 0) {
-        ctx.allowedClaimClasses.add('catalog_fact');
-      }
+      const compact = (p: any) => ({
+        sku: p.sku,
+        title: p.title || p.name,
+        price: p.priceUSD?.min ?? p.price ?? null,
+        currency: p.currency || ctx.release.profile?.primaryCurrency,
+        inStock: Boolean(p.inStock),
+      });
+      if (groups.length > 0) ctx.allowedClaimClasses.add('catalog_fact');
 
       return {
         forSku: sku,
         kind,
-        relatedProducts: items.map((p: any) => ({
-          sku: p.sku,
-          title: p.title || p.name,
-          price: p.priceUSD?.min ?? p.price ?? null,
-          currency: p.currency || ctx.release.profile?.primaryCurrency,
-          inStock: Boolean(p.inStock),
-          relation: kind,
-        })),
+        grounded: groups.length > 0,
+        groups: groups.map((group) => ({ key: group.key, label: group.label, items: group.items.map(compact) })),
+        relatedProducts: groups.flatMap((group) => group.items.map((p: any) => ({ ...compact(p), relation: group.label }))),
+        message: groups.length > 0
+          ? 'These are the groups customers commonly buy with this product, from the shop\'s own knowledge; each group lists real products. They are suggestions to check, not confirmed requirements or compatibility. Show them on an accessories card (one group per card group), and say in one sentence what each is for.'
+          : 'The knowledge has no goes-with links for this product\'s shelf, so there is no verified list. Name, as suggestions to check, the kinds of product that usually go with it (from consult_business_knowledge and the guides), search_products for each kind, and show what you find on an accessories card. Never present the product\'s own alternatives as accessories.',
       };
     }
 

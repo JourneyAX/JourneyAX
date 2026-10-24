@@ -59,6 +59,8 @@ export interface ToolInvocationRecord {
   error?: string;
   arguments?: any;
   resultCount?: number;
+  /** The start of what the tool returned (only when the run sets AGENT_TRACE_RESULTS=1). */
+  resultPreview?: string;
 }
 
 export interface EvalTurnResult {
@@ -846,6 +848,7 @@ async function main() {
       error: t.error,
       arguments: t.arguments,
       resultCount: t.resultCount,
+      resultPreview: t.resultPreview,
     }));
 
     const timing = aggregateTiming || {
