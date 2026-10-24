@@ -259,6 +259,8 @@ async function main() {
       { isAgentMode: true, keywords: ['nothing like this exists'] },
       { isAgentMode: false, query: 'pipe' },
       { isAgentMode: false, query: 'TAP1', maxResults: 1 },
+      { sku: 'PIPE25', maxResults: 1 },
+      { sku: 'NOPE', maxResults: 1 },
     ];
     const skus = (result: any) => result.items.map((item: any) => item.sku).sort();
     const fromDatabase = await Promise.all(requests.map((request) => new CatalogSearchHandler(undefined, async () => db).execute({ maxResults: 10, ...request }, searchCtx)));
@@ -270,6 +272,20 @@ async function main() {
         assert.deepEqual(skus(viaIndex), skus(fromDatabase[index]), `request ${index + 1} ${JSON.stringify(request)}`);
       }
     });
+  });
+
+  await suite.test('an exact identifier returns that product only, however many other products mention it', async () => {
+    const mentioning = [...catalogue, stocked('OTHER1', 'Pipe adaptor for PIPE25', 'Pipes', ['Plumbing', 'Pipes'], { description: 'Fits PIPE25 and PIPE20' })];
+    const { db } = await databaseOf(mentioning);
+    const handler = new CatalogSearchHandler(undefined, async () => db);
+    const byText: any = await handler.execute({ query: 'PIPE25', maxResults: 10 } as any, searchCtx);
+    assert.ok(byText.items.length > 1, 'a text search finds everything that mentions it');
+    const exact: any = await handler.execute({ sku: 'PIPE25', maxResults: 10 } as any, searchCtx);
+    assert.deepEqual(exact.items.map((item: any) => item.sku), ['PIPE25']);
+    const none: any = await handler.execute({ sku: 'PIPE2', maxResults: 10 } as any, searchCtx);
+    assert.deepEqual(none.items, [], 'part of an identifier is not an identifier');
+    const listed: any = await new CatalogSearchHandler(mentioning).execute({ sku: 'PIPE25', maxResults: 10 } as any, searchCtx);
+    assert.deepEqual(listed.items.map((item: any) => item.sku), ['PIPE25'], 'the same from a list in memory');
   });
 
   await suite.test('switched off, the same handler searches the database and does not claim the index', async () => {

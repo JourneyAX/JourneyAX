@@ -33,6 +33,8 @@ export interface CatalogSearchInput {
   productType?: string;
   brand?: string;
   query?: string;
+  /** One product by its exact identifier (any of the mapping's identifier fields): nothing else is returned and no text is searched. */
+  sku?: string;
   category?: string;
   categoryIds?: string[];
   /** Hierarchy scopes (department → group → category); a product matches when its category path starts with one. */
@@ -615,6 +617,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
     const tenantId = ctx.tenantId;
     const query = input.query || '';
+    const exactId = typeof input.sku === 'string' ? input.sku.trim() : '';
     let servedFromIndex = false;
     const category = input.category || input.productType || '';
     const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
@@ -889,7 +892,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             if (classifyAvailability(p, mapping) === 'excluded') return false;
             if (activeCategory && !typeMatches(activeCategory, textOf(p, typePaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
-            if (query) {
+            if (exactId && !mapping.identifierPaths.some((path) => String(readPath(p, path) ?? '') === exactId)) return false;
+            if (query && !exactId) {
               const text = textOf(p, mapping.searchPaths);
               if (tokens.length > 0) {
                 const hit = (t: QueryToken) => t.regex.test(text);
@@ -1073,7 +1077,17 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
               }
             }
           } else {
-            if (query) {
+            let quickDocs: any[] | undefined;
+            if (exactId) {
+              // The first identifier field with the tenant field is the one the database indexes: ask for that alone first, because a
+              // filter that names every identifier field cannot use the index and reads the whole catalogue.
+              const quick = await products
+                .find({ [mapping.tenantFields[0]]: tenantId, [mapping.identifierPaths[0]]: exactId, ...(and.length > 0 ? { $and: [...and] } : {}) })
+                .limit(mapping.candidateLimit)
+                .toArray();
+              if (quick.length > 0) quickDocs = quick;
+              else and.push({ $or: mapping.identifierPaths.map((path) => ({ [path]: exactId })) });
+            } else if (query) {
               const matchers = tokens.length > 0
                 ? tokens.map((t) => t.regex)
                 : [new RegExp(escapeRegex(query), 'i')];
@@ -1095,7 +1109,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             }
             if (and.length === 0) delete filter.$and;
 
-            docs = await products
+            docs = quickDocs ?? await products
               .find(filter)
               .limit(mapping.candidateLimit)
               .toArray();

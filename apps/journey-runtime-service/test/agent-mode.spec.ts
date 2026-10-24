@@ -18,6 +18,7 @@ import {
 } from '../src/agent/agent-loop';
 import {
   executeAgentTool,
+  skuFromEvent,
   isToolAllowed,
   getAgentToolDefinitions,
   resolveBoundCapability,
@@ -386,6 +387,18 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     // Verify the server-enforced tenantId was passed to handler, NOT the model injected one!
     assert.equal(capturedTenantId, 'tenant-alpha', 'Query must remain scoped to server tenantId');
     assert.equal(result.query, 'timber');
+  });
+
+  test('a title the model wrote where a SKU belongs is replaced by the SKU the view or compare event named', () => {
+    const view = { type: 'viewProduct', payload: { sku: '2800651', title: 'Aqualine Wallboard 2400 x 1350 x 10mm' } };
+    assert.equal(skuFromEvent('Aqualine Wallboard 2400 x 1350 x 10mm', view), '2800651');
+    assert.equal(skuFromEvent('aqualine wallboard 2400 x 1350 x 10mm ', view), '2800651', 'case and spaces do not matter');
+    assert.equal(skuFromEvent('2800651', view), '2800651', 'a SKU is left alone');
+    assert.equal(skuFromEvent('Something else', view), 'Something else', 'a title the event did not name is left alone');
+    const compare = { type: 'compareProducts', payload: { skus: ['A1', 'B2'], titles: ['Board A', 'Board B'], title: 'Board A vs Board B' } };
+    assert.equal(skuFromEvent('Board B', compare), 'B2');
+    assert.equal(skuFromEvent('Board A', compare), 'A1');
+    assert.equal(skuFromEvent('Board A', undefined), 'Board A', 'no event, nothing to resolve');
   });
 
   test('card tests: present_card joins what the catalogue says about each product, never model-written text', async () => {

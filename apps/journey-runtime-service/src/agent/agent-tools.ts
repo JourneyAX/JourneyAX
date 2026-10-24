@@ -98,6 +98,19 @@ function makeExecContext(ctx: AgentToolContext) {
   };
 }
 
+/**
+ * A view or compare event names each product by SKU and by title. A model sometimes writes the title where a SKU belongs, and a
+ * title is a free-text search that can land on a similar product. When the asked-for value is the title of a product the event
+ * named, it is replaced by that product's SKU.
+ */
+export function skuFromEvent(asked: string, event: any): string {
+  const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
+  const skus: string[] = (Array.isArray(payload.skus) ? payload.skus : [payload.sku]).filter(Boolean).map(String);
+  const titles: string[] = (Array.isArray(payload.titles) ? payload.titles : [payload.title]).map((title: unknown) => String(title ?? '').trim().toLowerCase());
+  const at = titles.indexOf(String(asked || '').trim().toLowerCase());
+  return at >= 0 && skus[at] ? skus[at] : asked;
+}
+
 export function hashPayload(val: unknown): string {
   try {
     return createHash('sha256').update(JSON.stringify(val || {})).digest('hex').slice(0, 16);
@@ -1121,17 +1134,17 @@ export async function executeAgentTool(
     }
 
     case 'get_product': {
-      const sku = String(args.sku || '').trim();
-      // Search by SKU in catalogue
-      const result = await ctx.catalogSearchHandler.execute(
-        { query: sku, maxResults: 1 },
-        makeExecContext(ctx)
-      );
-
-      const rawItems = result.products || result.items || [];
-      const found = (rawItems || []).find(
-        (p: any) => String(p.sku).toLowerCase() === sku.toLowerCase()
-      ) || rawItems?.[0];
+      const sku = skuFromEvent(String(args.sku || '').trim(), ctx.customerEvent);
+      // The exact identifier first: a text search can put another product ahead of the one asked for. Only when no product has that
+      // identifier (the model gave a title or part of one) is the text searched, and then the best match is taken.
+      const isSku = (p: any) => String(p?.sku).toLowerCase() === sku.toLowerCase();
+      const exact = await ctx.catalogSearchHandler.execute({ sku, maxResults: 1 }, makeExecContext(ctx));
+      let rawItems: any[] = exact.products || exact.items || [];
+      if (!rawItems.some(isSku)) {
+        const text = await ctx.catalogSearchHandler.execute({ query: sku, maxResults: 5 }, makeExecContext(ctx));
+        rawItems = text.products || text.items || [];
+      }
+      const found = (rawItems || []).find(isSku) || rawItems?.[0];
 
       if (found && found.sku) {
         if (isProductDiscontinued(found)) {
@@ -1173,14 +1186,14 @@ export async function executeAgentTool(
     }
 
     case 'get_related_products': {
-      const sku = String(args.sku || '').trim();
+      const sku = skuFromEvent(String(args.sku || '').trim(), ctx.customerEvent);
       const kind = String(args.kind || 'recommended').toLowerCase();
 
       // Look up target product first
       let mainProd = ctx.catalogProductCache.get(sku);
       if (!mainProd) {
         const res = await ctx.catalogSearchHandler.execute(
-          { query: sku, maxResults: 1 },
+          { sku, maxResults: 1 },
           makeExecContext(ctx)
         );
         const rawCandidates = res.products || res.items || [];
