@@ -5,6 +5,7 @@ import React from 'react';
 import { JourneyMessage } from '@/lib/types';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { sanitizeMessageText } from '../lib/sanitize';
+import { WorkedSummary } from './shell/WorkedFold';
 
 export { sanitizeMessageText };
 
@@ -126,8 +127,9 @@ export default function MessageBubble({ message }: Props) {
     <div className="msg msg--ai">
       <div className="msg__avatar" aria-hidden="true">{brandInitials(cfg.companyName)}</div>
       <div className="msg__body">
-        <div className="msg__label">
-          {cfg.systemName || 'Consultant'}
+        {/* The name stays for screen readers; it is shown only when the engine badge is (debug builds). */}
+        <div className={`msg__label${debugEngine ? ' msg__label--debug' : ''}`}>
+          {cfg.systemName || 'Assistant'}
           {debugEngine && (message.engine || message.agentId) && (
             <span
               className="msg__engine-badge"
@@ -150,6 +152,7 @@ export default function MessageBubble({ message }: Props) {
             </span>
           )}
         </div>
+        {message.trace && <WorkedSummary trace={message.trace} />}
         <div className="msg__bubble--ai">{renderMarkdown(message.text)}</div>
       </div>
     </div>

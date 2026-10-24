@@ -306,6 +306,8 @@ export interface JourneyMessage {
   head?: string;             // note heading (e.g., "EasySwitch added.")
   engine?: string;           // 'react' | 'legacy' | 'canonical' | 'agent'
   agentId?: string;          // resolved agent ID
+  /** What the turn that produced this reply did ("Worked for 12 s" and its plain-language steps). */
+  trace?: { seconds: number; steps: string[] };
 }
 
 // ── Quote totals ───────────────────────────────────────────────────────

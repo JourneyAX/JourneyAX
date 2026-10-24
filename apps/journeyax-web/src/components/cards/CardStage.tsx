@@ -23,6 +23,7 @@ import { MAX_COMPARE, clearCompare, getCompareSelection, toggleCompare, useCompa
 import { decorateProductRows } from '@/lib/cards/productTiles';
 import { buildComparisonCard, toCompareSource } from '@/lib/cards/comparison';
 import type { CardInstance } from '@/lib/types';
+import { openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
 
 /**
  * Action → storefront behaviour (docs/v3-card-cms-architecture.md
@@ -237,6 +238,8 @@ export function useCardActions() {
         const viewedTitle = p ? String((p as any).name || (p as any).title || '').trim() : '';
         // The details sit right under the customer's own "View product" line, ahead of the consultant's reply (see compareProducts).
         const at = String(((typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined) ?? 0) + 1);
+        // The details open in the side panel; remember what was pressed so closing the panel can hand focus back to it.
+        rememberPanelOpener();
         postCustomerEvent({
           type: 'viewProduct',
           payload: { sku, ...(viewedTitle ? { title: viewedTitle } : {}) },
@@ -249,10 +252,12 @@ export function useCardActions() {
           const detail = await fetchProductDetail(sku, cfgRef.current.projectId);
           if (!p && !detail) return;
           const product = buildDetailProduct(p as any, detail, sku);
+          const detailId = `productDetail-${sku}-${Date.now()}`;
+          openPanelCard(detailId, 'productDetail');
           dispatch({
             type: 'PUSH_CARD',
             card: {
-              id: `productDetail-${sku}-${Date.now()}`,
+              id: detailId,
               cardType: 'productDetail',
               beforeReply: true,
               state: {
@@ -282,14 +287,17 @@ export function useCardActions() {
         // the thread length once that line is added, taken now because the reply starts streaming before the records come back.
         const at = String(((typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined) ?? 0) + 1);
         // The consultant is told which products are being compared, so it can say which one fits what the customer asked for.
+        rememberPanelOpener();
         postCustomerEvent({ type: 'compareProducts', payload: { skus, titles, title: titles.join(' vs ') }, sourceCard: { id: params?.cardId } });
         clearCompare();
         void (async () => {
           const details = await Promise.all(skus.map((sku) => fetchProductDetail(sku, cfgRef.current.projectId)));
+          const comparisonId = `comparison-${skus.join('-')}-${Date.now()}`;
+          openPanelCard(comparisonId, 'comparison');
           dispatch({
             type: 'PUSH_CARD',
             card: {
-              id: `comparison-${skus.join('-')}-${Date.now()}`,
+              id: comparisonId,
               cardType: 'comparison',
               beforeReply: true,
               state: buildComparisonCard(skus.map((sku, i) => toCompareSource(tiles[i] as any, details[i], sku))),
