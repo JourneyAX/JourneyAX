@@ -22,6 +22,8 @@ import {
   compileModelPolicy,
   validatePolicyOverrides,
   SkillDefinitionSchema,
+  QuantityHelperSchema,
+  VisualiserSchema,
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { PublicationGateValidator } from './publication-gate-validator';
@@ -485,6 +487,17 @@ export class ProjectService {
     if (Array.isArray((dto as any).capabilities)) $set.capabilities = (dto as any).capabilities;
     if (Array.isArray((dto as any).contextDimensions)) $set.contextDimensions = (dto as any).contextDimensions;
     if ((dto as any).console) $set.console = (dto as any).console;
+    // Tenant settings that ride in the pack's extensions: only these keys, each checked against its schema.
+    if ((dto as any).extensions && typeof (dto as any).extensions === 'object') {
+      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema };
+      for (const [key, value] of Object.entries((dto as any).extensions)) {
+        const schema = allowed[key];
+        if (!schema) return { success: false, message: `Unknown pack extension '${key}' (allowed: ${Object.keys(allowed).join(', ')}).` };
+        const parsed = schema.safeParse(value);
+        if (!parsed.success) return { success: false, message: `Invalid ${key}: ${parsed.error.issues.slice(0, 3).map((i: any) => `${i.path.join('.')}: ${i.message}`).join('; ')}` };
+        $set[`extensions.${key}`] = parsed.data;
+      }
+    }
     // Skills (reusable instruction modules agents carry) are tenant data kept under `extensions.skills`; replaced wholesale and checked here.
     if ((dto as any).skills !== undefined) {
       const parsed = SkillDefinitionSchema.array().safeParse((dto as any).skills);

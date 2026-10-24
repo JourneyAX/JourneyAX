@@ -462,15 +462,25 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.match(definition.parameters.properties.state.description, /"questions"/, 'the agent is shown the shape of a question card');
   });
 
-  test('the PlaceMakers draft welcomes a customer with a broad request and asks on a question card, without listing groups', () => {
+  test('the PlaceMakers draft opens a broad request with a welcome and a question card built from real options, and carries its skills as data', () => {
     const draft = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
     const prompt: string = draft.agents[0].systemPromptTemplate;
     const broad = prompt.slice(prompt.indexOf('- Broad request:'), prompt.indexOf('- Narrow request:'));
-    assert.ok(broad.includes('welcome'), 'the reply opens with a welcome');
-    assert.ok(broad.includes('cardType clarify'), 'the questions go on a question card');
-    assert.ok(broad.includes('do not call search_products'), 'products wait for the answers');
-    assert.ok(!/how many products/i.test(broad.replace('do not list the smaller groups or how many products each holds', '')), 'no counts of products per group');
-    assert.ok(!broad.includes('One line for each main smaller group'), 'the old group list is gone');
+    assert.ok(broad.includes('browse_range') && broad.includes('Ask on a question card'), 'the broad-request rule points at the skills');
+    assert.ok(!/One line for each main smaller group/.test(prompt), 'the old group list is gone');
+    const skills: any[] = draft.skills;
+    const skill = (id: string) => skills.find((entry) => entry.skillId === id);
+    const opening = skill('start-from-the-situation').instructions as string;
+    for (const situation of ['product word', 'problem or a repair', 'idea or inspiration', 'project', 'specific item', 'how-to']) assert.ok(opening.includes(situation), `the opening skill covers ${situation}`);
+    assert.ok(opening.includes('Welcome them') && opening.includes('Do not show products'), 'a broad word is welcomed and products wait');
+    const asking = skill('ask-on-a-question-card').instructions as string;
+    assert.ok(asking.includes('cardType clarify') && asking.includes('explore_options') && asking.includes('Never offer a size, colour or brand that explore_options did not list'));
+    assert.ok(skill('finish-the-job').instructions.includes('get_related_products') && skill('finish-the-job').instructions.includes('get_warranty'));
+    assert.ok(skill('quantity-before-adding').instructions.includes('estimate_quantity'));
+    assert.equal(skill('show-the-finished-job').tier, 'on_demand');
+    assert.deepEqual(draft.agents[0].skills, skills.map((entry) => entry.skillId), 'the advisor carries every skill');
+    for (const tool of ['explore_options', 'estimate_quantity', 'generate_visual']) assert.ok(draft.agents[0].allowedTools.includes(tool), `${tool} is allowed`);
+    assert.ok(SkillDefinitionSchema.array().safeParse(skills).success, 'every skill is valid');
   });
 
   test('card tests: present_card rejects unverified SKUs not returned by tools this turn', async () => {

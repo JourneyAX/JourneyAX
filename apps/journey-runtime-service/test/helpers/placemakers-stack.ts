@@ -181,11 +181,14 @@ export function projectDoc(agentMode = false) {
           handoffConditions: agent.handoffConditions || [],
           ...(agent.isDefault ? { isDefault: true } : {}),
           ...(typeof agent.toolFirst === 'boolean' ? { toolFirst: agent.toolFirst } : {}),
+          ...(Array.isArray(agent.skills) ? { skills: agent.skills } : {}),
           ...(agent.agentId === agentDraft.defaultAgentId ? { journeyPlaybook: agentSettings.journeyPlaybook } : {}),
         }))
       : undefined,
     extensions: {
       ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true }, interpretationPolicy: agentSettings.interpretationPolicy } : {}),
+      ...(agentMode && Array.isArray(agentDraft.skills) ? { skills: agentDraft.skills } : {}),
+      ...(agentMode ? { quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser } : {}),
       customerEvents: {
         autoTurnEvents: ['addToQuote', 'quote.added', 'addToCart'],
         recordOnlyEvents: ['removeFromQuote', 'removeFromCart', 'like'],

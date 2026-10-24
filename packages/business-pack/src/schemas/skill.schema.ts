@@ -35,3 +35,28 @@ export function resolveAgentSkills(
   }
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
 }
+
+/** Tenant settings for the "how many to buy" helper (pack `extensions.quantityHelper`). */
+export const QuantityHelperSchema = z.object({
+  /** Extra to buy for cuts and waste, as a percentage of what the area needs. */
+  allowancePercent: z.number().min(0).max(100).optional(),
+  /** Case-insensitive patterns whose first capture group is the square metres one pack covers, tried against a product's own text. */
+  coveragePatterns: z.array(z.string().min(1).max(300)).max(20).optional(),
+  /** A side shorter than this (mm) means the product is sold by length, not as a piece that covers an area. */
+  minPieceSideMm: z.number().min(1).max(5000).optional(),
+  /** The words on the quantity card's working lines. */
+  labels: z.record(z.string(), z.string().max(80)).optional(),
+}).strict();
+
+/** Tenant settings for pictures of the finished job (pack `extensions.visualiser`); a tenant without it has the feature off. */
+export const VisualiserSchema = z.object({
+  enabled: z.boolean().optional(),
+  model: z.string().min(1).max(80).optional(),
+  quality: z.enum(['low', 'medium', 'high']).optional(),
+  size: z.enum(['1024x1024', '1536x1024', '1024x1536']).optional(),
+  /** The prompt, with {scene} and {products} where the customer's words and the product names go. */
+  promptTemplate: z.string().min(1).max(1000).optional(),
+  /** Shown under every picture. */
+  disclaimer: z.string().max(300).optional(),
+  maxProducts: z.number().int().min(1).max(5).optional(),
+}).strict();

@@ -11,7 +11,7 @@ import { CapabilityBindingsCollectionSchema } from './capability-binding.schema'
 import { ExperienceSchema } from './experience.schema';
 import { EvaluationSuiteSchema } from './evaluation.schema';
 import { SpacePlannerExtensionSchema } from './space-planner.schema';
-import { SkillDefinitionSchema } from './skill.schema';
+import { SkillDefinitionSchema, QuantityHelperSchema, VisualiserSchema } from './skill.schema';
 import { CalculatorDefinitionSchema } from './calculator.schema';
 import { CatalogMappingSchema } from '../catalog-mapping';
 
@@ -240,6 +240,8 @@ export const BusinessPackContentSchema = z.object({
     .object({
       spacePlanner: SpacePlannerExtensionSchema.optional(),
       skills: z.array(SkillDefinitionSchema).optional(),
+      quantityHelper: QuantityHelperSchema.optional(),
+      visualiser: VisualiserSchema.optional(),
     })
     .catchall(z.any()),
   factRegistry: FactRegistrySchema.optional(),

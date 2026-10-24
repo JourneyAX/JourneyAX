@@ -44,7 +44,7 @@ export type PromptType =
 export interface EvalTestCase {
   id: number;
   category: string;
-  prompt: string | string[];
+  prompt: string | Array<string | { message: string; customerEvent?: any }>;
   purpose: string;
   groundTruthReference: string;
   groundTruthUrls?: string;
@@ -813,7 +813,9 @@ async function main() {
     let aggregateTiming: any = null;
 
     for (let turnIdx = 0; turnIdx < turns.length; turnIdx++) {
-      const turnMsg = turns[turnIdx];
+      // A turn is the customer's words, or {message, customerEvent} for a tap on a card (add, view, compare).
+      const turn: any = turns[turnIdx];
+      const turnMsg: string = typeof turn === 'string' ? turn : String(turn.message ?? '');
       const turnId = `turn-${tc.id}-${turnIdx + 1}`;
 
       const res = await service.executeTurn({
@@ -822,7 +824,8 @@ async function main() {
         workspaceId,
         turnId,
         message: turnMsg,
-      });
+        ...(typeof turn === 'object' && turn.customerEvent ? { customerEvent: turn.customerEvent } : {}),
+      } as any);
       lastResult = res;
       if (res.trace?.timing) {
         aggregateTiming = res.trace.timing;

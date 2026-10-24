@@ -68,6 +68,12 @@ export const SAMPLE_STATE: Record<CardType, Record<string, unknown>> = {
     { key: 'required', label: 'Required', items: PRODUCTS.slice(1, 2) },
     { key: 'recommended', label: 'Recommended', items: PRODUCTS.slice(2, 3) },
   ] },
+  quantity: {
+    product: PRODUCTS[0], heading: 'How many you need', quantity: 63, unitLabel: 'pieces',
+    working: [{ label: 'Your area', value: '10 m²' }, { label: 'One piece covers', value: '0.16 m²' }, { label: 'To buy', value: '63 pieces' }],
+    note: 'Check your own measurements before you order.', ctaLabel: 'Add 63',
+  },
+  visual: { imageUrl: img('SAMPLE-VISUAL'), heading: 'How it could look', caption: 'A small patio laid with the pavers you chose.', disclaimer: 'An illustration made for you, not the exact product.', products: PRODUCTS.slice(0, 2) },
   warranty: { items: [{ title: 'Standard warranty', text: '10 years on the cabinetry, 5 years on the mechanism.' }, { title: 'Installation', text: 'DIY installation keeps the warranty intact for this product.' }] },
   fitment: { recommendation: 'We recommend size M', confidenceText: 'Based on your usual size and the brand’s size chart.', alternatives: ['S', 'L'] },
   disclosure: { title: 'Custom print terms', text: 'Custom-printed items are made to order and cannot be returned once production has started.', acceptLabel: 'I understand' },

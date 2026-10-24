@@ -75,6 +75,8 @@ function buildSettings(project: any) {
     agents: draft.agents.map((agent: any) => (settingsFile.journeyPlaybook && agent.agentId === draft.defaultAgentId ? { ...agent, journeyPlaybook: settingsFile.journeyPlaybook } : agent)),
     profile: deepMerge(project.profile, draft.profile),
     persona: draft.persona,
+    ...(Array.isArray(draft.skills) ? { skills: draft.skills } : {}),
+    ...(draft.extensions && typeof draft.extensions === 'object' ? { extensions: draft.extensions } : {}),
     conversationPolicy: deepMerge(project.conversationPolicy, draft.conversationPolicy),
     catalogMapping: deepMerge(project.catalogMapping, mappingFile.catalogMapping, settingsFile.catalogMapping),
     agentMode: settingsFile.agentMode ?? true,
