@@ -218,6 +218,8 @@ async function streamChat(
                 inputType: q.inputType,
                 placeholder: q.placeholder,
                 unit: q.unit,
+                min: typeof q.min === 'number' ? q.min : undefined,
+                max: typeof q.max === 'number' ? q.max : undefined,
               })),
             });
           } else if (c.cardType === 'products' && Array.isArray(c.state?.products)) {

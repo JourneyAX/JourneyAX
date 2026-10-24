@@ -217,6 +217,8 @@ export const primitives = {
       inputType: dyn(z.enum(['single_select', 'multi_select', 'number', 'measurement', 'text'])).optional(),
       placeholder: dyn(z.string()).optional(),
       unit: dyn(z.string()).optional(),
+      min: dyn(z.number()).optional(),
+      max: dyn(z.number()).optional(),
     }),
   },
   KeyValue: {

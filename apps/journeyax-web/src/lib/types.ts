@@ -294,6 +294,9 @@ export interface DynamicQuestion {
   multi?: boolean;
   placeholder?: string;
   unit?: string;
+  /** For a number question: the usual range of answers (a number outside it is questioned once, not refused). */
+  min?: number;
+  max?: number;
 }
 
 // ── Message types ──────────────────────────────────────────────────────

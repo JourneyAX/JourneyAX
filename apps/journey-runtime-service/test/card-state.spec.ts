@@ -3,6 +3,7 @@ import { createSuite } from '@journeyax/test-support';
 import { normaliseCardState } from '../src/agent/card-state';
 import { executeAgentTool, type AgentToolContext } from '../src/agent/agent-tools';
 import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-search.handler';
+import { CARD_TYPES } from '@journeyax/ui-cards';
 
 const suite = createSuite('runtime: card state written in a slightly different shape');
 
@@ -30,6 +31,13 @@ async function main() {
     assert.deepEqual(normaliseCardState('clarify', 'oops'), {});
     const questions = [{ id: 'a', text: 'Q', options: ['x'] }];
     assert.deepEqual(normaliseCardState('clarify', { questions }).questions, questions);
+  });
+
+  await suite.test('a number question keeps the usual range it was given, so the customer can be asked "did you mean…?"', () => {
+    const parsed = CARD_TYPES.clarify.state.parse({ questions: [{ id: 'height', text: 'How high?', inputType: 'number', unit: 'm', min: 1, max: 6 }] });
+    assert.equal(parsed.questions[0].min, 1);
+    assert.equal(parsed.questions[0].max, 6);
+    assert.equal(CARD_TYPES.clarify.state.safeParse({ questions: [{ id: 'h', text: 'How high?', inputType: 'number', min: 'low' }] }).success, false, 'a range that is not a number is refused');
   });
 
   await suite.test('present_card accepts the plain variants and still refuses a SKU no tool returned', async () => {

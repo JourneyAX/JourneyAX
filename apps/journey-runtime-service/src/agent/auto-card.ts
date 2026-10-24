@@ -18,6 +18,8 @@ export interface LastProducts {
 
 const MAX_NAMED = 6;
 const MAX_SEARCHED = 4;
+/** A word shorter than this says too little about a product to show it was talked about. */
+const MIN_RELATED_WORD = 4;
 /** A title shorter than this is too generic to count as a mention (it would match any sentence that uses the word). */
 const MIN_TITLE_CHARS = 12;
 
@@ -46,6 +48,24 @@ function mentionedAt(haystack: string, sku: string, title: unknown): number {
   return -1;
 }
 
+/** A word and its plural alike ("ladders" and "ladder"). */
+const wordKey = (word: string): string => (word.length > MIN_RELATED_WORD && word.endsWith('s') ? word.slice(0, -1) : word);
+const meaningfulWords = (normalised: string): string[] => normalised.trim().split(' ').filter((word) => word.length >= MIN_RELATED_WORD).map(wordKey);
+
+/**
+ * From the products a search found, the ones the reply is about: those whose title shares a meaningful word with it. A reply that
+ * talks about step ladders is not about a "Safety Step" the search also turned up. When the reply shares no word with any of them
+ * ("Here is what I found for you"), it leaves the choice to the search, so they all stay.
+ */
+function aboutTheReply(haystack: string, skus: string[], catalog: Map<string, any>): string[] {
+  const said = new Set(meaningfulWords(haystack));
+  const related = skus.filter((sku) => {
+    const product = catalog.get(sku);
+    return meaningfulWords(normalise(product?.title ?? product?.name)).some((word) => said.has(word));
+  });
+  return related.length > 0 ? related : skus;
+}
+
 export function chooseCardSkus(input: {
   text: string;
   /** Every product the tools returned this turn, in the order they came. */
@@ -67,7 +87,7 @@ export function chooseCardSkus(input: {
 
   // Nothing named: show what the last lookup found, but not alternatives the search had to settle for.
   if (input.last && !input.last.relaxed && input.last.skus.length > 0) {
-    return { skus: input.last.skus.slice(0, MAX_SEARCHED), basis: 'searched' };
+    return { skus: aboutTheReply(haystack, input.last.skus, input.catalog).slice(0, MAX_SEARCHED), basis: 'searched' };
   }
   return { skus: [], basis: 'none' };
 }

@@ -37,7 +37,7 @@ import { summariseOptions } from './option-facets';
 import { normaliseCardState } from './card-state';
 import { areaToSquareMetres, estimateQuantity, type QuantityHelperConfig, type QuantityEstimate } from './quantity-estimate';
 import { generateVisual, type VisualiserConfig } from './visual-generator';
-import { readGuides } from './product-guides';
+import { hasReadableText, readGuides } from './product-guides';
 import { findPage, pageAsGuide, searchPages, type ContentPageRecord, type PageHit } from './content-pages';
 import { buildReview, type ReviewLine, type ReviewState, type ReviewSuggestion } from './checkout-review';
 import type { LastProducts } from './auto-card';
@@ -719,8 +719,8 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
           type: 'object',
           description:
             'The card state data matching the card type schema. products: {"products":[{"sku":"...","reason":"why it fits"}]}. accessories: {"forSku":"...","heading":"...","groups":[{"key":"short-key","label":"group name","hint":"what it is for","items":[{"sku":"..."}]}]}. quantity: {"product":{"sku":"..."}} (the number and working are filled in from estimate_quantity). visual: {"caption":"..."} (the picture is filled in from generate_visual). For a clarify card the state is {"questions":[{"id":"a short key","text":"the question in plain words",' +
-            '"options":["a tappable choice","another choice"],"inputType":"single_select" | "multi_select" | "number" | "text","unit":"shown beside a number"}]} ' +
-            'with at most three questions; leave options out for a number or text question, and give a unit for a number. The customer taps or types the answers, and they come back to you together as one message.',
+            '"options":["a tappable choice","another choice"],"inputType":"single_select" | "multi_select" | "number" | "text","unit":"shown beside a number","min":lowest usual number,"max":highest usual number}]} ' +
+            'with at most three questions; leave options out for a number or text question, and give a unit for a number. For a number question give a min and a max taken from what you have looked up (the sizes the products really come in), never guessed: a number outside them is checked with the customer ("did you mean…?") instead of being taken as typed, so a slip such as 18 for 1.8 is caught. The options of one question must be different from each other: no choice may contain or overlap another (not "up to 3" beside "2 to 4"). The customer taps or types the answers, and they come back to you together as one message.',
         },
       },
       required: ['cardType', 'state'],
@@ -1689,6 +1689,26 @@ export async function executeAgentTool(
         maxPassages: config.maxPassages,
         passageChars: config.passageChars,
       });
+      if ('error' in reading && reading.error === 'no_readable_text') {
+        if (ctx.knowledgeGapRepo) {
+          ctx.knowledgeGapRepo.recordGap({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            topic: `product guide with no readable text: ${title}`,
+            toolName: 'read_product_guide',
+            conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+          }).catch(() => {});
+        }
+        return {
+          ok: true,
+          found: false,
+          readable: false,
+          sku: product.sku || sku,
+          title,
+          guides: reading.unreadable.map((guide) => ({ guide: guide.title, kind: guide.kind, pages: guide.pages, link: guide.url })),
+          message: 'We hold this guide only as the maker\'s file (a scan), so I cannot read its words from here. Say so plainly, the way one of us would ("the guide is there, but I can\'t read it from here"), give the file as a markdown link [guide title](address) when it has one so the customer can open it, and offer a colleague who can check it. Never say what such a guide contains, and never describe what a guide for this kind of product usually says. Offer what we do know about the product from get_product.',
+        };
+      }
       if ('error' in reading) return { ok: false, error: `This product has no guide called "${String(args.guide)}". It has: ${reading.available.join('; ')}.` };
       // What the supplier's own words may support in the reply is the tenant's choice; a class the platform does not know is ignored.
       for (const name of config.unlocks || []) {
@@ -1702,6 +1722,7 @@ export async function executeAgentTool(
         title,
         guides: reading.guides.map((guide) => ({ guide: guide.title, kind: guide.kind, pages: guide.pages, link: guide.url, passages: guide.passages, ...(guide.outline ? { headings: guide.outline.map((entry) => `${entry.n}: ${entry.heading}`) } : {}), ...(guide.truncated ? { note: 'The stored text stops before the end of this guide.' } : {}) })),
         answeredFromGuide: reading.matched,
+        ...(reading.unreadable ? { alsoKept: reading.unreadable.map((guide) => ({ guide: guide.title, kind: guide.kind, link: guide.url, note: 'no readable words are held for this one: give its link and do not say what it contains' })) } : {}),
         passages: reading.passages.map((passage) => ({ guide: passage.guide, passage: `${passage.n} of ${passage.of}`, text: passage.text })),
         ...(reading.next ? { continueWith: { guide: reading.guides[0].title, from: reading.next.from } } : {}),
         message: 'These passages are the maker\'s own words, copied from the guide(s) listed. Explain them in plain language, as a member of our team would, and say whose guide it is ("the Sika guide says…" using the brand, or "the guide that comes with it says…"). Keep every number, unit, spacing and limit exactly as written, and add no step, limit or compatibility from general knowledge. If the passages do not answer what was asked, do not say the guide is silent yet: a long guide lists its headings with the passage each is in ("headings": passage number, heading), so call again with from set to the passage of the section that fits (and the same guide), or with the guide\'s own words for the thing (the term in a heading, the unit) as the question. Only when the right section has been read and still does not say, tell the customer so and give the guide\'s link. For wet areas, structural fixing or anything where a mistake is costly, tell the customer to follow the full guide and offer its link.',
@@ -1748,7 +1769,8 @@ export async function executeAgentTool(
           coverageTexts: [product.description, ...(Array.isArray(product.highlights) ? product.highlights : [])].filter((text) => typeof text === 'string'),
           ...(want.branchStatus ? { branchStatus: want.branchStatus } : {}),
           ...(terms ? { warranty: terms } : {}),
-          guides: guides.map((guide) => guide.title),
+          // Only a guide with words in it can be explained, so only those are offered.
+          guides: guides.filter((guide) => hasReadableText(guide.text)).map((guide) => guide.title),
         });
       }
       if (lines.length === 0) return { ok: false, error: 'None of the order\'s lines is a product in the catalogue, so there is nothing to review.' };

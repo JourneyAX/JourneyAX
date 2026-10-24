@@ -195,7 +195,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     qt: el('Text', { text: I('text'), variant: 'subheading' }),
     qinput: el('QuestionInput', {
       questionId: I('id'), label: I('text'), options: I('options'), selected: I('answer'),
-      multi: I('multi'), inputType: I('inputType'), placeholder: I('placeholder'), unit: I('unit'),
+      multi: I('multi'), inputType: I('inputType'), placeholder: I('placeholder'), unit: I('unit'), min: I('min'), max: I('max'),
       action: 'chooseOption', valueKey: 'value',
     }),
     foot: el('Box', { pad: 'sm', bg: 'surface-alt' }, { children: ['prog'], visible: [S('/progress')] }),

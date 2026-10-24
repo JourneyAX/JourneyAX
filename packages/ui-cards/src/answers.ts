@@ -36,3 +36,19 @@ export function answerSummary(questions: AnswerQuestion[], answers: Record<strin
     })
     .join('\n');
 }
+
+/**
+ * A number outside the usual range, moved a decimal place or two to land inside it (18 for 1.8, 0.24 for 2.4); undefined when no
+ * shift does. The customer is asked "did you mean…?" once and may keep what they typed.
+ */
+export function nearbyInRange(value: number, min?: number, max?: number): number | undefined {
+  if (!Number.isFinite(value) || value === 0) return undefined;
+  const inside = (n: number) => (min === undefined || n >= min) && (max === undefined || n <= max);
+  if (inside(value)) return undefined;
+  const tooBig = max !== undefined && value > max;
+  for (const shift of tooBig ? [0.1, 0.01] : [10, 100]) {
+    const moved = Math.round(value * shift * 1000) / 1000;
+    if (inside(moved)) return moved;
+  }
+  return undefined;
+}

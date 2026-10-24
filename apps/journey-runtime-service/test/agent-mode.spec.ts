@@ -5085,6 +5085,21 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
       assert.deepEqual(skus.slice(0, 2).sort(), ['G1', 'G2'], 'and they come before the products that only mention the word');
     });
 
+    test('a word the shop lets stand for another does not fill the candidates before the products named for it', async () => {
+      // The shop\'s word list says "safety" can stand for "ladder" (a shelf named "Safety & Ladders"). Five safety items come first
+      // in the database, then the two real step ladders; the candidate limit is 3.
+      const decoys = [1, 2, 3, 4, 5].map((n) => make(`D${n}`, `Safety Step ${n}`, { category: 'Platforms', categoryPath: ['Safety & Ladders', 'Platforms'] }));
+      const real = [
+        make('L1', 'Jumbo Step 3 Step Aluminium Step Ladder', { category: 'Ladders', categoryPath: ['Safety & Ladders', 'Ladders'] }),
+        make('L2', 'Select Step Ladder 4-6 Step Adjustable', { category: 'Ladders', categoryPath: ['Safety & Ladders', 'Ladders'] }),
+      ];
+      const handler = await storeWith([...decoys, ...real]);
+      const withSynonym: any = { tenantId: 'test-tenant', packSettings: { catalogMapping: { candidateLimit: 3 }, vocabulary: { synonyms: { ladder: ['safety'] } } } };
+      const res = await handler.execute({ isAgentMode: true, productType: 'ladder', keywords: ['step ladder'], maxResults: 10 } as any, withSynonym);
+      const skus = res.items.map((i: any) => i.sku);
+      assert.deepEqual(skus.slice(0, 2).sort(), ['L1', 'L2'], `the products named step ladder come first, got ${skus}`);
+    });
+
     test('a product type matches the department above a shelf, so "plasterboard" finds products on the Standard Board shelf', async () => {
       const board = make('B1', 'Standard Wallboard 2400 x 1200 x 10mm', { category: 'Standard Board', categoryPath: ['Building Products', 'Plasterboard', 'Standard Board'], brandCode: 'GIB' });
       const other = make('P1', 'Standard Aluminium Post', { category: 'Posts', categoryPath: ['Fencing', 'Posts'] });
@@ -5489,6 +5504,16 @@ describe('the products a reply is about are shown on a card', () => {
     assert.deepEqual(exact, { skus: ['2800027', '2800651', '2800407', '9000001'], basis: 'searched' });
     const relaxed = chooseCardSkus({ text: 'Here is what I found for your wall.', turnSkus: skus, catalog, last: { skus: ['2800027'], relaxed: true } });
     assert.deepEqual(relaxed, { skus: [], basis: 'none' });
+  });
+
+  test('when no product is named, a found product the reply is not about is left off the card', () => {
+    const ladders = new Map<string, any>([
+      ['L1', { sku: 'L1', title: 'Gorilla Step Ladder 1.8m' }],
+      ['L2', { sku: 'L2', title: 'Ladder Extension 4.2m' }],
+      ['S1', { sku: 'S1', title: 'Safety Platform Rail Kit' }],
+    ]);
+    const picked = chooseCardSkus({ text: 'For a ladder, the step ladders and the extension ladders are the usual choices.', turnSkus: [...ladders.keys()], catalog: ladders, last: { skus: ['S1', 'L1', 'L2'], relaxed: false } });
+    assert.deepEqual(picked, { skus: ['L1', 'L2'], basis: 'searched' });
   });
 
   const run = async (opts: { message: string; searchResult: any; reply: string; customerEvent?: any; alsoPresent?: boolean }) => {

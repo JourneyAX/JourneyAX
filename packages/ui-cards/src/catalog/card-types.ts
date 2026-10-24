@@ -211,6 +211,9 @@ export const CARD_TYPES = {
           multi: z.boolean().optional(),
           inputType: z.enum(['single_select', 'multi_select', 'number', 'measurement', 'text']).optional(),
           unit: z.string().optional(),
+          /** For a number question: the usual range of answers. A number outside it is questioned once ("did you mean…?"), never refused. */
+          min: z.number().optional(),
+          max: z.number().optional(),
           placeholder: z.string().optional(),
           answer: z.union([z.string(), z.number(), z.record(z.string(), z.any())]).optional(),
         })

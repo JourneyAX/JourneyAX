@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
-import { guideDocId, guidesFromProductRecord, headingsOf, rankPassages, readGuides, splitPassages, tidyGuideText, type ProductGuideRecord } from '../src/agent/product-guides';
+import { guideDocId, guidesFromProductRecord, hasReadableText, headingsOf, rankPassages, readGuides, splitPassages, tidyGuideText, type ProductGuideRecord } from '../src/agent/product-guides';
 import { ProductGuideRepository } from '../src/kernel/product-guide.repository';
 import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
 import { executeAgentTool, type AgentToolContext } from '../src/agent/agent-tools';
@@ -226,6 +226,43 @@ async function main() {
     const another = shop([record({ docId: 'c'.repeat(32), title: 'Their guide', text: SPEC_TEXT, tenantId: 'other-tenant' })]);
     const crossTenant: any = await executeAgentTool('read_product_guide', { sku: 'G1' }, another);
     assert.equal(crossTenant.found, false, 'another shop\'s guide is never read');
+  });
+
+  const SCAN_TEXT = Array.from({ length: 16 }, (_, i) => `-- ${i + 1} of 16 --`).join('\n\n');
+
+  await suite.test('a scanned guide that came through as page markers alone has no readable text; a guide with words has, markers or not', () => {
+    assert.equal(hasReadableText(SCAN_TEXT), false);
+    assert.equal(hasReadableText(''), false);
+    assert.equal(hasReadableText('Page 1\n\n12\n\n-- 3 de 16 --'), false, 'markers in another language are markers too');
+    assert.equal(hasReadableText(`${SCAN_TEXT}\n\n${SPEC_TEXT}`), true);
+    assert.equal(hasReadableText(SPEC_TEXT), true);
+  });
+
+  await suite.test('read_product_guide on a scanned guide says it cannot read it, gives the link, records the gap and never passes page markers on as passages', async () => {
+    const scan = record({ docId: 'd'.repeat(32), title: 'Instruction Manual', kind: 'pdf', pages: 16, url: 'https://example.test/manual.pdf', text: SCAN_TEXT });
+    const ctx = shop([scan]);
+    const result: any = await executeAgentTool('read_product_guide', { sku: 'G1', question: 'how do I fit it' }, ctx);
+    assert.deepEqual([result.ok, result.found, result.readable], [true, false, false]);
+    assert.equal(result.passages, undefined, 'no page markers are handed over as if they were the guide');
+    assert.deepEqual(result.guides, [{ guide: 'Instruction Manual', kind: 'pdf', pages: 16, link: 'https://example.test/manual.pdf' }]);
+    assert.match(result.message, /cannot read its words/);
+    assert.match(result.message, /Never say what such a guide contains/);
+    assert.equal(ctx.gaps.length, 1);
+    assert.match(ctx.gaps[0].topic, /no readable text/);
+    assert.equal(ctx.allowedClaimClasses.size, 0, 'nothing is unlocked when nothing was read');
+    const named: any = await executeAgentTool('read_product_guide', { sku: 'G1', guide: 'manual' }, shop([scan]));
+    assert.equal(named.readable, false, 'asking for the scanned guide by name gets the same plain answer, not "no such guide"');
+  });
+
+  await suite.test('when a product has a scanned guide and a readable one, the readable one is read and the scanned one is named with its link', async () => {
+    const ctx = shop([
+      record({ docId: 'a'.repeat(32), title: 'Specification Guide', text: SPEC_TEXT }),
+      record({ docId: 'd'.repeat(32), title: 'Instruction Manual', kind: 'pdf', url: 'https://example.test/manual.pdf', text: SCAN_TEXT }),
+    ]);
+    const result: any = await executeAgentTool('read_product_guide', { sku: 'G1', question: 'how long can I reposition it' }, ctx);
+    assert.equal(result.found, true);
+    assert.ok(result.passages.every((passage: any) => passage.guide === 'Specification Guide'));
+    assert.deepEqual(result.alsoKept.map((entry: any) => [entry.guide, entry.link]), [['Instruction Manual', 'https://example.test/manual.pdf']]);
   });
 
   await suite.test('search_guides, which only finds general guides, points the agent at the product\'s own guide unless the shop switched it off', async () => {

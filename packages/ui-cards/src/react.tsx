@@ -10,6 +10,7 @@ import { createRenderer, useActions } from '@json-render/react';
 import type { Spec } from '@json-render/core';
 import { catalog } from './catalog';
 import type { CardInstance } from './catalog/card-types';
+import { nearbyInRange } from './answers';
 
 type P = Record<string, any>;
 export type PrimitiveRenderProps = {
@@ -281,17 +282,42 @@ const components = {
     }
 
     const numeric = mode === 'number';
-    const valid = draft.trim() !== '' && (!numeric || Number.isFinite(Number(draft)));
+    const typed = draft.trim();
+    const valid = typed !== '' && (!numeric || Number.isFinite(Number(typed)));
+    const min = typeof props.min === 'number' ? props.min : undefined;
+    const max = typeof props.max === 'number' ? props.max : undefined;
+    const outside = numeric && valid && ((min !== undefined && Number(typed) < min) || (max !== undefined && Number(typed) > max));
+    const suggestion = outside ? nearbyInRange(Number(typed), min, max) : undefined;
+    // A number outside the usual range is questioned once; a second press of the button keeps it. It is never refused.
+    const [questioned, setQuestioned] = useState('');
+    const doubt = outside && questioned === typed;
+    const range = min !== undefined && max !== undefined ? `${min} to ${max}` : min !== undefined ? `${min} or more` : max !== undefined ? `${max} or less` : '';
+    const withUnit = (value: number | string) => (props.unit ? `${value} ${props.unit}` : String(value));
+    const submit = () => {
+      if (!valid) return;
+      if (outside && questioned !== typed) { setQuestioned(typed); return; }
+      fire(typed);
+    };
     return (
-      <form className="jx-question-input" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); if (valid) fire(draft.trim()); }}>
+      <form className="jx-question-input" noValidate onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); submit(); }}>
         <div className="jx-question-entry">
-          <input type={numeric ? 'number' : 'text'} value={draft} maxLength={500}
+          <input type={numeric ? 'number' : 'text'} value={draft} maxLength={500} step={numeric ? 'any' : undefined}
             inputMode={numeric ? 'decimal' : undefined} aria-label={props.label || 'Your answer'}
+            aria-invalid={doubt || undefined}
             placeholder={props.placeholder || (mode === 'measurement' ? 'Enter the measurement and unit' : 'Type your answer')}
             className="jx-question-field" onChange={(event) => setDraft(event.target.value)} />
           {props.unit ? <span className="jx-question-unit">{props.unit}</span> : null}
-          <button type="submit" className="jx-btn jx-btn-primary jx-size-sm" disabled={!valid}>Continue</button>
+          <button type="submit" className="jx-btn jx-btn-primary jx-size-sm" disabled={!valid}>{doubt ? `Use ${withUnit(typed)}` : 'Continue'}</button>
         </div>
+        {doubt ? (
+          <div className="jx-question-doubt" role="status">
+            <span>{`${withUnit(typed)} is outside the usual ${range}.`}{suggestion !== undefined ? ' Did you mean ' : ''}</span>
+            {suggestion !== undefined ? (
+              <button type="button" className="jx-chip" onClick={(event) => { event.stopPropagation(); fire(String(suggestion)); }}>{withUnit(suggestion)}</button>
+            ) : null}
+            {suggestion !== undefined ? <span>?</span> : null}
+          </div>
+        ) : null}
       </form>
     );
   },

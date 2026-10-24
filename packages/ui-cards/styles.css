@@ -102,6 +102,8 @@
 .jx-question-field { flex: 1 1 180px; min-width: 0; font: inherit; padding: 9px 10px; border-radius: var(--jx-radius-sm); border: 1px solid var(--jx-color-border); background: var(--jx-color-surface); color: var(--jx-color-text); }
 .jx-question-field:focus-visible { outline: 2px solid var(--jx-color-brand); outline-offset: 2px; }
 .jx-question-unit { color: var(--jx-color-text-muted); font-size: 13px; }
+.jx-question-doubt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--jx-color-text-muted); }
+.jx-question-field[aria-invalid='true'] { border-color: var(--jx-color-warning, var(--jx-color-border)); }
 .jx-kv { display: flex; flex-direction: column; gap: 2px; font-size: 13px; } .jx-kv.jx-inline { flex-direction: row; justify-content: space-between; gap: 12px; }
 .jx-kv-label { color: var(--jx-color-text-muted); font-size: 12px; } .jx-kv-value { font-weight: 500; }
 .jx-table-wrap { overflow-x: auto; }

@@ -110,3 +110,16 @@ Pack data `extensions.contentPages` and skills `read-the-shops-pages` and `speak
 | Button colours (`extensions.brandTheme`) | buttons #A52E80 (white text), links #091C5A, panel header #003976, taken from the PlaceMakers website | Confirm these are the colours PlaceMakers wants on its buttons; the website itself uses a teal (#6BBBAE) for secondary buttons. |
 | Consultant voice (`extensions.voice`) | swaps "PlaceMakers' page/range/team" for "our ...", "PlaceMakers has/does not/can" for "we ...", drops the "Next step:" label | The list of swaps is shop data: add or remove as you hear replies. |
 | Orders without a price | products with no price in the data (for example the Forum pavers) cannot be paid for | Prices for these products, or a "request a quote" route. |
+
+---
+
+## 10. Search order, cards and number questions (ladders chat, 2026-10-24)
+
+Platform changes plus one wording change in the skill `ask-on-a-question-card` (pack data, in `placemakers-draft.json`).
+
+| Setting | Value now | What to confirm |
+|---|---|---|
+| Search order for the words the consultant asks for | a word every candidate holds still counts (floor 1), and a product whose name holds the asked-for words together ("step ladder") ranks above one that holds them apart (a "Safety Step") | Nothing to set; tell us if a search still puts the wrong thing first. |
+| Cards after a reply that names no product | only found products whose title shares a word with the reply are shown; if none shares a word, the search result is shown as before | Nothing to set. |
+| Number questions | the consultant gives a usual range (min and max) from the sizes the products come in; a number outside it is questioned once ("did you mean 1.8?") and can still be kept; options of one question must not overlap | The wording of the hint ("... is outside the usual 1 to 6. Did you mean ...?") is in the card code, not in the pack. |
+| Guides with no readable words | 832 of 15,521 guides are scans (page markers only). The consultant says it cannot read them, gives the file link and offers a colleague; each such question is recorded as a knowledge gap | Whether to run text recognition (OCR) over the 832 scans so they can be read; not started. |

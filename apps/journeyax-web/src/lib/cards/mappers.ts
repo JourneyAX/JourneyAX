@@ -250,7 +250,7 @@ export function mapClarifyCard(questions: DynamicQuestion[], answers: Record<str
   return {
     questions: qs.map((q) => ({
       id: q.id, text: q.title, options: q.options, answer: answers[q.id],
-      inputType: q.inputType, multi: q.multi, placeholder: q.placeholder, unit: q.unit,
+      inputType: q.inputType, multi: q.multi, placeholder: q.placeholder, unit: q.unit, min: q.min, max: q.max,
     })),
     progress,
   };

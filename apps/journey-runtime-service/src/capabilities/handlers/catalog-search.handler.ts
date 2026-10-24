@@ -89,6 +89,7 @@ export interface QueryToken {
 }
 
 import { connectorWordsForLocale, stemPatternForLocale } from './locale-stemmer';
+import { rankByKeywords } from './agent-keyword-rank';
 import { CatalogueIndexRegistry, openCatalogueDatabase } from '../catalogue-index';
 import { MemoryProductCollection, UnsupportedFilter } from '../catalogue-filter';
 
@@ -996,12 +997,14 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             }
             // The clauses that require the keywords (every one, or any, per kwMode) to appear in `paths`.
             const keywordList = activeSpecs?.keywords || [];
-            const keywordClausesFor = (paths: string[]): any[] => {
+            // `literal` leaves out the shop's synonyms, so only products that hold the words themselves match.
+            const keywordClausesFor = (paths: string[], literal = false): any[] => {
               const kwClauses: any[] = [];
               if (keywordList.length === 0) return kwClauses;
+              const synonymsOf = (word: string): string[] => (literal ? [] : glossaryIndex.get(word) || []);
               const buildWordMatcher = (w: string) => {
                 const wClean = w.toLowerCase().replace(/[®™]/g, '').trim();
-                const syns = glossaryIndex.get(wClean) || [];
+                const syns = synonymsOf(wClean);
                 const patterns = [stem(wClean), ...syns.map(stem)].filter(Boolean);
                 const rx = new RegExp(`\\b(?:${patterns.join('|')})\\b`, 'i');
                 return { $or: anyOf(paths, rx) };
@@ -1019,7 +1022,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                 for (const kw of keywordList) {
                   const kwClean = kw.trim();
                   if (!kwClean) continue;
-                  const syns = glossaryIndex.get(kwClean.toLowerCase()) || [];
+                  const syns = synonymsOf(kwClean.toLowerCase());
                   const words = kwClean.replace(/[®™]/g, '').split(/\s+/).map((w) => w.trim()).filter(Boolean);
                   if (words.length > 1) {
                     const wordClauses = words.map(buildWordMatcher);
@@ -1074,26 +1077,42 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                 .filter((w) => w.length > 2))]
                 .map((w) => new RegExp(`\\b(?:${[stem(w), ...(glossaryIndex.get(w) || []).map(stem)].filter(Boolean).join('|')})\\b`, 'i'));
               const textPaths = [...new Set([...strongSearchPaths(), ...mapping.searchPaths])];
-              docs = shelf.filter((doc) => {
-                const text = textOf(doc, textPaths);
-                return wordMatchers.some((rx) => rx.test(text));
-              }).slice(0, mapping.candidateLimit);
+              // Of the shelf's products that hold any of the words, those that hold the most of them in their title come first, so the
+              // limit cuts the weakest matches and not whichever products the database happened to return last.
+              const inTitle = (doc: any) => { const title = textOf(doc, mapping.titlePaths); return wordMatchers.filter((rx) => rx.test(title)).length; };
+              docs = shelf
+                .filter((doc) => {
+                  const text = textOf(doc, textPaths);
+                  return wordMatchers.some((rx) => rx.test(text));
+                })
+                .map((doc, order) => ({ doc, order, hits: inTitle(doc) }))
+                .sort((a, b) => b.hits - a.hits || a.order - b.order)
+                .slice(0, mapping.candidateLimit)
+                .map((entry) => entry.doc);
             } else {
               // Only the first `candidateLimit` hits are ranked, so which fields count decides what can be found at all. A word that is
               // common in descriptions and keyword lists ("plasterboard", a brand) would fill the limit with incidental matches and
-              // push out the products it names in their title, brand or category. Look in those fields first, then fill the rest
-              // from every searchable field.
+              // push out the products it names in their title, brand or category. A word that names a whole shelf ("ladder" on a
+              // shelf of safety gear), or that the shop's word list lets stand for another, does the same. So the products that hold the
+              // words themselves in their title come first, then those that hold them (or a synonym) in title, brand or category,
+              // then the rest from every searchable field.
               const strongPaths = strongSearchPaths();
-              const [strongDocs, anyFieldDocs] = await Promise.all([
+              const [titleDocs, strongDocs, anyFieldDocs] = await Promise.all([
+                runFind(keywordClausesFor(mapping.titlePaths, true)),
                 runFind(keywordClausesFor(strongPaths)),
                 runFind(keywordClausesFor(mapping.searchPaths)),
               ]);
               const keyOf = (doc: any) => String(doc?._id ?? doc?.parentSku ?? doc?.sku);
-              const seen = new Set(strongDocs.map(keyOf));
-              docs = [...strongDocs];
-              for (const doc of anyFieldDocs) {
-                if (docs.length >= mapping.candidateLimit) break;
-                if (!seen.has(keyOf(doc))) docs.push(doc);
+              const seen = new Set<string>();
+              docs = [];
+              for (const group of [titleDocs, strongDocs, anyFieldDocs]) {
+                for (const doc of group) {
+                  if (docs.length >= mapping.candidateLimit) break;
+                  const key = keyOf(doc);
+                  if (seen.has(key)) continue;
+                  seen.add(key);
+                  docs.push(doc);
+                }
               }
             }
           } else {
@@ -1225,7 +1244,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
       // Agent searches carry their words as keywords, not as a free-text query, so nothing ranked them: the best matches could sit
       // anywhere in the candidates. Rank by how many of the asked words each product matches, counting a word that few candidates
-      // contain (a size, a brand) for more than one nearly all of them contain (a treatment, a material).
+      // contain (a size, a brand) for more than one nearly all of them contain (a treatment, a material), and lifting a product whose
+      // name holds the asked-for words together ("step ladder") above one that holds them apart (see agent-keyword-rank.ts).
       if (isAgent && activeSpecs?.keywords && activeSpecs.keywords.length > 0 && docs.length > 1) {
         const words = [...new Set(activeSpecs.keywords
           .flatMap((kw) => kw.replace(/[®™]/g, '').split(/\s+/))
@@ -1243,16 +1263,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             cat: textOf(d, [...typePaths, ...mapping.brandPaths]),
             rest: textOf(d, mapping.searchPaths),
           }));
-          const weights = regexes.map((rx) => {
-            const df = rows.filter((r) => rx.test(`${r.name} ${r.cat} ${r.rest}`)).length;
-            return Math.log((rows.length + 1) / (df + 0.5));
-          });
-          const scored = rows.map((r) => ({
-            d: r.d,
-            s: regexes.reduce((sum, rx, i) => sum + (rx.test(r.name) ? 3 : rx.test(r.cat) ? 2 : rx.test(r.rest) ? 1 : 0) * weights[i], 0),
-          }));
-          scored.sort((x, y) => y.s - x.s);
-          docs = scored.map((x) => x.d);
+          const exact = words.map((w) => new RegExp(`\\b(?:${stem(w)})`, 'i'));
+          docs = rankByKeywords(rows, { regexes, exact, words, phrases: activeSpecs.keywords });
         }
       }
 

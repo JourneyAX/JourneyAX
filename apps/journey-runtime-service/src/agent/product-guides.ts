@@ -36,7 +36,12 @@ export interface GuideReading {
   matched: boolean;
   /** Where to continue reading the one guide that was read in order, when there is more of it. */
   next?: { guideId: string; from: number };
+  /** Other guides of the product that have no readable words, so the reader can say they exist and give their links. */
+  unreadable?: UnreadableGuide[];
 }
+
+/** A guide the shop holds only as a file (a scan): its link and details are kept, but there are no words to read. */
+export interface UnreadableGuide { guideId: string; title: string; kind?: string; pages?: number; url?: string }
 
 export interface ReadOptions {
   question?: string;
@@ -85,6 +90,25 @@ export function tidyGuideText(raw: unknown): string {
     .replace(/ ?\n ?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/**
+ * A line a file extraction leaves for a page it could not read ("-- 3 of 16 --"): digits around a short word, and nothing else.
+ * A scanned manual comes through as page markers alone.
+ */
+const PAGE_MARKER = /^[\s\-–—_*#.[\]()]*\p{N}+\s*\p{L}{0,4}\s*\p{N}+[\s\-–—_*#.[\]()]*$/u;
+/** Fewer letters than this, once page markers are taken out, is not a guide anyone can read. */
+export const MIN_READABLE_LETTERS = 60;
+
+/** True when the text holds real words, not only page markers or a few stray characters. */
+export function hasReadableText(text: string): boolean {
+  let letters = 0;
+  for (const line of String(text || '').split('\n')) {
+    if (PAGE_MARKER.test(line.trim())) continue;
+    letters += (line.match(/\p{L}/gu) || []).length;
+    if (letters >= MIN_READABLE_LETTERS) return true;
+  }
+  return false;
 }
 
 const looksLikeHeading = (line: string) => line.length <= 60 && !/[.,;]$/.test(line);
@@ -170,16 +194,28 @@ function outlineOf(passages: string[]): Array<{ n: number; heading: string }> {
 }
 
 /** Reads the guides a product carries: the passages that answer the question, or the start of the guide when nothing in it does. */
-export function readGuides(records: ProductGuideRecord[], options: ReadOptions = {}): GuideReading | { error: 'no_such_guide'; available: string[] } {
+export function readGuides(records: ProductGuideRecord[], options: ReadOptions = {}): GuideReading | { error: 'no_such_guide'; available: string[] } | { error: 'no_readable_text'; unreadable: UnreadableGuide[] } {
   const maxPassages = Math.min(20, Math.max(1, Math.floor(options.maxPassages ?? DEFAULT_MAX_PASSAGES)));
   const passageChars = options.passageChars ?? DEFAULT_PASSAGE_CHARS;
-  let books = records.map((record) => ({ record, passages: splitPassages(record.text, passageChars) })).filter((book) => book.passages.length > 0);
+  const readable = records.filter((record) => hasReadableText(record.text));
+  const asUnreadable = (record: ProductGuideRecord): UnreadableGuide => ({
+    guideId: record.docId, title: record.title, ...(record.kind ? { kind: record.kind } : {}), ...(record.pages ? { pages: record.pages } : {}), ...(record.url ? { url: record.url } : {}),
+  });
+  const unreadable = records.filter((record) => !hasReadableText(record.text)).map(asUnreadable);
+  let books = readable.map((record) => ({ record, passages: splitPassages(record.text, passageChars) })).filter((book) => book.passages.length > 0);
   const wantedGuide = String(options.guide || '').trim().toLowerCase();
+  const named = (record: { title: string; kind?: string; docId?: string; guideId?: string }) =>
+    record.title.toLowerCase().includes(wantedGuide) || String(record.kind || '').toLowerCase() === wantedGuide || String(record.docId ?? record.guideId ?? '').startsWith(wantedGuide);
   if (wantedGuide) {
-    const chosen = books.filter(({ record }) => record.title.toLowerCase().includes(wantedGuide) || String(record.kind || '').toLowerCase() === wantedGuide || record.docId.startsWith(wantedGuide));
-    if (chosen.length === 0) return { error: 'no_such_guide', available: books.map(({ record }) => record.title) };
+    const chosen = books.filter(({ record }) => named(record));
+    if (chosen.length === 0) {
+      const asked = unreadable.filter((guide) => named(guide));
+      if (asked.length > 0) return { error: 'no_readable_text', unreadable: asked };
+      return { error: 'no_such_guide', available: [...books.map(({ record }) => record.title), ...unreadable.map((guide) => guide.title)] };
+    }
     books = chosen;
   }
+  if (books.length === 0) return { error: 'no_readable_text', unreadable };
   const guides = books.map(({ record, passages }) => ({
     guideId: record.docId, title: record.title, kind: record.kind, pages: record.pages, url: record.url, passages: passages.length,
     ...(record.truncated ? { truncated: true } : {}),
@@ -197,6 +233,7 @@ export function readGuides(records: ProductGuideRecord[], options: ReadOptions =
       guides: [guides[0]],
       passages: Array.from({ length: end - start }, (_, offset) => passageOf(book, start + offset)),
       matched: false,
+      ...(unreadable.length > 0 ? { unreadable } : {}),
       ...(end < book.passages.length ? { next: { guideId: book.record.docId, from: end + 1 } } : {}),
     };
   }
@@ -217,7 +254,7 @@ export function readGuides(records: ProductGuideRecord[], options: ReadOptions =
       if (!any) break;
     }
     const passages = [...picks].sort((a, b) => a[0] - b[0]).flatMap(([bookIndex, indexes]) => indexes.sort((a, b) => a - b).map((index) => passageOf(books[bookIndex], index)));
-    return { guides, passages, matched: true };
+    return { guides, passages, matched: true, ...(unreadable.length > 0 ? { unreadable } : {}) };
   }
 
   // Nothing in the guides shares a word with the question (or there was none): the start of each guide, in turn.
@@ -231,6 +268,7 @@ export function readGuides(records: ProductGuideRecord[], options: ReadOptions =
     guides,
     passages,
     matched: false,
+    ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(single && reading[0] < single.passages.length ? { next: { guideId: single.record.docId, from: reading[0] + 1 } } : {}),
   };
 }
