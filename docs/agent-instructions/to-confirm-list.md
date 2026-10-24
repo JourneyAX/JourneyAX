@@ -60,3 +60,17 @@ The following glossary aliases and customer phrases are identified from customer
 | `Paint & Decorating > Aerosol Paint` | `aerosol paint`, `spray paint for metal` | `Killrust Aerosol Spray Paint`, `Cold Galvit` | Add alias mapping spray paint to aerosol paint category. |
 | `Insulation > Fibreglass` | `Pink Batts` | Brand `Pink® Batts®` / `Pink Batts` | Ensure brand name is cross-referenced in pack insulation concept aliases. |
 | `Outdoor & Landscaping > Clotheslines` | `clothesline`, `outdoor clotheslines` | `Compact Fold Down Clothesline`, `Rotary Clothesline` | Add alias linking clotheslines to rotary and fold-down lines. |
+
+---
+
+## 6. Night-2 additions (2026-10-24): settings the owner should confirm
+
+These are pack data (`extensions.quantityHelper`, `extensions.visualiser`, `skills`) set by Claude Code on the owner's "everything approved" instruction. None is a fact about the business; each is a default to confirm or change.
+
+| Setting | Value now | What to confirm |
+|---|---|---|
+| Allowance for cuts and waste added to a worked-out quantity | 10% | The percentage PlaceMakers actually recommends, per product kind if it differs (paving, tiles, boards, paint). |
+| Paint and coverage | none stated in the data except a few primers ("offers 10 m-sq coverage") | Real coverage per litre and coats per product kind. Until then the consultant asks the customer to read the coverage off the tin and says the record does not state it. |
+| Pictures of the finished job | on, model `gpt-image-1.5`, quality low, labelled "An illustration made for you, not the exact product." | Whether PlaceMakers wants customers to see AI illustrations at all, and the exact label wording. Cost: one image per request. |
+| Accessories | from the knowledge's 30 "goes with" links (interior paint, deck build, drills, screws, toilets, vanities and a few more); everything else is "suggestions to check" found by search | Real accessory lists per shelf (paving: sand, edging, adhesive; exterior paint; decking fixings) so every shelf has verified groups. |
+| Colour choices | read from the last words of sibling product names (e.g. "Glacier", "Volcanic Ash"); the data has no colour chart or swatches | A colour chart (names and hex values) for paint and for pavers if real swatches should be shown. |
