@@ -40,6 +40,7 @@ import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { TurnTranscriptStore } from '../kernel/transcript.store';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
+import type { ProductGuideRepository } from '../kernel/product-guide.repository';
 
 export interface AgentTurnOptions {
   command: TurnCommand;
@@ -55,6 +56,7 @@ export interface AgentTurnOptions {
   executionRepo?: ExecutionRepository;
   transcriptStore?: TurnTranscriptStore;
   knowledgeGapRepo?: KnowledgeGapRepository;
+  productGuideRepo?: ProductGuideRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   sink: (event: string, data: any) => void;
@@ -486,6 +488,7 @@ export class AgentTurnLoop {
       approvalService,
       executionRepo,
       knowledgeGapRepo: options.knowledgeGapRepo,
+      productGuideRepo: options.productGuideRepo,
       inMemoryQuotes,
       inMemoryCarts,
       turnProductSkus: new Set<string>(),
@@ -518,6 +521,7 @@ export class AgentTurnLoop {
     // use_skill is platform plumbing for the agent's own on-demand skills: offered exactly when it has some, whatever allowedTools says.
     const hasOnDemandSkills = resolveAgentSkills(resolvedAgent.agent, (release as any)?.extensions?.skills).some((skill) => skill.tier === 'on_demand');
     const availableTools = toolDefs.filter((t) => (t.name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(t.name, allowedTools, release)));
+    if (process.env.AGENT_TRACE_RESULTS) console.log(`[agent] ${resolvedAgent.agent.agentId} offered ${availableTools.length} tools: ${availableTools.map((t) => t.name).join(', ')}; skills: ${(resolvedAgent.agent.skills || []).join(', ')}`);
 
     // 5. Honour maxTurns from resolved agent
     const agentMaxTurns = resolvedAgent.agent.maxTurns ?? 5;

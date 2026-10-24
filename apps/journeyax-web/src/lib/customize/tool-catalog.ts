@@ -13,6 +13,7 @@ export const PLATFORM_TOOLS: Record<string, { name: string; description: string 
   get_product: { name: 'Product details', description: 'Reads the full specifications, details and price of one product.' },
   get_related_products: { name: 'Related products', description: 'Finds companion items, accessories, system parts and alternatives for a product.' },
   search_guides: { name: 'Guides and documents', description: 'Searches verified installation guides, technical documents and how-tos.' },
+  read_product_guide: { name: 'Product guides', description: 'Reads the supplier\'s own guide kept with a product (specification guide, installation guide, manual) and answers from its words.' },
   get_warranty: { name: 'Warranty', description: 'Reads verified warranty periods, terms and certificates for a product or brand.' },
   calculate_quantity: { name: 'Quantity calculator', description: 'Works out how much of a product a job needs, from the customer\'s measurements and the shop\'s own formulas.' },
   check_stock: { name: 'Check stock', description: 'Checks real stock of a product at a branch or location.' },

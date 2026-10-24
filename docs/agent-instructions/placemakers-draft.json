@@ -66,7 +66,8 @@
         "hand_off_to_human",
         "explore_options",
         "estimate_quantity",
-        "generate_visual"
+        "generate_visual",
+        "read_product_guide"
       ],
       "modelPolicyRef": "complex_reasoning",
       "maxTurns": 5,
@@ -81,7 +82,8 @@
         "ask-on-a-question-card",
         "finish-the-job",
         "quantity-before-adding",
-        "show-the-finished-job"
+        "show-the-finished-job",
+        "read-the-product-guide"
       ]
     },
     {
@@ -215,9 +217,10 @@
         "present_card",
         "consult_business_knowledge",
         "search_guides",
-        "search_products"
+        "search_products",
+        "read_product_guide"
       ],
-      "instructions": "Before you search or ask, decide how this customer has arrived, from their own words, and let that decide your first move. Say what you understood in a few words so they can correct you.\n- A product word, or a kind of thing with nothing more (one or two words): they want help choosing. Welcome them in one or two warm sentences using their word, call browse_range and explore_options on that group, then ask on a question card (see \"Ask on a question card\"). Do not show products, and do not list the shop's groups or counts.\n- A problem or a repair (something leaks, sags, rots, sticks, cracks or will not close): do not start with products. Say you are sorry to hear it in a few words, then ask on a question card what is happening and where (the symptom, where it is, how long, what has been tried), with tappable options that name real symptoms. Use consult_business_knowledge and search_guides for the likely causes and fixes, and only then offer the fix and the products for it.\n- An idea or inspiration (they want to improve a space and name no product): be curious. Ask on a question card about the space, the look they want and what they can spend. Use the guides and the knowledge for ideas that fit, then show products for the idea they choose.\n- A project (build, renovate, install): plan it. Use the project knowledge for the stages and for the questions that decide the materials, ask them on a question card, and work out quantities once they give measurements.\n- A specific item (a product title, a size, a code, or a brand with its type): go straight to search_products and ask only if the search is ambiguous.\n- A how-to or advice question: answer from the guides first, then offer the products that help.\nAfter the customer answers a question card, read the answers as what they told you. If the choice is still open, ask the next few questions the same way; as soon as you can name a sensible short list, search and show products with the reason each one fits."
+      "instructions": "Before you search or ask, decide how this customer has arrived, from their own words, and let that decide your first move. Say what you understood in a few words so they can correct you.\n- A product word, or a kind of thing with nothing more (one or two words): they want help choosing. Welcome them in one or two warm sentences using their word, call browse_range and explore_options on that group, then ask on a question card (see \"Ask on a question card\"). Do not show products, and do not list the shop's groups or counts.\n- A problem or a repair (something leaks, sags, rots, sticks, cracks or will not close): do not start with products. Say you are sorry to hear it in a few words, then ask on a question card what is happening and where (the symptom, where it is, how long, what has been tried), with tappable options that name real symptoms. Use consult_business_knowledge and search_guides for the likely causes and fixes, and only then offer the fix and the products for it.\n- An idea or inspiration (they want to improve a space and name no product): be curious. Ask on a question card about the space, the look they want and what they can spend. Use the guides and the knowledge for ideas that fit, then show products for the idea they choose.\n- A project (build, renovate, install): plan it. Use the project knowledge for the stages and for the questions that decide the materials, ask them on a question card, and work out quantities once they give measurements.\n- A specific item (a product title, a size, a code, or a brand with its type): go straight to search_products and ask only if the search is ambiguous.\n- A how-to or advice question: answer from the guides first (for a named product, read its own guide with read_product_guide), then offer the products that help.\nAfter the customer answers a question card, read the answers as what they told you. If the choice is still open, ask the next few questions the same way; as soon as you can name a sensible short list, search and show products with the reason each one fits."
     },
     {
       "skillId": "ask-on-a-question-card",
@@ -266,6 +269,18 @@
         "present_card"
       ],
       "instructions": "When the customer asks to see how something would look (their patio, room, finish or layout with the products they like), you CAN make a picture: call generate_visual (together with a product lookup in the same step if you have not looked the products up this turn) with a scene taken from their own words and the SKUs of the products they are considering (up to five). Then show it with present_card (cardType visual) with a one-sentence caption of what it shows. Say it is an illustration made for them, not the exact product. Never say you cannot make a picture unless generate_visual itself says pictures are not available; then say so and describe the idea in words."
+    },
+    {
+      "skillId": "read-the-product-guide",
+      "name": "Read the product's own guide",
+      "description": "Answer from the supplier's own guide (specification guide, installation guide, instruction manual) kept with a product.",
+      "tier": "always",
+      "tools": [
+        "read_product_guide",
+        "get_product",
+        "hand_off_to_human"
+      ],
+      "instructions": "A product's own guide (its specification guide, installation guide or instruction manual) is kept with the product, and you can read it. When the customer asks what a guide says (for example \"explain the specification guide\"), or how to fix, install, apply, mix, cure, clean or use a product, how far apart, how long, how much one coat covers, or what a limit, rating, temperature or drying time is, call read_product_guide with the SKU of the product they are looking at (the one they opened or tapped, or the one just discussed) and their question in their own words. Do this before you answer from memory, before you say you cannot confirm a technical detail of a product the customer is looking at, and even when search_guides or the knowledge say nothing: the product's own guide may still answer. Pass the SKU if you have it, otherwise the product's full exact title. search_guides and the knowledge hold general guides only; they do not hold what a product's own guide says, so for a product's own specification guide, installation guide or manual always use read_product_guide, whatever they returned.\n- Explain it the way a good counter person would: plain words, a few short points, and say whose words they are (\"the supplier's guide says...\"). Keep every number, unit, spacing and limit exactly as written. Never add a step, a spacing or a compatibility from general knowledge.\n- For \"explain the guide\" with no particular question, call it with no question to read the start, tell the customer what the guide covers and its main figures, then offer to go into any part.\n- A guide can be long, and the guide may use other words than the customer (\"fasteners\" may be \"fixings\" or \"Fastfix\"; \"how far apart\" may be \"centres\"). A long guide comes back with its headings and the passage number of each: when the passages returned do not answer, pick the heading that fits and call read_product_guide again with from set to that passage number, or ask again using the guide's own words. Only when the right section has been read and still does not say, tell the customer the guide does not say, and give its link so they can open the whole document. Never say a guide is silent after reading only the first passages.\n- When it says the catalogue holds no guide text for the product, say that in one sentence. Do not describe what such a guide usually says, and do not use another size's or product's guide as this one's. Give what the product record itself states, and offer a colleague (hand_off_to_human) for an installation question.\n- Where a mistake is costly (a wet area, structure, electrical, gas, anything load-bearing), add that the full guide and the maker's instructions have to be followed, with the link."
     }
   ],
   "extensions": {
@@ -315,6 +330,18 @@
           }
         }
       ]
+    },
+    "productGuides": {
+      "enabled": true,
+      "unlocks": [
+        "installation_step",
+        "care_safety",
+        "safety_instruction",
+        "requirement",
+        "compatibility"
+      ],
+      "maxPassages": 8,
+      "passageChars": 900
     }
   }
 }

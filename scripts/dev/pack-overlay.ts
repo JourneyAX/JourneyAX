@@ -46,6 +46,7 @@ export function overlayDraft(live: Json, draft: Json): Json {
     ...(draft.extensions?.quantityHelper ? { quantityHelper: draft.extensions.quantityHelper } : {}),
     ...(draft.extensions?.visualiser ? { visualiser: draft.extensions.visualiser } : {}),
     ...(draft.extensions?.eventPrefetch ? { eventPrefetch: draft.extensions.eventPrefetch } : {}),
+    ...(draft.extensions?.productGuides ? { productGuides: draft.extensions.productGuides } : {}),
     ...(draft.persona ? { persona: draft.persona } : {}),
   };
   if (draft.profile) pack.profile = deepMerge(pack.profile || {}, draft.profile);

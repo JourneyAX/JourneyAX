@@ -74,3 +74,15 @@ These are pack data (`extensions.quantityHelper`, `extensions.visualiser`, `skil
 | Pictures of the finished job | on, model `gpt-image-1.5`, quality low, labelled "An illustration made for you, not the exact product." | Whether PlaceMakers wants customers to see AI illustrations at all, and the exact label wording. Cost: one image per request. |
 | Accessories | from the knowledge's 30 "goes with" links (interior paint, deck build, drills, screws, toilets, vanities and a few more); everything else is "suggestions to check" found by search | Real accessory lists per shelf (paving: sand, edging, adhesive; exterior paint; decking fixings) so every shelf has verified groups. |
 | Colour choices | read from the last words of sibling product names (e.g. "Glacier", "Volcanic Ash"); the data has no colour chart or swatches | A colour chart (names and hex values) for paint and for pavers if real swatches should be shown. |
+
+---
+
+## 7. Product guides (2026-10-24): what the supplier's own guide may support
+
+Pack data `extensions.productGuides` and skill `read-the-product-guide` let the consultant read a product's own specification guide, installation guide or manual (text kept in the `product_guides` collection, loaded from the master data file by `scripts/placemakers/ingest-product-guides.ts`). Set by Claude Code on the owner's instruction in chat; the owner decides the settings below.
+
+| Setting | Value now | What to confirm |
+|---|---|---|
+| Claim classes the supplier's guide may support (`unlocks`) | `installation_step`, `care_safety`, `safety_instruction`, `requirement`, `compatibility` | Whether PlaceMakers accepts its suppliers' published guides as the source for install, care, safety, "must/required" and "suitable for" statements (the reply must say whose words they are). With `[]` the guide is read but the reply guard holds those sentences back. `warranty`, `legal_requirement` and `substitution` stay locked either way. |
+| Passages per read and their size | 8 passages of up to 900 characters | Larger means longer answers and more cost per question. |
+| Products with no guide text | 31,203 of 42,559 (for example Hardie Glaze 2400 x 1200 carries only a supplier link) | Whether staff should add guide files for the shelves customers ask about most; the consultant says "no guide text" and offers a colleague. |

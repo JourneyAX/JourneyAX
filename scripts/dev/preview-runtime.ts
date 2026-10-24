@@ -20,11 +20,13 @@ if (!tenant || !draftPath) throw new Error('Set PREVIEW_TENANT and PREVIEW_DRAFT
 const draft = JSON.parse(readFileSync(path.resolve(draftPath), 'utf8'));
 
 const VERIFIED_RELEASE_METADATA = Symbol.for('@journeyax/business-pack/verified-release-metadata');
+let overlayLogged = 0;
 const original = PackRepository.prototype.loadActivePack;
 PackRepository.prototype.loadActivePack = async function patched(this: PackRepository, ...args: Parameters<typeof original>) {
   const live: any = await original.apply(this, args);
   if (!live || String(args[0]).toLowerCase() !== tenant) return live;
   const overlaid: any = overlayDraft(live, draft);
+  if (overlayLogged++ < 3) console.log(`[preview-runtime] draft laid over '${tenant}' (${String(args[1])}): advisor tools ${(overlaid.agents || []).find((a: any) => a.isDefault)?.allowedTools?.length ?? '?'}, skills ${(overlaid.extensions?.skills || []).length}`);
   // The release-activation gate compares the pack with the checksum approved for the live release. This preview deliberately runs a
   // different pack, so it carries the live release's verification stamp. That holds only inside this preview process; the live
   // runtime still refuses any pack that does not match its approved checksum.

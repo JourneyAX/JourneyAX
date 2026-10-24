@@ -73,3 +73,20 @@ export const VisualiserSchema = z.object({
   disclaimer: z.string().max(300).optional(),
   maxProducts: z.number().int().min(1).max(5).optional(),
 }).strict();
+
+/**
+ * Tenant settings for reading a product's own guide (pack `extensions.productGuides`): the supplier's specification guide,
+ * installation guide or instruction manual, as kept with the product record. A tenant without it has the feature off.
+ */
+export const ProductGuidesSchema = z.object({
+  enabled: z.boolean().optional(),
+  /**
+   * Claim classes the supplier's own words may support in a reply (for example "installation_step" or "safety_instruction").
+   * The reply guard holds back a sentence of a class nobody has verified; a tenant that accepts its suppliers' published
+   * guides as the source for these names the classes here. Empty or absent: the guide is read but unlocks nothing.
+   */
+  unlocks: z.array(z.string().min(1).max(40)).max(12).optional(),
+  /** Passages returned by one read, and the most characters of each. */
+  maxPassages: z.number().int().min(1).max(20).optional(),
+  passageChars: z.number().int().min(200).max(3000).optional(),
+}).strict();

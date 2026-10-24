@@ -4,7 +4,7 @@ import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards'
 import type { BusinessPackRelease, BusinessPackContent, JourneyPlaybookStage } from '@journeyax/business-pack';
 import { resolveAgentSkills, resolveCatalogMapping } from '@journeyax/business-pack';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
-import { effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
+import { ClaimClassSchema, effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
 import {
@@ -28,6 +28,7 @@ import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
+import type { ProductGuideRepository } from '../kernel/product-guide.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
 import { browseRange, exampleOrder, goesWithForTrail, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
@@ -35,6 +36,7 @@ import { summariseOptions } from './option-facets';
 import { normaliseCardState } from './card-state';
 import { areaToSquareMetres, estimateQuantity, type QuantityHelperConfig, type QuantityEstimate } from './quantity-estimate';
 import { generateVisual, type VisualiserConfig } from './visual-generator';
+import { readGuides } from './product-guides';
 import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
@@ -57,6 +59,8 @@ export interface AgentToolContext {
   approvalService?: ApprovalService;
   executionRepo?: ExecutionRepository;
   knowledgeGapRepo?: KnowledgeGapRepository;
+  /** The guides kept with products (specification guide, installation guide, manual), read by read_product_guide. */
+  productGuideRepo?: ProductGuideRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   turnProductSkus: Set<string>;
@@ -103,6 +107,27 @@ async function findProductBySku(ctx: AgentToolContext, sku: string): Promise<any
     ctx.catalogProductCache.set(found.sku, found);
   }
   return found;
+}
+
+/** Points the model at the product's own guide: titles of guides found by topic say nothing about what a product's guide states. */
+function productGuideHint(ctx: AgentToolContext): { productGuide?: string } {
+  const config = (ctx.release as any)?.extensions?.productGuides;
+  if (!ctx.productGuideRepo || config?.enabled === false) return {};
+  return { productGuide: 'These are general guides. For what the guide kept with a specific product says (its specification guide, installation guide or manual), call read_product_guide with that product\'s SKU: it returns the guide\'s own words. Do not tell the customer a guide is unavailable before you have tried it.' };
+}
+
+/** A product the model named by its full title instead of its SKU: taken only when exactly one product has that title, never the nearest match. */
+async function findProductByTitle(ctx: AgentToolContext, asked: string): Promise<any | undefined> {
+  const wanted = asked.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (wanted.length < 4) return undefined;
+  const cached = [...ctx.catalogProductCache.values()].filter((p) => String(p.title || p.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === wanted);
+  if (cached.length === 1) return cached[0];
+  const res = await ctx.catalogSearchHandler.execute({ query: asked, maxResults: 5 } as any, makeExecContext(ctx));
+  const same = ((res.products || res.items || []) as any[]).filter((p: any) => String(p.title || p.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === wanted);
+  if (same.length !== 1 || !same[0]?.sku) return undefined;
+  ctx.turnProductSkus.add(same[0].sku);
+  ctx.catalogProductCache.set(same[0].sku, same[0]);
+  return same[0];
 }
 
 /** Words on the quantity card's working lines; the tenant's own words (pack `extensions.quantityHelper.labels`) replace these. */
@@ -499,7 +524,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'search_guides',
-    description: 'Search verified installation guides, technical specifications, and project how-to documents. Returns guidance steps and document links.',
+    description: 'Search the shop\'s verified general guides and how-to documents by topic. Returns guidance steps and document links. It does NOT read the guide that comes with one specific product (its specification guide, installation guide or manual): for that call read_product_guide with the product\'s SKU.',
     parameters: {
       type: 'object',
       properties: {
@@ -513,6 +538,20 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'read_product_guide',
+    description: 'Read the supplier\'s own guide for ONE product (its specification guide, installation guide or instruction manual) as kept with the product record. Use it whenever the customer asks what a product\'s guide says, how to fix, install, apply or use it, or for a limit, spacing, coverage or drying figure. Returns the passages that answer the question, in the supplier\'s words, with the guide they came from.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sku: { type: 'string', description: 'The SKU of the product whose guide to read (the product the customer is looking at, if they opened one).' },
+        question: { type: 'string', description: 'What the customer wants to know, in their own words (for example "how far apart do the fixings go"). Leave out to read the start of the guide.' },
+        guide: { type: 'string', description: 'Optional: read only one guide, by part of its title (for example "Installation") when the product has several.' },
+        from: { type: 'number', description: 'Optional, with one guide: the passage number to read from, to keep reading after a first read said there is more.' },
+      },
+      required: ['sku'],
     },
   },
   {
@@ -1567,6 +1606,7 @@ export async function executeAgentTool(
           productOrCategory,
           guides: [],
           count: 0,
+          ...productGuideHint(ctx),
         };
       }
 
@@ -1576,6 +1616,60 @@ export async function executeAgentTool(
         productOrCategory,
         guides: matchedGuides.slice(0, 3),
         count: matchedGuides.length,
+        ...productGuideHint(ctx),
+      };
+    }
+
+    case 'read_product_guide': {
+      const config: { enabled?: boolean; unlocks?: string[]; maxPassages?: number; passageChars?: number } = (ctx.release as any)?.extensions?.productGuides || {};
+      if (config.enabled === false) return { ok: false, error: 'Reading product guides is not switched on for this shop. Say you cannot read it here and point to the product page.' };
+      const sku = skuFromEvent(String(args.sku || '').trim(), ctx.customerEvent);
+      if (!sku) return { ok: false, error: 'Give the SKU of the product whose guide to read.' };
+      const product = (await findProductBySku(ctx, sku)) || (await findProductByTitle(ctx, sku));
+      if (!product) return { ok: false, error: `No product with SKU "${sku}" was found. Look the product up first (search_products), then call this with its SKU.` };
+      const title = String(product.title || product.name || sku);
+      const records = ctx.productGuideRepo ? await ctx.productGuideRepo.findForProducts(ctx.tenantId, [String(product.sku || ''), String(product.parentSku || ''), sku]) : [];
+      if (records.length === 0) {
+        if (ctx.knowledgeGapRepo) {
+          ctx.knowledgeGapRepo.recordGap({
+            tenantId: ctx.tenantId,
+            environmentId: ctx.environmentId,
+            topic: `product guide: ${title}`,
+            toolName: 'read_product_guide',
+            conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+          }).catch(() => {});
+        }
+        return {
+          ok: true,
+          found: false,
+          sku: product.sku || sku,
+          title,
+          message: 'The catalogue holds no guide text for this product. Say so plainly, and do not describe what a guide for this kind of product usually says. Offer what the product record itself states (from get_product), or a colleague who can check the maker\'s guide.',
+        };
+      }
+      const reading = readGuides(records, {
+        question: String(args.question || ''),
+        guide: args.guide ? String(args.guide) : undefined,
+        from: args.from === undefined || args.from === null || args.from === '' ? undefined : Number(args.from),
+        maxPassages: config.maxPassages,
+        passageChars: config.passageChars,
+      });
+      if ('error' in reading) return { ok: false, error: `This product has no guide called "${String(args.guide)}". It has: ${reading.available.join('; ')}.` };
+      // What the supplier's own words may support in the reply is the tenant's choice; a class the platform does not know is ignored.
+      for (const name of config.unlocks || []) {
+        const parsed = ClaimClassSchema.safeParse(name);
+        if (parsed.success) ctx.allowedClaimClasses.add(parsed.data);
+      }
+      return {
+        ok: true,
+        found: true,
+        sku: product.sku || sku,
+        title,
+        guides: reading.guides.map((guide) => ({ guide: guide.title, kind: guide.kind, pages: guide.pages, link: guide.url, passages: guide.passages, ...(guide.outline ? { headings: guide.outline.map((entry) => `${entry.n}: ${entry.heading}`) } : {}), ...(guide.truncated ? { note: 'The stored text stops before the end of this guide.' } : {}) })),
+        answeredFromGuide: reading.matched,
+        passages: reading.passages.map((passage) => ({ guide: passage.guide, passage: `${passage.n} of ${passage.of}`, text: passage.text })),
+        ...(reading.next ? { continueWith: { guide: reading.guides[0].title, from: reading.next.from } } : {}),
+        message: 'These passages are the supplier\'s own words, copied from the guide(s) listed. Explain them in plain language and say whose guide it is ("the guide says…"). Keep every number, unit, spacing and limit exactly as written, and add no step, limit or compatibility from general knowledge. If the passages do not answer what was asked, do not say the guide is silent yet: a long guide lists its headings with the passage each is in ("headings": passage number, heading), so call again with from set to the passage of the section that fits (and the same guide), or with the guide\'s own words for the thing (the term in a heading, the unit) as the question. Only when the right section has been read and still does not say, tell the customer so and give the guide\'s link. For wet areas, structural fixing or anything where a mistake is costly, tell the customer to follow the full guide and offer its link.',
       };
     }
 
