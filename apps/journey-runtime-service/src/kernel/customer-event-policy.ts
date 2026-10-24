@@ -13,6 +13,8 @@ export type CustomerEventAction = 'start_turn' | 'record_only';
  * Neutral defaults apply when not configured in the pack:
  * - Primary intent actions (addToCart, addToQuote, cart.added, quote.approved, viewProduct, compareProducts) start a turn.
  * - Secondary actions (removeFromCart, like, dismiss) are recorded only.
+ * - Tapping an option on a question card is recorded only: the answers are sent together as one message once every question on the
+ *   card is answered, so a turn per tap would answer half a set of answers.
  */
 export function resolveCustomerEventAction(
   eventType: string,
@@ -49,8 +51,6 @@ export function resolveCustomerEventAction(
     'addtoquote',
     'quoteadded',
     'quoteapproved',
-    'selectoption',
-    'chooseoption',
     // The customer opened a product's details or asked to see products side by side: a consultant would explain it.
     'viewproduct',
     'compareproducts',

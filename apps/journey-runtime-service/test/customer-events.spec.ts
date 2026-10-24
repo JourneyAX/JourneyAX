@@ -49,11 +49,13 @@ test('P3: Customer actions are events, not silent local state', async (t) => {
     for (const type of ['viewProduct', 'compareProducts', 'view_product', 'addToCart']) {
       assert.equal(resolveCustomerEventAction(type, {}), 'start_turn', `${type} asks for an explanation`);
     }
-    for (const type of ['removeFromCart', 'like', 'setQuantity', 'toggleCompare', '']) {
+    for (const type of ['removeFromCart', 'like', 'setQuantity', 'toggleCompare', 'selectOption', 'chooseOption', '']) {
       assert.equal(resolveCustomerEventAction(type, {}), 'record_only', `${type || '(none)'} is only recorded`);
     }
     const tenantWins = { extensions: { customerEvents: { recordOnlyEvents: ['viewProduct'] } } };
     assert.equal(resolveCustomerEventAction('viewProduct', tenantWins), 'record_only', 'a tenant can still keep views silent');
+    const tenantStarts = { extensions: { customerEvents: { autoTurnEvents: ['selectOption'] } } };
+    assert.equal(resolveCustomerEventAction('selectOption', tenantStarts), 'start_turn', 'a tenant whose cards need a turn per option can still ask for one');
   });
 
   await t.test('2. Building materials tenant (PlaceMakers): addToQuote starts agent turn; removeFromQuote is recorded only', async () => {

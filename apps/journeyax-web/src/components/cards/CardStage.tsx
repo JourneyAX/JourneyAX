@@ -120,11 +120,8 @@ export function useCardActions() {
         dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value });
 
         const cardId = params?.cardId ? String(params.cardId) : undefined;
-        postCustomerEvent({
-          type: 'selectOption',
-          payload: { questionId, value },
-          sourceCard: { id: cardId, cardType: 'clarify' },
-        });
+        // No event is posted for a tap on an option: the chat sends all the answers together once every question on the card is
+        // answered, and an event per tap would show as a message of its own and answer half a set of answers.
 
         const card = cardId
           ? state.cards.find((c) => c.id === cardId)
