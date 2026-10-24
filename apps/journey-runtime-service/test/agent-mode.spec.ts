@@ -477,7 +477,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.ok(asking.includes('cardType clarify') && asking.includes('explore_options') && asking.includes('Never offer a size, colour or brand that explore_options did not list'));
     assert.ok(skill('finish-the-job').instructions.includes('get_related_products') && skill('finish-the-job').instructions.includes('get_warranty'));
     assert.ok(skill('quantity-before-adding').instructions.includes('estimate_quantity'));
-    assert.equal(skill('show-the-finished-job').tier, 'on_demand');
+    assert.equal(skill('show-the-finished-job').tier, 'always');
     assert.deepEqual(draft.agents[0].skills, skills.map((entry) => entry.skillId), 'the advisor carries every skill');
     for (const tool of ['explore_options', 'estimate_quantity', 'generate_visual']) assert.ok(draft.agents[0].allowedTools.includes(tool), `${tool} is allowed`);
     assert.ok(SkillDefinitionSchema.array().safeParse(skills).success, 'every skill is valid');

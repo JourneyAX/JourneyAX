@@ -260,12 +260,12 @@
       "skillId": "show-the-finished-job",
       "name": "Show the finished job",
       "description": "When the customer asks to see how it would look, or a picture would help them choose a colour, finish or layout.",
-      "tier": "on_demand",
+      "tier": "always",
       "tools": [
         "generate_visual",
         "present_card"
       ],
-      "instructions": "Describe the customer's scene in their own words (the space, what it is for, the look they want) and call generate_visual with the SKUs of the products they are considering (up to five, taken from this turn's results). Then show it with present_card (cardType visual) with a one-sentence caption of what it shows. Say it is an illustration made for them, not the exact product. If the tool says pictures are not available, say so and describe the idea in words."
+      "instructions": "When the customer asks to see how something would look (their patio, room, finish or layout with the products they like), you CAN make a picture: call generate_visual (together with a product lookup in the same step if you have not looked the products up this turn) with a scene taken from their own words and the SKUs of the products they are considering (up to five). Then show it with present_card (cardType visual) with a one-sentence caption of what it shows. Say it is an illustration made for them, not the exact product. Never say you cannot make a picture unless generate_visual itself says pictures are not available; then say so and describe the idea in words."
     }
   ],
   "extensions": {
