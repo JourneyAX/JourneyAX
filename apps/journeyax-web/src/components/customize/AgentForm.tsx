@@ -93,7 +93,7 @@ export default function AgentForm({ overview, draft, presetTools, onSave, onClos
         <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
           <div className="ax-dialog__body">
             <p className="ax-draftnote">
-              This makes a draft. It is not live: it stays in this browser until someone publishes it from the back office, and nothing here changes what customers see.
+              This makes a draft. It is not live: it stays in this browser, and nothing here changes what customers see, until you press Make live on the draft (or have it published from the back office).
             </p>
 
             <div className="ax-formrow">

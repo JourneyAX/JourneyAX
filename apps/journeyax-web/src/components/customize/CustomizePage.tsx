@@ -114,6 +114,30 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
     setToast(`Saved “${draft.name}” as a draft. It is not live.`);
   };
 
+  const [publishing, setPublishing] = useState('');
+  // Makes a draft a live agent: the server adds it to the project and publishes through the publication gate (add-only, reverted if refused).
+  const publishDraft = async (draft: AgentDraft) => {
+    if (publishing) return;
+    const ok = window.confirm(`Make “${draft.name}” live?\n\nIt is added as a new agent and the configuration is published, so customers can be answered by it. Existing agents are not changed, and the publish can be rolled back from the back office.`);
+    if (!ok) return;
+    setPublishing(draft.draftId);
+    try {
+      const res = await fetch(`/api/customize/agents?project=${encodeURIComponent(tenant || '')}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft: { name: draft.name, purpose: draft.purpose, instructions: draft.instructions, skills: draft.skills, tools: draft.tools, knowledgeNote: draft.knowledgeNote } }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) { setToast(String(result?.error || 'The agent could not be made live.')); return; }
+      persist(removeDraft(drafts, draft.draftId));
+      setToast(`“${draft.name}” is live${result?.version ? ` (configuration ${result.version})` : ''}. Pick it from the agent chip in the chat.`);
+      reload();
+    } catch {
+      setToast('The agent could not be made live: the service did not answer.');
+    } finally {
+      setPublishing('');
+    }
+  };
+
   const by = cfg.companyName || 'Your organisation';
   const agents = useMemo(() => data?.agents ?? [], [data]);
   const skillCountByAgent = useMemo(() => {
@@ -155,7 +179,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
       <div className="ax-page__scroll">
         <div className="ax-page__inner">
           <h1 className="ax-page__title">Customize</h1>
-          <p className="ax-page__lede">See what your assistant is made of and sketch new agents. Changes you draft here are not live until they are published from the back office.</p>
+          <p className="ax-page__lede">See what your assistant is made of and sketch new agents. Agents you draft here are not live until you press Make live (or have them published from the back office).</p>
 
           <div className="ax-tabs" role="tablist" aria-label="Customize" onKeyDown={onTabKey}>
             {TABS.map((t) => (
@@ -221,6 +245,8 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
               <AgentsTab
                 scope={scope} query={query} overview={data} drafts={drafts} by={by}
                 onTry={onTry}
+                onPublish={publishDraft}
+                publishing={publishing}
                 onNew={() => setForm({})}
                 onEdit={(draft) => setForm({ draft })}
                 onDelete={(draft) => { if (window.confirm(`Delete the draft “${draft.name}”?`)) { persist(removeDraft(drafts, draft.draftId)); setToast('Draft deleted.'); } }}
@@ -287,8 +313,9 @@ function Card({ icon, title, by, description, tags, children, actions }: {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /* ── Agents ──────────────────────────────────────────────────────────── */
-function AgentsTab({ scope, query, overview, drafts, by, onTry, onNew, onEdit, onDelete, onCopy }: {
+function AgentsTab({ scope, query, overview, drafts, by, onTry, onPublish, publishing, onNew, onEdit, onDelete, onCopy }: {
   scope: Scope; query: string; overview: CustomizeOverview; drafts: AgentDraft[]; by: string;
+  onPublish: (d: AgentDraft) => void; publishing: string;
   onTry: (agentId?: string) => void; onNew: () => void; onEdit: (d: AgentDraft) => void; onDelete: (d: AgentDraft) => void; onCopy: (d: AgentDraft) => void;
 }) {
   if (scope === 'discover') {
@@ -330,6 +357,7 @@ function AgentsTab({ scope, query, overview, drafts, by, onTry, onNew, onEdit, o
                 actions={(
                   <>
                     <button type="button" className="ax-btn ax-btn--small" onClick={() => onEdit(d)}>Edit</button>
+                    <button type="button" className="ax-btn ax-btn--small ax-btn--primary" disabled={publishing !== ''} onClick={() => onPublish(d)}>{publishing === d.draftId ? 'Publishing…' : 'Make live'}</button>
                     <button type="button" className="ax-btn ax-btn--small ax-btn--quiet" onClick={() => onCopy(d)}><CopyIcon size={15} /> Copy JSON</button>
                     <span className="ax-toolbar__spacer" />
                     <button type="button" className="ax-iconbtn" onClick={() => onDelete(d)} aria-label={`Delete draft ${d.name}`} title="Delete draft"><TrashIcon size={16} /></button>
@@ -338,7 +366,7 @@ function AgentsTab({ scope, query, overview, drafts, by, onTry, onNew, onEdit, o
               />
             ))}
           </ul>
-          <p className="ax-notice">Drafts live only in this browser. To make one live, copy its JSON and have it published from the back office.</p>
+          <p className="ax-notice">Drafts live only in this browser until you press Make live, which adds the agent to the assistant and publishes it. Copy JSON gives the definition for the back office instead.</p>
         </>
       )}
       {packAgents.length > 0 && (

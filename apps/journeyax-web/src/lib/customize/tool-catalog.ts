@@ -24,6 +24,8 @@ export const PLATFORM_TOOLS: Record<string, { name: string; description: string 
   get_cart: { name: 'View the cart', description: 'Reads the customer\'s current cart: items, quantities and totals.' },
   update_cart: { name: 'Update the cart', description: 'Adds, changes or removes items in the customer\'s cart.' },
   get_journey_checklist: { name: 'Journey checklist', description: 'Reports what the customer\'s journey still has to cover.' },
+  estimate_quantity: { name: 'How many to buy', description: 'Works out how many pieces or packs a customer needs for their area, from the product\'s own size or stated coverage.' },
+  generate_visual: { name: 'Picture of the finished job', description: 'Makes an illustration of the customer\'s project with the products they are considering, labelled as an illustration.' },
   use_skill: { name: 'Use a skill', description: 'Reads the instructions of an on-demand skill when a request calls for it.' },
 };
 
