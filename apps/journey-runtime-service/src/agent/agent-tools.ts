@@ -32,6 +32,8 @@ import { deriveJourneyChecklist } from './journey-checklist';
 import { browseRange, exampleOrder, goesWithForTrail, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
 import { summariseOptions } from './option-facets';
+import { areaToSquareMetres, estimateQuantity, type QuantityHelperConfig, type QuantityEstimate } from './quantity-estimate';
+import { generateVisual, type VisualiserConfig } from './visual-generator';
 import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
@@ -75,11 +77,38 @@ export interface AgentToolContext {
   agentSkillIds?: string[];
   /** Skills the agent opened this turn (use_skill), for the trace. */
   usedSkillIds?: Set<string>;
+  /** The quantity estimates of this turn by SKU: a quantity card shows only a number the estimate tool returned. */
+  lastEstimates?: Map<string, Extract<QuantityEstimate, { ok: true }> & { title: string; unitLabel: string; working: Array<{ label: string; value: string }>; ctaLabel: string }>;
+  /** The picture made this turn: a picture card shows only this one. */
+  lastVisual?: { id: string; urlPath: string; skus: string[] };
+  /** Test seams for the picture tool: the HTTP client and the folder pictures are kept in. */
+  imageFetch?: typeof fetch;
+  visualStoreDir?: string;
   customerEvent?: any;
   signal?: AbortSignal;
   emitUiAction?: (action: { name: string; arguments: any }) => void;
   emitTrace?: (name: string, payload: any) => void;
 }
+
+/** One product by SKU: from this turn's lookups, else from the catalogue (and then remembered for this turn). */
+async function findProductBySku(ctx: AgentToolContext, sku: string): Promise<any | undefined> {
+  const cached = ctx.catalogProductCache.get(sku);
+  if (cached) return cached;
+  if (!sku) return undefined;
+  const res = await ctx.catalogSearchHandler.execute({ sku, maxResults: 1 } as any, makeExecContext(ctx));
+  const found = ((res.products || res.items || []) as any[]).find((p: any) => String(p.sku).toLowerCase() === sku.toLowerCase());
+  if (found?.sku) {
+    ctx.turnProductSkus.add(found.sku);
+    ctx.catalogProductCache.set(found.sku, found);
+  }
+  return found;
+}
+
+/** Words on the quantity card's working lines; the tenant's own words (pack `extensions.quantityHelper.labels`) replace these. */
+const DEFAULT_QUANTITY_LABELS = {
+  area: 'Your area', areaUnit: 'm²', perPiece: 'One piece covers', perPack: 'One pack covers', coats: 'Coats', allowance: 'Allowance for cuts and waste',
+  exact: 'Needed for the area', total: 'To buy', pieces: 'pieces', packs: 'packs', add: 'Add',
+};
 
 function makeExecContext(ctx: AgentToolContext) {
   const primaryCurrency =
@@ -542,6 +571,38 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
     },
   },
   {
+    name: 'estimate_quantity',
+    description:
+      'Work out how many of one product a customer needs for an area, from numbers that are really known: the customer\'s area, the size of one piece in the product\'s name, or the coverage of one pack (stated in the product\'s record, or read off the pack by the customer). ' +
+      'Use it when the customer wants to buy something that covers an area before you offer to add it. If it says what is missing, ask the customer for exactly that. Never guess a coverage figure.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sku: { type: 'string', description: 'The SKU of the product, from an earlier tool result.' },
+        area: { type: 'number', description: 'The area the customer gave, as a number.' },
+        areaUnit: { type: 'string', description: 'The unit the customer used for the area: m2 (the default) or ft2.' },
+        coveragePerPack: { type: 'number', description: 'Square metres one pack covers, only when the customer or the product\'s record states it.' },
+        coats: { type: 'number', description: 'How many coats or layers, when the customer said (1 otherwise).' },
+        allowancePercent: { type: 'number', description: 'An allowance for cuts and waste the customer asked for, when it differs from the shop\'s usual one.' },
+      },
+      required: ['sku', 'area'],
+    },
+  },
+  {
+    name: 'generate_visual',
+    description:
+      'Make an illustration of the customer\'s project with the products they are considering (for example their patio laid with the pavers they like), so they can picture it. ' +
+      'Use it only when the customer asks to see it or when a picture would clearly help them decide. The picture is an illustration, not the exact product; the card says so. It takes several seconds.',
+    parameters: {
+      type: 'object',
+      properties: {
+        scene: { type: 'string', description: 'What to show, in plain words from the customer\'s own description of their space and what they want (no product names needed).' },
+        skus: { type: 'array', items: { type: 'string' }, description: 'Up to five SKUs of products from this turn\'s tool results to feature (their names set the colours and materials).' },
+      },
+      required: ['scene'],
+    },
+  },
+  {
     name: 'present_card',
     description: 'Present an interactive UI card in the customer interface from the approved catalogue (e.g. products, productDetail, comparison, bundle, clarify, accessories, warranty, guide, plan). Every SKU on the card must come from a tool result of this turn.',
     parameters: {
@@ -563,6 +624,8 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
             'suggestions',
             'accessories',
             'warranty',
+            'quantity',
+            'visual',
             'fitment',
             'disclosure',
             'hero',
@@ -1041,6 +1104,86 @@ export async function executeAgentTool(
         messages.push('The example products are shown to the customer on a card right after your reply, with their photos, so write the reply now and do not list products, prices or SKUs in your text.');
       }
       return messages.length > 0 ? { ...result, message: messages.join(' ') } : result;
+    }
+
+    case 'estimate_quantity': {
+      const sku = skuFromEvent(String(args.sku || '').trim(), ctx.customerEvent);
+      const product = await findProductBySku(ctx, sku);
+      if (!product) return { ok: false, error: `No product with SKU "${sku}" was found. Look the product up first.` };
+      const config: QuantityHelperConfig = (ctx.release as any)?.extensions?.quantityHelper || {};
+      const labels = { ...DEFAULT_QUANTITY_LABELS, ...((ctx.release as any)?.extensions?.quantityHelper?.labels || {}) };
+      const areaM2 = areaToSquareMetres(Number(args.area), args.areaUnit ? String(args.areaUnit) : undefined);
+      const optionalNumber = (value: unknown) => (value === undefined || value === null || value === '' ? undefined : Number(value));
+      const estimate = estimateQuantity(
+        { title: product.title || product.name, texts: [product.description, ...(Array.isArray(product.highlights) ? product.highlights : [])] },
+        { areaM2, coveragePerPack: optionalNumber(args.coveragePerPack), coats: optionalNumber(args.coats), allowancePercent: optionalNumber(args.allowancePercent) },
+        config,
+      );
+      if (estimate.ok === false) {
+        const failed = estimate as Extract<QuantityEstimate, { ok: false }>;
+        return {
+          ok: false,
+          sku,
+          title: product.title || product.name,
+          missing: failed.missing,
+          message: failed.reason === 'no_coverage'
+            ? 'Neither the product\'s name nor its record says how much one piece or pack covers, so there is no honest number yet. Say so plainly, and ask the customer to read the coverage off the pack or the manufacturer\'s notes (or give you the number of pieces they want), then call this again with coveragePerPack.'
+            : 'The area is missing or not a usable number: ask the customer for it (a number and a unit).',
+        };
+      }
+      const unitLabel = estimate.basis === 'piece_size' ? labels.pieces : labels.packs;
+      const fmt = (value: number) => String(Math.round(value * 100) / 100);
+      const working: Array<{ label: string; value: string }> = [
+        { label: labels.area, value: `${fmt(estimate.areaM2)} ${labels.areaUnit}` },
+        { label: estimate.basis === 'piece_size' ? labels.perPiece : labels.perPack, value: `${fmt(estimate.coveragePerUnitM2)} ${labels.areaUnit}` },
+        ...(estimate.coats > 1 ? [{ label: labels.coats, value: String(estimate.coats) }] : []),
+        { label: labels.exact, value: `${estimate.exactUnits} ${unitLabel}` },
+        ...(estimate.allowancePercent > 0 ? [{ label: labels.allowance, value: `${fmt(estimate.allowancePercent)}%` }] : []),
+        { label: labels.total, value: `${estimate.units} ${unitLabel}` },
+      ];
+      const title = String(product.title || product.name || sku);
+      const remembered = { ...estimate, title, unitLabel, working, ctaLabel: `${labels.add} ${estimate.units}` };
+      (ctx.lastEstimates ||= new Map()).set(String(product.sku || sku), remembered);
+      return {
+        ok: true,
+        sku: product.sku || sku,
+        title,
+        basis: estimate.basis,
+        units: estimate.units,
+        unitLabel,
+        exactUnits: estimate.exactUnits,
+        allowancePercent: estimate.allowancePercent,
+        coveragePerUnitM2: estimate.coveragePerUnitM2,
+        coverageSource: estimate.coverageSource,
+        working,
+        message: 'Say the number and what it is based on in a sentence or two, then show it on a quantity card (present_card, cardType quantity, product only: the number and working come from this result). Remind the customer to check their own measurements.',
+      };
+    }
+
+    case 'generate_visual': {
+      const config: VisualiserConfig & { enabled?: boolean } | undefined = (ctx.release as any)?.extensions?.visualiser;
+      if (!config || config.enabled === false) return { ok: false, error: 'Pictures of the finished job are not switched on for this shop, so say you cannot make one and describe the idea in words instead.' };
+      const scene = String(args.scene || '').trim();
+      if (!scene) return { ok: false, error: 'Describe what to show, in the customer\'s own words.' };
+      const skus: string[] = (Array.isArray(args.skus) ? args.skus : []).map(String).map((value: string) => value.trim()).filter(Boolean).slice(0, config.maxProducts ?? 5);
+      const unverified = skus.filter((sku) => !ctx.turnProductSkus.has(sku));
+      if (unverified.length > 0) return { ok: false, error: `SKU "${unverified[0]}" was not returned by a product tool in this turn. Look the products up first.` };
+      const titles = skus.map((sku) => String(ctx.catalogProductCache.get(sku)?.title || '')).filter(Boolean);
+      try {
+        const made = await generateVisual({
+          tenantId: ctx.tenantId, scene, productTitles: titles, config, signal: ctx.signal,
+          fetchImpl: ctx.imageFetch, storeDir: ctx.visualStoreDir,
+        });
+        ctx.lastVisual = { id: made.id, urlPath: made.urlPath, skus };
+        return {
+          ok: true,
+          products: skus,
+          message: 'The picture is ready. Show it with present_card (cardType visual, no imageUrl needed: the runtime attaches the picture), with a one-sentence caption of what it shows, and say it is an illustration.',
+        };
+      } catch (err: any) {
+        if (ctx.signal?.aborted) throw err;
+        return { ok: false, error: `The picture could not be made (${String(err?.message || err).slice(0, 160)}). Say so plainly and describe the idea in words instead.` };
+      }
     }
 
     case 'explore_options': {
@@ -1827,6 +1970,27 @@ export async function executeAgentTool(
           ...g,
           items: Array.isArray(g.items) ? g.items.map(enrichProduct) : g.items,
         }));
+      }
+
+      // A quantity card shows only the number the estimate tool returned for that product, and a picture card only the picture made this turn.
+      if (cardType === 'quantity') {
+        const estimate = ctx.lastEstimates?.get(String(state.product?.sku || ''));
+        if (!estimate) {
+          return { ok: false, error: 'Rejected card: work the quantity out with estimate_quantity for this SKU first; a quantity card shows only that tool\'s number.' };
+        }
+        state.quantity = estimate.units;
+        state.unitLabel = estimate.unitLabel;
+        state.working = estimate.working;
+        state.ctaLabel = estimate.ctaLabel;
+      }
+      if (cardType === 'visual') {
+        if (!ctx.lastVisual) {
+          return { ok: false, error: 'Rejected card: make the picture with generate_visual first; a picture card shows only the picture made in this turn.' };
+        }
+        state.imageUrl = ctx.lastVisual.urlPath;
+        const configured = (ctx.release as any)?.extensions?.visualiser?.disclaimer;
+        if (typeof configured === 'string' && configured.trim()) state.disclaimer = configured.trim();
+        if (!Array.isArray(state.products)) state.products = ctx.lastVisual.skus.map((sku) => enrichProduct({ sku }));
       }
 
       // 4. Validate enriched state against Zod schema for card type

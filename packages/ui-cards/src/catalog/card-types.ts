@@ -217,6 +217,34 @@ export const CARD_TYPES = {
       groups: z.array(z.object({ key: z.string(), label: z.string(), hint: z.string().optional(), items: z.array(ProductFact) })),
     }),
   },
+  quantity: {
+    title: 'How many to buy',
+    description: 'How many of one product the customer needs for their area, with the working shown and a button that adds that number.',
+    state: z.object({
+      product: ProductFact,
+      heading: z.string().optional(),
+      /** The number to add; the runtime sets it from the quantity estimate, never from model text. */
+      quantity: z.number().int().min(1),
+      /** What the number counts ("pavers", "packs"). */
+      unitLabel: z.string().optional(),
+      /** The figures behind the number, one line each. */
+      working: z.array(z.object({ label: z.string(), value: z.string() })).default([]),
+      note: z.string().optional(),
+      ctaLabel: z.string().optional(),
+    }),
+  },
+  visual: {
+    title: 'Picture of the finished job',
+    description: 'An illustration made for the customer\'s project, clearly marked as an illustration, with the products it was made from.',
+    state: z.object({
+      imageUrl: z.string().min(1),
+      heading: z.string().optional(),
+      caption: z.string().optional(),
+      /** Says the picture is an illustration, not the exact product or a promise of the result. */
+      disclaimer: z.string().optional(),
+      products: z.array(ProductFact).default([]),
+    }),
+  },
   warranty: {
     title: 'Warranty & compliance',
     description: 'Warranty terms, compliance marks, documents for a product.',

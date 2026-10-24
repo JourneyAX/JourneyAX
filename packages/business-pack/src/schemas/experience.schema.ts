@@ -16,6 +16,8 @@ export const DEFAULT_PLATFORM_CARD_TYPES = [
   'suggestions',
   'accessories',
   'warranty',
+  'quantity',
+  'visual',
   'fitment',
   'disclosure',
   'hero',

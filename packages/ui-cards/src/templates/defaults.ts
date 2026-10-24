@@ -355,6 +355,40 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     ...productTile('a', { cta: 'addToCart' }),
   }),
 
+  quantity: spec('root', {
+    root: el('Card', { pad: 'md', gap: 'md', variant: 'outlined', maxWidth: '640px' }, { children: ['head', 'row', 'working', 'note', 'actions'] }),
+    head: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
+    row: el('Box', { direction: 'row', gap: 'md', align: 'center' }, { children: ['img', 'info', 'big'] }),
+    img: el('Image', { src: S('/product/imageUrl'), alt: S('/product/title'), width: '72px', height: '72px', ratio: '1:1', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
+    info: el('Box', { gap: 'xs', flex: 1, minWidth: '0' }, { children: ['title', 'price'] }),
+    title: el('Text', { text: S('/product/title'), variant: 'subheading', lines: 2 }),
+    price: el('Price', { amount: S('/product/price'), currency: S('/product/currency'), size: 'md', emptyText: 'Price on request' }),
+    big: el('Box', { gap: 'xs', align: 'end' }, { children: ['qty', 'unit'] }),
+    qty: el('Text', { text: S('/quantity'), variant: 'display' }),
+    unit: el('Text', { text: S('/unitLabel'), variant: 'small', tone: 'muted' }, { visible: [S('/unitLabel')] }),
+    working: el('Box', { gap: 'xs' }, { children: ['w'], repeat: { statePath: '/working', key: 'label' } }),
+    w: el('Box', { direction: 'row', justify: 'between', gap: 'md' }, { children: ['wl', 'wv'] }),
+    wl: el('Text', { text: I('label'), variant: 'small', tone: 'muted' }),
+    wv: el('Text', { text: I('value'), variant: 'small' }),
+    note: el('Text', { text: S('/note'), variant: 'small', tone: 'muted' }, { visible: [S('/note')] }),
+    actions: el('Box', { direction: 'row', gap: 'sm', align: 'center' }, { children: ['add'] }),
+    add: el('Button', { label: S('/ctaLabel'), variant: 'primary', size: 'md', icon: 'cart' }, {
+      on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: S('/quantity'), title: S('/product/title'), confirmed: true } } },
+    }),
+  }),
+
+  visual: spec('root', {
+    root: el('Card', { pad: 'md', gap: 'md', variant: 'outlined', maxWidth: '560px' }, { children: ['head', 'img', 'caption', 'disclaimer', 'products'] }),
+    head: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
+    img: el('Image', { src: S('/imageUrl'), alt: S('/caption'), ratio: '1:1', radius: 'md', fallbackIcon: 'box', fallbackLabel: 'Picture not available' }),
+    caption: el('Text', { text: S('/caption'), variant: 'body' }, { visible: [S('/caption')] }),
+    disclaimer: el('Box', { direction: 'row', gap: 'xs', align: 'start' }, { children: ['dIcon', 'dText'], visible: [S('/disclaimer')] }),
+    dIcon: el('Icon', { name: 'info', size: 'sm', tone: 'muted' }),
+    dText: el('Text', { text: S('/disclaimer'), variant: 'small', tone: 'muted', style: { flex: 1, minWidth: 0 } }),
+    products: el('Box', { gap: 'xs' }, { children: ['p'], repeat: { statePath: '/products', key: 'sku' }, visible: [S('/products')] }),
+    p: el('Button', { label: I('title'), variant: 'ghost', size: 'sm', icon: 'box' }, { on: { press: { action: 'viewProduct', params: { sku: I('sku') } } } }),
+  }),
+
   warranty: spec('root', {
     root: el('Box', { pad: 'md', gap: 'md', maxWidth: '760px' }, { children: ['eyebrow', 'title', 'items'] }),
     eyebrow: el('Text', { text: 'Peace of mind', variant: 'eyebrow' }),
