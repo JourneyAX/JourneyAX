@@ -1265,6 +1265,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             certifications: normalized.certifications,
             imageUrl: normalized.imageUrl,
             ...(normalized.categoryTrail.length > 0 ? { categoryTrail: normalized.categoryTrail } : {}),
+            ...(normalized.accessorySkus.length > 0 ? { accessorySkus: normalized.accessorySkus } : {}),
             ...(normalized.highlights.length > 0 ? { highlights: normalized.highlights } : {}),
             ...(normalized.cautions.length > 0 ? { cautions: normalized.cautions } : {}),
             ...(normalized.rating !== undefined ? { rating: normalized.rating } : {}),

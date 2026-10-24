@@ -62,6 +62,8 @@ export const CatalogMappingSchema = z.object({
   imagePaths: Paths.optional(),
   certificationPaths: Paths.optional(),
   quantityPaths: Paths.optional(),
+  /** Lists of other products' SKUs the shop itself suggests with a product ("have you considered"), as SKU strings or objects carrying `sku`. */
+  accessoryPaths: Paths.optional(),
   /** Lists of short feature statements on a product, shown on its card as why it fits. */
   highlightPaths: Paths.optional(),
   /** Patterns (case-insensitive) marking a feature statement as a warning ("should not be used where..."): shown as a caution, never as a reason to buy. */
@@ -99,6 +101,7 @@ export interface ResolvedCatalogMapping {
   imagePaths: string[];
   certificationPaths: string[];
   quantityPaths: string[];
+  accessoryPaths: string[];
   highlightPaths: string[];
   cautionPatterns: string[];
   ratingValuePaths: string[];
@@ -230,6 +233,8 @@ export interface NormalizedCatalogProduct {
   branchesTotal?: number;
   /** The product's shelf, from the broadest group down to the one it sits in (empty when the record carries none). */
   categoryTrail: string[];
+  /** SKUs the shop itself suggests with this product (empty when the record carries none). */
+  accessorySkus: string[];
 }
 
 const MAX_HIGHLIGHTS = 8;
@@ -269,6 +274,21 @@ function declaredCurrency(doc: unknown, mapping: ResolvedCatalogMapping): string
   const paths = mapping.pricing.sources.map((source) => source.currencyPath).filter((path): path is string => !!path);
   const value = firstString(doc, paths);
   return value ? value.toUpperCase() : undefined;
+}
+
+/** The SKUs the record lists as suggested with it: a list of SKU strings, a list of objects with `sku`, or an object whose `items` is one of those. */
+function accessorySkusOf(doc: unknown, mapping: ResolvedCatalogMapping): string[] {
+  const skus: string[] = [];
+  for (const path of mapping.accessoryPaths) {
+    const value: any = readPath(doc, path);
+    const list: unknown[] = Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
+    for (const entry of list) {
+      const sku = typeof entry === 'string' ? entry : typeof (entry as any)?.sku === 'string' ? (entry as any).sku : '';
+      if (sku.trim() && !skus.includes(sku.trim())) skus.push(sku.trim());
+    }
+    if (skus.length > 0) break;
+  }
+  return skus.slice(0, 12);
 }
 
 function categoryTrailOf(doc: unknown, mapping: ResolvedCatalogMapping): string[] {
@@ -316,6 +336,7 @@ export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMappin
     branchesAvailable: firstNumber(doc, mapping.branchAvailablePaths),
     branchesTotal: firstNumber(doc, mapping.branchTotalPaths),
     categoryTrail: categoryTrailOf(doc, mapping),
+    accessorySkus: accessorySkusOf(doc, mapping),
   };
 }
 

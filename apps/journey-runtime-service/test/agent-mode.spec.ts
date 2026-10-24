@@ -5369,6 +5369,25 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.deepEqual(goesWithForTrail(okf, undefined), []);
   });
 
+  test('accessories: with no goes-with links the shop\'s own suggestions on the product are used, minus the product\'s own shelf', async () => {
+    const local = [
+      ...products.map((p: any) => (p.sku === 'F1' ? { ...p, accessories: ['F2', 'T1', 'W1', 'GONE', 'F1'] } : p)),
+      product('F2', 'Framing 90x70', ['Timber', 'Framing']),
+      { ...product('GONE', 'Old tape', ['Building', 'Tape']), discontinued: true },
+    ];
+    const ctx: AgentToolContext = {
+      tenantId: 'test-tenant', environmentId: 'test', correlationId: 'c', release: { ...createTestPack(), catalogMapping: undefined } as any, okfContent: okf,
+      catalogSearchHandler: new CatalogSearchHandler(local), turnProductSkus: new Set(), catalogProductCache: new Map(),
+      readSourceIds: new Set(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false,
+    };
+    const result: any = await executeAgentTool('get_related_products', { sku: 'F1' }, ctx);
+    assert.equal(result.grounded, true);
+    assert.equal(result.source, 'shop_suggestions');
+    assert.deepEqual(result.groups[0].items.map((item: any) => item.sku), ['T1', 'W1'], 'its own shelf (F2), itself, and a discontinued product are left out');
+    assert.match(result.message, /suggestions to check/);
+    assert.ok(ctx.turnProductSkus.has('T1'), 'they can be shown on a card this turn');
+  });
+
   test('words the matched group does not cover, but other groups do use, mean the request is more specific than an overview', async () => {
     const withMaterial = await browseRange(deps('gib timber'));
     assert.deepEqual(withMaterial.qualifiers, ['timber']);

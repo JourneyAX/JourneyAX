@@ -32,7 +32,7 @@ export function mappedFieldPaths(mapping: ResolvedCatalogMapping): string[] {
   const priced = mapping.pricing.sources.flatMap((source) => [source.path, source.currencyPath].filter((path): path is string => !!path));
   return [...new Set([
     ...mapping.tenantFields, ...mapping.identifierPaths, ...mapping.titlePaths, ...mapping.descriptionPaths, ...mapping.brandPaths,
-    ...mapping.categoryPaths, ...mapping.categoryScopePaths, ...mapping.categoryHierarchyPaths, ...mapping.searchPaths,
+    ...mapping.categoryPaths, ...mapping.categoryScopePaths, ...mapping.categoryHierarchyPaths, ...mapping.searchPaths, ...mapping.accessoryPaths,
     ...priced, ...mapping.stock.booleanPaths, ...mapping.stock.countPaths,
     ...mapping.availability.excludeFlagPaths, ...mapping.availability.statusPaths,
     ...mapping.attributeContainers, ...mapping.imagePaths, ...mapping.certificationPaths, ...mapping.quantityPaths,

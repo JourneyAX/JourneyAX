@@ -111,6 +111,9 @@
     "safety.certifications",
     "certifications"
   ],
+  "accessoryPaths": [
+    "accessories"
+  ],
   "quantityPaths": [
     "stock.availableQuantity",
     "inventory.availableUnits"

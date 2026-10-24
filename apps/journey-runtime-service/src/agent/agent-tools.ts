@@ -1453,6 +1453,26 @@ export async function executeAgentTool(
           }
         }
       }
+      // No goes-with links in the knowledge for this shelf: the shop's own "have you considered" list on the product's record is the next
+      // best grounded source. Products on the product's own shelf are its colours and sizes, not accessories, so they are left out.
+      let source: 'knowledge' | 'shop_suggestions' | 'none' = groups.length > 0 ? 'knowledge' : 'none';
+      if (groups.length === 0 && Array.isArray(mainProd?.accessorySkus) && mainProd.accessorySkus.length > 0) {
+        const shelf = (p: any) => (Array.isArray(p?.categoryTrail) ? p.categoryTrail.join('\u0001').toLowerCase() : '');
+        const mainShelf = shelf(mainProd);
+        const suggested: any[] = [];
+        for (const suggestedSku of mainProd.accessorySkus.slice(0, 8)) {
+          if (suggestedSku === sku) continue;
+          const found = await findProductBySku(ctx, suggestedSku);
+          if (!found || isProductDiscontinued(found)) continue;
+          if (mainShelf && shelf(found) === mainShelf) continue;
+          suggested.push(found);
+        }
+        if (suggested.length > 0) {
+          const labels = (ctx.release as any)?.extensions?.accessoryHelper?.labels || {};
+          groups = [{ key: 'shop-suggestions', label: String(labels.shopSuggestions || 'Suggested by the shop'), items: suggested.slice(0, 5) }];
+          source = 'shop_suggestions';
+        }
+      }
       const compact = (p: any) => ({
         sku: p.sku,
         title: p.title || p.name,
@@ -1466,9 +1486,12 @@ export async function executeAgentTool(
         forSku: sku,
         kind,
         grounded: groups.length > 0,
+        source,
         groups: groups.map((group) => ({ key: group.key, label: group.label, items: group.items.map(compact) })),
         relatedProducts: groups.flatMap((group) => group.items.map((p: any) => ({ ...compact(p), relation: group.label }))),
-        message: groups.length > 0
+        message: source === 'shop_suggestions'
+          ? 'The knowledge has no goes-with links for this shelf, but the shop\'s own product record suggests these items with it (not its own colours or sizes). They are suggestions to check, not confirmed requirements or compatibility. Show them on an accessories card and say in one sentence what each is for; you may still search for other kinds that usually go with it.'
+          : groups.length > 0
           ? 'These are the groups customers commonly buy with this product, from the shop\'s own knowledge; each group lists real products. They are suggestions to check, not confirmed requirements or compatibility. Show them on an accessories card (one group per card group), and say in one sentence what each is for.'
           : 'The knowledge has no goes-with links for this product\'s shelf, so there is no verified list. Name, as suggestions to check, the kinds of product that usually go with it (from consult_business_knowledge and the guides), search_products for each kind, and show what you find on an accessories card. Never present the product\'s own alternatives as accessories.',
       };
