@@ -68,7 +68,8 @@
         "estimate_quantity",
         "generate_visual",
         "read_product_guide",
-        "read_content_page"
+        "read_content_page",
+        "review_cart"
       ],
       "modelPolicyRef": "complex_reasoning",
       "maxTurns": 5,
@@ -86,7 +87,9 @@
         "quantity-before-adding",
         "show-the-finished-job",
         "read-the-product-guide",
-        "read-the-shops-pages"
+        "read-the-shops-pages",
+        "before-you-pay",
+        "how-its-done"
       ]
     },
     {
@@ -257,7 +260,7 @@
         "search_products",
         "present_card"
       ],
-      "instructions": "When the customer picks a product, adds it, or says they will take it, do these in the same reply, without waiting to be asked:\n1. Accessories. The product the customer tapped is a real product from the catalogue: use its SKU from their action. In ONE step (several tool calls together, so there is no second round), call get_related_products for it AND search_products for the three or four kinds of product that usually go with it (from your trade sense and what consult_business_knowledge returns; for example the fixings, the base or bedding, the jointing or finishing material, the edging or trim). Then show an accessories card (present_card, cardType accessories, forSku the product, one group for each group, only products tool results returned). Use the groups get_related_products returned when it has verified ones; otherwise use your searches, and say in one sentence that these are suggestions to check, not confirmed requirements. Say in one sentence what each group is for. Never show the product's own alternatives as accessories. Skip the card only when every search comes back empty, and then say so.\n2. Warranty and care. Call get_warranty (in the same step) and say what it returned; when it returned nothing, say the warranty should be confirmed with the manufacturer's documents or store staff. Mention any caution the product record gives and any installation or safety rule a tool returned.\n3. Finish with one next step.\nKeep it short: the cards show the products, so do not list them in your words."
+      "instructions": "When the customer picks a product, adds it, or says they will take it, do these in the same reply, without waiting to be asked:\n1. Accessories. The product the customer tapped is a real product from the catalogue: use its SKU from their action. In ONE step (several tool calls together, so there is no second round), call get_related_products for it AND search_products for the three or four kinds of product that usually go with it (from your trade sense and what consult_business_knowledge returns; for example the fixings, the base or bedding, the jointing or finishing material, the edging or trim). Then show an accessories card (present_card, cardType accessories, forSku the product, one group for each group, only products tool results returned). Use the groups get_related_products returned when it has verified ones; otherwise use your searches, and say in one sentence that these are suggestions to check, not confirmed requirements. Say in one sentence what each group is for. Never show the product's own alternatives as accessories. Skip the card only when every search comes back empty, and then say so.\n2. Warranty and care. Call get_warranty (in the same step) and say what it returned; when it returned nothing, say the warranty should be confirmed with the manufacturer's documents or store staff. Mention any caution the product record gives and any installation or safety rule a tool returned.\n3. How it goes together: follow your skill \"How the job is done\" once for this job (steps, key measurements, safety, the guide's link).\n4. Finish with one natural question or offer.\nIf you have already suggested these extras earlier in this conversation (the lookup says so), do not list them again.\nKeep it short: the cards show the products, so do not list them in your words."
     },
     {
       "skillId": "quantity-before-adding",
@@ -305,6 +308,31 @@
         "hand_off_to_human"
       ],
       "instructions": "Our own website pages can be read: project how-tos and guides, inspiration and ideas, compliance and building-code notes (for example the energy-efficiency rules, compliance pathways and the suppliers' pages that go with them), and pages about our trade tools and services (E-Tools, TradeApp, TradePortal, quotes, accounts). Call read_content_page with the customer's question in their own words when they ask for ideas or inspiration, how a project is done or what it involves, what the rules or compliance steps are, or how one of our trade tools or services works. Do this before you answer from memory, and even when consult_business_knowledge or search_guides say nothing. For the guide of ONE product use read_product_guide instead.\n- Replies are cut after about 14 sentences, so order what you say: the first sentence names the page it came from (\"our page on ... says...\") and gives its link written as a markdown link, [page title](address), so the customer can tap it; for compliance, building-code, consent or structural topics the second sentence says it is general information to confirm with the council, designer or a licensed building practitioner; then the key points, briefly (about 8 sentences at most), ending with one next step. Keep every figure, name and rule exactly as the page has it. Never add a rule, a figure or a step from general knowledge.\n- The result names the best page and a few others. If the passages do not answer what was asked, read the next best page (page = its id) or read on (from = the passage number) before saying the pages do not cover it. When none matches, say so in one sentence and do not describe what a page would say.\n- featuredProducts are real products we feature on that page. For ideas and projects, show them on a products card (present_card, only SKUs from the result) with a short reason for each, then ask what suits the customer; never show a product the result did not list.\n- Compliance and building-code pages are general information (see the order above), especially for consent, structure, fire, wet areas and energy-efficiency calculations. Never say a building \"complies\" on your own judgement.\n- Trade-tool pages: explain what the page says the tool does and give the link; do not promise features the page does not list."
+    },
+    {
+      "skillId": "before-you-pay",
+      "name": "A last look before you pay",
+      "description": "Check the order before payment: quantities, what else may be needed, pick-up or delivery and stock, warranty and guides.",
+      "tier": "always",
+      "tools": [
+        "review_cart",
+        "present_card",
+        "get_warranty",
+        "get_related_products"
+      ],
+      "instructions": "When the customer asks for a last look at their order (their action is \"reviewCart\", or they ask whether they are ready to pay, to check their order, or whether they have missed anything), the review card is put in front of them automatically from the lookup made for you. If it is not in front of you, call review_cart (the order's lines come from their action) and show it with present_card, cardType review, with no other state: the card is built from the order itself.\n- Then, in two or three warm sentences as one of our team, say what is worth a look and why it matters. For example: \"The Forum pavers are pick-up only and in stock at just 8 of our 87 branches, so it's worth choosing your branch before you pay\", or \"Those 83 pavers cover about 13.3 m², is that the area you're doing?\". Ask if they would like to sort anything before they pay.\n- Do not read the card back to them, and do not say the order is ready to pay while a quantity, pick-up or stock question is open. Suggestions under \"things you may still need\" are things to check, not confirmed requirements.\n- Payment always happens when the customer taps the card's payment button. Never say you have paid for them or can pay for them."
+    },
+    {
+      "skillId": "how-its-done",
+      "name": "How the job is done",
+      "description": "When a customer picks something to build or fix, say how it goes together: steps, key measurements, safety, and where the full guide is.",
+      "tier": "always",
+      "tools": [
+        "read_content_page",
+        "read_product_guide",
+        "search_products"
+      ],
+      "instructions": "When a customer wants something they will build, lay or fix (a concrete patio, a deck, a fence, a retaining wall, a bathroom lining, paint on a surface), do not stop at \"good choice\" and a product card. Tell them, as one of our team who knows the job, how it goes together, in a few plain sentences:\n- how it is done in the main steps (base, framing or set-out, fixing, finishing), and the measurements and tolerances that matter for it (depths, levels, falls, spacings, overlaps), exactly as our page or the product's guide gives them;\n- what to keep safe (dust masks and glasses, cutting and sanding dust, lifting, working at height, and any consent or professional sign-off threshold the page mentions);\n- where the full guide is (give its link).\nGet this from our own page on the project (read_content_page) and from the guide kept with the product (read_product_guide), asked for in the same step as the product lookup so the reply is not slowed down. Quote figures only as the page or guide gives them; if neither covers it, say so and offer a colleague rather than inventing a spacing or a rule. Replies are cut after about 14 sentences: put the link in your first or second sentence, keep this part to five or six sentences, and offer to go through it step by step.\nDo it once for the job, when the customer first picks the product or project, not again on every follow-up."
     }
   ],
   "extensions": {
@@ -353,6 +381,13 @@
             "productOrBrand": "{sku}"
           }
         }
+      ],
+      "reviewCart": [
+        {
+          "tool": "review_cart",
+          "args": {},
+          "showAs": "review"
+        }
       ]
     },
     "productGuides": {
@@ -380,6 +415,29 @@
       "maxPassages": 6,
       "passageChars": 900,
       "maxPages": 5
+    },
+    "checkoutReview": {
+      "enabled": true,
+      "deliveryLabels": {
+        "courier": "Courier delivery",
+        "standardDelivery": "Standard delivery",
+        "clickAndCollect": "Click & Collect"
+      },
+      "maxAccessories": 4
+    },
+    "payment": {
+      "embedded": true,
+      "collectShipping": true,
+      "shippingCountries": [
+        "NZ"
+      ]
+    },
+    "brandTheme": {
+      "action": "#A52E80",
+      "actionText": "#FFFFFF",
+      "link": "#091C5A",
+      "canvasHeader": "#003976",
+      "canvasHeaderText": "#FFFFFF"
     }
   }
 }

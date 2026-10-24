@@ -41,6 +41,10 @@ export async function GET(req: Request) {
       // Commerce surface — DECLARED per brand ('cart' B2C vs 'quote' B2B). Default
       // 'quote' so existing fixtures/kit tenants are unchanged when unset.
       commerceMode: p?.commerceMode === 'cart' ? 'cart' : 'quote',
+      checkoutReview: p?.extensions?.checkoutReview?.enabled === true,
+      payment: p?.extensions?.payment?.embedded === true
+        ? { embedded: true, collectShipping: p.extensions.payment.collectShipping === true, shippingCountries: Array.isArray(p.extensions.payment.shippingCountries) ? p.extensions.payment.shippingCountries.map(String) : [] }
+        : undefined,
       configurator: p?.configurator?.enabled ? p.configurator : null,
       // Opening-screen copy — starters + input placeholder, set per tenant in the
       // back office (no hardcoded generic example).
@@ -60,7 +64,8 @@ export async function GET(req: Request) {
       // + per-card settings; `cardTemplates` → tenant json-render overrides
       // (resolveTemplate falls back to DEFAULT_TEMPLATES); `fulfilment` → mode,
       // labels and the branch list the quote/cart cards offer via selectBranch.
-      uiTheme: p?.uiTheme && typeof p.uiTheme === 'object' ? p.uiTheme : null,
+      // The shop's own button, link and panel-header colours (pack extension brandTheme) sit on top of its brand colours.
+      uiTheme: withBrandTheme(p?.uiTheme && typeof p.uiTheme === 'object' ? p.uiTheme : null, p?.extensions?.brandTheme),
       cardTemplates: p?.cardTemplates && typeof p.cardTemplates === 'object' ? p.cardTemplates : null,
       fulfilment: p?.fulfilment && typeof p.fulfilment === 'object' ? p.fulfilment : null,
       // Quote card copy (mapQuoteCard's sub/compliance) — real config, not a
@@ -197,4 +202,13 @@ function json(data: any, init?: ResponseInit) {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }
   });
+}
+
+const BRAND_KEYS = ['action', 'actionText', 'link', 'canvasHeader', 'canvasHeaderText'] as const;
+function withBrandTheme(uiTheme: any, brand: any) {
+  const picked: Record<string, string> = {};
+  for (const key of BRAND_KEYS) if (typeof brand?.[key] === 'string' && /^#[0-9A-Fa-f]{6}$/.test(brand[key])) picked[key] = brand[key];
+  if (Object.keys(picked).length === 0) return uiTheme;
+  const tokens = uiTheme?.tokens && typeof uiTheme.tokens === 'object' ? uiTheme.tokens : {};
+  return { ...(uiTheme || {}), tokens: { ...tokens, colors: { ...(tokens.colors && typeof tokens.colors === 'object' ? tokens.colors : {}), ...picked } } };
 }

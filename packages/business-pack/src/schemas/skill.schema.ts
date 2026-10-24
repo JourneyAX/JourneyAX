@@ -57,7 +57,7 @@ export const EventPrefetchSchema = z.record(
     tool: z.string().min(1).max(60),
     args: z.record(z.string().min(1).max(40), z.union([z.string().max(200), z.number(), z.boolean()])).default({}),
     /** Show what this lookup found on a card of this type when the agent does not present a card itself. */
-    showAs: z.enum(['accessories']).optional(),
+    showAs: z.enum(['accessories', 'review']).optional(),
   }).strict()).max(6),
 );
 
@@ -104,4 +104,45 @@ export const ContentPagesSchema = z.object({
   passageChars: z.number().int().min(200).max(3000).optional(),
   /** Pages listed by one search. */
   maxPages: z.number().int().min(1).max(10).optional(),
+}).strict();
+
+/**
+ * Tenant settings for the last look before payment (pack `extensions.checkoutReview`): when on, the cart's checkout button first
+ * asks the consultant for a review card (quantities, what else may be needed, pick-up or delivery, warranty and guides), and the
+ * card's own button goes on to payment. A tenant without it pays straight away, as before.
+ */
+export const CheckoutReviewSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** The words on the card (heading, section titles, button labels); anything left out keeps the platform's plain wording. */
+  labels: z.record(z.string(), z.string().max(160)).optional(),
+  /** What each way of fulfilling an order is called, by the code the product record uses (for example a code for collecting in store). */
+  deliveryLabels: z.record(z.string(), z.string().max(80)).optional(),
+  /** The most things listed under "what you may still need". */
+  maxAccessories: z.number().int().min(0).max(8).optional(),
+}).strict();
+
+/**
+ * Tenant settings for paying (pack `extensions.payment`): pay inside the storefront, in the side panel, instead of on the payment
+ * provider's own page; and whether the payment form also asks where the order goes. A tenant without it keeps the provider's page.
+ */
+export const PaymentSchema = z.object({
+  embedded: z.boolean().optional(),
+  collectShipping: z.boolean().optional(),
+  /** Two-letter country codes a delivery address may be in. */
+  shippingCountries: z.array(z.string().regex(/^[A-Za-z]{2}$/)).max(20).optional(),
+}).strict();
+
+const HexColour = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'a colour as #rrggbb');
+
+/**
+ * Tenant colours for the working surfaces and buttons (pack `extensions.brandTheme`), taken from the shop's own website: the colour of
+ * its main buttons, the text on them, its link colour, and the header of the cart, payment and order panels. Anything left out keeps the
+ * shop's brand colour from its project settings.
+ */
+export const BrandThemeSchema = z.object({
+  action: HexColour.optional(),
+  actionText: HexColour.optional(),
+  link: HexColour.optional(),
+  canvasHeader: HexColour.optional(),
+  canvasHeaderText: HexColour.optional(),
 }).strict();

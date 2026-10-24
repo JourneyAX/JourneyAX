@@ -24,7 +24,7 @@ import { decorateProductRows } from '@/lib/cards/productTiles';
 import { buildComparisonCard, toCompareSource } from '@/lib/cards/comparison';
 import { requestQuantity } from '@/lib/cards/quantityStep';
 import type { CardInstance } from '@/lib/types';
-import { openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
+import { openCanvas, openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
 
 /**
  * Action → storefront behaviour (docs/v3-card-cms-architecture.md
@@ -351,8 +351,7 @@ export function useCardActions() {
         // Await authoritative quote pricing then open drawer and confirm in conversation
         (async () => {
           await addToCart(sku, qty, title, p);
-          // The list opens as the confirmation; the consultant's reply (its own turn) says what goes with it.
-          setCartOpen(true);
+          // The cart count in the header is the confirmation; the consultant's reply (its own turn) says what goes with it.
         })();
         break;
       }
@@ -373,7 +372,6 @@ export function useCardActions() {
               const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
               await addToCart(sku, qty, title, p);
             }
-            setCartOpen(true);
             dispatch({
               type: 'ADD_MESSAGE',
               role: 'ai',
@@ -438,7 +436,9 @@ export function useCardActions() {
         break;
       case 'openPanel':
         if (params?.panel === 'quote' || params?.panel === 'cart' || params?.panel === 'bag') {
-          setCartOpen(true);
+          openCanvas({ kind: 'cart' });
+        } else if (params?.panel === 'order' && params?.orderId) {
+          openCanvas({ kind: 'order', orderId: String(params.orderId) });
         } else if (params?.panel) {
           dispatch({ type: 'SET_PHASE', phase: params.panel as any });
         }

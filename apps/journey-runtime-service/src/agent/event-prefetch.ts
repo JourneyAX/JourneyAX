@@ -6,7 +6,7 @@
  * was just added) does not depend on the agent deciding to look. A call can name the tapped product as `{sku}`, `{title}` or
  * `{quantity}`. Only tools the agent is allowed to use run, and a lookup that fails is left out, never fatal.
  */
-export interface PrefetchCall { tool: string; args: Record<string, unknown>; showAs?: 'accessories' }
+export interface PrefetchCall { tool: string; args: Record<string, unknown>; showAs?: 'accessories' | 'review' }
 
 const normaliseEventName = (name: string) => String(name || '').toLowerCase().replace(/[-_.\s]/g, '');
 
@@ -33,7 +33,8 @@ export function prefetchCallsFor(config: unknown, event: { type?: string; payloa
     // A call that needs the tapped product but has none to name is not made.
     const needsProduct = JSON.stringify((raw as any)?.args || {}).includes('{sku}') || JSON.stringify((raw as any)?.args || {}).includes('{title}');
     if (needsProduct && !values.sku && !values.title) continue;
-    calls.push({ tool, args, ...((raw as any)?.showAs === 'accessories' ? { showAs: 'accessories' as const } : {}) });
+    const showAs = (raw as any)?.showAs;
+    calls.push({ tool, args, ...(showAs === 'accessories' || showAs === 'review' ? { showAs: showAs as 'accessories' | 'review' } : {}) });
   }
   return calls;
 }

@@ -541,7 +541,7 @@ export class JourneyAXController {
   @UseGuards(ChatThrottleGuard)
   async createOrder(
     @Param('projectId') projectId: string,
-    @Body() body: { quoteId: string; idempotencyKey?: string; customer?: { email?: string; name?: string }; successUrl?: string; cancelUrl?: string },
+    @Body() body: { quoteId: string; idempotencyKey?: string; customer?: { email?: string; name?: string }; successUrl?: string; cancelUrl?: string; embedded?: boolean; collect?: { shipping?: boolean; countries?: string[] } },
   ) {
     const tenantId = (projectId || '').toLowerCase().trim();
     if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
@@ -559,6 +559,11 @@ export class JourneyAXController {
       successUrl: body.successUrl || `${base}/?project=${tenantId}&order={ORDER_ID}&status=success`,
       cancelUrl: body.cancelUrl || `${base}/?project=${tenantId}&status=cancelled`,
       stripe: { secretKey: cfg.stripe?.secretKey },
+      embedded: body.embedded === true,
+      collect: {
+        shipping: body.collect?.shipping === true,
+        countries: (Array.isArray(body.collect?.countries) ? body.collect!.countries! : []).map((code) => String(code).trim().toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)).slice(0, 20),
+      },
     });
     if (result.status === 'failed') return { success: false, ...result };
     if (result.status === 'paid') await this.quoteService.markStatus(quote.quoteId, 'ordered');
@@ -599,6 +604,13 @@ export class JourneyAXController {
       paidAt: o.paidAt ?? null,
       leadTimeSummary: o.leadTimeSummary ?? quote?.leadTimeSummary,
       lines,
+      subtotal: o.subtotal ?? quote?.subtotal,
+      discount: o.discount ?? quote?.discount,
+      tax: o.tax ?? quote?.tax,
+      taxRate: o.taxRate ?? quote?.taxRate,
+      billing: o.billing ?? null,
+      shipping: o.shipping ?? null,
+      createdAt: o.createdAt ?? null,
     };
   }
 

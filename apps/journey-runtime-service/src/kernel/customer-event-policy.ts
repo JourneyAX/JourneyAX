@@ -51,6 +51,8 @@ export function resolveCustomerEventAction(
     'addtoquote',
     'quoteadded',
     'quoteapproved',
+    // The customer asked for a last look at their order before paying.
+    'reviewcart',
     // The customer opened a product's details or asked to see products side by side: a consultant would explain it.
     'viewproduct',
     'compareproducts',

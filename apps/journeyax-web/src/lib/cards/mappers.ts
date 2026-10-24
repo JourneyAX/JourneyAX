@@ -292,8 +292,9 @@ export function mapPlanCard(plan: ProjectPlan) {
 export function mapOrderStatusCard(order: NonNullable<JourneyState['placedOrder']>) {
   return {
     orderId: order.orderId,
+    orderRef: String(order.orderId || '').replace(/^ord_/, '').slice(-8).toUpperCase(),
     status: order.status,
-    statusText: `Order ${order.orderId} is ${order.status}.`,
+    statusText: `Order #${String(order.orderId || '').replace(/^ord_/, '').slice(-8).toUpperCase()} is ${order.status}.`,
     placedAt: order.paidAt || undefined,
     lines: (order.lines || []).map((l) => ({
       sku: l.sku, title: l.name || l.sku, imageUrl: usableImage(l.imageUrl),

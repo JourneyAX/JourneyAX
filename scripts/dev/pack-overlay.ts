@@ -48,6 +48,9 @@ export function overlayDraft(live: Json, draft: Json): Json {
     ...(draft.extensions?.eventPrefetch ? { eventPrefetch: draft.extensions.eventPrefetch } : {}),
     ...(draft.extensions?.productGuides ? { productGuides: draft.extensions.productGuides } : {}),
     ...(draft.extensions?.contentPages ? { contentPages: draft.extensions.contentPages } : {}),
+    ...(draft.extensions?.checkoutReview ? { checkoutReview: draft.extensions.checkoutReview } : {}),
+    ...(draft.extensions?.payment ? { payment: draft.extensions.payment } : {}),
+    ...(draft.extensions?.brandTheme ? { brandTheme: draft.extensions.brandTheme } : {}),
     ...(draft.persona ? { persona: draft.persona } : {}),
   };
   if (draft.profile) pack.profile = deepMerge(pack.profile || {}, draft.profile);

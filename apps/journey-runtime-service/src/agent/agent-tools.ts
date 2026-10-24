@@ -39,6 +39,7 @@ import { areaToSquareMetres, estimateQuantity, type QuantityHelperConfig, type Q
 import { generateVisual, type VisualiserConfig } from './visual-generator';
 import { readGuides } from './product-guides';
 import { findPage, pageAsGuide, searchPages, type ContentPageRecord, type PageHit } from './content-pages';
+import { buildReview, type ReviewLine, type ReviewState, type ReviewSuggestion } from './checkout-review';
 import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
@@ -93,6 +94,10 @@ export interface AgentToolContext {
   /** Test seams for the picture tool: the HTTP client and the folder pictures are kept in. */
   imageFetch?: typeof fetch;
   visualStoreDir?: string;
+  /** The review of the order made this turn: a review card shows only this. */
+  lastReview?: ReviewState;
+  /** Products already suggested as accessories earlier in this conversation: the same suggestions are not shown again. */
+  shownAccessories?: Set<string>;
   customerEvent?: any;
   signal?: AbortSignal;
   emitUiAction?: (action: { name: string; arguments: any }) => void;
@@ -558,6 +563,17 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         from: { type: 'number', description: 'Optional, with one guide: the passage number to read from, to keep reading after a first read said there is more.' },
       },
       required: ['sku'],
+    },
+  },
+  {
+    name: 'review_cart',
+    description: 'Make the last look at the customer\'s order before payment: quantities (what the numbers cover), what else the order may still need, pick-up or delivery and where it is in stock, and warranty and guides, from the shop\'s own records. Call it when the customer wants to check their order or is about to pay (the order\'s lines come from their action, or from items you pass). It returns the findings; then show them with present_card (cardType review: the runtime builds the card from this result).',
+    parameters: {
+      type: 'object',
+      properties: {
+        items: { type: 'array', description: 'Optional: the order\'s lines when the customer\'s action did not carry them, each {sku, quantity}.', items: { type: 'object', properties: { sku: { type: 'string' }, quantity: { type: 'number' } }, required: ['sku'] } },
+      },
+      required: [],
     },
   },
   {
@@ -1692,6 +1708,77 @@ export async function executeAgentTool(
       };
     }
 
+    case 'review_cart': {
+      const config: { enabled?: boolean; labels?: Record<string, string>; deliveryLabels?: Record<string, string>; maxAccessories?: number } = (ctx.release as any)?.extensions?.checkoutReview || {};
+      if (config.enabled === false) return { ok: false, error: 'The last look before payment is not switched on for this shop.' };
+      const eventPayload = ctx.customerEvent?.payload && typeof ctx.customerEvent.payload === 'object' ? ctx.customerEvent.payload : {};
+      let rawLines: any[] = Array.isArray(eventPayload.items) && eventPayload.items.length > 0 ? eventPayload.items : Array.isArray(args.items) ? args.items : [];
+      if (rawLines.length === 0) {
+        const cart: any = (await executeAgentTool('get_cart', {}, ctx))?.cart;
+        rawLines = Array.isArray(cart?.items) ? cart.items : Array.isArray(cart?.lines) ? cart.lines : [];
+      }
+      const wanted = new Map<string, { quantity: number; branchStatus?: string }>();
+      for (const entry of rawLines.slice(0, 30)) {
+        const sku = String(entry?.sku ?? '').trim();
+        if (!sku || wanted.has(sku)) continue;
+        const quantity = Math.min(9999, Math.max(1, Math.floor(Number(entry?.quantity ?? entry?.qty ?? 1)) || 1));
+        const status = typeof entry?.stock?.status === 'string' ? entry.stock.status : typeof entry?.branchStatus === 'string' ? entry.branchStatus : undefined;
+        wanted.set(sku, { quantity, ...(status ? { branchStatus: status.slice(0, 80) } : {}) });
+      }
+      if (wanted.size === 0) return { ok: false, error: 'No order lines were given and none are in the cart. Ask the customer to add what they need first, then to tap the button that reviews their order.' };
+      const branch = eventPayload.branch && typeof eventPayload.branch === 'object'
+        ? { ...(typeof eventPayload.branch.id === 'string' ? { id: eventPayload.branch.id.slice(0, 40) } : {}), ...(typeof eventPayload.branch.name === 'string' ? { name: eventPayload.branch.name.slice(0, 80) } : {}) }
+        : undefined;
+      const quantityHelper = (ctx.release as any)?.extensions?.quantityHelper || {};
+      const lines: ReviewLine[] = [];
+      for (const [sku, want] of wanted) {
+        const product = await findProductBySku(ctx, sku);
+        if (!product) continue;
+        const warranty: any = await executeAgentTool('get_warranty', { productOrBrand: String(product.sku || sku) }, ctx).catch(() => undefined);
+        const terms = warranty?.found === true && typeof warranty?.warranty?.terms === 'string' ? warranty.warranty.terms.replace(/\s+/g, ' ').trim() : undefined;
+        const guides = ctx.productGuideRepo ? await ctx.productGuideRepo.findForProducts(ctx.tenantId, [String(product.sku || ''), String(product.parentSku || ''), sku]) : [];
+        lines.push({
+          sku: String(product.sku || sku), title: String(product.title || product.name || sku), quantity: want.quantity,
+          imageUrl: typeof product.imageUrl === 'string' ? product.imageUrl : undefined,
+          discontinued: isProductDiscontinued(product),
+          pickupOnly: typeof product.pickupOnly === 'boolean' ? product.pickupOnly : undefined,
+          deliveryOptions: Array.isArray(product.deliveryOptions) ? product.deliveryOptions : undefined,
+          branchesAvailable: typeof product.branchesAvailable === 'number' ? product.branchesAvailable : undefined,
+          branchesTotal: typeof product.branchesTotal === 'number' ? product.branchesTotal : undefined,
+          coverageTexts: [product.description, ...(Array.isArray(product.highlights) ? product.highlights : [])].filter((text) => typeof text === 'string'),
+          ...(want.branchStatus ? { branchStatus: want.branchStatus } : {}),
+          ...(terms ? { warranty: terms } : {}),
+          guides: guides.map((guide) => guide.title),
+        });
+      }
+      if (lines.length === 0) return { ok: false, error: 'None of the order\'s lines is a product in the catalogue, so there is nothing to review.' };
+      // What else the order may need: the suggestions the knowledge and the shop's own records give for the first lines.
+      const suggestions: ReviewSuggestion[] = [];
+      const seen = new Set<string>();
+      for (const line of lines.slice(0, 3)) {
+        const related: any = await executeAgentTool('get_related_products', { sku: line.sku }, ctx).catch(() => undefined);
+        for (const item of Array.isArray(related?.relatedProducts) ? related.relatedProducts : []) {
+          const sku = String(item?.sku || '');
+          if (!sku || seen.has(sku)) continue;
+          seen.add(sku);
+          const cached = ctx.catalogProductCache.get(sku);
+          suggestions.push({ sku, title: String(item.title || cached?.title || sku), imageUrl: typeof cached?.imageUrl === 'string' ? cached.imageUrl : undefined, reason: typeof item.relation === 'string' ? item.relation : undefined });
+        }
+      }
+      const review = buildReview({
+        lines, suggestions, branch, labels: config.labels, deliveryLabels: config.deliveryLabels,
+        coveragePatterns: quantityHelper.coveragePatterns, minPieceSideMm: quantityHelper.minPieceSideMm, maxAccessories: config.maxAccessories,
+      });
+      ctx.lastReview = review;
+      return {
+        ok: true,
+        lines: lines.length,
+        summary: review.summary,
+        sections: [review.quantity, review.accessories, review.fulfilment, review.warranty].map((part) => ({ section: part.title, looksRight: part.ok, notes: part.rows.slice(0, 6).map((entry) => `${entry.title}${entry.detail ? `: ${entry.detail}` : ''}`) })),
+        message: 'The review card is ready: it is shown to the customer from this result (present_card with cardType review and no other state), and its buttons let them act on each finding. In two or three warm sentences, as one of our team, say what is worth a look and why it matters (for example a pick-up-only item, or a quantity to match their area), then ask if they would like to sort anything before paying. Do not list every finding again: the card has them. Suggestions are things to check, not confirmed requirements.',
+      };
+    }
+
     case 'read_content_page': {
       const config: { enabled?: boolean; unlocks?: string[]; maxPassages?: number; passageChars?: number; maxPages?: number } = (ctx.release as any)?.extensions?.contentPages || {};
       if (config.enabled === false) return { ok: false, error: 'Reading our own pages is not switched on here. Say you cannot read them here and help from what else you can see.' };
@@ -2194,6 +2281,25 @@ export async function executeAgentTool(
         state.unitLabel = estimate.unitLabel;
         state.working = estimate.working;
         state.ctaLabel = estimate.ctaLabel;
+      }
+      if (cardType === 'accessories' && Array.isArray(state.groups)) {
+        // What was suggested earlier in the conversation is not suggested again on every add.
+        const shown = ctx.shownAccessories || (ctx.shownAccessories = new Set<string>());
+        const fresh = state.groups
+          .map((group: any) => ({ ...group, items: (Array.isArray(group?.items) ? group.items : []).filter((item: any) => item?.sku && !shown.has(String(item.sku))) }))
+          .filter((group: any) => group.items.length > 0);
+        if (fresh.length === 0) {
+          return { ok: true, skipped: true, message: 'Every suggestion on that card was already shown earlier in this conversation, so no card was shown. Do not list them again: at most say in a few words that the same suggestions still apply.' };
+        }
+        state.groups = fresh;
+        for (const group of fresh) for (const item of group.items) shown.add(String(item.sku));
+      }
+      if (cardType === 'review') {
+        if (!ctx.lastReview) {
+          return { ok: false, error: 'Rejected card: review the order with review_cart first; a review card shows only that tool\'s findings.' };
+        }
+        for (const key of Object.keys(state)) delete state[key];
+        Object.assign(state, ctx.lastReview);
       }
       if (cardType === 'visual') {
         if (!ctx.lastVisual) {

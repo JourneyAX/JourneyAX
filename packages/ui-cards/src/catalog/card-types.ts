@@ -51,6 +51,24 @@ export const ProductFact = z.object({
   /** Set by the storefront once this SKU is in the bag/quote — the tile's Add turns into "Added". */
   inBag: z.boolean().optional(),
 });
+
+/** One line of the pre-payment check: what was found, and at most one thing the customer can do about it. */
+const ReviewRow = z.object({
+  key: z.string(),
+  title: z.string(),
+  detail: z.string().optional(),
+  ok: z.boolean(),
+  warn: z.boolean(),
+  imageUrl: z.string().optional(),
+  actionLabel: z.string().optional(),
+  /** What the button says for the customer, as if they had typed it. */
+  actionText: z.string().optional(),
+  /** The product the button adds to the order. */
+  actionSku: z.string().optional(),
+  hasMessage: z.boolean(),
+  hasAdd: z.boolean(),
+});
+const ReviewSection = z.object({ title: z.string(), summary: z.string(), ok: z.boolean(), warn: z.boolean(), rows: z.array(ReviewRow) });
 export type ProductFact = z.infer<typeof ProductFact>;
 
 export const QuoteLine = ProductFact.extend({
@@ -149,6 +167,8 @@ export const CARD_TYPES = {
     description: 'One order: status, lines, delivery / collection details.',
     state: z.object({
       orderId: z.string(),
+      /** The short number people read and say; the order id itself is long. */
+      orderRef: z.string().optional(),
       status: z.string(),
       placedAt: z.string().optional(),
       lines: z.array(QuoteLine),
@@ -243,6 +263,22 @@ export const CARD_TYPES = {
       /** Says the picture is an illustration, not the exact product or a promise of the result. */
       disclaimer: z.string().optional(),
       products: z.array(ProductFact).default([]),
+    }),
+  },
+  review: {
+    title: 'Before you pay',
+    description: 'A last look at the order before payment: quantities, what else may be needed, pick-up or delivery, and warranty and guides, each with one way to act. The runtime builds it from the order, never from model text.',
+    state: z.object({
+      heading: z.string(),
+      intro: z.string().optional(),
+      /** One line: how many of the checks look right and how many are worth a look. */
+      summary: z.string(),
+      quantity: ReviewSection,
+      accessories: ReviewSection,
+      fulfilment: ReviewSection,
+      warranty: ReviewSection,
+      payLabel: z.string().optional(),
+      keepLabel: z.string().optional(),
     }),
   },
   warranty: {

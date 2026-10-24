@@ -12,7 +12,8 @@
       "project-service",
       "journey-runtime-service",
       "api-gateway",
-      "backoffice-admin"
+      "backoffice-admin",
+      "web-unit"
     ],
     "typecheck": [
       "tsc:shared-types",
@@ -159,6 +160,10 @@
     "tsc:public-path": {
       "cwd": ".",
       "command": "npx tsc --noEmit -p tests/public-path"
+    },
+    "web-unit": {
+      "cwd": ".",
+      "command": "for f in $(find apps/journeyax-web/src -name '*.test.ts' | sort); do npx tsx --tsconfig apps/journeyax-web/tsconfig.json $f || exit 1; done"
     }
   }
 }

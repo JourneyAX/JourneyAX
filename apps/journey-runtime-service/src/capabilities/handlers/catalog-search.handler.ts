@@ -1286,6 +1286,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             ...(normalized.ratingCount !== undefined ? { ratingCount: normalized.ratingCount } : {}),
             ...(normalized.branchesAvailable !== undefined ? { branchesAvailable: normalized.branchesAvailable } : {}),
             ...(normalized.branchesTotal !== undefined ? { branchesTotal: normalized.branchesTotal } : {}),
+            ...(normalized.pickupOnly !== undefined ? { pickupOnly: normalized.pickupOnly } : {}),
+            ...(normalized.deliveryOptions.length > 0 ? { deliveryOptions: normalized.deliveryOptions } : {}),
           };
         })
         .filter((item: any) => {

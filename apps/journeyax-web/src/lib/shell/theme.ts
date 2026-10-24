@@ -28,7 +28,7 @@ export function readableInk(background: string | undefined | null): string {
 /** The slice of the storefront config the shell reads. */
 export interface ShellThemeInput {
   theme?: { primaryColor?: string; sidebarStyle?: 'light' | 'dark'; sidebarColor?: string } | null;
-  uiTheme?: { tokens?: { colors?: Partial<Record<'brand' | 'brandText' | 'bg' | 'surface' | 'text' | 'textMuted' | 'border', string>> } | null } | null;
+  uiTheme?: { tokens?: { colors?: Partial<Record<'brand' | 'brandText' | 'action' | 'actionText' | 'link' | 'canvasHeader' | 'canvasHeaderText' | 'bg' | 'surface' | 'text' | 'textMuted' | 'border', string>> } | null } | null;
 }
 
 export interface ShellTheme {
@@ -39,6 +39,9 @@ export interface ShellTheme {
 }
 
 const COLOUR_TOKENS: Array<[keyof NonNullable<NonNullable<NonNullable<ShellThemeInput['uiTheme']>['tokens']>['colors']>, string]> = [
+  ['link', '--ax-link-tenant'],
+  ['canvasHeader', '--ax-canvas-head-bg-tenant'],
+  ['canvasHeaderText', '--ax-canvas-head-ink-tenant'],
   ['bg', '--ax-bg-tenant'],
   ['surface', '--ax-surface-tenant'],
   ['text', '--ax-text-tenant'],
@@ -59,10 +62,12 @@ export function deriveShellTheme(input: ShellThemeInput | null | undefined, opts
   const colors = input?.uiTheme?.tokens?.colors || {};
 
   // Accent: the brand colour the tenant set (card tokens first, then the legacy theme block); otherwise the shell's warm clay.
-  const accent = [colors.brand, input?.theme?.primaryColor].find((c) => luminance(c) !== null);
+  // A shop's buttons can have their own colour (its website's button colour) apart from its brand colour: `action` wins when set.
+  const accent = [colors.action, colors.brand, input?.theme?.primaryColor].find((c) => luminance(c) !== null);
   if (accent) {
     vars['--ax-accent-tenant'] = accent;
-    vars['--ax-accent-ink-tenant'] = luminance(colors.brandText) !== null && colors.brand === accent ? String(colors.brandText) : readableInk(accent);
+    const ink = colors.action === accent ? colors.actionText : colors.brand === accent ? colors.brandText : undefined;
+    vars['--ax-accent-ink-tenant'] = luminance(ink) !== null ? String(ink) : readableInk(accent);
   }
 
   // Page colours only when the tenant explicitly configured them (a dark-brand site stays dark).

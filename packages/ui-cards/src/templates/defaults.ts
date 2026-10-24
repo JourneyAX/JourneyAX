@@ -68,6 +68,25 @@ const productTile = (prefix: string, opts: { showReason?: boolean; cta?: 'addToC
  * Words that depend on the numbers (the availability line, the compare label, the highlights joined into one line, the ask-for-price
  * sentence) are prepared by the storefront, which owns the wording; the template only decides where they go.
  */
+/** One section of the pre-payment check: a heading with its status, then a row per finding with its one button. */
+const reviewSection = (name: string): Record<string, El> => {
+  const at = (field: string) => S(`/${name}/${field}`);
+  return {
+    [name]: el('Box', { gap: 'xs' }, { children: [`${name}-head`, `${name}-rows`] }),
+    [`${name}-head`]: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: [`${name}-ok`, `${name}-warn`, `${name}-sum`] }),
+    [`${name}-ok`]: el('StatusDot', { label: at('title'), tone: 'success' }, { visible: [at('ok')] }),
+    [`${name}-warn`]: el('StatusDot', { label: at('title'), tone: 'warning' }, { visible: [at('warn')] }),
+    [`${name}-sum`]: el('Text', { text: at('summary'), variant: 'caption', tone: 'muted' }, { visible: [at('summary')] }),
+    [`${name}-rows`]: el('Box', { gap: 'xs' }, { children: [`${name}-row`], repeat: { statePath: `/${name}/rows`, key: 'key' } }),
+    [`${name}-row`]: el('Box', { direction: 'row', gap: 'sm', align: 'center', justify: 'between', wrap: true }, { children: [`${name}-text`, `${name}-msg`, `${name}-add`] }),
+    [`${name}-text`]: el('Box', { gap: 'xs', style: { flex: 1, minWidth: 0 } }, { children: [`${name}-t`, `${name}-d`] }),
+    [`${name}-t`]: el('Text', { text: I('title'), variant: 'small' }),
+    [`${name}-d`]: el('Text', { text: I('detail'), variant: 'caption', tone: 'muted' }, { visible: [I('detail')] }),
+    [`${name}-msg`]: el('Button', { label: I('actionLabel'), variant: 'ghost', size: 'sm' }, { visible: [I('hasMessage')], on: { press: { action: 'sendMessage', params: { text: I('actionText') } } } }),
+    [`${name}-add`]: el('Button', { label: I('actionLabel'), variant: 'secondary', size: 'sm', icon: 'cart' }, { visible: [I('hasAdd')], on: { press: { action: 'addToCart', params: { sku: I('actionSku'), qty: 1, title: I('title') } } } }),
+  };
+};
+
 const productRow = (prefix: string): Record<string, El> => {
   const k = (s: string) => `${prefix}-${s}`;
   const open = { press: { action: 'viewProduct', params: { sku: I('sku') } } };
@@ -247,6 +266,21 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     compare: el('Button', { label: 'Compare', variant: 'ghost', icon: 'plus' }, { on: { press: { action: 'toggleCompare', params: { sku: S('/product/sku'), title: S('/product/title') } } } }),
   }),
 
+  review: spec('root', {
+    // The last look before payment, section by section. Each row says what was found and offers at most one thing to do about it.
+    // Everything is bound to the card's state, which the runtime builds from the order itself.
+    root: el('Box', { pad: 'md', gap: 'md' }, { children: ['title', 'intro', 'summary', 'quantity', 'accessories', 'fulfilment', 'warranty', 'foot'] }),
+    title: el('Text', { text: S('/heading'), variant: 'title' }),
+    intro: el('Text', { text: S('/intro'), variant: 'small', tone: 'muted' }, { visible: [S('/intro')] }),
+    summary: el('Text', { text: S('/summary'), variant: 'subheading' }),
+    ...reviewSection('quantity'),
+    ...reviewSection('accessories'),
+    ...reviewSection('fulfilment'),
+    ...reviewSection('warranty'),
+    foot: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['pay'] }),
+    pay: el('Button', { label: S('/payLabel'), variant: 'primary', iconRight: 'chevron-right' }, { on: { press: { action: 'checkout' } } }),
+  }),
+
   comparison: spec('root', {
     root: el('Box', { pad: 'md', gap: 'md' }, { children: ['eyebrow', 'title', 'intro', 'table', 'foot', 'verdict'] }),
     eyebrow: el('Text', { text: 'Side by side', variant: 'eyebrow' }),
@@ -311,9 +345,11 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   orderStatus: spec('root', {
-    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '760px' }, { children: ['ok', 'title', 'meta', 'timeline', 'lines'] }),
+    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '760px' }, { children: ['ok', 'title', 'view', 'meta', 'timeline', 'lines'] }),
     ok: el('Alert', { title: 'Order confirmed', text: S('/statusText'), tone: 'success' }),
-    title: el('Text', { text: { $template: 'Order ${/orderId}' }, variant: 'title' }),
+    title: el('Text', { text: { $template: 'Order #${/orderRef}' }, variant: 'title' }, { visible: [S('/orderRef')] }),
+    // The order itself: items, billing, shipping and the summary, in the side panel.
+    view: el('Button', { label: 'See the order details', variant: 'secondary' }, { visible: [S('/orderId')], on: { press: { action: 'openPanel', params: { panel: 'order', orderId: S('/orderId') } } } }),
     meta: el('Box', { direction: 'row', gap: 'lg', wrap: true }, { children: ['st', 'pl', 'tt'] }),
     st: el('KeyValue', { label: 'Status', value: S('/status') }),
     pl: el('KeyValue', { label: 'Placed', value: S('/placedAt') }, { visible: [S('/placedAt')] }),

@@ -13,7 +13,7 @@ import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 
 export default function CartDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { state, bom, totals, handleApprove, removeFromCart, setQuantity } = useJourney();
+  const { state, bom, totals, requestCheckout, removeFromCart, setQuantity } = useJourney();
   const cfg = useStorefrontConfig();
   const isCart = (cfg as any).commerceMode === 'cart';
   const ordering = !!state.ordering;
@@ -93,8 +93,8 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
               <div className="cart-drawer__row" style={{ color: 'var(--success)' }}><span>Discount</span><span>−{money(totals.discount)}</span></div>
             )}
             <div className="cart-drawer__row cart-drawer__row--total"><span>Total</span><span>{money(totals.total)}</span></div>
-            <button type="button" className="cart-drawer__cta" onClick={handleApprove} disabled={ordering}>
-              {ordering ? 'Starting checkout…' : isCart ? 'Checkout' : 'Approve & pay securely'}
+            <button type="button" className="cart-drawer__cta" onClick={requestCheckout} disabled={ordering}>
+              {ordering ? 'Starting checkout…' : cfg.checkoutReview ? 'Check my order and pay' : isCart ? 'Checkout' : 'Approve & pay securely'}
             </button>
           </div>
         )}

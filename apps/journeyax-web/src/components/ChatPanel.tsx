@@ -25,7 +25,8 @@ import CompareTray from './cards/CompareTray';
 import QuantityStepHost from './cards/QuantityStep';
 import type { CardInstance } from '@/lib/types';
 import { isPanelCardType } from '@/lib/shell/panelCards';
-import { closePanelCard, openPanelCard } from '@/lib/shell/sidePanelStore';
+import { orderRef, rememberOrder } from '@/components/canvas/money';
+import { closeCanvas, closePanelCard, getCanvas, openCanvas, openPanelCard } from '@/lib/shell/sidePanelStore';
 import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
 import { resolveHero } from '@/lib/shell/greeting';
 import { CHAT_REQUEST_ACCEPTS_AGENT_ID } from '@/lib/shell/capabilities';
@@ -1071,7 +1072,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     if (!orderId || state.placedOrder?.status !== 'paid') return;
     const key = `jx:thanked:${orderId}`;
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch { /* still send once this session */ }
-    const t = setTimeout(() => { void handleUserMessageRef.current(`Payment received for order ${orderId}.`, { silent: true }); }, 600);
+    const t = setTimeout(() => { rememberOrder(orderId); void handleUserMessageRef.current(`Payment received for order #${orderRef(orderId)}.`, { silent: true }); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.placedOrder?.orderId, state.placedOrder?.status]);
@@ -1224,7 +1225,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             bagTitle={isCart ? 'View your bag' : 'View your quote / materials'}
             bagCount={bagCount}
             bagOpen={cartOpen}
-            onBag={() => setCartOpen((v) => !v)}
+            onBag={() => { if (panelEnabled) { if (getCanvas()?.kind === 'cart') closeCanvas(); else openCanvas({ kind: 'cart' }); } else setCartOpen((v) => !v); }}
           />
 
           {/* Conversation stream */}

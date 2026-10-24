@@ -37,6 +37,7 @@ export function mappedFieldPaths(mapping: ResolvedCatalogMapping): string[] {
     ...mapping.availability.excludeFlagPaths, ...mapping.availability.statusPaths,
     ...mapping.attributeContainers, ...mapping.imagePaths, ...mapping.certificationPaths, ...mapping.quantityPaths,
     ...mapping.highlightPaths, ...mapping.ratingValuePaths, ...mapping.ratingCountPaths, ...mapping.branchAvailablePaths, ...mapping.branchTotalPaths,
+    ...mapping.pickupOnlyPaths, ...mapping.deliveryOptionPaths,
   ])];
 }
 

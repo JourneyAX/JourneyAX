@@ -6,6 +6,9 @@ import { JourneyMessage } from '@/lib/types';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { sanitizeMessageText } from '../lib/sanitize';
 import { WorkedSummary } from './shell/WorkedFold';
+import { openCanvas } from '@/lib/shell/sidePanelStore';
+import { orderIdForRef, orderRef, rememberOrder } from './canvas/money';
+import { readableUserText } from '@/lib/chat/readableText';
 
 export { sanitizeMessageText };
 
@@ -40,7 +43,7 @@ function renderMarkdown(text: string) {
 
 // Parse **bold**, *italic* and links: [text](address) and a bare web address both become a tappable link that opens in a new tab.
 // Only http(s) addresses are linked, and the text is never treated as markup.
-const INLINE_RE = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])|\*\*(.+?)\*\*|\*(.+?)\*/g;
+const INLINE_RE = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])|\*\*(.+?)\*\*|\*(.+?)\*|\b(ord_[a-f0-9]{32})\b|#([A-F0-9]{8})\b/g;
 
 /** A web address as a short readable label ("placemakers.co.nz/online/pergolas"). */
 function shortAddress(url: string): string {
@@ -67,6 +70,15 @@ function parseBold(text: string) {
       parts.push(<strong key={match.index}>{match[4]}</strong>);
     } else if (match[5]) {
       parts.push(<em key={match.index}>{match[5]}</em>);
+    } else if (match[6] || match[7]) {
+      // An order number opens the order (items, billing, shipping, summary) in the side panel.
+      const orderId = match[6] || orderIdForRef(match[7]);
+      if (orderId) {
+        rememberOrder(orderId);
+        parts.push(<button key={match.index} type="button" className="msg__link msg__link--btn" onClick={() => openCanvas({ kind: 'order', orderId })}>{`Order #${orderRef(orderId)}`}</button>);
+      } else {
+        parts.push(match[0]);
+      }
     }
     lastIndex = match.index + match[0].length;
   }
@@ -87,30 +99,6 @@ function brandInitials(name: string): string {
   const caps = base.match(/[A-Z]/g) || [];
   if (caps.length >= 2) return caps.slice(0, 2).join('');
   return base.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-}
-
-/**
- * The message a submitted question card sends ("My answers:" then one "question → answer" line each) is for the server and the
- * consultant; what the customer sees in their own bubble is what they chose, as one natural line ("Deck area, Natural timber look and 20").
- */
-function readableAnswers(text: string): string | undefined {
-  const match = String(text || '').match(/^My answers:\s*\n([\s\S]+)$/);
-  if (!match) return undefined;
-  const chosen = match[1].split('\n').map((line) => line.split(' → ').slice(1).join(' → ').trim()).filter((answer) => answer && answer.toLowerCase() !== 'not answered');
-  if (chosen.length === 0) return undefined;
-  return chosen.length === 1 ? chosen[0] : `${chosen.slice(0, -1).join(', ')} and ${chosen[chosen.length - 1]}`;
-}
-
-/** A customer action the interface records as "[addToCart: Item]" is shown as a readable line ("Add to cart: Item"), never as a code-like tag. */
-const ACTION_EVENT_RE = /^\[([A-Za-z][A-Za-z0-9_.]*)(?::\s*([\s\S]+))?\]$/;
-function readableUserText(text: string): string {
-  const answers = readableAnswers(text);
-  if (answers) return answers;
-  const match = String(text || '').trim().match(ACTION_EVENT_RE);
-  if (!match) return text;
-  const words = match[1].replace(/[._]/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
-  const label = words.charAt(0).toUpperCase() + words.slice(1);
-  return match[2] ? `${label}: ${match[2]}` : label;
 }
 
 export default function MessageBubble({ message }: Props) {

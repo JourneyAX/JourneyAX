@@ -494,6 +494,7 @@ export class AgentTurnLoop {
       contentPageRepo: options.contentPageRepo,
       inMemoryQuotes,
       inMemoryCarts,
+      shownAccessories: new Set<string>(Array.isArray((workspace?.facts as any)?.shown_accessories?.value) ? (workspace!.facts as any).shown_accessories.value.map(String) : []),
       turnProductSkus: new Set<string>(),
       catalogProductCache: new Map<string, any>(),
       readSourceIds: new Set<string>(),
@@ -594,7 +595,7 @@ export class AgentTurnLoop {
     // The lookups made for a card tap before the agent is asked (see event-prefetch.ts), kept for the trace.
     let prefetchedTrace: Array<{ name: string; durationMs: number; ok: boolean; arguments?: any; resultCount?: number }> = [];
     // Cards the tenant asked to be shown from a tap's lookups if the agent presents none of its own.
-    const prefetchedCards: Array<{ cardType: string; state: Record<string, unknown> }> = [];
+    const prefetchedCards: Array<{ cardType: string; state: Record<string, unknown>; always?: boolean }> = [];
     // Current Customer Message or Event (Prompt P3)
     if (customerEvent && customerEvent.type) {
       const eventLines = [
@@ -626,9 +627,22 @@ export class AgentTurnLoop {
         prefetchedTrace = results.map((entry) => ({ name: entry.call.tool, durationMs: Date.now() - started, ok: entry.ok && (entry.result as any)?.ok !== false, arguments: { prefetched: true, ...entry.call.args }, resultCount: extractToolResultCount(entry.result) }));
         for (const entry of results) {
           if (entry.ok && entry.call.showAs === 'accessories') {
+            // Suggestions already shown earlier in the conversation are not shown (or listed to the agent) again on every add.
+            const shown = toolContext.shownAccessories!;
+            const result: any = entry.result;
+            if (result && Array.isArray(result.groups)) {
+              const fresh = result.groups.map((group: any) => ({ ...group, items: (group.items || []).filter((item: any) => item?.sku && !shown.has(String(item.sku))) })).filter((group: any) => group.items.length > 0);
+              if (fresh.length === 0 && result.groups.length > 0) {
+                entry.result = { ok: true, forSku: result.forSku, groups: [], relatedProducts: [], alreadySuggested: true, message: 'These suggestions were already shown earlier in this conversation. Do not list them again: at most say in a few words that the same extras still apply.' };
+              } else {
+                entry.result = { ...result, groups: fresh, relatedProducts: fresh.flatMap((group: any) => group.items.map((item: any) => ({ ...item, relation: group.label }))) };
+              }
+            }
             const card = accessoriesCardFrom(entry.result, String((entry.call.args as any).sku || (entry.call.args as any).productOrBrand || ''));
             if (card) prefetchedCards.push(card);
           }
+          // The last look before payment is the whole point of that tap, so it is shown whatever else the agent presents.
+          if (entry.ok && entry.call.showAs === 'review' && (entry.result as any)?.ok === true) prefetchedCards.push({ cardType: 'review', state: {}, always: true } as any);
         }
         eventLines.push(formatPrefetched(results.filter((entry) => entry.ok).map(({ call, result }) => ({ call, result }))));
       }
@@ -1106,8 +1120,9 @@ function extractToolResultCount(result: any): number | undefined {
     }
 
     // 6c. A card the tenant asked for from a tap's lookups (the accessories of an item just added) is shown when the agent presented none.
-    if (prefetchedCards.length > 0 && !toolContext.isHumanHandoffRequested && !toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok)) {
-      for (const card of prefetchedCards) {
+    if (prefetchedCards.length > 0 && !toolContext.isHumanHandoffRequested) {
+      const agentPresented = toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok);
+      for (const card of prefetchedCards.filter((entry: any) => entry.always || !agentPresented).filter((entry: any) => !(entry.cardType === 'review' && toolContext.presentedCards.some((shown) => shown.cardType === 'review')))) {
         const started = Date.now();
         let ok = true;
         try {
@@ -1188,6 +1203,10 @@ function extractToolResultCount(result: any): number | undefined {
       turnId: command.turnId,
     });
 
+    if (workspace && toolContext.shownAccessories && toolContext.shownAccessories.size > 0) {
+      if (!workspace.facts) workspace.facts = {} as any;
+      (workspace.facts as any).shown_accessories = { value: [...toolContext.shownAccessories].slice(-80), source: 'system', confidence: 1, extractedAt: new Date().toISOString() };
+    }
     appendHistory(
       workspace,
       historyEntries,

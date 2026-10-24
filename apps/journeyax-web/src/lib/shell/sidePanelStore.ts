@@ -12,6 +12,17 @@ export interface OpenPanel {
   cardType: string;
 }
 
+/** The working surfaces that open in the side panel without being a card: the cart, the payment form and a placed order. */
+export type CanvasKind = 'cart' | 'checkout' | 'order';
+export interface CanvasRequest {
+  kind: CanvasKind;
+  /** The order to show ('order'), or the order being paid ('checkout'). */
+  orderId?: string;
+  /** What the payment form needs to open ('checkout'): Stripe's client secret and the public key. */
+  payment?: { clientSecret: string; publishableKey: string };
+}
+
+let canvas: CanvasRequest | null = null;
 let openPanel: OpenPanel | null = null;
 let opener: HTMLElement | null = null;
 let rememberedAt = 0;
@@ -40,9 +51,30 @@ export function openPanelCard(cardId: string, cardType: string): void {
       opener = el instanceof HTMLElement && el !== document.body ? el : null;
     }
   }
-  if (openPanel && openPanel.id === cardId && openPanel.cardType === cardType) return;
+  if (openPanel && openPanel.id === cardId && openPanel.cardType === cardType && !canvas) return;
+  canvas = null;
   openPanel = { id: cardId, cardType };
   emit();
+}
+
+export function getCanvas(): CanvasRequest | null { return canvas; }
+
+/** Opens a working surface in the panel, replacing whatever the panel showed. */
+export function openCanvas(request: CanvasRequest): void {
+  canvas = request;
+  openPanel = null;
+  emit();
+}
+
+/** Closes the working surface (a card panel is not touched). */
+export function closeCanvas(): void {
+  if (!canvas) return;
+  canvas = null;
+  emit();
+}
+
+export function useCanvas(): CanvasRequest | null {
+  return useSyncExternalStore(subscribe, getCanvas, () => null);
 }
 
 /** The card an open request points at: that exact card if it still exists, else the latest card of its kind (it was merged). */
@@ -58,8 +90,9 @@ export function resolvePanelCard<T extends { id: string; cardType: string }>(car
 export function closePanelCard(): HTMLElement | null {
   const back = opener && typeof document !== 'undefined' && document.contains(opener) ? opener : null;
   opener = null;
-  if (openPanel === null) return back;
+  if (openPanel === null && canvas === null) return back;
   openPanel = null;
+  canvas = null;
   emit();
   return back;
 }

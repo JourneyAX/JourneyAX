@@ -136,6 +136,12 @@
   "branchTotalPaths": [
     "stock.branchCount"
   ],
+  "pickupOnlyPaths": [
+    "pickupOnly"
+  ],
+  "deliveryOptionPaths": [
+    "deliveryOptions"
+  ],
   "cautionPatterns": [
     "\\b(?:should|must|can|may|shall|is|are)\\s+not\\b",
     "\\bnot\\s+(?:suitable|recommended|intended|designed|approved)\\b",

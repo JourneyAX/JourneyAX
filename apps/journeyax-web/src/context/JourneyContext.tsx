@@ -12,6 +12,8 @@ import {
   mapWarrantyCard, mapFitmentCard, mapPlanCard, mapOrderStatusCard, mapHeroCard, mapComparisonCard, mapBundleCard,
 } from '@/lib/cards/mappers';
 import { activeSessionId } from '@/lib/conversations';
+import { buildReviewEvent, reviewFingerprint } from '@/lib/cards/reviewEvent';
+import { openCanvas } from '@/lib/shell/sidePanelStore';
 
 type Action =
   | { type: 'SET_PHASE'; phase: Phase }
@@ -384,6 +386,8 @@ interface JourneyContextType {
   quoteTitle: string;
   isDynamicClarifyComplete: boolean;
   handleApprove: () => void;
+  /** The cart's checkout button: a last look first when the shop has it on, payment straight away otherwise. */
+  requestCheckout: () => void;
   handleRestart: () => void;
   handleTryRemove: () => void;
   addToCart: (sku: string, qty?: number, title?: string, product?: any) => Promise<void>;
@@ -784,12 +788,33 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     }
     dispatch({ type: 'SET_ORDERING', ordering: true });
     try {
+      // Paying inside the side panel when the shop has it on: the payment form opens there and the page is never left.
+      const inPanel = !!cfg.payment?.embedded;
       const res = await fetch('/api/order' + (typeof window !== 'undefined' ? window.location.search : ''), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteId: quote.quoteId, idempotencyKey: quote.quoteId, quote }),
+        body: JSON.stringify({
+          quoteId: quote.quoteId, idempotencyKey: quote.quoteId, quote,
+          ...(inPanel ? { embedded: true, collect: { shipping: cfg.payment?.collectShipping === true, countries: cfg.payment?.shippingCountries || [] } } : {}),
+        }),
       });
       const data = await res.json();
+      if (inPanel && data?.success && data?.clientSecret && data?.publishableKey && data?.orderId) {
+        dispatch({ type: 'SET_ORDERING', ordering: false });
+        setCartOpen(false);
+        openCanvas({ kind: 'checkout', orderId: data.orderId, payment: { clientSecret: data.clientSecret, publishableKey: data.publishableKey } });
+        return;
+      }
+      if (inPanel && data?.success && data?.status === 'paid' && data?.orderId) {
+        // No payment provider is switched on for this shop (a demo or a credit account): the order stands as placed.
+        dispatch({ type: 'SET_ORDERING', ordering: false });
+        try {
+          const done = await (await fetch(`/api/order?orderId=${encodeURIComponent(data.orderId)}&${window.location.search.slice(1)}`, { cache: 'no-store' })).json();
+          if (done?.found) dispatch({ type: 'SET_PLACED_ORDER', order: done });
+        } catch { /* the order still opens below */ }
+        openCanvas({ kind: 'order', orderId: data.orderId });
+        return;
+      }
       if (data?.success && data?.checkoutUrl) {
         window.location.href = data.checkoutUrl; // hosted Stripe Checkout (PCI stays with Stripe)
         return;
@@ -798,7 +823,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     } catch {
       dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Network error starting checkout. Please try again.' });
     }
-  }, []);
+  }, [cfg.payment, dispatch]);
 
   const handleTryRemove = useCallback(() => {
     dispatch({
@@ -848,6 +873,21 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, dispatch]);
 
+  // The last look before payment (see lib/cards/reviewEvent.ts): asked once per order; the card's own button goes on to payment.
+  const reviewedRef = useRef<string>('');
+  const requestCheckout = useCallback(() => {
+    const quote = stateRef.current.serverQuote;
+    const fingerprint = reviewFingerprint(quote?.lines as any, stateRef.current.selectedBranch);
+    const event = cfg.checkoutReview && quote && reviewedRef.current !== fingerprint
+      ? buildReviewEvent(quote.lines as any, { id: stateRef.current.selectedBranch, name: stateRef.current.selectedBranchName })
+      : null;
+    const send = typeof window !== 'undefined' ? (window as any).__journeySendEvent : undefined;
+    if (!event || typeof send !== 'function') { void handleApprove(); return; }
+    reviewedRef.current = fingerprint;
+    setCartOpen(false);
+    send(event);
+  }, [cfg.checkoutReview, handleApprove]);
+
   return (
     <JourneyContext.Provider
       value={{
@@ -858,6 +898,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         quoteTitle,
         isDynamicClarifyComplete,
         handleApprove,
+        requestCheckout,
         handleRestart,
         handleTryRemove,
         addToCart,

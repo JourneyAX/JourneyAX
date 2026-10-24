@@ -73,6 +73,9 @@ export const CatalogMappingSchema = z.object({
   /** Branches holding the product, and the branches asked, for an availability line. */
   branchAvailablePaths: Paths.optional(),
   branchTotalPaths: Paths.optional(),
+  /** A flag that is true when the product can only be collected, and the list of ways it can be fulfilled (codes the tenant words in its own labels). */
+  pickupOnlyPaths: Paths.optional(),
+  deliveryOptionPaths: Paths.optional(),
   candidateLimit: z.number().int().min(1).max(1000).optional(),
   /** Which catalogue categories may fill which planner component categories (publication-time integrity). */
   componentCategoryRules: z.record(z.string().min(1), ComponentCategoryRuleSchema).optional(),
@@ -108,6 +111,8 @@ export interface ResolvedCatalogMapping {
   ratingCountPaths: string[];
   branchAvailablePaths: string[];
   branchTotalPaths: string[];
+  pickupOnlyPaths: string[];
+  deliveryOptionPaths: string[];
   candidateLimit: number;
   componentCategoryRules: Record<string, { allow?: string[]; deny?: string[] }>;
 }
@@ -231,6 +236,10 @@ export interface NormalizedCatalogProduct {
   ratingCount?: number;
   branchesAvailable?: number;
   branchesTotal?: number;
+  /** True when the record says the product can only be collected. Undefined when the record does not say. */
+  pickupOnly?: boolean;
+  /** The ways the record says the product can be fulfilled, as the record writes them (empty when it lists none). */
+  deliveryOptions: string[];
   /** The product's shelf, from the broadest group down to the one it sits in (empty when the record carries none). */
   categoryTrail: string[];
   /** SKUs the shop itself suggests with this product (empty when the record carries none). */
@@ -335,6 +344,8 @@ export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMappin
     ratingCount: firstNumber(doc, mapping.ratingCountPaths),
     branchesAvailable: firstNumber(doc, mapping.branchAvailablePaths),
     branchesTotal: firstNumber(doc, mapping.branchTotalPaths),
+    pickupOnly: (() => { const value = firstValue(doc, mapping.pickupOnlyPaths); return typeof value === 'boolean' ? value : undefined; })(),
+    deliveryOptions: (() => { const value = firstValue(doc, mapping.deliveryOptionPaths); return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0).map((entry) => entry.trim()).slice(0, 8) : []; })(),
     categoryTrail: categoryTrailOf(doc, mapping),
     accessorySkus: accessorySkusOf(doc, mapping),
   };
