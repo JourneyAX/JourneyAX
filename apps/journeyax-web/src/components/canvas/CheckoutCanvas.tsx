@@ -53,6 +53,8 @@ export default function CheckoutCanvas({ orderId, payment }: { orderId: string; 
           if (data?.found && data.status === 'paid') {
             // The journey now knows the order is paid (it tells the consultant and shows the order card); the order opens here.
             dispatch({ type: 'SET_PLACED_ORDER', order: data });
+            // The order is placed: the cart is empty for the next one.
+            dispatch({ type: 'CLEAR_QUOTE' });
             openCanvas({ kind: 'order', orderId });
             return;
           }

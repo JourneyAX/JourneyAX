@@ -146,3 +146,18 @@ export const BrandThemeSchema = z.object({
   canvasHeader: HexColour.optional(),
   canvasHeaderText: HexColour.optional(),
 }).strict();
+
+/**
+ * Tenant phrase swaps for the consultant's voice (pack `extensions.voice`): a model that is told to speak as the shop's own team still
+ * sometimes writes about the shop in the third person ("the shop's page says"). Each rule is a pattern and what replaces it ("our page
+ * says"); only the words matched are swapped, and nothing is added. The shop's own wording, never the platform's.
+ */
+export const VoiceSchema = z.object({
+  rewrites: z.array(z.object({
+    pattern: z.string().min(1).max(200),
+    replacement: z.string().max(80),
+    flags: z.enum(['', 'i']).optional(),
+  }).strict().superRefine((rule, ctx) => {
+    try { new RegExp(rule.pattern, `${rule.flags ?? ''}g`); } catch { ctx.addIssue({ code: 'custom', message: `"${rule.pattern}" is not a valid pattern` }); }
+  })).max(40),
+}).strict();

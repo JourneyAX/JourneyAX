@@ -25,7 +25,7 @@ export async function GET(req: Request) {
       }
       return await handleConfigFailure(PROJECT_ID);
     }
-    const p: any = await res.json();
+    const p: any = withPreviewDraft(await res.json());
     return json({
       projectId: p.projectId || PROJECT_ID,
       companyName: p.companyName || 'JourneyAX',
@@ -209,6 +209,30 @@ function withBrandTheme(uiTheme: any, brand: any) {
   const picked: Record<string, string> = {};
   for (const key of BRAND_KEYS) if (typeof brand?.[key] === 'string' && /^#[0-9A-Fa-f]{6}$/.test(brand[key])) picked[key] = brand[key];
   if (Object.keys(picked).length === 0) return uiTheme;
+  // The cards' main buttons (and the older storefront buttons that follow the same brand token) take the shop's button colour too.
+  if (picked.action) { picked.brand = picked.action; if (picked.actionText) picked.brandText = picked.actionText; }
+  if (picked.link) picked.accent = picked.link;
   const tokens = uiTheme?.tokens && typeof uiTheme.tokens === 'object' ? uiTheme.tokens : {};
   return { ...(uiTheme || {}), tokens: { ...tokens, colors: { ...(tokens.colors && typeof tokens.colors === 'object' ? tokens.colors : {}), ...picked } } };
+}
+
+/**
+ * Preview only: when the preview launcher names a draft (PREVIEW_DRAFT), its storefront settings (extensions checkoutReview, payment,
+ * brandTheme) are laid over the project's own, in this response only, so a draft can be tried before it is published. Without that
+ * variable (every real deployment) the project is returned as it is.
+ */
+function withPreviewDraft(project: any) {
+  const file = process.env.PREVIEW_DRAFT;
+  if (!file) return project;
+  try {
+    const { readFileSync } = require('node:fs');
+    const path = require('node:path');
+    const draft = JSON.parse(readFileSync(path.resolve(process.cwd(), '../..', file), 'utf8'));
+    const keep = ['checkoutReview', 'payment', 'brandTheme'];
+    const extensions = { ...(project?.extensions || {}) };
+    for (const key of keep) if (draft?.extensions?.[key]) extensions[key] = draft.extensions[key];
+    return { ...project, extensions };
+  } catch {
+    return project;
+  }
 }

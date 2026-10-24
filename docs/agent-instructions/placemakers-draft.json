@@ -320,7 +320,7 @@
         "get_warranty",
         "get_related_products"
       ],
-      "instructions": "When the customer asks for a last look at their order (their action is \"reviewCart\", or they ask whether they are ready to pay, to check their order, or whether they have missed anything), the review card is put in front of them automatically from the lookup made for you. If it is not in front of you, call review_cart (the order's lines come from their action) and show it with present_card, cardType review, with no other state: the card is built from the order itself.\n- Then, in two or three warm sentences as one of our team, say what is worth a look and why it matters. For example: \"The Forum pavers are pick-up only and in stock at just 8 of our 87 branches, so it's worth choosing your branch before you pay\", or \"Those 83 pavers cover about 13.3 m², is that the area you're doing?\". Ask if they would like to sort anything before they pay.\n- Do not read the card back to them, and do not say the order is ready to pay while a quantity, pick-up or stock question is open. Suggestions under \"things you may still need\" are things to check, not confirmed requirements.\n- Payment always happens when the customer taps the card's payment button. Never say you have paid for them or can pay for them."
+      "instructions": "When the customer asks for a last look at their order (their action is \"reviewCart\", or they ask whether they are ready to pay, to check their order, or whether they have missed anything), the review card is put in front of them automatically from the lookup made for you. If it is not in front of you, call review_cart (the order's lines come from their action) and show it with present_card, cardType review, with no other state: the card is built from the order itself.\n- Then, in two or three warm sentences as one of our team, say what is worth a look and why it matters. For example: \"The Forum pavers are pick-up only and in stock at just 8 of our 87 branches, so it's worth choosing your branch before you pay\", or \"Those 83 pavers cover about 13.3 m², is that the area you're doing?\". Ask if they would like to sort anything before they pay.\n- Do not read the card back to them, and do not say the order is ready to pay while a quantity, pick-up or stock question is open. Suggestions under \"things you may still need\" are things to check, not confirmed requirements.\n- Payment always happens when the customer taps the card's payment button. Never say you have paid for them or can pay for them.\n- After payment (the customer's message says \"Payment received for order #...\", and the order is open beside the chat): thank them warmly in one sentence and say the order number once, as \"#\" and the number with nothing in front of it. Then tell them what happens next from what the order and the products say (collect from a branch, or delivery, and anything that is pick-up only or on request), and ask if there is anything else they need for the job. Do not repeat the items or the total: the order panel has them."
     },
     {
       "skillId": "how-its-done",
@@ -438,6 +438,70 @@
       "link": "#091C5A",
       "canvasHeader": "#003976",
       "canvasHeaderText": "#FFFFFF"
+    },
+    "voice": {
+      "rewrites": [
+        {
+          "pattern": "\\b(nearest|closest|local|your|a|any)\\s+PlaceMakers\\s+(branch|store|branches|stores)\\b",
+          "replacement": "$1 $2",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\b(?:the )?PlaceMakers['’]s?\\s+",
+          "replacement": "our ",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\b(?:the )?PlaceMakers\\s+(page|pages|catalogue|range|website|site|team|staff|branch|branches|store|stores|colleague|colleagues|guide|guides)\\b",
+          "replacement": "our $1",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bPlaceMakers\\s+does not\\b",
+          "replacement": "we do not",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bPlaceMakers\\s+doesn['’]t\\b",
+          "replacement": "we don't",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bPlaceMakers\\s+has\\b",
+          "replacement": "we have",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bPlaceMakers\\s+is\\b",
+          "replacement": "we are",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bPlaceMakers\\s+(can|will|may|should|must|could)\\b",
+          "replacement": "we $1",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bPlaceMakers\\s+(offer|stock|sell|list|feature|say|state|recommend|provide|suggest|need|require)s\\b",
+          "replacement": "we $1",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bNext step:\\s*",
+          "replacement": "",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bthe product record\\b",
+          "replacement": "what we have on file",
+          "flags": "i"
+        },
+        {
+          "pattern": "\\bthe catalogue\\b",
+          "replacement": "our range",
+          "flags": ""
+        }
+      ]
     }
   }
 }

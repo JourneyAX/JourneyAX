@@ -190,6 +190,7 @@ export class IncrementalSentenceShaper {
   private streamedText = '';
   private compiledShape: CompiledShapeContext;
   private questionsSeen = 0;
+  private readonly voiceRules: Array<{ pattern: RegExp; replacement: string }>;
 
   constructor(
     shapeContext: ShapeContext,
@@ -199,6 +200,7 @@ export class IncrementalSentenceShaper {
     private readonly packOrOptions?: any
   ) {
     this.compiledShape = compileShapeContext(shapeContext);
+    this.voiceRules = compileVoiceRules(packOrOptions?.extensions?.voice?.rewrites);
   }
 
   updateAllowedClaims(claims: ClaimClass[] | Set<ClaimClass>): void {
@@ -237,6 +239,7 @@ export class IncrementalSentenceShaper {
       sentence = sentence.replace(/^"+|"+$/g, '').trim();
     }
     if (!sentence) return;
+    sentence = applyVoiceRules(sentence, this.voiceRules);
 
     if (this.isOkfRelease) {
       const allowed = this.allowedClaims instanceof Set ? Array.from(this.allowedClaims) : this.allowedClaims;
@@ -278,5 +281,23 @@ export class IncrementalSentenceShaper {
   }
 }
 
+/** The shop's own phrase swaps (pack `extensions.voice.rewrites`), compiled once; a rule that does not compile is left out. */
+export function compileVoiceRules(rules: unknown): Array<{ pattern: RegExp; replacement: string }> {
+  if (!Array.isArray(rules)) return [];
+  const out: Array<{ pattern: RegExp; replacement: string }> = [];
+  for (const rule of rules.slice(0, 40)) {
+    if (!rule || typeof rule.pattern !== 'string' || typeof rule.replacement !== 'string') continue;
+    try { out.push({ pattern: new RegExp(rule.pattern, `${rule.flags === 'i' ? 'i' : ''}g`), replacement: rule.replacement }); } catch { /* not a pattern */ }
+  }
+  return out;
+}
 
-
+/** Swaps only the words a rule matches; a sentence that began with a capital still does. */
+export function applyVoiceRules(sentence: string, rules: Array<{ pattern: RegExp; replacement: string }>): string {
+  if (rules.length === 0) return sentence;
+  let text = sentence;
+  for (const rule of rules) text = text.replace(rule.pattern, rule.replacement);
+  text = text.replace(/\s{2,}/g, ' ').trim();
+  if (text && /^[A-Z]/.test(sentence) && /^[a-z]/.test(text)) text = text.charAt(0).toUpperCase() + text.slice(1);
+  return text || sentence;
+}

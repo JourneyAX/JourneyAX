@@ -35,7 +35,7 @@ case "${1:-status}" in
       run commerce npx tsx --tsconfig tests/public-path/tsconfig.json --env-file=.env apps/agent-commerce-service/src/main.ts
     PORT=$GATEWAY_PORT AGENT_SERVICE_URL="http://localhost:$COMMERCE_PORT" JOURNEY_RUNTIME_SERVICE_URL="http://localhost:$RUNTIME_PORT" \
       run gateway npx tsx --tsconfig tests/public-path/tsconfig.json --env-file=.env apps/api-gateway/src/main.ts
-    ( cd apps/journeyax-web && NEXT_DIST_DIR=.next-preview GATEWAY_URL="http://localhost:$GATEWAY_PORT" JOURNEY_RUNTIME_URL="http://localhost:$RUNTIME_PORT" \
+    ( cd apps/journeyax-web && PREVIEW_DRAFT="$DRAFT" NEXT_DIST_DIR=.next-preview GATEWAY_URL="http://localhost:$GATEWAY_PORT" JOURNEY_RUNTIME_URL="http://localhost:$RUNTIME_PORT" \
         nohup npx next dev -p $WEB_PORT >"../../$DIR/web.log" 2>&1 & echo $! >"../../$DIR/web.pid" )
     echo "started web (pid $(cat "$DIR/web.pid"))"
     echo "Preview storefront: http://localhost:$WEB_PORT/?project=$TENANT   (logs in $DIR/)"

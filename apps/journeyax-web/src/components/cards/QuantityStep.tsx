@@ -4,9 +4,10 @@
  * Asks how many before anything is added: a stepper with a typed number, "Add N", and a way to have the consultant work the
  * number out from the customer's area. The words are the storefront's own (config labels, with neutral defaults).
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import { deriveShellTheme } from '@/lib/shell/theme';
 import { MAX_QUANTITY, clampQuantity, closeQuantityStep, useQuantityRequest } from '@/lib/cards/quantityStep';
 
 const DEFAULT_LABELS = {
@@ -31,6 +32,11 @@ function QuantityDialog() {
   const request = useQuantityRequest()!;
   const cfg = useStorefrontConfig() as any;
   const labels = { ...DEFAULT_LABELS, ...(cfg?.labels?.quantityStep || {}) };
+  // This dialog is mounted in the page itself, outside the shell that carries the shop's colours, so it takes them from the same place.
+  const tenant = deriveShellTheme(cfg).vars;
+  const colours = tenant['--ax-accent-tenant']
+    ? ({ '--ax-accent': tenant['--ax-accent-tenant'], '--ax-accent-ink': tenant['--ax-accent-ink-tenant'] || '#FFFFFF', '--ax-link-tenant': tenant['--ax-link-tenant'] || tenant['--ax-accent-tenant'] } as React.CSSProperties)
+    : undefined;
   const [quantity, setQuantity] = useState(request.initial);
   const [typed, setTyped] = useState(String(request.initial));
   const inputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +55,7 @@ function QuantityDialog() {
   const workItOut = () => { closeQuantityStep(); request.onWorkItOut(); };
 
   return (
-    <div className="qty-step" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeQuantityStep(); }}>
+    <div className="qty-step" style={colours} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeQuantityStep(); }}>
       <form className="qty-step__panel" role="dialog" aria-modal="true" aria-labelledby={titleId} onSubmit={(event) => { event.preventDefault(); confirm(); }}>
         <div className="qty-step__item">
           {request.imageUrl ? (

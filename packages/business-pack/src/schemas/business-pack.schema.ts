@@ -11,7 +11,7 @@ import { CapabilityBindingsCollectionSchema } from './capability-binding.schema'
 import { ExperienceSchema } from './experience.schema';
 import { EvaluationSuiteSchema } from './evaluation.schema';
 import { SpacePlannerExtensionSchema } from './space-planner.schema';
-import { SkillDefinitionSchema, QuantityHelperSchema, VisualiserSchema, EventPrefetchSchema, ProductGuidesSchema, ContentPagesSchema, CheckoutReviewSchema, PaymentSchema, BrandThemeSchema } from './skill.schema';
+import { SkillDefinitionSchema, QuantityHelperSchema, VisualiserSchema, EventPrefetchSchema, ProductGuidesSchema, ContentPagesSchema, CheckoutReviewSchema, PaymentSchema, BrandThemeSchema, VoiceSchema } from './skill.schema';
 import { CalculatorDefinitionSchema } from './calculator.schema';
 import { CatalogMappingSchema } from '../catalog-mapping';
 
@@ -248,6 +248,7 @@ export const BusinessPackContentSchema = z.object({
       checkoutReview: CheckoutReviewSchema.optional(),
       payment: PaymentSchema.optional(),
       brandTheme: BrandThemeSchema.optional(),
+      voice: VoiceSchema.optional(),
     })
     .catchall(z.any()),
   factRegistry: FactRegistrySchema.optional(),

@@ -13,7 +13,7 @@ import {
 } from '@/lib/cards/mappers';
 import { activeSessionId } from '@/lib/conversations';
 import { buildReviewEvent, reviewFingerprint } from '@/lib/cards/reviewEvent';
-import { openCanvas } from '@/lib/shell/sidePanelStore';
+import { closeCanvas, openCanvas } from '@/lib/shell/sidePanelStore';
 
 type Action =
   | { type: 'SET_PHASE'; phase: Phase }
@@ -885,6 +885,8 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     if (!event || typeof send !== 'function') { void handleApprove(); return; }
     reviewedRef.current = fingerprint;
     setCartOpen(false);
+    // The cart panel steps aside so the review can be read in the conversation.
+    closeCanvas();
     send(event);
   }, [cfg.checkoutReview, handleApprove]);
 

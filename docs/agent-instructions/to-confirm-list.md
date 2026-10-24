@@ -98,3 +98,15 @@ Pack data `extensions.contentPages` and skills `read-the-shops-pages` and `speak
 | Claim classes our own pages may support (`unlocks`) | `installation_step`, `care_safety`, `safety_instruction`, `requirement`, `compatibility`, `legal_requirement` | `legal_requirement` is on so the consultant can pass on what our H1 / compliance pages say ("our page says the Building Code allows ..."); the skill makes it say it is general information and to confirm with the council, designer or a licensed building practitioner, and never to say a building "complies" on its own judgement. Take `legal_requirement` out of the list if you do not want the consultant to relay compliance wording at all. |
 | Voice | the consultant speaks as the team ("we", "our range", "our page on ..."), reacts warmly to a tapped answer, says it looked and offers the closest thing when something is not found, never writes "Next step:" | Wording of the skill `speak-as-the-team`: edit freely, it is plain text in the draft. |
 | What is on the pages | 561 pages with text: 111 project pages, about 80 "Plan your space" pages, 55 outdoor-landscaping pages, 30 timber pages, 27 trade pages (E-Tools, TradeApp, TradePortal), 8 loyalty-terms pages; 190 pages list 1,293 product links (522 of the 534 distinct products are in the catalogue today) | Whether builder profile pages and promo-terms pages should be readable by the consultant (they are today). |
+
+---
+
+## 9. Paying, panels and colours (2026-10-24)
+
+| Setting | Value now | What to confirm |
+|---|---|---|
+| Pay inside the side panel (`extensions.payment`) | embedded on, delivery address asked for, New Zealand only | Whether PlaceMakers wants the delivery address collected in the payment form (it feeds the order's Shipping), and the countries. The Stripe account in `.env` is a TEST account today ("Test mode", account name "Team kit"): the live account's name and branding come from Stripe's dashboard. |
+| Last look before paying (`extensions.checkoutReview`) | on; delivery words: Courier delivery, Standard delivery, Click & Collect; up to 4 extras | The wording, and whether the last look should be skipped for small orders. |
+| Button colours (`extensions.brandTheme`) | buttons #A52E80 (white text), links #091C5A, panel header #003976, taken from the PlaceMakers website | Confirm these are the colours PlaceMakers wants on its buttons; the website itself uses a teal (#6BBBAE) for secondary buttons. |
+| Consultant voice (`extensions.voice`) | swaps "PlaceMakers' page/range/team" for "our ...", "PlaceMakers has/does not/can" for "we ...", drops the "Next step:" label | The list of swaps is shop data: add or remove as you hear replies. |
+| Orders without a price | products with no price in the data (for example the Forum pavers) cannot be paid for | Prices for these products, or a "request a quote" route. |

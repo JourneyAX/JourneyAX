@@ -34,6 +34,17 @@ PackRepository.prototype.loadActivePack = async function patched(this: PackRepos
   if (stamp) Object.defineProperty(overlaid, VERIFIED_RELEASE_METADATA, { value: stamp, enumerable: false, configurable: false, writable: false });
   return overlaid;
 };
+// A conversation that already started is pinned to the release it began on and loads that release by version, not as "the active
+// pack". The draft goes over those too, so a follow-up turn in the preview behaves like the first one.
+const originalPinned = PackRepository.prototype.loadPinnedPack;
+PackRepository.prototype.loadPinnedPack = async function patchedPinned(this: PackRepository, ...args: Parameters<typeof originalPinned>) {
+  const pinned: any = await originalPinned.apply(this, args);
+  if (!pinned || String(args[0]).toLowerCase() !== tenant) return pinned;
+  const overlaid: any = overlayDraft(pinned, draft);
+  const stamp = pinned[VERIFIED_RELEASE_METADATA];
+  if (stamp) Object.defineProperty(overlaid, VERIFIED_RELEASE_METADATA, { value: stamp, enumerable: false, configurable: false, writable: false });
+  return overlaid;
+};
 console.log(`[preview-runtime] tenant '${tenant}' runs the draft ${draftPath} over its live pack (in memory only).`);
 
 // Started after the patch so every pack load goes through it.

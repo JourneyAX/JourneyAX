@@ -223,11 +223,14 @@ export class JourneyAXController {
     if (!pricing?.currency) {
       throw new HttpException(`Pricing configuration is required for tenant "${tenantId}" - failing closed`, HttpStatus.BAD_REQUEST);
     }
+    // A quote nobody titled is the shop's own order ("PlaceMakers order"), not a leftover name from another shop's kit.
+    const shop: any = body?.title ? null : await this.configLoader.loadProjectConfig(tenantId).catch(() => null);
+    const shopName = String(shop?.companyName || '').replace(/\(.*?\)/g, '').trim();
     const quote = await this.quoteService.build({
       tenantId,
       sessionId: body?.sessionId,
       idempotencyKey,
-      title: body?.title || 'Team kit',
+      title: body?.title || (shopName ? `${shopName} order` : 'Your order'),
       items,
       roomType: (body as any)?.roomType,
       plannerContext: (body as any)?.plannerContext,

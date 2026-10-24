@@ -75,7 +75,7 @@ function parseBold(text: string) {
       const orderId = match[6] || orderIdForRef(match[7]);
       if (orderId) {
         rememberOrder(orderId);
-        parts.push(<button key={match.index} type="button" className="msg__link msg__link--btn" onClick={() => openCanvas({ kind: 'order', orderId })}>{`Order #${orderRef(orderId)}`}</button>);
+        parts.push(<button key={match.index} type="button" className="msg__link msg__link--btn" onClick={() => openCanvas({ kind: 'order', orderId })}>{`#${orderRef(orderId)}`}</button>);
       } else {
         parts.push(match[0]);
       }
