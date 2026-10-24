@@ -11,6 +11,7 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { type Conversation, deleteConversation, listConversations, setActiveConversation } from '@/lib/conversations';
 import { startConversation } from '@/lib/shell/conversationNav';
 import { shellHref } from '@/lib/shell/nav';
+import { setPendingAgent } from '@/lib/shell/pendingAgent';
 
 export function useConversationNav() {
   const { projectId } = useStorefrontConfig();
@@ -21,8 +22,10 @@ export function useConversationNav() {
 
   const goToChat = useCallback(() => { router.push(shellHref('/', window.location.search)); }, [router]);
 
-  const newChat = useCallback(() => {
+  const newChat = useCallback((agentId?: string) => {
     startConversation(projectId);
+    // A chat started with Try on an agent opens talking to that agent.
+    setPendingAgent(typeof agentId === 'string' ? agentId : undefined);
     goToChat();
   }, [projectId, goToChat]);
 

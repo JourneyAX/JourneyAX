@@ -32,6 +32,7 @@ import { deriveJourneyChecklist } from './journey-checklist';
 import { browseRange, exampleOrder, goesWithForTrail, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
 import { summariseOptions } from './option-facets';
+import { normaliseCardState } from './card-state';
 import { areaToSquareMetres, estimateQuantity, type QuantityHelperConfig, type QuantityEstimate } from './quantity-estimate';
 import { generateVisual, type VisualiserConfig } from './visual-generator';
 import type { LastProducts } from './auto-card';
@@ -144,6 +145,13 @@ export function skuFromEvent(asked: string, event: any): string {
   const titles: string[] = (Array.isArray(payload.titles) ? payload.titles : [payload.title]).map((title: unknown) => String(title ?? '').trim().toLowerCase());
   const at = titles.indexOf(String(asked || '').trim().toLowerCase());
   return at >= 0 && skus[at] ? skus[at] : asked;
+}
+
+/** The SKUs a customer's card tap names (one SKU, a list, or the lines of an add-all). */
+export function eventSkus(event: any): string[] {
+  const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
+  const lines: any[] = Array.isArray(payload.items) ? payload.items : [];
+  return [...new Set([payload.sku, ...(Array.isArray(payload.skus) ? payload.skus : []), ...lines.map((line) => line?.sku)].filter((value) => typeof value === 'string' && value.trim()).map((value: string) => value.trim()))];
 }
 
 export function hashPayload(val: unknown): string {
@@ -636,7 +644,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         state: {
           type: 'object',
           description:
-            'The card state data matching the card type schema. For a clarify card the state is {"questions":[{"id":"a short key","text":"the question in plain words",' +
+            'The card state data matching the card type schema. products: {"products":[{"sku":"...","reason":"why it fits"}]}. accessories: {"forSku":"...","heading":"...","groups":[{"key":"short-key","label":"group name","hint":"what it is for","items":[{"sku":"..."}]}]}. quantity: {"product":{"sku":"..."}} (the number and working are filled in from estimate_quantity). visual: {"caption":"..."} (the picture is filled in from generate_visual). For a clarify card the state is {"questions":[{"id":"a short key","text":"the question in plain words",' +
             '"options":["a tappable choice","another choice"],"inputType":"single_select" | "multi_select" | "number" | "text","unit":"shown beside a number"}]} ' +
             'with at most three questions; leave options out for a number or text question, and give a unit for a number. The customer taps or types the answers, and they come back to you together as one message.',
         },
@@ -1831,7 +1839,7 @@ export async function executeAgentTool(
         };
       }
 
-      const state = (args.state && typeof args.state === 'object') ? { ...args.state } : {};
+      const state: any = normaliseCardState(cardType, args.state);
 
       // 1. Collect all product SKUs referenced in the card state
       const referencedSkus: string[] = [];
@@ -1906,6 +1914,12 @@ export async function executeAgentTool(
             };
           }
         }
+      }
+
+      // A product the customer's own tap named (the item they added, opened or ticked) is a verified product: look it up so its
+      // facts are the catalogue's, and it can sit on a card this turn without the model having to search for it first.
+      for (const sku of eventSkus(ctx.customerEvent)) {
+        if (referencedSkus.includes(sku) && !ctx.turnProductSkus.has(sku)) await findProductBySku(ctx, sku);
       }
 
       // 3. SKU Provenance & Lifecycle Verification: Every product SKU must have been returned by a tool result and not discontinued

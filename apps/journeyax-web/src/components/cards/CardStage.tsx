@@ -11,7 +11,7 @@
  * `<CardTile>`. `useCardActions` (the action → behaviour switch) is unchanged
  * and shared by every `<CardTile>` instance.
  */
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { CardRenderer } from '@journeyax/ui-cards/react';
 import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
@@ -22,6 +22,7 @@ import { buildDetailProduct, fetchProductDetail } from '@/lib/cards/productDetai
 import { MAX_COMPARE, clearCompare, getCompareSelection, toggleCompare, useCompareSelection } from '@/lib/cards/compareStore';
 import { decorateProductRows } from '@/lib/cards/productTiles';
 import { buildComparisonCard, toCompareSource } from '@/lib/cards/comparison';
+import { requestQuantity } from '@/lib/cards/quantityStep';
 import type { CardInstance } from '@/lib/types';
 import { openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
 
@@ -101,8 +102,10 @@ export function useCardActions() {
   closingRef.current = cfg.commerceMode === 'cart' ? 'bag' : 'quote';
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
+  // The quantity step calls back into this same handler once the customer has chosen a number.
+  const selfRef = useRef<((name: string, params?: Record<string, unknown>) => void) | null>(null);
 
-  return useCallback((name: string, params?: Record<string, unknown>) => {
+  const handler = useCallback((name: string, params?: Record<string, unknown>) => {
     const state = stateRef.current;
     const closing = closingRef.current;
     const w = typeof window !== 'undefined' ? (window as any) : {};
@@ -315,6 +318,21 @@ export function useCardActions() {
         const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
         const name = title || p?.name || (p as any)?.title || sku;
 
+        // Nothing is added blindly: the customer says how many first (or asks for help working it out from their area).
+        // A tap that already carries a confirmed number (the quantity card's own button) goes straight through.
+        if (params?.confirmed !== true) {
+          requestQuantity({
+            sku,
+            title: name,
+            imageUrl: (p as any)?.imageUrl ?? null,
+            price: (p as any)?.price ?? null,
+            initial: qty,
+            onConfirm: (chosen) => selfRef.current?.('addToCart', { ...params, sku, title: name, qty: chosen, confirmed: true }),
+            onWorkItOut: () => w.__journeySend?.(String((cfgRef.current as any)?.labels?.quantityHelpMessage || 'Help me work out how many I need of') + ` ${name}`),
+          });
+          break;
+        }
+
         const cardId = params?.cardId ? String(params.cardId) : undefined;
         postCustomerEvent({
           type: 'addToCart',
@@ -336,12 +354,8 @@ export function useCardActions() {
         // Await authoritative quote pricing then open drawer and confirm in conversation
         (async () => {
           await addToCart(sku, qty, title, p);
+          // The list opens as the confirmation; the consultant's reply (its own turn) says what goes with it.
           setCartOpen(true);
-          dispatch({
-            type: 'ADD_MESSAGE',
-            role: 'ai',
-            text: `Added **${name}** (SKU ${sku}) to your ${closing}. You can review your materials list, adjust quantities, or check branch stock in the panel on the right, or let me know what other materials you need!`,
-          });
         })();
         break;
       }
@@ -445,6 +459,8 @@ export function useCardActions() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, handleApprove, addToCart, removeFromCart, setQuantity, setCartOpen]);
+  useEffect(() => { selfRef.current = handler; }, [handler]);
+  return handler;
 }
 
 /** Every card list keyed by SKU (products, bundle items, quote lines, order

@@ -249,6 +249,8 @@ export interface CustomerEvent {
 
 export interface TurnCommand {
   tenantId: string;
+  /** The agent the customer chose to talk to; the router honours it only when the pack defines that agent. */
+  agentId?: string;
   environmentId: EnvironmentId;
   workspaceId: string;
   sessionId: string;

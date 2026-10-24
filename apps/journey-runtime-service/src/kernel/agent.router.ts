@@ -13,10 +13,22 @@ export class AgentRouter {
   /**
    * Resolves the primary specialist agent for the current workspace stage.
    */
-  resolveAgent(release: BusinessPackRelease, workspace: WorkspaceState): ResolvedAgent {
+  resolveAgent(release: BusinessPackRelease, workspace: WorkspaceState, requestedAgentId?: string): ResolvedAgent {
     const agents = release.agents || [];
     if (agents.length === 0) {
       throw new Error(`Business Pack '${release.manifest.packId}' declares no agents.`);
+    }
+
+    // The agent the customer chose to talk to wins, but only if this tenant's pack defines it; any other id is ignored.
+    const chosen = requestedAgentId ? agents.find((a) => a.agentId === requestedAgentId) : undefined;
+    if (chosen) {
+      return {
+        agent: chosen,
+        systemPrompt: chosen.systemPromptTemplate || chosen.purpose,
+        modelPolicyRef: chosen.modelPolicyRef,
+        allowedTools: chosen.allowedTools || [],
+        toolFirst: Boolean((chosen as any)?.toolFirst),
+      };
     }
 
     const activeJourney =

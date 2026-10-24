@@ -35,6 +35,8 @@ export const TurnCommandRequestSchema = z.object({
     .optional(),
   customerEvent: CustomerEventRequestSchema.optional(),
   customer_event: CustomerEventRequestSchema.optional(),
+  /** The agent the customer chose; ignored unless the tenant's pack defines it. */
+  agentId: z.string().max(80).regex(/^[A-Za-z0-9_.-]+$/).optional(),
   inputFacts: z.record(z.string(), z.any()).optional(),
   customerContext: z.record(z.string(), z.any()).optional(),
   approvalRequestId: z.string().optional(),

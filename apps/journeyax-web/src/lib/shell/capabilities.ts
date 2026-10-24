@@ -1,9 +1,8 @@
 /**
- * What the chat request can carry today. The turn endpoint (`/api/chat/stream` → commerce service → runtime) accepts no agent
- * id: the runtime's agent router picks the agent for each message from the pack. Until that changes, the composer's agent chip
- * is read-only (it names the agent that answered, or the default one) and "Try" on an agent only starts a fresh chat.
+ * What the chat request can carry. The turn endpoint (`/api/chat/stream` → commerce service → runtime) accepts an `agentId`:
+ * the runtime's agent router answers with that agent when the tenant's pack defines it, and ignores any other id. So the
+ * composer's agent chip is a picker, the chosen id is sent with each turn, and "Try" on an agent starts a chat with it.
  *
- * When the runtime starts honouring an `agentId` on the turn request, flip this to true: the chip becomes a picker and the
- * chosen id is sent with each turn (ChatPanel adds `agentId` to the request body only when this is true).
+ * Set this to false to fall back to the older behaviour (the router chooses for each message, the chip only names who answered).
  */
-export const CHAT_REQUEST_ACCEPTS_AGENT_ID = false;
+export const CHAT_REQUEST_ACCEPTS_AGENT_ID = true;

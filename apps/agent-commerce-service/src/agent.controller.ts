@@ -300,6 +300,8 @@ export class JourneyAXController {
       /** What the customer did on a card (view, compare, add): the agent is told the action itself, not only the line the thread shows. */
       customerEvent?: unknown;
       customer_event?: unknown;
+      /** Which of the tenant's agents the customer chose to talk to (the runtime ignores an id the pack does not define). */
+      agentId?: string;
     }
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
@@ -329,6 +331,7 @@ export class JourneyAXController {
         environmentId: body.environmentId || body.environment,
         customerEvent: body.customerEvent,
         customer_event: body.customer_event,
+        agentId: body.agentId,
       });
 
       return result;
@@ -396,6 +399,8 @@ export class JourneyAXController {
       /** What the customer did on a card (view, compare, add): the agent is told the action itself, not only the line the thread shows. */
       customerEvent?: unknown;
       customer_event?: unknown;
+      /** Which of the tenant's agents the customer chose to talk to (the runtime ignores an id the pack does not define). */
+      agentId?: string;
     },
     @Res() res: Response,
   ) {
@@ -464,6 +469,7 @@ export class JourneyAXController {
           environmentId: body.environmentId || body.environment,
           customerEvent: body.customerEvent,
           customer_event: body.customer_event,
+          agentId: body.agentId,
         },
         emit,
       );

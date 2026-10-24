@@ -1466,7 +1466,7 @@ export class TurnApplicationService {
     let resolvedAgentInfo: any = null;
     if (release.agents && release.agents.length > 0) {
       try {
-        const resolved = this.agentRouter.resolveAgent(release, workspace);
+        const resolved = this.agentRouter.resolveAgent(release, workspace, (command as any)?.agentId);
         resolvedAgentInfo = {
           agentId: resolved.agent.agentId,
           name: resolved.agent.name,

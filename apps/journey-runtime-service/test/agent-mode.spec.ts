@@ -1555,6 +1555,20 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(!prompt.includes('Never shown.'), 'a skill the agent does not carry is not in its prompt');
     });
 
+    test('the agent the customer chose answers, but only if the pack defines it', () => {
+      const release: any = createTestPack();
+      release.agents = [
+        { ...release.agents[0], agentId: 'general', isDefault: true },
+        { ...release.agents[0], agentId: 'quotes', name: 'Quotes', systemPromptTemplate: 'You build quotes.', allowedTools: ['get_cart'] },
+      ];
+      const router = new AgentRouter();
+      assert.equal(router.resolveAgent(release, createTestWorkspace()).agent.agentId, 'general');
+      const chosen = router.resolveAgent(release, createTestWorkspace(), 'quotes');
+      assert.equal(chosen.agent.agentId, 'quotes');
+      assert.deepEqual(chosen.allowedTools, ['get_cart']);
+      assert.equal(router.resolveAgent(release, createTestWorkspace(), 'not-in-this-pack').agent.agentId, 'general', 'an id the pack does not define is ignored');
+    });
+
     test('an agent with no skills gets no skills block', () => {
       const release: any = createTestPack();
       const resolvedAgent = new AgentRouter().resolveAgent(release, createTestWorkspace());

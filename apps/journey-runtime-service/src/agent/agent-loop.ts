@@ -448,7 +448,7 @@ export class AgentTurnLoop {
 
     // 0. Resolve specialist agent from release.agents via AgentRouter
     const agentRouter = new AgentRouter();
-    const resolvedAgent = agentRouter.resolveAgent(release, workspace);
+    const resolvedAgent = agentRouter.resolveAgent(release, workspace, (command as any).agentId);
 
     // 1. Resolve pinned OKF release content for business profile and knowledge tools
     let okfContent: OkfReleaseContent | null = null;

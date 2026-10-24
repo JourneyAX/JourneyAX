@@ -22,12 +22,14 @@ import ProjectPanel from './ProjectPanel';
 import { uiActionToCards } from '@/lib/cards/uiActionToCards';
 import { CardTile, useCardActions } from './cards/CardStage';
 import CompareTray from './cards/CompareTray';
+import QuantityStepHost from './cards/QuantityStep';
 import type { CardInstance } from '@/lib/types';
 import { isPanelCardType } from '@/lib/shell/panelCards';
 import { closePanelCard, openPanelCard } from '@/lib/shell/sidePanelStore';
 import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
 import { resolveHero } from '@/lib/shell/greeting';
 import { CHAT_REQUEST_ACCEPTS_AGENT_ID } from '@/lib/shell/capabilities';
+import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
 
 /** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
@@ -67,6 +69,13 @@ const TOOL_TRACE_LABEL: Record<string, string> = {
   get_related_products: 'Checking what goes with it',
   search_guides: 'Looking up installation guidance',
   get_warranty: 'Checking warranty information',
+  explore_options: 'Seeing what the range comes in',
+  estimate_quantity: 'Working out how many you need',
+  generate_visual: 'Making a picture for you',
+  use_skill: 'Reading how best to help with this',
+  quantity_card: 'Showing how many to buy',
+  visual_card: 'Showing the picture',
+  accessories_card: 'Showing what goes with it',
   calculate_quantity: 'Working out how much you need',
   check_stock: 'Checking stock at your branch',
   present_card: 'Putting the options together',
@@ -358,6 +367,8 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   // Picker mode only: the agent the customer chose, sent with each turn once the chat request can carry one.
   const [pickedAgentId, setPickedAgentId] = useState('');
   useEffect(() => { pickedAgentRef.current = pickedAgentId; }, [pickedAgentId]);
+  // Arriving from "Try" on an agent in Customize: talk to that agent.
+  useEffect(() => { if (CHAT_REQUEST_ACCEPTS_AGENT_ID) { const pending = takePendingAgent(); if (pending) setPickedAgentId(pending); } }, []);
   // Panel cards the customer asked to see inline in the thread as well ("Show here").
   const [inlineCardIds, setInlineCardIds] = useState<Set<string>>(() => new Set());
   const panelEnabled = !embed;
@@ -1254,6 +1265,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
               </div>
             )}
             <CompareTray onCompare={(skus) => onCardAction('compareProducts', { skus })} />
+            <QuantityStepHost />
             <Composer
               value={prompt}
               onChange={setPrompt}

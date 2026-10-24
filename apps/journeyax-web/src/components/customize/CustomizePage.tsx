@@ -73,12 +73,12 @@ export default function CustomizePage({ embed }: { embed: boolean }) {
       onOpenConversation={nav.open}
       onDeleteConversation={nav.remove}
     >
-      <CustomizeContent onTry={nav.newChat} />
+      <CustomizeContent onTry={(agentId) => nav.newChat(agentId)} />
     </AppShell>
   );
 }
 
-function CustomizeContent({ onTry }: { onTry: () => void }) {
+function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const cfg = useStorefrontConfig();
   const { sidebarVisible, isMobile, toggleSidebar } = useShell();
   const { data, error, loading, reload } = useOverview();
@@ -289,7 +289,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /* ── Agents ──────────────────────────────────────────────────────────── */
 function AgentsTab({ scope, query, overview, drafts, by, onTry, onNew, onEdit, onDelete, onCopy }: {
   scope: Scope; query: string; overview: CustomizeOverview; drafts: AgentDraft[]; by: string;
-  onTry: () => void; onNew: () => void; onEdit: (d: AgentDraft) => void; onDelete: (d: AgentDraft) => void; onCopy: (d: AgentDraft) => void;
+  onTry: (agentId?: string) => void; onNew: () => void; onEdit: (d: AgentDraft) => void; onDelete: (d: AgentDraft) => void; onCopy: (d: AgentDraft) => void;
 }) {
   if (scope === 'discover') {
     return (
@@ -356,7 +356,7 @@ function AgentsTab({ scope, query, overview, drafts, by, onTry, onNew, onEdit, o
 }
 
 function PackAgentCard({ agent, by, onTry, connectorName, skillName }: {
-  agent: OverviewAgent; by: string; onTry: () => void; connectorName: (id: string) => string; skillName: (id: string) => string;
+  agent: OverviewAgent; by: string; onTry: (agentId?: string) => void; connectorName: (id: string) => string; skillName: (id: string) => string;
 }) {
   return (
     <Card
@@ -366,7 +366,7 @@ function PackAgentCard({ agent, by, onTry, connectorName, skillName }: {
         <span key="t" className="ax-tag">{plural(agent.allowedTools.length, 'connector')}</span>,
         <span key="s" className="ax-tag">{plural(agent.skills.length, 'skill')}</span>,
       ]}
-      actions={<button type="button" className="ax-btn ax-btn--small" onClick={onTry} title="Start a new chat. The assistant picks the best agent for each message.">Try</button>}
+      actions={<button type="button" className="ax-btn ax-btn--small" onClick={() => onTry(agent.agentId)} title="Start a new chat with this agent.">Try</button>}
     >
       <details>
         <summary>What it can do</summary>

@@ -169,6 +169,7 @@ export class CanonicalRuntimeAdapter {
         event: command.event,
         // What the customer did on a card: without it the agent only sees the line the thread shows.
         customerEvent: (command as any).customerEvent || (command as any).customer_event,
+        agentId: (command as any).agentId,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),
@@ -269,6 +270,7 @@ export class CanonicalRuntimeAdapter {
         event: command.event,
         // What the customer did on a card: without it the agent only sees the line the thread shows.
         customerEvent: (command as any).customerEvent || (command as any).customer_event,
+        agentId: (command as any).agentId,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),

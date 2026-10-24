@@ -80,6 +80,7 @@ export interface ChatRequest {
   environmentId?: string;
   customerEvent?: unknown;
   customer_event?: unknown;
+  agentId?: string;
 }
 
 export interface ChatResponse {
