@@ -2,6 +2,7 @@ import { Controller, Get, Query, Param, Optional, Inject } from '@nestjs/common'
 import { Public, InternalOnly } from './auth/auth.guard';
 import { OutboxWorkerService } from './kernel/outbox-worker.service';
 import { RuntimeService } from './runtime.service';
+import { CatalogueIndexRegistry } from './capabilities/catalogue-index';
 
 @Controller()
 export class HealthController {
@@ -28,6 +29,14 @@ export class HealthController {
       service: 'journey-runtime-service',
       timestamp: new Date().toISOString(),
     };
+  }
+
+  /** Whether the in-memory catalogue copy is on, and for each tenant whether it is loading, ready or has failed. */
+  @Public()
+  @Get('health/catalogue-index')
+  catalogueIndexHealth() {
+    const registry = CatalogueIndexRegistry.shared();
+    return { enabled: registry.isEnabled(), tenants: registry.status(), timestamp: new Date().toISOString() };
   }
 
   @Public()
