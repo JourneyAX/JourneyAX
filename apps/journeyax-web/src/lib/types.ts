@@ -477,6 +477,8 @@ export interface CardInstance {
   variant?: string;
   streamId?: string;
   createdAt?: string;
+  /** A card the customer asked for by tapping (details, a comparison): it sits right under their tap, ahead of the consultant's reply. */
+  beforeReply?: boolean;
 }
 
 /** Phases still rendered by a legacy React panel, not a card template.

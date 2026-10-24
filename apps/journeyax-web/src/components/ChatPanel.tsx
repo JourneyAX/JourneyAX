@@ -1088,7 +1088,7 @@ export default function ChatPanel() {
     // then streams in below it. The mockup order is text, then card — so
     // when the stamped slot follows a user turn and the agent's reply now
     // exists, the card sits after that reply instead.
-    if (n > 0 && allMessages[n - 1]?.role === 'user' && allMessages[n] && allMessages[n].role !== 'user') n += 1;
+    if (!card.beforeReply && n > 0 && allMessages[n - 1]?.role === 'user' && allMessages[n] && allMessages[n].role !== 'user') n += 1;
     (cardsByCount.get(n) || cardsByCount.set(n, []).get(n)!).push(card);
   }
   const timeline: Array<{ kind: 'msg'; msg: (typeof allMessages)[number] } | { kind: 'card'; card: CardInstance }> = [];

@@ -254,6 +254,7 @@ export function useCardActions() {
             card: {
               id: `productDetail-${sku}-${Date.now()}`,
               cardType: 'productDetail',
+              beforeReply: true,
               state: {
                 product,
                 closing,
@@ -290,6 +291,7 @@ export function useCardActions() {
             card: {
               id: `comparison-${skus.join('-')}-${Date.now()}`,
               cardType: 'comparison',
+              beforeReply: true,
               state: buildComparisonCard(skus.map((sku, i) => toCompareSource(tiles[i] as any, details[i], sku))),
               createdAt: at,
             },
