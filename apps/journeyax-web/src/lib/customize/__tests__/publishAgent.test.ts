@@ -20,25 +20,25 @@ console.log('publishing an agent draft');
 
 check('a good draft becomes a new agent appended after the existing ones, with an id nobody has', () => {
   const built = buildPublishableAgent(draft, context);
-  assert.ok(built.ok);
-  if (!built.ok) return;
-  assert.equal(built.agent.agentId, 'quote_helper_2', 'the id is made new');
-  assert.equal(built.agent.systemPromptTemplate, 'Ask for the list, then build the quote.');
-  assert.deepEqual(built.agent.allowedTools, ['search_products', 'get_cart']);
-  assert.deepEqual(built.agent.skills, ['finish-the-job']);
-  assert.equal(built.agent.modelPolicyRef, 'complex_reasoning');
-  assert.equal(built.agent.isDefault, undefined, 'a new agent is never the default');
-  assert.deepEqual(built.agents.slice(0, 2), context.existingAgents, 'existing agents are untouched');
-  assert.equal(built.agents.length, 3);
+  assert.equal(built.ok, true);
+  const good = built as Extract<typeof built, { ok: true }>;
+  assert.equal(good.agent.agentId, 'quote_helper_2', 'the id is made new');
+  assert.equal(good.agent.systemPromptTemplate, 'Ask for the list, then build the quote.');
+  assert.deepEqual(good.agent.allowedTools, ['search_products', 'get_cart']);
+  assert.deepEqual(good.agent.skills, ['finish-the-job']);
+  assert.equal(good.agent.modelPolicyRef, 'complex_reasoning');
+  assert.equal(good.agent.isDefault, undefined, 'a new agent is never the default');
+  assert.deepEqual(good.agents.slice(0, 2), context.existingAgents, 'existing agents are untouched');
+  assert.equal(good.agents.length, 3);
 });
 
 check('an unknown tool or skill, or an empty field, is refused with what is wrong', () => {
   const bad = buildPublishableAgent({ ...draft, tools: ['delete_everything'], skills: ['made-up'], instructions: ' ' }, context);
-  assert.ok(!bad.ok);
-  if (bad.ok) return;
-  assert.ok(bad.errors.some((e) => /delete_everything/.test(e)));
-  assert.ok(bad.errors.some((e) => /made-up/.test(e)));
-  assert.ok(bad.errors.some((e) => /instructions/i.test(e)));
+  assert.equal(bad.ok, false);
+  const errors: string[] = (bad as { errors?: string[] }).errors || [];
+  assert.ok(errors.some((e) => /delete_everything/.test(e)));
+  assert.ok(errors.some((e) => /made-up/.test(e)));
+  assert.ok(errors.some((e) => /instructions/i.test(e)));
 });
 
 check('limits hold, and a pack with no model policy or no agents cannot take a new one', () => {
