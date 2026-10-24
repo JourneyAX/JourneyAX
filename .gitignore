@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next-preview/
 .env.local
 .env
 .DS_Store
