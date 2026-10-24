@@ -258,6 +258,15 @@ async function runContractAndStreamingSuite() {
     assert.ok(doneEvent);
     assert.equal(doneEvent.data.response, 'Here are your items.');
     console.log('   ✅ PASS: Streaming turn delivers ordered incremental tokens & completion over real HTTP wire');
+
+    // 3c. What the customer did on a card travels with the turn, over both the buffered and the streamed wire.
+    const cardEvent = { type: 'compareProducts', payload: { skus: ['A1', 'B2'], titles: ['Board A', 'Board B'] }, sourceCard: { id: 'card-1' } };
+    await realHttpAdapter.runTurn({ ...command, message: '[compareProducts: Board A vs Board B]', customerEvent: cardEvent } as TurnCommand);
+    assert.deepEqual(receivedHttpBody.customerEvent, cardEvent, 'the buffered turn carries the card action');
+    assert.equal(TurnCommandRequestSchema.safeParse(receivedHttpBody).success, true, 'and still passes the runtime schema');
+    await realHttpAdapter.streamTurn({ ...command, message: '[compareProducts: Board A vs Board B]', customerEvent: cardEvent } as TurnCommand, () => {});
+    assert.deepEqual(receivedHttpBody.customerEvent, cardEvent, 'the streamed turn carries the card action');
+    console.log('   ✅ PASS: A card action travels with the turn over the real HTTP wire');
   } finally {
     mockRuntimeServer.close();
   }

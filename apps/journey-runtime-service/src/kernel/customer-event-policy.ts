@@ -11,7 +11,7 @@ export type CustomerEventAction = 'start_turn' | 'record_only';
  * - recordOnlyEvents (e.g. cart.removed, removeFromCart, like) -> 'record_only'
  *
  * Neutral defaults apply when not configured in the pack:
- * - Primary intent actions (addToCart, addToQuote, cart.added, quote.approved) start a turn.
+ * - Primary intent actions (addToCart, addToQuote, cart.added, quote.approved, viewProduct, compareProducts) start a turn.
  * - Secondary actions (removeFromCart, like, dismiss) are recorded only.
  */
 export function resolveCustomerEventAction(
@@ -51,6 +51,9 @@ export function resolveCustomerEventAction(
     'quoteapproved',
     'selectoption',
     'chooseoption',
+    // The customer opened a product's details or asked to see products side by side: a consultant would explain it.
+    'viewproduct',
+    'compareproducts',
   ];
   if (defaultAutoTurn.includes(target)) {
     return 'start_turn';

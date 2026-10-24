@@ -78,6 +78,8 @@ export interface ChatRequest {
   journeyId?: string;
   environment?: string;
   environmentId?: string;
+  customerEvent?: unknown;
+  customer_event?: unknown;
 }
 
 export interface ChatResponse {

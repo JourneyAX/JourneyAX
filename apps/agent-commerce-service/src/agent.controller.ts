@@ -297,6 +297,9 @@ export class JourneyAXController {
       journeyId?: string;
       environment?: string;
       environmentId?: string;
+      /** What the customer did on a card (view, compare, add): the agent is told the action itself, not only the line the thread shows. */
+      customerEvent?: unknown;
+      customer_event?: unknown;
     }
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
@@ -324,6 +327,8 @@ export class JourneyAXController {
         journeyId: body.journeyId,
         environment: body.environment || body.environmentId,
         environmentId: body.environmentId || body.environment,
+        customerEvent: body.customerEvent,
+        customer_event: body.customer_event,
       });
 
       return result;
@@ -388,6 +393,9 @@ export class JourneyAXController {
       journeyId?: string;
       environment?: string;
       environmentId?: string;
+      /** What the customer did on a card (view, compare, add): the agent is told the action itself, not only the line the thread shows. */
+      customerEvent?: unknown;
+      customer_event?: unknown;
     },
     @Res() res: Response,
   ) {
@@ -454,6 +462,8 @@ export class JourneyAXController {
           journeyId: body.journeyId,
           environment: body.environment || body.environmentId,
           environmentId: body.environmentId || body.environment,
+          customerEvent: body.customerEvent,
+          customer_event: body.customer_event,
         },
         emit,
       );

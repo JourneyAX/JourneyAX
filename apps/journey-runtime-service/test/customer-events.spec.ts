@@ -45,6 +45,17 @@ test('P3: Customer actions are events, not silent local state', async (t) => {
     );
   });
 
+  await t.test('1b. Neutral defaults: opening a product or comparing products starts a turn; unknown or secondary actions are only recorded', () => {
+    for (const type of ['viewProduct', 'compareProducts', 'view_product', 'addToCart']) {
+      assert.equal(resolveCustomerEventAction(type, {}), 'start_turn', `${type} asks for an explanation`);
+    }
+    for (const type of ['removeFromCart', 'like', 'setQuantity', 'toggleCompare', '']) {
+      assert.equal(resolveCustomerEventAction(type, {}), 'record_only', `${type || '(none)'} is only recorded`);
+    }
+    const tenantWins = { extensions: { customerEvents: { recordOnlyEvents: ['viewProduct'] } } };
+    assert.equal(resolveCustomerEventAction('viewProduct', tenantWins), 'record_only', 'a tenant can still keep views silent');
+  });
+
   await t.test('2. Building materials tenant (PlaceMakers): addToQuote starts agent turn; removeFromQuote is recorded only', async () => {
     const stack = await buildPlaceMakersStack({ agentMode: true });
     const service = stack.serviceFor({ servePacks: true });
