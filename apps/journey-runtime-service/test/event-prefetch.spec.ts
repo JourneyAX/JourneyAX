@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
-import { formatPrefetched, prefetchCallsFor } from '../src/agent/event-prefetch';
+import { accessoriesCardFrom, formatPrefetched, prefetchCallsFor } from '../src/agent/event-prefetch';
 
 const suite = createSuite('runtime: lookups made when a card tap arrives');
 
@@ -25,6 +25,16 @@ async function main() {
     assert.deepEqual(prefetchCallsFor(undefined, { type: 'addToCart', payload: { sku: 'P1' } }), []);
     assert.deepEqual(prefetchCallsFor({ addToCart: 'nonsense' }, { type: 'addToCart', payload: { sku: 'P1' } }), []);
     assert.deepEqual(prefetchCallsFor(config, undefined), []);
+  });
+
+  await suite.test('a lookup marked to show as accessories becomes a card of exactly the groups and SKUs it returned', () => {
+    const calls = prefetchCallsFor({ addToCart: [{ tool: 'get_related_products', args: { sku: '{sku}' }, showAs: 'accessories' }, { tool: 'get_warranty', args: { productOrBrand: '{sku}' } }] }, { type: 'addToCart', payload: { sku: 'P1' } });
+    assert.equal(calls[0].showAs, 'accessories');
+    assert.equal(calls[1].showAs, undefined);
+    const card = accessoriesCardFrom({ note: 'Suggestions to check.', groups: [{ key: 'g', label: 'Suggested', items: [{ sku: 'S1', title: 'Sand' }, { title: 'no sku' }] }, { key: 'empty', label: 'Nothing here', items: [] }, { key: 'nolabel', label: '', items: [{ sku: 'X' }] }] }, 'P1');
+    assert.deepEqual(card, { cardType: 'accessories', state: { forSku: 'P1', note: 'Suggestions to check.', groups: [{ key: 'g', label: 'Suggested', items: [{ sku: 'S1' }] }] } });
+    assert.equal(accessoriesCardFrom({ groups: [] }, 'P1'), undefined, 'no groups, no card');
+    assert.equal(accessoriesCardFrom(undefined, 'P1'), undefined);
   });
 
   await suite.test('looked-up results are shown to the agent with the tap, long ones shortened', () => {

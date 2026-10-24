@@ -1487,6 +1487,7 @@ export async function executeAgentTool(
         kind,
         grounded: groups.length > 0,
         source,
+        ...(groups.length > 0 ? { note: String((ctx.release as any)?.extensions?.accessoryHelper?.labels?.suggestionsNote || 'Suggestions to check, not confirmed requirements or compatibility.') } : {}),
         groups: groups.map((group) => ({ key: group.key, label: group.label, items: group.items.map(compact) })),
         relatedProducts: groups.flatMap((group) => group.items.map((p: any) => ({ ...compact(p), relation: group.label }))),
         message: source === 'shop_suggestions'

@@ -305,7 +305,8 @@
           "tool": "get_related_products",
           "args": {
             "sku": "{sku}"
-          }
+          },
+          "showAs": "accessories"
         },
         {
           "tool": "get_warranty",

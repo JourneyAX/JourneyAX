@@ -6,7 +6,7 @@
  * was just added) does not depend on the agent deciding to look. A call can name the tapped product as `{sku}`, `{title}` or
  * `{quantity}`. Only tools the agent is allowed to use run, and a lookup that fails is left out, never fatal.
  */
-export interface PrefetchCall { tool: string; args: Record<string, unknown> }
+export interface PrefetchCall { tool: string; args: Record<string, unknown>; showAs?: 'accessories' }
 
 const normaliseEventName = (name: string) => String(name || '').toLowerCase().replace(/[-_.\s]/g, '');
 
@@ -33,9 +33,25 @@ export function prefetchCallsFor(config: unknown, event: { type?: string; payloa
     // A call that needs the tapped product but has none to name is not made.
     const needsProduct = JSON.stringify((raw as any)?.args || {}).includes('{sku}') || JSON.stringify((raw as any)?.args || {}).includes('{title}');
     if (needsProduct && !values.sku && !values.title) continue;
-    calls.push({ tool, args });
+    calls.push({ tool, args, ...((raw as any)?.showAs === 'accessories' ? { showAs: 'accessories' as const } : {}) });
   }
   return calls;
+}
+
+/**
+ * The accessories card for a lookup that found groups (what get_related_products returns), built only from the groups and SKUs the
+ * lookup returned; undefined when it found none. The card's note says they are suggestions, in the tenant's words when it set them.
+ */
+export function accessoriesCardFrom(result: any, forSku: string): { cardType: 'accessories'; state: Record<string, unknown> } | undefined {
+  const groups = (Array.isArray(result?.groups) ? result.groups : [])
+    .map((group: any) => ({
+      key: String(group?.key || group?.label || 'group'),
+      label: String(group?.label || ''),
+      items: (Array.isArray(group?.items) ? group.items : []).filter((item: any) => typeof item?.sku === 'string' && item.sku).map((item: any) => ({ sku: item.sku })),
+    }))
+    .filter((group: any) => group.label && group.items.length > 0);
+  if (groups.length === 0) return undefined;
+  return { cardType: 'accessories', state: { ...(forSku ? { forSku } : {}), ...(typeof result?.note === 'string' && result.note ? { note: result.note } : {}), groups } };
 }
 
 /** How the looked-up results are shown to the agent, next to the tap. */

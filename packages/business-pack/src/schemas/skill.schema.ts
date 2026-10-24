@@ -56,6 +56,8 @@ export const EventPrefetchSchema = z.record(
   z.array(z.object({
     tool: z.string().min(1).max(60),
     args: z.record(z.string().min(1).max(40), z.union([z.string().max(200), z.number(), z.boolean()])).default({}),
+    /** Show what this lookup found on a card of this type when the agent does not present a card itself. */
+    showAs: z.enum(['accessories']).optional(),
   }).strict()).max(6),
 );
 

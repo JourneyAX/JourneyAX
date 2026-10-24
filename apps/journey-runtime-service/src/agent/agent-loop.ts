@@ -23,7 +23,7 @@ import {
 } from './agent-tools';
 import agentLoopDefaults from '../defaults/agent-loop.json';
 import { chooseCardSkus } from './auto-card';
-import { prefetchCallsFor, formatPrefetched } from './event-prefetch';
+import { prefetchCallsFor, formatPrefetched, accessoriesCardFrom } from './event-prefetch';
 import { formatBusinessProfile } from '../kernel/business-knowledge';
 import { AgentRouter, type ResolvedAgent } from '../kernel/agent.router';
 import { readHistory, appendHistory, formatHistoryBlock, type ConversationTurnRecord } from '../conversation';
@@ -586,6 +586,8 @@ export class AgentTurnLoop {
 
     // The lookups made for a card tap before the agent is asked (see event-prefetch.ts), kept for the trace.
     let prefetchedTrace: Array<{ name: string; durationMs: number; ok: boolean; arguments?: any; resultCount?: number }> = [];
+    // Cards the tenant asked to be shown from a tap's lookups if the agent presents none of its own.
+    const prefetchedCards: Array<{ cardType: string; state: Record<string, unknown> }> = [];
     // Current Customer Message or Event (Prompt P3)
     if (customerEvent && customerEvent.type) {
       const eventLines = [
@@ -615,6 +617,12 @@ export class AgentTurnLoop {
           }
         }));
         prefetchedTrace = results.map((entry) => ({ name: entry.call.tool, durationMs: Date.now() - started, ok: entry.ok && (entry.result as any)?.ok !== false, arguments: { prefetched: true, ...entry.call.args }, resultCount: extractToolResultCount(entry.result) }));
+        for (const entry of results) {
+          if (entry.ok && entry.call.showAs === 'accessories') {
+            const card = accessoriesCardFrom(entry.result, String((entry.call.args as any).sku || (entry.call.args as any).productOrBrand || ''));
+            if (card) prefetchedCards.push(card);
+          }
+        }
         eventLines.push(formatPrefetched(results.filter((entry) => entry.ok).map(({ call, result }) => ({ call, result }))));
       }
       messages.push({
@@ -1087,6 +1095,21 @@ function extractToolResultCount(result: any): number | undefined {
           ok = false;
         }
         toolsTrace.push({ name: 'present_card', durationMs: Date.now() - started, ok, arguments: { auto: picked.basis, skus: picked.skus }, resultCount: picked.skus.length });
+      }
+    }
+
+    // 6c. A card the tenant asked for from a tap's lookups (the accessories of an item just added) is shown when the agent presented none.
+    if (prefetchedCards.length > 0 && !toolContext.isHumanHandoffRequested && !toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok)) {
+      for (const card of prefetchedCards) {
+        const started = Date.now();
+        let ok = true;
+        try {
+          const shown = await executeAgentTool('present_card', card, toolContext);
+          if (shown && typeof shown === 'object' && shown.ok === false) ok = false;
+        } catch {
+          ok = false;
+        }
+        toolsTrace.push({ name: 'present_card', durationMs: Date.now() - started, ok, arguments: { auto: 'event_lookup', cardType: card.cardType }, resultCount: 1 });
       }
     }
 
