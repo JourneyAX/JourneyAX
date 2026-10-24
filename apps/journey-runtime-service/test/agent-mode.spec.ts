@@ -5348,6 +5348,19 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.ok(!lead.about, 'a description that only restates the catalogue is not passed off as the merchant\'s words');
   });
 
+  test('a product asked for by its identifier is that product, in agent mode against the database, never whatever comes first', async () => {
+    const db = new MemoryDb();
+    const doc = (parentSku: string, name: string) => ({ projectId: 'test-tenant', parentSku, name, category: 'Paving', categoryPath: ['Outdoor', 'Paving'], availability: true, discontinued: false, price: { amount: 10, currency: 'NZD' } });
+    await db.collection('products').insertMany([doc('A1', 'Aaa Board'), doc('P2', 'Forum Paver'), doc('Z3', 'Zed Tile')] as any);
+    const handler = new CatalogSearchHandler(undefined, async () => db as any);
+    const release: any = { ...createTestPack(), catalogMapping: undefined };
+    const execCtx: any = { tenantId: 'test-tenant', environmentId: 'test', release, packSettings: release };
+    const found: any = await handler.execute({ sku: 'P2', maxResults: 1 } as any, execCtx);
+    assert.deepEqual((found.items || []).map((p: any) => p.sku), ['P2']);
+    const none: any = await handler.execute({ sku: 'NOPE', maxResults: 1 } as any, execCtx);
+    assert.deepEqual((none.items || []).map((p: any) => p.sku), [], 'an identifier nobody has finds nothing, not the first product');
+  });
+
   test('accessories: a product gets the groups customers buy with its shelf, from the knowledge, each with real products, and nothing invented when there are none', async () => {
     const contextFor = (): AgentToolContext => ({
       // The platform's default catalogue mapping, which reads the product's shelf from `categoryPath`.

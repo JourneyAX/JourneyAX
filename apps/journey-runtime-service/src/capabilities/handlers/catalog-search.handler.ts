@@ -951,7 +951,21 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           }
           and.push(...buildCategoryScopeClauses(mapping, { categoryIds, categoryPaths, excludeCategoryIds }));
 
-          if (isAgent) {
+          if (isAgent && exactId) {
+            // A product asked for by its identifier is that product and nothing else: the keyword search below would ignore the
+            // identifier and answer with whatever comes first. Ask for the identifier alone first (the field the database indexes),
+            // then for any identifier field if that finds nothing.
+            const quick = await products
+              .find({ [mapping.tenantFields[0]]: tenantId, [mapping.identifierPaths[0]]: exactId, ...(and.length > 0 ? { $and: [...and] } : {}) })
+              .limit(mapping.candidateLimit)
+              .toArray();
+            docs = quick.length > 0
+              ? quick
+              : await products
+                .find({ ...filter, $and: [...and, { $or: mapping.identifierPaths.map((path) => ({ [path]: exactId })) }] })
+                .limit(mapping.candidateLimit)
+                .toArray();
+          } else if (isAgent) {
             if (activeSpecs?.brand) {
               const brandPattern = escapeRegex(activeSpecs.brand).replace(/\s+/g, '[^a-zA-Z0-9]*');
               const brandRegex = new RegExp(brandPattern, 'i');
