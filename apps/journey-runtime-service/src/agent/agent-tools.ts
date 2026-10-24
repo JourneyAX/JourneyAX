@@ -41,6 +41,8 @@ import { hasReadableText, readGuides } from './product-guides';
 import { findPage, pageAsGuide, searchPages, type ContentPageRecord, type PageHit } from './content-pages';
 import { buildReview, type ReviewLine, type ReviewState, type ReviewSuggestion } from './checkout-review';
 import type { LastProducts } from './auto-card';
+import { addOtherOption, checkShelfQuestions, type QuestionCardSettings, type Shelf } from './question-shelves';
+import { connectorWordsForLocale } from '../capabilities/handlers/locale-stemmer';
 
 export interface AgentToolContext {
   tenantId: string;
@@ -74,6 +76,8 @@ export interface AgentToolContext {
   lastProducts?: LastProducts;
   /** The product group the turn's range overview was mainly about, kept in the conversation so the next turn can narrow within it. */
   lastRangeGroup?: { name: string; path: string[] };
+  /** The groups of the department the customer is choosing within, with how many products each holds: what a "what kind?" question is checked against. */
+  rangeShelves?: Shelf[];
   readSourceIds: Set<string>;
   allowedClaimClasses: Set<ClaimClass>;
   presentedCards: Array<{ cardType: string; state: any }>;
@@ -1173,6 +1177,7 @@ export async function executeAgentTool(
       ctx.allowedClaimClasses.add('catalog_fact');
       const leadGroup = result.nodes.find((node) => node.match === 'direct' && node.path) || result.nodes.find((node) => node.path);
       if (leadGroup?.path) ctx.lastRangeGroup = { name: leadGroup.name, path: leadGroup.path };
+      if (leadGroup?.children && leadGroup.children.length >= 2) ctx.rangeShelves = leadGroup.children.map((child) => ({ name: child.name, productCount: child.productCount ?? 0 }));
       const messages: string[] = [];
       if (result.interpretedAs) {
         messages.push(`The word was not found as written; the closest known word was used instead (${result.interpretedAs.changes.map((c: any) => `"${c.from}" as "${c.to}"`).join(', ')}). Tell the customer which word you took it as, in one short clause, so they can correct you.`);
@@ -1296,13 +1301,31 @@ export async function executeAgentTool(
           : undefined,
       });
       ctx.allowedClaimClasses.add('catalog_fact');
+      // What the customer is choosing between at this level: the real groups of the scope and how many products each holds. The facets
+      // above come from a sample of the products, so a group the sample happens to miss would never be offered; the question card is
+      // checked against these groups instead (see question-shelves.ts).
+      const scopeTopic = productType || keywords.join(' ');
+      if (scopeTopic && ctx.okfContent) {
+        try {
+          const range = await browseRange({
+            okf: ctx.okfContent,
+            locale: (ctx.release as any)?.profile?.primaryLocale,
+            topic: scopeTopic,
+            count: (paths) => ctx.catalogSearchHandler.countInCategoryPaths(paths, makeExecContext(ctx) as any),
+            examples: async () => [],
+          });
+          const lead = range.nodes.find((node) => node.match === 'direct') || range.nodes[0];
+          if (lead?.children && lead.children.length >= 2) ctx.rangeShelves = lead.children.map((child) => ({ name: child.name, productCount: child.productCount ?? 0 }));
+        } catch { /* the check is a safeguard: without the groups the question is simply not checked */ }
+      }
       return {
         ok: true,
         matched: summary.matched,
+        ...(ctx.rangeShelves && ctx.rangeShelves.length >= 2 ? { groups: ctx.rangeShelves.map((shelf) => ({ group: shelf.name, products: shelf.productCount })) } : {}),
         facets: summary.facets,
         message: summary.facets.length === 0
           ? 'The matching products do not differ in anything the names show, so ask the customer about the job (where, how much) instead.'
-          : 'Offer the customer only values listed here, for the facets that matter to their job; a facet that covers few of the products (low coverage) is a weak thing to ask about.',
+          : 'Offer the customer only values listed here, for the facets that matter to their job; a facet that covers few of the products (low coverage) is a weak thing to ask about. When you ask what kind of thing they want, `groups` are the real groups of this range with their sizes: offer every group that holds a fair share, not only the ones in the facets.',
       };
     }
 
@@ -2331,6 +2354,22 @@ export async function executeAgentTool(
         const configured = (ctx.release as any)?.extensions?.visualiser?.disclaimer;
         if (typeof configured === 'string' && configured.trim()) state.disclaimer = configured.trim();
         if (!Array.isArray(state.products)) state.products = ctx.lastVisual.skus.map((sku) => enrichProduct({ sku }));
+      }
+
+      // A question that asks what kind of thing the customer wants must offer the real groups that hold a fair share of the range, and
+      // carries the shop's own "something else" choice. The server knows the groups and their sizes; the model may have left one out.
+      if (cardType === 'clarify' && Array.isArray(state.questions)) {
+        const settings: QuestionCardSettings = (ctx.release as any)?.extensions?.questionCards || {};
+        const joiners = connectorWordsForLocale((ctx.release as any)?.profile?.primaryLocale);
+        const check = checkShelfQuestions(state.questions, ctx.rangeShelves || [], settings, joiners);
+        if (check.missing.length > 0) {
+          const list = check.missing.map((shelf) => `${shelf.name} (${shelf.productCount.toLocaleString('en')} products)`).join('; ');
+          return {
+            ok: false,
+            error: `Rejected card: the question offers the groups of this range but leaves out ${list}. Each holds a fair share of the range, and a customer who wants one would have no choice to tap. Add a choice for each, in everyday words a customer would use, then present the card again.`,
+          };
+        }
+        addOtherOption(state.questions, check.shelfQuestions, settings.otherOptionLabel);
       }
 
       // 4. Validate enriched state against Zod schema for card type

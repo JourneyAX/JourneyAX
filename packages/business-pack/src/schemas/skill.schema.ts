@@ -148,6 +148,17 @@ export const BrandThemeSchema = z.object({
 }).strict();
 
 /**
+ * How the shop's "what kind are you after?" questions are kept honest (pack `extensions.questionCards`). When a question offers the
+ * groups of a department, the server requires every group that holds at least `minShelfShare` of the department's products to be among
+ * the choices, and adds the shop's own words for "something that is not listed" (`otherOptionLabel`) so a customer is never left without
+ * a choice to tap. Without `otherOptionLabel` no such choice is added.
+ */
+export const QuestionCardsSchema = z.object({
+  otherOptionLabel: z.string().min(1).max(60).optional(),
+  minShelfShare: z.number().min(0.01).max(0.5).optional(),
+}).strict();
+
+/**
  * Tenant phrase swaps for the consultant's voice (pack `extensions.voice`): a model that is told to speak as the shop's own team still
  * sometimes writes about the shop in the third person ("the shop's page says"). Each rule is a pattern and what replaces it ("our page
  * says"); only the words matched are swapped, and nothing is added. The shop's own wording, never the platform's.

@@ -290,12 +290,14 @@ const components = {
     const suggestion = outside ? nearbyInRange(Number(typed), min, max) : undefined;
     // A number outside the usual range is questioned once; a second press of the button keeps it. It is never refused.
     const [questioned, setQuestioned] = useState('');
-    const doubt = outside && questioned === typed;
+    // Once the answer has gone (it is the card's answer now), the question about it is over.
+    const doubt = outside && questioned === typed && String(props.selected ?? '').trim() !== typed;
     const range = min !== undefined && max !== undefined ? `${min} to ${max}` : min !== undefined ? `${min} or more` : max !== undefined ? `${max} or less` : '';
     const withUnit = (value: number | string) => (props.unit ? `${value} ${props.unit}` : String(value));
     const submit = () => {
       if (!valid) return;
       if (outside && questioned !== typed) { setQuestioned(typed); return; }
+      setQuestioned('');
       fire(typed);
     };
     return (
@@ -313,7 +315,7 @@ const components = {
           <div className="jx-question-doubt" role="status">
             <span>{`${withUnit(typed)} is outside the usual ${range}.`}{suggestion !== undefined ? ' Did you mean ' : ''}</span>
             {suggestion !== undefined ? (
-              <button type="button" className="jx-chip" onClick={(event) => { event.stopPropagation(); fire(String(suggestion)); }}>{withUnit(suggestion)}</button>
+              <button type="button" className="jx-chip" onClick={(event) => { event.stopPropagation(); setQuestioned(''); setDraft(String(suggestion)); fire(String(suggestion)); }}>{withUnit(suggestion)}</button>
             ) : null}
             {suggestion !== undefined ? <span>?</span> : null}
           </div>

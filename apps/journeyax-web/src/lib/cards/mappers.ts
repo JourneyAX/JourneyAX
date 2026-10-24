@@ -232,6 +232,16 @@ export function mapAccessoriesCard(items: AccessoryItem[]) {
   };
 }
 
+/** The footer of a question card. The answers go as soon as the last one is given, so a finished card says only that it is answered: a
+ *  line about sending would stay on the card for good. */
+export function clarifyProgress(total: number, answered: number): string | undefined {
+  if (total === 0) return undefined;
+  const left = total - answered;
+  if (left === 0) return total === 1 ? 'Answered' : `All ${total} answered`;
+  if (total === 1) return 'Pick one to continue.';
+  return `${answered} of ${total} answered — pick the ${left === 1 ? 'last one' : 'rest'} whenever you're ready, nothing sends until then.`;
+}
+
 /** Clarify card state from the questions + whatever has been answered so far.
  *  Re-run on every tapped chip (CardStage patches the card with the result)
  *  so the chosen chip stays lit and the footer counts progress. */
@@ -239,14 +249,7 @@ export function mapClarifyCard(questions: DynamicQuestion[], answers: Record<str
   const qs = questions.slice(0, 3);
   const answered = qs.filter((q) => !!answers[q.id]).length;
   const total = qs.length;
-  const left = total - answered;
-  const progress = total === 0
-    ? undefined
-    : left === 0
-      ? `All ${total === 1 ? 'set' : `${total} answered`} — sending your answers…`
-      : total === 1
-        ? 'Pick one to continue.'
-        : `${answered} of ${total} answered — pick the ${left === 1 ? 'last one' : 'rest'} whenever you're ready, nothing sends until then.`;
+  const progress = clarifyProgress(total, answered);
   return {
     questions: qs.map((q) => ({
       id: q.id, text: q.title, options: q.options, answer: answers[q.id],

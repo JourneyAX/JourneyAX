@@ -54,6 +54,47 @@ async function main() {
     assert.equal(refused.ok, false);
     assert.match(refused.error, /NOT-A-REAL-SKU/);
   });
+
+  const toolsRange = [
+    { name: 'Power Tool Accessories', productCount: 3574 }, { name: 'Hand Tools', productCount: 2952 },
+    { name: 'Power Tools', productCount: 1188 }, { name: 'Outdoor Power Equipment', productCount: 290 }, { name: 'Tool Storage', productCount: 100 },
+  ];
+  const clarifyCtx = (extensions: Record<string, any> = { questionCards: { otherOptionLabel: 'Something else' } }): AgentToolContext => ({
+    tenantId: 'test-tenant', environmentId: 'test', correlationId: 'c', catalogSearchHandler: new CatalogSearchHandler([] as any),
+    release: { profile: { primaryCurrency: 'NZD', primaryLocale: 'en-NZ' }, extensions } as any,
+    turnProductSkus: new Set(), catalogProductCache: new Map<string, any>(), readSourceIds: new Set(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false,
+    rangeShelves: toolsRange,
+  } as any);
+  const kindQuestion = (options: string[]) => ({ cardType: 'clarify', state: { questions: [{ id: 'kind', text: 'What sort of tools are you after?', options }, { id: 'job', text: 'What job are they for?', options: ['Building', 'Fixing', 'Measuring'] }] } });
+
+  await suite.test('a question that offers the groups of a range but leaves out a big one is sent back, naming the group and its size', async () => {
+    const ctx = clarifyCtx();
+    const refused: any = await executeAgentTool('present_card', kindQuestion(['Tool box or organiser', 'Hand tools', 'Power tool accessories', 'Not sure']), ctx);
+    assert.equal(refused.ok, false);
+    assert.match(refused.error, /Power Tools \(1,188 products\)/);
+    assert.doesNotMatch(refused.error, /Outdoor Power Equipment/, 'a small group is not required');
+    assert.equal(ctx.presentedCards.length, 0, 'nothing was shown to the customer');
+  });
+
+  await suite.test('once every big group is a choice the card goes through with the shop\'s "something else" added, on the groups question only', async () => {
+    const ctx = clarifyCtx();
+    const ok: any = await executeAgentTool('present_card', kindQuestion(['Hand tools', 'Power tools', 'Accessories for power tools', 'Not sure']), ctx);
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+    const [kind, job] = (ctx.presentedCards[0].state as any).questions;
+    assert.deepEqual(kind.options, ['Hand tools', 'Power tools', 'Accessories for power tools', 'Not sure', 'Something else']);
+    assert.deepEqual(job.options, ['Building', 'Fixing', 'Measuring'], 'a question that is not about the groups is left alone');
+  });
+
+  await suite.test('without the shop\'s words for "something else" none is added, and a question that is not about the groups is never checked', async () => {
+    const ctx = clarifyCtx({});
+    const ok: any = await executeAgentTool('present_card', kindQuestion(['Hand tools', 'Power tools', 'Accessories for power tools']), ctx);
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+    assert.equal((ctx.presentedCards[0].state as any).questions[0].options.length, 3);
+    const unrelated = clarifyCtx();
+    const fine: any = await executeAgentTool('present_card', { cardType: 'clarify', state: { questions: [{ id: 'where', text: 'Where will you use it?', options: ['Indoors', 'Outdoors', 'On site'] }] } }, unrelated);
+    assert.equal(fine.ok, true, JSON.stringify(fine));
+    assert.deepEqual((unrelated.presentedCards[0].state as any).questions[0].options, ['Indoors', 'Outdoors', 'On site']);
+  });
 }
 
 main().then(() => { suite.finish(); }).catch((error) => { console.error(error); process.exitCode = 1; });

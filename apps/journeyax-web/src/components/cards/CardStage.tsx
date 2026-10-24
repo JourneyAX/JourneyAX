@@ -17,7 +17,7 @@ import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
-import { mapClarifyCard } from '@/lib/cards/mappers';
+import { clarifyProgress, mapClarifyCard } from '@/lib/cards/mappers';
 import { buildDetailProduct, fetchProductDetail } from '@/lib/cards/productDetail';
 import { MAX_COMPARE, clearCompare, getCompareSelection, toggleCompare, useCompareSelection } from '@/lib/cards/compareStore';
 import { decorateProductRows } from '@/lib/cards/productTiles';
@@ -146,14 +146,7 @@ export function useCardActions() {
             return ans !== undefined && ans !== null && ans !== '';
           }).length;
           const left = total - answeredCount;
-
-          const progress = total === 0
-            ? undefined
-            : left === 0
-              ? `All ${total === 1 ? 'set' : `${total} answered`} — sending your answers…`
-              : total === 1
-                ? 'Pick one to continue.'
-                : `${answeredCount} of ${total} answered — pick the ${left === 1 ? 'last one' : 'rest'} whenever you're ready, nothing sends until then.`;
+          const progress = clarifyProgress(total, answeredCount);
 
           dispatch({
             type: 'PATCH_CARD',
