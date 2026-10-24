@@ -23,6 +23,7 @@ import {
 } from './agent-tools';
 import agentLoopDefaults from '../defaults/agent-loop.json';
 import { chooseCardSkus } from './auto-card';
+import { prefetchCallsFor, formatPrefetched } from './event-prefetch';
 import { formatBusinessProfile } from '../kernel/business-knowledge';
 import { AgentRouter, type ResolvedAgent } from '../kernel/agent.router';
 import { readHistory, appendHistory, formatHistoryBlock, type ConversationTurnRecord } from '../conversation';
@@ -583,6 +584,8 @@ export class AgentTurnLoop {
       content: 'I acknowledge the customer context, branch location, and session details.',
     });
 
+    // The lookups made for a card tap before the agent is asked (see event-prefetch.ts), kept for the trace.
+    let prefetchedTrace: Array<{ name: string; durationMs: number; ok: boolean; arguments?: any; resultCount?: number }> = [];
     // Current Customer Message or Event (Prompt P3)
     if (customerEvent && customerEvent.type) {
       const eventLines = [
@@ -599,6 +602,21 @@ export class AgentTurnLoop {
         eventLines.push(`Payload: ${JSON.stringify(customerEvent.payload, null, 2)}`);
       }
       eventLines.push('</customer_event>');
+      // Lookups the tenant has declared for this kind of tap are made now, in parallel, and shown to the agent with it.
+      const prefetchCalls = prefetchCallsFor((release as any)?.extensions?.eventPrefetch, customerEvent).filter((call) => isToolAllowed(call.tool, resolvedAgent.allowedTools || [], release));
+      if (prefetchCalls.length > 0) {
+        const started = Date.now();
+        const results = await Promise.all(prefetchCalls.map(async (call) => {
+          try {
+            return { call, result: await executeAgentTool(call.tool, call.args, toolContext), ok: true };
+          } catch (err: any) {
+            if (signal?.aborted || toolContext.signal?.aborted) throw err;
+            return { call, result: { ok: false, error: String(err?.message || err).slice(0, 200) }, ok: false };
+          }
+        }));
+        prefetchedTrace = results.map((entry) => ({ name: entry.call.tool, durationMs: Date.now() - started, ok: entry.ok && (entry.result as any)?.ok !== false, arguments: { prefetched: true, ...entry.call.args }, resultCount: extractToolResultCount(entry.result) }));
+        eventLines.push(formatPrefetched(results.filter((entry) => entry.ok).map(({ call, result }) => ({ call, result }))));
+      }
       messages.push({
         role: 'user',
         content: eventLines.join('\n'),
@@ -663,6 +681,7 @@ function extractToolResultCount(result: any): number | undefined {
       arguments?: any;
       resultCount?: number;
     }> = [];
+    toolsTrace.push(...prefetchedTrace);
     const totalTokens = { prompt: 0, completion: 0, total: 0 };
     let finalAssistantText = '';
     let lastDraft = '';

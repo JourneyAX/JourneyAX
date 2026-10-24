@@ -50,6 +50,15 @@ export const QuantityHelperSchema = z.object({
   labels: z.record(z.string(), z.string().max(80)).optional(),
 }).strict();
 
+/** Lookups to make the moment a customer's tap arrives (pack `extensions.eventPrefetch`), by kind of tap; `{sku}`, `{title}` and `{quantity}` name the tapped product. */
+export const EventPrefetchSchema = z.record(
+  z.string().min(1).max(40),
+  z.array(z.object({
+    tool: z.string().min(1).max(60),
+    args: z.record(z.string().min(1).max(40), z.union([z.string().max(200), z.number(), z.boolean()])).default({}),
+  }).strict()).max(6),
+);
+
 /** Tenant settings for pictures of the finished job (pack `extensions.visualiser`); a tenant without it has the feature off. */
 export const VisualiserSchema = z.object({
   enabled: z.boolean().optional(),

@@ -298,6 +298,22 @@
       "size": "1024x1024",
       "disclaimer": "An illustration made for you, not the exact product.",
       "maxProducts": 5
+    },
+    "eventPrefetch": {
+      "addToCart": [
+        {
+          "tool": "get_related_products",
+          "args": {
+            "sku": "{sku}"
+          }
+        },
+        {
+          "tool": "get_warranty",
+          "args": {
+            "productOrBrand": "{sku}"
+          }
+        }
+      ]
     }
   }
 }

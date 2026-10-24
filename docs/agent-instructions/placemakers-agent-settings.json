@@ -66,13 +66,15 @@
   "journeyPlaybook": [
     {
       "id": "orient",
-      "name": "Orient the customer",
-      "goal": "For a broad request, explain what the range holds (the main groups, how many products each, what usually goes with it) before asking what is needed.",
+      "name": "Start from the situation",
+      "goal": "Read how the customer arrived (a product word, a problem, an idea, a project, a specific item, a how-to) and start the way your skill \"Start from the customer's situation\" says; for a broad word, welcome them and ask on a question card built from the options the range really has.",
       "tools": [
         "browse_range",
-        "consult_business_knowledge"
+        "explore_options",
+        "consult_business_knowledge",
+        "present_card"
       ],
-      "exitCondition": "The customer has heard what the range holds and been asked what is needed to narrow it down."
+      "exitCondition": "The customer has been welcomed and asked, on a card, what is needed to narrow it down, or has been taken straight to the products they named."
     },
     {
       "id": "understand",
@@ -96,7 +98,7 @@
     {
       "id": "complete_system",
       "name": "Complete the system",
-      "goal": "Offer the accessories, fixings and related products that go with the chosen product, from the relationships in the knowledge and the catalogue.",
+      "goal": "Show the accessories, fixings and related products that go with the chosen product on an accessories card, from the knowledge, the shop's own suggestions and searches; say they are suggestions to check.",
       "tools": [
         "get_related_products",
         "consult_business_knowledge",
@@ -117,8 +119,9 @@
     {
       "id": "quantity_and_stock",
       "name": "Quantity and stock",
-      "goal": "Work out quantities where a calculator exists and check stock for the chosen items.",
+      "goal": "Work out how many the customer needs for their area (estimate_quantity, or a calculator where one exists) before anything is added, and check stock for the chosen items.",
       "tools": [
+        "estimate_quantity",
         "calculate_quantity",
         "check_stock"
       ],
