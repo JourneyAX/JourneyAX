@@ -5,6 +5,7 @@
  * number out from the customer's area. The words are the storefront's own (config labels, with neutral defaults).
  */
 import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { MAX_QUANTITY, clampQuantity, closeQuantityStep, useQuantityRequest } from '@/lib/cards/quantityStep';
 
@@ -22,7 +23,8 @@ export default function QuantityStepHost() {
   const request = useQuantityRequest();
   if (!request) return null;
   // Keyed by the request so a new tap starts from its own number.
-  return <QuantityDialog key={`${request.sku}:${request.initial}`} />;
+  // In the page itself, so the dim backdrop covers the whole window whatever the chat column around it does.
+  return createPortal(<QuantityDialog key={`${request.sku}:${request.initial}`} />, document.body);
 }
 
 function QuantityDialog() {
