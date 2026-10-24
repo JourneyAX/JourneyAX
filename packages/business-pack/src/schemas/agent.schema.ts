@@ -50,6 +50,8 @@ export const AgentDefinitionSchema = z.object({
   isDefault: z.boolean().optional(),
   toolFirst: z.boolean().optional(),
   journeyPlaybook: JourneyPlaybookUnionSchema.optional(),
+  /** Ids of the skills (pack `extensions.skills`) this agent carries, in order. */
+  skills: z.array(z.string()).optional(),
 });
 
 export const AgentsCollectionSchema = z.object({

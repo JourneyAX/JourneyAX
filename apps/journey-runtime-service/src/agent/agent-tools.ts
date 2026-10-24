@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease, BusinessPackContent, JourneyPlaybookStage } from '@journeyax/business-pack';
+import { resolveAgentSkills } from '@journeyax/business-pack';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
@@ -69,6 +70,10 @@ export interface AgentToolContext {
   consultedConcepts?: Set<OkfConcept>;
   agentRelationshipTypes?: string[] | Set<string>;
   agentPlaybook?: JourneyPlaybookStage[];
+  /** The skills the resolved agent carries (ids), so use_skill only opens one of them. */
+  agentSkillIds?: string[];
+  /** Skills the agent opened this turn (use_skill), for the trace. */
+  usedSkillIds?: Set<string>;
   customerEvent?: any;
   signal?: AbortSignal;
   emitUiAction?: (action: { name: string; arguments: any }) => void;
@@ -506,6 +511,19 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         },
       },
       required: ['sku'],
+    },
+  },
+  {
+    name: 'use_skill',
+    description:
+      'Open one of your on-demand skills: a set of instructions for a kind of request listed under "Skills you can open" in your instructions. ' +
+      'Open the skill whose description fits the customer\'s request, read it, then follow it. Skills you already carry are in your instructions and need no call.',
+    parameters: {
+      type: 'object',
+      properties: {
+        skillId: { type: 'string', description: 'The id of the skill to open, as listed under "Skills you can open".' },
+      },
+      required: ['skillId'],
     },
   },
   {
@@ -1509,6 +1527,21 @@ export async function executeAgentTool(
           message: `No verified warranty certificate registered for '${target}'. Please consult store staff.`,
         },
       };
+    }
+
+    case 'use_skill': {
+      const skillId = String(args.skillId || '').trim();
+      const carried = resolveAgentSkills({ skills: ctx.agentSkillIds }, (ctx.release as any)?.extensions?.skills);
+      const skill = carried.find((candidate) => candidate.skillId === skillId);
+      if (!skill) {
+        return {
+          ok: false,
+          error: `No skill "${skillId}" is available to you.`,
+          available: carried.filter((candidate) => candidate.tier === 'on_demand').map((candidate) => candidate.skillId),
+        };
+      }
+      (ctx.usedSkillIds ||= new Set()).add(skill.skillId);
+      return { ok: true, skillId: skill.skillId, name: skill.name, instructions: skill.instructions };
     }
 
     case 'calculate_quantity': {

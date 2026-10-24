@@ -5,7 +5,7 @@ import type {
   Decision,
   UIInstruction,
 } from '@journeyax/journey-core';
-import { normalizePlaybookStages, type BusinessPackRelease, type AgentDefinition } from '@journeyax/business-pack';
+import { normalizePlaybookStages, resolveAgentSkills, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
 import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
 import {
   ModelGateway,
@@ -258,6 +258,27 @@ export function formatPersonaAndVoice(release: BusinessPackRelease, agent?: Agen
   return parts.length > 0 ? `# Persona & Brand Voice\n${parts.join('\n')}` : '';
 }
 
+/**
+ * The skills an agent carries, as prompt text. Skills of tier "always" are written out; skills of tier "on_demand" are listed with their
+ * descriptions so the agent can open the one a request calls for with use_skill. The wording of every skill is tenant data.
+ */
+export function formatAgentSkills(release: BusinessPackRelease | undefined, agent: AgentDefinition | undefined): string {
+  const skills: SkillDefinition[] = resolveAgentSkills(agent, (release as any)?.extensions?.skills);
+  if (skills.length === 0) return '';
+  const always = skills.filter((skill) => skill.tier === 'always');
+  const onDemand = skills.filter((skill) => skill.tier === 'on_demand');
+  const parts: string[] = [];
+  for (const skill of always) parts.push(`# Skill: ${skill.name}\n${skill.instructions.trim()}`);
+  if (onDemand.length > 0) {
+    parts.push(
+      '# Skills you can open\n' +
+        'Open a skill with use_skill when the customer\'s request fits its description, read it, then follow it.\n' +
+        onDemand.map((skill) => `- ${skill.skillId}: ${skill.description}`).join('\n'),
+    );
+  }
+  return parts.join('\n\n');
+}
+
 export function buildAgentSystemPrompt(params: {
   platformPrompt?: string;
   resolvedAgent: ResolvedAgent;
@@ -268,8 +289,9 @@ export function buildAgentSystemPrompt(params: {
   const agentBlock = formatAgentInstructions(params.resolvedAgent);
   const personaBlock = formatPersonaAndVoice(params.release, params.resolvedAgent.agent);
   const profileBlock = formatBusinessProfile(params.release, params.okfContent);
+  const skillsBlock = formatAgentSkills(params.release, params.resolvedAgent.agent);
 
-  const sections = [platform, agentBlock, personaBlock, profileBlock].filter(Boolean);
+  const sections = [platform, agentBlock, skillsBlock, personaBlock, profileBlock].filter(Boolean);
   return sections.join('\n\n');
 }
 
@@ -469,6 +491,8 @@ export class AgentTurnLoop {
       consultedConcepts: new Set<OkfConcept>(),
       agentRelationshipTypes: (resolvedAgent?.agent as any)?.agentRelationshipTypes,
       agentPlaybook: normalizePlaybookStages(resolvedAgent?.agent?.journeyPlaybook),
+      agentSkillIds: (resolvedAgent?.agent as any)?.skills,
+      usedSkillIds: new Set<string>(),
       customerEvent,
       signal,
       emitTrace: (name, payload) => sink('trace', { [name]: payload }),
@@ -484,7 +508,9 @@ export class AgentTurnLoop {
     // 4. Offer only tools in agent.allowedTools
     const allowedTools = resolvedAgent.allowedTools || [];
     const toolDefs = getAgentToolDefinitions(release, okfContent);
-    const availableTools = toolDefs.filter((t) => isToolAllowed(t.name, allowedTools, release));
+    // use_skill is platform plumbing for the agent's own on-demand skills: offered exactly when it has some, whatever allowedTools says.
+    const hasOnDemandSkills = resolveAgentSkills(resolvedAgent.agent, (release as any)?.extensions?.skills).some((skill) => skill.tier === 'on_demand');
+    const availableTools = toolDefs.filter((t) => (t.name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(t.name, allowedTools, release)));
 
     // 5. Honour maxTurns from resolved agent
     const agentMaxTurns = resolvedAgent.agent.maxTurns ?? 5;
@@ -781,8 +807,9 @@ function extractToolResultCount(result: any): number | undefined {
       // If the model called tools
       if (roundToolCalls.length > 0) {
         // Enforce allowed tools: partition into authorized and unauthorized
-        const authorizedCalls = roundToolCalls.filter((tc) => isToolAllowed(tc.name, allowedTools, release));
-        const unauthorizedCalls = roundToolCalls.filter((tc) => !isToolAllowed(tc.name, allowedTools, release));
+        const callAllowed = (name: string) => (name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(name, allowedTools, release));
+        const authorizedCalls = roundToolCalls.filter((tc) => callAllowed(tc.name));
+        const unauthorizedCalls = roundToolCalls.filter((tc) => !callAllowed(tc.name));
 
         // Record rejection in trace for unauthorized or unknown tools
         for (const tc of unauthorizedCalls) {

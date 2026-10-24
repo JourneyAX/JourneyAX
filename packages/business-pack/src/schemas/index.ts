@@ -4,6 +4,7 @@ export * from './vocabulary.schema';
 export * from './entities.schema';
 export * from './model-policy.schema';
 export * from './agent.schema';
+export * from './skill.schema';
 export * from './journey.schema';
 export * from './rule.schema';
 export * from './capability-binding.schema';

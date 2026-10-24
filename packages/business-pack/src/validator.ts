@@ -60,6 +60,20 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     }
   }
 
+  // 4a. Skills: every skill an agent carries must be defined in the pack
+  const definedSkills = new Set(((pack as any).extensions?.skills || []).map((skill: any) => skill?.skillId));
+  for (const agent of pack.agents) {
+    for (const skillId of agent.skills || []) {
+      if (!definedSkills.has(skillId)) {
+        issues.push({
+          severity: 'error',
+          path: `agents[${agent.agentId}].skills`,
+          message: `Agent '${agent.agentId}' carries skill '${skillId}' which is not defined in extensions.skills`,
+        });
+      }
+    }
+  }
+
   // 4b. Validate configured default journey exists (never guessed or fabricated)
   const configuredDefaultJourneyId = pack.routingPolicy?.defaultJourneyId;
   if (configuredDefaultJourneyId && !pack.journeys.some((j) => j.journeyId === configuredDefaultJourneyId)) {

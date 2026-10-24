@@ -49,7 +49,7 @@ import { IS_INTERNAL_ONLY_KEY, IS_PUBLIC_KEY } from '../src/auth/auth.guard';
 import { ExecutionRepository } from '../src/kernel/execution.repository';
 import { ApprovalService } from '../src/kernel/approval.service';
 import { ApprovalStore } from '../src/approval/approval.store';
-import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema } from '@journeyax/business-pack';
+import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema, SkillDefinitionSchema } from '@journeyax/business-pack';
 import { MemoryDb } from '@journeyax/test-support';
 import { browseRange, exampleOrder, matchRangeConcepts, resolveCatalogPaths } from '../src/agent/range-browser';
 import { chooseCardSkus } from '../src/agent/auto-card';
@@ -1517,6 +1517,63 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(outcome.tokens.completion, 80, 'Completion tokens should accumulate across rounds');
       assert.equal(outcome.tokens.total, 400, 'Total tokens should accumulate across rounds');
       assert.deepEqual(outcome.turnResult.trace?.tokens, { prompt: 320, completion: 80, total: 400 });
+    });
+  });
+
+  describe('Skills: reusable instruction modules an agent carries', () => {
+    const skillPack = () => {
+      const release: any = createTestPack();
+      release.extensions = {
+        skills: [
+          { skillId: 'open-broad-requests', name: 'Open broad requests', description: 'How to open when the customer names only a group', instructions: 'Welcome them, then ask on a question card.', tier: 'always', tools: ['present_card'] },
+          { skillId: 'show-the-finished-job', name: 'Show the finished job', description: 'When the customer wants to see the result', instructions: 'Make one picture and say it is an illustration.', tier: 'on_demand', tools: [] },
+          { skillId: 'unused', name: 'Unused', description: 'Not carried by the agent', instructions: 'Never shown.', tier: 'always', tools: [] },
+        ],
+      };
+      release.agents[0].skills = ['open-broad-requests', 'show-the-finished-job', 'a-skill-nobody-defined'];
+      return release;
+    };
+
+    test('always-on skills are written into the agent prompt, on-demand skills are only listed, other skills and unknown ids are left out', () => {
+      const release = skillPack();
+      const resolvedAgent = new AgentRouter().resolveAgent(release, createTestWorkspace());
+      const prompt = buildAgentSystemPrompt({ resolvedAgent, release });
+      assert.match(prompt, /# Skill: Open broad requests\nWelcome them, then ask on a question card\./);
+      assert.match(prompt, /# Skills you can open/);
+      assert.match(prompt, /- show-the-finished-job: When the customer wants to see the result/);
+      assert.ok(!prompt.includes('Make one picture and say it is an illustration.'), 'on-demand instructions are not in the prompt');
+      assert.ok(!prompt.includes('Never shown.'), 'a skill the agent does not carry is not in its prompt');
+    });
+
+    test('an agent with no skills gets no skills block', () => {
+      const release: any = createTestPack();
+      const resolvedAgent = new AgentRouter().resolveAgent(release, createTestWorkspace());
+      assert.ok(!buildAgentSystemPrompt({ resolvedAgent, release }).includes('# Skill'));
+    });
+
+    test('use_skill opens an on-demand skill the agent carries, and nothing else', async () => {
+      const release = skillPack();
+      const context = (): AgentToolContext => ({
+        tenantId: 'test-tenant', environmentId: 'test', correlationId: 'c', release, catalogSearchHandler: {} as any,
+        turnProductSkus: new Set(), catalogProductCache: new Map(), readSourceIds: new Set(), allowedClaimClasses: new Set(),
+        presentedCards: [], isHumanHandoffRequested: false, agentSkillIds: release.agents[0].skills, usedSkillIds: new Set(),
+      });
+      const opened = await executeAgentTool('use_skill', { skillId: 'show-the-finished-job' }, context());
+      assert.equal(opened.ok, true);
+      assert.equal(opened.instructions, 'Make one picture and say it is an illustration.');
+      const other = await executeAgentTool('use_skill', { skillId: 'unused' }, context());
+      assert.equal(other.ok, false, 'a skill the agent does not carry cannot be opened');
+      assert.deepEqual(other.available, ['show-the-finished-job']);
+    });
+
+    test('the pack schema rejects a malformed skill and the validator flags an agent skill nobody defined', () => {
+      assert.equal(SkillDefinitionSchema.safeParse({ skillId: 'Bad Id', name: 'x', description: 'x', instructions: 'x' }).success, false);
+      assert.equal(SkillDefinitionSchema.safeParse({ skillId: 'ok-id', name: 'x', description: 'x', instructions: 'x' }).data?.tier, 'always');
+      const pack: any = skillPack();
+      const minimal = { modelPolicy: { policies: [] }, capabilities: { toolDefinitions: [], toolBindings: [], stageBindings: [] }, journeys: [], rules: [], evaluations: [], agents: pack.agents, extensions: pack.extensions };
+      const issues = validateBusinessPack(minimal as any).issues.filter((issue) => issue.path.endsWith('.skills'));
+      assert.equal(issues.length, 1);
+      assert.match(issues[0].message, /a-skill-nobody-defined/);
     });
   });
 

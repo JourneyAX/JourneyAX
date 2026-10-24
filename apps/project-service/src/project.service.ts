@@ -21,6 +21,7 @@ import {
   compileGraphToJourneyDefinition,
   compileModelPolicy,
   validatePolicyOverrides,
+  SkillDefinitionSchema,
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { PublicationGateValidator } from './publication-gate-validator';
@@ -484,6 +485,12 @@ export class ProjectService {
     if (Array.isArray((dto as any).capabilities)) $set.capabilities = (dto as any).capabilities;
     if (Array.isArray((dto as any).contextDimensions)) $set.contextDimensions = (dto as any).contextDimensions;
     if ((dto as any).console) $set.console = (dto as any).console;
+    // Skills (reusable instruction modules agents carry) are tenant data kept under `extensions.skills`; replaced wholesale and checked here.
+    if ((dto as any).skills !== undefined) {
+      const parsed = SkillDefinitionSchema.array().safeParse((dto as any).skills);
+      if (!parsed.success) return { success: false, message: `Invalid skills: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}` };
+      $set['extensions.skills'] = parsed.data;
+    }
     if ((dto as any).knowledgeSource) $set.knowledgeSource = (dto as any).knowledgeSource;
     // Pack settings are validated at write time so an invalid one can never reach a publish.
     const $unset: Record<string, ''> = {};
