@@ -86,3 +86,15 @@ Pack data `extensions.productGuides` and skill `read-the-product-guide` let the 
 | Claim classes the supplier's guide may support (`unlocks`) | `installation_step`, `care_safety`, `safety_instruction`, `requirement`, `compatibility` | Whether PlaceMakers accepts its suppliers' published guides as the source for install, care, safety, "must/required" and "suitable for" statements (the reply must say whose words they are). With `[]` the guide is read but the reply guard holds those sentences back. `warranty`, `legal_requirement` and `substitution` stay locked either way. |
 | Passages per read and their size | 8 passages of up to 900 characters | Larger means longer answers and more cost per question. |
 | Products with no guide text | 31,203 of 42,559 (for example Hardie Glaze 2400 x 1200 carries only a supplier link) | Whether staff should add guide files for the shelves customers ask about most; the consultant says "no guide text" and offers a colleague. |
+
+---
+
+## 8. Our own pages and the team voice (2026-10-24)
+
+Pack data `extensions.contentPages` and skills `read-the-shops-pages` and `speak-as-the-team` (store: `content_pages`, loaded from the crawled content file by `scripts/placemakers/ingest-content-pages.ts`). Set by Claude Code on the owner's instruction in chat; the owner decides the settings below.
+
+| Setting | Value now | What to confirm |
+|---|---|---|
+| Claim classes our own pages may support (`unlocks`) | `installation_step`, `care_safety`, `safety_instruction`, `requirement`, `compatibility`, `legal_requirement` | `legal_requirement` is on so the consultant can pass on what our H1 / compliance pages say ("our page says the Building Code allows ..."); the skill makes it say it is general information and to confirm with the council, designer or a licensed building practitioner, and never to say a building "complies" on its own judgement. Take `legal_requirement` out of the list if you do not want the consultant to relay compliance wording at all. |
+| Voice | the consultant speaks as the team ("we", "our range", "our page on ..."), reacts warmly to a tapped answer, says it looked and offers the closest thing when something is not found, never writes "Next step:" | Wording of the skill `speak-as-the-team`: edit freely, it is plain text in the draft. |
+| What is on the pages | 561 pages with text: 111 project pages, about 80 "Plan your space" pages, 55 outdoor-landscaping pages, 30 timber pages, 27 trade pages (E-Tools, TradeApp, TradePortal), 8 loyalty-terms pages; 190 pages list 1,293 product links (522 of the 534 distinct products are in the catalogue today) | Whether builder profile pages and promo-terms pages should be readable by the consultant (they are today). |

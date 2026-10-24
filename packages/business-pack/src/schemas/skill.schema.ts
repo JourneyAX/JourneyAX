@@ -90,3 +90,18 @@ export const ProductGuidesSchema = z.object({
   maxPassages: z.number().int().min(1).max(20).optional(),
   passageChars: z.number().int().min(200).max(3000).optional(),
 }).strict();
+
+/**
+ * Tenant settings for reading the shop's own web pages (pack `extensions.contentPages`): project how-tos, inspiration, compliance
+ * and trade-tool pages. A tenant without it has the feature off.
+ */
+export const ContentPagesSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** Claim classes the shop's own pages may support in a reply (see `productGuides.unlocks`). Empty or absent: the page is read but unlocks nothing. */
+  unlocks: z.array(z.string().min(1).max(40)).max(12).optional(),
+  /** Passages returned by one read, and the most characters of each. */
+  maxPassages: z.number().int().min(1).max(20).optional(),
+  passageChars: z.number().int().min(200).max(3000).optional(),
+  /** Pages listed by one search. */
+  maxPages: z.number().int().min(1).max(10).optional(),
+}).strict();

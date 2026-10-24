@@ -29,6 +29,7 @@ import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import type { ProductGuideRepository } from '../kernel/product-guide.repository';
+import type { ContentPageRepository } from '../kernel/content-page.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
 import { browseRange, exampleOrder, goesWithForTrail, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
@@ -37,6 +38,7 @@ import { normaliseCardState } from './card-state';
 import { areaToSquareMetres, estimateQuantity, type QuantityHelperConfig, type QuantityEstimate } from './quantity-estimate';
 import { generateVisual, type VisualiserConfig } from './visual-generator';
 import { readGuides } from './product-guides';
+import { findPage, pageAsGuide, searchPages, type ContentPageRecord, type PageHit } from './content-pages';
 import type { LastProducts } from './auto-card';
 
 export interface AgentToolContext {
@@ -61,6 +63,8 @@ export interface AgentToolContext {
   knowledgeGapRepo?: KnowledgeGapRepository;
   /** The guides kept with products (specification guide, installation guide, manual), read by read_product_guide. */
   productGuideRepo?: ProductGuideRepository;
+  /** The shop's own web pages kept as text (project how-tos, inspiration, compliance, the shop's own tools), read by read_content_page. */
+  contentPageRepo?: ContentPageRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   turnProductSkus: Set<string>;
@@ -109,11 +113,13 @@ async function findProductBySku(ctx: AgentToolContext, sku: string): Promise<any
   return found;
 }
 
-/** Points the model at the product's own guide: titles of guides found by topic say nothing about what a product's guide states. */
-function productGuideHint(ctx: AgentToolContext): { productGuide?: string } {
-  const config = (ctx.release as any)?.extensions?.productGuides;
-  if (!ctx.productGuideRepo || config?.enabled === false) return {};
-  return { productGuide: 'These are general guides. For what the guide kept with a specific product says (its specification guide, installation guide or manual), call read_product_guide with that product\'s SKU: it returns the guide\'s own words. Do not tell the customer a guide is unavailable before you have tried it.' };
+/** Points the model at what search_guides cannot read: the guide kept with a product, and the shop's own pages. */
+function productGuideHint(ctx: AgentToolContext): { productGuide?: string; sitePages?: string } {
+  const extensions = (ctx.release as any)?.extensions || {};
+  return {
+    ...(ctx.productGuideRepo && extensions.productGuides?.enabled !== false ? { productGuide: 'These are general guides. For what the guide kept with a specific product says (its specification guide, installation guide or manual), call read_product_guide with that product\'s SKU: it returns the guide\'s own words. Do not tell the customer a guide is unavailable before you have tried it.' } : {}),
+    ...(ctx.contentPageRepo && extensions.contentPages?.enabled !== false ? { sitePages: 'For the shop\'s own pages on projects, ideas, compliance (for example the energy-efficiency rules) and the tools and services it offers, call read_content_page with the customer\'s question.' } : {}),
+  };
 }
 
 /** A product the model named by its full title instead of its SKU: taken only when exactly one product has that title, never the nearest match. */
@@ -552,6 +558,19 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         from: { type: 'number', description: 'Optional, with one guide: the passage number to read from, to keep reading after a first read said there is more.' },
       },
       required: ['sku'],
+    },
+  },
+  {
+    name: 'read_content_page',
+    description: 'Read the shop\'s OWN web pages: project how-tos and guides, inspiration and ideas, compliance and building-code notes (for example the energy-efficiency pages), and pages about the tools and services the shop offers. Give what the customer wants to know in their words and it finds the best pages and returns the passages that answer, with the page\'s link and the real products the page features. Use it for ideas, how a project is done and what it involves, compliance questions and how the shop\'s tools and services work. For the guide of one specific product use read_product_guide instead.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What the customer wants to know, in their own words (for example "ideas for an outdoor entertaining area" or "how do I show a building meets the energy rules").' },
+        page: { type: 'string', description: 'Optional: open one page, by the page id a previous result gave, its link, or its exact title.' },
+        from: { type: 'number', description: 'Optional, with a page: the passage number to read from, to keep reading a long page.' },
+      },
+      required: [],
     },
   },
   {
@@ -1644,7 +1663,7 @@ export async function executeAgentTool(
           found: false,
           sku: product.sku || sku,
           title,
-          message: 'The catalogue holds no guide text for this product. Say so plainly, and do not describe what a guide for this kind of product usually says. Offer what the product record itself states (from get_product), or a colleague who can check the maker\'s guide.',
+          message: 'We do not have the text of a guide for this product. Say so the way one of us would ("I don\'t have the guide for this one to hand"), and do not describe what a guide for this kind of product usually says. Offer what we know about the product from get_product, or a colleague who can check the maker\'s guide.',
         };
       }
       const reading = readGuides(records, {
@@ -1669,7 +1688,68 @@ export async function executeAgentTool(
         answeredFromGuide: reading.matched,
         passages: reading.passages.map((passage) => ({ guide: passage.guide, passage: `${passage.n} of ${passage.of}`, text: passage.text })),
         ...(reading.next ? { continueWith: { guide: reading.guides[0].title, from: reading.next.from } } : {}),
-        message: 'These passages are the supplier\'s own words, copied from the guide(s) listed. Explain them in plain language and say whose guide it is ("the guide says…"). Keep every number, unit, spacing and limit exactly as written, and add no step, limit or compatibility from general knowledge. If the passages do not answer what was asked, do not say the guide is silent yet: a long guide lists its headings with the passage each is in ("headings": passage number, heading), so call again with from set to the passage of the section that fits (and the same guide), or with the guide\'s own words for the thing (the term in a heading, the unit) as the question. Only when the right section has been read and still does not say, tell the customer so and give the guide\'s link. For wet areas, structural fixing or anything where a mistake is costly, tell the customer to follow the full guide and offer its link.',
+        message: 'These passages are the maker\'s own words, copied from the guide(s) listed. Explain them in plain language, as a member of our team would, and say whose guide it is ("the Sika guide says…" using the brand, or "the guide that comes with it says…"). Keep every number, unit, spacing and limit exactly as written, and add no step, limit or compatibility from general knowledge. If the passages do not answer what was asked, do not say the guide is silent yet: a long guide lists its headings with the passage each is in ("headings": passage number, heading), so call again with from set to the passage of the section that fits (and the same guide), or with the guide\'s own words for the thing (the term in a heading, the unit) as the question. Only when the right section has been read and still does not say, tell the customer so and give the guide\'s link. For wet areas, structural fixing or anything where a mistake is costly, tell the customer to follow the full guide and offer its link.',
+      };
+    }
+
+    case 'read_content_page': {
+      const config: { enabled?: boolean; unlocks?: string[]; maxPassages?: number; passageChars?: number; maxPages?: number } = (ctx.release as any)?.extensions?.contentPages || {};
+      if (config.enabled === false) return { ok: false, error: 'Reading our own pages is not switched on here. Say you cannot read them here and help from what else you can see.' };
+      const query = String(args.query || '').trim();
+      const reference = String(args.page || '').trim();
+      if (!query && !reference) return { ok: false, error: 'Give what the customer wants to know (query), or the page to open (page).' };
+      const pages = ctx.contentPageRepo ? await ctx.contentPageRepo.listPages(ctx.tenantId) : [];
+      if (pages.length === 0) return { ok: true, found: false, message: 'None of our pages can be read here right now. Say so plainly and do not describe what such a page would say.' };
+      let chosen: ContentPageRecord;
+      let hits: PageHit[] = [];
+      if (reference) {
+        const opened = findPage(pages, reference);
+        if ('error' in opened) return { ok: false, error: opened.error === 'ambiguous' ? `More than one page has that title: ${opened.candidates.join('; ')}. Use the page id from a search.` : `No page "${reference}". Search with a query first (the result lists page ids).` };
+        chosen = opened;
+      } else {
+        hits = searchPages(pages, query, config.maxPages ?? 5);
+        if (hits.length === 0) {
+          if (ctx.knowledgeGapRepo) {
+            ctx.knowledgeGapRepo.recordGap({
+              tenantId: ctx.tenantId, environmentId: ctx.environmentId, topic: `site page: ${query}`, toolName: 'read_content_page',
+              conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
+            }).catch(() => {});
+          }
+          return { ok: true, found: false, query, message: 'None of our pages matches this. Say you had a look and did not find a page on it, and do not describe what a page would say. You may try other words once.' };
+        }
+        chosen = pages.find((page) => page.pageId === hits[0].pageId)!;
+      }
+      const reading = readGuides([pageAsGuide(chosen)], {
+        question: query,
+        from: args.from === undefined || args.from === null || args.from === '' ? undefined : Number(args.from),
+        maxPassages: config.maxPassages ?? 6,
+        passageChars: config.passageChars,
+      });
+      if ('error' in reading) return { ok: false, error: 'That page has no readable text.' };
+      // The products a page features are shown only if the catalogue still has them.
+      const featured: Array<{ sku: string; title: string }> = [];
+      for (const entry of chosen.products.slice(0, 16)) {
+        if (featured.length >= 8) break;
+        const found = await findProductBySku(ctx, entry.sku);
+        if (!found || isProductDiscontinued(found)) continue;
+        featured.push({ sku: String(found.sku), title: String(found.title || found.name || entry.name || found.sku) });
+      }
+      for (const name of config.unlocks || []) {
+        const parsed = ClaimClassSchema.safeParse(name);
+        if (parsed.success) ctx.allowedClaimClasses.add(parsed.data);
+      }
+      const guide = reading.guides[0];
+      return {
+        ok: true,
+        found: true,
+        query,
+        page: { page: chosen.pageId, title: chosen.title, link: chosen.url, summary: chosen.summary, filedUnder: chosen.categories, passages: guide.passages, ...(guide.outline ? { headings: guide.outline.map((entry) => `${entry.n}: ${entry.heading}`) } : {}), ...(guide.truncated ? { note: 'The stored text stops before the end of this page.' } : {}) },
+        answeredFromPage: reading.matched,
+        passages: reading.passages.map((passage) => ({ passage: `${passage.n} of ${passage.of}`, text: passage.text })),
+        ...(reading.next ? { continueWith: { page: chosen.pageId, from: reading.next.from } } : {}),
+        featuredProducts: featured,
+        ...(hits.length > 1 ? { otherPages: hits.slice(1).map((hit) => ({ page: hit.pageId, title: hit.title, summary: hit.summary ? hit.summary.slice(0, 200) : undefined, link: hit.url })) } : {}),
+        message: 'These passages are our own words from our website page named here. Explain them in plain language, as a member of our team would, and say which page they come from ("our page on ... says..."), with its link as a markdown link [page title](address). Keep every figure, name and rule exactly as written and add nothing from general knowledge. If the page does not cover what was asked, say so and look at otherPages or open another page (page = its id) before giving up. featuredProducts are real catalogue products the page features: if the customer wants ideas or products for the project, show them on a products card (present_card) and say in a sentence why each is there; never show a product that is not in this list or another tool result. For building-code, consent or structural questions the page is general information: tell the customer to confirm with the council, the designer or a licensed building practitioner.',
       };
     }
 

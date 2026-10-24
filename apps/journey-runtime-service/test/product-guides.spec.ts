@@ -206,7 +206,7 @@ async function main() {
     const ctx = shop([record({ docId: 'a'.repeat(32), title: 'Specification Guide', text: SPEC_TEXT })]);
     const none: any = await executeAgentTool('read_product_guide', { sku: 'G2', question: 'fixing' }, ctx);
     assert.deepEqual([none.ok, none.found], [true, false]);
-    assert.match(none.message, /no guide text/);
+    assert.match(none.message, /do not have the text of a guide/);
     assert.equal(ctx.gaps.length, 1);
     assert.equal(ctx.gaps[0].toolName, 'read_product_guide');
     assert.equal(ctx.allowedClaimClasses.size, 0, 'nothing is unlocked when nothing was read');

@@ -12,11 +12,14 @@ export interface AnswerQuestion {
   options?: unknown;
   multi?: boolean;
   inputType?: string;
+  unit?: string;
   answer?: unknown;
 }
 
 export function answerLabel(question: AnswerQuestion, answer: unknown): string {
   const text = Array.isArray(answer) ? answer.map(String).join(', ') : String(answer ?? '');
+  // A number asked for with a unit ("20" on an area question in m²) is said with it, so "20 m²" is what the customer and the consultant read.
+  if (typeof question.unit === 'string' && question.unit.trim() && /^-?\d+(\.\d+)?$/.test(text.trim())) return `${text.trim()} ${question.unit.trim()}`;
   if (question.multi === true || question.inputType === 'multi_select' || Array.isArray(answer)) return text;
   const options = Array.isArray(question.options) ? question.options : [];
   const hit = options.find((option: any) => option && typeof option === 'object' && String(option.value) === text.trim());

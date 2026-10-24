@@ -221,7 +221,10 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     docs: el('Box', { gap: 'xs' }, { children: ['docsHead', 'docRows'], visible: [S('/product/hasDocuments')] }),
     docsHead: el('Text', { text: 'Documents', variant: 'subheading' }),
     docRows: el('Box', { gap: 'xs' }, { children: ['doc'], repeat: { statePath: '/product/documents', key: 'url' } }),
-    doc: el('Link', { label: I('title'), href: I('url'), external: true }),
+    // A document opens as a link, and the consultant can read it to the customer in plain words ("ask" is the line sent for that document).
+    doc: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: ['docLink', 'docExplain'] }),
+    docLink: el('Link', { label: I('title'), href: I('url'), external: true }),
+    docExplain: el('Button', { label: 'Explain it to me', variant: 'ghost', size: 'sm' }, { visible: [I('ask')], on: { press: { action: 'sendMessage', params: { text: I('ask') } } } }),
     // What the catalogue itself suggests alongside this product: suggestions only, never a statement that it fits.
     suggested: el('Box', { gap: 'sm' }, { children: ['suggestedHead', 'suggestedNote', 'suggestedGrid'], visible: [S('/product/hasSuggested')] }),
     suggestedHead: el('Text', { text: 'Have you considered?', variant: 'subheading' }),

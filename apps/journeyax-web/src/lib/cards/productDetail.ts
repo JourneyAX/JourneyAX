@@ -66,7 +66,10 @@ export function buildDetailProduct(tile: TileProduct | undefined, detail: Server
     : Object.entries(tile?.specs || {}).map(([label, value]) => ({ label, value: String(value) }));
   const specList = list(detail?.specs).length > 0 ? list<{ label: string; value: string }>(detail?.specs) : tileSpecs;
   const features = list<string>(detail?.features).length > 0 ? list<string>(detail?.features) : list<string>(tile?.featuresList);
-  const documents = list(detail?.documents).length > 0 ? list<{ title: string; url: string }>(detail?.documents) : list<{ title: string; url: string }>(tile?.documents);
+  const title = detail?.title || tile?.name || tile?.title;
+  // Each document also carries the line the "Explain it to me" button sends, so the consultant reads that document to the customer.
+  const documents = (list(detail?.documents).length > 0 ? list<{ title: string; url: string }>(detail?.documents) : list<{ title: string; url: string }>(tile?.documents))
+    .map((document) => ({ ...document, ask: title ? `Explain the ${document.title} for ${title}` : `Explain the ${document.title}` }));
   const withPhoto = (items: unknown) => list<NonNullable<ServerProductDetail['related']>[number]>(items).map((r) => ({ ...r, imageUrl: usableImage(r.imageUrl) }));
   const suggested = withPhoto(detail?.suggested);
   const related = withPhoto(detail?.related);
@@ -74,7 +77,7 @@ export function buildDetailProduct(tile: TileProduct | undefined, detail: Server
 
   return {
     sku,
-    title: detail?.title || tile?.name || tile?.title,
+    title,
     brand: detail?.brand,
     category: detail?.category || tile?.category,
     description: detail?.description || tile?.description || tile?.narrative,

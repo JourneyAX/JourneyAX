@@ -41,6 +41,7 @@ import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { TurnTranscriptStore } from '../kernel/transcript.store';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import type { ProductGuideRepository } from '../kernel/product-guide.repository';
+import type { ContentPageRepository } from '../kernel/content-page.repository';
 
 export interface AgentTurnOptions {
   command: TurnCommand;
@@ -57,6 +58,7 @@ export interface AgentTurnOptions {
   transcriptStore?: TurnTranscriptStore;
   knowledgeGapRepo?: KnowledgeGapRepository;
   productGuideRepo?: ProductGuideRepository;
+  contentPageRepo?: ContentPageRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   sink: (event: string, data: any) => void;
@@ -489,6 +491,7 @@ export class AgentTurnLoop {
       executionRepo,
       knowledgeGapRepo: options.knowledgeGapRepo,
       productGuideRepo: options.productGuideRepo,
+      contentPageRepo: options.contentPageRepo,
       inMemoryQuotes,
       inMemoryCarts,
       turnProductSkus: new Set<string>(),

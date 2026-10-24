@@ -26,6 +26,7 @@ import {
   VisualiserSchema,
   EventPrefetchSchema,
   ProductGuidesSchema,
+  ContentPagesSchema,
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { PublicationGateValidator } from './publication-gate-validator';
@@ -491,7 +492,7 @@ export class ProjectService {
     if ((dto as any).console) $set.console = (dto as any).console;
     // Tenant settings that ride in the pack's extensions: only these keys, each checked against its schema.
     if ((dto as any).extensions && typeof (dto as any).extensions === 'object') {
-      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema, eventPrefetch: EventPrefetchSchema, productGuides: ProductGuidesSchema };
+      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema, eventPrefetch: EventPrefetchSchema, productGuides: ProductGuidesSchema, contentPages: ContentPagesSchema };
       for (const [key, value] of Object.entries((dto as any).extensions)) {
         const schema = allowed[key];
         if (!schema) return { success: false, message: `Unknown pack extension '${key}' (allowed: ${Object.keys(allowed).join(', ')}).` };

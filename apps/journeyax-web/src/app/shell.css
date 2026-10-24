@@ -307,6 +307,8 @@
 }
 .app-layout .msg__bubble--ai { padding: 0; font-size: 15.5px; line-height: 1.68; color: var(--ax-text); }
 .app-layout .msg__bubble--ai strong { color: var(--ax-text); }
+.app-layout .msg__bubble--ai .msg__link { color: var(--ax-accent, #8a5a2b); text-decoration: underline; text-underline-offset: 2px; word-break: break-word; }
+.app-layout .msg__bubble--ai .msg__link:hover { text-decoration-thickness: 2px; }
 .app-layout .msg__bubble--user {
   background: var(--ax-fill-strong); color: var(--ax-text); border-radius: 18px; padding: 11px 16px;
   font-size: 15.5px; line-height: 1.6; white-space: pre-line;

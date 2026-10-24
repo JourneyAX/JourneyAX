@@ -38,10 +38,19 @@ function renderMarkdown(text: string) {
   });
 }
 
-// Parse **bold** and *italic* markers
+// Parse **bold**, *italic* and links: [text](address) and a bare web address both become a tappable link that opens in a new tab.
+// Only http(s) addresses are linked, and the text is never treated as markup.
+const INLINE_RE = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])|\*\*(.+?)\*\*|\*(.+?)\*/g;
+
+/** A web address as a short readable label ("placemakers.co.nz/online/pergolas"). */
+function shortAddress(url: string): string {
+  const bare = url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
+  return bare.length > 48 ? `${bare.slice(0, 47)}…` : bare;
+}
+
 function parseBold(text: string) {
   const parts: (string | React.ReactNode)[] = [];
-  const regex = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+  const regex = new RegExp(INLINE_RE.source, 'g');
   let lastIndex = 0;
   let match;
 
@@ -50,13 +59,14 @@ function parseBold(text: string) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
-    // Bold
-    if (match[1]) {
-      parts.push(<strong key={match.index}>{match[1]}</strong>);
-    }
-    // Italic
-    else if (match[2]) {
-      parts.push(<em key={match.index}>{match[2]}</em>);
+    if (match[1] && match[2]) {
+      parts.push(<a key={match.index} className="msg__link" href={match[2]} target="_blank" rel="noopener noreferrer">{match[1]}</a>);
+    } else if (match[3]) {
+      parts.push(<a key={match.index} className="msg__link" href={match[3]} target="_blank" rel="noopener noreferrer">{shortAddress(match[3])}</a>);
+    } else if (match[4]) {
+      parts.push(<strong key={match.index}>{match[4]}</strong>);
+    } else if (match[5]) {
+      parts.push(<em key={match.index}>{match[5]}</em>);
     }
     lastIndex = match.index + match[0].length;
   }
@@ -79,9 +89,23 @@ function brandInitials(name: string): string {
   return base.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+/**
+ * The message a submitted question card sends ("My answers:" then one "question → answer" line each) is for the server and the
+ * consultant; what the customer sees in their own bubble is what they chose, as one natural line ("Deck area, Natural timber look and 20").
+ */
+function readableAnswers(text: string): string | undefined {
+  const match = String(text || '').match(/^My answers:\s*\n([\s\S]+)$/);
+  if (!match) return undefined;
+  const chosen = match[1].split('\n').map((line) => line.split(' → ').slice(1).join(' → ').trim()).filter((answer) => answer && answer.toLowerCase() !== 'not answered');
+  if (chosen.length === 0) return undefined;
+  return chosen.length === 1 ? chosen[0] : `${chosen.slice(0, -1).join(', ')} and ${chosen[chosen.length - 1]}`;
+}
+
 /** A customer action the interface records as "[addToCart: Item]" is shown as a readable line ("Add to cart: Item"), never as a code-like tag. */
 const ACTION_EVENT_RE = /^\[([A-Za-z][A-Za-z0-9_.]*)(?::\s*([\s\S]+))?\]$/;
 function readableUserText(text: string): string {
+  const answers = readableAnswers(text);
+  if (answers) return answers;
   const match = String(text || '').trim().match(ACTION_EVENT_RE);
   if (!match) return text;
   const words = match[1].replace(/[._]/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
