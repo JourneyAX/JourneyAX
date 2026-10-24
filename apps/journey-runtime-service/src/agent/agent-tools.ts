@@ -539,7 +539,10 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         },
         state: {
           type: 'object',
-          description: 'The card state data matching the card type schema.',
+          description:
+            'The card state data matching the card type schema. For a clarify card the state is {"questions":[{"id":"a short key","text":"the question in plain words",' +
+            '"options":["a tappable choice","another choice"],"inputType":"single_select" | "multi_select" | "number" | "text","unit":"shown beside a number"}]} ' +
+            'with at most three questions; leave options out for a number or text question, and give a unit for a number. The customer taps or types the answers, and they come back to you together as one message.',
         },
       },
       required: ['cardType', 'state'],

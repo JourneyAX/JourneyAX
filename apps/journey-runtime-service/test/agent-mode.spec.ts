@@ -433,6 +433,46 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.equal(b.rating, undefined, 'no rating is shown for a product without one');
   });
 
+  test('card tests: a question card carries tappable options and a number question, with or without words above them, and at most three questions', async () => {
+    const contextFor = (): AgentToolContext => ({
+      tenantId: 'test-tenant', environmentId: 'test', correlationId: 'test-corr', release: createTestPack(), catalogSearchHandler: {} as any,
+      turnProductSkus: new Set(), catalogProductCache: new Map(), readSourceIds: new Set(), allowedClaimClasses: new Set(),
+      presentedCards: [], isHumanHandoffRequested: false,
+    });
+    const questions = [
+      { id: 'where', text: 'Where will it be used?', options: ['Inside', 'Outside', 'Not sure'], inputType: 'single_select' },
+      { id: 'area', text: 'How big is the area?', inputType: 'number', unit: 'm2' },
+    ];
+    const bare = contextFor();
+    const shown = await executeAgentTool('present_card', { cardType: 'clarify', state: { questions } }, bare);
+    assert.equal(shown.ok, true, JSON.stringify(shown));
+    const state: any = bare.presentedCards[0].state;
+    assert.deepEqual(state.questions[0].options, ['Inside', 'Outside', 'Not sure']);
+    assert.equal(state.questions[1].unit, 'm2');
+    assert.equal(state.heading, undefined, 'a card without words above it shows the questions alone');
+
+    const worded = contextFor();
+    const withHeading = await executeAgentTool('present_card', { cardType: 'clarify', state: { heading: 'A few quick questions', questions } }, worded);
+    assert.equal(withHeading.ok, true);
+    assert.equal((worded.presentedCards[0].state as any).heading, 'A few quick questions');
+
+    const tooMany = await executeAgentTool('present_card', { cardType: 'clarify', state: { questions: [...questions, ...questions] } }, contextFor());
+    assert.equal(tooMany.ok, false, 'four questions are too many for one card');
+    const definition: any = AGENT_TOOL_DEFINITIONS.find((tool: any) => tool.name === 'present_card');
+    assert.match(definition.parameters.properties.state.description, /"questions"/, 'the agent is shown the shape of a question card');
+  });
+
+  test('the PlaceMakers draft welcomes a customer with a broad request and asks on a question card, without listing groups', () => {
+    const draft = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
+    const prompt: string = draft.agents[0].systemPromptTemplate;
+    const broad = prompt.slice(prompt.indexOf('- Broad request:'), prompt.indexOf('- Narrow request:'));
+    assert.ok(broad.includes('welcome'), 'the reply opens with a welcome');
+    assert.ok(broad.includes('cardType clarify'), 'the questions go on a question card');
+    assert.ok(broad.includes('do not call search_products'), 'products wait for the answers');
+    assert.ok(!/how many products/i.test(broad.replace('do not list the smaller groups or how many products each holds', '')), 'no counts of products per group');
+    assert.ok(!broad.includes('One line for each main smaller group'), 'the old group list is gone');
+  });
+
   test('card tests: present_card rejects unverified SKUs not returned by tools this turn', async () => {
     const toolContext: AgentToolContext = {
       tenantId: 'test-tenant',

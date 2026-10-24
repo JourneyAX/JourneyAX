@@ -180,6 +180,9 @@ export const CARD_TYPES = {
     title: 'Clarifying questions',
     description: 'Up to three questions with tappable options or structured inputs.',
     state: z.object({
+      /** Optional words above the questions; without a heading the card shows the questions alone. */
+      heading: z.string().optional(),
+      eyebrow: z.string().optional(),
       questions: z.array(
         z.object({
           id: z.string(),

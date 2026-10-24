@@ -70,6 +70,8 @@ export interface EvalTurnResult {
   groundTruthReference: string;
   assistantMessage: string;
   cards: string[];
+  /** What each card on the last turn holds (for example a question card's questions and options), for reading a run by eye. */
+  cardStates?: any[];
   toolCalls: number;
   toolsCalled: string[];
   toolInvocations: ToolInvocationRecord[];
@@ -916,6 +918,7 @@ async function main() {
       groundTruthReference: tc.groundTruthReference,
       assistantMessage,
       cards,
+      cardStates: (lastResult?.uiInstructions || []).map((ui: any) => ui.envelope?.arguments?.card?.state ?? ui.state ?? ui.props ?? null),
       toolCalls,
       toolsCalled,
       toolInvocations,

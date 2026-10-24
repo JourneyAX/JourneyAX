@@ -166,9 +166,11 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   // last one is picked (the storefront owns that, see CardStage/ChatPanel).
   clarify: spec('root', {
     root: el('Box', { gap: '0', maxWidth: '760px' }, { children: ['head', 'qs', 'foot'] }),
-    head: el('Box', { gap: 'xs', pad: 'md' }, { children: ['eyebrow', 'title'] }),
-    eyebrow: el('Text', { text: 'A couple of quick questions', variant: 'eyebrow' }),
-    title: el('Text', { text: 'Help me narrow it down', variant: 'heading' }),
+    // The words above the questions come from the card's own state, written by the consultant in the customer's language;
+    // a card that carries none shows the questions alone, right under the reply that introduced them.
+    head: el('Box', { gap: 'xs', pad: 'md' }, { children: ['eyebrow', 'title'], visible: [S('/heading')] }),
+    eyebrow: el('Text', { text: S('/eyebrow'), variant: 'eyebrow' }, { visible: [S('/eyebrow')] }),
+    title: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
     qs: el('Box', { gap: '0' }, { children: ['q'], repeat: { statePath: '/questions', key: 'id' } }),
     q: el('Box', { pad: 'md', gap: 'sm' }, { children: ['qt', 'qinput'] }),
     qt: el('Text', { text: I('text'), variant: 'subheading' }),
