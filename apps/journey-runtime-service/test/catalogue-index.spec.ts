@@ -10,6 +10,7 @@ import {
   type CatalogueLoader,
 } from '../src/capabilities/catalogue-index';
 import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-search.handler';
+import { HealthController } from '../src/health.controller';
 
 const suite = createSuite('runtime: in-memory catalogue index');
 const mapping = resolveCatalogMapping();
@@ -311,6 +312,24 @@ async function main() {
     assert.deepEqual(await handler.countInCategoryPaths([['Tools']], searchCtx), [1]);
     assert.equal(calls.count, 3, 'a path not asked before is counted');
     assert.deepEqual(await new CatalogSearchHandler(undefined, async () => db).countInCategoryPaths([['Plumbing']], { ...searchCtx, tenantId: 'other' }), [1], 'another tenant is counted on its own, never from the first tenant\'s kept figure');
+  });
+
+  await suite.test('the health endpoint says whether the copy is on and how each tenant\'s copy is doing', async () => {
+    const { db } = await databaseOf(catalogue);
+    const before = process.env.CATALOGUE_INDEX;
+    delete process.env.CATALOGUE_INDEX;
+    CatalogueIndexRegistry.shared().clear();
+    const controller = new HealthController();
+    assert.deepEqual({ enabled: controller.catalogueIndexHealth().enabled, tenants: controller.catalogueIndexHealth().tenants }, { enabled: false, tenants: [] });
+    await withIndexOn(async () => {
+      await CatalogueIndexRegistry.shared().warm({ tenantId: 'p1', mapping, getDb: async () => db });
+      const health = controller.catalogueIndexHealth();
+      assert.equal(health.enabled, true);
+      assert.equal(health.tenants[0].tenantId, 'p1');
+      assert.equal(health.tenants[0].state, 'ready');
+      assert.equal(health.tenants[0].products, 4);
+    });
+    if (before !== undefined) process.env.CATALOGUE_INDEX = before;
   });
 
   await suite.test('while the copy is still loading, a search is answered by the database', async () => {

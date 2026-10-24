@@ -12,6 +12,8 @@ export interface LastProducts {
   skus: string[];
   /** True when the search had to drop part of what was asked to find anything: those are alternatives, not matches. */
   relaxed: boolean;
+  /** `overview`: examples of a range shown to describe it, not products chosen for the customer's job. */
+  source?: 'overview';
 }
 
 const MAX_NAMED = 6;

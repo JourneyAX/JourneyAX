@@ -293,6 +293,27 @@ function suggestionsFor(okf: OkfReleaseContent, concept: OkfConcept): Array<{ co
   return out.slice(0, MAX_CHILDREN);
 }
 
+/**
+ * The order the example products of an overview are shown in: the groups whose own name carries a word the customer used come
+ * first ("paint" puts Interior Paint and Aerosol Paint ahead of Woodcare, which only sits under Paint), then the first example of
+ * every group before the second example of any, so a handful of cards shows the range rather than two groups of it.
+ */
+export function exampleOrder(groups: RangeGroup[], asked: string, locale?: string): string[] {
+  const words = wordsOf(asked).filter((word) => word.length >= 4 && !/\d/.test(word));
+  const matchers = words.map((word) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${stemPatternForLocale(word, locale)}`, 'iu'));
+  const named = (group: RangeGroup) => matchers.some((matcher) => matcher.test(group.name));
+  const withExamples = groups.filter((group) => (group.examples || []).length > 0);
+  const ordered = [...withExamples.filter(named), ...withExamples.filter((group) => !named(group))];
+  const out: string[] = [];
+  for (let round = 0; round < Math.max(0, ...ordered.map((group) => group.examples!.length)); round++) {
+    for (const group of ordered) {
+      const example = group.examples![round];
+      if (example && !out.includes(example.sku)) out.push(example.sku);
+    }
+  }
+  return out;
+}
+
 const groupOf = (concept: OkfConcept): RangeGroup => ({ name: concept.name, conceptId: concept.conceptId, path: pathOf(concept) });
 
 export async function browseRange(deps: RangeBrowseDeps): Promise<{ found: boolean; topic?: string; interpretedAs?: TopicCorrection; qualifiers?: string[]; nodes: RangeNode[] }> {

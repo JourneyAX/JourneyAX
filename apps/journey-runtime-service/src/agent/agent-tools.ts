@@ -28,7 +28,7 @@ import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
-import { browseRange, resolveCatalogPaths } from './range-browser';
+import { browseRange, exampleOrder, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
 import type { LastProducts } from './auto-card';
 
@@ -1000,8 +1000,8 @@ export async function executeAgentTool(
         // The request says more than a group: an overview would show products that do not fit what was asked for.
         messages.push(`The request also says ${result.qualifiers.map((q: string) => `"${q}"`).join(', ')}, which this overview does not cover, so it is not the answer. Call search_products with productType set to the group's name and those words as keywords, and answer from what it returns.`);
       } else if (result.nodes.some((node) => (node.children || [node]).some((group) => (group.examples || []).length > 0))) {
-        const exampleSkus = result.nodes.flatMap((node) => (node.children && node.children.length > 0 ? node.children : [node]).flatMap((group) => (group.examples || []).map((example) => example.sku)));
-        ctx.lastProducts = { skus: [...new Set(exampleSkus)], relaxed: false };
+        const exampleSkus = exampleOrder(result.nodes.flatMap((node) => (node.children && node.children.length > 0 ? node.children : [node])), result.interpretedAs?.topic ?? topic, (ctx.release as any)?.profile?.primaryLocale);
+        ctx.lastProducts = { skus: exampleSkus, relaxed: false, source: 'overview' };
         messages.push('The example products are shown to the customer on a card right after your reply, with their photos, so write the reply now and do not list products, prices or SKUs in your text.');
       }
       return messages.length > 0 ? { ...result, message: messages.join(' ') } : result;
@@ -1709,7 +1709,8 @@ export async function executeAgentTool(
         const cached = ctx.catalogProductCache.get(p.sku);
         if (!cached) return p;
         // What the catalogue says about the product, and which of it answers what the customer asked for: never model-written.
-        const facts = productCardFacts(cached.highlights, { customerText: ctx.customerQuestion, locale: (ctx.release as any)?.profile?.primaryLocale });
+        // Examples shown to describe a range were not chosen for the customer's job, so none of them claims to fit it.
+        const facts = productCardFacts(cached.highlights, { customerText: ctx.lastProducts?.source === 'overview' ? '' : ctx.customerQuestion, locale: (ctx.release as any)?.profile?.primaryLocale });
         const offered = typeof p.reason === 'string' ? p.reason.trim() : '';
         return {
           ...p,
