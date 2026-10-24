@@ -274,7 +274,22 @@
       "coveragePatterns": [
         "offers\\s+(\\d+(?:\\.\\d+)?)\\s*m-?sq\\s+coverage",
         "covers?\\s+(?:up\\s+to\\s+)?(\\d+(?:\\.\\d+)?)\\s*(?:m2|m²|sqm|m-?sq)"
-      ]
+      ],
+      "areaUnits": {
+        "m2": 1,
+        "sqm": 1,
+        "squaremetre": 1,
+        "squaremetres": 1,
+        "squaremeter": 1,
+        "squaremeters": 1,
+        "ft2": 0.09290304,
+        "sqft": 0.09290304,
+        "squarefoot": 0.09290304,
+        "squarefeet": 0.09290304,
+        "sf": 0.09290304,
+        "yd2": 0.83612736,
+        "sqyd": 0.83612736
+      }
     },
     "visualiser": {
       "enabled": true,

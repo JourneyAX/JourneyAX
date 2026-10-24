@@ -44,6 +44,8 @@ export const QuantityHelperSchema = z.object({
   coveragePatterns: z.array(z.string().min(1).max(300)).max(20).optional(),
   /** A side shorter than this (mm) means the product is sold by length, not as a piece that covers an area. */
   minPieceSideMm: z.number().min(1).max(5000).optional(),
+  /** Units of area the shop understands, each as square metres per unit, keyed by the unit written plainly (lower case, no spaces: "ft2", "sqft"). */
+  areaUnits: z.record(z.string().min(1).max(30), z.number().positive().max(1_000_000)).optional(),
   /** The words on the quantity card's working lines. */
   labels: z.record(z.string(), z.string().max(80)).optional(),
 }).strict();

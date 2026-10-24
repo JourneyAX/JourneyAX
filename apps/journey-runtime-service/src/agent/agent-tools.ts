@@ -1120,7 +1120,7 @@ export async function executeAgentTool(
       if (!product) return { ok: false, error: `No product with SKU "${sku}" was found. Look the product up first.` };
       const config: QuantityHelperConfig = (ctx.release as any)?.extensions?.quantityHelper || {};
       const labels = { ...DEFAULT_QUANTITY_LABELS, ...((ctx.release as any)?.extensions?.quantityHelper?.labels || {}) };
-      const areaM2 = areaToSquareMetres(Number(args.area), args.areaUnit ? String(args.areaUnit) : undefined);
+      const areaM2 = areaToSquareMetres(Number(args.area), args.areaUnit ? String(args.areaUnit) : undefined, config.areaUnits);
       const optionalNumber = (value: unknown) => (value === undefined || value === null || value === '' ? undefined : Number(value));
       const estimate = estimateQuantity(
         { title: product.title || product.name, texts: [product.description, ...(Array.isArray(product.highlights) ? product.highlights : [])] },

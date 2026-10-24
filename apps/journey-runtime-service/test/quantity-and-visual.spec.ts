@@ -27,13 +27,16 @@ const pavers = (extensions: Record<string, any> = {}): AgentToolContext => {
 };
 
 async function main() {
-  await suite.test('areas in other units become square metres, and a bad number is no area', () => {
-    assert.equal(areaToSquareMetres(40), 40);
-    assert.equal(areaToSquareMetres(40, 'sqm'), 40);
-    assert.ok(Math.abs(areaToSquareMetres(100, 'sq ft')! - 9.290304) < 1e-6);
-    assert.equal(areaToSquareMetres(-3), undefined);
-    assert.equal(areaToSquareMetres(Number.NaN), undefined);
-    assert.equal(areaToSquareMetres(10, 'acres'), undefined, 'a unit it does not know is not guessed');
+  await suite.test('areas in the shop\'s own units become square metres, and anything else is not guessed', () => {
+    const units = { m2: 1, sqm: 1, sqft: 0.09290304, ft2: 0.09290304 };
+    assert.equal(areaToSquareMetres(40, undefined, units), 40, 'a number with no unit is square metres');
+    assert.equal(areaToSquareMetres(40, 'sqm', units), 40);
+    assert.ok(Math.abs(areaToSquareMetres(100, 'sq ft', units)! - 9.290304) < 1e-6);
+    assert.ok(Math.abs(areaToSquareMetres(100, 'ft²', units)! - 9.290304) < 1e-6);
+    assert.equal(areaToSquareMetres(-3, undefined, units), undefined);
+    assert.equal(areaToSquareMetres(Number.NaN, undefined, units), undefined);
+    assert.equal(areaToSquareMetres(10, 'acres', units), undefined, 'a unit the shop does not list is not guessed');
+    assert.equal(areaToSquareMetres(10, 'sqft'), undefined, 'with no units configured only plain numbers are understood');
   });
 
   await suite.test('a piece covers the area its own name gives, and a board sold by length covers nothing', () => {

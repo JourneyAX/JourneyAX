@@ -14,6 +14,8 @@ export interface QuantityHelperConfig {
   coveragePatterns?: string[];
   /** A side shorter than this (mm) is a board or section sold by length, not a piece that covers an area. */
   minPieceSideMm?: number;
+  /** Units of area the shop understands, each as square metres per unit, keyed by the unit written plainly ("ft2", "sqft"). */
+  areaUnits?: Record<string, number>;
 }
 
 export interface EstimateInput {
@@ -47,16 +49,21 @@ export type QuantityEstimate =
     }
   | { ok: false; missing: Array<'area' | 'coverage_per_pack'>; reason: 'no_area' | 'no_coverage' | 'bad_input' };
 
-const SQUARE_FEET_IN_M2 = 0.09290304;
+/** A unit as the customer wrote it, reduced so "sq ft", "Sq. Ft" and "ft²" read the same ("sqft", "ft2"). */
+export function normaliseUnit(unit: string): string {
+  return String(unit || '').toLowerCase().replace(/[\s.^]/g, '').replace(/²/g, '2');
+}
 
-/** The customer's area in square metres from the number and unit they used (square metres by default). */
-export function areaToSquareMetres(value: number, unit?: string): number | undefined {
+/**
+ * The customer's area in square metres from the number and unit they used. The units a shop understands, and how many square
+ * metres each is, are its own data (pack `extensions.quantityHelper.areaUnits`); a number with no unit is taken as square metres,
+ * and a unit the shop does not list is not guessed (the answer is no area, so the customer is asked again).
+ */
+export function areaToSquareMetres(value: number, unit: string | undefined, areaUnits: Record<string, number> = {}): number | undefined {
   if (!Number.isFinite(value) || value <= 0) return undefined;
-  const u = String(unit || 'm2').toLowerCase().replace(/[\s²^.]/g, '');
-  if (['m2', 'sqm', 'squaremetres', 'squaremeters', 'squaremetre', 'squaremeter'].includes(u)) return value;
-  if (['ft2', 'sqft', 'ft', 'squarefeet', 'squarefoot', 'sf'].includes(u)) return value * SQUARE_FEET_IN_M2;
-  if (['yd2', 'sqyd'].includes(u)) return value * 0.83612736;
-  return undefined;
+  if (!unit || !String(unit).trim()) return value;
+  const factor = areaUnits[normaliseUnit(unit)];
+  return typeof factor === 'number' && factor > 0 ? value * factor : undefined;
 }
 
 /** One piece's length and width in mm from a name like "Forum Paver 400 x 400 x 50mm Glacier"; undefined when the name carries no such size. */
