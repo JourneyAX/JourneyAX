@@ -1100,6 +1100,130 @@
         "routeTo": "our customer service team",
         "whenToOffer": "the customer wants to contact us, leave a message or ask for a call back"
       }
-    ]
+    ],
+    "plugins": {
+      "plugins": [
+        {
+          "pluginId": "customer-service",
+          "name": "Customer service",
+          "description": "Order help, deliveries and getting in touch with our team.",
+          "provides": {
+            "agents": [
+              "placemakers_customer_service"
+            ],
+            "skills": [],
+            "forms": [
+              "contact-us"
+            ],
+            "connectors": [
+              "salesforce",
+              "ace-erp",
+              "mulesoft",
+              "location"
+            ],
+            "tools": []
+          }
+        },
+        {
+          "pluginId": "trade-desk",
+          "name": "Trade desk",
+          "description": "Quotes, trade pricing and product content for builders and contractors.",
+          "provides": {
+            "agents": [
+              "placemakers_sales_quote"
+            ],
+            "skills": [],
+            "forms": [],
+            "connectors": [
+              "sap-commerce",
+              "salsify",
+              "bloomreach"
+            ],
+            "tools": []
+          }
+        },
+        {
+          "pluginId": "insights",
+          "name": "Reports and insights",
+          "description": "Sales, web and app figures, and the messages we send.",
+          "provides": {
+            "agents": [],
+            "skills": [],
+            "forms": [],
+            "connectors": [
+              "power-bi",
+              "google-analytics",
+              "uxcam",
+              "marketing-cloud"
+            ],
+            "tools": []
+          }
+        },
+        {
+          "pluginId": "finished-job-pictures",
+          "name": "Pictures of the finished job",
+          "description": "Shows what the finished job could look like.",
+          "provides": {
+            "agents": [],
+            "skills": [
+              "show-the-finished-job"
+            ],
+            "forms": [],
+            "connectors": [],
+            "tools": [
+              "generate_visual"
+            ]
+          }
+        }
+      ],
+      "access": [
+        {
+          "pluginId": "customer-service",
+          "audience": "shopper",
+          "groups": [],
+          "level": "available"
+        },
+        {
+          "pluginId": "customer-service",
+          "audience": "staff",
+          "groups": [],
+          "level": "available"
+        },
+        {
+          "pluginId": "customer-service",
+          "audience": "staff",
+          "groups": [
+            "customer-service"
+          ],
+          "level": "default"
+        },
+        {
+          "pluginId": "trade-desk",
+          "audience": "shopper",
+          "groups": [],
+          "level": "available"
+        },
+        {
+          "pluginId": "trade-desk",
+          "audience": "staff",
+          "groups": [],
+          "level": "available"
+        },
+        {
+          "pluginId": "trade-desk",
+          "audience": "staff",
+          "groups": [
+            "sales"
+          ],
+          "level": "default"
+        },
+        {
+          "pluginId": "insights",
+          "audience": "staff",
+          "groups": [],
+          "level": "available"
+        }
+      ]
+    }
   }
 }

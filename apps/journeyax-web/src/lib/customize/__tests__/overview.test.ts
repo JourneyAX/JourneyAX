@@ -3,7 +3,7 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/customize/__tests__/overview.test.ts
  */
 import assert from 'node:assert/strict';
-import { buildConnectors, buildOverview, describeSkillAccess, readAgents, readKnowledge, readSkills } from '../overview';
+import { buildConnectors, buildOverview, describePluginAccess, describeSkillAccess, readAgents, readKnowledge, readPlugins, readSkills, readSystems } from '../overview';
 import { describeTool, humaniseToolId } from '../tool-catalog';
 import { draftToPackAgentJson, removeDraft, slugify, upsertDraft, validateDraft, loadDrafts, draftsKey } from '../drafts';
 
@@ -138,6 +138,44 @@ check('a skill carries the rows of the access table that name it, and each row r
   assert.deepEqual(voice.access, [], 'no row names it: it is carried as its own tier says');
   assert.equal(describeSkillAccess({ audience: 'staff', groups: [], level: 'available' }), 'All staff opens it when a request fits');
   assert.equal(describeSkillAccess({ audience: 'shopper', groups: [], level: 'required' }), 'Everyone has it installed and cannot turn it off');
+});
+
+check('plugins and the other systems the shop declared are read from the pack, and each access row reads as plain words', () => {
+  const pack = {
+    extensions: {
+      plugins: {
+        plugins: [
+          { pluginId: 'customer-service', name: 'Customer service', description: 'Order help', provides: { agents: ['svc'], forms: ['contact-us'], connectors: ['crm'] } },
+          { pluginId: 'customer-service', name: 'Duplicate', description: 'x' },
+          { name: 'No id', description: 'x' },
+          { pluginId: 'pictures', name: 'Pictures', description: 'Pictures', provides: { tools: ['generate_visual'], skills: ['show'] } },
+        ],
+        access: [
+          { pluginId: 'customer-service', audience: 'staff', groups: ['customer-service'], level: 'default' },
+          { pluginId: 'customer-service', audience: 'shopper', level: 'available' },
+          { pluginId: 'customer-service', audience: 'staff', level: 'bogus' },
+          { pluginId: 'ghost', audience: 'staff', level: 'available' },
+        ],
+      },
+      connectors: { connectors: [
+        { connectorId: 'crm', displayName: 'CRM', description: 'Accounts', owner: 'Sales operations', sample: true, tools: [{ name: 'find', sideEffect: 'read' }, { name: 'create', sideEffect: 'write' }] },
+        { connectorId: 'off', displayName: 'Off', description: 'x', enabled: false, tools: [] },
+        { displayName: 'No id' },
+      ] },
+    },
+  };
+  const plugins = readPlugins(pack);
+  assert.deepEqual(plugins.map((p) => p.pluginId), ['customer-service', 'pictures'], 'duplicates and entries without an id are skipped');
+  assert.deepEqual(plugins[0].provides, { agents: ['svc'], skills: [], forms: ['contact-us'], connectors: ['crm'], tools: [] });
+  assert.deepEqual(plugins[0].access.map(describePluginAccess), ['Staff in customer-service has it installed', 'Everyone may use it'], 'a bad row and another plugin\'s row are left out');
+  assert.deepEqual(plugins[1].access, [], 'no row: everyone has it');
+  assert.equal(describePluginAccess({ audience: 'staff', groups: [], level: 'required' }), 'All staff has it installed and cannot turn it off');
+  assert.deepEqual(readSystems(pack), [{ connectorId: 'crm', name: 'CRM', description: 'Accounts', owner: 'Sales operations', sample: true, tools: 2, writes: 1 }]);
+  assert.deepEqual(readPlugins({}), []);
+  assert.deepEqual(readSystems({}), []);
+  const overview = buildOverview('t', pack, { canViewInstructions: false });
+  assert.equal(overview.plugins.length, 2);
+  assert.equal(overview.systems.length, 1);
 });
 
 console.log(`✅ web: customize overview: ${passed} passed, 0 failed`);

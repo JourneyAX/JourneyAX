@@ -44,6 +44,8 @@ const readVariant = (variable: string, fallback: string) => {
 const agentDraft = readVariant('PLACEMAKERS_DRAFT_FILE', 'docs/agent-instructions/placemakers-draft.json');
 const agentSettings = readVariant('PLACEMAKERS_SETTINGS_FILE', 'docs/agent-instructions/placemakers-agent-settings.json');
 export const ENVIRONMENT = 'test';
+/** The evaluation pack has no connector registry (its secrets name the production environment), so the plugins it carries name no connector. */
+const withoutConnectors = (plugins: any) => (plugins ? { ...plugins, plugins: plugins.plugins.map((plugin: any) => ({ ...plugin, provides: { ...plugin.provides, connectors: [] } })) } : undefined);
 
 // ── catalogue fixture, shaped like the real products collection (path, category, price in priceUSD.min, currency per product) ──
 const pathOf = (category: string): string[] => {
@@ -193,7 +195,7 @@ export function projectDoc(agentMode = false) {
     extensions: {
       ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true }, interpretationPolicy: agentSettings.interpretationPolicy } : {}),
       ...(agentMode && Array.isArray(agentDraft.skills) ? { skills: agentDraft.skills } : {}),
-      ...(agentMode ? { quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser, productGuides: agentDraft.extensions?.productGuides, contentPages: agentDraft.extensions?.contentPages, checkoutReview: agentDraft.extensions?.checkoutReview, eventPrefetch: agentDraft.extensions?.eventPrefetch, voice: agentDraft.extensions?.voice, forms: agentDraft.extensions?.forms } : {}),
+      ...(agentMode ? { quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser, productGuides: agentDraft.extensions?.productGuides, contentPages: agentDraft.extensions?.contentPages, checkoutReview: agentDraft.extensions?.checkoutReview, eventPrefetch: agentDraft.extensions?.eventPrefetch, voice: agentDraft.extensions?.voice, forms: agentDraft.extensions?.forms, plugins: withoutConnectors(agentDraft.extensions?.plugins), agentAccess: agentDraft.extensions?.agentAccess } : {}),
       customerEvents: {
         autoTurnEvents: ['addToQuote', 'quote.added', 'addToCart'],
         recordOnlyEvents: ['removeFromQuote', 'removeFromCart', 'like'],

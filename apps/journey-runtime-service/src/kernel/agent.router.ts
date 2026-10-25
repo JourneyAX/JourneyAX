@@ -1,4 +1,4 @@
-import { BusinessPackRelease, AgentDefinition, resolveAccess } from '@journeyax/business-pack';
+import { BusinessPackRelease, AgentDefinition, pluginGate, resolveAccess } from '@journeyax/business-pack';
 import { WorkspaceState } from '@journeyax/journey-core';
 import type { Principal } from '@journeyax/shared-types';
 
@@ -28,7 +28,9 @@ export class AgentRouter {
       throw new Error(`Business Pack '${release.manifest.packId}' declares no agents.`);
     }
 
-    const access = resolveAccess(everyAgent, (release as any)?.extensions?.agentAccess, principal ?? ANONYMOUS_SHOPPER);
+    // An agent a plugin names is this person's only if they have that plugin (pack `extensions.plugins`); an agent no plugin names is not governed by them.
+    const gate = pluginGate((release as any)?.extensions?.plugins, principal ?? ANONYMOUS_SHOPPER);
+    const access = resolveAccess(everyAgent.filter((agent) => gate.allows('agents', agent.agentId)), (release as any)?.extensions?.agentAccess, principal ?? ANONYMOUS_SHOPPER);
     const mayUse = new Set(access.agents.map((entry) => entry.agentId));
     const agents = everyAgent.filter((agent) => mayUse.has(agent.agentId));
     if (agents.length === 0) {
@@ -57,6 +59,10 @@ export class AgentRouter {
     // The agent the access table opens by default for this person.
     const tableDefault = access.defaultAgentId ? agents.find((a) => a.agentId === access.defaultAgentId) : undefined;
     if (tableDefault) return resolved(tableDefault);
+
+    // A plugin the person has installed (default or required) makes its agent the one that opens.
+    const pluginDefault = agents.find((a) => gate.installs('agents', a.agentId));
+    if (pluginDefault) return resolved(pluginDefault);
 
     const activeJourney =
       release.journeys?.find((j) => j.journeyId === workspace?.journeyId) ||

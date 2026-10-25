@@ -68,11 +68,34 @@ export interface OverviewConnector {
   usedBy: string[];
 }
 
+/** A named bundle (pack `extensions.plugins`): the agents, skills, forms, connected systems and tools it switches on together, and who has it. */
+export interface OverviewPlugin {
+  pluginId: string;
+  name: string;
+  description: string;
+  provides: { agents: string[]; skills: string[]; forms: string[]; connectors: string[]; tools: string[] };
+  access: Array<{ audience: 'shopper' | 'staff'; groups: string[]; level: 'not_available' | 'available' | 'default' | 'required' }>;
+}
+
+/** Another system the assistant can reach (pack `extensions.connectors`), as the shop declared it. */
+export interface OverviewSystem {
+  connectorId: string;
+  name: string;
+  description: string;
+  owner: string;
+  sample: boolean;
+  tools: number;
+  /** Tools that change data in that system, and so ask first or are blocked unless a row says otherwise. */
+  writes: number;
+}
+
 export interface CustomizeOverview {
   tenantId: string;
   packVersion?: string;
   agents: OverviewAgent[];
   skills: OverviewSkill[];
+  plugins: OverviewPlugin[];
+  systems: OverviewSystem[];
   knowledge: OverviewKnowledge;
   /** Built-in tools: those some agent can call first, then the rest of the platform's tools. */
   connectors: OverviewConnector[];

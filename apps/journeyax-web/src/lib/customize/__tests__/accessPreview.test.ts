@@ -3,7 +3,7 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/customize/__tests__/accessPreview.test.ts
  */
 import assert from 'node:assert/strict';
-import { describePreviewAgent, previewNote, previewQuery, readAccessPreview, describePreviewSkill, describePreviewTool } from '../accessPreview';
+import { describePreviewAgent, previewNote, previewQuery, readAccessPreview, describePreviewSkill, describePreviewTool, describePreviewPlugin } from '../accessPreview';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -44,7 +44,7 @@ check('each agent is described in plain words', () => {
 });
 
 check('the note under the list says what the preview does and does not tell', () => {
-  const base = { audience: 'staff' as const, groups: [], agents: [{ agentId: 'a', name: 'A', level: 'available' as const, via: 'open' as const, opensFirst: true }], unknownGroups: [], knownGroups: [], skills: [], hiddenSkills: [], hasSkillTable: false, tools: [] };
+  const base = { audience: 'staff' as const, groups: [], agents: [{ agentId: 'a', name: 'A', level: 'available' as const, via: 'open' as const, opensFirst: true }], unknownGroups: [], knownGroups: [], skills: [], hiddenSkills: [], hasSkillTable: false, tools: [], plugins: [] };
   assert.match(previewNote({ ...base, hasTable: false }), /every agent is open to everyone/);
   assert.match(previewNote({ ...base, hasTable: true }), /goes live only when you publish/);
   assert.match(previewNote({ ...base, hasTable: true, agents: [] }), /would have no agent/);
@@ -82,6 +82,19 @@ check('the preview reads what each named tool may do, and says it in plain words
   assert.deepEqual(preview!.tools.map((t) => `${t.toolId}:${t.state}`), ['update_cart:ask', 'hand_off_to_human:blocked', 'check_stock:allow']);
   assert.deepEqual(preview!.tools.map(describePreviewTool), ['Asks first', 'Not available', 'Runs freely']);
   assert.deepEqual(readAccessPreview({ audience: 'staff', agents: [] })!.tools, []);
+});
+
+check('the preview reads which plugins a person has, and says it in plain words', () => {
+  const preview = readAccessPreview({ audience: 'staff', agents: [], plugins: [
+    { pluginId: 'customer-service', name: 'Customer service', description: 'd', available: true, level: 'default' },
+    { pluginId: 'insights', name: 'Insights', description: 'd', available: false, level: null },
+    { pluginId: 'pictures', name: 'Pictures', description: 'd', available: true, level: null },
+    { pluginId: 'trade', name: 'Trade', description: 'd', available: true, level: 'available' },
+    { name: 'no id' },
+  ] });
+  assert.deepEqual(preview!.plugins.map((p) => p.pluginId), ['customer-service', 'insights', 'pictures', 'trade']);
+  assert.deepEqual(preview!.plugins.map(describePreviewPlugin), ['Installed for this group', 'Not theirs', 'Everyone has it', 'May use it']);
+  assert.deepEqual(readAccessPreview({ audience: 'shopper', agents: [] })!.plugins, []);
 });
 
 console.log(`✅ web: view as: ${passed} passed, 0 failed`);

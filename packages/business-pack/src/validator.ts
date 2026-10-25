@@ -7,6 +7,7 @@
 
 import { BusinessPackRelease } from './schemas/business-pack.schema';
 import { validateSecretReference } from './schemas/capability-binding.schema';
+import { pluginGate } from './plugins';
 import { shopperCanUse } from './access';
 
 export interface ValidationIssue {
@@ -251,6 +252,41 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     });
     if (!agents.some((a) => Array.isArray((a as any).allowedTools) && (a as any).allowedTools.includes('open_form'))) {
       issues.push({ severity: 'warning', path: 'extensions.forms', message: 'The pack has forms but no agent lists open_form in its allowed tools, so the assistant can never open one.' });
+    }
+  }
+
+  // 4j. Validate the plugins (extensions.plugins). A plugin names things the pack defines; a name that matches nothing is a typo that would
+  // leave the bundle half empty. Plugins must never leave shoppers without an agent (the shop's own chat would have nobody to answer it).
+  const pluginsExt = (pack as any).extensions?.plugins as { plugins?: Array<{ pluginId: string; provides?: Record<string, string[]> }>; access?: Array<{ pluginId: string; audience: string; groups?: string[] }> } | undefined;
+  if (pluginsExt && Array.isArray(pluginsExt.plugins) && pluginsExt.plugins.length > 0) {
+    const known = {
+      agents: new Set(agents.map((a) => a.agentId)),
+      skills: new Set((((pack as any).extensions?.skills as Array<{ skillId: string }> | undefined) || []).map((s) => s.skillId)),
+      forms: new Set((((pack as any).extensions?.forms as Array<{ formId: string }> | undefined) || []).map((f) => f.formId)),
+      connectors: new Set((((pack as any).extensions?.connectors?.connectors as Array<{ connectorId: string }> | undefined) || []).map((c) => c.connectorId)),
+    };
+    const seenPlugins = new Set<string>();
+    pluginsExt.plugins.forEach((plugin, index) => {
+      if (seenPlugins.has(plugin.pluginId)) issues.push({ severity: 'error', path: `extensions.plugins.plugins[${index}].pluginId`, message: `Two plugins are called '${plugin.pluginId}'.` });
+      seenPlugins.add(plugin.pluginId);
+      const provides = plugin.provides || {};
+      for (const kind of ['agents', 'skills', 'forms', 'connectors'] as const) {
+        for (const id of provides[kind] || []) {
+          if (!known[kind].has(id)) issues.push({ severity: 'error', path: `extensions.plugins.plugins[${index}].provides.${kind}`, message: `Plugin '${plugin.pluginId}' names ${kind.slice(0, -1)} '${id}', which the pack does not define.` });
+        }
+      }
+      if (Object.values(provides).every((list) => !list || list.length === 0)) {
+        issues.push({ severity: 'warning', path: `extensions.plugins.plugins[${index}].provides`, message: `Plugin '${plugin.pluginId}' names nothing, so switching it on or off changes nothing.` });
+      }
+    });
+    (pluginsExt.access || []).forEach((row, index) => {
+      if (!seenPlugins.has(row.pluginId)) issues.push({ severity: 'error', path: `extensions.plugins.access[${index}].pluginId`, message: `Plugin access row names plugin '${row.pluginId}', which is not in the pack.` });
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) issues.push({ severity: 'error', path: `extensions.plugins.access[${index}].groups`, message: `A shopper row for plugin '${row.pluginId}' names groups; groups apply to staff rows only.` });
+    });
+    const shopperGate = pluginGate(pluginsExt as any, { audience: 'shopper', groups: [] });
+    const shopperAgentsLeft = agents.filter((a) => shopperGate.allows('agents', a.agentId) && shopperCanUse(a.agentId, (pack as any).extensions?.agentAccess));
+    if (agents.length > 0 && shopperAgentsLeft.length === 0) {
+      issues.push({ severity: 'error', path: 'extensions.plugins', message: 'With these plugins no agent is available to shoppers: the shop\'s own chat would have nobody to answer it.' });
     }
   }
 

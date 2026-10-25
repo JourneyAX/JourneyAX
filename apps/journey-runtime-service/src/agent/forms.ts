@@ -2,25 +2,30 @@
  * The shop's forms (pack `extensions.forms`) as the assistant uses them: find one, open it with what is already known filled in, and
  * check what comes back. The definition is the shop's data; nothing about any particular form is written here.
  */
-import { FormsSchema, type FormDefinition } from '@journeyax/business-pack';
+import { FormsSchema, pluginGate, type FormDefinition } from '@journeyax/business-pack';
 import { cleanText, validateFormValues, type FormCheck, type FormValues } from '@journeyax/ui-cards';
 
 /** The forms of the pack that are well formed; a form that is not is left out (the publication check reports it). */
-export function formsOf(release: unknown): FormDefinition[] {
+export function formsOf(release: unknown, person?: { audience: 'shopper' | 'staff'; groups: string[] }): FormDefinition[] {
   const raw = (release as any)?.extensions?.forms;
   if (!Array.isArray(raw)) return [];
   const parsed = FormsSchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
-  // One broken form must not take the others with it.
-  return raw.flatMap((entry) => {
-    const single = FormsSchema.safeParse([entry]);
-    return single.success ? single.data : [];
-  });
+  const all = parsed.success
+    ? parsed.data
+    // One broken form must not take the others with it.
+    : raw.flatMap((entry) => {
+        const single = FormsSchema.safeParse([entry]);
+        return single.success ? single.data : [];
+      });
+  // A form a plugin names is this person's only if they have that plugin. Without a person every form is listed (the publication check).
+  if (!person) return all;
+  const gate = pluginGate((release as any)?.extensions?.plugins, person);
+  return all.filter((form) => gate.allows('forms', form.formId));
 }
 
-export function findForm(release: unknown, formId: unknown): FormDefinition | undefined {
+export function findForm(release: unknown, formId: unknown, person?: { audience: 'shopper' | 'staff'; groups: string[] }): FormDefinition | undefined {
   const wanted = String(formId ?? '').trim();
-  return wanted ? formsOf(release).find((form) => form.formId === wanted) : undefined;
+  return wanted ? formsOf(release, person).find((form) => form.formId === wanted) : undefined;
 }
 
 /**

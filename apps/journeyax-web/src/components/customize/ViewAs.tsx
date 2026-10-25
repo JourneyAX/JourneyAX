@@ -6,7 +6,7 @@
  * and never changes anything.
  */
 import { useState } from 'react';
-import { describePreviewAgent, describePreviewSkill, describePreviewTool, previewNote, previewQuery, readAccessPreview, type AccessPreview, type PreviewAudience } from '@/lib/customize/accessPreview';
+import { describePreviewAgent, describePreviewPlugin, describePreviewSkill, describePreviewTool, previewNote, previewQuery, readAccessPreview, type AccessPreview, type PreviewAudience } from '@/lib/customize/accessPreview';
 
 export function ViewAs() {
   const [audience, setAudience] = useState<PreviewAudience>('shopper');
@@ -72,6 +72,19 @@ export function ViewAs() {
             </p>
           )}
           <p style={{ marginTop: 8, color: 'var(--ax-text-muted, #6b6b6b)' }}>{previewNote(preview)}</p>
+          {preview.plugins.length > 0 && (
+            <>
+              <h3 style={{ margin: '16px 0 6px', fontSize: 15 }}>Plugins they would have</h3>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {preview.plugins.map((plugin) => (
+                  <li key={plugin.pluginId} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                    <strong>{plugin.name}</strong>
+                    <span className="ax-tag">{describePreviewPlugin(plugin)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <h3 style={{ margin: '16px 0 6px', fontSize: 15 }}>Skills they would have</h3>
           {preview.skills.length > 0 ? (
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>

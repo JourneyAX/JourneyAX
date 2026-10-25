@@ -5,7 +5,7 @@ import type {
   Decision,
   UIInstruction,
 } from '@journeyax/journey-core';
-import { normalizePlaybookStages, resolveAgentSkills, resolveSkillTiers, toolStateFor, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
+import { normalizePlaybookStages, pluginGate, resolveAgentSkills, resolveSkillTiers, toolStateFor, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
 import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
 import { principalFrom } from '@journeyax/shared-types';
 import {
@@ -300,7 +300,10 @@ const SHOPPER: SkillPerson = { audience: 'shopper', groups: [] };
 export function skillsForPerson(release: BusinessPackRelease | undefined, agent: AgentDefinition | undefined, person: SkillPerson = SHOPPER): Array<{ skill: SkillDefinition; tier: 'always' | 'on_demand' }> {
   const carried: SkillDefinition[] = resolveAgentSkills(agent, (release as any)?.extensions?.skills);
   const table = (release as any)?.extensions?.skillAccess;
-  return resolveSkillTiers(carried, table && Array.isArray(table.rows) ? table : undefined, person).map(({ skill, tier }) => ({ skill, tier }));
+  // A skill a plugin names is this person's only if they have that plugin, and a plugin they have installed puts it in the prompt.
+  const gate = pluginGate((release as any)?.extensions?.plugins, person);
+  return resolveSkillTiers(carried.filter((skill) => gate.allows('skills', skill.skillId)), table && Array.isArray(table.rows) ? table : undefined, person)
+    .map(({ skill, tier }) => ({ skill, tier: gate.installs('skills', skill.skillId) ? ('always' as const) : tier }));
 }
 
 /**
@@ -499,8 +502,11 @@ export class AgentTurnLoop {
     const personSkills = skillsForPerson(release, resolvedAgent.agent, person);
     // What each tool may do for this person (pack `extensions.toolStates`): blocked tools are not offered, ask-first tools wait for a card.
     const toolStatesTable = (release as any)?.extensions?.toolStates;
-    const toolStateOf = toolStatesTable && Array.isArray(toolStatesTable.rows) && toolStatesTable.rows.length > 0
-      ? (toolId: string) => toolStateFor(toolId, toolStatesTable, person)
+    // A tool a plugin names is this person's only if they have that plugin.
+    const pluginTools = pluginGate((release as any)?.extensions?.plugins, person);
+    const hasToolRows = toolStatesTable && Array.isArray(toolStatesTable.rows) && toolStatesTable.rows.length > 0;
+    const toolStateOf = hasToolRows || pluginTools.hidden('tools').size > 0
+      ? (toolId: string): { state: 'allow' | 'ask' | 'blocked'; prompt?: string } => (!pluginTools.allows('tools', toolId) ? { state: 'blocked' } : toolStateFor(toolId, hasToolRows ? toolStatesTable : undefined, person))
       : undefined;
 
     // 1. Resolve pinned OKF release content for business profile and knowledge tools
@@ -581,7 +587,7 @@ export class AgentTurnLoop {
 
     // 4. Offer only tools in agent.allowedTools
     const allowedTools = resolvedAgent.allowedTools || [];
-    const toolDefs = getAgentToolDefinitions(release, okfContent);
+    const toolDefs = getAgentToolDefinitions(release, okfContent, person);
     // use_skill is platform plumbing for the agent's own on-demand skills: offered exactly when it has some, whatever allowedTools says.
     const hasOnDemandSkills = personSkills.some((entry) => entry.tier === 'on_demand');
     // The connector tools are offered when the person has a connector AND the agent's tool list names them (or allows everything).
@@ -718,7 +724,7 @@ export class AgentTurnLoop {
       // (never what was typed: the details are for the people who read the form, not for the conversation).
       if (customerEvent.type === 'submitForm') {
         const payload: any = customerEvent.payload || {};
-        const form = findForm(release, payload.formId);
+        const form = findForm(release, payload.formId, person);
         if (!form) {
           eventLines.push('Result: that form does not exist, so nothing was sent. Tell the person plainly and offer another way to reach the shop.');
         } else if (!submissionAllowed(workspace as any)) {

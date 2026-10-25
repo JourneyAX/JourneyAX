@@ -427,7 +427,8 @@ export function specializeSearchProductsTool(
  */
 export function getAgentToolDefinitions(
   release?: BusinessPackContent | null,
-  okfContent?: any
+  okfContent?: any,
+  person?: { audience: 'shopper' | 'staff'; groups: string[] }
 ): AgentToolDefinition[] {
   const calculators =
     (release as any)?.calculators ||
@@ -436,7 +437,7 @@ export function getAgentToolDefinitions(
 
   const hasCalculators = Array.isArray(calculators) && calculators.length > 0;
 
-  const forms = formsOf(release);
+  const forms = formsOf(release, person);
 
   return AGENT_TOOL_DEFINITIONS.filter((tool) => {
     if (tool.name === 'calculate_quantity' && !hasCalculators) {
@@ -1930,9 +1931,9 @@ export async function executeAgentTool(
     }
 
     case 'open_form': {
-      const form = findForm(ctx.release, args.formId);
+      const form = findForm(ctx.release, args.formId, ctx.principal);
       if (!form) {
-        const known = formsOf(ctx.release).map((entry) => entry.formId);
+        const known = formsOf(ctx.release, ctx.principal).map((entry) => entry.formId);
         return { ok: false, error: `There is no form "${String(args.formId || '')}".${known.length ? ` The shop's forms are: ${known.join(', ')}.` : ' This shop has no forms.'}` };
       }
       const values = prefillFor(form, args.prefill, (ctx.workspace as any)?.facts);

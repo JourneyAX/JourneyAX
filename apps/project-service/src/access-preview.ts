@@ -5,7 +5,7 @@
  * really get. It reads the project's settings (what a publish would send live), not the published pack, so an admin can check a table
  * before publishing it. The stage-by-stage routing of the journey is not previewed: only who may use which agent, and which opens first.
  */
-import { resolveAccess, resolveSkillTiers, toolStateFor, AgentAccessSchema, SkillAccessSchema, SkillDefinitionSchema, ToolStatesSchema, type SkillDefinition } from '@journeyax/business-pack';
+import { resolveAccess, resolvePlugins, resolveSkillTiers, toolStateFor, AgentAccessSchema, PluginsSchema, SkillAccessSchema, SkillDefinitionSchema, ToolStatesSchema, type SkillDefinition } from '@journeyax/business-pack';
 import { normaliseGroupId, normaliseGroups, type Audience } from '@journeyax/shared-types';
 
 export interface AccessPreviewInput {
@@ -41,6 +41,8 @@ export interface AccessPreview {
   hasSkillTable: boolean;
   /** The tools the tool state table names, with what each may do for this person: ask first, blocked, or allowed. */
   tools: Array<{ toolId: string; state: 'allow' | 'ask' | 'blocked'; prompt?: string }>;
+  /** Every plugin of the pack, and whether this person has it (and at what level). */
+  plugins: Array<{ pluginId: string; name: string; description: string; available: boolean; level: 'available' | 'default' | 'required' | null }>;
 }
 
 export interface AccessPreviewSkill {
@@ -96,9 +98,14 @@ export function buildAccessPreview(
   const namedTools = toolTable.success ? [...new Set(toolTable.data.rows.map((row) => row.toolId))] : [];
   if (toolTable.success) for (const row of toolTable.data.rows) for (const group of row.groups) named.add(group);
 
+  const pluginTable = PluginsSchema.safeParse(project?.extensions?.plugins);
+  const pluginViews = resolvePlugins(pluginTable.success ? pluginTable.data : undefined, person);
+  if (pluginTable.success) for (const row of pluginTable.data.access) for (const group of row.groups) named.add(group);
+
   return {
     audience: input.audience,
     groups,
+    plugins: pluginViews.map((view) => ({ pluginId: view.plugin.pluginId, name: view.plugin.name, description: view.plugin.description, available: view.available, level: view.level })),
     tools: namedTools.map((toolId) => ({ toolId, ...(() => { const effective = toolStateFor(toolId, toolTable.success ? toolTable.data : undefined, person); return { state: effective.state, ...(effective.prompt ? { prompt: effective.prompt } : {}) }; })() })),
     skills: effectiveSkills.map(({ skill, tier, level, via }) => ({ skillId: skill.skillId, name: skill.name, description: skill.description, tier, level, via })),
     hiddenSkills: skillList.filter((skill: { skillId: string }) => !haveSkill.has(skill.skillId)).map((skill: { skillId: string; name: string }) => ({ skillId: skill.skillId, name: skill.name })),

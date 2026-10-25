@@ -11,6 +11,7 @@ import {
 import {
   connectorToolState,
   mcpServerNameOf,
+  pluginGate,
   usableConnectors,
   type ConnectorDefinition,
   type ConnectorState,
@@ -66,7 +67,9 @@ export interface ConnectorSummary {
 
 /** The connectors this person can use at all, as the model is told about them: a name and a line. No tools. */
 export function connectorSummaries(release: { extensions?: Record<string, any> } | undefined, person: ConnectorPerson): ConnectorSummary[] {
-  return usableConnectors(release?.extensions?.connectors as ConnectorsExtension | undefined, person).map((connector) => ({
+  // A connector a plugin names is this person's only if they have that plugin.
+  const gate = pluginGate(release?.extensions?.plugins, person);
+  return usableConnectors(release?.extensions?.connectors as ConnectorsExtension | undefined, person).filter((connector) => gate.allows('connectors', connector.connectorId)).map((connector) => ({
     connector: connector.connectorId,
     name: connector.displayName,
     description: connector.description,
@@ -114,6 +117,7 @@ export class ConnectorRuntime {
     const registry = this.registryOf(release);
     const connector = registry?.connectors.find((entry) => entry.connectorId === connectorId);
     if (!connector || connector.enabled === false) return undefined;
+    if (!pluginGate(release?.extensions?.plugins, person).allows('connectors', connectorId)) return undefined;
     return usableConnectors(registry, person).some((entry) => entry.connectorId === connectorId) ? connector : undefined;
   }
 

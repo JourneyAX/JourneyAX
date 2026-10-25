@@ -29,6 +29,14 @@ export interface PreviewTool {
   prompt?: string;
 }
 
+export interface PreviewPlugin {
+  pluginId: string;
+  name: string;
+  description: string;
+  available: boolean;
+  level: 'available' | 'default' | 'required' | null;
+}
+
 export interface AccessPreview {
   audience: PreviewAudience;
   groups: string[];
@@ -41,6 +49,7 @@ export interface AccessPreview {
   hiddenSkills: Array<{ skillId: string; name: string }>;
   hasSkillTable: boolean;
   tools: PreviewTool[];
+  plugins: PreviewPlugin[];
 }
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -86,9 +95,14 @@ export function readAccessPreview(value: unknown): AccessPreview | undefined {
     .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
     .map((entry) => ({ toolId: str(entry.toolId), state: entry.state === 'ask' || entry.state === 'blocked' ? entry.state : 'allow', ...(str(entry.prompt) ? { prompt: str(entry.prompt) } : {}) }) as PreviewTool)
     .filter((entry) => entry.toolId);
+  const plugins: PreviewPlugin[] = (Array.isArray(raw.plugins) ? raw.plugins : [])
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => ({ pluginId: str(entry.pluginId), name: str(entry.name) || str(entry.pluginId), description: str(entry.description), available: entry.available === true, level: entry.level === 'available' || entry.level === 'default' || entry.level === 'required' ? entry.level : null }) as PreviewPlugin)
+    .filter((entry) => entry.pluginId);
   return {
     audience,
     groups: strings(raw.groups),
+    plugins,
     tools,
     skills,
     hiddenSkills,
@@ -129,4 +143,12 @@ export function describePreviewTool(tool: PreviewTool): string {
   if (tool.state === 'blocked') return 'Not available';
   if (tool.state === 'ask') return 'Asks first';
   return 'Runs freely';
+}
+
+/** One plain line for a plugin in the preview. */
+export function describePreviewPlugin(plugin: PreviewPlugin): string {
+  if (!plugin.available) return 'Not theirs';
+  if (plugin.level === 'required') return 'Installed, cannot be turned off';
+  if (plugin.level === 'default') return 'Installed for this group';
+  return plugin.level === 'available' ? 'May use it' : 'Everyone has it';
 }

@@ -42,6 +42,7 @@ import { RuntimeService } from '../src/runtime.service';
 import { HealthController } from '../src/health.controller';
 import { TurnTranscriptStore, redactPii } from '../src/kernel/transcript.store';
 import { FormSubmissionRepository, newReference } from '../src/kernel/form-submission.repository';
+import { connectorSummaries } from '../src/kernel/connector.runtime';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
 import { AgentRouter } from '../src/kernel/agent.router';
@@ -54,6 +55,7 @@ import { type BusinessPackRelease, validateBusinessPack, CatalogMappingSchema, S
 import { MemoryDb } from '@journeyax/test-support';
 import { browseRange, exampleOrder, goesWithForTrail, matchRangeConcepts, resolveCatalogPaths } from '../src/agent/range-browser';
 import { chooseCardSkus } from '../src/agent/auto-card';
+import { findForm, formsOf } from '../src/agent/forms';
 import { ABERCROMBIE_CATALOG_MAPPING } from './helpers/abercrombie-stack';
 import type { TurnCommand, WorkspaceState } from '@journeyax/journey-core';
 import { extractProductAttributes, FeedRowToProductConverter } from '@journeyax/ingestion';
@@ -700,6 +702,125 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       await run({ store, workspace, turnId: 'turn-1', message: 'cordless drill for concrete', script: (r, _q, d) => { d?.('ok.'); return { content: 'ok.', toolCalls: [] }; } });
       const other = await store.getRecentTurns('someone-else', 'test', workspace.workspaceId, 40);
       assert.equal(other.length, 0);
+    });
+  });
+
+  describe('plugins: one switch for a bundle of agents, skills, forms, connectors and tools', () => {
+    const contact = { formId: 'contact-us', title: 'Contact us', fields: [{ id: 'name', label: 'Name', type: 'text', required: true }, { id: 'message', label: 'Message', type: 'textarea', required: true }] };
+    const plugins = {
+      plugins: [
+        { pluginId: 'customer-service', name: 'Customer service', description: 'Orders, deliveries and getting in touch.', provides: { agents: ['service-agent'], forms: ['contact-us'], skills: ['order-help'], connectors: ['crm'] } },
+        { pluginId: 'pictures', name: 'Pictures', description: 'Pictures of the finished job.', provides: { tools: ['check_stock'] } },
+      ],
+      access: [
+        { pluginId: 'customer-service', audience: 'staff', groups: ['customer-service'], level: 'default' },
+        { pluginId: 'pictures', audience: 'staff', groups: [], level: 'available' },
+      ],
+    };
+    const build = (withPlugins: boolean) => {
+      const release: any = createTestPack();
+      const base = release.agents[0];
+      release.agents = [
+        { ...base, agentId: 'shopping-consultant', isDefault: true, allowedTools: ['search_products', 'check_stock', 'open_form', 'use_skill'], skills: ['voice', 'order-help'] },
+        { ...base, agentId: 'service-agent', name: 'Service', systemPromptTemplate: 'You are customer service.', allowedTools: ['search_products', 'check_stock', 'open_form'], skills: ['voice', 'order-help'] },
+      ];
+      release.extensions = {
+        ...(release.extensions || {}),
+        skills: [
+          { skillId: 'voice', name: 'Voice', description: 'How we sound', instructions: 'Speak as the team.', tier: 'always', tools: [] },
+          { skillId: 'order-help', name: 'Order help', description: 'Order questions', instructions: 'Look the order up first.', tier: 'on_demand', tools: [] },
+        ],
+        forms: [contact],
+        connectors: { connectors: [{ connectorId: 'crm', displayName: 'CRM', description: 'Accounts', owner: 'Sales', tools: [{ name: 'find_account', sideEffect: 'read' }] }], policy: [{ connectorId: 'crm', tool: '*', audience: 'staff', groups: [], state: 'allow' }] },
+        ...(withPlugins ? { plugins } : {}),
+      };
+      return release;
+    };
+    const customer = { audience: 'shopper' as const, groups: [] as string[] };
+    const rep = { audience: 'staff' as const, groups: ['customer-service'] };
+    const other = { audience: 'staff' as const, groups: ['sales'] };
+    const router = new AgentRouter();
+    const pick = (release: any, who: any, requested?: string) => router.resolveAgent(release, createTestWorkspace(), requested, who).agent.agentId;
+
+    test('a pack without plugins behaves exactly as before for everyone', () => {
+      const release = build(false);
+      assert.equal(pick(release, customer, 'service-agent'), 'service-agent');
+      assert.equal(pick(release, customer), 'shopping-consultant');
+      assert.deepEqual(formsOf(release, customer).map((f) => f.formId), ['contact-us']);
+    });
+
+    test('an agent a plugin names is only for people who have the plugin, and an installed plugin makes its agent the one that opens', () => {
+      const release = build(true);
+      assert.equal(pick(release, customer, 'service-agent'), 'shopping-consultant', 'a shopper does not have the plugin: the agent it names is not theirs');
+      assert.equal(pick(release, other, 'service-agent'), 'shopping-consultant');
+      assert.equal(pick(release, rep), 'service-agent', 'installed for customer service: their agent opens');
+      assert.equal(pick(release, rep, 'shopping-consultant'), 'shopping-consultant', 'they may still choose another agent the pack gives them');
+    });
+
+    test('skills, forms, tools and connectors of a plugin follow the person\'s plugins', async () => {
+      const release = build(true);
+      // skills: the plugin's skill is hidden from those without it and installed for those with it at default
+      const promptFor = (who: any, agentId: string) => buildAgentSystemPrompt({ resolvedAgent: router.resolveAgent(release, createTestWorkspace(), agentId, who), release, person: who });
+      assert.ok(!promptFor(customer, 'shopping-consultant').includes('order-help'), 'a shopper has no order-help skill at all');
+      assert.match(promptFor(rep, 'service-agent'), /# Skill: Order help\nLook the order up first\./);
+      // forms
+      assert.deepEqual(formsOf(release, customer).map((f) => f.formId), []);
+      assert.deepEqual(formsOf(release, rep).map((f) => f.formId), ['contact-us']);
+      assert.equal(findForm(release, 'contact-us', other), undefined);
+      assert.ok(!getAgentToolDefinitions(release, null, customer).some((t) => t.name === 'open_form'), 'no form for this person: the tool is not offered');
+      assert.ok(getAgentToolDefinitions(release, null, rep).some((t) => t.name === 'open_form'));
+      // connectors: a connector a plugin names is theirs only with the plugin
+      assert.deepEqual(connectorSummaries(release, rep).map((c) => c.connector), ['crm']);
+      assert.deepEqual(connectorSummaries(release, other).map((c) => c.connector), [], 'staff in another group have no customer service plugin');
+    });
+
+    test('through the agent loop: a tool a plugin names is offered only to those who have the plugin, and a form sent without the plugin is refused', async () => {
+      const release = build(true);
+      const talk = async (command: Record<string, unknown>) => {
+        const gateway = new ModelGateway();
+        let seen: { prompt: string; tools: string[] } | undefined;
+        gateway.mockAgentExecutor = async (req) => {
+          seen = { prompt: String(req.systemPrompt || ''), tools: (req.tools || []).map((tool: any) => tool.name) };
+          return { content: 'Hello.', toolCalls: [] };
+        };
+        const repo = new FormSubmissionRepository();
+        await new AgentTurnLoop().execute({
+          command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: 'ws-plugins', sessionId: 's', correlationId: 'c', message: 'hello', ...command } as any,
+          release,
+          workspace: createTestWorkspace(),
+          modelGateway: gateway,
+          catalogSearchHandler: { execute: async () => ({ products: [], totalCount: 0 }) } as any,
+          formSubmissionRepo: repo,
+          sink: () => {},
+        } as any);
+        return { seen: seen!, repo };
+      };
+      const asShopper = await talk({ principalId: 'anonymous', principalRole: 'customer' });
+      assert.ok(!asShopper.seen.tools.includes('check_stock'), 'the pictures plugin is for staff: its tool is not offered to a shopper');
+      assert.ok(!asShopper.seen.tools.includes('open_form'));
+      const asRep = await talk({ principalId: 'rep@x.test', principalRole: 'operator', principalGroups: ['customer-service'] });
+      assert.ok(asRep.seen.tools.includes('check_stock') && asRep.seen.tools.includes('open_form'));
+      assert.match(asRep.seen.prompt, /You are customer service\./, 'and their agent opened');
+      const forged = await talk({ principalId: 'anonymous', principalRole: 'customer', message: '', customerEvent: { type: 'submitForm', payload: { formId: 'contact-us', values: { name: 'Jo', message: 'Hi' } } } });
+      assert.equal((await forged.repo.list('test-tenant', 'test')).length, 0, 'a form the person does not have cannot be sent');
+    });
+
+    test('the publication check refuses a plugin that names nothing the pack has, and plugins that would leave shoppers without an agent', () => {
+      const asPack = (release: any) => ({ modelPolicy: { policies: [] }, capabilities: { toolDefinitions: [], toolBindings: [], stageBindings: [] }, journeys: [], rules: [], evaluations: [], agents: release.agents, extensions: release.extensions } as any);
+      const problems = (change: (release: any) => void) => {
+        const release = build(true);
+        change(release);
+        return validateBusinessPack(asPack(release)).issues.filter((issue) => issue.path.includes('plugins')).map((issue) => `${issue.severity}: ${issue.message}`);
+      };
+      assert.deepEqual(problems(() => {}), []);
+      assert.match(problems((r) => { r.extensions.plugins.plugins[0].provides.skills.push('ghost'); }).join('\n'), /error: Plugin 'customer-service' names skill 'ghost'/);
+      assert.match(problems((r) => { r.extensions.plugins.plugins[0].provides.agents.push('ghost'); }).join('\n'), /names agent 'ghost'/);
+      assert.match(problems((r) => { r.extensions.plugins.plugins.push({ ...r.extensions.plugins.plugins[0] }); }).join('\n'), /error: Two plugins are called 'customer-service'/);
+      assert.match(problems((r) => { r.extensions.plugins.access.push({ pluginId: 'nope', audience: 'staff', groups: [], level: 'available' }); }).join('\n'), /names plugin 'nope'/);
+      assert.match(problems((r) => { r.extensions.plugins.access.push({ pluginId: 'pictures', audience: 'shopper', groups: ['x'], level: 'available' }); }).join('\n'), /shopper row for plugin 'pictures' names groups/);
+      assert.match(problems((r) => { r.extensions.plugins.plugins[0].provides = { agents: [], skills: [], forms: [], connectors: [], tools: [] }; }).join('\n'), /warning: Plugin 'customer-service' names nothing/);
+      const hidden = problems((r) => { r.extensions.plugins.plugins.push({ pluginId: 'advisor', name: 'Advisor', description: 'The main advisor', provides: { agents: ['shopping-consultant'] } }); r.extensions.plugins.access.push({ pluginId: 'advisor', audience: 'staff', groups: [], level: 'available' }); });
+      assert.match(hidden.join('\n'), /error: With these plugins no agent is available to shoppers/);
     });
   });
 

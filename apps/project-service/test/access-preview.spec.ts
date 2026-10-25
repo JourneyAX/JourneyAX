@@ -110,6 +110,27 @@ async function main() {
     assert.deepEqual(buildAccessPreview(project(rows), teams, { audience: 'shopper', groups: [] }).tools, [], 'no table: nothing to say');
   });
 
+  await suite.test('the preview says which plugins the person has: everyone-by-default, covered by a row, installed, or not theirs', () => {
+    const plugins = {
+      plugins: [
+        { pluginId: 'customer-service', name: 'Customer service', description: 'Order help', provides: { agents: ['order-help'] } },
+        { pluginId: 'insights', name: 'Insights', description: 'Reports', provides: { connectors: ['power-bi'] } },
+        { pluginId: 'pictures', name: 'Pictures', description: 'Pictures', provides: { tools: ['generate_visual'] } },
+      ],
+      access: [
+        { pluginId: 'customer-service', audience: 'staff', groups: ['customer-service'], level: 'default' },
+        { pluginId: 'customer-service', audience: 'shopper', groups: [], level: 'available' },
+        { pluginId: 'insights', audience: 'staff', groups: [], level: 'available' },
+      ],
+    };
+    const base = project(rows, { extensions: { agentAccess: { rows }, plugins } });
+    const describe = (audience: 'shopper' | 'staff', groups: string[]) => buildAccessPreview(base, teams, { audience, groups }).plugins.map((p) => `${p.pluginId}:${p.available ? p.level ?? 'all' : 'no'}`);
+    assert.deepEqual(describe('shopper', []), ['customer-service:available', 'insights:no', 'pictures:all']);
+    assert.deepEqual(describe('staff', ['customer-service']), ['customer-service:default', 'insights:available', 'pictures:all']);
+    assert.deepEqual(describe('staff', ['sales']), ['customer-service:available', 'insights:available', 'pictures:all'], 'a row for everyone also covers staff, so staff in another group have it at available, not installed');
+    assert.deepEqual(buildAccessPreview(project(rows), teams, { audience: 'shopper', groups: [] }).plugins, [], 'no plugins: nothing to say');
+  });
+
   suite.finish();
 }
 

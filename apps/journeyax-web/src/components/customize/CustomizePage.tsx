@@ -20,18 +20,19 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { forSidebar } from '@/lib/shell/conversationNav';
 import { copyText } from '@/lib/shell/clipboard';
 import { type AgentDraft, type AgentDraftInput, draftToPackAgentJson, loadDrafts, removeDraft, saveDrafts, upsertDraft } from '@/lib/customize/drafts';
-import { describeSkillAccess } from '@/lib/customize/overview';
-import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledgeSource, OverviewSkill } from '@/lib/customize/types';
+import { describePluginAccess, describeSkillAccess } from '@/lib/customize/overview';
+import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledgeSource, OverviewPlugin, OverviewSkill, OverviewSystem } from '@/lib/customize/types';
 import AgentForm from './AgentForm';
 import { useOverview } from './useOverview';
 import { ViewAs } from './ViewAs';
 
-type TabId = 'agents' | 'skills' | 'knowledge' | 'connectors';
+type TabId = 'agents' | 'skills' | 'plugins' | 'knowledge' | 'connectors';
 type Scope = 'yours' | 'discover';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'agents', label: 'Agents' },
   { id: 'skills', label: 'Skills' },
+  { id: 'plugins', label: 'Plugins' },
   { id: 'knowledge', label: 'Knowledge' },
   { id: 'connectors', label: 'Connectors' },
 ];
@@ -46,6 +47,11 @@ const BANNERS: Record<TabId, { title: string; text: string; icons: ReactNode[] }
     title: 'Skills teach an agent how you want things done',
     text: 'A skill is a reusable set of instructions, like how to open a broad request or what to do once an item is added. Agents carry the skills they need.',
     icons: [<SkillIcon key="s" size={22} />, <AgentIcon key="a" size={22} />],
+  },
+  plugins: {
+    title: 'Plugins switch a whole bundle on for the people you choose',
+    text: 'A plugin names an agent, its skills, a form, the other systems it reaches and the tools it needs, and gives them to a group together. A person without the plugin does not have any of its parts.',
+    icons: [<PlugIcon key="p" size={22} />, <SkillIcon key="s" size={22} />, <AgentIcon key="a" size={22} />],
   },
   knowledge: {
     title: 'Knowledge is what your assistant answers from',
@@ -165,8 +171,9 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const counts: Record<TabId, number | undefined> = {
     agents: data ? agents.length + drafts.length : undefined,
     skills: data?.skills.length,
+    plugins: data?.plugins.length,
     knowledge: data ? (data.knowledge.releaseId ? 1 : 0) + data.knowledge.sources.length : undefined,
-    connectors: data ? data.connectors.filter((c) => c.usedBy.length > 0).length : undefined,
+    connectors: data ? data.connectors.filter((c) => c.usedBy.length > 0).length + data.systems.length : undefined,
   };
 
   const banner = BANNERS[tab];
@@ -260,9 +267,12 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
               />
             )}
             {data && tab === 'skills' && <SkillsTab scope={scope} query={query} skills={data.skills} usedBy={skillCountByAgent} by={by} canViewInstructions={data.canViewInstructions} />}
+            {data && tab === 'plugins' && <PluginsTab scope={scope} query={query} plugins={data.plugins} agents={agents} skills={data.skills} systems={data.systems} />}
             {data && tab === 'knowledge' && <KnowledgeTab scope={scope} query={query} knowledge={data.knowledge} by={by} />}
             {data && tab === 'connectors' && (
-              <ConnectorsTab scope={scope} query={query} connectors={data.connectors} agents={agents} onAddToAgent={(id) => setForm({ presetTools: [id] })} />
+              <>
+                <ConnectorsTab scope={scope} query={query} connectors={data.connectors} systems={data.systems} agents={agents} onAddToAgent={(id) => setForm({ presetTools: [id] })} />
+              </>
             )}
           </div>
         </div>
@@ -502,11 +512,23 @@ function KnowledgeTab({ scope, query, knowledge, by }: {
 }
 
 /* ── Connectors ──────────────────────────────────────────────────────── */
-function ConnectorsTab({ scope, query, connectors, agents, onAddToAgent }: {
-  scope: Scope; query: string; connectors: OverviewConnector[]; agents: OverviewAgent[]; onAddToAgent: (id: string) => void;
+function ConnectorsTab({ scope, query, connectors, systems, agents, onAddToAgent }: {
+  scope: Scope; query: string; connectors: OverviewConnector[]; systems: OverviewSystem[]; agents: OverviewAgent[]; onAddToAgent: (id: string) => void;
 }) {
+  const shownSystems = scope === 'yours' ? systems.filter((s) => matches(query, s.name, s.description, s.connectorId, s.owner)) : [];
   const wanted = connectors.filter((c) => (scope === 'yours' ? c.usedBy.length > 0 : c.usedBy.length === 0));
   const shown = wanted.filter((c) => matches(query, c.name, c.description, c.id));
+  const systemCards = shownSystems.map((s) => (
+    <Card
+      key={`system-${s.connectorId}`} icon={<PlugIcon size={20} />} title={s.name} by={s.owner || 'the shop'} description={s.description}
+      tags={[
+        <span key="t" className="ax-tag">{plural(s.tools, 'tool')}</span>,
+        ...(s.writes > 0 ? [<span key="w" className="ax-tag">{plural(s.writes, 'tool')} change data</span>] : []),
+        ...(s.sample ? [<span key="s" className="ax-tag">Sample data</span>] : []),
+      ]}
+    />
+  ));
+  if (wanted.length === 0 && systemCards.length > 0) return <ul className="ax-grid">{systemCards}</ul>;
   if (wanted.length === 0) {
     return scope === 'yours'
       ? <Empty title="No connectors in use">None of the agents in the active pack is allowed to call a connector.</Empty>
@@ -516,6 +538,7 @@ function ConnectorsTab({ scope, query, connectors, agents, onAddToAgent }: {
   const agentName = (id: string) => agents.find((a) => a.agentId === id)?.name || id;
   return (
     <ul className="ax-grid">
+      {systemCards}
       {shown.map((c) => (
         <Card
           key={c.id} icon={<PlugIcon size={20} />} title={c.name} by="the platform (built in)" description={c.description}
@@ -527,6 +550,52 @@ function ConnectorsTab({ scope, query, connectors, agents, onAddToAgent }: {
           )}
         />
       ))}
+    </ul>
+  );
+}
+
+/* ── Plugins ─────────────────────────────────────────────────────────── */
+function PluginsTab({ scope, query, plugins, agents, skills, systems }: {
+  scope: Scope; query: string; plugins: OverviewPlugin[]; agents: OverviewAgent[]; skills: OverviewSkill[]; systems: OverviewSystem[];
+}) {
+  if (scope === 'discover') {
+    return <Empty title="No plugins to discover yet">Plugin templates will appear here when the platform or your organisation offers some.</Empty>;
+  }
+  if (plugins.length === 0) {
+    return (
+      <Empty title="No plugins in this pack yet">
+        A plugin bundles an agent, its skills, a form, the systems it reaches and its tools, and switches them on together for the people you choose.
+      </Empty>
+    );
+  }
+  const shown = plugins.filter((p) => matches(query, p.name, p.description, p.pluginId));
+  if (shown.length === 0) return <Empty title="No plugins match your search">Try a different word, or clear the search.</Empty>;
+  const nameOf = (list: Array<{ id: string; name: string }>) => (id: string) => list.find((entry) => entry.id === id)?.name || id;
+  const agentName = nameOf(agents.map((a) => ({ id: a.agentId, name: a.name })));
+  const skillName = nameOf(skills.map((s) => ({ id: s.skillId, name: s.name })));
+  const systemName = nameOf(systems.map((s) => ({ id: s.connectorId, name: s.name })));
+  return (
+    <ul className="ax-grid">
+      {shown.map((p) => {
+        const parts: Array<[string, string[]]> = [
+          ['Agents', p.provides.agents.map(agentName)],
+          ['Skills', p.provides.skills.map(skillName)],
+          ['Forms', p.provides.forms],
+          ['Systems', p.provides.connectors.map(systemName)],
+          ['Tools', p.provides.tools],
+        ];
+        return (
+          <Card
+            key={p.pluginId} icon={<PlugIcon size={20} />} title={p.name} by="your shop" description={p.description}
+            tags={p.access.length === 0 ? [<span key="all" className="ax-tag">Everyone has it</span>] : p.access.map((row, index) => <span key={`row-${index}`} className="ax-tag">{describePluginAccess(row)}</span>)}
+          >
+            <div className="ax-hint">
+              {parts.filter(([, names]) => names.length > 0).map(([label, names]) => <div key={label}><strong>{label}:</strong> {names.join(', ')}</div>)}
+              {parts.every(([, names]) => names.length === 0) && <div>This plugin does not name anything yet.</div>}
+            </div>
+          </Card>
+        );
+      })}
     </ul>
   );
 }

@@ -17,6 +17,7 @@ import { AgentAccessSchema } from './access.schema';
 import { SkillAccessSchema } from './skill-access.schema';
 import { ToolStatesSchema } from './tool-states.schema';
 import { FormsSchema } from './forms.schema';
+import { PluginsSchema } from './plugins.schema';
 import { ConnectorsSchema } from './connectors.schema';
 import { CatalogMappingSchema } from '../catalog-mapping';
 
@@ -281,6 +282,7 @@ export const BusinessPackContentSchema = z.object({
       skillAccess: SkillAccessSchema.optional(),
       toolStates: ToolStatesSchema.optional(),
       forms: FormsSchema.optional(),
+      plugins: PluginsSchema.optional(),
       connectors: ConnectorsSchema.optional(),
     })
     .catchall(z.any()),

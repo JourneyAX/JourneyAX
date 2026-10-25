@@ -6,7 +6,7 @@
  * Agent system prompts are never part of the overview.
  */
 import { describeTool, PLATFORM_TOOLS } from './tool-catalog';
-import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledge, OverviewSkill, SkillAccessEntry } from './types';
+import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledge, OverviewPlugin, OverviewSkill, OverviewSystem, SkillAccessEntry } from './types';
 
 const str = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(str).filter(Boolean) : []);
@@ -69,6 +69,50 @@ export function readSkills(published: Json, includeInstructions: boolean): Overv
   return out;
 }
 
+const LEVELS = ['not_available', 'available', 'default', 'required'] as const;
+
+/** Plugins live in `extensions.plugins`; an entry without an id and a name is skipped. */
+export function readPlugins(published: Json): OverviewPlugin[] {
+  const ext = rec(rec(published.extensions).plugins);
+  const rows = list(ext.access).filter(isRecord);
+  const out: OverviewPlugin[] = [];
+  const seen = new Set<string>();
+  for (const entry of list(ext.plugins)) {
+    if (!isRecord(entry)) continue;
+    const pluginId = str(entry.pluginId);
+    const name = str(entry.name);
+    if (!pluginId || !name || seen.has(pluginId)) continue;
+    seen.add(pluginId);
+    const provides = rec(entry.provides);
+    out.push({
+      pluginId,
+      name,
+      description: str(entry.description),
+      provides: { agents: strings(provides.agents), skills: strings(provides.skills), forms: strings(provides.forms), connectors: strings(provides.connectors), tools: strings(provides.tools) },
+      access: rows
+        .filter((row) => str(row.pluginId) === pluginId && (LEVELS as readonly string[]).includes(str(row.level)))
+        .map((row) => ({ audience: row.audience === 'staff' ? 'staff' as const : 'shopper' as const, groups: strings(row.groups), level: str(row.level) as OverviewPlugin['access'][number]['level'] })),
+    });
+  }
+  return out;
+}
+
+/** The other systems the shop declared (`extensions.connectors.connectors`), with how many of their tools change data. */
+export function readSystems(published: Json): OverviewSystem[] {
+  const out: OverviewSystem[] = [];
+  const seen = new Set<string>();
+  for (const entry of list(rec(rec(published.extensions).connectors).connectors)) {
+    if (!isRecord(entry) || entry.enabled === false) continue;
+    const connectorId = str(entry.connectorId);
+    const name = str(entry.displayName);
+    if (!connectorId || !name || seen.has(connectorId)) continue;
+    seen.add(connectorId);
+    const tools = list(entry.tools).filter(isRecord);
+    out.push({ connectorId, name, description: str(entry.description), owner: str(entry.owner), sample: entry.sample === true, tools: tools.length, writes: tools.filter((tool) => tool.sideEffect === 'write').length });
+  }
+  return out;
+}
+
 export function readKnowledge(published: Json): OverviewKnowledge {
   const model = rec(published.knowledgeModel);
   const sources = list(rec(published.knowledgeSource).sources).filter(isRecord).map((s, i) => ({
@@ -112,6 +156,8 @@ export function buildOverview(tenantId: string, published: Json, opts: { canView
     ...(version ? { packVersion: version } : {}),
     agents,
     skills: readSkills(published, opts.canViewInstructions),
+    plugins: readPlugins(published),
+    systems: readSystems(published),
     knowledge: readKnowledge(published),
     connectors: buildConnectors(agents),
     canViewInstructions: opts.canViewInstructions,
@@ -122,5 +168,12 @@ export function buildOverview(tenantId: string, published: Json, opts: { canView
 export function describeSkillAccess(entry: SkillAccessEntry): string {
   const who = entry.audience === 'shopper' ? 'Everyone' : entry.groups.length > 0 ? `Staff in ${entry.groups.join(', ')}` : 'All staff';
   const what = { not_available: 'does not have it', available: 'opens it when a request fits', default: 'has it installed', required: 'has it installed and cannot turn it off' }[entry.level];
+  return `${who} ${what}`;
+}
+
+/** One plain line for a row of a plugin's access, for the Plugins tab. */
+export function describePluginAccess(row: OverviewPlugin['access'][number]): string {
+  const who = row.audience === 'shopper' ? 'Everyone' : row.groups.length > 0 ? `Staff in ${row.groups.join(', ')}` : 'All staff';
+  const what = { not_available: 'does not have it', available: 'may use it', default: 'has it installed', required: 'has it installed and cannot turn it off' }[row.level];
   return `${who} ${what}`;
 }
