@@ -27,6 +27,12 @@ export interface Principal {
 export const MAX_GROUPS = 50;
 export const MAX_GROUP_ID_LENGTH = 64;
 export const ANONYMOUS_USER_ID = 'anonymous';
+/**
+ * The group the platform admin belongs to by role. Access rows written per team name it so the admin is not shut out (the admin is in no
+ * project team). The gateway adds it for that role only and strips it from anything a team lookup returns, so a team that happens to be
+ * called Administrators puts nobody in it.
+ */
+export const ADMIN_GROUP = 'administrators';
 
 /** Every role name, across the four lists, that belongs to a member of staff. Anything else is a shopper. */
 const STAFF_ROLES: ReadonlySet<string> = new Set([

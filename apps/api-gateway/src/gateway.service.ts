@@ -7,7 +7,7 @@ import {
   gatewayRoleFor,
   GatewayRole,
 } from '@journeyax/database';
-import { isStaffRole } from '@journeyax/shared-types';
+import { isStaffRole, ADMIN_GROUP } from '@journeyax/shared-types';
 import { GroupDirectory } from './group-directory';
 
 // ---------------------------------------------------------------------------
@@ -349,7 +349,12 @@ export class GatewayService {
     const secret = process.env.GATEWAY_ASSERTION_SECRET;
     if (!secret) return {};
     const role: GatewayRole = gatewayRoleFor(headers['x-user-role'] || headers['x-principal-role']);
-    const groups = isStaffRole(role) ? await this.groupDirectory.groupsFor(tenantId, String(headers['x-user-email'] || '')) : [];
+    const fromTeams = isStaffRole(role) ? await this.groupDirectory.groupsFor(tenantId, String(headers['x-user-email'] || '')) : [];
+    // The platform admin is not in any project team (it is not a project member, and its login name is not an email), so access rows that
+    // are written per team would shut it out. It belongs to `administrators` by role. The name is reserved: a team called Administrators
+    // does not put anyone in that group, so nobody can reach admin-level rows by naming a team.
+    const teamGroups = fromTeams.filter((group) => group !== ADMIN_GROUP);
+    const groups = role === 'admin' ? [ADMIN_GROUP, ...teamGroups] : teamGroups;
     return {
       'X-Gateway-Assertion': signGatewayAssertion(
         {

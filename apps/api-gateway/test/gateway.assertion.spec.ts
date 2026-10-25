@@ -222,6 +222,27 @@ async function runGatewayAssertionTests() {
     for (const path of ['/api/v1/placemakers/products/search', '/api/v1/placemakers/analytics/summary']) assert.equal(isCacheable('GET', path), true, path);
   });
 
+  await test('the platform admin carries the reserved administrators group by role; a team called Administrators puts nobody in it', async () => {
+    await withFetch(() => ({ body: { isMember: true, teams: ['Sales'] } }), async (seen) => {
+      await service.proxyRequest('POST', turnPath, { 'x-tenant-id': 'placemakers', 'x-user-role': 'admin', 'x-user-email': 'admin' }, { message: 'hi' });
+      assert.deepEqual(verifyFor(seen.downstream).groups, ['administrators'], 'a login name that is not an email has no teams to look up');
+    });
+    await withFetch(() => ({ body: { isMember: true, teams: ['Administrators', 'Sales'] } }), async (seen) => {
+      await service.proxyRequest('POST', turnPath, { 'x-tenant-id': 'placemakers', 'x-user-role': 'rep', 'x-user-email': 'sneaky@placemakers.test' }, { message: 'hi' });
+      const payload = verifyFor(seen.downstream);
+      assert.equal(payload.role, 'operator');
+      assert.deepEqual(payload.groups, ['sales'], 'the reserved name is dropped from a team lookup');
+    });
+    await withFetch(() => ({ body: { isMember: true, teams: ['administrators', 'Sales'] } }), async (seen) => {
+      await service.proxyRequest('POST', turnPath, { 'x-tenant-id': 'placemakers', 'x-user-role': 'admin', 'x-user-email': 'boss@placemakers.test' }, { message: 'hi' });
+      assert.deepEqual(verifyFor(seen.downstream).groups, ['administrators', 'sales'], 'an admin who is also in a team keeps both, with the reserved group once');
+    });
+    await withFetch(() => ({ body: { isMember: true, teams: ['sales'] } }), async (seen) => {
+      await service.proxyRequest('POST', turnPath, { 'x-tenant-id': 'placemakers', 'x-user-role': 'buyer', 'x-user-email': 'shopper@placemakers.test' }, { message: 'hi' });
+      assert.equal(verifyFor(seen.downstream).groups, undefined, 'a shopper has no groups at all');
+    });
+  });
+
   console.log(`\n====================================================`);
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   console.log(`====================================================\n`);
