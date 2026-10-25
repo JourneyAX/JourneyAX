@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { GatewayService } from '../src/gateway.service';
-import { verifyGatewayAssertion } from '@journeyax/database';
+import { GatewayService, isCacheable } from '../src/gateway.service';
+import { verifyGatewayAssertion, gatewayRoleFor } from '@journeyax/database';
 
 async function runGatewayAssertionTests() {
   console.log('=== Running API Gateway Assertion & Security Tests ===\n');
@@ -180,6 +180,46 @@ async function runGatewayAssertionTests() {
       const payload = verifyFor(seen.downstream);
       assert.equal(payload.role, 'customer', 'a guest on the streaming path is a signed shopper');
     });
+  });
+
+  // The user type's own staff words (cs, rep) used to be signed as a shopper: a customer-service or sales login lost its teams and every
+  // staff-only thing. They are now staff; everything that is not a known role stays a shopper.
+  await test('a customer-service (cs) or sales (rep) login is signed as staff and carries its teams', async () => {
+    await withFetch(() => ({ body: { isMember: true, teams: ['Customer Service'] } }), async (seen) => {
+      await service.proxyRequest('POST', turnPath, { 'x-tenant-id': 'placemakers', 'x-user-role': 'cs', 'x-user-email': 'csr@placemakers.test' }, { message: 'hi' });
+      const payload = verifyFor(seen.downstream);
+      assert.equal(payload.role, 'consultant');
+      assert.deepEqual(payload.groups, ['customer-service']);
+    });
+    await withFetch(() => ({ body: { isMember: true, teams: ['sales'] } }), async (seen) => {
+      await service.proxyRequest('POST', turnPath, { 'x-tenant-id': 'placemakers', 'x-user-role': 'rep', 'x-user-email': 'sales@placemakers.test' }, { message: 'hi' });
+      const payload = verifyFor(seen.downstream);
+      assert.equal(payload.role, 'operator');
+      assert.deepEqual(payload.groups, ['sales']);
+    });
+  });
+
+  await test('gatewayRoleFor: known roles keep their meaning; buyer, guest, unknown, empty and prototype words are shoppers', () => {
+    for (const [word, role] of [['admin', 'admin'], ['MANAGER', 'manager'], [' cs ', 'consultant'], ['rep', 'operator'], ['operator', 'operator'], ['consultant', 'consultant']] as const) {
+      assert.equal(gatewayRoleFor(word), role, word);
+    }
+    for (const word of ['buyer', 'guest', 'customer', 'god_mode_admin', '', 'constructor', '__proto__', 'toString']) assert.equal(gatewayRoleFor(word), 'customer', word);
+    for (const value of [undefined, null, 7, {}, ['admin']]) assert.equal(gatewayRoleFor(value), 'customer');
+  });
+
+  // The gateway cache is keyed by tenant and path, never by person, so anything that depends on who is asking must not be cached.
+  await test('answers that depend on the person are never cached, however the path is written', () => {
+    for (const path of [
+      '/api/v1/placemakers/commerce/connectors',
+      '/api/v1/placemakers/production/commerce/connectors',
+      '/api/v1/placemakers/production/runtime/connectors',
+      '/api/v1/placemakers/runtime/connectors?x=1',
+      '/api/v1/commerce/chat',
+      '/api/v1/agent/anything',
+      '/auth/me',
+    ]) assert.equal(isCacheable('GET', path), false, path);
+    assert.equal(isCacheable('POST', '/api/v1/placemakers/products/search'), false, 'only GET is ever cached');
+    for (const path of ['/api/v1/placemakers/products/search', '/api/v1/placemakers/analytics/summary']) assert.equal(isCacheable('GET', path), true, path);
   });
 
   console.log(`\n====================================================`);

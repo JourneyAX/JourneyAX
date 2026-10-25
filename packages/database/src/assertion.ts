@@ -13,6 +13,26 @@ export const VALID_GATEWAY_ROLES = [
 
 export type GatewayRole = (typeof VALID_GATEWAY_ROLES)[number];
 
+/**
+ * The gateway role a sign-in role is signed as. The user type has its own words for staff (`cs`, `rep`) that are not gateway roles, and a
+ * login of that type used to be signed as a shopper, which dropped its teams and every staff-only thing with them. A word not named here
+ * (`buyer`, `guest`, anything unknown) is a shopper, so a role nobody planned for can only ever lower what a person gets.
+ */
+const SIGN_IN_TO_GATEWAY_ROLE: ReadonlyMap<string, GatewayRole> = new Map<string, GatewayRole>([
+  ['admin', 'admin'],
+  ['manager', 'manager'],
+  ['operator', 'operator'],
+  ['consultant', 'consultant'],
+  ['cs', 'consultant'],
+  ['rep', 'operator'],
+  ['customer', 'customer'],
+]);
+
+export function gatewayRoleFor(signInRole: unknown): GatewayRole {
+  const key = typeof signInRole === 'string' ? signInRole.trim().toLowerCase() : '';
+  return SIGN_IN_TO_GATEWAY_ROLE.get(key) ?? 'customer';
+}
+
 /** The most groups an assertion may carry, and the longest group id. Mirrors `MAX_GROUPS` and `MAX_GROUP_ID_LENGTH` in shared-types `principal.ts`. */
 export const ASSERTION_MAX_GROUPS = 50;
 export const ASSERTION_MAX_GROUP_ID_LENGTH = 64;

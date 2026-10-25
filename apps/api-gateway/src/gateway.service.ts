@@ -4,7 +4,7 @@ import { GoogleAuth } from 'google-auth-library';
 import * as crypto from 'crypto';
 import {
   signGatewayAssertion,
-  VALID_GATEWAY_ROLES,
+  gatewayRoleFor,
   GatewayRole,
 } from '@journeyax/database';
 import { isStaffRole } from '@journeyax/shared-types';
@@ -264,9 +264,18 @@ function ttlForPath(path: string): number {
   return domain ? (CACHE_TTL[domain] ?? DEFAULT_TTL) : DEFAULT_TTL;
 }
 
-function isCacheable(method: string, path: string): boolean {
+/**
+ * Domains whose answers depend on who is asking. The cache key is the tenant and the path only, so one person's answer would be handed to
+ * the next person who asked for the same path (the connector menu showed staff systems to a login that should not see them). The prefix
+ * list above cannot catch these: a tenant-scoped path starts with the tenant (`/api/v1/placemakers/commerce/...`), not with the domain.
+ */
+const NO_CACHE_DOMAINS: ReadonlySet<string> = new Set(['commerce', 'runtime']);
+
+export function isCacheable(method: string, path: string): boolean {
   if (method !== 'GET') return false;
   if (NO_CACHE_PREFIXES.some(p => path.startsWith(p))) return false;
+  const { domain } = parseRoute(path);
+  if (domain && NO_CACHE_DOMAINS.has(domain)) return false;
   return true;
 }
 
@@ -339,8 +348,7 @@ export class GatewayService {
   private async assertionHeaders(tenantId: string, environmentId: string, headers: Record<string, any>): Promise<Record<string, string>> {
     const secret = process.env.GATEWAY_ASSERTION_SECRET;
     if (!secret) return {};
-    const rawRole = String(headers['x-user-role'] || headers['x-principal-role'] || 'customer').toLowerCase();
-    const role: GatewayRole = (VALID_GATEWAY_ROLES as readonly string[]).includes(rawRole) ? (rawRole as GatewayRole) : 'customer';
+    const role: GatewayRole = gatewayRoleFor(headers['x-user-role'] || headers['x-principal-role']);
     const groups = isStaffRole(role) ? await this.groupDirectory.groupsFor(tenantId, String(headers['x-user-email'] || '')) : [];
     return {
       'X-Gateway-Assertion': signGatewayAssertion(
