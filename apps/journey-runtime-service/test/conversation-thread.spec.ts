@@ -22,7 +22,7 @@ const productsCard = {
   state: {
     heading: 'Drills for concrete',
     products: [
-      { sku: '5009059', title: '2-Piece 12V Cordless Hammer Drill Combo Kit', price: 609.01, currency: 'NZD' },
+      { sku: '5009059', title: '2-Piece 12V Cordless Hammer Drill Combo Kit', price: 609.01, currency: 'NZD', specs: { voltage: '12V', batteries: 2 }, highlights: ['Brushless motor'] },
       { sku: '4914039', title: 'M18 Cordless Right Angle Drill Skin', price: 329, currency: 'NZD' },
     ],
   },
@@ -113,7 +113,8 @@ assert.deepEqual(threadPath([]), []);
 // ── 4. The history the next turn reads ───────────────────────────────────────────────────────────────────────────────────────────────────
 {
   const rendered = renderThread(threadPath(all, 't3:assistant'));
-  assert.match(rendered.text, /1\. 2-Piece 12V Cordless Hammer Drill Combo Kit \(SKU 5009059, 609\.01 NZD\); 2\. M18 Cordless Right Angle Drill Skin \(SKU 4914039/, 'the second one is a real SKU');
+  assert.match(rendered.text, /1\. 2-Piece 12V Cordless Hammer Drill Combo Kit \(SKU 5009059, 609\.01 NZD(?:;[^)]*)?\); 2\. M18 Cordless Right Angle Drill Skin \(SKU 4914039/, 'the second one is a real SKU');
+  assert.match(rendered.text, /\(SKU 5009059, 609\.01 NZD; voltage: 12V, batteries: 2, Brushless motor\)/, 'a few of the figures the card showed are kept, so a comparison can be answered');
   assert.match(rendered.text, /Looked up|Shown on a card "Drills for concrete", in this order/);
   assert.match(rendered.text, /Customer: how long is the warranty\?/);
   assert.ok(rendered.text.indexOf('the second one please') < rendered.text.indexOf('how long is the warranty'), 'oldest first, newest last');

@@ -15,7 +15,7 @@ export type ThreadBlock =
   /** A tool the assistant used: what for (arguments in brief) and how many things it found. */
   | { type: 'lookup'; tool: string; ok: boolean; summary?: string; count?: number }
   /** The products on a card, in the order the customer saw them. */
-  | { type: 'products'; heading?: string; items: Array<{ sku: string; title: string; price?: number; currency?: string }> }
+  | { type: 'products'; heading?: string; items: Array<{ sku: string; title: string; price?: number; currency?: string; facts?: string[] }> }
   /** The questions on a question card, with the choices offered. */
   | { type: 'questions'; questions: Array<{ id: string; text: string; options?: string[]; unit?: string }> }
   /** A number worked out by the quantity tool. */
@@ -62,6 +62,23 @@ interface ProductLike {
   name?: unknown;
   price?: unknown;
   currency?: unknown;
+  specs?: unknown;
+  highlights?: unknown;
+}
+
+/** A few of the figures a card showed for a product ("length: 10 m"), so "which is the longest?" can be answered from the thread. */
+function factsOf(item: ProductLike): string[] {
+  const facts: string[] = [];
+  if (item.specs && typeof item.specs === 'object') {
+    for (const [key, value] of Object.entries(item.specs as Record<string, unknown>)) {
+      if ((typeof value === 'string' || typeof value === 'number') && String(value).trim()) facts.push(clip(`${key}: ${value}`, 48));
+      if (facts.length >= 4) break;
+    }
+  }
+  if (Array.isArray(item.highlights) && facts.length < 5) {
+    for (const line of item.highlights.slice(0, 2)) if (typeof line === 'string' && line.trim()) facts.push(clip(line, 70));
+  }
+  return facts.slice(0, 5);
 }
 
 /** One block for one presented card; a card the thread has no special block for is kept as its type, heading and products. */
@@ -71,7 +88,8 @@ export function blockForCard(card: { cardType: string; state: any }, titleOf: (s
     const sku = String(item?.sku ?? '');
     const title = clip(item?.title ?? item?.name ?? titleOf(sku) ?? '', 120);
     const price = typeof item?.price === 'number' ? item.price : undefined;
-    return { sku, title: title || sku, ...(price !== undefined ? { price } : {}), ...(typeof item?.currency === 'string' && price !== undefined ? { currency: item.currency } : {}) };
+    const facts = factsOf(item || {});
+    return { sku, title: title || sku, ...(price !== undefined ? { price } : {}), ...(typeof item?.currency === 'string' && price !== undefined ? { currency: item.currency } : {}), ...(facts.length > 0 ? { facts } : {}) };
   };
   if (card.cardType === 'products' && Array.isArray(state.products)) {
     return { type: 'products', ...(state.heading ? { heading: clip(state.heading, 100) } : {}), items: state.products.slice(0, 8).map(product).filter((item: { sku: string }) => item.sku) };
@@ -224,8 +242,8 @@ const textOf = (message: ThreadMessage | undefined): string => (message?.blocks 
 const firstSentence = (text: string, max: number): string => clip(text.split(/(?<=[.!?])\s/)[0] || text, max);
 const money = (item: { price?: number; currency?: string }): string => (typeof item.price === 'number' ? ` ${item.price.toFixed(2)}${item.currency ? ` ${item.currency}` : ''}` : '');
 
-function shownItems(assistant: ThreadMessage | undefined): Array<{ sku: string; title: string; price?: number; currency?: string }> {
-  const items: Array<{ sku: string; title: string; price?: number; currency?: string }> = [];
+function shownItems(assistant: ThreadMessage | undefined): Array<{ sku: string; title: string; price?: number; currency?: string; facts?: string[] }> {
+  const items: Array<{ sku: string; title: string; price?: number; currency?: string; facts?: string[] }> = [];
   for (const block of assistant?.blocks || []) if (block.type === 'products') items.push(...block.items);
   return items;
 }
@@ -242,7 +260,7 @@ function renderFull(view: TurnView): string {
   }
   for (const block of view.assistant?.blocks || []) {
     if (block.type === 'products' && block.items.length > 0) {
-      lines.push(`Shown on a card${block.heading ? ` "${block.heading}"` : ''}, in this order: ${block.items.map((item, index) => `${index + 1}. ${item.title} (SKU ${item.sku}${money(item) ? `,${money(item)}` : ''})`).join('; ')}`);
+      lines.push(`Shown on a card${block.heading ? ` "${block.heading}"` : ''}, in this order: ${block.items.map((item, index) => `${index + 1}. ${item.title} (SKU ${item.sku}${money(item) ? `,${money(item)}` : ''}${item.facts && item.facts.length > 0 ? `; ${item.facts.join(', ')}` : ''})`).join('; ')}`);
     } else if (block.type === 'questions') {
       lines.push(`Asked on a question card: ${block.questions.map((q) => `"${q.text}"${q.options && q.options.length > 0 ? ` [${q.options.join(' / ')}]` : ''}${q.unit ? ` in ${q.unit}` : ''}`).join('; ')}`);
     } else if (block.type === 'quantity') {
