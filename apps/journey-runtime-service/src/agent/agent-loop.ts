@@ -20,6 +20,7 @@ import {
   executeAgentTool,
   isReadOnlyTool,
   isToolAllowed,
+  knownNamesOf,
   type AgentToolContext,
 } from './agent-tools';
 import agentLoopDefaults from '../defaults/agent-loop.json';
@@ -986,6 +987,7 @@ function extractToolResultCount(result: any): number | undefined {
 
         // Update shaper with newly unlocked claim classes from tool executions
         shaper.updateAllowedClaims(toolContext.allowedClaimClasses);
+        shaper.updateKnownNames(knownNamesOf(toolContext));
 
         // Append tool results to messages
         for (const { call, result } of [...readOnlyResults, ...mutatingResults]) {
@@ -1047,6 +1049,7 @@ function extractToolResultCount(result: any): number | undefined {
           },
         ];
         const repairShaper = new IncrementalSentenceShaper(shapeContext, toolContext.allowedClaimClasses, true, () => {}, release);
+        repairShaper.updateKnownNames(knownNamesOf(toolContext));
         await modelGateway.executeAgentStream(
           release,
           { taskType: 'agent_turn', systemPrompt, messages: repairMessages, tools: undefined, policyRef: resolvedAgent.modelPolicyRef || 'agent_turn' },

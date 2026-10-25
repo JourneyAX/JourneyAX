@@ -108,6 +108,30 @@ export interface AgentToolContext {
   emitTrace?: (name: string, payload: any) => void;
 }
 
+/**
+ * The names this turn's tools returned: product titles and brands, the range group the customer is looking at and its shelves. The claim
+ * guard sets them aside before it reads a sentence, so a word that is part of a product's own name ("Mounting Bracket", "Wire Wardrobe Kit")
+ * is not taken for an instruction.
+ */
+export function knownNamesOf(ctx: Pick<AgentToolContext, 'catalogProductCache' | 'lastRangeGroup' | 'rangeShelves'>): string[] {
+  const names = new Set<string>();
+  const add = (value: unknown) => {
+    const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+    if (text.length >= 4) names.add(text);
+  };
+  for (const product of ctx.catalogProductCache.values()) {
+    add(product?.title);
+    add(product?.name);
+    add(product?.brand);
+  }
+  if (ctx.lastRangeGroup) {
+    add(ctx.lastRangeGroup.name);
+    for (const part of ctx.lastRangeGroup.path || []) add(part);
+  }
+  for (const shelf of ctx.rangeShelves || []) add(shelf?.name);
+  return [...names];
+}
+
 /** One product by SKU: from this turn's lookups, else from the catalogue (and then remembered for this turn). */
 async function findProductBySku(ctx: AgentToolContext, sku: string): Promise<any | undefined> {
   const cached = ctx.catalogProductCache.get(sku);
