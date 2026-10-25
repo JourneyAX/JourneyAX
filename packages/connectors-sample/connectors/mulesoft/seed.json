@@ -1,0 +1,59 @@
+{
+  "connectorId": "mulesoft",
+  "tenantId": "placemakers",
+  "builtFrom": "PlaceMakers product master and content master (read only), plus a seeded generator",
+  "provenance": {
+    "sync_runs": {
+      "origin": "sample",
+      "source": "invented over the sample orders",
+      "realFields": [
+        "orderId (a sample order)"
+      ],
+      "madeUpFields": [
+        "every other field"
+      ]
+    }
+  },
+  "collections": {
+    "sync_runs": [
+      {"runId":"RUN-9001","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100045","status":"success","startedAt":"2026-07-01T10:31:00.000Z","durationMs":671,"recordsProcessed":5,"retries":0,"errorCode":null,"correlationId":"corr-962492","sample":true},
+      {"runId":"RUN-9002","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100047","status":"success","startedAt":"2026-07-07T08:38:00.000Z","durationMs":3689,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-199779","sample":true},
+      {"runId":"RUN-9003","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100042","status":"success","startedAt":"2026-07-08T14:08:00.000Z","durationMs":3329,"recordsProcessed":3,"retries":0,"errorCode":null,"correlationId":"corr-171132","sample":true},
+      {"runId":"RUN-9004","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100048","status":"success","startedAt":"2026-07-09T12:35:00.000Z","durationMs":1635,"recordsProcessed":4,"retries":0,"errorCode":null,"correlationId":"corr-188125","sample":true},
+      {"runId":"RUN-9005","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100003","status":"success","startedAt":"2026-07-10T10:51:00.000Z","durationMs":2923,"recordsProcessed":4,"retries":0,"errorCode":null,"correlationId":"corr-732807","sample":true},
+      {"runId":"RUN-9006","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100041","status":"success","startedAt":"2026-07-13T11:52:00.000Z","durationMs":2771,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-460489","sample":true},
+      {"runId":"RUN-9007","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100002","status":"retrying","startedAt":"2026-07-14T09:41:00.000Z","durationMs":528,"recordsProcessed":5,"retries":1,"errorCode":"RATE_LIMITED","correlationId":"corr-459576","sample":true},
+      {"runId":"RUN-9008","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100036","status":"success","startedAt":"2026-07-15T09:12:00.000Z","durationMs":2869,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-435696","sample":true},
+      {"runId":"RUN-9009","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100028","status":"failed","startedAt":"2026-07-15T11:37:00.000Z","durationMs":2945,"recordsProcessed":5,"retries":1,"errorCode":"SCHEMA_MISMATCH","correlationId":"corr-741569","sample":true},
+      {"runId":"RUN-9010","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100039","status":"success","startedAt":"2026-07-16T12:46:00.000Z","durationMs":3886,"recordsProcessed":4,"retries":0,"errorCode":null,"correlationId":"corr-721527","sample":true},
+      {"runId":"RUN-9011","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100019","status":"success","startedAt":"2026-07-20T07:50:00.000Z","durationMs":241,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-970838","sample":true},
+      {"runId":"RUN-9012","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100023","status":"success","startedAt":"2026-07-20T14:22:00.000Z","durationMs":251,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-519151","sample":true},
+      {"runId":"RUN-9013","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100037","status":"success","startedAt":"2026-07-22T12:53:00.000Z","durationMs":715,"recordsProcessed":5,"retries":0,"errorCode":null,"correlationId":"corr-932597","sample":true},
+      {"runId":"RUN-9014","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100010","status":"failed","startedAt":"2026-07-27T13:33:00.000Z","durationMs":2750,"recordsProcessed":3,"retries":2,"errorCode":"SCHEMA_MISMATCH","correlationId":"corr-245287","sample":true},
+      {"runId":"RUN-9015","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100015","status":"success","startedAt":"2026-07-28T13:27:00.000Z","durationMs":1917,"recordsProcessed":3,"retries":0,"errorCode":null,"correlationId":"corr-668894","sample":true},
+      {"runId":"RUN-9016","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100030","status":"success","startedAt":"2026-07-28T14:19:00.000Z","durationMs":1694,"recordsProcessed":3,"retries":0,"errorCode":null,"correlationId":"corr-380882","sample":true},
+      {"runId":"RUN-9017","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100026","status":"success","startedAt":"2026-07-31T09:38:00.000Z","durationMs":2701,"recordsProcessed":5,"retries":0,"errorCode":null,"correlationId":"corr-745941","sample":true},
+      {"runId":"RUN-9018","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100009","status":"failed","startedAt":"2026-07-31T10:52:00.000Z","durationMs":1537,"recordsProcessed":2,"retries":1,"errorCode":"TARGET_TIMEOUT","correlationId":"corr-817472","sample":true},
+      {"runId":"RUN-9019","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100013","status":"success","startedAt":"2026-08-01T15:32:00.000Z","durationMs":3933,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-463662","sample":true},
+      {"runId":"RUN-9020","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100044","status":"success","startedAt":"2026-08-01T16:28:00.000Z","durationMs":2693,"recordsProcessed":3,"retries":0,"errorCode":null,"correlationId":"corr-762179","sample":true},
+      {"runId":"RUN-9021","flow":"stock-to-commerce","source":"erp","target":"commerce","orderId":null,"status":"success","startedAt":"2026-08-02T00:38:00.000Z","durationMs":2704,"recordsProcessed":133,"retries":0,"errorCode":null,"correlationId":"corr-187786","sample":true},
+      {"runId":"RUN-9022","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100014","status":"success","startedAt":"2026-08-03T14:22:00.000Z","durationMs":399,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-911875","sample":true},
+      {"runId":"RUN-9023","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100018","status":"success","startedAt":"2026-08-03T17:09:00.000Z","durationMs":725,"recordsProcessed":4,"retries":0,"errorCode":null,"correlationId":"corr-173319","sample":true},
+      {"runId":"RUN-9024","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100033","status":"success","startedAt":"2026-08-04T08:39:00.000Z","durationMs":2369,"recordsProcessed":5,"retries":0,"errorCode":null,"correlationId":"corr-530057","sample":true},
+      {"runId":"RUN-9025","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100031","status":"retrying","startedAt":"2026-08-04T15:04:00.000Z","durationMs":899,"recordsProcessed":2,"retries":2,"errorCode":"SCHEMA_MISMATCH","correlationId":"corr-451092","sample":true},
+      {"runId":"RUN-9026","flow":"account-sync","source":"crm","target":"erp","orderId":null,"status":"success","startedAt":"2026-08-05T02:58:00.000Z","durationMs":2871,"recordsProcessed":484,"retries":0,"errorCode":null,"correlationId":"corr-582521","sample":true},
+      {"runId":"RUN-9027","flow":"stock-to-commerce","source":"erp","target":"commerce","orderId":null,"status":"failed","startedAt":"2026-08-05T18:45:00.000Z","durationMs":6780,"recordsProcessed":156,"retries":0,"errorCode":null,"correlationId":"corr-185783","sample":true},
+      {"runId":"RUN-9028","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100004","status":"retrying","startedAt":"2026-08-06T07:10:00.000Z","durationMs":1953,"recordsProcessed":2,"retries":2,"errorCode":"TARGET_TIMEOUT","correlationId":"corr-588451","sample":true},
+      {"runId":"RUN-9029","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100016","status":"success","startedAt":"2026-08-06T07:34:00.000Z","durationMs":3641,"recordsProcessed":4,"retries":0,"errorCode":null,"correlationId":"corr-438319","sample":true},
+      {"runId":"RUN-9030","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100017","status":"success","startedAt":"2026-08-07T08:46:00.000Z","durationMs":3740,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-945425","sample":true},
+      {"runId":"RUN-9031","flow":"stock-to-commerce","source":"erp","target":"commerce","orderId":null,"status":"success","startedAt":"2026-08-09T02:58:00.000Z","durationMs":8525,"recordsProcessed":587,"retries":0,"errorCode":null,"correlationId":"corr-638561","sample":true},
+      {"runId":"RUN-9032","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100007","status":"success","startedAt":"2026-08-09T07:18:00.000Z","durationMs":3002,"recordsProcessed":2,"retries":0,"errorCode":null,"correlationId":"corr-197108","sample":true},
+      {"runId":"RUN-9033","flow":"order-to-crm-review","source":"commerce","target":"crm","orderId":"ORD-100034","status":"success","startedAt":"2026-08-11T09:07:00.000Z","durationMs":1661,"recordsProcessed":3,"retries":0,"errorCode":null,"correlationId":"corr-282484","sample":true},
+      {"runId":"RUN-9034","flow":"order-to-erp","source":"commerce","target":"erp","orderId":"ORD-100022","status":"success","startedAt":"2026-08-11T15:58:00.000Z","durationMs":3849,"recordsProcessed":4,"retries":0,"errorCode":null,"correlationId":"corr-704964","sample":true},
+      {"runId":"RUN-9035","flow":"stock-to-commerce","source":"erp","target":"commerce","orderId":null,"status":"success","startedAt":"2026-08-14T04:12:00.000Z","durationMs":6239,"recordsProcessed":87,"retries":0,"errorCode":null,"correlationId":"corr-351783","sample":true},
+      {"runId":"RUN-9036","flow":"account-sync","source":"crm","target":"erp","orderId":null,"status":"success","startedAt":"2026-08-15T13:34:00.000Z","durationMs":7912,"recordsProcessed":316,"retries":0,"errorCode":null,"correlationId":"corr-786539","sample":true},
+      {"runId":"RUN-9037","flow":"account-sync","source":"crm","target":"erp","orderId":null,"status":"success","startedAt":"2026-08-20T15:50:00.000Z","durationMs":5432,"recordsProcessed":313,"retries":0,"errorCode":null,"correlationId":"corr-396096","sample":true},
+      {"runId":"RUN-9038","flow":"account-sync","source":"crm","target":"erp","orderId":null,"status":"success","startedAt":"2026-08-26T22:19:00.000Z","durationMs":1003,"recordsProcessed":594,"retries":0,"errorCode":null,"correlationId":"corr-239370","sample":true}
+    ]
+  }
+}

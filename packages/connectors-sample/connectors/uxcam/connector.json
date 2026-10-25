@@ -1,0 +1,183 @@
+{
+  "connectorId": "uxcam",
+  "title": "UXCam (sample)",
+  "standsInFor": "UXCam: how people use the mobile app",
+  "description": "Mobile app sessions, screens and where people drop out.",
+  "minimums": {
+    "sessions": 25,
+    "screens": 25,
+    "funnel_steps": 25
+  },
+  "tools": [
+    {
+      "name": "list_sessions",
+      "description": "App sessions, newest first, by outcome, app version or platform.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "Optional outcome.",
+            "enum": [
+              "completed_order",
+              "abandoned_cart",
+              "browsed",
+              "error"
+            ]
+          },
+          "appVersion": {
+            "type": "string",
+            "description": "Optional app version."
+          },
+          "platform": {
+            "type": "string",
+            "description": "Optional platform.",
+            "enum": [
+              "ios",
+              "android"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "outcome": "abandoned_cart"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "sessions",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "outcome",
+            "field": "outcome"
+          },
+          {
+            "arg": "appVersion",
+            "field": "appVersion"
+          },
+          {
+            "arg": "platform",
+            "field": "platform"
+          }
+        ],
+        "sort": {
+          "field": "startedAt",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "get_session",
+      "description": "One app session with the screens visited.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "The session id, for example UX-0001."
+          }
+        },
+        "required": [
+          "sessionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sessionId": "$first:sessions.sessionId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "sessions",
+        "key": "sessionId",
+        "arg": "sessionId"
+      }
+    },
+    {
+      "name": "screen_stats",
+      "description": "How each app screen is used: views, time spent and how often people leave from it. Worst exit rate first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {},
+      "op": {
+        "kind": "find",
+        "collection": "screens",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "exitRatePct",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "drop_off",
+      "description": "The steps of a funnel, with how many people reach each and how many drop out.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "funnel": {
+            "type": "string",
+            "description": "The funnel name, for example checkout."
+          }
+        },
+        "required": [
+          "funnel"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "funnel": "$first:funnel_steps.funnel"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "funnel_steps",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "funnel",
+            "field": "funnel"
+          }
+        ],
+        "sort": {
+          "field": "stepIndex"
+        }
+      }
+    }
+  ]
+}

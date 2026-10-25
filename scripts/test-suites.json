@@ -8,6 +8,7 @@
       "canary",
       "public-path",
       "capability-sdk",
+      "connectors-sample",
       "database",
       "project-service",
       "journey-runtime-service",
@@ -21,6 +22,7 @@
       "tsc:business-pack",
       "tsc:knowledge",
       "tsc:capability-sdk",
+      "tsc:connectors-sample",
       "tsc:database",
       "tsc:project-service",
       "tsc:journey-runtime-service",
@@ -164,6 +166,14 @@
     "web-unit": {
       "cwd": ".",
       "command": "for f in $(find apps/journeyax-web/src -name '*.test.ts' | sort); do npx tsx --tsconfig apps/journeyax-web/tsconfig.json $f || exit 1; done"
+    },
+    "connectors-sample": {
+      "cwd": "packages/connectors-sample",
+      "command": "npm test"
+    },
+    "tsc:connectors-sample": {
+      "cwd": "packages/connectors-sample",
+      "command": "npx tsc --noEmit -p ."
     }
   }
 }

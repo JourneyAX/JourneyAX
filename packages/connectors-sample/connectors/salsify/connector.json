@@ -1,0 +1,203 @@
+{
+  "connectorId": "salsify",
+  "title": "Salsify (sample)",
+  "standsInFor": "Salsify: product content, specifications and documents",
+  "description": "Product descriptions, specifications and documents such as guides and datasheets.",
+  "minimums": {
+    "products": 40
+  },
+  "tools": [
+    {
+      "name": "get_product_content",
+      "description": "The description, features, keywords and pictures of a product.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:products.sku"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "products",
+        "key": "sku",
+        "arg": "sku",
+        "select": [
+          "sku",
+          "title",
+          "brand",
+          "subBrand",
+          "description",
+          "features",
+          "keywords",
+          "accessories",
+          "url",
+          "imageUrl",
+          "sample"
+        ]
+      }
+    },
+    {
+      "name": "get_specifications",
+      "description": "The specifications of a product (name, value, unit).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:products.sku"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "products",
+        "key": "sku",
+        "arg": "sku",
+        "select": [
+          "sku",
+          "title",
+          "specifications",
+          "sample"
+        ]
+      }
+    },
+    {
+      "name": "get_documents",
+      "description": "The documents kept with a product: guides, datasheets, warranty and supplier links.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:products.sku"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "products",
+        "key": "sku",
+        "arg": "sku",
+        "select": [
+          "sku",
+          "title",
+          "documents",
+          "sample"
+        ]
+      }
+    },
+    {
+      "name": "find_content",
+      "description": "Find products by the words in their content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words to look for."
+          },
+          "department": {
+            "type": "string",
+            "description": "Optional department."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "$first:products.brand"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "products",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "title",
+              "weight": 3
+            },
+            {
+              "field": "brand",
+              "weight": 2
+            },
+            {
+              "field": "keywords",
+              "weight": 2
+            },
+            {
+              "field": "features",
+              "weight": 1
+            },
+            {
+              "field": "description",
+              "weight": 1
+            }
+          ]
+        },
+        "filters": [
+          {
+            "arg": "department",
+            "field": "department"
+          }
+        ],
+        "sort": {
+          "field": "title"
+        },
+        "select": [
+          "sku",
+          "title",
+          "brand",
+          "department",
+          "url",
+          "sample"
+        ]
+      }
+    }
+  ]
+}

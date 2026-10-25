@@ -1,0 +1,239 @@
+{
+  "connectorId": "location",
+  "title": "Location services (sample)",
+  "standsInFor": "Cotality location APIs: address checks, maps and distances",
+  "description": "Check an address, find the nearest branch and estimate the drive.",
+  "minimums": {
+    "addresses": 25,
+    "branches": 25
+  },
+  "tools": [
+    {
+      "name": "find_address",
+      "description": "Find addresses by words.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words from the address."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "$first:addresses.suburb"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "addresses",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "fullAddress",
+              "weight": 3
+            },
+            {
+              "field": "suburb",
+              "weight": 2
+            },
+            {
+              "field": "town",
+              "weight": 2
+            },
+            {
+              "field": "postcode",
+              "weight": 2
+            }
+          ]
+        },
+        "sort": {
+          "field": "fullAddress"
+        }
+      }
+    },
+    {
+      "name": "validate_address",
+      "description": "Check an address typed by a person: is it a real address, and if not, what is close.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The address as typed."
+          }
+        },
+        "required": [
+          "address"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "address": "$first:addresses.fullAddress"
+      },
+      "op": {
+        "kind": "match",
+        "collection": "addresses",
+        "text": {
+          "arg": "address",
+          "fields": [
+            {
+              "field": "fullAddress",
+              "weight": 3
+            },
+            {
+              "field": "suburb",
+              "weight": 1
+            },
+            {
+              "field": "town",
+              "weight": 1
+            },
+            {
+              "field": "postcode",
+              "weight": 1
+            }
+          ]
+        },
+        "minScore": 6,
+        "suggestions": 3
+      }
+    },
+    {
+      "name": "nearest_branch",
+      "description": "The branches nearest to an address (by its id) or to a point (latitude and longitude), nearest first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "addressId": {
+            "type": "string",
+            "description": "An address id from find_address."
+          },
+          "lat": {
+            "type": "number",
+            "description": "Latitude.",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lng": {
+            "type": "number",
+            "description": "Longitude.",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 10).",
+            "minimum": 1,
+            "maximum": 10
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "addressId": "$first:addresses.addressId"
+      },
+      "op": {
+        "kind": "nearest",
+        "collection": "branches",
+        "latField": "lat",
+        "lngField": "lng",
+        "from": {
+          "collection": "addresses",
+          "key": "addressId",
+          "arg": "addressId",
+          "latField": "lat",
+          "lngField": "lng",
+          "latArg": "lat",
+          "lngArg": "lng"
+        },
+        "limit": {
+          "arg": "limit",
+          "default": 3,
+          "max": 10
+        }
+      }
+    },
+    {
+      "name": "drive_time",
+      "description": "An estimate of the drive from an address or point to a branch: distance and minutes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "addressId": {
+            "type": "string",
+            "description": "An address id."
+          },
+          "lat": {
+            "type": "number",
+            "description": "Latitude.",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lng": {
+            "type": "number",
+            "description": "Longitude.",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "branchCode": {
+            "type": "string",
+            "description": "The branch code."
+          }
+        },
+        "required": [
+          "branchCode"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "addressId": "$first:addresses.addressId",
+        "branchCode": "$first:branches.code"
+      },
+      "op": {
+        "kind": "drive",
+        "from": {
+          "collection": "addresses",
+          "key": "addressId",
+          "arg": "addressId",
+          "latField": "lat",
+          "lngField": "lng",
+          "latArg": "lat",
+          "lngArg": "lng"
+        },
+        "to": {
+          "collection": "branches",
+          "key": "code",
+          "arg": "branchCode",
+          "latField": "lat",
+          "lngField": "lng"
+        },
+        "roadFactor": 1.35,
+        "avgKmh": 55
+      }
+    }
+  ]
+}
