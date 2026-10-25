@@ -111,25 +111,30 @@ export interface AgentToolContext {
 /**
  * The names this turn's tools returned: product titles and brands, the range group the customer is looking at and its shelves. The claim
  * guard sets them aside before it reads a sentence, so a word that is part of a product's own name ("Mounting Bracket", "Wire Wardrobe Kit")
- * is not taken for an instruction.
+ * is not taken for an instruction. `productNames` are the titles and brands among them.
  */
-export function knownNamesOf(ctx: Pick<AgentToolContext, 'catalogProductCache' | 'lastRangeGroup' | 'rangeShelves'>): string[] {
+export function knownNamesOf(ctx: Pick<AgentToolContext, 'catalogProductCache' | 'lastRangeGroup' | 'rangeShelves'>): { names: string[]; productNames: string[] } {
   const names = new Set<string>();
-  const add = (value: unknown) => {
+  const productNames = new Set<string>();
+  const add = (into: Set<string>, value: unknown) => {
     const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
-    if (text.length >= 4) names.add(text);
+    if (text.length >= 4) {
+      names.add(text);
+      into.add(text);
+    }
   };
   for (const product of ctx.catalogProductCache.values()) {
-    add(product?.title);
-    add(product?.name);
-    add(product?.brand);
+    add(productNames, product?.title);
+    add(productNames, product?.name);
+    add(productNames, product?.brand);
   }
+  const groupNames = new Set<string>();
   if (ctx.lastRangeGroup) {
-    add(ctx.lastRangeGroup.name);
-    for (const part of ctx.lastRangeGroup.path || []) add(part);
+    add(groupNames, ctx.lastRangeGroup.name);
+    for (const part of ctx.lastRangeGroup.path || []) add(groupNames, part);
   }
-  for (const shelf of ctx.rangeShelves || []) add(shelf?.name);
-  return [...names];
+  for (const shelf of ctx.rangeShelves || []) add(groupNames, shelf?.name);
+  return { names: [...names], productNames: [...productNames] };
 }
 
 /** One product by SKU: from this turn's lookups, else from the catalogue (and then remembered for this turn). */

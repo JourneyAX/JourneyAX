@@ -197,6 +197,23 @@ export const ConversationPolicySchema = z.object({
   withheldAnswerMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
   /** Said, ahead of the product cards, when the claim guard removed a whole reply about products and nothing it removed was about safety, care or the law. */
   foundMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
+  /**
+   * How strict the claim guard is about what the model says from its own knowledge rather than from a tool result.
+   * `hedgedKnowHow`: off unless `enabled`. When on, a clause that carries a hedge word ("generally", "usually"…) is not removed for an
+   * installation step, a requirement or a compatibility claim, so true general trade guidance can be said as such. It never covers
+   * warranty, legal, price, stock, safety or care claims, nor a clause that says "must", "required", "by law" or a length of time.
+   */
+  claimPolicy: z
+    .object({
+      hedgedKnowHow: z
+        .object({
+          enabled: z.boolean().default(false),
+          classes: z.array(z.enum(['installation_step', 'requirement', 'compatibility'])).min(1).optional(),
+          hedgeWords: z.union([z.array(z.string().min(2).max(40)).min(1).max(40), z.record(z.string(), z.array(z.string().min(2).max(40)).min(1).max(40))]).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   /** How long a whole agent turn may take before the customer is handed to a person (default 20 s when unset). */
   turnDeadlineMs: z.number().int().min(5000).max(120000).optional(),
   /**

@@ -193,6 +193,7 @@ export class IncrementalSentenceShaper {
   private questionsSeen = 0;
   private readonly voiceRules: Array<{ pattern: RegExp; replacement: string }>;
   private knownNames: string[] | undefined;
+  private productNames: string[] | undefined;
 
   constructor(
     shapeContext: ShapeContext,
@@ -210,8 +211,9 @@ export class IncrementalSentenceShaper {
   }
 
   /** The product and group names the tools have returned so far, which the claim guard reads past (see `ClaimContext`). */
-  updateKnownNames(names: string[]): void {
-    this.knownNames = names;
+  updateKnownNames(known: { names: string[]; productNames: string[] }): void {
+    this.knownNames = known.names;
+    this.productNames = known.productNames;
   }
 
   getWithheldCount(): number {
@@ -255,7 +257,7 @@ export class IncrementalSentenceShaper {
 
     if (this.isOkfRelease) {
       const allowed = this.allowedClaims instanceof Set ? Array.from(this.allowedClaims) : this.allowedClaims;
-      const claimResult = validateOkfGeneratedClaims(sentence, allowed, this.packOrOptions, { knownNames: this.knownNames });
+      const claimResult = validateOkfGeneratedClaims(sentence, allowed, this.packOrOptions, { knownNames: this.knownNames, productNames: this.productNames });
       if (!claimResult.valid) {
         this.withheldSentences.push(sentence);
         for (const claim of claimResult.forbidden) this.withheldClasses.add(claim);

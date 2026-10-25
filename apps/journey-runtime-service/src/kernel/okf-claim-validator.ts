@@ -1,4 +1,5 @@
 import type { ClaimClass } from '@journeyax/knowledge';
+import claimGuardDefaults from '../defaults/claim-guard.json';
 
 export interface ClaimValidatorOptions {
   locale?: string;
@@ -10,6 +11,8 @@ export interface ClaimValidatorOptions {
 export interface ClaimContext {
   /** Product titles, brands and group names the tools returned this turn. */
   knownNames?: string[];
+  /** The titles and brands among them: a sentence about one of these specific products is not general know-how. */
+  productNames?: string[];
 }
 
 const CLAIM_PATTERNS: ReadonlyArray<[ClaimClass, RegExp]> = [
@@ -89,6 +92,37 @@ export function extractExtraClaimPatterns(options?: ClaimValidatorOptions | any)
     }
   }
   return result;
+}
+
+/** The classes a pack may let through when the sentence is hedged general know-how. Warranty, legal, price, stock, safety and care are never among them. */
+const HEDGEABLE_CLASSES: ReadonlySet<ClaimClass> = new Set<ClaimClass>(['installation_step', 'requirement', 'compatibility']);
+
+export interface HedgedKnowHow {
+  classes: ReadonlySet<ClaimClass>;
+  hedge: RegExp;
+}
+
+/** The pack's hedged-know-how setting (`conversationPolicy.claimPolicy.hedgedKnowHow`), or nothing when it is off, which is the default. */
+export function extractHedgedKnowHow(options?: ClaimValidatorOptions | any): HedgedKnowHow | undefined {
+  if (!options) return undefined;
+  const setting =
+    options.claimPolicy?.hedgedKnowHow ||
+    options.conversationPolicy?.claimPolicy?.hedgedKnowHow ||
+    options.pack?.conversationPolicy?.claimPolicy?.hedgedKnowHow;
+  if (!setting || setting.enabled !== true) return undefined;
+  const classes = new Set<ClaimClass>(
+    (Array.isArray(setting.classes) && setting.classes.length > 0 ? setting.classes : [...HEDGEABLE_CLASSES]).filter((claim: ClaimClass) => HEDGEABLE_CLASSES.has(claim)),
+  );
+  if (classes.size === 0) return undefined;
+  let words: unknown = setting.hedgeWords;
+  if (words && !Array.isArray(words) && typeof words === 'object') {
+    const locale = String(options.locale || options.profile?.primaryLocale || 'en-NZ');
+    const record = words as Record<string, string[]>;
+    words = record[locale] || record[locale.split('-')[0]] || record['default'] || record['*'];
+  }
+  const list = (Array.isArray(words) && words.length > 0 ? words : claimGuardDefaults.hedgedKnowHow.hedgeWords).filter((word): word is string => typeof word === 'string' && word.trim().length > 0);
+  const body = list.map((word) => word.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')).join('|');
+  return { classes, hedge: new RegExp(`\\b(?:${body})\\b`, 'i') };
 }
 
 function isIntroductoryTopicPhrase(clause: string): boolean {
@@ -281,7 +315,8 @@ function checkSentenceForClaims(
   allowed: Set<ClaimClass>,
   referralPatterns: RegExp[],
   claimPatterns: ReadonlyArray<[ClaimClass, RegExp]>,
-  context?: ClaimContext
+  context?: ClaimContext,
+  hedgedKnowHow?: HedgedKnowHow
 ): ClaimClass[] {
   if (!trimmed || trimmed.endsWith('?')) return [];
   const forbidden: ClaimClass[] = [];
@@ -289,7 +324,13 @@ function checkSentenceForClaims(
     const stated = withoutConditions(rawClause);
     if (assertsNothing(stated)) continue;
     const clause = withoutKnownNames(stated, context);
+    // Hedged general know-how ("you'll generally want…"), when the pack allows it: only for the classes it names, and never a clause that
+    // says "must", "required", "by law" or a length of time. A compatibility claim about a named product still needs its source.
+    const hedgedPass = hedgedKnowHow && !HARD_CLAIM.test(clause) && hedgedKnowHow.hedge.test(clause);
+    const productPattern = hedgedPass ? namePattern(context?.productNames) : null;
+    const aboutAProduct = Boolean(productPattern && stated.search(productPattern) >= 0);
     for (const claim of checkClauseForClaims(clause, allowed, referralPatterns, claimPatterns)) {
+      if (hedgedPass && hedgedKnowHow.classes.has(claim) && !(claim === 'compatibility' && aboutAProduct)) continue;
       if (!forbidden.includes(claim)) forbidden.push(claim);
     }
   }
@@ -313,13 +354,14 @@ export function validateOkfGeneratedClaims(
   const allowed = new Set(allowedClasses);
   const forbidden = new Set<ClaimClass>();
   const referralPatterns = extractReferralPatterns(options);
+  const hedgedKnowHow = extractHedgedKnowHow(options);
   const extraPatterns = extractExtraClaimPatterns(options);
   const claimPatterns = extraPatterns.length > 0 ? [...CLAIM_PATTERNS, ...extraPatterns] : CLAIM_PATTERNS;
 
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     const trimmed = sentence.trim();
     if (!trimmed || trimmed.endsWith('?')) continue;
-    const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, claimPatterns, context);
+    const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, claimPatterns, context, hedgedKnowHow);
     for (const c of sentenceForbidden) forbidden.add(c);
   }
   return { valid: forbidden.size === 0, forbidden: [...forbidden] };
@@ -345,6 +387,7 @@ export function withholdUnsupportedClaims(
   const allowed = new Set(allowedClasses);
   const removed: WithheldSentence[] = [];
   const referralPatterns = extractReferralPatterns(options);
+  const hedgedKnowHow = extractHedgedKnowHow(options);
   const extraPatterns = extractExtraClaimPatterns(options);
   const claimPatterns = extraPatterns.length > 0 ? [...CLAIM_PATTERNS, ...extraPatterns] : CLAIM_PATTERNS;
 
@@ -355,7 +398,7 @@ export function withholdUnsupportedClaims(
         const trimmed = sentence.trim();
         if (!trimmed) return false;
         if (trimmed.endsWith('?')) return true;
-        const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, claimPatterns, context);
+        const sentenceForbidden = checkSentenceForClaims(trimmed, allowed, referralPatterns, claimPatterns, context, hedgedKnowHow);
         if (sentenceForbidden.length === 0) return true;
         removed.push({ sentence: trimmed, classes: sentenceForbidden });
         return false;

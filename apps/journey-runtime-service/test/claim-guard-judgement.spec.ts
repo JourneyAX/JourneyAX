@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { validateOkfGeneratedClaims, withholdUnsupportedClaims } from '../src/kernel/okf-claim-validator';
+import { ConversationPolicySchema } from '@journeyax/business-pack';
 import { chooseWithheldFallback, needsRepair, DEFAULT_FOUND_MESSAGE, foundMessageOf } from '../src/agent/withheld-fallback';
 
 const draft = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
@@ -21,6 +22,8 @@ const knownNames = [
   'Milwaukee M18 right-angle drill', 'Milwaukee M18 FUEL cordless magnetic drill', '18V cordless drill', 'cordless drill', 'hammer drill',
   'wire wardrobe kit', 'drill bits', 'deep hole pencil', 'exterior paint',
 ];
+// The titles among them; "hammer drill" and "drill bits" are group names, not a product.
+const productNames = ['Makita 12V CXT combo kit', 'Makita cordless hammer drill combo kit', 'Makita cordless hammer drill/impact driver combo kit', 'Milwaukee M18 right-angle drill', 'Milwaukee M18 FUEL cordless magnetic drill', '18V cordless drill'];
 const judge = (text: string, names: string[] | undefined = knownNames) => validateOkfGeneratedClaims(text, ['suggestion'], packOptions, { knownNames: names });
 
 // ── 1. Real sentences that were withheld and were not wrong ───────────────────────────────────────────────────────────────────────────────
@@ -145,6 +148,52 @@ const mixed = withholdUnsupportedClaims(
 );
 assert.equal(mixed.text, 'Good news, we found a Makita cordless hammer drill combo kit. Tell me what you’re drilling into and how many holes you need.');
 assert.deepEqual(mixed.removed.map((entry) => entry.classes), [['warranty']]);
+
+// ── 3b. Hedged general know-how: a pack setting, off by default ───────────────────────────────────────────────────────────────────────────
+const knowHowSentence = 'For drilling into concrete, you’ll generally want a cordless hammer drill rather than a standard drill, plus masonry drill bits.';
+const withKnowHow = (setting: any) => ({ ...packOptions, conversationPolicy: { ...draft.conversationPolicy, claimPolicy: { hedgedKnowHow: setting } } });
+const judgeWith = (options: any, text: string) => validateOkfGeneratedClaims(text, ['suggestion'], options, { knownNames, productNames }).forbidden;
+
+assert.deepEqual(judgeWith(packOptions, knowHowSentence), ['installation_step'], 'off by default: the sentence is still withheld');
+assert.deepEqual(judgeWith(withKnowHow({ enabled: false }), knowHowSentence), ['installation_step'], 'explicitly off');
+assert.deepEqual(judgeWith(withKnowHow({ enabled: true }), knowHowSentence), [], 'on: hedged general know-how is said');
+assert.ok(judgeWith(withKnowHow({ enabled: true }), 'For drilling into concrete, you’ll want a cordless hammer drill rather than a standard drill.').includes('installation_step'), 'on, but not hedged: still withheld');
+assert.deepEqual(judgeWith(withKnowHow({ enabled: true, hedgeWords: ['as a rule'] }), 'As a rule, drill into the stud first.'), [], 'the pack chooses the hedge words');
+assert.ok(judgeWith(withKnowHow({ enabled: true, hedgeWords: ['as a rule'] }), knowHowSentence).includes('installation_step'), 'and only those');
+assert.deepEqual(judgeWith(withKnowHow({ enabled: true, hedgeWords: { 'en-NZ': ['typically'], default: ['usually'] } }), 'Typically you would drill into the stud first.'), [], 'hedge words per locale');
+
+// What the setting must never let through, however it is hedged.
+const neverHedged = [
+  'This drill generally comes with a 5-year warranty.',
+  'It is usually guaranteed against rust.',
+  'This board typically complies with the Building Code.',
+  'It generally costs $249.',
+  'We usually have 40 in stock at the Hamilton branch.',
+  'You should generally turn off the power at the switchboard before you drill into the wall.',
+  'Generally wear a respirator when sanding.',
+  'You usually dilute one part cleaner to four parts water.',
+  'You generally must use treated timber for ground contact.',
+  'Brackets are usually required by law for decks over 1.5 m.',
+  'It is typically covered for 10 years and you drill into the stud first.',
+];
+for (const sentence of neverHedged) {
+  assert.ok(judgeWith(withKnowHow({ enabled: true }), sentence).length > 0, `a hedge does not excuse: ${sentence}`);
+}
+// A setting that names a class the pack may not hedge is limited to the three that are allowed.
+assert.ok(judgeWith(withKnowHow({ enabled: true, classes: ['installation_step'] }), 'This kit is generally compatible with all 18V batteries.').includes('compatibility'), 'only the classes named');
+assert.deepEqual(judgeWith(withKnowHow({ enabled: true }), 'A hammer drill is generally suitable for concrete.'), [], 'general compatibility know-how, hedged');
+assert.ok(judgeWith(withKnowHow({ enabled: true }), 'The Makita 12V CXT combo kit is generally compatible with all 18V batteries.').includes('compatibility'), 'a named product still needs its source');
+assert.equal(
+  withholdUnsupportedClaims(knowHowSentence, ['suggestion'], withKnowHow({ enabled: true }), { knownNames }).text,
+  knowHowSentence,
+);
+
+// The pack setting is checked when it is saved: only the three classes can be named.
+assert.equal(ConversationPolicySchema.safeParse({ claimPolicy: { hedgedKnowHow: { enabled: true, classes: ['installation_step', 'compatibility'] } } }).success, true);
+for (const refused of ['warranty', 'legal_requirement', 'catalog_fact', 'stock', 'safety_instruction', 'care_safety']) {
+  assert.equal(ConversationPolicySchema.safeParse({ claimPolicy: { hedgedKnowHow: { enabled: true, classes: [refused] } } }).success, false, `${refused} can never be hedged through`);
+}
+assert.equal(ConversationPolicySchema.safeParse({}).success, true, 'the setting is optional');
 
 // ── 4. When the model is asked to answer again, and what the customer reads if nothing is left ──────────────────────────────────────────────
 const limits = { thinBelowChars: 120, removedShareAbove: 0.5 };
