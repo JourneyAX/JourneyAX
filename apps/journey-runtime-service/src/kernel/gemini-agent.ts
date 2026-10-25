@@ -82,8 +82,8 @@ export function geminiThinkingConfig(model: string, effort?: string): Record<str
   const off = effort === 'none' || effort === 'minimal';
   if (/^gemini-2\.5-flash/.test(model)) return off ? { thinkingBudget: 0 } : undefined;
   if (/^gemini-3/.test(model)) {
-    const level = off ? 'minimal' : effort === 'low' || effort === 'medium' || effort === 'high' ? effort : undefined;
-    return level ? { thinkingLevel: level } : undefined;
+    // Gemini 3 models do not all accept "minimal" (3.8 Flash answers HTTP 400), but all accept "low", so "none" and "minimal" become "low".
+    return off || effort === 'low' ? { thinkingLevel: 'low' } : undefined;
   }
   return undefined;
 }

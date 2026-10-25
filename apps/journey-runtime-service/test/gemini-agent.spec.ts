@@ -47,7 +47,8 @@ import { buildGeminiAgentBody, geminiContents, geminiStreamEndpoint, geminiThink
   assert.deepEqual(body.toolConfig, { functionCallingConfig: { mode: 'AUTO' } });
   const three = buildGeminiAgentBody({ messages: [{ role: 'user', content: 'hi' }] }, { model: 'gemini-3.8-flash', temperature: 0.4, reasoningEffort: 'none' });
   assert.equal('temperature' in three.generationConfig, false, 'Gemini 3 keeps its own temperature');
-  assert.deepEqual(three.generationConfig.thinkingConfig, { thinkingLevel: 'minimal' });
+  assert.deepEqual(three.generationConfig.thinkingConfig, { thinkingLevel: 'low' }, 'Gemini 3.8 Flash refuses "minimal", so "none" becomes the lowest level every Gemini 3 model takes');
+  assert.equal(geminiThinkingConfig('gemini-3.8-flash', 'high'), undefined, 'higher efforts leave the model\'s own default');
   assert.equal('tools' in three, false);
   assert.equal(geminiThinkingConfig('gemini-2.5-pro', 'none'), undefined, 'a model that cannot switch thinking off is left alone');
   assert.equal(geminiStreamEndpoint('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'), 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse');
