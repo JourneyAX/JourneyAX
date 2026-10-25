@@ -50,6 +50,12 @@ async function commercetools() {
   const sku = list?.records?.[0]?.sku;
   if (sku) await check('commercetools', 'get_product', { sku }, (p) => `${p.record.name} (${p.record.price ?? 'no price'} ${p.record.currency ?? ''})`);
   else skip('get_product', 'no product to look at (is the catalogue loaded?)');
+  if (sku) await check('commercetools', 'stock_by_branch', { sku, limit: 3 }, (p) => `${p.branchesHolding} branch(es) hold it, ${p.totalOnHand} on hand`);
+  else skip('stock_by_branch', 'no product to look at');
+  const units = await check('commercetools', 'find_account', { limit: 3 }, counts);
+  const unitKey = units?.records?.[0]?.unitKey;
+  if (unitKey) await check('commercetools', 'get_account', { accountId: unitKey }, (p) => `${p.record.name}: ${p.record.people?.length ?? 0} people, ${p.record.orderCount ?? 0} order(s)`);
+  else skip('get_account', 'no trade account to look at (are the business units loaded?)');
   const account = process.env.CHECK_COMMERCETOOLS_ACCOUNT_ID;
   account ? await check('commercetools', 'order_history', { accountId: account, limit: 3 }, counts) : skip('order_history', 'set CHECK_COMMERCETOOLS_ACCOUNT_ID');
   const cart = process.env.CHECK_COMMERCETOOLS_CART_ID;

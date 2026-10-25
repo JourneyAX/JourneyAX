@@ -31,7 +31,10 @@ async function main() {
   await t.test('against a working commercetools it reads, reports plainly, skips what needs an id, and refuses to change anything without --writes', async () => {
     const vendor = await mockVendor((request) => {
       if (request.path === '/oauth/token') return { json: { access_token: 't', expires_in: 3600 } };
-      if (request.path.endsWith('/product-projections/search')) return { json: { total: 2, count: 1, results: [{ id: 'p1', name: { en: 'Hose reel' }, masterVariant: { sku: 'A-1', prices: [{ value: { currencyCode: 'NZD', centAmount: 4900, fractionDigits: 2 } }] }, variants: [] }] } };
+      if (request.path.endsWith('/products/search')) return { json: { total: 2, results: [{ id: 'p1', productProjection: { id: 'p1', name: { en: 'Hose reel' }, masterVariant: { sku: 'A-1', prices: [{ value: { currencyCode: 'NZD', centAmount: 4900, fractionDigits: 2 } }] }, variants: [] } }] } };
+      if (request.path.endsWith('/customer-groups')) return { json: { results: [] } };
+      if (request.path.endsWith('/inventory')) return { json: { results: [{ quantityOnStock: 7, supplyChannel: { obj: { key: 'branch-224', name: { en: 'Hamilton' } } } }] } };
+      if (request.path.endsWith('/business-units')) return { json: { total: 0, results: [] } };
       return undefined;
     });
     const env = { COMMERCETOOLS_PROJECT_KEY: 'p', COMMERCETOOLS_CLIENT_ID: 'c', COMMERCETOOLS_CLIENT_SECRET: SECRET, COMMERCETOOLS_REGION: 'r', COMMERCETOOLS_API_URL: vendor.url, COMMERCETOOLS_AUTH_URL: vendor.url };
@@ -39,10 +42,13 @@ async function main() {
     assert.equal(code, 0, out);
     assert.match(out, /ok\s+find_product: 1 of 2 returned/);
     assert.match(out, /ok\s+get_product: Hose reel \(49 NZD\)/);
+    assert.match(out, /ok\s+stock_by_branch: 1 branch\(es\) hold it, 7 on hand/);
+    assert.match(out, /ok\s+find_account: 0 of 0 returned/);
+    assert.match(out, /skipped\s+get_account: no trade account to look at/);
     assert.match(out, /skipped\s+get_cart: set CHECK_COMMERCETOOLS_CART_ID/);
     assert.match(out, /skipped\s+add_to_cart: a change; run with --writes/);
     assert.ok(!out.includes(SECRET), 'the secret is never printed');
-    assert.equal(vendor.seen.filter((request) => request.method === 'POST' && request.path !== '/oauth/token').length, 0, 'nothing was sent that could change anything');
+    assert.equal(vendor.seen.filter((request) => request.method !== 'GET' && request.path !== '/oauth/token' && !request.path.endsWith('/products/search')).length, 0, 'nothing was sent that could change anything (the product search is a read, made with POST)');
     await vendor.close();
   });
 

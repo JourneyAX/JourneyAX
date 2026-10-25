@@ -51,17 +51,20 @@ It prints, for each connector, `connected` or `not connected` and which settings
 
 1. Start the trial at commercetools.com ("Get started"). The sign-up link is valid for 72 hours, so be ready to finish it.
 2. In the Merchant Center make a project. Note its **project key** and its **region** (for example `australia-southeast1.gcp`; it is in the API client's host address).
-3. Settings > Developer settings > **Create new API client**: the chat's client, with the scopes `view_products`, `view_orders`, `manage_orders` (carts are kept under the orders scopes) and nothing more. Fill `COMMERCETOOLS_PROJECT_KEY`, `COMMERCETOOLS_CLIENT_ID`, `COMMERCETOOLS_CLIENT_SECRET`, `COMMERCETOOLS_REGION`.
-4. Make a **second** API client for loading, with `manage_products`, `manage_customers`, `manage_orders`. Fill `COMMERCETOOLS_LOADER_CLIENT_ID` and `COMMERCETOOLS_LOADER_CLIENT_SECRET`. Delete this client when loading is finished.
-5. Load the PlaceMakers products and a few customers with an order and an open cart each:
+3. Settings > Developer settings > **Create new API client**. You can paste the block the Merchant Center gives you (`CTP_PROJECT_KEY`, `CTP_CLIENT_ID`, `CTP_CLIENT_SECRET`, `CTP_API_URL`, `CTP_AUTH_URL`, `CTP_SCOPES`) into `.env.connectors` exactly as it is; the region is read from the address. That client is usually the wide "admin" one (`manage_project`), which is right for **loading** but too much for the chat.
+4. For the chat make a **second, narrow** client with only `view_products`, `view_customer_groups`, `view_business_units`, `view_customers`, `view_orders` and `manage_orders` (carts are kept under the orders scopes), and put its id and secret in `COMMERCETOOLS_CLIENT_ID` and `COMMERCETOOLS_CLIENT_SECRET`. Those names win over the pasted block for the chat; the loader keeps using the wide one. (Until you do, the chat connection uses the wide client.)
+5. Also set, in `.env.connectors` (not secrets): `COMMERCETOOLS_CURRENCY=NZD`, `COMMERCETOOLS_LOCALE=en-NZ` (the language the names were written in; a name search finds nothing in any other) and `COMMERCETOOLS_ACCOUNT_KIND=businessUnit` (an account is then a business unit key such as `acc-0001`).
+6. Load the PlaceMakers trade business (a **B2B** project: business units, associate roles and people):
    ```bash
-   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/commercetools.ts            # dry run
-   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/commercetools.ts --apply    # for real
+   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/commercetools-b2b.ts            # dry run
+   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/commercetools-b2b.ts --apply    # for real
    ```
-   It prints three `CHECK_COMMERCETOOLS_...` lines. Put them in `.env.connectors` so the live check can read a cart and an order.
-6. Prove it: `npx tsx --env-file=.env.connectors packages/connectors-real/scripts/live-check.ts commercetools`
+   It adds the NZD currency, the NZ country and the en-NZ language to the project (it only adds), then 80 categories, 100 products with a retail price and Bronze / Silver / Gold prices, 65 branch channels with 800 stock entries, 4 associate roles, 30 business units (+12 divisions for the biggest), 82 people, and one order and one open cart per unit. It looks each account up in Salesforce, records the Salesforce id on the unit, and writes the account number into the Salesforce description (`--no-salesforce` skips that). Running it again changes nothing.
+   For a shop that is not B2B, the older `loaders/commercetools.ts` loads products, customers, orders and carts only.
+7. Switch on product search: commercetools no longer allows the old "Product Projection Search" for projects made after 2026-09-01, so the connector uses **Product Search**, which needs the project's *products search* indexing on: `changeProductSearchIndexingEnabled` with `mode: ProductsSearch` (Merchant Center > Project settings > Search, or the Project API). The connector says so in plain words if it is off.
+8. Prove it: `npx tsx --env-file=.env.connectors packages/connectors-real/scripts/live-check.ts commercetools` (set `CHECK_COMMERCETOOLS_ACCOUNT_ID=acc-0001`, `CHECK_COMMERCETOOLS_ORDER_ID=DEMO-ORD-0001` and a cart id to include those reads).
 
-Notes: product search needs the project's search index switched on (it is, by default, in a new project; if `find_product` finds nothing, check that). The assistant is shown only the town and postcode of a delivery address, never the street.
+Notes: the assistant is shown only the town and postcode of a delivery address, never the street. The trade-tier prices come back as `tierPrices` next to the retail price; a customer's own tier decides which one a cart uses.
 
 ### Salesforce (the CRM) — free Developer Edition, no clock
 
@@ -157,6 +160,7 @@ Each step needs your yes; each has a way back.
 - That each vendor behaves exactly as its documentation says on your account (trial limits, a renamed menu, a setting that is off by default).
 - Power BI: that DAX queries run against a push dataset in your tenant, and the data type names. If a figure fails, the live check shows Power BI's own explanation.
 - Google Analytics: the standard "search term" dimension needs the site to report searches.
-- commercetools: the search index must be on, and a business unit setup needs `COMMERCETOOLS_ACCOUNT_KIND=businessUnit`.
+- commercetools: with a narrow chat client, that every tool still works (the scopes in step 4 are my reading of what each call needs).
+- Salesforce and commercetools **were** proven against real accounts on 2026-10-25 (see the live checks); Google Analytics and Power BI have no account yet.
 
 The live check (`scripts/live-check.ts`) is how you find out, one system at a time, in plain words.

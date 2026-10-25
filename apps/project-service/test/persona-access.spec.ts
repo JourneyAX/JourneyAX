@@ -22,6 +22,9 @@ const TABLE: Record<string, string> = {
   'commercetools.add_to_cart':        'K K K K - - - -',
   'commercetools.get_order':          'A A A A - - A -',
   'commercetools.order_history':      'A A A A - - A -',
+  'commercetools.stock_by_branch':    'A A A A - - A -',
+  'commercetools.find_account':       'A A A A - - A -',
+  'commercetools.get_account':        'A A A A - - A -',
   'salesforce.find_account':          'A A A A A - A -',
   'salesforce.get_account':           'A A A A - - A -',
   'salesforce.list_cases':            'A A A A - - A -',
@@ -101,9 +104,9 @@ async function main() {
     assert.deepEqual(usableConnectors(connectors, { audience: 'shopper', groups: ['sales'] }), [], 'a group claimed by a shopper changes nothing');
   });
 
-  await suite.test('the pack as published has only the systems that are really connected switched on: Salesforce, and Marketing Cloud as a sample', () => {
+  await suite.test('the pack as published has only the systems that are really connected switched on: commercetools and Salesforce, and Marketing Cloud as a sample', () => {
     const on = published.connectors.filter((connector) => connector.enabled !== false).map((connector) => connector.connectorId).sort();
-    assert.deepEqual(on, ['marketing-cloud', 'salesforce'], 'switch commercetools, Google Analytics and Power BI on here only when their vendor accounts are connected');
+    assert.deepEqual(on, ['commercetools', 'marketing-cloud', 'salesforce'], 'switch Google Analytics and Power BI on here only when their vendor accounts are connected');
   });
 
   await suite.test('the parked systems are switched off for everyone, the admin included, and are still in the pack so they can be switched back on', () => {

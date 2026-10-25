@@ -359,7 +359,7 @@
           "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
           "sample": false,
-          "enabled": false,
+          "enabled": true,
           "tools": [
             {
               "name": "find_product",
@@ -402,6 +402,31 @@
               "name": "order_history",
               "sideEffect": "read",
               "summary": "List the orders of a trade account, newest first.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "stock_by_branch",
+              "sideEffect": "read",
+              "summary": "Stock of one product at each branch that holds it, with the total.",
+              "claimClasses": [
+                "stock",
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "find_account",
+              "sideEffect": "read",
+              "summary": "Find trade accounts (business units) by name, account number or tier.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "get_account",
+              "sideEffect": "read",
+              "summary": "Get one trade account: terms, the people and their roles, divisions and order count.",
               "claimClasses": [
                 "catalog_fact"
               ]
@@ -877,6 +902,45 @@
         {
           "connectorId": "commercetools",
           "tool": "order_history",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "stock_by_branch",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "find_account",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_account",
           "audience": "staff",
           "groups": [
             "customer-service",

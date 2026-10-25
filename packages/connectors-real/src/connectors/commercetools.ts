@@ -8,8 +8,13 @@
  *             COMMERCETOOLS_BRAND_ATTRIBUTE (default `brand`), COMMERCETOOLS_ACCOUNT_KIND (`customer`, the default, or `businessUnit`),
  *             COMMERCETOOLS_API_URL / COMMERCETOOLS_AUTH_URL (override the hosts, for a private proxy or a test)
  *
- * Make the API client with the smallest scopes that work: `view_products`, `view_orders` and `manage_orders` (commercetools keeps carts
- * under the orders scopes). Nothing here can delete anything. The only change a tool makes is adding a line to a cart.
+ * Make the API client with the smallest scopes that work: `view_products`, `view_customer_groups` (for the trade-tier prices), `view_business_units`
+ * and `view_customers` (for the trade accounts and their people), `view_orders` and `manage_orders` (commercetools keeps carts under the orders
+ * scopes). Nothing here can delete anything. The only change a tool makes is adding a line to a cart.
+ *
+ * The product tools use Product Search, so the project's "products search" indexing must be on (the B2B loader switches it on). Set
+ * COMMERCETOOLS_LOCALE to the language the names were written in (en-NZ for the PlaceMakers data), or a name search finds nothing.
+ * With COMMERCETOOLS_ACCOUNT_KIND=businessUnit the account in order_history is a unit key such as acc-0001.
  */
 import { ToolError, type Deps, type Env, type RealConnector, type Rec, type ToolSpec } from '../types';
 import { TokenCache, VendorClient, boundedInt, clip, compact, errorFor, redact, send, setting, settingsMissing, vendorMessage } from '../http';
@@ -72,11 +77,39 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
   const client = new VendorClient({ system: SYSTEM, deps, secrets, token: () => tokens.get(fetchToken), forgetToken: () => tokens.clear() });
   const api = (method: string, path: string, request: { query?: Rec; body?: unknown } = {}) => client.json(method, `${apiBase()}${path}`, request);
 
+  /** The shop's own price: the one that is not for a customer group or a channel, in the wanted currency (any currency if it has none there). */
   const pickPrice = (prices: any[] | undefined) => {
     const wanted = setting(env, 'COMMERCETOOLS_CURRENCY');
-    const list = Array.isArray(prices) ? prices : [];
-    const chosen = (wanted ? list.find((price) => price?.value?.currencyCode === wanted) : undefined) ?? list[0];
+    const all = Array.isArray(prices) ? prices : [];
+    const inCurrency = wanted ? all.filter((price) => price?.value?.currencyCode === wanted) : all;
+    const list = inCurrency.length ? inCurrency : all;
+    const chosen = list.find((price) => !price?.customerGroup && !price?.channel) ?? list[0];
     return money(chosen?.discounted?.value ?? chosen?.value);
+  };
+
+  // The trade-tier prices say which customer group they are for by id; the group list says which key (gold, silver...) that is.
+  let groupCache: { at: number; byId: Map<string, string> } | undefined;
+  const groupKeys = async (): Promise<Map<string, string>> => {
+    if (groupCache && deps.now() - groupCache.at < 10 * 60 * 1000) return groupCache.byId;
+    const byId = new Map<string, string>();
+    try {
+      const answer = await api('GET', '/customer-groups', { query: { limit: 100 } });
+      for (const group of Array.isArray(answer.results) ? answer.results : []) if (group?.id && group?.key) byId.set(String(group.id), String(group.key));
+    } catch {
+      // Without the list (the client may not be allowed to read it) the tier prices are left out; nothing else changes.
+    }
+    groupCache = { at: deps.now(), byId };
+    return byId;
+  };
+  const tierPricesOf = (prices: any[] | undefined, byId: Map<string, string>): Rec | undefined => {
+    const wanted = setting(env, 'COMMERCETOOLS_CURRENCY');
+    const out: Rec = {};
+    for (const price of Array.isArray(prices) ? prices : []) {
+      const key = price?.customerGroup?.obj?.key ?? byId.get(String(price?.customerGroup?.id));
+      const amount = money(price?.value);
+      if (key && amount && !price.channel && (!wanted || amount.currency === wanted)) out[String(key)] = amount.amount;
+    }
+    return Object.keys(out).length ? out : undefined;
   };
 
   const brandOf = (variant: any) => {
@@ -84,7 +117,7 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     return attributeText((variant?.attributes ?? []).find((attribute: any) => attribute?.name === name)?.value, locale());
   };
 
-  const productRecord = (product: any): Rec => {
+  const productRecord = (product: any, byId: Map<string, string> = new Map()): Rec => {
     const variant = product?.masterVariant ?? {};
     const price = pickPrice(variant.prices);
     return compact({
@@ -95,6 +128,7 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
       brand: brandOf(variant),
       price: price?.amount,
       currency: price?.currency,
+      tierPrices: tierPricesOf(variant.prices, byId),
       inStock: typeof variant.availability?.isOnStock === 'boolean' ? variant.availability.isOnStock : undefined,
       image: variant.images?.[0]?.url,
       variantCount: (product?.variants?.length ?? 0) + 1,
@@ -147,11 +181,67 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     });
   };
 
+  /**
+   * Product Search, the search commercetools gives projects made after 2026-09-01 (the older Product Projection Search cannot be switched on
+   * for them). Needs the project's "products search" indexing to be on, which the B2B loader does. Each hit carries the product as the shop shows it.
+   */
+  const searchProducts = async (query: Rec | undefined, limit: number): Promise<{ total: number; results: any[] }> => {
+    const currency = setting(env, 'COMMERCETOOLS_CURRENCY');
+    const answer = await api('POST', '/products/search', {
+      body: {
+        limit,
+        ...(query ? { query } : { sort: [{ field: 'lastModifiedAt', order: 'desc' }] }),
+        productProjectionParameters: { staged: false, ...(currency ? { priceCurrency: currency } : {}) },
+      },
+    });
+    const hits: any[] = Array.isArray(answer.results) ? answer.results : [];
+    return { total: Number(answer.total ?? hits.length), results: hits.map((hit) => hit?.productProjection).filter(Boolean) };
+  };
+
+  // ── Business units: the trade accounts. ────────────────────────────────────────────────────
+  const unitRecord = (unit: any): Rec => {
+    const fields = unit?.custom?.fields ?? {};
+    const limit = money(fields.creditLimit);
+    return compact({
+      unitKey: unit?.key,
+      name: unit?.name,
+      kind: unit?.unitType,
+      status: unit?.status,
+      parentUnit: unit?.parentUnit?.key,
+      accountNumber: fields.accountNumber,
+      tier: fields.tier,
+      tradeType: fields.tradeType,
+      homeBranchCode: fields.homeBranchCode,
+      accountManager: fields.accountManager,
+      paymentTerms: fields.paymentTerms,
+      creditLimit: limit?.amount,
+      currency: limit?.currency,
+      salesforceAccountId: fields.salesforceAccountId,
+      contactEmail: unit?.contactEmail,
+      city: unit?.addresses?.[0]?.city,
+    });
+  };
+  const MAX_UNITS = 500;
+  const allUnits = async (): Promise<{ units: any[]; total: number }> => {
+    const answer = await api('GET', '/business-units', { query: { limit: MAX_UNITS, sort: 'name asc' } });
+    const units: any[] = Array.isArray(answer.results) ? answer.results : [];
+    return { units, total: Number(answer.total ?? units.length) };
+  };
+  const findUnit = async (given: string): Promise<any | undefined> => {
+    try {
+      return await api('GET', `/business-units/key=${encodeURIComponent(given.toLowerCase())}`);
+    } catch (error) {
+      if (!(error instanceof ToolError && error.code === 'not_found')) throw error;
+    }
+    const wanted = given.toLowerCase();
+    return (await allUnits()).units.find((unit) => [unit.custom?.fields?.accountNumber, unit.custom?.fields?.salesforceAccountId].some((value) => String(value ?? '').toLowerCase() === wanted));
+  };
+
   const tools: ToolSpec[] = [
     {
       name: 'find_product',
       readOnly: true,
-      description: 'Search the online store\'s products by words (name, brand, department). With no words it lists the most recently changed products. Returns sku, name, price, brand and whether it is in stock.',
+      description: 'Search the online store\'s products by words in the name, and by brand or department. With no words it lists the most recently changed products. Returns sku, name, the retail price, the trade price for each tier (tierPrices: bronze, silver, gold) and brand. For stock use stock_by_branch.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -162,13 +252,23 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
         },
       },
       async run(args) {
-        const text = [args.query, args.brand, args.department].filter((word) => typeof word === 'string' && word.trim()).join(' ').trim();
         const limit = boundedInt(args.limit, 10, 1, 25);
-        const answer = await api('GET', '/product-projections/search', {
-          query: { staged: 'false', limit, ...(text ? { [`text.${locale()}`]: text, fuzzy: 'true' } : { sort: 'lastModifiedAt desc' }) },
-        });
-        const results: any[] = Array.isArray(answer.results) ? answer.results : [];
-        return { total: answer.total ?? answer.count ?? results.length, returned: results.length, records: results.map(productRecord) };
+        const words = typeof args.query === 'string' ? args.query.trim() : '';
+        // Brand and department are attributes of the product; a part of the value is enough (case does not matter).
+        const filters: Rec[] = [];
+        for (const [field, value] of [[setting(env, 'COMMERCETOOLS_BRAND_ATTRIBUTE') ?? 'brand', args.brand], ['department', args.department]] as const) {
+          const clean = typeof value === 'string' ? value.replace(/[*?\\]/g, ' ').trim() : '';
+          if (clean) filters.push({ wildcard: { field: `variants.attributes.${field}`, fieldType: 'text', value: `*${clean}*`, caseInsensitive: true } });
+        }
+        const search = (mustMatch: 'all' | 'any') => {
+          const parts = [...(words ? [{ fullText: { field: 'name', language: locale(), value: words, mustMatch } }] : []), ...filters];
+          return searchProducts(parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { and: parts }, limit);
+        };
+        // Every word first; if nothing has them all, any word will do, best match first.
+        let found = await search('all');
+        if (words.includes(' ') && found.results.length === 0) found = await search('any');
+        const byId = found.results.length ? await groupKeys() : new Map<string, string>();
+        return { total: found.total, returned: found.results.length, records: found.results.map((product) => productRecord(product, byId)) };
       },
     },
     {
@@ -178,20 +278,22 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
       inputSchema: { type: 'object', required: ['sku'], properties: { sku: { type: 'string', maxLength: 100, pattern: SKU.source } } },
       async run(args) {
         const sku = String(args.sku);
-        const answer = await api('GET', '/product-projections/search', { query: { staged: 'false', limit: 1, filter: `variants.sku:"${sku}"` } });
-        const product = answer.results?.[0];
+        const found = await searchProducts({ exact: { field: 'variants.sku', value: sku } }, 1);
+        const product = found.results[0];
         if (!product) throw new ToolError('not_found', `${SYSTEM} has no product with sku ${sku}.`);
         const variants: any[] = [product.masterVariant, ...(product.variants ?? [])].filter(Boolean);
         const match = variants.find((variant) => String(variant.sku).toLowerCase() === sku.toLowerCase()) ?? product.masterVariant;
         const price = pickPrice(match?.prices);
+        const byId = await groupKeys();
         return {
           record: {
-            ...productRecord(product),
+            ...productRecord(product, byId),
             matchedSku: match?.sku,
             variant: compact({
               sku: match?.sku,
               price: price?.amount,
               currency: price?.currency,
+              tierPrices: tierPricesOf(match?.prices, byId),
               attributes: Object.fromEntries((match?.attributes ?? []).slice(0, 12).map((attribute: any) => [attribute.name, attributeText(attribute.value, locale())]).filter(([, value]: any) => value !== undefined)),
             }),
           },
@@ -251,7 +353,7 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     {
       name: 'order_history',
       readOnly: true,
-      description: 'The orders of one account (a commercetools customer, or a business unit when the connection is set up that way), newest first.',
+      description: 'The orders of one account (a commercetools customer, or a business unit when the connection is set up that way: then accountId is the unit key such as acc-0001), newest first.',
       inputSchema: {
         type: 'object',
         required: ['accountId'],
@@ -269,6 +371,98 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
         const answer = await api('GET', '/orders', { query: { where: clauses.join(' and '), sort: 'createdAt desc', limit: boundedInt(args.limit, 10, 1, 25) } });
         const results: any[] = Array.isArray(answer.results) ? answer.results : [];
         return { total: answer.total ?? answer.count ?? results.length, returned: results.length, records: results.map((order) => orderRecord(order, false)) };
+      },
+    },
+    {
+      name: 'stock_by_branch',
+      readOnly: true,
+      description: 'Stock of one product (by sku) at each branch that holds it, most first, with the total. Pass part of a branch name (for example Hamilton) to look at one branch.',
+      inputSchema: {
+        type: 'object',
+        required: ['sku'],
+        properties: {
+          sku: { type: 'string', maxLength: 100, pattern: SKU.source },
+          branch: { type: 'string', maxLength: 80, description: 'Part of a branch name, or its branch code.' },
+          limit: { type: 'integer', minimum: 1, maximum: 25, description: 'How many branches to list (default 10).' },
+        },
+      },
+      async run(args) {
+        const sku = String(args.sku);
+        const answer = await api('GET', '/inventory', { query: { where: `sku="${sku}"`, expand: 'supplyChannel', limit: 100 } });
+        const rows = (Array.isArray(answer.results) ? answer.results : []).map((entry: any) => ({
+          branch: localised(entry.supplyChannel?.obj?.name, locale()) || undefined,
+          branchCode: String(entry.supplyChannel?.obj?.key ?? '').replace(/^branch-/, '') || undefined,
+          onHand: Number(entry.quantityOnStock) || 0,
+          available: typeof entry.availableQuantity === 'number' ? entry.availableQuantity : undefined,
+        }));
+        if (!rows.length) throw new ToolError('not_found', `${SYSTEM} has no stock entries for sku ${sku}.`);
+        const wanted = typeof args.branch === 'string' ? args.branch.trim().toLowerCase() : '';
+        const shown = rows.filter((row: any) => !wanted || String(row.branch ?? '').toLowerCase().includes(wanted) || row.branchCode === wanted).sort((a: any, b: any) => b.onHand - a.onHand);
+        return {
+          sku,
+          branchesHolding: rows.filter((row: any) => row.onHand > 0).length,
+          totalOnHand: rows.reduce((sum: number, row: any) => sum + row.onHand, 0),
+          ...(wanted ? { matching: shown.length } : {}),
+          ...(wanted && !shown.length ? { note: `No stock entry for a branch matching "${String(args.branch).trim()}". This product is held at ${rows.length} other branch${rows.length === 1 ? '' : 'es'}; leave the branch out to list them.` } : {}),
+          records: shown.slice(0, boundedInt(args.limit, 10, 1, 25)).map((row: any) => compact(row)),
+        };
+      },
+    },
+    {
+      name: 'find_account',
+      readOnly: true,
+      description: 'Trade accounts (business units) by part of the name, the account number or the unit key, optionally only one tier (bronze, silver or gold). Returns the unit key, tier, home branch, account manager, payment terms, credit limit and the Salesforce account id.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', maxLength: 120, description: 'Part of the account name, the account number (for example ACC-0001) or the unit key.' },
+          tier: { type: 'string', enum: ['bronze', 'silver', 'gold'] },
+          limit: { type: 'integer', minimum: 1, maximum: 25, description: 'How many to return (default 10).' },
+        },
+      },
+      async run(args) {
+        const { units, total } = await allUnits();
+        const words = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
+        const matches = units.filter((unit) => {
+          const fields = unit.custom?.fields ?? {};
+          if (args.tier && String(fields.tier ?? '').toLowerCase() !== String(args.tier)) return false;
+          return !words || [unit.name, unit.key, fields.accountNumber].some((value) => String(value ?? '').toLowerCase().includes(words));
+        });
+        const limit = boundedInt(args.limit, 10, 1, 25);
+        return { total: matches.length, returned: Math.min(matches.length, limit), ...(total > units.length ? { note: `Only the first ${units.length} of ${total} units were searched.` } : {}), records: matches.slice(0, limit).map(unitRecord) };
+      },
+    },
+    {
+      name: 'get_account',
+      readOnly: true,
+      description: 'One trade account (business unit) by its unit key, account number or Salesforce account id: its terms, the people who work for it with their roles, its divisions and how many orders it has.',
+      inputSchema: { type: 'object', required: ['accountId'], properties: { accountId: { type: 'string', maxLength: 64, pattern: ID.source, description: 'The unit key (acc-0001), the account number (ACC-0001) or the Salesforce account id.' } } },
+      async run(args) {
+        const unit = await findUnit(String(args.accountId).trim());
+        if (!unit) throw new ToolError('not_found', `${SYSTEM} has no trade account ${String(args.accountId)}.`);
+        const associates: any[] = Array.isArray(unit.associates) ? unit.associates : [];
+        const ids = associates.map((associate) => String(associate?.customer?.id ?? '')).filter((id) => UUID.test(id));
+        const people = ids.length ? await api('GET', '/customers', { query: { where: `id in (${ids.map((id) => `"${id}"`).join(', ')})`, limit: 50 } }) : { results: [] };
+        const byId = new Map<string, any>((Array.isArray(people.results) ? people.results : []).map((customer: any) => [String(customer.id), customer]));
+        const [divisions, orders] = await Promise.all([
+          api('GET', '/business-units', { query: { where: `parentUnit(key="${String(unit.key).replace(/[^A-Za-z0-9_-]/g, '')}")`, limit: 25 } }),
+          api('GET', '/orders', { query: { where: `businessUnit(key="${String(unit.key).replace(/[^A-Za-z0-9_-]/g, '')}")`, limit: 1 } }),
+        ]);
+        return {
+          record: {
+            ...unitRecord(unit),
+            people: associates.map((associate) => {
+              const customer = byId.get(String(associate?.customer?.id));
+              return compact({
+                name: customer ? [customer.firstName, customer.lastName].filter(Boolean).join(' ') : undefined,
+                email: customer?.email,
+                roles: (associate?.associateRoleAssignments ?? []).map((assignment: any) => assignment?.associateRole?.key).filter(Boolean),
+              });
+            }),
+            divisions: (Array.isArray(divisions.results) ? divisions.results : []).map((division: any) => compact({ unitKey: division.key, name: division.name })),
+            orderCount: Number(orders.total ?? 0),
+          },
+        };
       },
     },
   ];

@@ -44,10 +44,10 @@ async function main() {
     assert.deepEqual(server.health().connectors[0].missing, ['COMMERCETOOLS_PROJECT_KEY', 'COMMERCETOOLS_CLIENT_ID', 'COMMERCETOOLS_CLIENT_SECRET', 'COMMERCETOOLS_REGION']);
   });
 
-  await t.test('it offers the same six tools as the sample SAP connector, and only add_to_cart changes anything', async () => {
+  await t.test('it offers the six shop tools and three more for stock and trade accounts, and only add_to_cart changes anything', async () => {
     const { server, vendor } = await setup(() => undefined);
     const tools = await listTools(server, 'commercetools');
-    assert.deepEqual(tools.map((tool) => tool.name), ['find_product', 'get_product', 'get_cart', 'add_to_cart', 'get_order', 'order_history']);
+    assert.deepEqual(tools.map((tool) => tool.name), ['find_product', 'get_product', 'get_cart', 'add_to_cart', 'get_order', 'order_history', 'stock_by_branch', 'find_account', 'get_account']);
     assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['add_to_cart']);
     await vendor.close();
   });
@@ -66,42 +66,137 @@ async function main() {
     await vendor.close();
   });
 
-  await t.test('find_product searches the published products by text and shapes the answer', async () => {
-    const { vendor, call } = await setup(() => ({ json: { total: 41, count: 2, results: [product('p1', '5009059', 'Cordless combo kit', 60901), product('p2', '5009060', 'Impact driver', 25900)] } }));
+  const hit = (found: any) => ({ id: found.id, productProjection: found });
+  const groups = { results: [{ id: 'g-gold', key: 'gold' }, { id: 'g-silver', key: 'silver' }] };
+  const withTiers = (found: any, prices: Array<[string | undefined, number]>) => ({
+    ...found,
+    masterVariant: { ...found.masterVariant, prices: prices.map(([group, cents]) => ({ value: { type: 'centPrecision', currencyCode: 'NZD', centAmount: cents, fractionDigits: 2 }, ...(group ? { customerGroup: { typeId: 'customer-group', id: group } } : {}) })) },
+  });
+  const searchBodies = (vendor: Awaited<ReturnType<typeof mockVendor>>) => vendor.seen.filter((r) => r.path.endsWith('/products/search')).map((r) => r.body);
+
+  await t.test('find_product uses Product Search: every word in the name, the brand by part of its value, and the answer carries the retail price and each tier\'s price', async () => {
+    const { vendor, call } = await setup((request) => {
+      if (request.path.endsWith('/products/search')) return { json: { total: 41, results: [hit(withTiers(product('p1', '5009059', 'Cordless combo kit', 60901), [[undefined, 60901], ['g-gold', 54811], ['g-silver', 57856]])), hit(product('p2', '5009060', 'Impact driver', 25900))] } };
+      if (request.path.endsWith('/customer-groups')) return { json: groups };
+      return undefined;
+    });
     const { payload } = (await call('find_product', { query: 'cordless drill', brand: 'Makita', limit: 2 })) as any;
-    const request = vendor.seen.find((r) => r.path.endsWith('/product-projections/search'))!;
-    assert.equal(request.path, `/${PROJECT}/product-projections/search`);
-    assert.equal(request.query.get('text.en'), 'cordless drill Makita');
-    assert.equal(request.query.get('fuzzy'), 'true');
-    assert.equal(request.query.get('staged'), 'false');
-    assert.equal(request.query.get('limit'), '2');
+    const request = vendor.seen.find((r) => r.path.endsWith('/products/search'))!;
+    assert.equal(request.method, 'POST');
+    assert.equal(request.path, `/${PROJECT}/products/search`);
+    assert.deepEqual(request.body, {
+      limit: 2,
+      query: { and: [{ fullText: { field: 'name', language: 'en', value: 'cordless drill', mustMatch: 'all' } }, { wildcard: { field: 'variants.attributes.brand', fieldType: 'text', value: '*Makita*', caseInsensitive: true } }] },
+      productProjectionParameters: { staged: false },
+    });
     assert.equal(payload.ok, true);
     assert.equal(payload.total, 41);
     assert.equal(payload.returned, 2);
-    assert.deepEqual(payload.records[0], { productId: 'p1', sku: '5009059', name: 'Cordless combo kit', description: 'Cordless combo kit for the trade', brand: 'Makita', price: 609.01, currency: 'NZD', inStock: true, image: 'https://img.example/5009059.jpg', variantCount: 1 });
+    assert.deepEqual(payload.records[0], { productId: 'p1', sku: '5009059', name: 'Cordless combo kit', description: 'Cordless combo kit for the trade', brand: 'Makita', price: 609.01, currency: 'NZD', tierPrices: { gold: 548.11, silver: 578.56 }, inStock: true, image: 'https://img.example/5009059.jpg', variantCount: 1 });
+    assert.equal(payload.records[1].tierPrices, undefined, 'a product with no tier prices says nothing about tiers');
     await vendor.close();
   });
 
-  await t.test('find_product with no words lists the most recently changed products, and the locale can be set', async () => {
-    const { vendor, call } = await setup(() => ({ json: { results: [], total: 0, count: 0 } }), { COMMERCETOOLS_LOCALE: 'en-NZ' });
+  await t.test('find_product falls back to any word when no product has them all, lists the newest with no words, searches in the set language, and never lets a wildcard through', async () => {
+    const { vendor, call } = await setup((request) => (request.path.endsWith('/products/search') ? { json: { total: 0, results: [] } } : { json: groups }), { COMMERCETOOLS_LOCALE: 'en-NZ', COMMERCETOOLS_CURRENCY: 'NZD' });
+    await call('find_product', { query: 'hose reel' });
+    let bodies = searchBodies(vendor);
+    assert.deepEqual(bodies.map((body) => body.query.fullText.mustMatch), ['all', 'any'], 'all the words first, then any of them');
+    assert.equal(bodies[0].query.fullText.language, 'en-NZ');
+    assert.deepEqual(bodies[0].productProjectionParameters, { staged: false, priceCurrency: 'NZD' });
     await call('find_product', {});
-    const request = vendor.seen.find((r) => r.path.endsWith('/product-projections/search'))!;
-    assert.equal(request.query.get('sort'), 'lastModifiedAt desc');
-    assert.equal(request.query.get('text.en-NZ'), null);
-    await call('find_product', { query: 'hose' });
-    assert.ok(vendor.seen.some((r) => r.query.get('text.en-NZ') === 'hose'));
+    bodies = searchBodies(vendor);
+    assert.deepEqual(bodies.at(-1).sort, [{ field: 'lastModifiedAt', order: 'desc' }]);
+    assert.equal(bodies.at(-1).query, undefined);
+    await call('find_product', { department: 'clad*?\\' });
+    assert.equal(searchBodies(vendor).at(-1).query.wildcard.value, '*clad*', 'wildcard characters in what the model sends are dropped');
+    assert.equal(vendor.seen.filter((r) => r.path.endsWith('/customer-groups')).length, 0, 'nothing found, so no need to look up the tiers');
     await vendor.close();
   });
 
-  await t.test('get_product finds the product by sku, picks that variant, and says not found when there is none', async () => {
-    const found = { ...product('p9', 'A-1', 'Hose reel', 4900), variants: [{ id: 2, sku: 'A-2', prices: [{ value: { currencyCode: 'NZD', centAmount: 5900, fractionDigits: 2 } }], attributes: [{ name: 'colour', value: { key: 'g', label: { en: 'Green' } } }] }] };
-    const { vendor, call } = await setup((request) => (request.query.get('filter') === 'variants.sku:"A-2"' ? { json: { results: [found], total: 1, count: 1 } } : { json: { results: [], total: 0, count: 0 } }));
+  await t.test('get_product finds the product by sku, picks that variant, shows its tier prices, and says not found when there is none', async () => {
+    const found = { ...product('p9', 'A-1', 'Hose reel', 4900), variants: [{ id: 2, sku: 'A-2', prices: [{ value: { currencyCode: 'NZD', centAmount: 5900, fractionDigits: 2 } }, { value: { currencyCode: 'NZD', centAmount: 5310, fractionDigits: 2 }, customerGroup: { typeId: 'customer-group', id: 'g-gold' } }], attributes: [{ name: 'colour', value: { key: 'g', label: { en: 'Green' } } }] }] };
+    const { vendor, call } = await setup((request) => {
+      if (request.path.endsWith('/customer-groups')) return { json: groups };
+      return request.body?.query?.exact?.value === 'A-2' ? { json: { results: [hit(found)], total: 1 } } : { json: { results: [], total: 0 } };
+    });
     const { payload } = (await call('get_product', { sku: 'A-2' })) as any;
+    assert.deepEqual(searchBodies(vendor)[0].query, { exact: { field: 'variants.sku', value: 'A-2' } });
     assert.equal(payload.record.matchedSku, 'A-2');
-    assert.equal(payload.record.variant.price, 59);
+    assert.equal(payload.record.variant.price, 59, 'the retail price, not the tier price');
+    assert.deepEqual(payload.record.variant.tierPrices, { gold: 53.1 });
     assert.deepEqual(payload.record.variant.attributes, { colour: 'Green' });
     const missing: any = await call('get_product', { sku: 'NOPE-1' });
     assert.equal(missing.payload.error.code, 'not_found');
+    await vendor.close();
+  });
+
+  await t.test('stock_by_branch lists the branches holding a product, most first, can look at one branch, and says when a branch has none', async () => {
+    const stock = (quantity: number, code: string, name: string, available = quantity) => ({ quantityOnStock: quantity, availableQuantity: available, supplyChannel: { obj: { key: `branch-${code}`, name: { 'en-NZ': name } } } });
+    const { vendor, call } = await setup((request) => (request.path.endsWith('/inventory') ? { json: { results: request.query.get('where') === 'sku="A-1"' ? [stock(10, '224', 'Hamilton', 8), stock(0, '385', 'Tauranga'), stock(55, '146', 'Wanaka')] : [] } } : undefined));
+    const all = ((await call('stock_by_branch', { sku: 'A-1' })) as any).payload;
+    assert.equal(vendor.seen.find((r) => r.path.endsWith('/inventory'))!.query.get('expand'), 'supplyChannel');
+    assert.deepEqual(all.records, [{ branch: 'Wanaka', branchCode: '146', onHand: 55, available: 55 }, { branch: 'Hamilton', branchCode: '224', onHand: 10, available: 8 }, { branch: 'Tauranga', branchCode: '385', onHand: 0, available: 0 }]);
+    assert.equal(all.totalOnHand, 65);
+    assert.equal(all.branchesHolding, 2, 'a branch with none on hand does not count as holding it');
+    const one = ((await call('stock_by_branch', { sku: 'A-1', branch: 'ham' })) as any).payload;
+    assert.deepEqual(one.records.map((row: any) => row.branch), ['Hamilton']);
+    assert.equal(one.matching, 1);
+    const none = ((await call('stock_by_branch', { sku: 'A-1', branch: 'dunedin' })) as any).payload;
+    assert.equal(none.matching, 0);
+    assert.match(none.note, /No stock entry for a branch matching "dunedin"\. This product is held at 3 other branches/);
+    const unknown: any = await call('stock_by_branch', { sku: 'NOPE-1' });
+    assert.equal(unknown.payload.error.code, 'not_found');
+    const bad: any = await call('stock_by_branch', { sku: 'x" or sku="y' });
+    assert.equal(bad.payload.error.code, 'invalid_arguments');
+    await vendor.close();
+  });
+
+  const unit = (key: string, name: string, fields: Record<string, any>, extra: any = {}) => ({
+    key, name, unitType: 'Company', status: 'Active', contactEmail: 'admin@example.test', addresses: [{ city: 'Hamilton' }],
+    custom: { fields: { accountNumber: key.toUpperCase(), tier: 'silver', tradeType: 'concreter', homeBranchCode: '224', accountManager: 'Hemi A', paymentTerms: '20th of the month', creditLimit: { type: 'centPrecision', currencyCode: 'NZD', centAmount: 1000000, fractionDigits: 2 }, ...fields } }, ...extra,
+  });
+  const CUSTOMER = '1b2c3d4e-0000-4000-8000-000000000001';
+  const SF_ID = '001i8000008Uu8HAAS';
+
+  await t.test('find_account finds trade accounts by part of the name, the number or the key, by tier, and says when it searched only part of them', async () => {
+    const units = [unit('acc-0001', 'Talbot & Nguyen Concrete Ltd', { salesforceAccountId: SF_ID }), unit('acc-0002', 'Harlow & Talbot Landscapes Ltd', { tier: 'gold' }), unit('acc-0003', 'Dunmore Ltd', { tier: 'gold' })];
+    const { vendor, call } = await setup((request) => (request.path.endsWith('/business-units') ? { json: { total: units.length, results: units } } : undefined));
+    const byName = ((await call('find_account', { query: 'talbot' })) as any).payload;
+    assert.deepEqual(byName.records.map((r: any) => r.unitKey), ['acc-0001', 'acc-0002']);
+    assert.deepEqual(byName.records[0], { unitKey: 'acc-0001', name: 'Talbot & Nguyen Concrete Ltd', kind: 'Company', status: 'Active', accountNumber: 'ACC-0001', tier: 'silver', tradeType: 'concreter', homeBranchCode: '224', accountManager: 'Hemi A', paymentTerms: '20th of the month', creditLimit: 10000, currency: 'NZD', salesforceAccountId: SF_ID, contactEmail: 'admin@example.test', city: 'Hamilton' });
+    assert.deepEqual(((await call('find_account', { query: 'acc-0003' })) as any).payload.records.map((r: any) => r.unitKey), ['acc-0003']);
+    assert.deepEqual(((await call('find_account', { tier: 'gold' })) as any).payload.records.map((r: any) => r.unitKey), ['acc-0002', 'acc-0003']);
+    assert.deepEqual(((await call('find_account', { query: 'talbot', tier: 'gold' })) as any).payload.records.map((r: any) => r.unitKey), ['acc-0002']);
+    const part = await setup((request) => (request.path.endsWith('/business-units') ? { json: { total: 900, results: units } } : undefined));
+    assert.match((((await part.call('find_account', {})) as any).payload.note), /Only the first 3 of 900 units were searched/);
+    await vendor.close(); await part.vendor.close();
+  });
+
+  await t.test('get_account takes a unit key, an account number or a Salesforce id, and shows the terms, the people with their roles, the divisions and the order count', async () => {
+    const acc = unit('acc-0001', 'Talbot & Nguyen Concrete Ltd', { salesforceAccountId: SF_ID }, { associates: [{ customer: { typeId: 'customer', id: CUSTOMER }, associateRoleAssignments: [{ associateRole: { typeId: 'associate-role', key: 'account-admin' } }] }] });
+    const { vendor, call } = await setup((request) => {
+      if (request.path.endsWith('/business-units/key=acc-0001')) return { json: acc };
+      if (request.path.includes('/business-units/key=')) return { status: 404, json: { message: 'not found' } };
+      if (request.path.endsWith('/business-units')) return request.query.get('where')?.startsWith('parentUnit') ? { json: { results: [{ key: 'acc-0001-div1', name: 'Talbot - Projects' }] } } : { json: { total: 1, results: [acc] } };
+      if (request.path.endsWith('/customers')) return { json: { results: [{ id: CUSTOMER, firstName: 'Tessa', lastName: 'Thornbury', email: 'tessa@example.test' }] } };
+      if (request.path.endsWith('/orders')) return { json: { total: 4, results: [] } };
+      return undefined;
+    });
+    const direct = ((await call('get_account', { accountId: 'acc-0001' })) as any).payload.record;
+    assert.equal(direct.name, 'Talbot & Nguyen Concrete Ltd');
+    assert.deepEqual(direct.people, [{ name: 'Tessa Thornbury', email: 'tessa@example.test', roles: ['account-admin'] }]);
+    assert.deepEqual(direct.divisions, [{ unitKey: 'acc-0001-div1', name: 'Talbot - Projects' }]);
+    assert.equal(direct.orderCount, 4);
+    assert.equal(direct.salesforceAccountId, SF_ID);
+    assert.match(vendor.seen.find((r) => r.path.endsWith('/customers'))!.query.get('where')!, new RegExp(`^id in \\("${CUSTOMER}"\\)$`));
+    assert.equal(((await call('get_account', { accountId: 'ACC-0001' })) as any).payload.record.unitKey, 'acc-0001', 'the account number (any case) finds it too');
+    assert.equal(((await call('get_account', { accountId: SF_ID })) as any).payload.record.unitKey, 'acc-0001', 'and so does the Salesforce id');
+    const missing: any = await call('get_account', { accountId: 'acc-9999' });
+    assert.equal(missing.payload.error.code, 'not_found');
+    assert.match(missing.payload.error.message, /no trade account acc-9999/);
+    const bad: any = await call('get_account', { accountId: 'a" or key is defined' });
+    assert.equal(bad.payload.error.code, 'invalid_arguments');
     await vendor.close();
   });
 

@@ -64,9 +64,13 @@ export function salesforce(env: Env, deps: Deps): RealConnector {
     return { totalSize: Number(answer.totalSize) || 0, records: Array.isArray(answer.records) ? answer.records : [] };
   };
 
-  const accountFields = ['Id', 'Name', 'Type', 'Industry', 'Phone', 'BillingCity', 'Owner.Name', ...(tierField ? [tierField] : []), ...(branchField ? [branchField] : [])];
+  // This org has no account-number field, so the trade account's number and its commercetools unit are written into the description ("Account number ACC-0001. commercetools unit acc-0001.").
+  const NUMBER_NOTE = /Account number ([A-Za-z0-9-]+)\./;
+  const UNIT_NOTE = /commercetools unit ([a-z0-9-]+)\./i;
+  const accountFields = ['Id', 'Name', 'Type', 'Industry', 'Phone', 'BillingCity', 'Owner.Name', 'Description', ...(tierField ? [tierField] : []), ...(branchField ? [branchField] : [])];
   const accountRecord = (row: any): Rec => compact({
     accountId: row.Id, name: row.Name, type: row.Type, industry: row.Industry, phone: row.Phone, city: row.BillingCity,
+    accountNumber: NUMBER_NOTE.exec(String(row.Description ?? ''))?.[1], commercetoolsUnit: UNIT_NOTE.exec(String(row.Description ?? ''))?.[1],
     owner: row.Owner?.Name, tier: tierField ? row[tierField] : undefined, homeBranchCode: branchField ? row[branchField] : undefined,
   });
   const caseRecord = (row: any, full = false): Rec => compact({

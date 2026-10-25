@@ -51,7 +51,8 @@ before(async () => {
   shop = await mockVendor((request) => {
     if (request.path === '/oauth/token') return { json: { access_token: 'ct-token', expires_in: 3600 } };
     if (shopBroken) return { status: 503, json: { message: 'upstream down' } };
-    if (request.path.endsWith('/product-projections/search')) return { json: { total: 1, count: 1, results: [{ id: 'p1', name: { en: 'Cordless combo kit' }, masterVariant: { sku: '5009059', prices: [{ value: { currencyCode: 'NZD', centAmount: 60901, fractionDigits: 2 } }] }, variants: [] }] } };
+    if (request.path.endsWith('/products/search')) return { json: { total: 1, results: [{ id: 'p1', productProjection: { id: 'p1', name: { en: 'Cordless combo kit' }, masterVariant: { sku: '5009059', prices: [{ value: { currencyCode: 'NZD', centAmount: 60901, fractionDigits: 2 } }] }, variants: [] } }] } };
+    if (request.path.endsWith('/customer-groups')) return { json: { results: [] } };
     if (request.path === `/shop/carts/${CART}` && request.method === 'GET') return { json: cart(cartVersion) };
     if (request.path === `/shop/carts/${CART}` && request.method === 'POST') {
       cartLines.push({ id: `li-${cartLines.length + 1}`, name: { en: 'Added' }, quantity: request.body.actions[0].quantity, variant: { sku: request.body.actions[0].sku }, price: { value: { currencyCode: 'NZD', centAmount: 1000, fractionDigits: 2 } }, totalPrice: { currencyCode: 'NZD', centAmount: 1000, fractionDigits: 2 } });
@@ -173,8 +174,8 @@ describe('The real connectors, end to end with a scripted model and pretend vend
     assert.equal(found.result.records[0].sku, '5009059');
     assert.equal(found.result.records[0].name, 'Cordless combo kit');
     assert.equal(found.result.records[0].price, 609.01);
-    const search = shop.seen.find((request) => request.path.endsWith('/product-projections/search'))!;
-    assert.equal(search.query.get('text.en'), 'cordless drill');
+    const search = shop.seen.find((request) => request.path.endsWith('/products/search'))!;
+    assert.equal(search.body.query.fullText.value, 'cordless drill');
     assert.equal(search.headers.authorization, 'Bearer ct-token', 'the vendor was asked with the connector\'s own sign-in, not anything from the chat');
     assert.ok(outcome.toolsCalled.every((tool) => tool.ok));
   });

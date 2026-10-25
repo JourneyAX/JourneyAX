@@ -81,7 +81,7 @@ async function main() {
   await t.test('find_account builds a safe SOQL query: names are escaped so a quote or % cannot change the query', async () => {
     const { vendor, call } = await setup();
     const { payload } = (await call('find_account', { query: "O'Brien & 50%_off" })) as any;
-    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Owner.Name FROM Account WHERE Name LIKE '%O\\'Brien & 50\\%\\_off%' ORDER BY Name ASC LIMIT 10");
+    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Owner.Name, Description FROM Account WHERE Name LIKE '%O\\'Brien & 50\\%\\_off%' ORDER BY Name ASC LIMIT 10");
     assert.deepEqual(payload.records[0], { accountId: ACCOUNT, name: 'Hamilton Builders Ltd', type: 'Customer', industry: 'Construction', phone: '07 555 0100', city: 'Hamilton', owner: 'Sam Seller' });
     await call('find_account', { query: "x\\' OR Name != '" });
     assert.ok(soqlSeen(vendor)[1]!.includes("'%x\\\\\\' OR Name != \\'%'"), 'a backslash and a quote are both escaped');
@@ -91,7 +91,7 @@ async function main() {
   await t.test('find_account can filter on a tier and a home branch when those custom fields are named, and they come back in the record', async () => {
     const { vendor, call } = await setup({ SALESFORCE_TIER_FIELD: 'Customer_Tier__c', SALESFORCE_BRANCH_FIELD: 'Home_Branch__c' });
     const { payload } = (await call('find_account', { tier: 'Gold', branchCode: 'HAM01', limit: 3 })) as any;
-    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Owner.Name, Customer_Tier__c, Home_Branch__c FROM Account WHERE Customer_Tier__c = 'Gold' AND Home_Branch__c = 'HAM01' ORDER BY Name ASC LIMIT 3");
+    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Owner.Name, Description, Customer_Tier__c, Home_Branch__c FROM Account WHERE Customer_Tier__c = 'Gold' AND Home_Branch__c = 'HAM01' ORDER BY Name ASC LIMIT 3");
     assert.equal(payload.records[0].tier, 'Gold');
     assert.equal(payload.records[0].homeBranchCode, 'HAM01');
     await vendor.close();
@@ -120,6 +120,18 @@ async function main() {
     assert.equal(soqlSeen(vendor)[0], `SELECT Id, CaseNumber, Subject, Status, Priority, AccountId, Account.Name, CreatedDate FROM Case WHERE AccountId = '${ACCOUNT}' AND Status = 'Working' AND Priority = 'Medium' ORDER BY CreatedDate DESC LIMIT 5`);
     assert.deepEqual(payload.records[0], { caseId: CASE_ID, caseNumber: '00001026', subject: 'Delivery arrived damaged', status: 'Working', priority: 'High', accountId: ACCOUNT, account: 'Hamilton Builders Ltd', created: '2026-10-20T01:00:00.000+0000' });
     await vendor.close();
+  });
+
+  await t.test('an account whose description carries the sample account number and the commercetools unit returns both, so the two systems can be followed from one to the other', async () => {
+    const linked = { ...accountRow, Description: 'Trade type: concreter. Tier: silver. Account number ACC-0001. commercetools unit acc-0001. Sample data.' };
+    const { vendor, call } = await setup({}, (request) => (request.path.endsWith('/query') && /FROM Account/.test(request.query.get('q') ?? '') ? { json: { totalSize: 1, records: [linked] } } : undefined));
+    const found = ((await call('find_account', { query: 'Hamilton' })) as any).payload.records[0];
+    assert.equal(found.accountNumber, 'ACC-0001');
+    assert.equal(found.commercetoolsUnit, 'acc-0001');
+    assert.equal(found.description, undefined, 'the whole description is not passed on');
+    const plain = await setup();
+    assert.equal(((await plain.call('find_account', { query: 'Hamilton' })) as any).payload.records[0].accountNumber, undefined, 'an account with no such note simply has no number');
+    await vendor.close(); await plain.vendor.close();
   });
 
   await t.test('list_cases understands "open" and "closed" as every status that is not closed, or closed, so the assistant need not ask which statuses count', async () => {
