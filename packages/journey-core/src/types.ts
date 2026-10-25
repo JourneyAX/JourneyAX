@@ -258,6 +258,8 @@ export interface TurnCommand {
   turnId?: string;
   principalId?: string;
   principalRole?: string;
+  /** The staff groups the gateway signed for this person; empty or absent for a shopper. Set only by the server, never from the request body. */
+  principalGroups?: string[];
   correlationId: string;
 
   message?: string;

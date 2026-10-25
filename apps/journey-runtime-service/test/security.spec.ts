@@ -166,6 +166,26 @@ async function runSecurityTests() {
     assert.equal(req.authContext.principalRole, 'manager');
   });
 
+  // ── TEST 4C: Staff groups ride the signed assertion; a shopper never carries them ────
+  await test('Signed groups reach the auth context for staff only', async () => {
+    const assertionSecret = 'gateway-secret-test-key-999';
+    process.env.GATEWAY_ASSERTION_SECRET = assertionSecret;
+    const run = async (role: 'manager' | 'customer', groups: string[] | undefined) => {
+      const assertion = signGatewayAssertion({ tenantId: 'workweargroup', environmentId: 'production', sub: `usr-${role}-${groups?.length ?? 0}`, role, groups }, assertionSecret);
+      const ctx = createMockExecutionContext({
+        params: { tenantId: 'workweargroup', environmentId: 'production' },
+        headers: { 'x-tenant-id': 'workweargroup', 'x-gateway-assertion': assertion },
+        body: {},
+      });
+      (guard as any).reflector = (ctx as any)._reflector;
+      assert.equal(await guard.canActivate(ctx), true);
+      return ctx.switchToHttp().getRequest().authContext;
+    };
+    assert.deepEqual((await run('manager', ['customer-service', 'sales'])).principalGroups, ['customer-service', 'sales']);
+    assert.deepEqual((await run('manager', undefined)).principalGroups, [], 'an older gateway sends none');
+    assert.deepEqual((await run('customer', ['customer-service'])).principalGroups, [], 'a shopper\'s groups are dropped even when signed');
+  });
+
   // ── TEST 5: Internal Endpoints Require Valid Key (Fail-Closed) ──────────
   await test('Internal-only endpoint rejects missing or invalid X-Internal-Key with 401', async () => {
     process.env.INTERNAL_API_KEY = 'super-secure-production-internal-key';

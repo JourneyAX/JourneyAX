@@ -15,6 +15,7 @@ import {
   InMemoryReplayStore,
   connectToDatabase,
 } from '@journeyax/database';
+import { principalFrom } from '@journeyax/shared-types';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
@@ -27,6 +28,8 @@ export interface AuthContext {
   environmentId: 'dev' | 'test' | 'staging' | 'production';
   principalId: string;
   principalRole: string;
+  /** The staff groups the gateway signed for this person (empty for a shopper, an older gateway or an internal call). */
+  principalGroups: string[];
   isInternal: boolean;
 }
 
@@ -132,6 +135,7 @@ export class RuntimeAuthGuard implements CanActivate {
     // Raw external headers (X-User-Role, etc.) without proof are strictly untrusted.
     let principalId = 'anonymous';
     let principalRole = 'customer';
+    let principalGroups: string[] = [];
 
     const gatewayAssertion = headers['x-gateway-assertion'] as string | undefined;
 
@@ -165,6 +169,8 @@ export class RuntimeAuthGuard implements CanActivate {
 
       principalId = payload.sub;
       principalRole = payload.role;
+      // Only a member of staff carries groups; a shopper's are dropped whatever the assertion says.
+      principalGroups = principalFrom({ userId: payload.sub, role: payload.role, groups: payload.groups }).groups;
     } else if (isInternalKeyValid) {
       // Authenticated workload identity presenting verified X-Internal-Key
       principalId = (headers['x-user-id'] as string) || (headers['x-principal-id'] as string) || 'service:internal';
@@ -180,6 +186,7 @@ export class RuntimeAuthGuard implements CanActivate {
       environmentId: pathEnvId,
       principalId,
       principalRole,
+      principalGroups,
       isInternal: isInternalKeyValid,
     };
 

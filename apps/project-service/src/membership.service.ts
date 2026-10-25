@@ -269,7 +269,7 @@ export class MembershipService {
   async verifyMembership(
     email: string,
     projectId: string
-  ): Promise<{ isMember: boolean; role?: MemberRole; orgId?: string; status?: MembershipStatus }> {
+  ): Promise<{ isMember: boolean; role?: MemberRole; orgId?: string; status?: MembershipStatus; teams?: string[] }> {
     if (!this.isConnected()) return { isMember: false };
     const cleanEmail = email.toLowerCase().trim();
     const member = await this.getCollection().findOne({
@@ -280,6 +280,6 @@ export class MembershipService {
     if (!member || member.status === 'revoked' || member.status === 'expired') {
       return { isMember: false };
     }
-    return { isMember: true, role: member.role, orgId: member.orgId, status: member.status || 'active' };
+    return { isMember: true, role: member.role, orgId: member.orgId, status: member.status || 'active', teams: Array.isArray(member.teams) ? member.teams : [] };
   }
 }

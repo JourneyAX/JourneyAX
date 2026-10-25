@@ -7,6 +7,8 @@ import {
   VALID_GATEWAY_ROLES,
   GatewayRole,
 } from '@journeyax/database';
+import { isStaffRole } from '@journeyax/shared-types';
+import { GroupDirectory } from './group-directory';
 
 // ---------------------------------------------------------------------------
 // Google Cloud Run service-to-service ID-token client.
@@ -320,6 +322,40 @@ async function cacheInvalidateDomain(tenantId: string, domain: string): Promise<
  */
 @Injectable()
 export class GatewayService {
+  /** Looks up a member of staff's groups (the project member's teams) so they can be signed into the identity assertion. */
+  private readonly groupDirectory = new GroupDirectory({
+    baseUrl: () => SERVICE_REGISTRY['projects'],
+    headers: async (base) => ({
+      ...(process.env.INTERNAL_API_KEY ? { 'x-internal-key': process.env.INTERNAL_API_KEY } : {}),
+      ...authorizationHeader(await getIdToken(base), undefined),
+    }),
+  });
+
+  /**
+   * The signed identity every downstream call carries: the person's role and, for a member of staff, their groups. Nothing here comes
+   * from a header the browser could set: the role is the one the auth guard put there after verifying the token, and the groups are
+   * looked up. Empty when no signing secret is configured.
+   */
+  private async assertionHeaders(tenantId: string, environmentId: string, headers: Record<string, any>): Promise<Record<string, string>> {
+    const secret = process.env.GATEWAY_ASSERTION_SECRET;
+    if (!secret) return {};
+    const rawRole = String(headers['x-user-role'] || headers['x-principal-role'] || 'customer').toLowerCase();
+    const role: GatewayRole = (VALID_GATEWAY_ROLES as readonly string[]).includes(rawRole) ? (rawRole as GatewayRole) : 'customer';
+    const groups = isStaffRole(role) ? await this.groupDirectory.groupsFor(tenantId, String(headers['x-user-email'] || '')) : [];
+    return {
+      'X-Gateway-Assertion': signGatewayAssertion(
+        {
+          tenantId,
+          environmentId,
+          sub: String(headers['x-user-id'] || headers['x-principal-id'] || headers['x-user-email'] || 'anonymous'),
+          role,
+          groups,
+        },
+        secret
+      ),
+    };
+  }
+
   /**
    * Validate that a tenant is active. Caches the result to avoid spamming the project service.
    */
@@ -448,27 +484,7 @@ export class GatewayService {
     const assertionSecret = process.env.GATEWAY_ASSERTION_SECRET;
 
     if (assertionSecret) {
-      const rawRole = String(
-        headers['x-user-role'] || headers['x-principal-role'] || 'customer'
-      ).toLowerCase();
-      const role: GatewayRole = (VALID_GATEWAY_ROLES as readonly string[]).includes(rawRole)
-        ? (rawRole as GatewayRole)
-        : 'customer';
-
-      gatewayHeaders['X-Gateway-Assertion'] = signGatewayAssertion(
-        {
-          tenantId,
-          environmentId: parsed.environmentId || 'production',
-          sub: String(
-            headers['x-user-id'] ||
-              headers['x-principal-id'] ||
-              headers['x-user-email'] ||
-              'anonymous'
-          ),
-          role,
-        },
-        assertionSecret
-      );
+      Object.assign(gatewayHeaders, await this.assertionHeaders(tenantId, parsed.environmentId || 'production', headers));
     } else if (process.env.NODE_ENV === 'production' && parsed.domain === 'runtime') {
       throw new Error('GATEWAY_ASSERTION_SECRET must be configured in production for runtime calls.');
     }
@@ -550,6 +566,8 @@ export class GatewayService {
     }
 
     const googleIdToken = await getIdToken(resolved.baseUrl);
+    // The streaming path signs the same identity as the plain one: without it the runtime would treat every streamed turn as a shopper's.
+    const signedIdentity = tenantId ? await this.assertionHeaders(tenantId, parseRoute(path).environmentId || 'production', headers) : {};
 
     const upstream = await fetch(downstreamUrl, {
       method,
@@ -558,6 +576,7 @@ export class GatewayService {
         'X-Tenant-ID': tenantId,
         ...authorizationHeader(googleIdToken, headers['authorization']),
         ...identityHeaders(headers),
+        ...signedIdentity,
       },
       body: method !== 'GET' && body ? JSON.stringify(body) : undefined,
     });

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsx test/notifications.spec.ts && tsx test/release-activation.spec.ts"
+    "test": "tsx test/notifications.spec.ts && tsx test/release-activation.spec.ts && tsx test/assertion-groups.spec.ts"
   },
   "dependencies": {
     "@journeyax/business-pack": "*",
