@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import { createSuite } from '@journeyax/test-support';
+import { MemoryDb } from '@journeyax/test-support';
+import { principalFrom, normaliseGroups } from '@journeyax/shared-types';
+import { DEMO_STAFF, applyDemoStaff, planDemoStaff, removeDemoStaff } from '../../../scripts/placemakers/demo-staff';
+import { buildAccessPreview } from '../src/access-preview';
+
+const suite = createSuite('project-service: demo staff for trying who sees what');
+const fakeHash = async (password: string) => `hash:${password.length}`;
+
+async function main() {
+  await suite.test('the plan names a team, a membership and a login for each person, and no raw password reaches a stored document', async () => {
+    const plan = planDemoStaff('PlaceMakers', 'org1', new Date('2026-10-25T00:00:00Z'));
+    assert.equal(plan.tenantId, 'placemakers');
+    assert.deepEqual(plan.teams.map((t) => t.teamId), ['team_customer_service', 'team_sales']);
+    assert.deepEqual(plan.members.map((m) => `${m.email}:${m.teams.join('+')}`), ['csr@placemakers.demo:Customer Service', 'sales@placemakers.demo:Sales']);
+    const db = new MemoryDb();
+    await applyDemoStaff(db as any, plan, fakeHash);
+    const stored = JSON.stringify([...db.dump('users'), ...db.dump('project_members'), ...db.dump('project_teams')]);
+    for (const person of DEMO_STAFF) assert.ok(!stored.includes(person.password), 'only a hash is stored');
+    assert.ok(db.dump('users').every((u: any) => typeof u.passwordHash === 'string' && !('password' in u)));
+  });
+
+  await suite.test('loading twice changes nothing, and removing takes the logins and memberships away but leaves the teams', async () => {
+    const db = new MemoryDb();
+    const plan = planDemoStaff('placemakers');
+    await applyDemoStaff(db as any, plan, fakeHash);
+    await applyDemoStaff(db as any, plan, fakeHash);
+    assert.equal(db.dump('users').length, 2);
+    assert.equal(db.dump('project_members').length, 2);
+    assert.equal(db.dump('project_teams').length, 2);
+    await removeDemoStaff(db as any, plan);
+    assert.equal(db.dump('users').length, 0);
+    assert.equal(db.dump('project_members').length, 0);
+    assert.equal(db.dump('project_teams').length, 2, 'teams may hold real people');
+  });
+
+  await suite.test('what the gateway reads back from a membership is the group the pack\'s access rows name', async () => {
+    const plan = planDemoStaff('placemakers');
+    const csr = plan.members.find((m) => m.email.startsWith('csr'))!;
+    assert.deepEqual(normaliseGroups(csr.teams), ['customer-service']);
+    const user = plan.users.find((u) => u.email.startsWith('csr'))!;
+    const principal = principalFrom({ userId: user.email, tenantId: user.tenantId, role: user.role, groups: normaliseGroups(csr.teams) });
+    assert.deepEqual({ audience: principal.audience, groups: principal.groups }, { audience: 'staff', groups: ['customer-service'] });
+  });
+
+  await suite.test('with the draft pack\'s access table the demo customer-service person opens on the customer-service agent and the sales rep on the quote desk', async () => {
+    const draft = JSON.parse((await import('node:fs')).readFileSync((await import('node:path')).resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
+    const project = { agents: draft.agents, extensions: draft.extensions, defaultAgentId: draft.defaultAgentId };
+    const teams = planDemoStaff('placemakers').teams;
+    const opens = (audience: 'shopper' | 'staff', groups: string[]) => buildAccessPreview(project as any, teams, { audience, groups }).agents.find((a) => a.opensFirst)?.agentId;
+    assert.equal(opens('shopper', []), 'placemakers_product_advisor', 'a shopper still opens on the product advisor');
+    assert.equal(opens('staff', ['customer-service']), 'placemakers_customer_service');
+    assert.equal(opens('staff', ['sales']), 'placemakers_sales_quote');
+    const shopperAgents = buildAccessPreview(project as any, teams, { audience: 'shopper', groups: [] }).agents.map((a) => a.agentId);
+    assert.ok(shopperAgents.includes('placemakers_product_advisor'), 'shoppers keep the advisor');
+  });
+
+  suite.finish();
+}
+
+main().catch((error) => { console.error(error); process.exit(1); });

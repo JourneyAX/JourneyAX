@@ -506,6 +506,44 @@
           "flags": ""
         }
       ]
+    },
+    "agentAccess": {
+      "rows": [
+        {
+          "agentId": "placemakers_product_advisor",
+          "audience": "shopper",
+          "groups": [],
+          "level": "default"
+        },
+        {
+          "agentId": "placemakers_customer_service",
+          "audience": "shopper",
+          "groups": [],
+          "level": "available"
+        },
+        {
+          "agentId": "placemakers_customer_service",
+          "audience": "staff",
+          "groups": [
+            "customer-service"
+          ],
+          "level": "default"
+        },
+        {
+          "agentId": "placemakers_sales_quote",
+          "audience": "shopper",
+          "groups": [],
+          "level": "available"
+        },
+        {
+          "agentId": "placemakers_sales_quote",
+          "audience": "staff",
+          "groups": [
+            "sales"
+          ],
+          "level": "default"
+        }
+      ]
     }
   }
 }
