@@ -71,6 +71,8 @@ export interface AgentToolContext {
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   turnProductSkus: Set<string>;
+  /** Products an earlier turn of this conversation showed (read from the stored thread, never from the customer or the model): one of them may sit on a card after a catalogue lookup by SKU, without a new search. */
+  earlierShownSkus?: Set<string>;
   catalogProductCache: Map<string, any>;
   /** What the latest product lookup of the turn found, so the reply's products can be shown even if the reply names none. */
   lastProducts?: LastProducts;
@@ -138,7 +140,7 @@ export function knownNamesOf(ctx: Pick<AgentToolContext, 'catalogProductCache' |
 }
 
 /** One product by SKU: from this turn's lookups, else from the catalogue (and then remembered for this turn). */
-async function findProductBySku(ctx: AgentToolContext, sku: string): Promise<any | undefined> {
+export async function findProductBySku(ctx: AgentToolContext, sku: string): Promise<any | undefined> {
   const cached = ctx.catalogProductCache.get(sku);
   if (cached) return cached;
   if (!sku) return undefined;
@@ -2279,6 +2281,11 @@ export async function executeAgentTool(
       // facts are the catalogue's, and it can sit on a card this turn without the model having to search for it first.
       for (const sku of eventSkus(ctx.customerEvent)) {
         if (referencedSkus.includes(sku) && !ctx.turnProductSkus.has(sku)) await findProductBySku(ctx, sku);
+      }
+
+      // A product an earlier turn of this conversation showed is looked up by its SKU again, so its facts are the catalogue's today, and it can sit on a card without a new search.
+      for (const sku of referencedSkus) {
+        if (!ctx.turnProductSkus.has(sku) && ctx.earlierShownSkus?.has(sku)) await findProductBySku(ctx, sku);
       }
 
       // 3. SKU Provenance & Lifecycle Verification: Every product SKU must have been returned by a tool result and not discontinued

@@ -589,6 +589,119 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.doesNotMatch(fullText, /25 year unconditional replacement warranty/i);
   });
 
+  describe('the real conversation: history is built from what was shown, along one path of the thread', () => {
+    const products = [
+      { sku: 'SKU-DRILL-1', title: 'Cordless Drill 18V', name: 'Cordless Drill 18V', priceUSD: { min: 129 }, currency: 'NZD', inStock: true, category: 'Drills', description: 'An 18V cordless drill.' },
+      { sku: 'SKU-DRILL-2', title: 'Cordless Hammer Drill Kit', name: 'Cordless Hammer Drill Kit', priceUSD: { min: 609 }, currency: 'NZD', inStock: true, category: 'Drills', description: 'A hammer drill and impact driver kit.' },
+    ];
+    const run = async (input: { store: TurnTranscriptStore; workspace: any; turnId: string; message: string; parentMessageId?: string; script: (round: number, req: any, onDelta?: (t: string) => void) => any }) => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const seen: any[] = [];
+      let round = 0;
+      gateway.mockAgentExecutor = async (req, onDelta) => {
+        round++;
+        if (round === 1) seen.push(req.messages);
+        return input.script(round, req, onDelta);
+      };
+      const command: any = { tenantId: 'test-tenant', environmentId: 'test', workspaceId: input.workspace.workspaceId, sessionId: 'thread-session', turnId: input.turnId, correlationId: `c-${input.turnId}`, message: input.message, ...(input.parentMessageId ? { parentMessageId: input.parentMessageId } : {}) };
+      const outcome = await new AgentTurnLoop().execute({
+        command,
+        release,
+        workspace: input.workspace,
+        modelGateway: gateway,
+        transcriptStore: input.store,
+        catalogSearchHandler: { execute: async () => ({ products, totalCount: products.length }) } as any,
+        sink: () => {},
+      });
+      await input.store.saveTurn({
+        tenantId: 'test-tenant', environmentId: 'test', workspaceId: input.workspace.workspaceId, turnId: input.turnId, sessionId: 'thread-session',
+        customerMessage: input.message, assistantReply: outcome.turnResult.assistantMessage || '', thread: outcome.thread as any,
+        timestamps: { receivedAt: new Date(Date.now()).toISOString(), completedAt: new Date().toISOString() },
+      });
+      const history = (seen[0] || []).map((m: any) => (typeof m.content === 'string' ? m.content : '')).find((text: string) => text.startsWith('[Previous Conversation History]')) || '';
+      return { outcome, history };
+    };
+
+    test('a follow-up that names what a card showed is answered from the thread: no new search, the card follows', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+      const workspace = createTestWorkspace();
+
+      const first = await run({
+        store, workspace, turnId: 'turn-1', message: 'cordless drill for concrete',
+        script: (round, _req, onDelta) => {
+          if (round === 1) return { content: '', toolCalls: [{ id: 'a', name: 'search_products', arguments: { query: 'cordless drill' } }] };
+          if (round === 2) return { content: '', toolCalls: [{ id: 'b', name: 'present_card', arguments: { cardType: 'products', state: { products: [{ sku: 'SKU-DRILL-1' }, { sku: 'SKU-DRILL-2' }] } } }] };
+          onDelta?.('Here are two options.');
+          return { content: 'Here are two options.', toolCalls: [] };
+        },
+      });
+      assert.equal(first.history, '', 'a first turn has no history');
+      assert.deepEqual(first.outcome.thread?.map((m) => m.id), ['turn-1:customer', 'turn-1:assistant']);
+      assert.equal(first.outcome.thread?.[0].parentId, null);
+      const kinds = first.outcome.thread?.[1].blocks.map((b) => b.type);
+      assert.ok(kinds?.includes('lookup') && kinds.includes('products') && kinds[kinds.length - 1] === 'text', `lookups, the products card, then the words (got ${kinds?.join(', ')})`);
+
+      const second = await run({
+        store, workspace, turnId: 'turn-2', message: 'the second one, what is in the kit?',
+        script: (round, _req, onDelta) => {
+          if (round === 1) return { content: '', toolCalls: [{ id: 'c', name: 'present_card', arguments: { cardType: 'products', state: { products: [{ sku: 'SKU-DRILL-2' }] } } }] };
+          onDelta?.('The kit has a hammer drill and an impact driver.');
+          return { content: 'The kit has a hammer drill and an impact driver.', toolCalls: [] };
+        },
+      });
+      assert.match(second.history, /1\. Cordless Drill 18V \(SKU SKU-DRILL-1/, 'the first card product, numbered');
+      assert.match(second.history, /2\. Cordless Hammer Drill Kit \(SKU SKU-DRILL-2/, 'the second card product, numbered, with its SKU');
+      assert.equal(second.outcome.thread?.[0].parentId, 'turn-1:assistant', 'the new question answers the newest message');
+      assert.ok(!second.outcome.toolsCalled.some((t) => t.name === 'search_products'), 'no new search');
+      const card = second.outcome.toolsCalled.find((t) => t.name === 'present_card');
+      assert.equal(card?.ok, true, 'a product shown earlier can sit on a card after a lookup by SKU');
+      assert.equal(second.outcome.turnResult.uiInstructions?.[0]?.component, 'products');
+    });
+
+    test('a SKU the thread never showed is still refused on a card', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+      const workspace = createTestWorkspace();
+      const result = await run({
+        store, workspace, turnId: 'turn-1', message: 'show me SKU-NEVER',
+        script: (round, _req, onDelta) => {
+          if (round === 1) return { content: '', toolCalls: [{ id: 'x', name: 'present_card', arguments: { cardType: 'products', state: { products: [{ sku: 'SKU-NEVER' }] } } }] };
+          onDelta?.('I could not find that.');
+          return { content: 'I could not find that.', toolCalls: [] };
+        },
+      });
+      const card = result.outcome.toolsCalled.find((t) => t.name === 'present_card');
+      assert.equal(card?.ok, false);
+    });
+
+    test('a branch continues from an earlier message and does not see the turns after it', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+      const workspace = createTestWorkspace();
+      const plain = (text: string) => (round: number, _req: any, onDelta?: (t: string) => void) => {
+        onDelta?.(text);
+        return { content: text, toolCalls: [] };
+      };
+      await run({ store, workspace, turnId: 'turn-1', message: 'cordless drill for concrete', script: plain('Here are two options.') });
+      await run({ store, workspace, turnId: 'turn-2', message: 'something about hose reels', script: plain('We have a few hose reels.') });
+      const branch = await run({ store, workspace, turnId: 'turn-3', message: 'actually a corded drill', parentMessageId: 'turn-1:assistant', script: plain('Corded drills are in the power tools range.') });
+      assert.match(branch.history, /cordless drill for concrete/, 'the earlier message it continues from is there');
+      assert.ok(!/hose reels/.test(branch.history), 'the turn it branched away from is not');
+      assert.equal(branch.outcome.thread?.[0].parentId, 'turn-1:assistant');
+      // the next turn without a parent follows the newest message, the branch
+      const next = await run({ store, workspace, turnId: 'turn-4', message: 'and the price?', script: plain('I cannot confirm that.') });
+      assert.match(next.history, /actually a corded drill/);
+      assert.ok(!/hose reels/.test(next.history), 'the abandoned turn stays out of the path');
+    });
+
+    test('another tenant never reads this conversation, even with the same workspace id', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+      const workspace = createTestWorkspace();
+      await run({ store, workspace, turnId: 'turn-1', message: 'cordless drill for concrete', script: (r, _q, d) => { d?.('ok.'); return { content: 'ok.', toolCalls: [] }; } });
+      const other = await store.getRecentTurns('someone-else', 'test', workspace.workspaceId, 40);
+      assert.equal(other.length, 0);
+    });
+  });
+
   describe('claim guard: what the customer reads when the whole reply was removed', () => {
     const products = [
       { sku: 'SKU-DRILL-1', title: 'Cordless Drill 18V', name: 'Cordless Drill 18V', priceUSD: { min: 129 }, currency: 'NZD', inStock: true, category: 'Drills', description: 'An 18V cordless drill.' },

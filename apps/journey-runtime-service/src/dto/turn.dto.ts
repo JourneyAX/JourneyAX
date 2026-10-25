@@ -37,6 +37,8 @@ export const TurnCommandRequestSchema = z.object({
   customer_event: CustomerEventRequestSchema.optional(),
   /** The agent the customer chose; ignored unless the tenant's pack defines it. */
   agentId: z.string().max(80).regex(/^[A-Za-z0-9_.-]+$/).optional(),
+  /** The message this one answers (a branch: edit and retry). Without it the turn follows the newest message of the conversation. */
+  parentMessageId: z.string().max(160).optional(),
   inputFacts: z.record(z.string(), z.any()).optional(),
   customerContext: z.record(z.string(), z.any()).optional(),
   approvalRequestId: z.string().optional(),

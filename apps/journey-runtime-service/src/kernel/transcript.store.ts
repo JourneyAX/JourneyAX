@@ -28,6 +28,21 @@ export interface SaveTurnTranscriptInput {
   };
   retentionExpiresAt?: Date;
   metadata?: Record<string, unknown>;
+  /** The turn's messages as typed blocks; text in them is redacted like the two strings are. */
+  thread?: Array<Record<string, any>>;
+}
+
+/** The same redaction the two transcript strings get, applied to the text a thread keeps. */
+export function redactThread(thread: Array<Record<string, any>> | undefined): Array<Record<string, any>> | undefined {
+  if (!Array.isArray(thread)) return undefined;
+  return thread.map((message) => ({
+    ...message,
+    blocks: (Array.isArray(message.blocks) ? message.blocks : []).map((block: any) => {
+      if (block?.type === 'text') return { ...block, text: redactPii(String(block.text ?? '')) };
+      if (block?.type === 'action' && typeof block.detail === 'string') return { ...block, detail: redactPii(block.detail) };
+      return block;
+    }),
+  }));
 }
 
 export class TurnTranscriptStore {
@@ -101,6 +116,7 @@ export class TurnTranscriptStore {
       timestamps: input.timestamps,
       retentionExpiresAt: expiresAt,
       metadata: input.metadata,
+      ...(input.thread ? { thread: redactThread(input.thread) } : {}),
       createdAt: new Date(),
     };
 

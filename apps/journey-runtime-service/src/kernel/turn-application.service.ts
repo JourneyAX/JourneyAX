@@ -482,6 +482,7 @@ export class TurnApplicationService {
               sessionId: command.sessionId,
               agentId: (outcome.turnResult as any).metadata?.agentId || (outcome as any).agent?.agentId,
               release,
+              thread: (outcome as any).thread,
             }
           );
           this.streamCommittedFinalEvents(
@@ -1947,6 +1948,7 @@ export class TurnApplicationService {
       sessionId?: string;
       agentId?: string;
       release?: BusinessPackRelease;
+      thread?: any[];
     }
   ): Promise<void> {
     workspace.lastProcessedTurnId = turnId;
@@ -1966,6 +1968,7 @@ export class TurnApplicationService {
             customerMessage: transcriptMeta.customerMessage || '',
             assistantReply: transcriptMeta.assistantReply || '',
             agentId: transcriptMeta.agentId,
+            ...(transcriptMeta.thread ? { thread: transcriptMeta.thread } : {}),
             timestamps: {
               receivedAt: transcriptMeta.turnStartTime
                 ? new Date(transcriptMeta.turnStartTime).toISOString()

@@ -21,6 +21,7 @@ import {
   isReadOnlyTool,
   isToolAllowed,
   knownNamesOf,
+  findProductBySku,
   type AgentToolContext,
 } from './agent-tools';
 import { chooseWithheldFallback, foundMessageOf, needsRepair } from './withheld-fallback';
@@ -29,7 +30,7 @@ import { chooseCardSkus } from './auto-card';
 import { prefetchCallsFor, formatPrefetched, accessoriesCardFrom } from './event-prefetch';
 import { formatBusinessProfile } from '../kernel/business-knowledge';
 import { AgentRouter, type ResolvedAgent } from '../kernel/agent.router';
-import { readHistory, appendHistory, formatHistoryBlock, type ConversationTurnRecord } from '../conversation';
+import { readHistory, appendHistory, formatHistoryBlock, buildTurnMessages, threadFromRecords, threadPath, renderThread, shownSkus, assistantMessageId, type ConversationTurnRecord, type ThreadMessage } from '../conversation';
 import { sanitizeHistoryText } from '../conversation/history';
 import { IncrementalSentenceShaper, type ShapeContext } from '../kernel/reply-shaper';
 import { resolveTurnKind } from '../turn/turn-kind';
@@ -84,6 +85,8 @@ export interface AgentTurnOutcome {
   tokens: { prompt: number; completion: number; total: number };
   durationMs: number;
   timeToFirstTextMs?: number;
+  /** This turn as two messages of typed blocks (what the customer said or tapped; what was looked up, shown and answered), ready to be stored. */
+  thread?: ThreadMessage[];
 }
 
 /**
@@ -540,28 +543,34 @@ export class AgentTurnLoop {
     // 4. Build Messages (Conversation History + New Customer Message)
     const messages: AgentMessage[] = [];
 
-    // History from Durable Transcript Store (Task A7) with fallback to Phase 1 workspace facts
+    // History from the stored thread of this conversation (typed blocks: what was looked up, which products and questions were shown,
+    // what was worked out), along one path of it, with fallback to the workspace's own short history. A command that names an earlier
+    // message as its parent continues from there (a branch); the newest message is the default.
     let historyText = '';
+    let threadParentId: string | null = null;
+    let earlierShown = new Map<string, string>();
     if (transcriptStore) {
       try {
         const recentTurns = await transcriptStore.getRecentTurns(
           command.tenantId,
           command.environmentId || 'production',
           command.workspaceId,
-          5
+          40
         );
         if (recentTurns.length > 0) {
-          historyText = recentTurns
-            .map(
-              (t, idx) =>
-                `Turn ${idx + 1}:\nCustomer: ${sanitizeHistoryText(t.customerMessage)}\nAssistant: ${sanitizeHistoryText(t.assistantReply)}`
-            )
-            .join('\n\n');
+          const thread = threadFromRecords(recentTurns as any);
+          const wanted = (command as any).parentMessageId as string | undefined;
+          const path = threadPath(thread, wanted && thread.some((message) => message.id === wanted) ? wanted : undefined);
+          threadParentId = path[path.length - 1]?.id ?? null;
+          earlierShown = shownSkus(path);
+          const budget = release.extensions?.dialoguePolicy?.history?.maxTokens;
+          historyText = renderThread(path, { maxTokens: Number.isFinite(budget) && budget > 0 ? Math.max(budget, 1500) : undefined }).text;
         }
       } catch {
         // Fallback to workspace facts on error
       }
     }
+    toolContext.earlierShownSkus = new Set(earlierShown.keys());
 
     if (!historyText) {
       const pastTurns = readHistory(workspace?.facts);
@@ -1124,6 +1133,15 @@ function extractToolResultCount(result: any): number | undefined {
       toolContext.presentedCards.length === 0 &&
       !toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok)
     ) {
+      // A product an earlier turn showed, named again in this reply ("the second one"), is looked up by SKU so its card can follow.
+      if (earlierShown.size > 0) {
+        const earlier = chooseCardSkus({ text: finalAssistantText, turnSkus: earlierShown.keys(), catalog: new Map([...earlierShown].map(([sku, title]) => [sku, { title }])) });
+        if (earlier.basis === 'named') {
+          for (const sku of earlier.skus) {
+            try { await findProductBySku(toolContext, sku); } catch { /* the product is simply not shown again */ }
+          }
+        }
+      }
       const picked = chooseCardSkus({
         text: finalAssistantText,
         turnSkus: toolContext.turnProductSkus,
@@ -1237,6 +1255,21 @@ function extractToolResultCount(result: any): number | undefined {
       release.extensions?.dialoguePolicy?.history
     );
 
+    // The turn as messages of typed blocks, for the conversation store (only a turn with an id can be stored).
+    const thread: ThreadMessage[] | undefined = command.turnId
+      ? buildTurnMessages({
+          turnId: command.turnId,
+          parentId: threadParentId,
+          at: new Date().toISOString(),
+          customerText: customerEvent ? '' : customerQuestion,
+          ...(customerEvent ? { customerAction: { action: String(customerEvent.type), detail: customerEvent.payload?.title || customerEvent.payload?.name } } : {}),
+          tools: toolsTrace,
+          cards: toolContext.presentedCards,
+          titleOf: (sku) => toolContext.catalogProductCache.get(sku)?.title ?? earlierShown.get(sku),
+          assistantText: finalAssistantText,
+        })
+      : undefined;
+
     const totalDurationMs = Date.now() - loopStart;
 
     const uiInstructions: UIInstruction[] = toolContext.presentedCards.map((c) => ({
@@ -1290,6 +1323,7 @@ function extractToolResultCount(result: any): number | undefined {
       tokens: totalTokens,
       durationMs: totalDurationMs,
       timeToFirstTextMs: timeToFirstTextMs ?? undefined,
+      ...(thread ? { thread } : {}),
     };
   }
 }

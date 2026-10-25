@@ -69,6 +69,8 @@ export interface TurnTranscriptRecord {
   };
   retentionExpiresAt?: Date;
   metadata?: Record<string, unknown>;
+  /** The turn as messages of typed blocks (see the runtime's conversation thread); older records have none and are read from the two strings. */
+  thread?: Array<Record<string, unknown>>;
   createdAt: Date;
 }
 
