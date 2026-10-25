@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { MemoryDb, createSuite } from '@journeyax/test-support';
 import { ProjectService } from '../src/project.service';
-import { PublicationGateValidator } from '../src/publication-gate-validator';
+import { PublicationGateValidator, retargetSecretRefs } from '../src/publication-gate-validator';
 
 /**
  * The publication gate is the pre-flight every Studio publish goes through: it publishes the candidate into a throwaway store,
@@ -49,6 +49,45 @@ const throwawayStore = () => {
 };
 
 async function main() {
+  await suite.test('the staged test copy names test secrets, and nothing else about a reference changes', () => {
+    const production = { connectors: [{ secretRef: 'tenant-secret://placemakers/production/sample-connectors-key' }, { secretRef: 'tenant-secret://other-tenant/production/key' }], list: ['tenant-secret://placemakers/production/a'], note: 'tenant-secret is only text here', n: 3, flag: true, nothing: null };
+    const staged: any = retargetSecretRefs(production, 'test');
+    assert.equal(staged.connectors[0].secretRef, 'tenant-secret://placemakers/test/sample-connectors-key');
+    assert.equal(staged.connectors[1].secretRef, 'tenant-secret://other-tenant/test/key', 'the tenant stays the pack\'s own named tenant, so a cross-tenant reference still fails the rule');
+    assert.equal(staged.list[0], 'tenant-secret://placemakers/test/a');
+    assert.deepEqual({ note: staged.note, n: staged.n, flag: staged.flag, nothing: staged.nothing }, { note: 'tenant-secret is only text here', n: 3, flag: true, nothing: null });
+    assert.equal(production.connectors[0].secretRef, 'tenant-secret://placemakers/production/sample-connectors-key', 'the original is not changed');
+    assert.equal(retargetSecretRefs('vault://tenants/x/webhook-secret', 'test'), 'vault://tenants/x/webhook-secret', 'a reference of another kind is left alone');
+  });
+
+  await suite.test('a pack that names its production secrets passes the real gate, and is published with its production names', async () => {
+    const { factory } = throwawayStore();
+    const { service, db } = await createService(new PublicationGateValidator(factory));
+    await db.collection('tenant_configs').updateOne({ projectId: TENANT }, { $set: { extensions: { connectors: {
+      askVia: 'card',
+      connectors: [{ connectorId: 'crm', displayName: 'CRM', description: 'Accounts and cases.', owner: 'Sales', secretRef: 'tenant-secret://placemakers/production/sample-connectors-key', sample: true, tools: [{ name: 'find_account', sideEffect: 'read' }] }],
+      policy: [{ connectorId: 'crm', tool: '*', audience: 'staff', groups: [], state: 'allow' }],
+    } } } });
+    const published: any = await service.publishConfig(TENANT, { environmentId: 'production', publishedBy: 'human:publisher' });
+    assert.equal(published.success, true, published.message);
+    const release: any = db.dump('business_pack_releases').at(-1);
+    assert.equal(release.environmentId, 'production');
+    assert.equal(release.extensions?.connectors?.connectors?.[0]?.secretRef ?? release.pack?.extensions?.connectors?.connectors?.[0]?.secretRef, 'tenant-secret://placemakers/production/sample-connectors-key', 'the real release keeps the production name');
+  });
+
+  await suite.test('a connector whose secret belongs to another tenant still stops the publication', async () => {
+    const { factory } = throwawayStore();
+    const { service, db } = await createService(new PublicationGateValidator(factory));
+    await db.collection('tenant_configs').updateOne({ projectId: TENANT }, { $set: { extensions: { connectors: {
+      askVia: 'card',
+      connectors: [{ connectorId: 'crm', displayName: 'CRM', description: 'Accounts and cases.', owner: 'Sales', secretRef: 'tenant-secret://someone-else/production/key', tools: [{ name: 'find_account', sideEffect: 'read' }] }],
+      policy: [{ connectorId: 'crm', tool: '*', audience: 'staff', groups: [], state: 'allow' }],
+    } } } });
+    const published: any = await service.publishConfig(TENANT, { environmentId: 'production', publishedBy: 'human:publisher' });
+    assert.equal(published.success, false);
+    assert.match(String(published.message), /Cross-tenant/i);
+  });
+
   await suite.test('a publication passes the real gate: candidate, activation, rollback proof and compare-and-swap all hold', async () => {
     const { factory, stores } = throwawayStore();
     const { service, db } = await createService(new PublicationGateValidator(factory));

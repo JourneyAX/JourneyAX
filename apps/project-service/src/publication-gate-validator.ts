@@ -13,6 +13,23 @@ export type IsolatedStorageFactory = () => Promise<{
   cleanup: () => Promise<void> | void;
 }>;
 
+/**
+ * A secret is named per environment ("tenant-secret://<tenant>/<environment>/<name>"). The gate stages the candidate as a test release, and
+ * a test release carries test-environment secret names, so the staged copy is retargeted to the environment it is staged in; otherwise a
+ * pack that names its production secrets could never pass the cross-environment rule here. Only the environment part changes: another
+ * tenant, a different name or a malformed reference is left as it is and still fails. The real production publication is not touched.
+ */
+export function retargetSecretRefs<T>(value: T, environmentId: string): T {
+  if (typeof value === 'string') {
+    return value.replace(/^(tenant-secret:\/\/[^/\s]+\/)[^/\s]+(\/[^\s]+)$/, `$1${environmentId}$2`) as unknown as T;
+  }
+  if (Array.isArray(value)) return value.map((entry) => retargetSecretRefs(entry, environmentId)) as unknown as T;
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, retargetSecretRefs(entry, environmentId)])) as T;
+  }
+  return value;
+}
+
 export class PublicationGateValidator implements ReleaseValidationPort {
   constructor(
     private readonly storageFactory?: IsolatedStorageFactory,
@@ -72,7 +89,7 @@ export class PublicationGateValidator implements ReleaseValidationPort {
     try {
       // 1. Stage baseline and candidate in isolated test storage with test environment
       const candidateVersion = businessPack.manifest?.version || `1.0.${version}`;
-      const testCandidate = {
+      const testCandidate = retargetSecretRefs({
         ...businessPack,
         manifest: {
           ...businessPack.manifest,
@@ -81,7 +98,7 @@ export class PublicationGateValidator implements ReleaseValidationPort {
         },
         environmentId: 'test',
         version: candidateVersion,
-      };
+      }, 'test');
 
       const baselineVersion = '0.9.0';
       const baselinePack = {
