@@ -14,6 +14,7 @@
  * It creates test data only: customers get random passwords that are never shown, and the e-mail addresses end in example.test.
  */
 import { randomBytes } from 'node:crypto';
+import { setting } from '../../src/http';
 import type { Deps, Env, Rec } from '../../src/types';
 import { cents, must, readFlags, required, sampleCollection, slug } from './shared';
 
@@ -34,10 +35,10 @@ export async function loadCommercetools(options: { env: Env; deps: Deps; apply: 
   const { env, deps, apply } = options;
   const log = options.log ?? (() => {});
   required(env, ['COMMERCETOOLS_PROJECT_KEY', 'COMMERCETOOLS_REGION', ...(apply ? ['COMMERCETOOLS_LOADER_CLIENT_ID', 'COMMERCETOOLS_LOADER_CLIENT_SECRET'] : [])]);
-  const secrets = [env.COMMERCETOOLS_LOADER_CLIENT_SECRET ?? ''];
-  const region = env.COMMERCETOOLS_REGION!.trim();
-  const api = `${(env.COMMERCETOOLS_API_URL?.trim() || `https://api.${region}.commercetools.com`).replace(/\/$/, '')}/${env.COMMERCETOOLS_PROJECT_KEY!.trim()}`;
-  const auth = (env.COMMERCETOOLS_AUTH_URL?.trim() || `https://auth.${region}.commercetools.com`).replace(/\/$/, '');
+  const secrets = [setting(env, 'COMMERCETOOLS_LOADER_CLIENT_SECRET') ?? ''];
+  const region = setting(env, 'COMMERCETOOLS_REGION')!;
+  const api = `${(setting(env, 'COMMERCETOOLS_API_URL') || `https://api.${region}.commercetools.com`).replace(/\/$/, '')}/${setting(env, 'COMMERCETOOLS_PROJECT_KEY')}`;
+  const auth = (setting(env, 'COMMERCETOOLS_AUTH_URL') || `https://auth.${region}.commercetools.com`).replace(/\/$/, '');
 
   const sampleProducts = sampleCollection('sap-commerce', 'products').slice(0, options.products ?? 100);
   const sampleAccounts = sampleCollection('salesforce', 'accounts').slice(0, options.customers ?? 6);
@@ -48,7 +49,7 @@ export async function loadCommercetools(options: { env: Env; deps: Deps; apply: 
   log(`${apply ? 'Loading' : 'Dry run. Would load'}: 1 product type, ${sampleProducts.length} products, ${sampleAccounts.length} customers, each with 1 order and 1 open cart.`);
   if (!apply) return summary;
 
-  const basic = Buffer.from(`${env.COMMERCETOOLS_LOADER_CLIENT_ID}:${env.COMMERCETOOLS_LOADER_CLIENT_SECRET}`).toString('base64');
+  const basic = Buffer.from(`${setting(env, 'COMMERCETOOLS_LOADER_CLIENT_ID')}:${setting(env, 'COMMERCETOOLS_LOADER_CLIENT_SECRET')}`).toString('base64');
   const login = await must(deps, SYSTEM, secrets, 'POST', `${auth}/oauth/token`, { form: { grant_type: 'client_credentials' }, headers: { authorization: `Basic ${basic}` } });
   const headers = { authorization: `Bearer ${login.json?.access_token}` };
   const call = (method: string, path: string, body?: unknown, accept: number[] = []) => must(deps, SYSTEM, secrets, method, `${api}${path}`, { headers, ...(body !== undefined ? { body } : {}) }, accept);

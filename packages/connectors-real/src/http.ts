@@ -134,10 +134,32 @@ export class VendorClient {
   }
 }
 
+/**
+ * The Merchant Center hands an API client out as a block of CTP_* lines. Those names are accepted as they come, so the block can be pasted
+ * into the settings file without renaming anything. The COMMERCETOOLS_* name always wins when both are set, which is how a second, narrower
+ * client replaces the pasted one for the chat while the loader keeps the pasted (wide) one.
+ */
+const ALIASES: Record<string, string[]> = {
+  COMMERCETOOLS_PROJECT_KEY: ['CTP_PROJECT_KEY'],
+  COMMERCETOOLS_CLIENT_ID: ['CTP_CLIENT_ID'],
+  COMMERCETOOLS_CLIENT_SECRET: ['CTP_CLIENT_SECRET'],
+  COMMERCETOOLS_API_URL: ['CTP_API_URL'],
+  COMMERCETOOLS_AUTH_URL: ['CTP_AUTH_URL'],
+  COMMERCETOOLS_LOADER_CLIENT_ID: ['CTP_CLIENT_ID'],
+  COMMERCETOOLS_LOADER_CLIENT_SECRET: ['CTP_CLIENT_SECRET'],
+};
+const REGION_IN_HOST = /^https?:\/\/(?:api|auth)\.([a-z0-9.-]+?)\.commercetools\.com(?:[/:]|$)/i;
+
 /** A required setting, trimmed; undefined when missing or blank. */
 export const setting = (env: Record<string, string | undefined>, name: string): string | undefined => {
-  const value = env[name]?.trim();
-  return value ? value : undefined;
+  const value = [name, ...(ALIASES[name] ?? [])].map((candidate) => env[candidate]?.trim()).find(Boolean);
+  if (value) return value;
+  // The region is the middle of the host the API client came with (api.us-central1.gcp.commercetools.com).
+  if (name === 'COMMERCETOOLS_REGION') {
+    const host = setting(env, 'COMMERCETOOLS_API_URL') ?? setting(env, 'COMMERCETOOLS_AUTH_URL');
+    return host ? REGION_IN_HOST.exec(host)?.[1] : undefined;
+  }
+  return undefined;
 };
 
 export const settingsMissing = (env: Record<string, string | undefined>, names: string[]): string[] => names.filter((name) => !setting(env, name));

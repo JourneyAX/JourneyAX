@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ToolError, type Deps, type Rec } from '../../src/types';
-import { errorFor, redact, send, vendorMessage, type Answer } from '../../src/http';
+import { errorFor, redact, send, setting, vendorMessage, type Answer } from '../../src/http';
 
 /** The sample connectors' records (built from the PlaceMakers product and content masters, with invented orders, accounts and cases marked sample). */
 export function sampleCollection(connector: string, collection: string): Rec[] {
@@ -41,7 +41,7 @@ export async function must(deps: Deps, system: string, secrets: string[], method
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function required(env: Record<string, string | undefined>, names: string[]): void {
-  const missing = names.filter((name) => !env[name]?.trim());
+  const missing = names.filter((name) => !setting(env, name));
   if (missing.length) throw new ToolError('not_connected', `Still needed before this can run: ${missing.join(', ')}.`);
 }
 
