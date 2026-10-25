@@ -36,6 +36,11 @@ export class ApprovalService {
     return this.store.getApproval(approvalRequestId);
   }
 
+  /** Spends an approval once, if it was given for this exact tool, input, session and role and has not expired. */
+  async consumeApproved(approvalRequestId: string, toolId: string, input: unknown, ctx: ExecutionContext): Promise<boolean> {
+    return this.store.consumeApproved(approvalRequestId, toolId, input, ctx);
+  }
+
   async decide(
     tenantId: string,
     environmentId: EnvironmentId,

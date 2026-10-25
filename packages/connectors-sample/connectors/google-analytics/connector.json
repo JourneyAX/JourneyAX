@@ -1,0 +1,183 @@
+{
+  "connectorId": "google-analytics",
+  "title": "Google Analytics (sample)",
+  "standsInFor": "Google Analytics 4, Tag Manager and Search Console: web traffic and search",
+  "description": "Web traffic by page and by day, top searches and conversions by channel.",
+  "minimums": {
+    "daily_traffic": 25,
+    "page_traffic": 25,
+    "search_terms": 25,
+    "channel_conversions": 25
+  },
+  "tools": [
+    {
+      "name": "traffic_by_page",
+      "description": "Views and visitors for pages of the website, busiest first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pathContains": {
+            "type": "string",
+            "description": "Optional words in the page address."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "pathContains": "online"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "page_traffic",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "pathContains",
+            "field": "path",
+            "match": "contains"
+          }
+        ],
+        "sort": {
+          "field": "views",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "top_searches",
+      "description": "The searches that bring people to the website from a search engine, with clicks and position.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {},
+      "op": {
+        "kind": "find",
+        "collection": "search_terms",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "clicks",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "daily_traffic",
+      "description": "Sessions, visitors and conversions day by day, newest first. Narrow with from and to dates (YYYY-MM-DD).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "First date."
+          },
+          "to": {
+            "type": "string",
+            "description": "Last date."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 60).",
+            "minimum": 1,
+            "maximum": 60
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "limit": 7
+      },
+      "op": {
+        "kind": "find",
+        "collection": "daily_traffic",
+        "limit": {
+          "arg": "limit",
+          "default": 14,
+          "max": 60
+        },
+        "filters": [
+          {
+            "arg": "from",
+            "field": "date",
+            "match": "gte"
+          },
+          {
+            "arg": "to",
+            "field": "date",
+            "match": "lte"
+          }
+        ],
+        "sort": {
+          "field": "date",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "conversion_summary",
+      "description": "Sessions and conversions for each channel (search, direct, email, paid).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {},
+      "op": {
+        "kind": "aggregate",
+        "collection": "channel_conversions",
+        "groupBy": "channel",
+        "metrics": [
+          {
+            "name": "sessions",
+            "op": "sum",
+            "field": "sessions"
+          },
+          {
+            "name": "conversions",
+            "op": "sum",
+            "field": "conversions"
+          }
+        ],
+        "sort": {
+          "field": "conversions",
+          "order": "desc"
+        },
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        }
+      }
+    }
+  ]
+}

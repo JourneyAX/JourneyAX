@@ -46,6 +46,8 @@ import { buildReview, type ReviewLine, type ReviewState, type ReviewSuggestion }
 import type { LastProducts } from './auto-card';
 import { addOtherOption, checkShelfQuestions, type QuestionCardSettings, type Shelf } from './question-shelves';
 import { connectorWordsForLocale } from '../capabilities/handlers/locale-stemmer';
+import { CONNECTOR_META_TOOL_DEFINITIONS, executeConnectorMetaTool, isConnectorMetaTool } from './connector-tools';
+import type { ConnectorPerson, ConnectorRuntime } from '../kernel/connector.runtime';
 
 export interface AgentToolContext {
   tenantId: string;
@@ -55,6 +57,8 @@ export interface AgentToolContext {
   correlationId: string;
   principalId?: string;
   principalRole?: string;
+  /** Who is asking, as far as groups and audience go: what the connector policy is worked out from. Absent: a shopper with no groups. */
+  principal?: ConnectorPerson;
   idempotencyKey?: string;
   release: BusinessPackRelease;
   workspace?: WorkspaceState | null;
@@ -102,6 +106,10 @@ export interface AgentToolContext {
   agentSkillIds?: string[];
   /** Skills the agent opened this turn (use_skill), for the trace. */
   usedSkillIds?: Set<string>;
+  /** Reaches connectors (other systems over MCP). Absent: the connector tools are not offered. */
+  connectorRuntime?: ConnectorRuntime;
+  /** Connectors the agent loaded or called this turn, for the trace. */
+  usedConnectorIds?: Set<string>;
   /** The quantity estimates of this turn by SKU: a quantity card shows only a number the estimate tool returned. */
   lastEstimates?: Map<string, Extract<QuantityEstimate, { ok: true }> & { title: string; unitLabel: string; working: Array<{ label: string; value: string }>; ctaLabel: string }>;
   /** The picture made this turn: a picture card shows only this one. */
@@ -929,6 +937,8 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
       required: [],
     },
   },
+  // Generic tools for reaching connectors; offered only when the pack declares connectors this person may use.
+  ...CONNECTOR_META_TOOL_DEFINITIONS,
 ];
 
 /**
@@ -943,6 +953,8 @@ export function isReadOnlyTool(toolName: string): boolean {
     'add_to_quote',
     'update_cart',
     'add_to_cart',
+    // A connector tool may change data in the other system, so connector calls run one at a time.
+    'call_connector_tool',
   ]);
   return !mutatingTools.has(toolName);
 }
@@ -955,10 +967,10 @@ export function isReadOnlyTool(toolName: string): boolean {
  * A tool whose state for this person is "ask first" does not run: the call is kept by the server and a card asks the person to allow it
  * once (see confirmation.ts). The model is told nothing has run and to wait. Without somewhere to keep the call it fails closed.
  */
-function holdForConfirmation(toolName: string, args: Record<string, any>, prompt: string | undefined, ctx: AgentToolContext): any {
+function holdForConfirmation(toolName: string, args: Record<string, any>, prompt: string | undefined, ctx: AgentToolContext, detailsFrom?: Record<string, unknown>): any {
   if (!ctx.workspace) return { ok: false, error: 'This needs the person\'s yes and there is nowhere to keep the question, so it was not done. Say you cannot do it here.' };
   const wording = ctx.confirmationWording || {};
-  const { pending, reused } = createPendingConfirmation(ctx.workspace as any, { toolId: toolName, args, summary: prompt || defaultPrompt(wording), principalId: ctx.principalId || 'anonymous' });
+  const { pending, reused } = createPendingConfirmation(ctx.workspace as any, { toolId: toolName, args, summary: prompt || defaultPrompt(wording), principalId: ctx.principalId || 'anonymous', ...(detailsFrom ? { detailsFrom } : {}) });
   if (!reused) {
     const state = confirmCardState(pending, wording);
     ctx.presentedCards.push({ cardType: 'confirm', state });
@@ -2158,6 +2170,15 @@ export async function executeAgentTool(
           message: `No verified warranty certificate registered for '${target}'. Please consult store staff.`,
         },
       };
+    }
+
+    case 'list_connectors':
+    case 'get_connector_tools':
+    case 'call_connector_tool': {
+      return executeConnectorMetaTool(toolName, args, ctx, makeExecContext(ctx) as any, {
+        confirmed: options.confirmed === true,
+        hold: (heldArgs, details, prompt) => holdForConfirmation(toolName, heldArgs, prompt, ctx, details),
+      });
     }
 
     case 'use_skill': {

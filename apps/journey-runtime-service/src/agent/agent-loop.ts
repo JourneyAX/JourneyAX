@@ -42,6 +42,8 @@ import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-c
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { CapabilityGateway } from '../kernel/capability.gateway';
+import { connectorSummaries, type ConnectorRuntime, type ConnectorSummary } from '../kernel/connector.runtime';
+import { formatConnectors, isConnectorMetaTool } from './connector-tools';
 import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { TurnTranscriptStore } from '../kernel/transcript.store';
@@ -60,6 +62,8 @@ export interface AgentTurnOptions {
   knowledgeSearchHandler?: KnowledgeSearchHandler;
   knowledgeControlPlane?: KnowledgeControlPlanePort;
   capabilityGateway?: CapabilityGateway;
+  /** Reaches connectors. Defaults to the capability gateway's own; absent from both, no connector tool is offered. */
+  connectorRuntime?: ConnectorRuntime;
   approvalService?: ApprovalService;
   executionRepo?: ExecutionRepository;
   transcriptStore?: TurnTranscriptStore;
@@ -327,6 +331,8 @@ export function buildAgentSystemPrompt(params: {
   okfContent?: OkfReleaseContent | null;
   /** Who is talking: decides which skills they have and how each is carried. Absent: a shopper. */
   person?: SkillPerson;
+  /** The connectors this person can use, named and described (their tools are loaded on request). */
+  connectors?: ConnectorSummary[];
 }): string {
   const platform = (params.platformPrompt || GENERIC_PLATFORM_OPERATING_PROMPT).trim();
   const agentBlock = formatAgentInstructions(params.resolvedAgent);
@@ -334,7 +340,9 @@ export function buildAgentSystemPrompt(params: {
   const profileBlock = formatBusinessProfile(params.release, params.okfContent);
   const skillsBlock = formatAgentSkills(params.release, params.resolvedAgent.agent, params.person);
 
-  const sections = [platform, agentBlock, skillsBlock, personaBlock, profileBlock].filter(Boolean);
+  const connectorsBlock = formatConnectors(params.connectors ?? []);
+
+  const sections = [platform, agentBlock, skillsBlock, connectorsBlock, personaBlock, profileBlock].filter(Boolean);
   return sections.join('\n\n');
 }
 
@@ -509,6 +517,10 @@ export class AgentTurnLoop {
       }
     }
 
+    // Connectors this person may use (from the pack's registry and who they are). With none, no connector tool or prompt text exists.
+    const connectorRuntime = options.connectorRuntime ?? capabilityGateway?.getConnectorRuntime?.();
+    const connectors = connectorRuntime ? connectorSummaries(release, { audience: principal.audience, groups: principal.groups }) : [];
+
     // 2. Prepare Tool Context (server-enforced tenant isolation)
     const toolContext: AgentToolContext = {
       tenantId: command.tenantId,
@@ -518,6 +530,7 @@ export class AgentTurnLoop {
       correlationId: command.correlationId || `corr-${Date.now()}`,
       principalId: command.principalId || (command as any).userId || (command as any).customerId || 'customer',
       principalRole: (command as any).principalRole || (command as any).role || 'customer',
+      principal: { audience: principal.audience, groups: principal.groups },
       idempotencyKey: command.idempotencyKey || (command as any).turnId,
       release,
       workspace,
@@ -550,6 +563,8 @@ export class AgentTurnLoop {
       toolStateOf,
       confirmationWording: toolStatesTable?.wording,
       usedSkillIds: new Set<string>(),
+      connectorRuntime,
+      usedConnectorIds: new Set<string>(),
       customerEvent,
       signal,
       emitTrace: (name, payload) => sink('trace', { [name]: payload }),
@@ -561,6 +576,7 @@ export class AgentTurnLoop {
       release,
       okfContent,
       person,
+      connectors,
     });
 
     // 4. Offer only tools in agent.allowedTools
@@ -568,8 +584,11 @@ export class AgentTurnLoop {
     const toolDefs = getAgentToolDefinitions(release, okfContent);
     // use_skill is platform plumbing for the agent's own on-demand skills: offered exactly when it has some, whatever allowedTools says.
     const hasOnDemandSkills = personSkills.some((entry) => entry.tier === 'on_demand');
+    // The connector tools are offered when the person has a connector AND the agent's tool list names them (or allows everything).
+    const hasConnectors = connectors.length > 0;
+    const toolOffered = (name: string) => (name === 'use_skill' ? hasOnDemandSkills : isConnectorMetaTool(name) ? hasConnectors && isToolAllowed(name, allowedTools, release) : isToolAllowed(name, allowedTools, release));
     const availableTools = toolDefs
-      .filter((t) => (t.name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(t.name, allowedTools, release)))
+      .filter((t) => toolOffered(t.name))
       .filter((t) => !toolStateOf || toolStateOf(t.name).state !== 'blocked');
     if (process.env.AGENT_TRACE_RESULTS) console.log(`[agent] ${resolvedAgent.agent.agentId} offered ${availableTools.length} tools: ${availableTools.map((t) => t.name).join(', ')}; skills: ${(resolvedAgent.agent.skills || []).join(', ')}`);
 
@@ -984,7 +1003,7 @@ function extractToolResultCount(result: any): number | undefined {
       // If the model called tools
       if (roundToolCalls.length > 0) {
         // Enforce allowed tools: partition into authorized and unauthorized
-        const callAllowed = (name: string) => (name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(name, allowedTools, release));
+        const callAllowed = toolOffered;
         const authorizedCalls = roundToolCalls.filter((tc) => callAllowed(tc.name));
         const unauthorizedCalls = roundToolCalls.filter((tc) => !callAllowed(tc.name));
 

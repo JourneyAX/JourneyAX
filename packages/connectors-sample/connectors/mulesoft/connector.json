@@ -1,0 +1,109 @@
+{
+  "connectorId": "mulesoft",
+  "title": "MuleSoft (sample)",
+  "standsInFor": "MuleSoft: the integration layer between commerce, CRM and ERP",
+  "description": "Whether an order has reached the other systems, and the log of integration runs.",
+  "minimums": {
+    "sync_runs": 25
+  },
+  "tools": [
+    {
+      "name": "order_sync_status",
+      "description": "Whether an order has been passed on to the other systems, run by run, newest first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "The order id."
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "orderId": "$first:sync_runs.orderId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "sync_runs",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "orderId",
+            "field": "orderId"
+          }
+        ],
+        "sort": {
+          "field": "startedAt",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "integration_run_log",
+      "description": "The log of integration runs, newest first, by flow or status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "flow": {
+            "type": "string",
+            "description": "Optional flow name."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional status.",
+            "enum": [
+              "success",
+              "failed",
+              "retrying"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "status": "failed"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "sync_runs",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "flow",
+            "field": "flow"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          }
+        ],
+        "sort": {
+          "field": "startedAt",
+          "order": "desc"
+        }
+      }
+    }
+  ]
+}

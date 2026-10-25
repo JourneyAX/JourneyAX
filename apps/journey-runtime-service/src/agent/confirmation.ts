@@ -71,7 +71,7 @@ function writePending(workspace: { facts?: Record<string, any> }, list: PendingC
 /** Keeps a call to be confirmed. The same call asked twice (a model that repeats itself) reuses the one confirmation. */
 export function createPendingConfirmation(
   workspace: { facts?: Record<string, any> },
-  input: { toolId: string; args: Record<string, unknown>; summary: string; principalId: string },
+  input: { toolId: string; args: Record<string, unknown>; summary: string; principalId: string; /** What the card lists, when the arguments themselves are not what the person should read. */ detailsFrom?: Record<string, unknown> },
   now: Date = new Date(),
 ): { pending: PendingConfirmation; reused: boolean } {
   const live = readPending(workspace).filter((entry) => Date.parse(entry.expiresAt) > now.getTime());
@@ -84,7 +84,7 @@ export function createPendingConfirmation(
     args: JSON.parse(JSON.stringify(input.args ?? {})),
     argsHash,
     summary: clip(input.summary, 300),
-    details: [{ label: defaults.action, value: humanise(input.toolId) }, ...detailsOf(input.args)].slice(0, 7),
+    details: input.detailsFrom ? detailsOf(input.detailsFrom).slice(0, 7) : [{ label: defaults.action, value: humanise(input.toolId) }, ...detailsOf(input.args)].slice(0, 7),
     principalId: input.principalId,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + CONFIRMATION_TTL_MS).toISOString(),

@@ -17,6 +17,7 @@ import { AgentAccessSchema } from './access.schema';
 import { SkillAccessSchema } from './skill-access.schema';
 import { ToolStatesSchema } from './tool-states.schema';
 import { FormsSchema } from './forms.schema';
+import { ConnectorsSchema } from './connectors.schema';
 import { CatalogMappingSchema } from '../catalog-mapping';
 
 export const RoutingPolicySchema = z.object({
@@ -280,6 +281,7 @@ export const BusinessPackContentSchema = z.object({
       skillAccess: SkillAccessSchema.optional(),
       toolStates: ToolStatesSchema.optional(),
       forms: FormsSchema.optional(),
+      connectors: ConnectorsSchema.optional(),
     })
     .catchall(z.any()),
   factRegistry: FactRegistrySchema.optional(),

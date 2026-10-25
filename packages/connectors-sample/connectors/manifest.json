@@ -1,0 +1,16 @@
+{
+  "seedTenantId": "placemakers",
+  "connectors": [
+    "sap-commerce",
+    "salesforce",
+    "ace-erp",
+    "mulesoft",
+    "salsify",
+    "bloomreach",
+    "marketing-cloud",
+    "power-bi",
+    "google-analytics",
+    "uxcam",
+    "location"
+  ]
+}

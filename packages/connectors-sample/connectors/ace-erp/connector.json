@@ -1,0 +1,211 @@
+{
+  "connectorId": "ace-erp",
+  "title": "ACE ERP (sample)",
+  "standsInFor": "ACE ERP: stock, trade prices, deliveries and account balances",
+  "description": "Stock by branch, trade prices, deliveries and account balances.",
+  "minimums": {
+    "branches": 25,
+    "stock": 100,
+    "deliveries": 25,
+    "price_list": 25,
+    "account_balances": 25
+  },
+  "tools": [
+    {
+      "name": "stock_by_branch",
+      "description": "Stock on hand for a product, branch by branch. Narrow it to one branch with branchCode.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          },
+          "branchCode": {
+            "type": "string",
+            "description": "Optional branch code."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:stock.sku"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "stock",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "sku",
+            "field": "sku"
+          },
+          {
+            "arg": "branchCode",
+            "field": "branchCode"
+          }
+        ],
+        "sort": {
+          "field": "available",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "trade_price",
+      "description": "The retail price and the trade prices by tier (bronze, silver, gold) for a product.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:price_list.sku"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "price_list",
+        "key": "sku",
+        "arg": "sku"
+      }
+    },
+    {
+      "name": "delivery_status",
+      "description": "Where a delivery is. Give the delivery id or the order id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "deliveryId": {
+            "type": "string",
+            "description": "The delivery id, for example DEL-30001."
+          },
+          "orderId": {
+            "type": "string",
+            "description": "The order the delivery is for."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "deliveryId": "$first:deliveries.deliveryId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "deliveries",
+        "key": "deliveryId",
+        "arg": "deliveryId",
+        "altKeys": [
+          {
+            "key": "orderId",
+            "arg": "orderId"
+          }
+        ]
+      }
+    },
+    {
+      "name": "account_balance",
+      "description": "The balance, credit limit and overdue amount of a trade account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0001."
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "$first:account_balances.accountId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "account_balances",
+        "key": "accountId",
+        "arg": "accountId"
+      }
+    },
+    {
+      "name": "list_branches",
+      "description": "List branches, or find one by name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional words from the branch name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "dunedin"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "branches",
+        "limit": {
+          "arg": "limit",
+          "default": 25,
+          "max": 25
+        },
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "name",
+              "weight": 3
+            },
+            {
+              "field": "code",
+              "weight": 3
+            }
+          ]
+        },
+        "sort": {
+          "field": "name"
+        }
+      }
+    }
+  ]
+}
