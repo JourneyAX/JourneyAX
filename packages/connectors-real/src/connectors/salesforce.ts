@@ -64,9 +64,9 @@ export function salesforce(env: Env, deps: Deps): RealConnector {
     return { totalSize: Number(answer.totalSize) || 0, records: Array.isArray(answer.records) ? answer.records : [] };
   };
 
-  const accountFields = ['Id', 'Name', 'Type', 'Industry', 'Phone', 'BillingCity', 'Rating', 'Owner.Name', ...(tierField ? [tierField] : []), ...(branchField ? [branchField] : [])];
+  const accountFields = ['Id', 'Name', 'Type', 'Industry', 'Phone', 'BillingCity', 'Owner.Name', ...(tierField ? [tierField] : []), ...(branchField ? [branchField] : [])];
   const accountRecord = (row: any): Rec => compact({
-    accountId: row.Id, name: row.Name, type: row.Type, industry: row.Industry, phone: row.Phone, city: row.BillingCity, rating: row.Rating,
+    accountId: row.Id, name: row.Name, type: row.Type, industry: row.Industry, phone: row.Phone, city: row.BillingCity,
     owner: row.Owner?.Name, tier: tierField ? row[tierField] : undefined, homeBranchCode: branchField ? row[branchField] : undefined,
   });
   const caseRecord = (row: any, full = false): Rec => compact({

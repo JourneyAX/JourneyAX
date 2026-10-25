@@ -6,7 +6,7 @@ const SECRET = 'sf-client-secret-very-private-456';
 const ACCOUNT = '0015g00000AbCdEfGh';
 const CASE_ID = '5005g00000XyZaBcDe';
 
-const accountRow = { Id: ACCOUNT, Name: 'Hamilton Builders Ltd', Type: 'Customer', Industry: 'Construction', Phone: '07 555 0100', BillingCity: 'Hamilton', Rating: 'Hot', Owner: { Name: 'Sam Seller' }, Customer_Tier__c: 'Gold', Home_Branch__c: 'HAM01' };
+const accountRow = { Id: ACCOUNT, Name: 'Hamilton Builders Ltd', Type: 'Customer', Industry: 'Construction', Phone: '07 555 0100', BillingCity: 'Hamilton', Owner: { Name: 'Sam Seller' }, Customer_Tier__c: 'Gold', Home_Branch__c: 'HAM01' };
 const caseRow = { Id: CASE_ID, CaseNumber: '00001026', Subject: 'Delivery arrived damaged', Description: 'Two sheets cracked', Status: 'Working', Priority: 'High', Origin: 'Phone', AccountId: ACCOUNT, Account: { Name: 'Hamilton Builders Ltd' }, Owner: { Name: 'Casey Support' }, Contact: { Name: 'Alex Trade' }, CreatedDate: '2026-10-20T01:00:00.000+0000', ClosedDate: null };
 
 /** A pretend Salesforce: signs in, answers SOQL by what it asks for, and records everything. */
@@ -81,8 +81,8 @@ async function main() {
   await t.test('find_account builds a safe SOQL query: names are escaped so a quote or % cannot change the query', async () => {
     const { vendor, call } = await setup();
     const { payload } = (await call('find_account', { query: "O'Brien & 50%_off" })) as any;
-    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Rating, Owner.Name FROM Account WHERE Name LIKE '%O\\'Brien & 50\\%\\_off%' ORDER BY Name ASC LIMIT 10");
-    assert.deepEqual(payload.records[0], { accountId: ACCOUNT, name: 'Hamilton Builders Ltd', type: 'Customer', industry: 'Construction', phone: '07 555 0100', city: 'Hamilton', rating: 'Hot', owner: 'Sam Seller' });
+    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Owner.Name FROM Account WHERE Name LIKE '%O\\'Brien & 50\\%\\_off%' ORDER BY Name ASC LIMIT 10");
+    assert.deepEqual(payload.records[0], { accountId: ACCOUNT, name: 'Hamilton Builders Ltd', type: 'Customer', industry: 'Construction', phone: '07 555 0100', city: 'Hamilton', owner: 'Sam Seller' });
     await call('find_account', { query: "x\\' OR Name != '" });
     assert.ok(soqlSeen(vendor)[1]!.includes("'%x\\\\\\' OR Name != \\'%'"), 'a backslash and a quote are both escaped');
     await vendor.close();
@@ -91,7 +91,7 @@ async function main() {
   await t.test('find_account can filter on a tier and a home branch when those custom fields are named, and they come back in the record', async () => {
     const { vendor, call } = await setup({ SALESFORCE_TIER_FIELD: 'Customer_Tier__c', SALESFORCE_BRANCH_FIELD: 'Home_Branch__c' });
     const { payload } = (await call('find_account', { tier: 'Gold', branchCode: 'HAM01', limit: 3 })) as any;
-    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Rating, Owner.Name, Customer_Tier__c, Home_Branch__c FROM Account WHERE Customer_Tier__c = 'Gold' AND Home_Branch__c = 'HAM01' ORDER BY Name ASC LIMIT 3");
+    assert.equal(soqlSeen(vendor)[0], "SELECT Id, Name, Type, Industry, Phone, BillingCity, Owner.Name, Customer_Tier__c, Home_Branch__c FROM Account WHERE Customer_Tier__c = 'Gold' AND Home_Branch__c = 'HAM01' ORDER BY Name ASC LIMIT 3");
     assert.equal(payload.records[0].tier, 'Gold');
     assert.equal(payload.records[0].homeBranchCode, 'HAM01');
     await vendor.close();
