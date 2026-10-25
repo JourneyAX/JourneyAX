@@ -45,6 +45,8 @@ const agentDraft = readVariant('PLACEMAKERS_DRAFT_FILE', 'docs/agent-instruction
 const agentSettings = readVariant('PLACEMAKERS_SETTINGS_FILE', 'docs/agent-instructions/placemakers-agent-settings.json');
 export const ENVIRONMENT = 'test';
 /** The evaluation pack has no connector registry (its secrets name the production environment), so the plugins it carries name no connector. */
+/** A draft that does not carry an extension (an older pack has no forms or plugins) leaves it out, instead of saving it as an empty value the pack schema refuses. */
+const definedOnly = (values: Record<string, unknown>) => Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
 const withoutConnectors = (plugins: any) => (plugins ? { ...plugins, plugins: plugins.plugins.map((plugin: any) => ({ ...plugin, provides: { ...plugin.provides, connectors: [] } })) } : undefined);
 
 // ── catalogue fixture, shaped like the real products collection (path, category, price in priceUSD.min, currency per product) ──
@@ -195,7 +197,7 @@ export function projectDoc(agentMode = false) {
     extensions: {
       ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true }, interpretationPolicy: agentSettings.interpretationPolicy } : {}),
       ...(agentMode && Array.isArray(agentDraft.skills) ? { skills: agentDraft.skills } : {}),
-      ...(agentMode ? { quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser, productGuides: agentDraft.extensions?.productGuides, contentPages: agentDraft.extensions?.contentPages, checkoutReview: agentDraft.extensions?.checkoutReview, eventPrefetch: agentDraft.extensions?.eventPrefetch, voice: agentDraft.extensions?.voice, forms: agentDraft.extensions?.forms, plugins: withoutConnectors(agentDraft.extensions?.plugins), agentAccess: agentDraft.extensions?.agentAccess } : {}),
+      ...(agentMode ? definedOnly({ quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser, productGuides: agentDraft.extensions?.productGuides, contentPages: agentDraft.extensions?.contentPages, checkoutReview: agentDraft.extensions?.checkoutReview, eventPrefetch: agentDraft.extensions?.eventPrefetch, voice: agentDraft.extensions?.voice, forms: agentDraft.extensions?.forms, plugins: withoutConnectors(agentDraft.extensions?.plugins), agentAccess: agentDraft.extensions?.agentAccess }) : {}),
       customerEvents: {
         autoTurnEvents: ['addToQuote', 'quote.added', 'addToCart'],
         recordOnlyEvents: ['removeFromQuote', 'removeFromCart', 'like'],
