@@ -240,4 +240,36 @@ describe('The real connectors, end to end with a scripted model and pretend vend
       assert.ok(!JSON.stringify(value).includes('ct-token') && !JSON.stringify(value).includes('sf-token'), `${label} hold no vendor token`);
     }
   });
+
+  test('a model that ends a later round by promising its next step ("Now, I will look for their open cases.") is asked once to take it, and the turn goes on', async () => {
+    const run = await turn([
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'salesforce', tool: 'find_account', arguments: { query: 'Aldridge' } })] }),
+      () => ({ content: 'I found the Aldridge & Yardley account. Now, I will look for their open cases.' }),
+      () => ({ toolCalls: [call('c2', 'call_connector_tool', { connector: 'salesforce', tool: 'list_cases', arguments: { status: 'open' } })] }),
+      () => ({ content: 'They have no open cases.' }),
+    ], people.sales);
+    assert.equal(run.requests.length, 4, 'the model was asked a fourth time, after the nudge');
+    assert.match(String(run.requests[2].messages.at(-1)?.content), /You said you would take another step/);
+    assert.deepEqual(run.toolResults.map((result) => result.id), ['c1', 'c2'], 'the second step was taken');
+    assert.match(run.reply, /no open cases/);
+  });
+
+  test('the nudge is given once: a model that promises again and stops is let go, and a model that has finished is never nudged', async () => {
+    const stuck = await turn([
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'salesforce', tool: 'find_account', arguments: { query: 'Aldridge' } })] }),
+      () => ({ content: 'Now, I will look for their open cases.' }),
+      () => ({ content: 'Next, I will check the cases.' }),
+    ], people.sales);
+    assert.equal(stuck.requests.length, 3, 'one nudge and no more');
+    const done = await turn([
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'salesforce', tool: 'find_account', arguments: { query: 'Aldridge' } })] }),
+      () => ({ content: 'I found one account. Let me know if you would like its cases.' }),
+    ], people.sales);
+    assert.equal(done.requests.length, 2, 'a finished answer ends the turn');
+    const handsOff = await turn([
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'salesforce', tool: 'find_account', arguments: { query: 'Aldridge' } })] }),
+      () => ({ content: 'I will check with the branch and get back to you.' }),
+    ], people.sales);
+    assert.equal(handsOff.requests.length, 2, 'a promise that a person will follow up is an answer');
+  });
 });

@@ -51,6 +51,7 @@ import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository'
 import type { ProductGuideRepository } from '../kernel/product-guide.repository';
 import type { ContentPageRepository } from '../kernel/content-page.repository';
 import type { FormSubmissionRepository } from '../kernel/form-submission.repository';
+import { announcesNextStep, STALL_NUDGE } from './stall';
 
 export interface AgentTurnOptions {
   command: TurnCommand;
@@ -872,6 +873,7 @@ function extractToolResultCount(result: any): number | undefined {
     let repairedByModel = false;
     let handoffExplained = false;
     let isFinished = false;
+    let stallNudges = 0;
     let timeToFirstTextMs: number | null = null;
 
     // Incremental sentence shaper active across all rounds
@@ -995,6 +997,15 @@ function extractToolResultCount(result: any): number | undefined {
             });
             continue;
           }
+        }
+
+        // A model that ends a later round by promising its next step ("Now, I will look for their open cases.") has not finished.
+        // Ask it once to take the step, or to answer if it already has what it needs. Its text so far has already reached the person.
+        if (round > 0 && !isLastAllowedRound && !handoffExplained && stallNudges < 1 && announcesNextStep(roundContent)) {
+          stallNudges++;
+          messages.push({ role: 'assistant', content: roundContent });
+          messages.push({ role: 'user', content: STALL_NUDGE });
+          continue;
         }
 
         // Release buffered round-0 text if accepted (e.g. conversational greeting)
