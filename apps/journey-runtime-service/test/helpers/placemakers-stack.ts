@@ -150,7 +150,10 @@ export class FixedGateway extends ModelGateway {
  */
 export function projectDoc(agentMode = false) {
   const trigger = (id: string, label: string) => ({ id: `t-${id}`, data: { kind: 'trigger.intent', stageId: `${id}_start`, label } });
-  const ai = process.env.OPENAI_API_KEY
+  // MODEL_PROVIDER lets a run use another provider's model (for example anthropic with MODEL_NAME=claude-sonnet-5-5) through the same pack route.
+  const ai = process.env.MODEL_PROVIDER
+    ? { provider: process.env.MODEL_PROVIDER, model: process.env.MODEL_NAME || 'claude-sonnet-5-5', ...(agentSettings.modelPolicyOverrides ? { policyOverrides: agentSettings.modelPolicyOverrides } : {}) }
+    : process.env.OPENAI_API_KEY
     ? { provider: 'openai', model: process.env.MODEL_NAME || 'gpt-4o-mini', ...(agentSettings.modelPolicyOverrides ? { policyOverrides: agentSettings.modelPolicyOverrides } : {}) }
     : { provider: 'anthropic', model: 'claude-3-5-sonnet' };
   return {

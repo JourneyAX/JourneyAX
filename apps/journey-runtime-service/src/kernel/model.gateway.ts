@@ -3,6 +3,15 @@ import { ModelRouter, TaskType, ModelRouteResult } from '../model/model-router';
 import { AgentRouter, ResolvedAgent } from './agent.router';
 import { WorkspaceState } from '@journeyax/journey-core';
 
+/**
+ * The temperature part of a Claude request. Claude's newer models (the 5.x family) refuse the setting ("`temperature` is deprecated for
+ * this model", HTTP 400), so none is sent to them; earlier models still take the pack's value.
+ */
+export function anthropicTemperature(model: string, temperature: number | undefined): { temperature?: number } {
+  if (/^claude-[a-z]+-5(?:-|$)/i.test(model)) return {};
+  return { temperature: temperature ?? 0.2 };
+}
+
 export class ModelGatewayError extends Error {
   constructor(
     message: string,
@@ -572,7 +581,7 @@ export class ModelGateway {
             model: route.model,
             system: req.systemPrompt,
             messages: [{ role: 'user', content: req.prompt }],
-            temperature: route.temperature ?? 0.2,
+            ...anthropicTemperature(route.model, route.temperature),
             max_tokens: route.maxOutputTokens,
             stream: true,
           }),
@@ -837,7 +846,7 @@ export class ModelGateway {
           messages: anthropicMessages,
           stream: true,
           max_tokens: route.maxOutputTokens || 4096,
-          temperature: route.temperature ?? 0.2,
+          ...anthropicTemperature(route.model, route.temperature),
         };
         if (req.systemPrompt) payload.system = req.systemPrompt;
         if (req.tools && req.tools.length > 0) {
@@ -1076,7 +1085,7 @@ export class ModelGateway {
             model: route.model,
             system: req.systemPrompt,
             messages: [{ role: 'user', content: req.prompt }],
-            temperature: route.temperature ?? 0.2,
+            ...anthropicTemperature(route.model, route.temperature),
             max_tokens: route.maxOutputTokens,
           }),
         });
