@@ -1655,6 +1655,20 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.doesNotMatch(claimed.prompt, /You help staff with orders\./, 'a shopper who also carries a staff group is still a shopper');
       });
 
+      test('the publication check refuses a table that names an unknown agent, gives shoppers groups, or leaves shoppers no agent or no default', () => {
+        const asPack = (release: any) => ({ modelPolicy: { policies: [] }, capabilities: { toolDefinitions: [], toolBindings: [], stageBindings: [] }, journeys: [], rules: [], evaluations: [], agents: release.agents, extensions: release.extensions }) as any;
+        const problems = (table?: any[]) => validateBusinessPack(asPack(packWith(table))).issues.filter((issue) => issue.path.includes('agentAccess')).map((issue) => `${issue.severity}: ${issue.message}`);
+        assert.deepEqual(problems(rows), [], 'the plan\'s example is fine');
+        assert.deepEqual(problems(undefined), [], 'no table is fine');
+        assert.match(problems([...rows, { agentId: 'ghost', audience: 'staff', groups: [], level: 'available' }]).join('\n'), /error: Access row names agent 'ghost'/);
+        assert.match(problems([...rows, { agentId: 'order-help', audience: 'shopper', groups: ['sales'], level: 'available' }]).join('\n'), /error: A shopper row .* names groups/);
+        const noShopper = problems(rows.map((row) => ({ ...row, audience: 'staff', groups: ['sales'] })));
+        assert.match(noShopper.join('\n'), /error: No agent is available to shoppers/);
+        const staffDefault = packWith([{ agentId: 'order-help', audience: 'staff', groups: ['customer-service'], level: 'default' }, { agentId: 'shopping-consultant', audience: 'staff', groups: ['sales'], level: 'available' }, { agentId: 'trade-credit-check', audience: 'shopper', groups: [], level: 'available' }]);
+        assert.match(validateBusinessPack(asPack(staffDefault)).issues.map((issue) => issue.message).join('\n'), /default agent 'shopping-consultant' is not available to shoppers/);
+        assert.match(problems([...rows, { agentId: 'order-help', audience: 'staff', groups: [], level: 'required' }]).join('\n'), /warning: 'order-help' is required for every member of staff/);
+      });
+
       test('with no agent available to a person the router fails closed instead of guessing', () => {
         const release = packWith([
           { agentId: 'shopping-consultant', audience: 'staff', groups: ['sales'], level: 'default' },

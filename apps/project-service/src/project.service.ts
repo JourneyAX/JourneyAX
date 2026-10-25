@@ -35,6 +35,7 @@ import {
   AgentAccessSchema,
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
+import { buildAccessPreview, type AccessPreview, type AccessPreviewInput } from './access-preview';
 import { PublicationGateValidator } from './publication-gate-validator';
 import { ReleaseValidationPort } from './release-validation.port';
 
@@ -1064,6 +1065,13 @@ export class ProjectService {
       return { isMember: false };
     }
     return { isMember: true, role: member.role, orgId: member.orgId, status: member.status || 'active', teams: Array.isArray(member.teams) ? member.teams : [] };
+  }
+
+  /** "View as": which agents a person of this kind would get from the project's current settings (read-only). */
+  async previewAccess(projectId: string, input: AccessPreviewInput): Promise<AccessPreview | null> {
+    const project = await this.getProject(projectId);
+    if (!project) return null;
+    return buildAccessPreview(project as any, await this.listTeams(projectId), input);
   }
 
   async addTeam(

@@ -7,6 +7,7 @@
 
 import { BusinessPackRelease } from './schemas/business-pack.schema';
 import { validateSecretReference } from './schemas/capability-binding.schema';
+import { shopperCanUse } from './access';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning';
@@ -121,6 +122,33 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
         path: 'agents',
         message: `Ambiguous default agents: defaultAgentId is '${configuredDefaultAgentId}' and multiple agents have isDefault: true (${isDefaultAgents.map((a) => a.agentId).join(', ')}).`,
       });
+    }
+  }
+
+  // 4e. Validate who may use which agent (extensions.agentAccess). A row naming an agent that is not in the pack is a typo that would
+  // silently leave an agent open or closed; a shopper row cannot name groups (groups are staff-only); and shoppers must keep an agent,
+  // including the one the pack opens by default, or the shop's own chat would have nobody to answer it.
+  const accessRows = (pack as any).extensions?.agentAccess?.rows as Array<{ agentId: string; audience: string; groups?: string[]; level: string }> | undefined;
+  if (Array.isArray(accessRows) && accessRows.length > 0) {
+    const knownAgentIds = new Set(agents.map((a) => a.agentId));
+    accessRows.forEach((row, index) => {
+      if (!knownAgentIds.has(row.agentId)) {
+        issues.push({ severity: 'error', path: `extensions.agentAccess.rows[${index}].agentId`, message: `Access row names agent '${row.agentId}', which is not in the pack.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.agentAccess.rows[${index}].groups`, message: `A shopper row for '${row.agentId}' names groups; groups apply to staff rows only.` });
+      }
+      if (row.level === 'required' && row.audience === 'staff' && (row.groups || []).length === 0) {
+        issues.push({ severity: 'warning', path: `extensions.agentAccess.rows[${index}].level`, message: `'${row.agentId}' is required for every member of staff: nobody on staff could use any other agent.` });
+      }
+    });
+    const shopperAgents = agents.filter((a) => shopperCanUse(a.agentId, (pack as any).extensions.agentAccess));
+    if (agents.length > 0 && shopperAgents.length === 0) {
+      issues.push({ severity: 'error', path: 'extensions.agentAccess', message: 'No agent is available to shoppers: the shop\'s own chat would have nobody to answer it.' });
+    }
+    const openingId = configuredDefaultAgentId && knownAgentIds.has(configuredDefaultAgentId) ? configuredDefaultAgentId : isDefaultAgents[0]?.agentId;
+    if (openingId && agents.length > 1 && shopperAgents.length > 0 && !shopperCanUse(openingId, (pack as any).extensions.agentAccess)) {
+      issues.push({ severity: 'error', path: 'extensions.agentAccess', message: `The pack's default agent '${openingId}' is not available to shoppers, so a shopper's chat could not open on it. Give shoppers a row for it or choose another default agent.` });
     }
   }
 

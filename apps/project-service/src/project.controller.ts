@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PermissionGuard, RequirePermission } from './permission.guard';
-import { UNATTRIBUTED_PRINCIPAL } from '@journeyax/shared-types';
+import { UNATTRIBUTED_PRINCIPAL, normaliseGroups } from '@journeyax/shared-types';
 import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import {
@@ -692,6 +692,21 @@ export class ProjectController {
     const project = await this.projectService.getProject(projectId);
     if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
     return this.projectService.addTeam(projectId, body.orgId || project.orgId, body);
+  }
+
+  /** "View as": which agents a shopper, or a member of staff in the given groups, would get from the project's current settings. Read-only. */
+  @Get(':projectId/access-preview')
+  @RequirePermission('project.read')
+  async accessPreview(
+    @Param('projectId') projectId: string,
+    @Query('audience') audience?: string,
+    @Query('groups') groups?: string,
+  ) {
+    const who = audience === undefined || audience === '' ? 'shopper' : audience;
+    if (who !== 'shopper' && who !== 'staff') throw new BadRequestException("audience must be 'shopper' or 'staff'.");
+    const preview = await this.projectService.previewAccess(projectId, { audience: who, groups: normaliseGroups(groups) });
+    if (!preview) throw new NotFoundException(`Project '${projectId}' not found.`);
+    return preview;
   }
 
   @Post(':projectId/verify-membership')
