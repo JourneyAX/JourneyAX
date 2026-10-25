@@ -1,5 +1,10 @@
-import { BusinessPackRelease, AgentDefinition } from '@journeyax/business-pack';
+import { BusinessPackRelease, AgentDefinition, resolveAccess } from '@journeyax/business-pack';
 import { WorkspaceState } from '@journeyax/journey-core';
+import type { Principal } from '@journeyax/shared-types';
+
+/** Who is asking, as far as choosing an agent goes. A caller that does not say is treated as a shopper: the least access, never more. */
+export type AgentChooser = Pick<Principal, 'audience' | 'groups'>;
+const ANONYMOUS_SHOPPER: AgentChooser = { audience: 'shopper', groups: [] };
 
 export interface ResolvedAgent {
   agent: AgentDefinition;
@@ -12,24 +17,42 @@ export interface ResolvedAgent {
 export class AgentRouter {
   /**
    * Resolves the primary specialist agent for the current workspace stage.
+   *
+   * Only agents this person may use are candidates (pack `extensions.agentAccess`, see `resolveAccess`): a locked agent wins, then the agent
+   * they asked for (if they may use it), then the agent the table makes their default, then the usual choice by stage and pack default
+   * among the agents they may use. A pack without the table lets everyone use every agent, as before.
    */
-  resolveAgent(release: BusinessPackRelease, workspace: WorkspaceState, requestedAgentId?: string): ResolvedAgent {
-    const agents = release.agents || [];
-    if (agents.length === 0) {
+  resolveAgent(release: BusinessPackRelease, workspace: WorkspaceState, requestedAgentId?: string, principal?: AgentChooser): ResolvedAgent {
+    const everyAgent = release.agents || [];
+    if (everyAgent.length === 0) {
       throw new Error(`Business Pack '${release.manifest.packId}' declares no agents.`);
     }
 
-    // The agent the customer chose to talk to wins, but only if this tenant's pack defines it; any other id is ignored.
-    const chosen = requestedAgentId ? agents.find((a) => a.agentId === requestedAgentId) : undefined;
-    if (chosen) {
-      return {
-        agent: chosen,
-        systemPrompt: chosen.systemPromptTemplate || chosen.purpose,
-        modelPolicyRef: chosen.modelPolicyRef,
-        allowedTools: chosen.allowedTools || [],
-        toolFirst: Boolean((chosen as any)?.toolFirst),
-      };
+    const access = resolveAccess(everyAgent, (release as any)?.extensions?.agentAccess, principal ?? ANONYMOUS_SHOPPER);
+    const mayUse = new Set(access.agents.map((entry) => entry.agentId));
+    const agents = everyAgent.filter((agent) => mayUse.has(agent.agentId));
+    if (agents.length === 0) {
+      throw new Error(`[AgentRouter] No agent of pack '${release.manifest.packId}' is available to this ${principal?.audience ?? 'shopper'}; failing closed.`);
     }
+    const resolved = (agent: AgentDefinition): ResolvedAgent => ({
+      agent,
+      systemPrompt: agent.systemPromptTemplate || agent.purpose,
+      modelPolicyRef: agent.modelPolicyRef,
+      allowedTools: agent.allowedTools || [],
+      toolFirst: Boolean((agent as any)?.toolFirst),
+    });
+
+    // A locked person has one agent and cannot ask for another.
+    if (access.lockedAgentId) return resolved(agents.find((a) => a.agentId === access.lockedAgentId) || agents[0]);
+
+    // The agent the person chose to talk to wins, but only if they may use it; any other id (another tenant's, or a staff agent they may not
+    // use) is ignored.
+    const chosen = requestedAgentId ? agents.find((a) => a.agentId === requestedAgentId) : undefined;
+    if (chosen) return resolved(chosen);
+
+    // The agent the access table opens by default for this person.
+    const tableDefault = access.defaultAgentId ? agents.find((a) => a.agentId === access.defaultAgentId) : undefined;
+    if (tableDefault) return resolved(tableDefault);
 
     const activeJourney =
       release.journeys?.find((j) => j.journeyId === workspace?.journeyId) ||

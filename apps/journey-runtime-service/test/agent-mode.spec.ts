@@ -1569,6 +1569,103 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(router.resolveAgent(release, createTestWorkspace(), 'not-in-this-pack').agent.agentId, 'general', 'an id the pack does not define is ignored');
     });
 
+    describe('who may use which agent (pack agentAccess)', () => {
+      const packWith = (rows?: any[]) => {
+        const release: any = createTestPack();
+        const base = release.agents[0];
+        release.agents = [
+          { ...base, agentId: 'shopping-consultant', isDefault: true, allowedTools: ['search_products'] },
+          { ...base, agentId: 'order-help', name: 'Order help', systemPromptTemplate: 'You help staff with orders.', allowedTools: ['get_cart'] },
+          { ...base, agentId: 'trade-credit-check', name: 'Trade credit', allowedTools: ['get_cart'] },
+        ];
+        release.extensions = { ...(release.extensions || {}), ...(rows ? { agentAccess: { rows } } : {}) };
+        return release;
+      };
+      const rows = [
+        { agentId: 'shopping-consultant', audience: 'shopper', groups: [], level: 'available' },
+        { agentId: 'order-help', audience: 'staff', groups: ['customer-service'], level: 'default' },
+        { agentId: 'trade-credit-check', audience: 'staff', groups: ['trade-desk'], level: 'available' },
+      ];
+      const shopper = { audience: 'shopper' as const, groups: [] as string[] };
+      const rep = { audience: 'staff' as const, groups: ['customer-service'] };
+      const router = new AgentRouter();
+      const pick = (release: any, requested?: string, who?: any) => router.resolveAgent(release, createTestWorkspace(), requested, who).agent.agentId;
+
+      test('a pack without the table behaves exactly as before: anyone may ask for any agent in the pack', () => {
+        const release = packWith();
+        assert.equal(pick(release), 'shopping-consultant');
+        assert.equal(pick(release, 'order-help', shopper), 'order-help');
+        assert.equal(pick(release, 'order-help'), 'order-help');
+      });
+
+      test('a shopper who asks for a staff agent by its id gets the shopping consultant instead', () => {
+        const release = packWith(rows);
+        for (const who of [shopper, undefined, { audience: 'shopper' as const, groups: ['customer-service'] }]) {
+          assert.equal(pick(release, 'order-help', who), 'shopping-consultant');
+          assert.equal(pick(release, 'trade-credit-check', who), 'shopping-consultant');
+        }
+      });
+
+      test('a customer-service rep opens on order help, may choose the shopping consultant, and cannot reach the trade desk\'s agent', () => {
+        const release = packWith(rows);
+        assert.equal(pick(release, undefined, rep), 'order-help');
+        assert.equal(pick(release, 'shopping-consultant', rep), 'shopping-consultant');
+        assert.equal(pick(release, 'trade-credit-check', rep), 'order-help', 'an agent they may not use is ignored');
+        assert.deepEqual(router.resolveAgent(release, createTestWorkspace(), undefined, rep).allowedTools, ['get_cart'], 'and they get that agent\'s own tools');
+        assert.equal(router.resolveAgent(release, createTestWorkspace(), undefined, rep).systemPrompt, 'You help staff with orders.');
+      });
+
+      test('a member of staff with no group, or an unrelated one, gets what a shopper gets', () => {
+        const release = packWith(rows);
+        assert.equal(pick(release, undefined, { audience: 'staff', groups: [] }), 'shopping-consultant');
+        assert.equal(pick(release, 'order-help', { audience: 'staff', groups: ['branch-hamilton'] }), 'shopping-consultant');
+      });
+
+      test('a required row locks the person to one agent whatever they ask for', () => {
+        const release = packWith([...rows, { agentId: 'order-help', audience: 'staff', groups: ['trainee'], level: 'required' }]);
+        assert.equal(pick(release, 'shopping-consultant', { audience: 'staff', groups: ['trainee'] }), 'order-help');
+      });
+
+      test('through the agent loop: the person\'s signed role and groups pick the agent, its prompt and its tools; a shopper asking for the staff agent does not', async () => {
+        const release = packWith(rows);
+        const talk = async (command: Record<string, unknown>) => {
+          const gateway = new ModelGateway();
+          let seen: { prompt: string; tools: string[] } | undefined;
+          gateway.mockAgentExecutor = async (req) => {
+            seen = { prompt: String(req.systemPrompt || ''), tools: (req.tools || []).map((tool: any) => tool.name) };
+            return { content: 'Hello.', toolCalls: [] };
+          };
+          await new AgentTurnLoop().execute({
+            command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: 'ws-access', sessionId: 's', correlationId: 'c', message: 'hello', ...command } as any,
+            release,
+            workspace: createTestWorkspace(),
+            modelGateway: gateway,
+            catalogSearchHandler: { execute: async () => ({ products: [], totalCount: 0 }) } as any,
+            sink: () => {},
+          });
+          return seen!;
+        };
+        const asRep = await talk({ principalId: 'rep@placemakers.test', principalRole: 'manager', principalGroups: ['customer-service'] });
+        assert.match(asRep.prompt, /You help staff with orders\./);
+        assert.ok(asRep.tools.includes('get_cart') && !asRep.tools.includes('search_products'), `a rep is offered the order-help tools: ${asRep.tools}`);
+        const asShopper = await talk({ principalId: 'anonymous', principalRole: 'customer', agentId: 'order-help' });
+        assert.doesNotMatch(asShopper.prompt, /You help staff with orders\./, 'a shopper asking for the staff agent is not given it');
+        assert.ok(asShopper.tools.includes('search_products'));
+        const claimed = await talk({ principalId: 'x@y.test', principalRole: 'customer', principalGroups: ['customer-service'], agentId: 'order-help' });
+        assert.doesNotMatch(claimed.prompt, /You help staff with orders\./, 'a shopper who also carries a staff group is still a shopper');
+      });
+
+      test('with no agent available to a person the router fails closed instead of guessing', () => {
+        const release = packWith([
+          { agentId: 'shopping-consultant', audience: 'staff', groups: ['sales'], level: 'default' },
+          { agentId: 'order-help', audience: 'staff', groups: ['sales'], level: 'available' },
+          { agentId: 'trade-credit-check', audience: 'staff', groups: ['sales'], level: 'available' },
+        ]);
+        assert.throws(() => pick(release, undefined, shopper), /No agent .* available/);
+        assert.equal(pick(release, undefined, { audience: 'staff', groups: ['sales'] }), 'shopping-consultant');
+      });
+    });
+
     test('an agent with no skills gets no skills block', () => {
       const release: any = createTestPack();
       const resolvedAgent = new AgentRouter().resolveAgent(release, createTestWorkspace());

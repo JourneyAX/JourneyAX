@@ -1204,9 +1204,11 @@ export class ModelGateway {
     options?: {
       taskType?: TaskType;
       targetDataResidency?: string;
+      /** Who is asking; without it the caller is treated as a shopper, so a staff-only agent is never chosen by mistake. */
+      principal?: { audience: 'shopper' | 'staff'; groups: string[] };
     }
   ): Promise<ModelExecutionResponse & { agent: ResolvedAgent }> {
-    const resolvedAgent = this.agentRouter.resolveAgent(release, workspace);
+    const resolvedAgent = this.agentRouter.resolveAgent(release, workspace, undefined, options?.principal);
     const { systemPrompt, userPrompt } = this.agentRouter.composePrompt(
       resolvedAgent,
       workspace,

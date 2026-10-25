@@ -1,3 +1,4 @@
+import { principalFrom } from '@journeyax/shared-types';
 import { createHash } from 'node:crypto';
 import {
   TurnCommand,
@@ -1472,7 +1473,7 @@ export class TurnApplicationService {
     let resolvedAgentInfo: any = null;
     if (release.agents && release.agents.length > 0) {
       try {
-        const resolved = this.agentRouter.resolveAgent(release, workspace, (command as any)?.agentId);
+        const resolved = this.agentRouter.resolveAgent(release, workspace, (command as any)?.agentId, principalFrom({ userId: (command as any)?.principalId, tenantId: (command as any)?.tenantId, role: (command as any)?.principalRole, groups: (command as any)?.principalGroups }));
         resolvedAgentInfo = {
           agentId: resolved.agent.agentId,
           name: resolved.agent.name,

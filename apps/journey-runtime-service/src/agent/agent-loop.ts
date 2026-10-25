@@ -7,6 +7,7 @@ import type {
 } from '@journeyax/journey-core';
 import { normalizePlaybookStages, resolveAgentSkills, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
 import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
+import { principalFrom } from '@journeyax/shared-types';
 import {
   ModelGateway,
   type AgentMessage,
@@ -453,7 +454,7 @@ export class AgentTurnLoop {
 
     // 0. Resolve specialist agent from release.agents via AgentRouter
     const agentRouter = new AgentRouter();
-    const resolvedAgent = agentRouter.resolveAgent(release, workspace, (command as any).agentId);
+    const resolvedAgent = agentRouter.resolveAgent(release, workspace, (command as any).agentId, principalFrom({ userId: command.principalId, tenantId: command.tenantId, role: command.principalRole, groups: command.principalGroups }));
 
     // 1. Resolve pinned OKF release content for business profile and knowledge tools
     let okfContent: OkfReleaseContent | null = null;
