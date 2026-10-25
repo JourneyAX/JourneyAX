@@ -162,7 +162,30 @@ async function main() {
     const refusing = await mockVendor((request) => (request.path.endsWith('/query') ? { json: { records: [] } } : { status: 400, json: { hasErrors: true, results: [{ referenceId: 'acc0', errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'Required fields are missing: [Name]' }] }] } }));
     await assert.rejects(loadSalesforce({ env: { SALESFORCE_INSTANCE_URL: refusing.url, SALESFORCE_LOADER_ACCESS_TOKEN: SF_TOKEN }, deps, apply: true, accounts: 2 }), /Required fields are missing/);
     await refusing.close();
-    await assert.rejects(loadSalesforce({ env: { SALESFORCE_INSTANCE_URL: 'http://x' }, deps, apply: true }), /SALESFORCE_LOADER_ACCESS_TOKEN/);
+    await assert.rejects(loadSalesforce({ env: { SALESFORCE_INSTANCE_URL: 'http://x' }, deps, apply: true }), /client id and secret.*SALESFORCE_LOADER_ACCESS_TOKEN/);
+  });
+
+  await t.test('Salesforce: with no session token it signs in with the app\'s client id and secret (the loader\'s own if given, else the connector\'s), and a refused sign-in does not leak the secret', async () => {
+    const SECRET = 'sf-app-secret-for-the-loader-4567';
+    const vendor = await mockVendor((request) => {
+      if (request.path === '/services/oauth2/token') return { json: { access_token: 'sf-cc-token', instance_url: 'x' } };
+      if (request.path.endsWith('/query')) return { json: { totalSize: 0, records: [] } };
+      return { status: 201, json: { hasErrors: false, results: [] } };
+    });
+    const summary = await loadSalesforce({ env: { SALESFORCE_INSTANCE_URL: vendor.url, SALESFORCE_CLIENT_ID: 'app-id', SALESFORCE_CLIENT_SECRET: SECRET }, deps, apply: true, accounts: 2 });
+    assert.equal(summary.accounts.created, 2);
+    const login = vendor.seen.find((request) => request.path === '/services/oauth2/token')!;
+    assert.deepEqual(login.body, { grant_type: 'client_credentials', client_id: 'app-id', client_secret: SECRET });
+    assert.ok(vendor.seen.filter((request) => request.path !== '/services/oauth2/token').every((request) => request.headers.authorization === 'Bearer sf-cc-token'));
+    await loadSalesforce({ env: { SALESFORCE_INSTANCE_URL: vendor.url, SALESFORCE_CLIENT_ID: 'app-id', SALESFORCE_CLIENT_SECRET: SECRET, SALESFORCE_LOADER_CLIENT_ID: 'loader-id', SALESFORCE_LOADER_CLIENT_SECRET: 'loader-secret-1234567' }, deps, apply: true, accounts: 1 });
+    assert.equal(vendor.seen.filter((request) => request.path === '/services/oauth2/token').pop()!.body.client_id, 'loader-id', 'a second app made for loading is preferred');
+    await vendor.close();
+
+    const refusing = await mockVendor((request) => (request.path === '/services/oauth2/token' ? { status: 400, json: { error: 'invalid_client', error_description: `bad secret ${SECRET}` } } : undefined));
+    const error: any = await loadSalesforce({ env: { SALESFORCE_INSTANCE_URL: refusing.url, SALESFORCE_CLIENT_ID: 'app-id', SALESFORCE_CLIENT_SECRET: SECRET }, deps, apply: true }).catch((e) => e);
+    assert.equal(error.code, 'not_authorised');
+    assert.equal(leaks(error.message, SECRET), false);
+    await refusing.close();
   });
 
   // ── Power BI ─────────────────────────────────────────────────────────────────────────────────

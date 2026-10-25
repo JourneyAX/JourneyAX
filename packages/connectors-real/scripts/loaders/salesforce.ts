@@ -4,12 +4,16 @@
  *
  *   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/salesforce.ts [--accounts 30] [--apply]
  *
- * It needs powers to create records, which the chat's connection must not have, so it uses your own short-lived session token:
- *   SALESFORCE_INSTANCE_URL (as for the connector) and SALESFORCE_LOADER_ACCESS_TOKEN (from `sf org display`, or Setup > Session).
+ * It needs powers to create records. It signs in the same way the connector does, with the External Client App's client id and secret
+ * (SALESFORCE_LOADER_CLIENT_ID and SALESFORCE_LOADER_CLIENT_SECRET if you made a second app just for loading, otherwise the connector's own
+ * SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET), or with a short-lived session token you give it in SALESFORCE_LOADER_ACCESS_TOKEN
+ * (from `sf org display`). In a Developer Edition org that only holds test data, one app whose run-as user is your own admin user is fine
+ * for the first load; give the connector a smaller user later.
  * A dry run (the default) says what it would do and sends nothing. Accounts that already exist (by name) are left alone, so running it
  * again changes nothing. Everything created is plain test data with example.test e-mail addresses; delete it in Salesforce when done.
  */
-import type { Deps, Env, Rec } from '../../src/types';
+import { ToolError, type Deps, type Env, type Rec } from '../../src/types';
+import { errorFor, redact, send, vendorMessage } from '../../src/http';
 import { must, readFlags, required, sampleCollection } from './shared';
 
 const SYSTEM = 'Salesforce';
@@ -25,8 +29,15 @@ export interface SalesforceLoadSummary { accounts: { created: number; existing: 
 export async function loadSalesforce(options: { env: Env; deps: Deps; apply: boolean; accounts?: number; log?: (line: string) => void }): Promise<SalesforceLoadSummary> {
   const { env, deps, apply } = options;
   const log = options.log ?? (() => {});
-  required(env, ['SALESFORCE_INSTANCE_URL', ...(apply ? ['SALESFORCE_LOADER_ACCESS_TOKEN'] : [])]);
-  const secrets = [env.SALESFORCE_LOADER_ACCESS_TOKEN ?? ''];
+  required(env, ['SALESFORCE_INSTANCE_URL']);
+  const pick = (...names: string[]) => names.map((name) => env[name]?.trim()).find(Boolean);
+  const fixedToken = pick('SALESFORCE_LOADER_ACCESS_TOKEN');
+  const clientId = pick('SALESFORCE_LOADER_CLIENT_ID', 'SALESFORCE_CLIENT_ID');
+  const clientSecret = pick('SALESFORCE_LOADER_CLIENT_SECRET', 'SALESFORCE_CLIENT_SECRET');
+  if (apply && !fixedToken && !(clientId && clientSecret)) {
+    throw new ToolError('not_connected', 'Still needed before this can load: the External Client App\'s client id and secret (SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET), or a session token in SALESFORCE_LOADER_ACCESS_TOKEN.');
+  }
+  const secrets = [fixedToken ?? '', clientSecret ?? ''];
   const base = `${env.SALESFORCE_INSTANCE_URL!.trim().replace(/\/$/, '')}/services/data/${env.SALESFORCE_API_VERSION?.trim() || 'v62.0'}`;
   const accounts = sampleCollection('salesforce', 'accounts').slice(0, options.accounts ?? 30);
   const cases = sampleCollection('salesforce', 'cases');
@@ -36,7 +47,15 @@ export async function loadSalesforce(options: { env: Env; deps: Deps; apply: boo
   log(`${apply ? 'Loading' : 'Dry run. Would load'}: ${accounts.length} accounts, each with 1 contact, and ${totalCases} cases.`);
   if (!apply) return summary;
 
-  const headers = { authorization: `Bearer ${env.SALESFORCE_LOADER_ACCESS_TOKEN}` };
+  let token = fixedToken;
+  if (!token) {
+    const login = await send(deps, SYSTEM, 'POST', `${env.SALESFORCE_INSTANCE_URL!.trim().replace(/\/$/, '')}/services/oauth2/token`, { form: { grant_type: 'client_credentials', client_id: clientId!, client_secret: clientSecret! } });
+    if (!login.ok || typeof login.json?.access_token !== 'string') {
+      throw errorFor(SYSTEM, login.status === 400 || login.status === 401 ? 401 : login.status || 500, redact(vendorMessage(login.json, login.text), secrets));
+    }
+    token = login.json.access_token as string;
+  }
+  const headers = { authorization: `Bearer ${token}` };
   const query = async (soql: string) => (await must(deps, SYSTEM, secrets, 'GET', `${base}/query`, { headers, query: { q: soql } })).json?.records ?? [];
   const existing = new Set<string>();
   for (let i = 0; i < accounts.length; i += 50) {
