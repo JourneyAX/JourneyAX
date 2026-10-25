@@ -27,7 +27,7 @@ export interface EffectiveAccess {
 const RANK: Record<AgentAccessLevel, number> = Object.fromEntries(AGENT_ACCESS_LEVELS.map((level, index) => [level, index])) as Record<AgentAccessLevel, number>;
 
 /** Does this row apply to this person? Shopper rows apply to everyone; staff rows only to staff, and only to the groups they name (none named: all staff). */
-export function rowApplies(row: AgentAccessRow, principal: Pick<Principal, 'audience' | 'groups'>): boolean {
+export function rowApplies(row: { audience: 'shopper' | 'staff'; groups: string[] }, principal: Pick<Principal, 'audience' | 'groups'>): boolean {
   if (row.audience === 'shopper') return true;
   if (principal.audience !== 'staff') return false;
   return row.groups.length === 0 || row.groups.some((group) => principal.groups.includes(group));

@@ -18,14 +18,14 @@ export const AgentAccessLevelSchema = z.enum(AGENT_ACCESS_LEVELS);
 export type AgentAccessLevel = z.infer<typeof AgentAccessLevelSchema>;
 
 /** A group id as shared-types `normaliseGroupId` writes it. */
-const GroupId = z.string().min(1).max(64).regex(/^[a-z0-9](?:[a-z0-9\-.:]*[a-z0-9])?$/, 'a group id uses lower-case letters, digits and - . :');
+export const GroupIdSchema = z.string().min(1).max(64).regex(/^[a-z0-9](?:[a-z0-9\-.:]*[a-z0-9])?$/, 'a group id uses lower-case letters, digits and - . :');
 
 export const AgentAccessRowSchema = z.object({
   agentId: z.string().min(1).max(80),
   /** `shopper` rows apply to everyone (staff may use a shopper agent too); `staff` rows apply to members of staff only. */
   audience: z.enum(['shopper', 'staff']),
   /** For a `staff` row: the groups it applies to. Empty means every member of staff. Must be empty for a `shopper` row. */
-  groups: z.array(GroupId).max(50).default([]),
+  groups: z.array(GroupIdSchema).max(50).default([]),
   level: AgentAccessLevelSchema,
 }).strict();
 

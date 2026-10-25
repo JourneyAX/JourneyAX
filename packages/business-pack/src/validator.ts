@@ -152,6 +152,21 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     }
   }
 
+  // 4f. Validate who has which skill (extensions.skillAccess). A row naming a skill the pack does not define is a typo that would leave
+  // a skill carried as its own tier says (or hidden) without anyone noticing, and a shopper row cannot name groups.
+  const skillRows = (pack as any).extensions?.skillAccess?.rows as Array<{ skillId: string; audience: string; groups?: string[]; level: string }> | undefined;
+  if (Array.isArray(skillRows) && skillRows.length > 0) {
+    const knownSkillIds = new Set((((pack as any).extensions?.skills as Array<{ skillId: string }> | undefined) || []).map((skill) => skill.skillId));
+    skillRows.forEach((row, index) => {
+      if (!knownSkillIds.has(row.skillId)) {
+        issues.push({ severity: 'error', path: `extensions.skillAccess.rows[${index}].skillId`, message: `Skill access row names skill '${row.skillId}', which the pack does not define.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.skillAccess.rows[${index}].groups`, message: `A shopper row for skill '${row.skillId}' names groups; groups apply to staff rows only.` });
+      }
+    });
+  }
+
   // 5. Validate Journeys and Stages
   for (const journey of pack.journeys) {
     const stageIds = new Set(Object.keys(journey.stages));

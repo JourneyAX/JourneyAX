@@ -1746,6 +1746,107 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(!prompt.includes('Never shown.'), 'a skill the agent does not carry is not in its prompt');
     });
 
+    describe('who has which skill (pack skillAccess)', () => {
+      const accessPack = (rows?: any[]) => {
+        const release: any = createTestPack();
+        release.extensions = {
+          skills: [
+            { skillId: 'voice', name: 'Voice', description: 'How we sound', instructions: 'Speak as the team.', tier: 'always', tools: [] },
+            { skillId: 'order-help', name: 'Order help', description: 'Order questions', instructions: 'Look the order up first.', tier: 'on_demand', tools: [] },
+            { skillId: 'credit-rules', name: 'Credit rules', description: 'Trade credit', instructions: 'Check the credit limit.', tier: 'always', tools: [] },
+          ],
+          ...(rows ? { skillAccess: { rows } } : {}),
+        };
+        release.agents[0].skills = ['voice', 'order-help', 'credit-rules'];
+        return release;
+      };
+      const rows = [
+        { skillId: 'order-help', audience: 'staff', groups: ['customer-service'], level: 'default' },
+        { skillId: 'order-help', audience: 'staff', groups: ['sales'], level: 'available' },
+        { skillId: 'credit-rules', audience: 'staff', groups: ['trade-desk'], level: 'required' },
+      ];
+      const promptFor = (release: any, person?: { audience: 'shopper' | 'staff'; groups: string[] }) =>
+        buildAgentSystemPrompt({ resolvedAgent: new AgentRouter().resolveAgent(release, createTestWorkspace()), release, person });
+
+      test('a pack without the table prompts exactly as before for everyone', () => {
+        const release = accessPack();
+        const shopper = promptFor(release);
+        assert.match(shopper, /# Skill: Voice\nSpeak as the team\./);
+        assert.match(shopper, /# Skill: Credit rules\nCheck the credit limit\./);
+        assert.match(shopper, /- order-help: Order questions/);
+        assert.equal(promptFor(release, { audience: 'staff', groups: ['sales'] }), shopper, 'a member of staff gets the same prompt');
+      });
+
+      test('a shopper gets only the skills the table leaves them; staff skills are not in their prompt at all', () => {
+        const prompt = promptFor(accessPack(rows));
+        assert.match(prompt, /# Skill: Voice/);
+        assert.ok(!prompt.includes('Look the order up first.') && !prompt.includes('order-help') && !prompt.includes('Check the credit limit.'), 'neither the instructions nor the description of a staff skill reach a shopper');
+      });
+
+      test('a customer-service rep has order help installed; a sales person has it on demand; the trade desk has the credit rules', () => {
+        const release = accessPack(rows);
+        const rep = promptFor(release, { audience: 'staff', groups: ['customer-service'] });
+        assert.match(rep, /# Skill: Order help\nLook the order up first\./);
+        assert.ok(!rep.includes('Check the credit limit.'));
+        const sales = promptFor(release, { audience: 'staff', groups: ['sales'] });
+        assert.match(sales, /- order-help: Order questions/);
+        assert.ok(!sales.includes('Look the order up first.'), 'on demand: the instructions are not in the prompt');
+        assert.match(promptFor(release, { audience: 'staff', groups: ['trade-desk'] }), /# Skill: Credit rules\nCheck the credit limit\./);
+      });
+
+      test('through the agent loop: the person\'s signed groups decide the prompt, and use_skill is offered only when they have a skill to open', async () => {
+        const release = accessPack(rows);
+        const talk = async (command: Record<string, unknown>) => {
+          const gateway = new ModelGateway();
+          let seen: { prompt: string; tools: string[] } | undefined;
+          gateway.mockAgentExecutor = async (req) => {
+            seen = { prompt: String(req.systemPrompt || ''), tools: (req.tools || []).map((tool: any) => tool.name) };
+            return { content: 'Hello.', toolCalls: [] };
+          };
+          await new AgentTurnLoop().execute({
+            command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: 'ws-skills', sessionId: 's', correlationId: 'c', message: 'hello', ...command } as any,
+            release,
+            workspace: createTestWorkspace(),
+            modelGateway: gateway,
+            catalogSearchHandler: { execute: async () => ({ products: [], totalCount: 0 }) } as any,
+            sink: () => {},
+          });
+          return seen!;
+        };
+        const sales = await talk({ principalId: 'sam@placemakers.test', principalRole: 'manager', principalGroups: ['sales'] });
+        assert.match(sales.prompt, /- order-help: Order questions/);
+        assert.ok(sales.tools.includes('use_skill'), 'a skill to open: the tool is offered');
+        const rep = await talk({ principalId: 'rep@placemakers.test', principalRole: 'manager', principalGroups: ['customer-service'] });
+        assert.match(rep.prompt, /# Skill: Order help/);
+        assert.ok(!rep.tools.includes('use_skill'), 'every skill is installed: nothing to open');
+        const shopper = await talk({ principalId: 'anonymous', principalRole: 'customer', principalGroups: ['customer-service'] });
+        assert.doesNotMatch(shopper.prompt, /order-help|Order help/, 'a shopper who also carries a staff group is still a shopper');
+      });
+
+      test('use_skill opens only what the person has', async () => {
+        const release = accessPack(rows);
+        const context = (skillIds: string[]) => ({
+          tenantId: 'test-tenant', environmentId: 'test', workspaceId: 'w', sessionId: 's', release, workspace: createTestWorkspace(), turnProductSkus: new Set<string>(), catalogProductCache: new Map(),
+          readSourceIds: new Set<string>(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false, agentSkillIds: skillIds, usedSkillIds: new Set(),
+        } as any);
+        const { skillsForPerson } = await import('../src/agent/agent-loop');
+        const agent = new AgentRouter().resolveAgent(release, createTestWorkspace()).agent;
+        const salesIds = skillsForPerson(release, agent, { audience: 'staff', groups: ['sales'] }).map((entry) => entry.skill.skillId);
+        assert.deepEqual(salesIds, ['voice', 'order-help']);
+        assert.equal((await executeAgentTool('use_skill', { skillId: 'order-help' }, context(salesIds))).ok, true);
+        assert.equal((await executeAgentTool('use_skill', { skillId: 'credit-rules' }, context(salesIds))).ok, false, 'the trade desk\'s skill is not theirs to open');
+      });
+
+      test('the publication check refuses a row that names an unknown skill or gives a shopper groups', () => {
+        const asPack = (release: any) => ({ modelPolicy: { policies: [] }, capabilities: { toolDefinitions: [], toolBindings: [], stageBindings: [] }, journeys: [], rules: [], evaluations: [], agents: release.agents, extensions: release.extensions } as any);
+        const problems = (table?: any[]) => validateBusinessPack(asPack(accessPack(table))).issues.filter((issue) => issue.path.includes('skillAccess')).map((issue) => `${issue.severity}: ${issue.message}`);
+        assert.deepEqual(problems(rows), []);
+        assert.deepEqual(problems(undefined), []);
+        assert.match(problems([...rows, { skillId: 'ghost', audience: 'staff', groups: [], level: 'available' }]).join('\n'), /error: Skill access row names skill 'ghost'/);
+        assert.match(problems([...rows, { skillId: 'voice', audience: 'shopper', groups: ['sales'], level: 'available' }]).join('\n'), /error: A shopper row for skill 'voice' names groups/);
+      });
+    });
+
     test('the agent the customer chose answers, but only if the pack defines it', () => {
       const release: any = createTestPack();
       release.agents = [

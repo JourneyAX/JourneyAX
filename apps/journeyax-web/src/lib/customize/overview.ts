@@ -6,7 +6,7 @@
  * Agent system prompts are never part of the overview.
  */
 import { describeTool, PLATFORM_TOOLS } from './tool-catalog';
-import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledge, OverviewSkill } from './types';
+import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledge, OverviewSkill, SkillAccessEntry } from './types';
 
 const str = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(str).filter(Boolean) : []);
@@ -41,6 +41,14 @@ export function readSkills(published: Json, includeInstructions: boolean): Overv
   const raw: unknown[] = Array.isArray(published.skills) ? published.skills : list(rec(published.extensions).skills);
   const seen = new Set<string>();
   const out: OverviewSkill[] = [];
+  const accessBySkill = new Map<string, SkillAccessEntry[]>();
+  for (const row of list(rec(rec(published.extensions).skillAccess).rows)) {
+    if (!isRecord(row)) continue;
+    const id = str(row.skillId);
+    const level = row.level === 'available' || row.level === 'default' || row.level === 'required' || row.level === 'not_available' ? row.level : undefined;
+    if (!id || !level) continue;
+    accessBySkill.set(id, [...(accessBySkill.get(id) || []), { audience: row.audience === 'staff' ? 'staff' : 'shopper', groups: strings(row.groups), level }]);
+  }
   for (const s of raw) {
     if (!isRecord(s)) continue;
     const skillId = str(s.skillId);
@@ -54,6 +62,7 @@ export function readSkills(published: Json, includeInstructions: boolean): Overv
       description: str(s.description),
       tier: s.tier === 'on_demand' ? 'on_demand' : 'always',
       tools: strings(s.tools),
+      access: accessBySkill.get(skillId) || [],
       ...(includeInstructions && instructions ? { instructions } : {}),
     });
   }
@@ -107,4 +116,11 @@ export function buildOverview(tenantId: string, published: Json, opts: { canView
     connectors: buildConnectors(agents),
     canViewInstructions: opts.canViewInstructions,
   };
+}
+
+/** One plain line for a row of the skill access table, for the Skills tab. */
+export function describeSkillAccess(entry: SkillAccessEntry): string {
+  const who = entry.audience === 'shopper' ? 'Everyone' : entry.groups.length > 0 ? `Staff in ${entry.groups.join(', ')}` : 'All staff';
+  const what = { not_available: 'does not have it', available: 'opens it when a request fits', default: 'has it installed', required: 'has it installed and cannot turn it off' }[entry.level];
+  return `${who} ${what}`;
 }

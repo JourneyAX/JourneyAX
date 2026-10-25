@@ -61,6 +61,42 @@ async function main() {
     assert.equal(bad.agents.length, 3);
   });
 
+  const skillDefs = [
+    { skillId: 'voice', name: 'Voice', description: 'How we sound', instructions: 'Speak as the team.', tier: 'always' },
+    { skillId: 'order-help', name: 'Order help', description: 'Order questions', instructions: 'Look the order up.', tier: 'on_demand' },
+    { skillId: 'credit-rules', name: 'Credit rules', description: 'Trade credit', instructions: 'Check the limit.', tier: 'always' },
+  ];
+  const skillRows = [
+    { skillId: 'order-help', audience: 'staff', groups: ['customer-service'], level: 'default' },
+    { skillId: 'credit-rules', audience: 'staff', groups: ['trade-desk'], level: 'required' },
+  ];
+
+  await suite.test('the preview lists the skills a person would have, how each is carried, and the ones that are not theirs', () => {
+    const base = project(rows, { extensions: { agentAccess: { rows }, skills: skillDefs, skillAccess: { rows: skillRows } } });
+    const shopper = buildAccessPreview(base, teams, { audience: 'shopper', groups: [] });
+    assert.deepEqual(shopper.skills.map((k) => `${k.skillId}:${k.tier}`), ['voice:always']);
+    assert.deepEqual(shopper.hiddenSkills.map((k) => k.skillId), ['order-help', 'credit-rules']);
+    assert.equal(shopper.hasSkillTable, true);
+    const rep = buildAccessPreview(base, teams, { audience: 'staff', groups: ['customer-service'] });
+    assert.deepEqual(rep.skills.map((k) => `${k.skillId}:${k.tier}:${k.level}:${k.via}`), ['voice:always:null:own', 'order-help:always:default:row']);
+    assert.deepEqual(rep.hiddenSkills.map((k) => k.skillId), ['credit-rules']);
+  });
+
+  await suite.test('without a skill table every skill is carried as its own tier says, from either place the skills may be kept', () => {
+    const plain = buildAccessPreview(project(rows, { extensions: { agentAccess: { rows }, skills: skillDefs } }), teams, { audience: 'shopper', groups: [] });
+    assert.deepEqual(plain.skills.map((k) => `${k.skillId}:${k.tier}`), ['voice:always', 'order-help:on_demand', 'credit-rules:always']);
+    assert.equal(plain.hasSkillTable, false);
+    assert.deepEqual(plain.hiddenSkills, []);
+    const topLevel = buildAccessPreview(project(rows, { skills: skillDefs }), teams, { audience: 'shopper', groups: [] });
+    assert.equal(topLevel.skills.length, 3);
+    assert.deepEqual(buildAccessPreview(null, [], { audience: 'shopper', groups: [] }).skills, [], 'a missing project has no skills');
+  });
+
+  await suite.test('a group a skill row names that matches no team is flagged like an agent row\'s', () => {
+    const preview = buildAccessPreview(project(rows, { extensions: { agentAccess: { rows }, skills: skillDefs, skillAccess: { rows: [{ skillId: 'order-help', audience: 'staff', groups: ['custmer-service'], level: 'available' }] } } }), teams, { audience: 'staff', groups: [] });
+    assert.ok(preview.unknownGroups.includes('custmer-service'));
+  });
+
   suite.finish();
 }
 

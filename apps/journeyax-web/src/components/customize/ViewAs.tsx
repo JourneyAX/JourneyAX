@@ -6,7 +6,7 @@
  * and never changes anything.
  */
 import { useState } from 'react';
-import { describePreviewAgent, previewNote, previewQuery, readAccessPreview, type AccessPreview, type PreviewAudience } from '@/lib/customize/accessPreview';
+import { describePreviewAgent, describePreviewSkill, previewNote, previewQuery, readAccessPreview, type AccessPreview, type PreviewAudience } from '@/lib/customize/accessPreview';
 
 export function ViewAs() {
   const [audience, setAudience] = useState<PreviewAudience>('shopper');
@@ -72,6 +72,22 @@ export function ViewAs() {
             </p>
           )}
           <p style={{ marginTop: 8, color: 'var(--ax-text-muted, #6b6b6b)' }}>{previewNote(preview)}</p>
+          <h3 style={{ margin: '16px 0 6px', fontSize: 15 }}>Skills they would have</h3>
+          {preview.skills.length > 0 ? (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {preview.skills.map((skill) => (
+                <li key={skill.skillId} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                  <strong>{skill.name}</strong>
+                  <span className="ax-tag">{describePreviewSkill(skill)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No skills in this pack yet.</p>
+          )}
+          {preview.hiddenSkills.length > 0 && (
+            <p style={{ marginTop: 8 }}><strong>Not theirs:</strong> {preview.hiddenSkills.map((skill) => skill.name).join(', ')}.</p>
+          )}
         </div>
       )}
     </section>

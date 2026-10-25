@@ -20,6 +20,7 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { forSidebar } from '@/lib/shell/conversationNav';
 import { copyText } from '@/lib/shell/clipboard';
 import { type AgentDraft, type AgentDraftInput, draftToPackAgentJson, loadDrafts, removeDraft, saveDrafts, upsertDraft } from '@/lib/customize/drafts';
+import { describeSkillAccess } from '@/lib/customize/overview';
 import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledgeSource, OverviewSkill } from '@/lib/customize/types';
 import AgentForm from './AgentForm';
 import { useOverview } from './useOverview';
@@ -442,6 +443,7 @@ function SkillsTab({ scope, query, skills, usedBy, by, canViewInstructions }: {
               <span key="tier" className="ax-tag">{s.tier === 'always' ? 'Always on' : 'On demand'}</span>,
               ...(s.tools.length ? [<span key="t" className="ax-tag">{plural(s.tools.length, 'connector')}</span>] : []),
               <span key="a" className="ax-tag">{agents.length ? `Used by ${agents.join(', ')}` : 'Not used by an agent yet'}</span>,
+              ...s.access.map((entry, index) => <span key={`acc-${index}`} className="ax-tag">{describeSkillAccess(entry)}</span>),
             ]}
           >
             {canViewInstructions && s.instructions && (

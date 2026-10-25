@@ -3,7 +3,7 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/customize/__tests__/overview.test.ts
  */
 import assert from 'node:assert/strict';
-import { buildConnectors, buildOverview, readAgents, readKnowledge, readSkills } from '../overview';
+import { buildConnectors, buildOverview, describeSkillAccess, readAgents, readKnowledge, readSkills } from '../overview';
 import { describeTool, humaniseToolId } from '../tool-catalog';
 import { draftToPackAgentJson, removeDraft, slugify, upsertDraft, validateDraft, loadDrafts, draftsKey } from '../drafts';
 
@@ -50,7 +50,7 @@ check('the default agent follows defaultAgentId, or the only agent when there is
 check('skills come from the pack when it has them and only then; instructions only for people who can edit', () => {
   const withText = readSkills(PACK, true);
   assert.equal(withText.length, 1, 'duplicates and entries without an id are skipped');
-  assert.deepEqual(withText[0], { skillId: 'greet', name: 'Greeting', description: 'How to open', tier: 'on_demand', tools: ['search_products'], instructions: 'Say hello first.' });
+  assert.deepEqual(withText[0], { skillId: 'greet', name: 'Greeting', description: 'How to open', tier: 'on_demand', tools: ['search_products'], access: [], instructions: 'Say hello first.' });
   assert.equal('instructions' in readSkills(PACK, false)[0], false);
   assert.deepEqual(readSkills({ agents: [] }, true), [], 'no skills in the pack means none are shown');
   assert.equal(readSkills({ skills: [{ skillId: 'top', name: 'Top', description: 'd', instructions: 'i' }] }, false)[0].tier, 'always');
@@ -119,6 +119,25 @@ check('drafts: validated, saved per tenant, edited in place, removed, and turned
   assert.equal(slugify('  !! '), 'agent');
   assert.equal(draftsKey('acme'), 'ax:agent-drafts:acme');
   assert.deepEqual(loadDrafts('acme'), [], 'no storage means no drafts, not an error');
+});
+
+check('a skill carries the rows of the access table that name it, and each row reads as plain words', () => {
+  const pack = {
+    extensions: {
+      skills: [{ skillId: 'orders', name: 'Orders', description: 'd', instructions: 'i', tier: 'on_demand' }, { skillId: 'voice', name: 'Voice', description: 'd', instructions: 'i' }],
+      skillAccess: { rows: [
+        { skillId: 'orders', audience: 'staff', groups: ['customer-service', 'sales'], level: 'default' },
+        { skillId: 'orders', audience: 'shopper', groups: [], level: 'not_available' },
+        { skillId: 'orders', audience: 'staff', level: 'bogus' },
+        { skillId: 'ghost', audience: 'staff', groups: [], level: 'available' },
+      ] },
+    },
+  };
+  const [orders, voice] = readSkills(pack, false);
+  assert.deepEqual(orders.access.map(describeSkillAccess), ['Staff in customer-service, sales has it installed', 'Everyone does not have it']);
+  assert.deepEqual(voice.access, [], 'no row names it: it is carried as its own tier says');
+  assert.equal(describeSkillAccess({ audience: 'staff', groups: [], level: 'available' }), 'All staff opens it when a request fits');
+  assert.equal(describeSkillAccess({ audience: 'shopper', groups: [], level: 'required' }), 'Everyone has it installed and cannot turn it off');
 });
 
 console.log(`✅ web: customize overview: ${passed} passed, 0 failed`);

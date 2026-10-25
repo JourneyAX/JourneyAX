@@ -14,12 +14,21 @@ export interface OverviewAgent {
   handoffConditions: string[];
 }
 
+/** One row of the pack's skill access table that names a skill (pack `extensions.skillAccess`). */
+export interface SkillAccessEntry {
+  audience: 'shopper' | 'staff';
+  groups: string[];
+  level: 'not_available' | 'available' | 'default' | 'required';
+}
+
 export interface OverviewSkill {
   skillId: string;
   name: string;
   description: string;
   tier: 'always' | 'on_demand';
   tools: string[];
+  /** Who has this skill and how, from the pack's skill access table; empty when no row names it (it is carried as its own tier says). */
+  access: SkillAccessEntry[];
   /** Only sent to people who can edit the configuration (it is prompt text). */
   instructions?: string;
 }

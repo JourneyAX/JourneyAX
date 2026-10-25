@@ -14,6 +14,15 @@ export interface PreviewAgent {
   opensFirst: boolean;
 }
 
+export interface PreviewSkill {
+  skillId: string;
+  name: string;
+  description: string;
+  tier: 'always' | 'on_demand';
+  level: 'available' | 'default' | 'required' | null;
+  via: 'own' | 'row';
+}
+
 export interface AccessPreview {
   audience: PreviewAudience;
   groups: string[];
@@ -22,6 +31,9 @@ export interface AccessPreview {
   unknownGroups: string[];
   knownGroups: string[];
   hasTable: boolean;
+  skills: PreviewSkill[];
+  hiddenSkills: Array<{ skillId: string; name: string }>;
+  hasSkillTable: boolean;
 }
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -50,9 +62,25 @@ export function readAccessPreview(value: unknown): AccessPreview | undefined {
     if (!agentId || !level) continue;
     agents.push({ agentId, name: str(a.name) || agentId, level, via: a.via === 'row' ? 'row' : 'open', opensFirst: a.opensFirst === true });
   }
+  const skills: PreviewSkill[] = [];
+  for (const entry of Array.isArray(raw.skills) ? raw.skills : []) {
+    if (!entry || typeof entry !== 'object') continue;
+    const k = entry as Record<string, unknown>;
+    const skillId = str(k.skillId);
+    if (!skillId) continue;
+    const level = k.level === 'available' || k.level === 'default' || k.level === 'required' ? k.level : null;
+    skills.push({ skillId, name: str(k.name) || skillId, description: str(k.description), tier: k.tier === 'on_demand' ? 'on_demand' : 'always', level, via: k.via === 'row' ? 'row' : 'own' });
+  }
+  const hiddenSkills = (Array.isArray(raw.hiddenSkills) ? raw.hiddenSkills : [])
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => ({ skillId: str(entry.skillId), name: str(entry.name) || str(entry.skillId) }))
+    .filter((entry) => entry.skillId);
   return {
     audience,
     groups: strings(raw.groups),
+    skills,
+    hiddenSkills,
+    hasSkillTable: raw.hasSkillTable === true,
     agents,
     ...(str(raw.lockedAgentId) ? { lockedAgentId: str(raw.lockedAgentId) } : {}),
     unknownGroups: strings(raw.unknownGroups),
@@ -74,4 +102,12 @@ export function previewNote(preview: AccessPreview): string {
   if (!preview.hasTable) return 'No access table is set, so every agent is open to everyone. Add rows to give some agents to some groups only.';
   if (preview.agents.length === 0) return 'This person would have no agent. A shopper must always have at least one; check the table before publishing.';
   return 'This is what the settings say today. Anything you change here goes live only when you publish.';
+}
+
+/** One plain line for a skill in the preview. */
+export function describePreviewSkill(skill: PreviewSkill): string {
+  if (skill.level === 'required') return 'Always on, cannot be turned off';
+  if (skill.level === 'default') return 'Installed for this group';
+  if (skill.level === 'available') return 'Opened when a request fits';
+  return skill.tier === 'always' ? 'Always on' : 'Opened when a request fits';
 }

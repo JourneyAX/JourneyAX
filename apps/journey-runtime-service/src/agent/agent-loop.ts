@@ -5,7 +5,7 @@ import type {
   Decision,
   UIInstruction,
 } from '@journeyax/journey-core';
-import { normalizePlaybookStages, resolveAgentSkills, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
+import { normalizePlaybookStages, resolveAgentSkills, resolveSkillTiers, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
 import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
 import { principalFrom } from '@journeyax/shared-types';
 import {
@@ -279,15 +279,28 @@ function tracePreview(result: unknown): { resultPreview?: string } {
   try { return { resultPreview: JSON.stringify(result).slice(0, 1500) }; } catch { return {}; }
 }
 
+type SkillPerson = { audience: 'shopper' | 'staff'; groups: string[] };
+const SHOPPER: SkillPerson = { audience: 'shopper', groups: [] };
+
+/**
+ * The skills this person has from the agent they are talking to: the agent's skills, narrowed and set to "always" or "on demand" by
+ * the pack's skill access table (`extensions.skillAccess`) for who they are. Without a table every skill is carried as its own tier says.
+ */
+export function skillsForPerson(release: BusinessPackRelease | undefined, agent: AgentDefinition | undefined, person: SkillPerson = SHOPPER): Array<{ skill: SkillDefinition; tier: 'always' | 'on_demand' }> {
+  const carried: SkillDefinition[] = resolveAgentSkills(agent, (release as any)?.extensions?.skills);
+  const table = (release as any)?.extensions?.skillAccess;
+  return resolveSkillTiers(carried, table && Array.isArray(table.rows) ? table : undefined, person).map(({ skill, tier }) => ({ skill, tier }));
+}
+
 /**
  * The skills an agent carries, as prompt text. Skills of tier "always" are written out; skills of tier "on_demand" are listed with their
  * descriptions so the agent can open the one a request calls for with use_skill. The wording of every skill is tenant data.
  */
-export function formatAgentSkills(release: BusinessPackRelease | undefined, agent: AgentDefinition | undefined): string {
-  const skills: SkillDefinition[] = resolveAgentSkills(agent, (release as any)?.extensions?.skills);
+export function formatAgentSkills(release: BusinessPackRelease | undefined, agent: AgentDefinition | undefined, person: SkillPerson = SHOPPER): string {
+  const skills = skillsForPerson(release, agent, person);
   if (skills.length === 0) return '';
-  const always = skills.filter((skill) => skill.tier === 'always');
-  const onDemand = skills.filter((skill) => skill.tier === 'on_demand');
+  const always = skills.filter((entry) => entry.tier === 'always').map((entry) => entry.skill);
+  const onDemand = skills.filter((entry) => entry.tier === 'on_demand').map((entry) => entry.skill);
   const parts: string[] = [];
   for (const skill of always) parts.push(`# Skill: ${skill.name}\n${skill.instructions.trim()}`);
   if (onDemand.length > 0) {
@@ -305,12 +318,14 @@ export function buildAgentSystemPrompt(params: {
   resolvedAgent: ResolvedAgent;
   release: BusinessPackRelease;
   okfContent?: OkfReleaseContent | null;
+  /** Who is talking: decides which skills they have and how each is carried. Absent: a shopper. */
+  person?: SkillPerson;
 }): string {
   const platform = (params.platformPrompt || GENERIC_PLATFORM_OPERATING_PROMPT).trim();
   const agentBlock = formatAgentInstructions(params.resolvedAgent);
   const personaBlock = formatPersonaAndVoice(params.release, params.resolvedAgent.agent);
   const profileBlock = formatBusinessProfile(params.release, params.okfContent);
-  const skillsBlock = formatAgentSkills(params.release, params.resolvedAgent.agent);
+  const skillsBlock = formatAgentSkills(params.release, params.resolvedAgent.agent, params.person);
 
   const sections = [platform, agentBlock, skillsBlock, personaBlock, profileBlock].filter(Boolean);
   return sections.join('\n\n');
@@ -463,7 +478,10 @@ export class AgentTurnLoop {
 
     // 0. Resolve specialist agent from release.agents via AgentRouter
     const agentRouter = new AgentRouter();
-    const resolvedAgent = agentRouter.resolveAgent(release, workspace, (command as any).agentId, principalFrom({ userId: command.principalId, tenantId: command.tenantId, role: command.principalRole, groups: command.principalGroups }));
+    const principal = principalFrom({ userId: command.principalId, tenantId: command.tenantId, role: command.principalRole, groups: command.principalGroups });
+    const resolvedAgent = agentRouter.resolveAgent(release, workspace, (command as any).agentId, principal);
+    const person: SkillPerson = { audience: principal.audience, groups: principal.groups };
+    const personSkills = skillsForPerson(release, resolvedAgent.agent, person);
 
     // 1. Resolve pinned OKF release content for business profile and knowledge tools
     let okfContent: OkfReleaseContent | null = null;
@@ -515,7 +533,7 @@ export class AgentTurnLoop {
       consultedConcepts: new Set<OkfConcept>(),
       agentRelationshipTypes: (resolvedAgent?.agent as any)?.agentRelationshipTypes,
       agentPlaybook: normalizePlaybookStages(resolvedAgent?.agent?.journeyPlaybook),
-      agentSkillIds: (resolvedAgent?.agent as any)?.skills,
+      agentSkillIds: personSkills.map((entry) => entry.skill.skillId),
       usedSkillIds: new Set<string>(),
       customerEvent,
       signal,
@@ -527,13 +545,14 @@ export class AgentTurnLoop {
       resolvedAgent,
       release,
       okfContent,
+      person,
     });
 
     // 4. Offer only tools in agent.allowedTools
     const allowedTools = resolvedAgent.allowedTools || [];
     const toolDefs = getAgentToolDefinitions(release, okfContent);
     // use_skill is platform plumbing for the agent's own on-demand skills: offered exactly when it has some, whatever allowedTools says.
-    const hasOnDemandSkills = resolveAgentSkills(resolvedAgent.agent, (release as any)?.extensions?.skills).some((skill) => skill.tier === 'on_demand');
+    const hasOnDemandSkills = personSkills.some((entry) => entry.tier === 'on_demand');
     const availableTools = toolDefs.filter((t) => (t.name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(t.name, allowedTools, release)));
     if (process.env.AGENT_TRACE_RESULTS) console.log(`[agent] ${resolvedAgent.agent.agentId} offered ${availableTools.length} tools: ${availableTools.map((t) => t.name).join(', ')}; skills: ${(resolvedAgent.agent.skills || []).join(', ')}`);
 
