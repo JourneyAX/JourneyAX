@@ -1,0 +1,508 @@
+{
+  "askVia": "card",
+  "connectors": [
+    {
+      "connectorId": "sap-commerce",
+      "displayName": "SAP Commerce Cloud (sample)",
+      "description": "The online shop: products and prices, carts, orders and order history. Use it to look up a product, see what is in a cart or where an order is, or add a product to a cart.",
+      "owner": "Digital commerce team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "find_product",
+          "sideEffect": "read",
+          "summary": "Search the shop's products by words (name, brand, type).",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "get_product",
+          "sideEffect": "read",
+          "summary": "Get one product by SKU: price, unit, category, product page and image.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "get_cart",
+          "sideEffect": "read",
+          "summary": "Get a cart with its lines.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "add_to_cart",
+          "sideEffect": "write",
+          "summary": "Add a product to a cart."
+        },
+        {
+          "name": "get_order",
+          "sideEffect": "read",
+          "summary": "Get an order with its lines: status, delivery type, branch and totals.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "order_history",
+          "sideEffect": "read",
+          "summary": "List the orders of a trade account, newest first.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        }
+      ]
+    },
+    {
+      "connectorId": "salesforce",
+      "displayName": "Salesforce Sales and Service Cloud (sample)",
+      "description": "Trade accounts and customer service cases, and whether the support team has reviewed an online order. Use it to find an account, see its cases, or open a case.",
+      "owner": "Customer service team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "find_account",
+          "sideEffect": "read",
+          "summary": "Find trade accounts by name, contact or trade."
+        },
+        {
+          "name": "get_account",
+          "sideEffect": "read",
+          "summary": "Get one trade account with its cases."
+        },
+        {
+          "name": "list_cases",
+          "sideEffect": "read",
+          "summary": "List support cases, newest first, for an account or by status or priority."
+        },
+        {
+          "name": "get_case",
+          "sideEffect": "read",
+          "summary": "Get one support case."
+        },
+        {
+          "name": "create_case",
+          "sideEffect": "write",
+          "summary": "Open a new support case for an account."
+        },
+        {
+          "name": "order_review_status",
+          "sideEffect": "read",
+          "summary": "See whether the support team has reviewed an online order, for one order or for an account."
+        }
+      ]
+    },
+    {
+      "connectorId": "ace-erp",
+      "displayName": "ACE ERP (sample)",
+      "description": "The business system: stock by branch, trade prices by tier, delivery status and account balances.",
+      "owner": "Supply chain team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "stock_by_branch",
+          "sideEffect": "read",
+          "summary": "Stock on hand for a product, branch by branch.",
+          "claimClasses": [
+            "stock",
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "trade_price",
+          "sideEffect": "read",
+          "summary": "The retail price and the trade prices by tier (bronze, silver, gold) for a product.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "delivery_status",
+          "sideEffect": "read",
+          "summary": "Where a delivery is."
+        },
+        {
+          "name": "account_balance",
+          "sideEffect": "read",
+          "summary": "The balance, credit limit and overdue amount of a trade account.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "list_branches",
+          "sideEffect": "read",
+          "summary": "List branches, or find one by name."
+        }
+      ]
+    },
+    {
+      "connectorId": "mulesoft",
+      "displayName": "MuleSoft (sample)",
+      "description": "The link between the online shop, the service system and the business system: whether an order has been passed on, and the log of those runs.",
+      "owner": "Integration team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "order_sync_status",
+          "sideEffect": "read",
+          "summary": "Whether an order has been passed on to the other systems, run by run, newest first."
+        },
+        {
+          "name": "integration_run_log",
+          "sideEffect": "read",
+          "summary": "The log of integration runs, newest first, by flow or status."
+        }
+      ]
+    },
+    {
+      "connectorId": "salsify",
+      "displayName": "Salsify (sample)",
+      "description": "Product content: full descriptions, specifications and documents such as installation guides and datasheets.",
+      "owner": "Product content team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "get_product_content",
+          "sideEffect": "read",
+          "summary": "The description, features, keywords and pictures of a product.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "get_specifications",
+          "sideEffect": "read",
+          "summary": "The specifications of a product (name, value, unit).",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "get_documents",
+          "sideEffect": "read",
+          "summary": "The documents kept with a product: guides, datasheets, warranty and supplier links.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "find_content",
+          "sideEffect": "read",
+          "summary": "Find products by the words in their content.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        }
+      ]
+    },
+    {
+      "connectorId": "bloomreach",
+      "displayName": "Bloomreach (sample)",
+      "description": "The shop's search: what a search finds, suggestions as someone types, and what people search for most.",
+      "owner": "Digital commerce team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "search",
+          "sideEffect": "read",
+          "summary": "Search the catalogue the way the shop's site search does.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "suggestions",
+          "sideEffect": "read",
+          "summary": "Suggestions for what a shopper has started to type."
+        },
+        {
+          "name": "popular_searches",
+          "sideEffect": "read",
+          "summary": "The searches shoppers make most, with how many products each finds."
+        }
+      ]
+    },
+    {
+      "connectorId": "marketing-cloud",
+      "displayName": "Salesforce Marketing Cloud (sample)",
+      "description": "Messages sent to trade customers (email, text, in-app) and the templates they come from. Use it to see what a customer was sent, or to send a message.",
+      "owner": "Marketing team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "list_messages",
+          "sideEffect": "read",
+          "summary": "Messages sent to an account (or all accounts), newest first."
+        },
+        {
+          "name": "get_message",
+          "sideEffect": "read",
+          "summary": "One message with its delivery status."
+        },
+        {
+          "name": "list_templates",
+          "sideEffect": "read",
+          "summary": "The message templates that can be sent."
+        },
+        {
+          "name": "send_message",
+          "sideEffect": "write",
+          "summary": "Queue a message to an account from a template."
+        }
+      ]
+    },
+    {
+      "connectorId": "power-bi",
+      "displayName": "Power BI (sample)",
+      "description": "Sales and service reports: weekly sales by branch, order status, review turnaround, service cases by topic, click and collect versus delivery, top products.",
+      "owner": "Business insights team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "list_reports",
+          "sideEffect": "read",
+          "summary": "The reports that exist, with what each shows."
+        },
+        {
+          "name": "get_report_figures",
+          "sideEffect": "read",
+          "summary": "The figures of one report, period by period.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
+          "name": "report_totals",
+          "sideEffect": "read",
+          "summary": "The total of a report's figures for each split (for example for each branch).",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        }
+      ]
+    },
+    {
+      "connectorId": "google-analytics",
+      "displayName": "Google Analytics (sample)",
+      "description": "Website traffic by page and by day, the searches that bring people in, and conversions by channel.",
+      "owner": "Digital marketing team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "traffic_by_page",
+          "sideEffect": "read",
+          "summary": "Views and visitors for pages of the website, busiest first."
+        },
+        {
+          "name": "top_searches",
+          "sideEffect": "read",
+          "summary": "The searches that bring people to the website from a search engine, with clicks and position."
+        },
+        {
+          "name": "daily_traffic",
+          "sideEffect": "read",
+          "summary": "Sessions, visitors and conversions day by day, newest first."
+        },
+        {
+          "name": "conversion_summary",
+          "sideEffect": "read",
+          "summary": "Sessions and conversions for each channel (search, direct, email, paid)."
+        }
+      ]
+    },
+    {
+      "connectorId": "uxcam",
+      "displayName": "UXCam (sample)",
+      "description": "How people use the mobile app: sessions, screens, and where people drop out of a journey such as checkout.",
+      "owner": "App team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "list_sessions",
+          "sideEffect": "read",
+          "summary": "App sessions, newest first, by outcome, app version or platform."
+        },
+        {
+          "name": "get_session",
+          "sideEffect": "read",
+          "summary": "One app session with the screens visited."
+        },
+        {
+          "name": "screen_stats",
+          "sideEffect": "read",
+          "summary": "How each app screen is used: views, time spent and how often people leave from it."
+        },
+        {
+          "name": "drop_off",
+          "sideEffect": "read",
+          "summary": "The steps of a funnel, with how many people reach each and how many drop out."
+        }
+      ]
+    },
+    {
+      "connectorId": "location",
+      "displayName": "Location services (sample)",
+      "description": "Addresses and distances: check an address, find the nearest branch, estimate the drive.",
+      "owner": "Digital commerce team",
+      "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+      "connectionScope": "shop",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "find_address",
+          "sideEffect": "read",
+          "summary": "Find addresses by words."
+        },
+        {
+          "name": "validate_address",
+          "sideEffect": "read",
+          "summary": "Check an address typed by a person: is it a real address, and if not, what is close."
+        },
+        {
+          "name": "nearest_branch",
+          "sideEffect": "read",
+          "summary": "The branches nearest to an address (by its id) or to a point (latitude and longitude), nearest first."
+        },
+        {
+          "name": "drive_time",
+          "sideEffect": "read",
+          "summary": "An estimate of the drive from an address or point to a branch: distance and minutes."
+        }
+      ]
+    }
+  ],
+  "policy": [
+    {
+      "connectorId": "sap-commerce",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "ace-erp",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "mulesoft",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salsify",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "bloomreach",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "marketing-cloud",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "power-bi",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "google-analytics",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "uxcam",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "location",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "sap-commerce",
+      "tool": "add_to_cart",
+      "audience": "staff",
+      "groups": [],
+      "state": "ask"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "create_case",
+      "audience": "staff",
+      "groups": [],
+      "state": "ask"
+    },
+    {
+      "connectorId": "marketing-cloud",
+      "tool": "send_message",
+      "audience": "staff",
+      "groups": [],
+      "state": "ask"
+    }
+  ]
+}

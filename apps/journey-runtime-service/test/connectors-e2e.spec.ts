@@ -24,7 +24,14 @@ const TENANT = 'placemakers';
 const ENVIRONMENT = 'production';
 const KEY = 'e2e-sample-key-9d41c7e0b2a64f1f';
 const DRAFT = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
-const REGISTRY = ConnectorsSchema.parse(DRAFT.extensions.connectors);
+/**
+ * The registry these tests exercise is a frozen copy of the one the sample setup had (every system backed by the sample server, all staff,
+ * reads allowed and writes asking first). These tests are about the connector machinery: loading tools on request, the dispatcher's policy
+ * gate, ask-first, the claim classes, the key never leaking. Which team may use which real system is the draft pack's business and is
+ * tested where the pack is: project-service persona-access.spec and connectors-real contract.spec.
+ */
+const SAMPLE_REGISTRY = JSON.parse(readFileSync(path.resolve(__dirname, 'fixtures/sample-connectors-registry.json'), 'utf8'));
+const REGISTRY = ConnectorsSchema.parse(SAMPLE_REGISTRY);
 const SEEDS = loadConnectors();
 const seed = (connector: string, collection: string) => SEEDS.get(connector)!.seed.collections[collection];
 
@@ -53,7 +60,7 @@ after(async () => { await server.close(); });
 const draftAgents = DRAFT.agents.filter((a: any) => ['placemakers_sales_quote', 'placemakers_product_advisor'].includes(a.agentId));
 // The draft asks on a card in the chat; the approval-service flow of these tests is the other way an ask-first tool can wait, so they say so.
 const approvalMode = (registry: any) => ({ ...JSON.parse(JSON.stringify(registry)), askVia: 'approval' });
-function release(registry: unknown = approvalMode(DRAFT.extensions.connectors)) {
+function release(registry: unknown = approvalMode(SAMPLE_REGISTRY)) {
   return connectorPack(registry, { tenantId: TENANT, environmentId: ENVIRONMENT, agents: draftAgents.map((a: any) => ({ ...a, modelPolicyRef: 'default' })) });
 }
 
@@ -92,7 +99,7 @@ const tools = (req: AgentExecutionRequest) => (req.tools ?? []).map((t) => t.nam
 const staff = { role: 'operator', groups: ['sales'] };
 
 describe('Connectors, end to end with a scripted model', () => {
-  test('the registry declared for PlaceMakers in the draft pack matches the sample connectors and has the right defaults: reads allow, writes ask first, staff only', () => {
+  test('the sample registry matches the sample connectors and has the right defaults: reads allow, writes ask first, staff only', () => {
     const served = new Map([...SEEDS].map(([id, { definition }]) => [id, definition.tools]));
     assert.deepEqual(REGISTRY.connectors.map((c) => c.connectorId), [...served.keys()], 'the eleven connectors of the plan, in order');
     for (const connector of REGISTRY.connectors) {
@@ -108,10 +115,25 @@ describe('Connectors, end to end with a scripted model', () => {
       }
     }
     const pack: any = { ...release(), modelPolicy: { policies: [{ policyId: 'default' }] } };
-    pack.extensions = { ...pack.extensions, connectors: DRAFT.extensions.connectors };
+    pack.extensions = { ...pack.extensions, connectors: SAMPLE_REGISTRY };
     const issues = validateBusinessPack(pack).issues.filter((i) => i.path.startsWith('extensions.connectors'));
     assert.deepEqual(issues.filter((i) => i.severity === 'error'), [], 'the publication gate finds no error');
     assert.equal(issues.filter((i) => i.severity === 'warning').length, 11, 'one warning per connector: sample data in a production pack, said plainly');
+  });
+
+  test('the current draft pack passes the publication gate: the real systems are marked real and raise no sample-data warning, the others still do', () => {
+    const current = ConnectorsSchema.parse(DRAFT.extensions.connectors);
+    const pack: any = { ...release(), modelPolicy: { policies: [{ policyId: 'default' }] } };
+    pack.extensions = { ...pack.extensions, connectors: DRAFT.extensions.connectors };
+    const issues = validateBusinessPack(pack).issues.filter((i) => i.path.startsWith('extensions.connectors'));
+    assert.deepEqual(issues.filter((i) => i.severity === 'error'), [], 'the publication gate finds no error in the draft');
+    const warned = new Set(issues.filter((i) => i.severity === 'warning').map((i) => /connectors\[(\d+)\]/.exec(i.path)?.[1]).filter(Boolean).map(Number));
+    current.connectors.forEach((connector, index) => {
+      if (['commercetools', 'salesforce', 'google-analytics', 'power-bi'].includes(connector.connectorId)) {
+        assert.equal(connector.sample, false, `${connector.connectorId} is real`);
+        assert.equal(warned.has(index), false, `${connector.connectorId} raises no sample-data warning`);
+      } else assert.equal(connector.sample, true, `${connector.connectorId} is still sample data until a real system stands behind it`);
+    });
   });
 
   test('staff ask about stock and a trade price: the model loads one connector, calls two tools over MCP and answers from real-shaped data', async () => {
@@ -152,13 +174,13 @@ describe('Connectors, end to end with a scripted model', () => {
 
   test('what a tool may be quoted for is declared in the registry: with no claim class on stock, the reply checker still holds back a stock claim', async () => {
     const row = seed('ace-erp', 'stock').find((r) => r.available > 0)!;
-    const registry = JSON.parse(JSON.stringify(DRAFT.extensions.connectors));
+    const registry = JSON.parse(JSON.stringify(SAMPLE_REGISTRY));
     for (const connector of registry.connectors) for (const t of connector.tools) delete t.claimClasses;
     const ask = (reg: unknown) => turn([
       () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'ace-erp', tool: 'stock_by_branch', arguments: { sku: row.sku, branchCode: row.branchCode } })] }),
       () => ({ content: `${row.branchName} has ${row.available} in stock.` }),
     ], { ...staff, registry: reg });
-    const declared = await ask(DRAFT.extensions.connectors);
+    const declared = await ask(SAMPLE_REGISTRY);
     const undeclared = await ask(registry);
     assert.ok(declared.reply!.includes(String(row.available)), `a stock figure from a tool that declares the stock class is let through: ${declared.reply}`);
     assert.equal(undeclared.reply, 'Withheld.', 'the same sentence from a tool that declares nothing is held back by the pack\'s own withheld-answer message');
@@ -210,25 +232,25 @@ describe('Connectors, end to end with a scripted model', () => {
   });
 
   test('the draft asks on a card in the chat: nothing changes until the person taps Allow, then the cart really has the line', async () => {
-    assert.equal(REGISTRY.askVia, 'card', 'the PlaceMakers draft asks on a card');
+    assert.equal(REGISTRY.askVia, 'card', 'the sample setup asks on a card');
     const cartId = seed('sap-commerce', 'carts')[4].cartId;
     const sku = seed('sap-commerce', 'products')[12].sku;
     const args = { cartId, sku, quantity: 3 };
     const shared = workspace(TENANT, ENVIRONMENT);
-    const lines = async () => (await turn([() => ({ toolCalls: [call('r', 'call_connector_tool', { connector: 'sap-commerce', tool: 'get_cart', arguments: { cartId } })] }), () => ({ content: 'ok' })], { ...staff, registry: DRAFT.extensions.connectors })).toolResults[0].body.result.record.lines.length;
+    const lines = async () => (await turn([() => ({ toolCalls: [call('r', 'call_connector_tool', { connector: 'sap-commerce', tool: 'get_cart', arguments: { cartId } })] }), () => ({ content: 'ok' })], { ...staff, registry: SAMPLE_REGISTRY })).toolResults[0].body.result.record.lines.length;
     const start = await lines();
-    const asked = await turn([() => ({ toolCalls: [call('w1', 'call_connector_tool', { connector: 'sap-commerce', tool: 'add_to_cart', arguments: args })] }), () => ({ content: 'Please allow that.' })], { ...staff, registry: DRAFT.extensions.connectors, workspace: shared });
+    const asked = await turn([() => ({ toolCalls: [call('w1', 'call_connector_tool', { connector: 'sap-commerce', tool: 'add_to_cart', arguments: args })] }), () => ({ content: 'Please allow that.' })], { ...staff, registry: SAMPLE_REGISTRY, workspace: shared });
     const held = asked.toolResults[0].body;
     assert.equal(held.status, 'needs_confirmation');
     assert.equal(await lines(), start, 'the cart is unchanged');
     assert.ok(asked.outcome.turnResult.uiInstructions?.some((c) => c.component === 'confirm'), 'the person sees the card');
-    const allowed = await turn([() => ({ content: 'Added.' })], { ...staff, registry: DRAFT.extensions.connectors, workspace: shared, message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: held.confirmationId, decision: 'allow' } } });
+    const allowed = await turn([() => ({ content: 'Added.' })], { ...staff, registry: SAMPLE_REGISTRY, workspace: shared, message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: held.confirmationId, decision: 'allow' } } });
     assert.match(JSON.stringify(allowed.requests[0].messages), /which the person allowed/);
     assert.equal(await lines(), start + 1, 'the kept call ran and the cart has the new line');
   });
 
   test('strictest wins: a person in two groups gets the stricter state, and a blocked tool is neither listed nor callable', async () => {
-    const registry = approvalMode(DRAFT.extensions.connectors);
+    const registry = approvalMode(SAMPLE_REGISTRY);
     registry.policy.push({ connectorId: 'ace-erp', tool: 'account_balance', audience: 'staff', groups: ['finance-restricted'], state: 'blocked' });
     registry.policy.push({ connectorId: 'ace-erp', tool: 'trade_price', audience: 'staff', groups: ['sales'], state: 'ask' });
     const accountId = seed('ace-erp', 'account_balances')[0].accountId;

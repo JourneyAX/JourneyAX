@@ -14,8 +14,16 @@ async function main() {
   await suite.test('the plan names a team, a membership and a login for each person, and no raw password reaches a stored document', async () => {
     const plan = planDemoStaff('PlaceMakers', 'org1', new Date('2026-10-25T00:00:00Z'));
     assert.equal(plan.tenantId, 'placemakers');
-    assert.deepEqual(plan.teams.map((t) => t.teamId), ['team_customer_service', 'team_sales']);
-    assert.deepEqual(plan.members.map((m) => `${m.email}:${m.teams.join('+')}`), ['csr@placemakers.demo:Customer Service', 'sales@placemakers.demo:Sales']);
+    assert.deepEqual(plan.teams.map((t) => t.teamId), ['team_customer_service', 'team_sales', 'team_sales_managers', 'team_marketing', 'team_insights', 'team_leadership']);
+    assert.deepEqual(plan.members.map((m) => `${m.email}:${m.teams.join('+')}`), [
+      'csr@placemakers.demo:Customer Service', 'sales@placemakers.demo:Sales', 'sales.manager@placemakers.demo:Sales Managers',
+      'marketing@placemakers.demo:Marketing', 'insights@placemakers.demo:Insights', 'exec@placemakers.demo:Leadership',
+    ]);
+    assert.ok(plan.members.every((m) => m.teams.length === 1), 'each person is in exactly one team: with two, the stricter row would only ever take access away');
+    assert.equal(plan.users.length, 7, 'six staff logins and one signed-in shopper');
+    const shopper = plan.users.find((u) => u.email === 'shopper@placemakers.demo')!;
+    assert.equal(shopper.role, 'buyer');
+    assert.ok(!plan.members.some((m) => m.email === shopper.email), 'a shopper is not a member of the project and is in no team');
     const db = new MemoryDb();
     await applyDemoStaff(both(db), plan, fakeHash);
     const stored = JSON.stringify([...db.dump('users'), ...db.dump('project_members'), ...db.dump('project_teams')]);
@@ -28,13 +36,13 @@ async function main() {
     const plan = planDemoStaff('placemakers');
     await applyDemoStaff(both(db), plan, fakeHash);
     await applyDemoStaff(both(db), plan, fakeHash);
-    assert.equal(db.dump('users').length, 2);
-    assert.equal(db.dump('project_members').length, 2);
-    assert.equal(db.dump('project_teams').length, 2);
+    assert.equal(db.dump('users').length, 7);
+    assert.equal(db.dump('project_members').length, 6);
+    assert.equal(db.dump('project_teams').length, 6);
     await removeDemoStaff(both(db), plan);
     assert.equal(db.dump('users').length, 0);
     assert.equal(db.dump('project_members').length, 0);
-    assert.equal(db.dump('project_teams').length, 2, 'teams may hold real people');
+    assert.equal(db.dump('project_teams').length, 6, 'teams may hold real people');
   });
 
   await suite.test('logins go to the sign-in service\'s database and teams and memberships to the project service\'s, never the other way', async () => {
@@ -42,19 +50,19 @@ async function main() {
     const projectDb = new MemoryDb();
     const plan = planDemoStaff('placemakers');
     const result = await applyDemoStaff({ users: usersDb as any, project: projectDb as any }, plan, fakeHash);
-    assert.deepEqual(result, { teams: 2, members: 2, users: 2 });
-    assert.equal(usersDb.dump('users').length, 2);
+    assert.deepEqual(result, { teams: 6, members: 6, users: 7 });
+    assert.equal(usersDb.dump('users').length, 7);
     assert.equal(usersDb.dump('project_members').length, 0, 'no membership in the sign-in database');
     assert.equal(usersDb.dump('project_teams').length, 0, 'no team in the sign-in database');
     assert.equal(projectDb.dump('users').length, 0, 'no login in the project database');
-    assert.equal(projectDb.dump('project_members').length, 2);
-    assert.equal(projectDb.dump('project_teams').length, 2);
+    assert.equal(projectDb.dump('project_members').length, 6);
+    assert.equal(projectDb.dump('project_teams').length, 6);
     await applyDemoStaff({ users: usersDb as any, project: projectDb as any }, plan, fakeHash);
-    assert.equal(usersDb.dump('users').length + projectDb.dump('project_members').length, 4, 'loading twice changes nothing');
+    assert.equal(usersDb.dump('users').length + projectDb.dump('project_members').length, 13, 'loading twice changes nothing');
     await removeDemoStaff({ users: usersDb as any, project: projectDb as any }, plan);
     assert.equal(usersDb.dump('users').length, 0);
     assert.equal(projectDb.dump('project_members').length, 0);
-    assert.equal(projectDb.dump('project_teams').length, 2, 'teams may hold real people');
+    assert.equal(projectDb.dump('project_teams').length, 6, 'teams may hold real people');
   });
 
   await suite.test('what the gateway reads back from a membership is the group the pack\'s access rows name', async () => {

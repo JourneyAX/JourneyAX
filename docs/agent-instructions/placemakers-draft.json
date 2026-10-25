@@ -70,7 +70,10 @@
         "read_product_guide",
         "read_content_page",
         "review_cart",
-        "open_form"
+        "open_form",
+        "list_connectors",
+        "get_connector_tools",
+        "call_connector_tool"
       ],
       "modelPolicyRef": "complex_reasoning",
       "maxTurns": 5,
@@ -349,13 +352,13 @@
       "askVia": "card",
       "connectors": [
         {
-          "connectorId": "sap-commerce",
-          "displayName": "SAP Commerce Cloud (sample)",
+          "connectorId": "commercetools",
+          "displayName": "commercetools",
           "description": "The online shop: products and prices, carts, orders and order history. Use it to look up a product, see what is in a cart or where an order is, or add a product to a cart.",
           "owner": "Digital commerce team",
-          "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+          "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
-          "sample": true,
+          "sample": false,
           "enabled": true,
           "tools": [
             {
@@ -406,13 +409,70 @@
           ]
         },
         {
-          "connectorId": "salesforce",
-          "displayName": "Salesforce Sales and Service Cloud (sample)",
-          "description": "Trade accounts and customer service cases, and whether the support team has reviewed an online order. Use it to find an account, see its cases, or open a case.",
-          "owner": "Customer service team",
+          "connectorId": "sap-commerce",
+          "displayName": "SAP Commerce Cloud (sample)",
+          "description": "The online shop: products and prices, carts, orders and order history. Use it to look up a product, see what is in a cart or where an order is, or add a product to a cart.",
+          "owner": "Digital commerce team",
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
+          "enabled": false,
+          "tools": [
+            {
+              "name": "find_product",
+              "sideEffect": "read",
+              "summary": "Search the shop's products by words (name, brand, type).",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "get_product",
+              "sideEffect": "read",
+              "summary": "Get one product by SKU: price, unit, category, product page and image.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "get_cart",
+              "sideEffect": "read",
+              "summary": "Get a cart with its lines.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "add_to_cart",
+              "sideEffect": "write",
+              "summary": "Add a product to a cart."
+            },
+            {
+              "name": "get_order",
+              "sideEffect": "read",
+              "summary": "Get an order with its lines: status, delivery type, branch and totals.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "order_history",
+              "sideEffect": "read",
+              "summary": "List the orders of a trade account, newest first.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            }
+          ]
+        },
+        {
+          "connectorId": "salesforce",
+          "displayName": "Salesforce",
+          "description": "Trade accounts and customer service cases, and whether the support team has reviewed an online order. Use it to find an account, see its cases, or open a case.",
+          "owner": "Customer service team",
+          "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
+          "connectionScope": "shop",
+          "sample": false,
           "enabled": true,
           "tools": [
             {
@@ -439,11 +499,6 @@
               "name": "create_case",
               "sideEffect": "write",
               "summary": "Open a new support case for an account."
-            },
-            {
-              "name": "order_review_status",
-              "sideEffect": "read",
-              "summary": "See whether the support team has reviewed an online order, for one order or for an account."
             }
           ]
         },
@@ -455,7 +510,7 @@
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "stock_by_branch",
@@ -502,7 +557,7 @@
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "order_sync_status",
@@ -524,7 +579,7 @@
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "get_product_content",
@@ -568,7 +623,7 @@
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "search",
@@ -624,12 +679,12 @@
         },
         {
           "connectorId": "power-bi",
-          "displayName": "Power BI (sample)",
+          "displayName": "Power BI",
           "description": "Sales and service reports: weekly sales by branch, order status, review turnaround, service cases by topic, click and collect versus delivery, top products.",
           "owner": "Business insights team",
-          "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+          "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
-          "sample": true,
+          "sample": false,
           "enabled": true,
           "tools": [
             {
@@ -657,12 +712,12 @@
         },
         {
           "connectorId": "google-analytics",
-          "displayName": "Google Analytics (sample)",
+          "displayName": "Google Analytics",
           "description": "Website traffic by page and by day, the searches that bring people in, and conversions by channel.",
           "owner": "Digital marketing team",
-          "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
+          "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
-          "sample": true,
+          "sample": false,
           "enabled": true,
           "tools": [
             {
@@ -695,7 +750,7 @@
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "list_sessions",
@@ -727,7 +782,7 @@
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "find_address",
@@ -754,14 +809,288 @@
       ],
       "policy": [
         {
-          "connectorId": "sap-commerce",
-          "tool": "*",
+          "connectorId": "commercetools",
+          "tool": "find_product",
           "audience": "staff",
-          "groups": [],
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_product",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_cart",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "add_to_cart",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "administrators"
+          ],
+          "state": "ask"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_order",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "order_history",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
           "state": "allow"
         },
         {
           "connectorId": "salesforce",
+          "tool": "find_account",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "get_account",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "list_cases",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "get_case",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "create_case",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "administrators"
+          ],
+          "state": "ask"
+        },
+        {
+          "connectorId": "google-analytics",
+          "tool": "traffic_by_page",
+          "audience": "staff",
+          "groups": [
+            "marketing",
+            "insights",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "google-analytics",
+          "tool": "top_searches",
+          "audience": "staff",
+          "groups": [
+            "marketing",
+            "insights",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "google-analytics",
+          "tool": "daily_traffic",
+          "audience": "staff",
+          "groups": [
+            "marketing",
+            "insights",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "google-analytics",
+          "tool": "conversion_summary",
+          "audience": "staff",
+          "groups": [
+            "marketing",
+            "insights",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "power-bi",
+          "tool": "list_reports",
+          "audience": "staff",
+          "groups": [
+            "sales-managers",
+            "marketing",
+            "insights",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "power-bi",
+          "tool": "get_report_figures",
+          "audience": "staff",
+          "groups": [
+            "sales-managers",
+            "marketing",
+            "insights",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "power-bi",
+          "tool": "report_totals",
+          "audience": "staff",
+          "groups": [
+            "sales-managers",
+            "marketing",
+            "insights",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "marketing-cloud",
+          "tool": "list_messages",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "marketing-cloud",
+          "tool": "get_message",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "marketing-cloud",
+          "tool": "list_templates",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "marketing-cloud",
+          "tool": "send_message",
+          "audience": "staff",
+          "groups": [
+            "marketing",
+            "administrators"
+          ],
+          "state": "ask"
+        },
+        {
+          "connectorId": "sap-commerce",
           "tool": "*",
           "audience": "staff",
           "groups": [],
@@ -796,27 +1125,6 @@
           "state": "allow"
         },
         {
-          "connectorId": "marketing-cloud",
-          "tool": "*",
-          "audience": "staff",
-          "groups": [],
-          "state": "allow"
-        },
-        {
-          "connectorId": "power-bi",
-          "tool": "*",
-          "audience": "staff",
-          "groups": [],
-          "state": "allow"
-        },
-        {
-          "connectorId": "google-analytics",
-          "tool": "*",
-          "audience": "staff",
-          "groups": [],
-          "state": "allow"
-        },
-        {
           "connectorId": "uxcam",
           "tool": "*",
           "audience": "staff",
@@ -833,20 +1141,6 @@
         {
           "connectorId": "sap-commerce",
           "tool": "add_to_cart",
-          "audience": "staff",
-          "groups": [],
-          "state": "ask"
-        },
-        {
-          "connectorId": "salesforce",
-          "tool": "create_case",
-          "audience": "staff",
-          "groups": [],
-          "state": "ask"
-        },
-        {
-          "connectorId": "marketing-cloud",
-          "tool": "send_message",
           "audience": "staff",
           "groups": [],
           "state": "ask"
@@ -1056,7 +1350,8 @@
           "agentId": "placemakers_sales_quote",
           "audience": "staff",
           "groups": [
-            "sales"
+            "sales",
+            "sales-managers"
           ],
           "level": "default"
         }
@@ -1139,9 +1434,8 @@
             ],
             "connectors": [
               "salesforce",
-              "ace-erp",
-              "mulesoft",
-              "location"
+              "commercetools",
+              "marketing-cloud"
             ],
             "tools": []
           }
@@ -1157,9 +1451,9 @@
             "skills": [],
             "forms": [],
             "connectors": [
-              "sap-commerce",
-              "salsify",
-              "bloomreach"
+              "commercetools",
+              "salesforce",
+              "marketing-cloud"
             ],
             "tools": []
           }
@@ -1175,7 +1469,6 @@
             "connectors": [
               "power-bi",
               "google-analytics",
-              "uxcam",
               "marketing-cloud"
             ],
             "tools": []
@@ -1232,18 +1525,29 @@
           "level": "available"
         },
         {
+          "pluginId": "insights",
+          "audience": "staff",
+          "groups": [],
+          "level": "available"
+        },
+        {
           "pluginId": "trade-desk",
           "audience": "staff",
           "groups": [
-            "sales"
+            "sales",
+            "sales-managers"
           ],
           "level": "default"
         },
         {
           "pluginId": "insights",
           "audience": "staff",
-          "groups": [],
-          "level": "available"
+          "groups": [
+            "insights",
+            "marketing",
+            "leadership"
+          ],
+          "level": "default"
         }
       ]
     }
