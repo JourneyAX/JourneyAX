@@ -43,6 +43,8 @@ import { buildReview, type ReviewLine, type ReviewState, type ReviewSuggestion }
 import type { LastProducts } from './auto-card';
 import { addOtherOption, checkShelfQuestions, type QuestionCardSettings, type Shelf } from './question-shelves';
 import { connectorWordsForLocale } from '../capabilities/handlers/locale-stemmer';
+import { CONNECTOR_META_TOOL_DEFINITIONS, executeConnectorMetaTool, isConnectorMetaTool } from './connector-tools';
+import type { ConnectorPerson, ConnectorRuntime } from '../kernel/connector.runtime';
 
 export interface AgentToolContext {
   tenantId: string;
@@ -52,6 +54,8 @@ export interface AgentToolContext {
   correlationId: string;
   principalId?: string;
   principalRole?: string;
+  /** Who is asking, as far as groups and audience go: what the connector policy is worked out from. Absent: a shopper with no groups. */
+  principal?: ConnectorPerson;
   idempotencyKey?: string;
   release: BusinessPackRelease;
   workspace?: WorkspaceState | null;
@@ -91,6 +95,10 @@ export interface AgentToolContext {
   agentSkillIds?: string[];
   /** Skills the agent opened this turn (use_skill), for the trace. */
   usedSkillIds?: Set<string>;
+  /** Reaches connectors (other systems over MCP). Absent: the connector tools are not offered. */
+  connectorRuntime?: ConnectorRuntime;
+  /** Connectors the agent loaded or called this turn, for the trace. */
+  usedConnectorIds?: Set<string>;
   /** The quantity estimates of this turn by SKU: a quantity card shows only a number the estimate tool returned. */
   lastEstimates?: Map<string, Extract<QuantityEstimate, { ok: true }> & { title: string; unitLabel: string; working: Array<{ label: string; value: string }>; ctaLabel: string }>;
   /** The picture made this turn: a picture card shows only this one. */
@@ -896,6 +904,8 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
       required: [],
     },
   },
+  // Generic tools for reaching connectors; offered only when the pack declares connectors this person may use.
+  ...CONNECTOR_META_TOOL_DEFINITIONS,
 ];
 
 /**
@@ -910,6 +920,8 @@ export function isReadOnlyTool(toolName: string): boolean {
     'add_to_quote',
     'update_cart',
     'add_to_cart',
+    // A connector tool may change data in the other system, so connector calls run one at a time.
+    'call_connector_tool',
   ]);
   return !mutatingTools.has(toolName);
 }
@@ -2080,6 +2092,12 @@ export async function executeAgentTool(
           message: `No verified warranty certificate registered for '${target}'. Please consult store staff.`,
         },
       };
+    }
+
+    case 'list_connectors':
+    case 'get_connector_tools':
+    case 'call_connector_tool': {
+      return executeConnectorMetaTool(toolName, args, ctx, makeExecContext(ctx) as any);
     }
 
     case 'use_skill': {

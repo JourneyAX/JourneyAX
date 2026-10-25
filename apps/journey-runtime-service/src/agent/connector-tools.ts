@@ -1,0 +1,112 @@
+import { ClaimClassSchema } from '@journeyax/knowledge';
+import type { ExecutionContext } from '@journeyax/capability-sdk';
+import type { AgentToolDefinition } from '../kernel/model.gateway';
+import type { AgentToolContext } from './agent-tools';
+import type { ConnectorPerson, ConnectorSummary } from '../kernel/connector.runtime';
+
+/**
+ * The three tools through which the model reaches connectors. They are generic: they know nothing about any one connector. The model sees
+ * connectors by name and description (in its instructions and with list_connectors), loads the tools of one only when a request needs them
+ * (get_connector_tools), and calls them (call_connector_tool). Every call goes through the connector runtime and the dispatcher's policy gate.
+ */
+export const CONNECTOR_META_TOOL_NAMES = ['list_connectors', 'get_connector_tools', 'call_connector_tool'] as const;
+
+export function isConnectorMetaTool(toolName: string): boolean {
+  return (CONNECTOR_META_TOOL_NAMES as readonly string[]).includes(toolName);
+}
+
+export const CONNECTOR_META_TOOL_DEFINITIONS: AgentToolDefinition[] = [
+  {
+    name: 'list_connectors',
+    description: 'List the connectors you can use. A connector is another system the business keeps data in or acts on. Returns a name and a short description for each, not their tools. Use get_connector_tools to see what one connector can do.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'get_connector_tools',
+    description: 'Load the tools of one connector so you can call them. Returns each tool\'s name, what it does and its inputs, and says which tools ask the person first and which change data. Load a connector\'s tools only when the request needs it. Optional query narrows the list.',
+    parameters: {
+      type: 'object',
+      properties: {
+        connector: { type: 'string', description: 'The connector id, as listed.' },
+        query: { type: 'string', description: 'Optional words describing the tool you are looking for.' },
+      },
+      required: ['connector'],
+    },
+  },
+  {
+    name: 'call_connector_tool',
+    description: 'Call one tool of a connector. Load the connector\'s tools first and follow their inputs exactly; never invent a tool name. A tool that changes data may need a person\'s approval first: you then get status needs_approval and nothing has been done; tell the person what is waiting, and call again with the approvalRequestId only after they say they approved. When a result is marked sample, tell the person it is sample data.',
+    parameters: {
+      type: 'object',
+      properties: {
+        connector: { type: 'string', description: 'The connector id.' },
+        tool: { type: 'string', description: 'The tool name, as returned by get_connector_tools.' },
+        arguments: { type: 'object', description: 'The tool\'s inputs.' },
+        approvalRequestId: { type: 'string', description: 'Only the id from an earlier needs_approval for this exact call, after the person approved it.' },
+      },
+      required: ['connector', 'tool'],
+    },
+  },
+];
+
+/** The connector list as a block of the agent's instructions. Empty when the person has no connector. */
+export function formatConnectors(summaries: ConnectorSummary[]): string {
+  if (summaries.length === 0) return '';
+  return (
+    '# Connectors you can use\n' +
+    'Connectors are other systems the business keeps data in or acts on. Their tools are not loaded yet: when a request needs one, load that connector\'s tools with get_connector_tools, then use call_connector_tool. Do not guess tool names or inputs. If a result is marked sample, say it is sample data.\n' +
+    summaries.map((summary) => `- ${summary.connector}: ${summary.description}${summary.sample ? ' (sample data)' : ''}`).join('\n')
+  );
+}
+
+const ANONYMOUS_SHOPPER: ConnectorPerson = { audience: 'shopper', groups: [] };
+
+/** Runs one of the three tools. The tenant, environment and person come from the server-side context, never from the model's arguments. */
+export async function executeConnectorMetaTool(
+  toolName: string,
+  args: Record<string, any>,
+  ctx: AgentToolContext,
+  execContext: ExecutionContext,
+): Promise<any> {
+  const runtime = ctx.connectorRuntime;
+  if (!runtime) return { ok: false, error: 'Connectors are not available in this conversation.' };
+  const person = ctx.principal ?? ANONYMOUS_SHOPPER;
+
+  if (toolName === 'list_connectors') {
+    const connectors = runtime.summaries(ctx.release as any, person);
+    return { ok: true, connectors, ...(connectors.length === 0 ? { message: 'You have no connectors.' } : {}) };
+  }
+
+  const connector = String(args.connector ?? '').trim();
+  if (!connector) return { ok: false, error: 'Say which connector.', available: runtime.summaries(ctx.release as any, person).map((summary) => summary.connector) };
+
+  if (toolName === 'get_connector_tools') {
+    const loaded = await runtime.loadTools(ctx.release as any, person, execContext, connector, typeof args.query === 'string' ? args.query : undefined);
+    if (loaded.ok) (ctx.usedConnectorIds ||= new Set()).add(connector);
+    return loaded;
+  }
+
+  // call_connector_tool
+  const tool = String(args.tool ?? '').trim();
+  if (!tool) return { ok: false, error: 'Say which tool.' };
+  const rawArguments = args.arguments && typeof args.arguments === 'object' && !Array.isArray(args.arguments) ? { ...(args.arguments as Record<string, unknown>) } : {};
+  // The tenant is whoever the server says; a model cannot name another.
+  delete rawArguments.tenantId;
+  delete rawArguments.environmentId;
+  const result = await runtime.call(ctx.release as any, person, execContext, connector, tool, rawArguments, {
+    approvals: ctx.approvalService as any,
+    approvalRequestId: typeof args.approvalRequestId === 'string' ? args.approvalRequestId : undefined,
+  });
+  ctx.emitTrace?.('connector_call', { connector, tool, outcome: result.ok ? 'success' : (result as any).status });
+  if (result.ok) {
+    (ctx.usedConnectorIds ||= new Set()).add(connector);
+    // What the tool says it supports, if the reply checker knows the class, is unlocked for the reply.
+    for (const name of (result as any).claimClasses ?? []) {
+      const parsed = ClaimClassSchema.safeParse(name);
+      if (parsed.success) ctx.allowedClaimClasses.add(parsed.data);
+    }
+    const { claimClasses: _claimClasses, ...forModel } = result as any;
+    return forModel;
+  }
+  return result;
+}

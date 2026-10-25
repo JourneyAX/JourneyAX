@@ -153,6 +153,18 @@ check('the answer carries what the model and the admin need: server name, sample
   assert.equal(stock.tools.find((t) => t.name === 'reserve_stock')!.sideEffect, 'write');
 });
 
+check('a stored table that has not been through the schema works: a missing enabled means enabled, missing groups means all, missing sideEffect means read', () => {
+  const stored = {
+    connectors: [{ connectorId: 'crm', displayName: 'CRM', description: 'Accounts.', owner: 'x', tools: [{ name: 'find_account' }, { name: 'create_case', sideEffect: 'write' }] }],
+    policy: [{ connectorId: 'crm', tool: '*', audience: 'staff', state: 'allow' }],
+  } as unknown as ConnectorsExtension;
+  const crm = resolveConnectorPolicy(stored, person('operator', ['sales']))[0];
+  assert.equal(crm.usable, true);
+  assert.deepEqual(crm.tools.map((t) => [t.name, t.sideEffect, t.state]), [['find_account', 'read', 'allow'], ['create_case', 'write', 'allow']]);
+  assert.equal(crm.sample, false);
+  assert.equal(resolveConnectorPolicy(stored, person('customer'))[0].usable, false);
+});
+
 // The publication gate (validateBusinessPack, section 4f)
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 function issuesFor(extension: unknown, manifest: Record<string, unknown> = {}) {

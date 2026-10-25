@@ -32,6 +32,11 @@ export const ConnectorToolSchema = z.object({
   /** `write` for a tool that changes something in the other system. The model is told, and the validator warns when one is set to allow. */
   sideEffect: z.enum(['read', 'write']).default('read'),
   summary: z.string().max(200).optional(),
+  /**
+   * What kinds of statement the answer of this tool may support in the reply (the claim classes the reply checker knows, for example the
+   * class for stock). A tool with none leaves the reply checker as it was: what the tool returns cannot be stated as fact.
+   */
+  claimClasses: z.array(z.string().min(1).max(40)).max(11).optional(),
 }).strict();
 
 export const ConnectorSchema = z.object({

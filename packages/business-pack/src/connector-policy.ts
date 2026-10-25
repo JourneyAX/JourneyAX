@@ -3,6 +3,9 @@
  *
  * Pure and small on purpose, like `resolveAccess`: the agent tools, the dispatcher's caller, the publication gate and any "view as"
  * preview all ask this one function, so they cannot disagree. See `schemas/connectors.schema.ts` for the rules of the table.
+ *
+ * It accepts a table that has not been through the schema (a stored release): a missing `enabled` means enabled, missing `groups` means
+ * none named, a missing `sideEffect` means read.
  */
 import type { Principal } from '@journeyax/shared-types';
 import { CONNECTOR_STATES, type ConnectorDefinition, type ConnectorPolicyRow, type ConnectorState, type ConnectorsExtension } from './schemas/connectors.schema';
@@ -39,7 +42,8 @@ const ANONYMOUS_SHOPPER: Who = { audience: 'shopper', groups: [] };
 export function connectorRowApplies(row: Pick<ConnectorPolicyRow, 'audience' | 'groups'>, principal: Who): boolean {
   if (row.audience === 'shopper') return true;
   if (principal.audience !== 'staff') return false;
-  return row.groups.length === 0 || row.groups.some((group) => principal.groups.includes(group));
+  const groups = row.groups ?? [];
+  return groups.length === 0 || groups.some((group) => principal.groups.includes(group));
 }
 
 function strictest(rows: ConnectorPolicyRow[]): ConnectorState {
@@ -58,7 +62,7 @@ export function connectorToolState(
   principal: Who = ANONYMOUS_SHOPPER,
 ): { state: ConnectorState; known: boolean; via: EffectiveConnectorTool['via'] } {
   const connector = extension?.connectors.find((entry) => entry.connectorId === connectorId);
-  if (!connector || !connector.enabled) return { state: 'blocked', known: Boolean(connector), via: 'none' };
+  if (!connector || connector.enabled === false) return { state: 'blocked', known: Boolean(connector), via: 'none' };
   const known = connector.tools.some((tool) => tool.name === toolName);
   if (!known) return { state: 'blocked', known: false, via: 'none' };
 
@@ -76,7 +80,7 @@ export function resolveConnectorPolicy(extension: ConnectorsExtension | undefine
   return extension.connectors.map((connector) => {
     const tools: EffectiveConnectorTool[] = connector.tools.map((tool) => {
       const { state, via } = connectorToolState(extension, connector.connectorId, tool.name, principal);
-      return { name: tool.name, sideEffect: tool.sideEffect, ...(tool.summary ? { summary: tool.summary } : {}), state, via };
+      return { name: tool.name, sideEffect: tool.sideEffect ?? 'read', ...(tool.summary ? { summary: tool.summary } : {}), state, via };
     });
     return {
       connectorId: connector.connectorId,
@@ -84,9 +88,9 @@ export function resolveConnectorPolicy(extension: ConnectorsExtension | undefine
       description: connector.description,
       owner: connector.owner,
       mcpServerName: mcpServerNameOf(connector),
-      sample: connector.sample,
+      sample: Boolean(connector.sample),
       tools,
-      usable: connector.enabled && tools.some((tool) => tool.state !== 'blocked'),
+      usable: connector.enabled !== false && tools.some((tool) => tool.state !== 'blocked'),
     };
   });
 }
