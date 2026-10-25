@@ -7,6 +7,8 @@ import { buildAccessPreview } from '../src/access-preview';
 
 const suite = createSuite('project-service: demo staff for trying who sees what');
 const fakeHash = async (password: string) => `hash:${password.length}`;
+/** One database standing in for both, as a rehearsal may use. */
+const both = (db: MemoryDb) => ({ users: db as any, project: db as any });
 
 async function main() {
   await suite.test('the plan names a team, a membership and a login for each person, and no raw password reaches a stored document', async () => {
@@ -15,7 +17,7 @@ async function main() {
     assert.deepEqual(plan.teams.map((t) => t.teamId), ['team_customer_service', 'team_sales']);
     assert.deepEqual(plan.members.map((m) => `${m.email}:${m.teams.join('+')}`), ['csr@placemakers.demo:Customer Service', 'sales@placemakers.demo:Sales']);
     const db = new MemoryDb();
-    await applyDemoStaff(db as any, plan, fakeHash);
+    await applyDemoStaff(both(db), plan, fakeHash);
     const stored = JSON.stringify([...db.dump('users'), ...db.dump('project_members'), ...db.dump('project_teams')]);
     for (const person of DEMO_STAFF) assert.ok(!stored.includes(person.password), 'only a hash is stored');
     assert.ok(db.dump('users').every((u: any) => typeof u.passwordHash === 'string' && !('password' in u)));
@@ -24,15 +26,35 @@ async function main() {
   await suite.test('loading twice changes nothing, and removing takes the logins and memberships away but leaves the teams', async () => {
     const db = new MemoryDb();
     const plan = planDemoStaff('placemakers');
-    await applyDemoStaff(db as any, plan, fakeHash);
-    await applyDemoStaff(db as any, plan, fakeHash);
+    await applyDemoStaff(both(db), plan, fakeHash);
+    await applyDemoStaff(both(db), plan, fakeHash);
     assert.equal(db.dump('users').length, 2);
     assert.equal(db.dump('project_members').length, 2);
     assert.equal(db.dump('project_teams').length, 2);
-    await removeDemoStaff(db as any, plan);
+    await removeDemoStaff(both(db), plan);
     assert.equal(db.dump('users').length, 0);
     assert.equal(db.dump('project_members').length, 0);
     assert.equal(db.dump('project_teams').length, 2, 'teams may hold real people');
+  });
+
+  await suite.test('logins go to the sign-in service\'s database and teams and memberships to the project service\'s, never the other way', async () => {
+    const usersDb = new MemoryDb();
+    const projectDb = new MemoryDb();
+    const plan = planDemoStaff('placemakers');
+    const result = await applyDemoStaff({ users: usersDb as any, project: projectDb as any }, plan, fakeHash);
+    assert.deepEqual(result, { teams: 2, members: 2, users: 2 });
+    assert.equal(usersDb.dump('users').length, 2);
+    assert.equal(usersDb.dump('project_members').length, 0, 'no membership in the sign-in database');
+    assert.equal(usersDb.dump('project_teams').length, 0, 'no team in the sign-in database');
+    assert.equal(projectDb.dump('users').length, 0, 'no login in the project database');
+    assert.equal(projectDb.dump('project_members').length, 2);
+    assert.equal(projectDb.dump('project_teams').length, 2);
+    await applyDemoStaff({ users: usersDb as any, project: projectDb as any }, plan, fakeHash);
+    assert.equal(usersDb.dump('users').length + projectDb.dump('project_members').length, 4, 'loading twice changes nothing');
+    await removeDemoStaff({ users: usersDb as any, project: projectDb as any }, plan);
+    assert.equal(usersDb.dump('users').length, 0);
+    assert.equal(projectDb.dump('project_members').length, 0);
+    assert.equal(projectDb.dump('project_teams').length, 2, 'teams may hold real people');
   });
 
   await suite.test('what the gateway reads back from a membership is the group the pack\'s access rows name', async () => {

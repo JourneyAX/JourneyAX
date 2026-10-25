@@ -56,23 +56,29 @@ export function planDemoStaff(tenantId: string, orgId = tenantId, now: Date = ne
 
 interface DbLike { collection(name: string): { updateOne(filter: any, update: any, options?: any): Promise<any>; deleteMany?(filter: any): Promise<any> } }
 
+/**
+ * Where the pieces live. The sign-in service keeps people's logins in one database and the project service keeps teams and members in
+ * another (on the PlaceMakers setup: `journeyx` and `journeyax`), so each is named on its own; a rehearsal may give the same one twice.
+ */
+export interface DemoStaffDatabases { users: DbLike; project: DbLike }
+
 /** Writes the plan with upserts, so running it twice changes nothing. `hash` turns a password into the stored hash (bcrypt in the script). */
-export async function applyDemoStaff(db: DbLike, plan: DemoStaffPlan, hash: (password: string) => Promise<string>): Promise<{ teams: number; members: number; users: number }> {
+export async function applyDemoStaff(dbs: DemoStaffDatabases, plan: DemoStaffPlan, hash: (password: string) => Promise<string>): Promise<{ teams: number; members: number; users: number }> {
   for (const team of plan.teams) {
-    await db.collection('project_teams').updateOne({ projectId: team.projectId, teamId: team.teamId }, { $set: team }, { upsert: true });
+    await dbs.project.collection('project_teams').updateOne({ projectId: team.projectId, teamId: team.teamId }, { $set: team }, { upsert: true });
   }
   for (const member of plan.members) {
-    await db.collection('project_members').updateOne({ projectId: member.projectId, email: member.email }, { $set: member }, { upsert: true });
+    await dbs.project.collection('project_members').updateOne({ projectId: member.projectId, email: member.email }, { $set: member }, { upsert: true });
   }
   for (const user of plan.users) {
     const { password, ...rest } = user;
-    await db.collection('users').updateOne({ email: user.email }, { $set: { ...rest, passwordHash: await hash(password) }, $setOnInsert: { createdAt: new Date() } }, { upsert: true });
+    await dbs.users.collection('users').updateOne({ email: user.email }, { $set: { ...rest, passwordHash: await hash(password) }, $setOnInsert: { createdAt: new Date() } }, { upsert: true });
   }
   return { teams: plan.teams.length, members: plan.members.length, users: plan.users.length };
 }
 
 /** Undoes a load: removes the demo staff's login and membership (the teams are left, they may hold real people). */
-export async function removeDemoStaff(db: DbLike, plan: DemoStaffPlan): Promise<void> {
-  for (const member of plan.members) await db.collection('project_members').deleteMany?.({ projectId: member.projectId, email: member.email });
-  for (const user of plan.users) await db.collection('users').deleteMany?.({ email: user.email });
+export async function removeDemoStaff(dbs: DemoStaffDatabases, plan: DemoStaffPlan): Promise<void> {
+  for (const member of plan.members) await dbs.project.collection('project_members').deleteMany?.({ projectId: member.projectId, email: member.email });
+  for (const user of plan.users) await dbs.users.collection('users').deleteMany?.({ email: user.email });
 }
