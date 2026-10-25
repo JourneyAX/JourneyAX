@@ -479,7 +479,7 @@ export interface CardInstance {
   cardType:
     | 'hero' | 'clarify' | 'products' | 'productDetail' | 'comparison' | 'bundle'
     | 'quote' | 'cart' | 'orderStatus' | 'guide' | 'plan' | 'accessories'
-    | 'warranty' | 'quantity' | 'review' | 'visual' | 'fitment' | 'disclosure' | 'suggestions' | 'working' | 'confirm';
+    | 'warranty' | 'quantity' | 'review' | 'visual' | 'fitment' | 'disclosure' | 'suggestions' | 'working' | 'confirm' | 'form';
   state: Record<string, unknown>;
   variant?: string;
   streamId?: string;

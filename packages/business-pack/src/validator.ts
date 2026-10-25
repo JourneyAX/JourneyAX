@@ -182,6 +182,20 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     });
   }
 
+  // 4h. Validate the forms the shop offers (extensions.forms): two forms with one id would open the wrong one, and a form the assistant
+  // is never allowed to open (no agent lists open_form) would never be seen.
+  const forms = (pack as any).extensions?.forms as Array<{ formId: string }> | undefined;
+  if (Array.isArray(forms) && forms.length > 0) {
+    const seenForms = new Set<string>();
+    forms.forEach((form, index) => {
+      if (seenForms.has(form.formId)) issues.push({ severity: 'error', path: `extensions.forms[${index}].formId`, message: `Two forms are called '${form.formId}'.` });
+      seenForms.add(form.formId);
+    });
+    if (!agents.some((a) => Array.isArray((a as any).allowedTools) && (a as any).allowedTools.includes('open_form'))) {
+      issues.push({ severity: 'warning', path: 'extensions.forms', message: 'The pack has forms but no agent lists open_form in its allowed tools, so the assistant can never open one.' });
+    }
+  }
+
   // 5. Validate Journeys and Stages
   for (const journey of pack.journeys) {
     const stageIds = new Set(Object.keys(journey.stages));

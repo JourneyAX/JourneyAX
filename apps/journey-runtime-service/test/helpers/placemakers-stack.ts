@@ -193,7 +193,7 @@ export function projectDoc(agentMode = false) {
     extensions: {
       ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true }, interpretationPolicy: agentSettings.interpretationPolicy } : {}),
       ...(agentMode && Array.isArray(agentDraft.skills) ? { skills: agentDraft.skills } : {}),
-      ...(agentMode ? { quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser, productGuides: agentDraft.extensions?.productGuides, contentPages: agentDraft.extensions?.contentPages, checkoutReview: agentDraft.extensions?.checkoutReview, eventPrefetch: agentDraft.extensions?.eventPrefetch, voice: agentDraft.extensions?.voice } : {}),
+      ...(agentMode ? { quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser, productGuides: agentDraft.extensions?.productGuides, contentPages: agentDraft.extensions?.contentPages, checkoutReview: agentDraft.extensions?.checkoutReview, eventPrefetch: agentDraft.extensions?.eventPrefetch, voice: agentDraft.extensions?.voice, forms: agentDraft.extensions?.forms } : {}),
       customerEvents: {
         autoTurnEvents: ['addToQuote', 'quote.added', 'addToCart'],
         recordOnlyEvents: ['removeFromQuote', 'removeFromCart', 'like'],

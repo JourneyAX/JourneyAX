@@ -69,7 +69,8 @@
         "generate_visual",
         "read_product_guide",
         "read_content_page",
-        "review_cart"
+        "review_cart",
+        "open_form"
       ],
       "modelPolicyRef": "complex_reasoning",
       "maxTurns": 5,
@@ -101,7 +102,8 @@
       "allowedTools": [
         "check_stock",
         "consult_business_knowledge",
-        "hand_off_to_human"
+        "hand_off_to_human",
+        "open_form"
       ],
       "modelPolicyRef": "fast_intent",
       "maxTurns": 4,
@@ -126,7 +128,8 @@
         "update_cart",
         "consult_business_knowledge",
         "present_card",
-        "hand_off_to_human"
+        "hand_off_to_human",
+        "open_form"
       ],
       "modelPolicyRef": "complex_reasoning",
       "maxTurns": 6,
@@ -544,6 +547,67 @@
           "level": "default"
         }
       ]
-    }
+    },
+    "forms": [
+      {
+        "formId": "contact-us",
+        "title": "Contact us",
+        "intro": "Tell us a little about what you need and our team will get back to you.",
+        "fields": [
+          {
+            "id": "name",
+            "label": "Your name",
+            "type": "text",
+            "required": true,
+            "maxLength": 100
+          },
+          {
+            "id": "email",
+            "label": "Email",
+            "type": "email",
+            "required": true
+          },
+          {
+            "id": "phone",
+            "label": "Phone (optional)",
+            "type": "phone"
+          },
+          {
+            "id": "branch",
+            "label": "Your nearest branch (optional)",
+            "type": "text",
+            "maxLength": 100
+          },
+          {
+            "id": "topic",
+            "label": "What is it about?",
+            "type": "select",
+            "options": [
+              "An order or a delivery",
+              "A product or some advice",
+              "A quote",
+              "Something else"
+            ],
+            "required": true
+          },
+          {
+            "id": "message",
+            "label": "How can we help?",
+            "type": "textarea",
+            "required": true,
+            "maxLength": 1500
+          },
+          {
+            "id": "callback",
+            "label": "Please call me back",
+            "type": "checkbox"
+          }
+        ],
+        "submitLabel": "Send to our team",
+        "thanks": "Thanks, we have your message and our customer service team will be in touch. Your reference is {reference}.",
+        "routeTo": "our customer service team",
+        "whenToOffer": "the customer wants to contact us, leave a message or ask for a call back"
+      }
+    ]
   }
 }

@@ -26,6 +26,7 @@ import { requestQuantity } from '@/lib/cards/quantityStep';
 import type { CardInstance } from '@/lib/types';
 import { openCanvas, openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
 import { openLink } from '@/lib/links';
+import FormCard from './FormCard';
 
 /**
  * Action → storefront behaviour (docs/v3-card-cms-architecture.md
@@ -183,6 +184,16 @@ export function useCardActions() {
           dispatch({ type: 'PATCH_CARD', id: card.id, state: { ...card.state, pending: false, outcome: said || (decision === 'allow' ? 'Allowed.' : 'Not now.') } });
         }
         postCustomerEvent({ type: 'confirmTool', payload: { confirmationId, decision }, sourceCard: { id: card?.id, cardType: 'confirm' } });
+        break;
+      }
+      case 'submitForm': {
+        // The form's id and what was typed go to the server, which checks it against the shop's own definition and keeps it.
+        const formId = String(params?.formId ?? '').trim();
+        const values = params?.values && typeof params.values === 'object' ? (params.values as Record<string, unknown>) : {};
+        if (!formId) break;
+        const card = state.cards.find((c) => c.cardType === 'form' && (c.state as any)?.formId === formId && (c.state as any)?.status !== 'sent');
+        if (card) dispatch({ type: 'PATCH_CARD', id: card.id, state: { ...card.state, status: 'sent', sentText: 'Sent. Thank you.' } });
+        postCustomerEvent({ type: 'submitForm', payload: { formId, values }, sourceCard: { id: card?.id, cardType: 'form' } });
         break;
       }
       case 'selectItem': {
@@ -487,6 +498,14 @@ function dedupeSkuLists<T extends Record<string, unknown>>(state: T): T {
 /** One card, rendered inline at its place in the conversation thread. */
 export function CardTile({ card, onAction }: { card: CardInstance; onAction: (name: string, params?: Record<string, unknown>) => void }) {
   const cfg = useStorefrontConfig();
+  // A form is the shop's own fields filled in by the person: it needs its own state, so it is drawn by its own component.
+  if (card.cardType === 'form') {
+    return (
+      <div className="jx-root chat-inline-card" data-card-type="form">
+        <FormCard state={card.state as any} onAction={(name, params) => onAction(name, { ...params, cardId: card.id })} />
+      </div>
+    );
+  }
   const ticked = useCompareSelection();
   const base = dedupeSkuLists(card.state as Record<string, unknown>) as Record<string, unknown>;
   // Product rows carry what depends on this customer's moment: ticked for comparison, how many branches hold it, no price to show.

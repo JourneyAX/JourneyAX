@@ -469,6 +469,15 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     outcome: el('Text', { text: S('/outcome'), variant: 'small', tone: 'muted' }, { visible: [S('/outcome')] }),
   }),
 
+  form: spec('root', {
+    root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '560px' }, { children: ['title', 'intro', 'fields', 'sent'] }),
+    title: el('Text', { text: S('/title'), variant: 'heading' }),
+    intro: el('Text', { text: S('/intro'), variant: 'body' }, { visible: [S('/intro')] }),
+    fields: el('Box', { gap: 'xs' }, { children: ['f'], repeat: { statePath: '/fields', key: 'id' } }),
+    f: el('KeyValue', { label: I('label'), value: I('type'), inline: true }),
+    sent: el('Text', { text: S('/sentText'), variant: 'small', tone: 'muted' }, { visible: [S('/sentText')] }),
+  }),
+
   suggestions: spec('root', {
     root: el('Chips', { items: S('/chips'), action: 'sendMessage', valueKey: 'text' }),
   }),

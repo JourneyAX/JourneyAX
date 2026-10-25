@@ -8,6 +8,7 @@ export * from './skill.schema';
 export * from './access.schema';
 export * from './skill-access.schema';
 export * from './tool-states.schema';
+export * from './forms.schema';
 export * from './journey.schema';
 export * from './rule.schema';
 export * from './capability-binding.schema';

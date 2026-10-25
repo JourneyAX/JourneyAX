@@ -26,6 +26,7 @@ import {
 } from './agent-tools';
 import { chooseWithheldFallback, foundMessageOf, needsRepair } from './withheld-fallback';
 import { outcomeWording, takePendingConfirmation } from './confirmation';
+import { checkSubmission, findForm, noteSubmission, submissionAllowed, thanksFor } from './forms';
 import agentLoopDefaults from '../defaults/agent-loop.json';
 import { chooseCardSkus } from './auto-card';
 import { prefetchCallsFor, formatPrefetched, accessoriesCardFrom } from './event-prefetch';
@@ -47,6 +48,7 @@ import type { TurnTranscriptStore } from '../kernel/transcript.store';
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import type { ProductGuideRepository } from '../kernel/product-guide.repository';
 import type { ContentPageRepository } from '../kernel/content-page.repository';
+import type { FormSubmissionRepository } from '../kernel/form-submission.repository';
 
 export interface AgentTurnOptions {
   command: TurnCommand;
@@ -64,6 +66,7 @@ export interface AgentTurnOptions {
   knowledgeGapRepo?: KnowledgeGapRepository;
   productGuideRepo?: ProductGuideRepository;
   contentPageRepo?: ContentPageRepository;
+  formSubmissionRepo?: FormSubmissionRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   sink: (event: string, data: any) => void;
@@ -138,6 +141,8 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
 6b. The Conversation So Far:
    - The history message at the start lists what was already looked up, which products and questions were shown (in order, with SKUs), and what was worked out.
    - When the customer refers back to it ("the second one", "the cheaper one", "same again but 30 m²", "add the first one"), answer from it. Look a product up by its SKU only when you need details the history does not list, and search again only when the request itself has changed: a new search can return a different list, and then "the second one" would no longer be the same product.
+6c. Reaching the shop:
+   - When the shop has a form for getting in touch (open_form), open it whenever the customer wants to contact the shop, leave a message, ask for a call back or have someone follow something up. A message only reaches the shop once the form is sent, so do not take their details in the chat, and do not say a message or request has been passed on unless a form was sent or a hand-off tool result says so.
 6. Scope & Boundaries:
    - If a customer asks for items or services outside the merchant's declared scope (see business profile), explain clearly and politely and offer assistance or human handoff if appropriate.
    - For safety-critical or regulatory questions outside verified knowledge: give only verified general information, explain what parameters must be verified, and refer to a qualified specialist or licensed professional.
@@ -527,6 +532,7 @@ export class AgentTurnLoop {
       knowledgeGapRepo: options.knowledgeGapRepo,
       productGuideRepo: options.productGuideRepo,
       contentPageRepo: options.contentPageRepo,
+      formSubmissionRepo: options.formSubmissionRepo,
       inMemoryQuotes,
       inMemoryCarts,
       shownAccessories: new Set<string>(Array.isArray((workspace?.facts as any)?.shown_accessories?.value) ? (workspace!.facts as any).shown_accessories.value.map(String) : []),
@@ -655,7 +661,11 @@ export class AgentTurnLoop {
         eventLines.push(`Source Card: ${sc}`);
       }
       if (customerEvent.payload) {
-        eventLines.push(`Payload: ${JSON.stringify(customerEvent.payload, null, 2)}`);
+        // What a person typed into a form is for the people who read the form, not for the model: only which form and which fields are shown.
+        const shownPayload = customerEvent.type === 'submitForm'
+          ? { formId: customerEvent.payload.formId, fieldsFilled: Object.keys(customerEvent.payload.values || {}) }
+          : customerEvent.payload;
+        eventLines.push(`Payload: ${JSON.stringify(shownPayload, null, 2)}`);
       }
       eventLines.push('</customer_event>');
       // A tap on an ask-first card: the call the server kept for the person is run (or dropped) now, and the agent is told what happened.
@@ -683,6 +693,46 @@ export class AgentTurnLoop {
           }
           prefetchedTrace.push({ name: taken.pending.toolId, durationMs: Date.now() - started, ok, arguments: { confirmed: true, ...taken.pending.args }, resultCount: extractToolResultCount(result) });
           eventLines.push(`Result of "${taken.pending.toolId}", which the person allowed (${words.allowed}): ${JSON.stringify(result).slice(0, 4000)}\nTell the person plainly what happened, from this result only.`);
+        }
+      }
+      // A form the person filled in and sent: the server checks it against the shop's own definition, keeps it, and tells the agent what happened
+      // (never what was typed: the details are for the people who read the form, not for the conversation).
+      if (customerEvent.type === 'submitForm') {
+        const payload: any = customerEvent.payload || {};
+        const form = findForm(release, payload.formId);
+        if (!form) {
+          eventLines.push('Result: that form does not exist, so nothing was sent. Tell the person plainly and offer another way to reach the shop.');
+        } else if (!submissionAllowed(workspace as any)) {
+          eventLines.push(`Result: too many forms were sent from this conversation in the last hour, so the form "${form.title}" was not sent. Say so politely and suggest trying again later.`);
+        } else {
+          const check = checkSubmission(form, payload.values);
+          if (!check.ok) {
+            eventLines.push(`Result: the form "${form.title}" was not sent because of: ${Object.values(check.errors).join(' ')} Tell the person what needs fixing; they can open the form again.`);
+          } else if (!toolContext.formSubmissionRepo) {
+            eventLines.push(`Result: the form "${form.title}" could not be kept here, so it was not sent. Say so plainly and offer another way to reach the shop.`);
+          } else {
+            const started = Date.now();
+            try {
+              const saved = await toolContext.formSubmissionRepo.save({
+                tenantId: command.tenantId,
+                environmentId: String(command.environmentId || 'production'),
+                formId: form.formId,
+                formTitle: form.title,
+                workspaceId: command.workspaceId,
+                sessionId: command.sessionId,
+                principalId: toolContext.principalId || 'anonymous',
+                values: check.values,
+                ...(form.routeTo ? { routeTo: form.routeTo } : {}),
+              });
+              noteSubmission(workspace as any);
+              prefetchedTrace.push({ name: 'submit_form', durationMs: Date.now() - started, ok: true, arguments: { formId: form.formId, fields: Object.keys(check.values) }, resultCount: 1 });
+              eventLines.push(`Result: the person sent the form "${form.title}". It was kept${form.routeTo ? ` for ${form.routeTo}` : ''} with the reference ${saved.reference}. The shop's words for the confirmation: "${thanksFor(form, saved.reference)}". Tell the person it is sent, with the reference, in one or two sentences. Do not repeat what they typed.`);
+            } catch (err: any) {
+              if (signal?.aborted || toolContext.signal?.aborted) throw err;
+              prefetchedTrace.push({ name: 'submit_form', durationMs: Date.now() - started, ok: false, arguments: { formId: form.formId }, resultCount: 0 });
+              eventLines.push(`Result: the form "${form.title}" could not be kept just now, so it was NOT sent. Tell the person plainly and offer another way to reach the shop.`);
+            }
+          }
         }
       }
       // Lookups the tenant has declared for this kind of tap are made now, in parallel, and shown to the agent with it.

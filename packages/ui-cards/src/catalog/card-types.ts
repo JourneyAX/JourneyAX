@@ -327,6 +327,33 @@ export const CARD_TYPES = {
       outcome: z.string().optional(),
     }),
   },
+  form: {
+    title: 'Form',
+    description: 'A form the shop offers (contact us, an enquiry, a callback request): the shop\'s own fields, filled in by the person and sent for the shop to read. Built by the server from the shop\'s form definition.',
+    state: z.object({
+      formId: z.string(),
+      title: z.string(),
+      intro: z.string().optional(),
+      fields: z.array(z.object({
+        id: z.string(),
+        label: z.string(),
+        type: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'checkbox']),
+        required: z.boolean().optional(),
+        placeholder: z.string().optional(),
+        options: z.array(z.string()).optional(),
+        maxLength: z.number().int().optional(),
+      })).min(1).max(20),
+      /** What the person has typed so far, or what the assistant already knew. */
+      values: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+      submitLabel: z.string().optional(),
+      /** The shop's words for a mistake in a field. */
+      messages: z.record(z.string(), z.string()).optional(),
+      /** `open` while it waits to be filled in; `sent` once it has gone, with the reference. */
+      status: z.enum(['open', 'sent']).optional(),
+      reference: z.string().optional(),
+      sentText: z.string().optional(),
+    }),
+  },
   hero: {
     title: 'Intro / hero',
     description: 'Opening stage before the first turn: headline, sub-copy, starter chips.',

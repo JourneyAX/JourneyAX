@@ -71,6 +71,7 @@ const TOOL_TRACE_LABEL: Record<string, string> = {
   search_guides: 'Looking up installation guidance',
   read_product_guide: 'Reading the product guide',
   read_content_page: 'Reading the PlaceMakers page',
+  open_form: 'Opening the form',
   get_warranty: 'Checking warranty information',
   explore_options: 'Seeing what the range comes in',
   estimate_quantity: 'Working out how many you need',

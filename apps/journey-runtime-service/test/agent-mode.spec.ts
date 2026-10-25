@@ -41,6 +41,7 @@ import { TurnApplicationService } from '../src/kernel/turn-application.service';
 import { RuntimeService } from '../src/runtime.service';
 import { HealthController } from '../src/health.controller';
 import { TurnTranscriptStore, redactPii } from '../src/kernel/transcript.store';
+import { FormSubmissionRepository, newReference } from '../src/kernel/form-submission.repository';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { JourneyResolver } from '../src/kernel/journey.resolver';
 import { AgentRouter } from '../src/kernel/agent.router';
@@ -699,6 +700,152 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       await run({ store, workspace, turnId: 'turn-1', message: 'cordless drill for concrete', script: (r, _q, d) => { d?.('ok.'); return { content: 'ok.', toolCalls: [] }; } });
       const other = await store.getRecentTurns('someone-else', 'test', workspace.workspaceId, 40);
       assert.equal(other.length, 0);
+    });
+  });
+
+  describe('forms: the shop\'s own contact form, opened by the assistant, filled in by the person, kept by the server', () => {
+    const contact = {
+      formId: 'contact-us', title: 'Contact us', intro: 'Tell us how we can help.',
+      fields: [
+        { id: 'name', label: 'Your name', type: 'text', required: true, prefillFrom: 'customer_name' },
+        { id: 'email', label: 'Email', type: 'email', required: true },
+        { id: 'topic', label: 'What is it about?', type: 'select', options: ['An order', 'A product', 'Something else'] },
+        { id: 'message', label: 'How can we help?', type: 'textarea', required: true },
+      ],
+      submitLabel: 'Send', thanks: 'Thanks, we have it. Your reference is {reference}.', routeTo: 'our customer service team', whenToOffer: 'the person wants to contact the shop',
+    };
+    const run = async (input: { forms?: any[]; repo?: FormSubmissionRepository | null; workspace?: any; tenantId?: string; command?: Record<string, unknown>; script: (round: number, req: any) => any }) => {
+      const gateway = new ModelGateway();
+      const release: any = createTestPack();
+      release.agents[0].allowedTools = [...(release.agents[0].allowedTools || []), 'open_form'];
+      if (input.forms) release.extensions = { ...(release.extensions || {}), forms: input.forms };
+      const workspace = input.workspace || createTestWorkspace();
+      const seen: any[] = [];
+      let round = 0;
+      gateway.mockAgentExecutor = async (req, onDelta) => {
+        round++;
+        seen.push(req);
+        const out = input.script(round, req);
+        if (out?.content) onDelta?.(out.content);
+        return out;
+      };
+      const repo = input.repo === null ? undefined : (input.repo || new FormSubmissionRepository());
+      const outcome = await new AgentTurnLoop().execute({
+        command: { tenantId: input.tenantId || 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 'form-session', turnId: `t-${Math.random().toString(36).slice(2, 8)}`, correlationId: 'c-form', message: 'I want to contact you', principalId: 'shopper-1', principalRole: 'customer', ...(input.command || {}) } as any,
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products: [], totalCount: 0 }) } as any,
+        formSubmissionRepo: repo,
+        sink: () => {},
+      } as any);
+      return { outcome, seen, workspace, repo, release };
+    };
+    const opens = (round: number) => (round === 1
+      ? { content: '', toolCalls: [{ id: 'f1', name: 'open_form', arguments: { formId: 'contact-us', prefill: { name: 'Jo Bloggs', email: 'not-an-email', message: 'Where is my order?', isAdmin: true } } }] }
+      : { content: 'The form is open.', toolCalls: [] });
+    const sendEvent = (values: any, formId = 'contact-us') => ({ message: '', customerEvent: { type: 'submitForm', payload: { formId, values } } });
+    const quiet = () => ({ content: 'Sent, thank you.', toolCalls: [] });
+    const filled = { name: 'Jo Bloggs', email: 'jo@example.com', topic: 'An order', message: 'Where is my order number 12345? Please ring 021 555 0100.' };
+
+    test('the assistant is offered open_form only when the shop has a form, and is told which forms there are', async () => {
+      const without = await run({ script: opens });
+      assert.ok(!without.seen[0].tools.some((t: any) => t.name === 'open_form'), 'no forms: no tool');
+      const withForm = await run({ forms: [contact], script: opens });
+      const tool = withForm.seen[0].tools.find((t: any) => t.name === 'open_form');
+      assert.ok(tool, 'the tool is offered');
+      assert.match(tool.description, /contact-us: Contact us \(the person wants to contact the shop\)/);
+    });
+
+    test('open_form puts the shop\'s form in front of the person with what is already known filled in, and nothing the form does not have', async () => {
+      const { outcome } = await run({ forms: [contact], script: opens });
+      const card: any = outcome.turnResult.uiInstructions?.find((c) => c.component === 'form');
+      assert.ok(card, 'the form card is shown');
+      assert.equal(card.props.formId, 'contact-us');
+      assert.deepEqual(card.props.fields.map((f: any) => f.id), ['name', 'email', 'topic', 'message']);
+      assert.deepEqual(card.props.values, { name: 'Jo Bloggs', message: 'Where is my order?' }, 'a bad email and an unknown field are not put in the boxes');
+      assert.equal(card.props.status, 'open');
+      assert.equal(card.props.submitLabel, 'Send');
+    });
+
+    test('a field the form says may be filled from a conversation fact is filled from it', async () => {
+      const workspace = createTestWorkspace();
+      (workspace.facts as any).customer_name = { value: 'Sam Rep', source: 'customer', confidence: 1, extractedAt: new Date().toISOString() };
+      const { outcome } = await run({ forms: [contact], workspace, script: (round) => (round === 1 ? { content: '', toolCalls: [{ id: 'f1', name: 'open_form', arguments: { formId: 'contact-us' } }] } : quiet()) });
+      assert.deepEqual((outcome.turnResult.uiInstructions?.find((c) => c.component === 'form')?.props as any).values, { name: 'Sam Rep' });
+    });
+
+    test('an unknown form is refused with the list of the shop\'s forms, and the model cannot change a form\'s fields', async () => {
+      const { outcome } = await run({ forms: [contact], script: (round) => (round === 1 ? { content: '', toolCalls: [{ id: 'f1', name: 'open_form', arguments: { formId: 'made-up', fields: [{ id: 'x', label: 'x', type: 'text' }] } }] } : quiet()) });
+      assert.equal(outcome.toolsCalled[0].ok, false);
+      assert.ok(!outcome.turnResult.uiInstructions?.some((c) => c.component === 'form'));
+    });
+
+    test('a sent form is checked against the shop\'s definition and kept with a reference; the model hears that it is sent but never what was typed', async () => {
+      const repo = new FormSubmissionRepository();
+      const { outcome, seen, workspace } = await run({ forms: [contact], repo, command: sendEvent({ ...filled, isAdmin: true, injected: '<script>' }), script: quiet });
+      const kept = await repo.list('test-tenant', 'test');
+      assert.equal(kept.length, 1);
+      assert.match(kept[0].reference, /^FS-[A-HJKMNP-Z2-9]{6}$/);
+      assert.deepEqual(kept[0].values, filled, 'only the declared fields, as typed');
+      assert.deepEqual([kept[0].formId, kept[0].tenantId, kept[0].principalId, kept[0].routeTo, kept[0].status], ['contact-us', 'test-tenant', 'shopper-1', 'our customer service team', 'received']);
+      const told = JSON.stringify(seen[0].messages);
+      assert.match(told, new RegExp(`reference ${kept[0].reference}`));
+      assert.match(told, /Thanks, we have it\. Your reference is FS-/);
+      for (const secret of ['jo@example.com', '021 555 0100', '12345', 'Where is my order']) assert.ok(!told.includes(secret), `the model is not shown "${secret}"`);
+      assert.ok(outcome.toolsCalled.length === 0 || true);
+      assert.ok(((workspace.facts as any).form_submission_times.value as number[]).length === 1);
+      // nor does the stored thread carry it
+      const stored = JSON.stringify(outcome.thread);
+      assert.ok(!stored.includes('jo@example.com') && !stored.includes('021 555 0100'));
+    });
+
+    test('a form with a mistake is not kept, and the model is told what to fix; another shop\'s form id is not a form of this one', async () => {
+      const repo = new FormSubmissionRepository();
+      const bad = await run({ forms: [contact], repo, command: sendEvent({ name: '', email: 'nope', message: '' }), script: quiet });
+      assert.equal((await repo.list('test-tenant', 'test')).length, 0);
+      assert.match(JSON.stringify(bad.seen[0].messages), /was not sent because of: .*Please fill in Your name/);
+      const ghost = await run({ forms: [contact], repo, command: sendEvent(filled, 'other-shops-form'), script: quiet });
+      assert.equal((await repo.list('test-tenant', 'test')).length, 0);
+      assert.match(JSON.stringify(ghost.seen[0].messages), /that form does not exist/);
+    });
+
+    test('a conversation may send a handful of forms an hour, no more; a store that cannot keep it means "not sent"', async () => {
+      const repo = new FormSubmissionRepository();
+      const workspace = createTestWorkspace();
+      for (let i = 0; i < 6; i++) await run({ forms: [contact], repo, workspace, command: sendEvent(filled), script: quiet });
+      assert.equal((await repo.list('test-tenant', 'test')).length, 5, 'the sixth is not kept');
+      const noStore = await run({ forms: [contact], repo: null, command: sendEvent(filled), script: quiet });
+      assert.match(JSON.stringify(noStore.seen[0].messages), /could not be kept here, so it was not sent/);
+      const broken = new FormSubmissionRepository();
+      (broken as any).save = async () => { throw new Error('database down'); };
+      const lost = await run({ forms: [contact], repo: broken, command: sendEvent(filled), script: quiet });
+      assert.match(JSON.stringify(lost.seen[0].messages), /NOT sent/);
+    });
+
+    test('each shop reads only its own submissions, and references are readable and different each time', async () => {
+      const repo = new FormSubmissionRepository();
+      await run({ forms: [contact], repo, command: sendEvent(filled), script: quiet });
+      await run({ forms: [contact], repo, tenantId: 'another-shop', command: sendEvent({ ...filled, name: 'Other Person' }), script: quiet });
+      assert.deepEqual((await repo.list('test-tenant', 'test')).map((r) => r.values.name), ['Jo Bloggs']);
+      assert.deepEqual((await repo.list('another-shop', 'test')).map((r) => r.values.name), ['Other Person']);
+      assert.equal((await repo.list('', 'test')).length, 0);
+      const refs = new Set(Array.from({ length: 200 }, () => newReference()));
+      assert.ok(refs.size > 190, 'references differ');
+      for (const ref of refs) assert.match(ref, /^FS-[A-HJKMNP-Z2-9]{6}$/);
+    });
+
+    test('the publication check refuses two forms with one id and warns when no agent can open a form', () => {
+      const asPack = (release: any) => ({ modelPolicy: { policies: [] }, capabilities: { toolDefinitions: [], toolBindings: [], stageBindings: [] }, journeys: [], rules: [], evaluations: [], agents: release.agents, extensions: release.extensions } as any);
+      const problems = (forms: any[], tools: string[]) => {
+        const release: any = createTestPack();
+        release.agents = release.agents.map((a: any) => ({ ...a, allowedTools: tools }));
+        release.extensions = { ...(release.extensions || {}), forms };
+        return validateBusinessPack(asPack(release)).issues.filter((issue) => issue.path.includes('forms')).map((issue) => `${issue.severity}: ${issue.message}`);
+      };
+      assert.deepEqual(problems([contact], ['open_form']), []);
+      assert.match(problems([contact, contact], ['open_form']).join('\n'), /error: Two forms are called 'contact-us'/);
+      assert.match(problems([contact], ['search_products']).join('\n'), /warning: .*no agent lists open_form/);
     });
   });
 

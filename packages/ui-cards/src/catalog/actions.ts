@@ -58,6 +58,10 @@ export const actions = {
     description: 'Answer an ask-first card: allow the assistant to do what it asked once, or not.',
     params: z.object({ confirmationId: z.string(), decision: z.enum(['allow', 'deny']) }),
   },
+  submitForm: {
+    description: 'Send a filled-in form (its id and the values typed). The server checks it against the shop\'s form definition.',
+    params: z.object({ formId: z.string(), values: z.record(z.string(), z.union([z.string(), z.boolean()])) }),
+  },
   selectBranch: {
     description: 'Choose a fulfilment branch / store.',
     params: z.object({ branchId: z.string() }),

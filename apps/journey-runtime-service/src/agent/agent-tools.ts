@@ -30,7 +30,9 @@ import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plan
 import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository';
 import type { ProductGuideRepository } from '../kernel/product-guide.repository';
 import type { ContentPageRepository } from '../kernel/content-page.repository';
+import type { FormSubmissionRepository } from '../kernel/form-submission.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
+import { findForm, formCardState, formsOf, prefillFor } from './forms';
 import { confirmCardState, createPendingConfirmation, defaultPrompt, type ConfirmationWording } from './confirmation';
 import { browseRange, exampleOrder, goesWithForTrail, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
@@ -69,6 +71,8 @@ export interface AgentToolContext {
   productGuideRepo?: ProductGuideRepository;
   /** The shop's own web pages kept as text (project how-tos, inspiration, compliance, the shop's own tools), read by read_content_page. */
   contentPageRepo?: ContentPageRepository;
+  /** Where a sent form is kept. */
+  formSubmissionRepo?: FormSubmissionRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
   /** What each tool may do for this person (pack `extensions.toolStates`). Absent: every tool runs, as before the table existed. */
@@ -424,14 +428,24 @@ export function getAgentToolDefinitions(
 
   const hasCalculators = Array.isArray(calculators) && calculators.length > 0;
 
+  const forms = formsOf(release);
+
   return AGENT_TOOL_DEFINITIONS.filter((tool) => {
     if (tool.name === 'calculate_quantity' && !hasCalculators) {
+      return false;
+    }
+    // A shop with no forms has nothing to open.
+    if (tool.name === 'open_form' && forms.length === 0) {
       return false;
     }
     return true;
   }).map((tool) => {
     if (tool.name === 'search_products') {
       return specializeSearchProductsTool(tool, release);
+    }
+    if (tool.name === 'open_form') {
+      const list = forms.map((form) => `${form.formId}: ${form.title}${form.whenToOffer ? ` (${form.whenToOffer})` : ''}`).join('; ');
+      return { ...tool, description: `${tool.description} The forms this shop offers: ${list}.` };
     }
     return tool;
   });
@@ -614,6 +628,18 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
         items: { type: 'array', description: 'Optional: the order\'s lines when the customer\'s action did not carry them, each {sku, quantity}.', items: { type: 'object', properties: { sku: { type: 'string' }, quantity: { type: 'number' } }, required: ['sku'] } },
       },
       required: [],
+    },
+  },
+  {
+    name: 'open_form',
+    description: 'Open one of the shop\'s own forms in front of the customer so they can fill it in and send it (to contact the shop, make an enquiry, ask for a call back). Use it when the customer wants to get in touch, wants a person to follow something up, or asks to send the shop a message; do not collect their details in the chat instead. You may pass values the customer has already given, by field id. The form is the shop\'s: you cannot change its fields. Once the customer sends it you are told and can confirm.',
+    parameters: {
+      type: 'object',
+      properties: {
+        formId: { type: 'string', description: 'Which form, by the id in the list of forms below.' },
+        prefill: { type: 'object', description: 'Optional: what the customer has already told you, as {fieldId: value}. Only fields the form has are used.' },
+      },
+      required: ['formId'],
     },
   },
   {
@@ -1889,6 +1915,19 @@ export async function executeAgentTool(
         sections: [review.quantity, review.accessories, review.fulfilment, review.warranty].map((part) => ({ section: part.title, looksRight: part.ok, notes: part.rows.slice(0, 6).map((entry) => `${entry.title}${entry.detail ? `: ${entry.detail}` : ''}`) })),
         message: 'The review card is ready: it is shown to the customer from this result (present_card with cardType review and no other state), and its buttons let them act on each finding. In two or three warm sentences, as one of our team, say what is worth a look and why it matters (for example a pick-up-only item, or a quantity to match their area), then ask if they would like to sort anything before paying. Do not list every finding again: the card has them. Suggestions are things to check, not confirmed requirements.',
       };
+    }
+
+    case 'open_form': {
+      const form = findForm(ctx.release, args.formId);
+      if (!form) {
+        const known = formsOf(ctx.release).map((entry) => entry.formId);
+        return { ok: false, error: `There is no form "${String(args.formId || '')}".${known.length ? ` The shop's forms are: ${known.join(', ')}.` : ' This shop has no forms.'}` };
+      }
+      const values = prefillFor(form, args.prefill, (ctx.workspace as any)?.facts);
+      const state = formCardState(form, values);
+      ctx.presentedCards.push({ cardType: 'form', state });
+      ctx.emitUiAction?.({ name: 'presentCard', arguments: { card: { id: `form-${form.formId}-${Date.now()}`, cardType: 'form', state } } });
+      return { ok: true, opened: form.formId, title: form.title, prefilled: Object.keys(values), message: 'The form is open in front of the customer. Say in one short sentence what it is for and that they can fill it in and send it; do not ask for the details again in the chat.' };
     }
 
     case 'read_content_page': {

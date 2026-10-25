@@ -15,6 +15,7 @@ export const PLATFORM_TOOLS: Record<string, { name: string; description: string 
   search_guides: { name: 'Guides and documents', description: 'Searches verified installation guides, technical documents and how-tos.' },
   read_product_guide: { name: 'Product guides', description: 'Reads the supplier\'s own guide kept with a product (specification guide, installation guide, manual) and answers from its words.' },
   read_content_page: { name: 'Shop pages', description: 'Reads the shop\'s own web pages (project how-tos, inspiration, compliance notes, trade-tool pages) and the real products they feature.' },
+  open_form: { name: 'Forms', description: 'Opens one of the shop\'s own forms (contact us, an enquiry, a call-back request) for the customer to fill in and send; the shop reads what is sent.' },
   get_warranty: { name: 'Warranty', description: 'Reads verified warranty periods, terms and certificates for a product or brand.' },
   calculate_quantity: { name: 'Quantity calculator', description: 'Works out how much of a product a job needs, from the customer\'s measurements and the shop\'s own formulas.' },
   check_stock: { name: 'Check stock', description: 'Checks real stock of a product at a branch or location.' },

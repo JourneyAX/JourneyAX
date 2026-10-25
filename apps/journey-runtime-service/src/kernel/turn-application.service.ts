@@ -51,6 +51,7 @@ import { TurnTranscriptStore } from './transcript.store';
 import { KnowledgeGapRepository } from './knowledge-gap.repository';
 import { ProductGuideRepository } from './product-guide.repository';
 import { ContentPageRepository } from './content-page.repository';
+import { FormSubmissionRepository } from './form-submission.repository';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { CatalogueIndexRegistry, openCatalogueDatabase } from '../capabilities/catalogue-index';
 import { resolveCatalogMapping } from '@journeyax/business-pack';
@@ -141,7 +142,8 @@ export class TurnApplicationService {
     public readonly transcriptStore: TurnTranscriptStore = new TurnTranscriptStore(),
     public readonly knowledgeGapRepo: KnowledgeGapRepository = new KnowledgeGapRepository(),
     public readonly productGuideRepo: ProductGuideRepository = new ProductGuideRepository(),
-    public readonly contentPageRepo: ContentPageRepository = new ContentPageRepository()
+    public readonly contentPageRepo: ContentPageRepository = new ContentPageRepository(),
+    public readonly formSubmissionRepo: FormSubmissionRepository = new FormSubmissionRepository()
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
@@ -453,6 +455,7 @@ export class TurnApplicationService {
               knowledgeGapRepo: this.knowledgeGapRepo,
               productGuideRepo: this.productGuideRepo,
               contentPageRepo: this.contentPageRepo,
+              formSubmissionRepo: this.formSubmissionRepo,
               sink: agentTimingSink,
               timeoutMs: turnDeadlineMs,
               signal: abortController.signal,
