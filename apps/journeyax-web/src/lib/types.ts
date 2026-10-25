@@ -396,6 +396,8 @@ export interface JourneyState {
   clarify: ClarifyAnswers;
   dynamicQuestions: DynamicQuestion[];
   dynamicAnswers: Record<string, string>;
+  /** Questions whose number the customer kept after the card questioned it ("did you mean…?"), so it is not asked about again. */
+  dynamicKept: Record<string, boolean>;
   recommendedProducts: RecommendedProduct[];
   comparison?: ComparisonData | null;
   bundle?: BundleData | null;
@@ -508,6 +510,7 @@ export const INITIAL_STATE: JourneyState = {
   clarify: { mode: null, scope: null, collection: null, shower: null, finishQ: null },
   dynamicQuestions: [],
   dynamicAnswers: {},
+  dynamicKept: {},
   recommendedProducts: [],
   guideSteps: [],
   qty: 1,

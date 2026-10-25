@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
-import { contentPageFromRow, contentPageId, findPage, pageAsGuide, searchPages, type ContentPageRecord } from '../src/agent/content-pages';
+import { contentPageFromRow, contentPageId, findPage, pageAsGuide, readableTitle, searchPages, type ContentPageRecord } from '../src/agent/content-pages';
 import { ContentPageRepository } from '../src/kernel/content-page.repository';
 import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
 import { executeAgentTool, type AgentToolContext } from '../src/agent/agent-tools';
@@ -163,6 +163,29 @@ async function main() {
     const off = shop([pageRecord('test-tenant')], { contentPages: { enabled: false } });
     const quiet: any = await executeAgentTool('search_guides', { query: 'pergola' }, off);
     assert.equal(quiet.sitePages, undefined);
+  });
+
+  await suite.test('a page title typed in capitals is written the way a person would: sentence case, the shop\'s own name, short names left as they are', () => {
+    const keep = ['PlaceMakers'];
+    assert.equal(readableTitle('PLACEMAKERS WARDROBES', { keep }), 'PlaceMakers wardrobes');
+    assert.equal(readableTitle('WALK-IN WARDROBE IDEAS FOR THE HOME', { keep }), 'Walk-in wardrobe ideas for the home');
+    assert.equal(readableTitle('GIB AQUALINE FOR WET AREAS', { keep }), 'GIB aqualine for wet areas', 'a short word that is a name stays as typed');
+    assert.equal(readableTitle('HOW TO BUILD A PERGOLA'), 'How to build a pergola');
+    assert.equal(readableTitle('NEW LBP RULES FOR DIY JOBS'), 'New LBP rules for DIY jobs');
+    assert.equal(readableTitle('How to build a pergola', { keep }), 'How to build a pergola', 'a title a person wrote is not touched');
+    assert.equal(readableTitle('Deck FAQ'), 'Deck FAQ');
+    assert.equal(readableTitle('PLACEMAKERS WARDROBES', { keep, locale: 'de-DE' }), 'PLACEMAKERS WARDROBES', 'only English capitalisation rules are applied');
+    assert.equal(readableTitle('  '), '');
+    assert.equal(readableTitle('1234 56'), '1234 56');
+  });
+
+  await suite.test('read_content_page gives the model a readable title and the other pages\' too', async () => {
+    const ctx = shop([pageRecord('test-tenant', { title: 'POST AND PERGOLA IDEAS', url: 'https://shop.example/online/ideas' }), pageRecord('test-tenant', { title: 'PERGOLA POSTS', url: 'https://shop.example/online/posts' })]);
+    (ctx as any).release = { ...(ctx as any).release, profile: { companyName: 'PlaceMakers', primaryLocale: 'en-NZ' } };
+    const result: any = await executeAgentTool('read_content_page', { query: 'pergola posts' }, ctx);
+    assert.equal(result.found, true);
+    const titles = [result.page.title, ...(result.otherPages || []).map((page: any) => page.title)];
+    assert.ok(titles.every((title: string) => /[a-z]/.test(title)), `no title is left in capitals: ${titles.join(' | ')}`);
   });
 }
 

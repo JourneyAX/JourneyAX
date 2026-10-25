@@ -25,7 +25,7 @@ type Action =
   | { type: 'ADD_MESSAGE'; role: 'ai' | 'user' | 'note'; text: string; head?: string }
   | { type: 'SET_CLARIFY'; key: keyof ClarifyAnswers; value: string }
   | { type: 'SET_DYNAMIC_QUESTIONS'; questions: DynamicQuestion[] }
-  | { type: 'SET_DYNAMIC_ANSWER'; questionId: string; value: string }
+  | { type: 'SET_DYNAMIC_ANSWER'; questionId: string; value: string; kept?: boolean }
   | { type: 'SET_RECOMMENDED_PRODUCTS'; products: RecommendedProduct[] }
   | { type: 'SET_COMPARISON'; comparison: ComparisonData | null }
   | { type: 'SET_BUNDLE'; bundle: BundleData | null }
@@ -169,9 +169,9 @@ function reducer(state: JourneyState, action: Action): JourneyState {
         ...(action.key === 'finishQ' ? { finish: action.value } : {}),
       };
     case 'SET_DYNAMIC_QUESTIONS':
-      return { ...state, dynamicQuestions: action.questions, dynamicAnswers: {} };
+      return { ...state, dynamicQuestions: action.questions, dynamicAnswers: {}, dynamicKept: {} };
     case 'SET_DYNAMIC_ANSWER':
-      return { ...state, dynamicAnswers: { ...state.dynamicAnswers, [action.questionId]: action.value } };
+      return { ...state, dynamicAnswers: { ...state.dynamicAnswers, [action.questionId]: action.value }, dynamicKept: { ...state.dynamicKept, [action.questionId]: action.kept === true } };
     case 'SET_COMPARISON':
       return { ...state, comparison: action.comparison };
     case 'SET_BUNDLE':

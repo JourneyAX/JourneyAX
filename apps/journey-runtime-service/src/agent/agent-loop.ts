@@ -133,6 +133,7 @@ export const GENERIC_PLATFORM_OPERATING_PROMPT = `# Platform Operating Rules
    - Never output raw HTML or custom UI syntax.
    - Every product SKU referenced on a card MUST have been returned by a tool result in this turn. Discontinued products must never appear on cards.
    - Product prices and availability displayed on cards are server-authoritative.
+   - An answer on a question card that ends with "(checked, kept as typed)" is a number the card already questioned ("did you mean…?") and the customer chose to keep: use it exactly as written, with the unit the card gave, and do not ask what it meant again.
 6b. The Conversation So Far:
    - The history message at the start lists what was already looked up, which products and questions were shown (in order, with SKUs), and what was worked out.
    - When the customer refers back to it ("the second one", "the cheaper one", "same again but 30 m²", "add the first one"), answer from it. Look a product up by its SKU only when you need details the history does not list, and search again only when the request itself has changed: a new search can return a different list, and then "the second one" would no longer be the same product.

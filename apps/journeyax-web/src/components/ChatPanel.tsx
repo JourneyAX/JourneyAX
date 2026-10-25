@@ -922,7 +922,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     const fingerprint = qs.map((q: any) => `${q.id}:${answers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
-    const clarificationText = `My answers:\n${answerSummary(qs, answers)}`;
+    const clarificationText = `My answers:\n${answerSummary(qs, answers, stateRef.current.dynamicKept)}`;
 
     if (isLoading || state.isThinking) {
       pendingClarificationRef.current = { fingerprint, message: clarificationText };
@@ -973,7 +973,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     const fingerprint = qs.map((q: any) => `${q.id}:${state.dynamicAnswers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
-    const clarificationText = `My answers:\n${answerSummary(qs, state.dynamicAnswers)}`;
+    const clarificationText = `My answers:\n${answerSummary(qs, state.dynamicAnswers, state.dynamicKept)}`;
 
     if (isLoading || state.isThinking) {
       pendingClarificationRef.current = { fingerprint, message: clarificationText };

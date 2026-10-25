@@ -25,6 +25,7 @@ import { buildComparisonCard, toCompareSource } from '@/lib/cards/comparison';
 import { requestQuantity } from '@/lib/cards/quantityStep';
 import type { CardInstance } from '@/lib/types';
 import { openCanvas, openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
+import { openLink } from '@/lib/links';
 
 /**
  * Action → storefront behaviour (docs/v3-card-cms-architecture.md
@@ -117,7 +118,8 @@ export function useCardActions() {
         const questionId = String(params?.questionId ?? '');
         const value = String(params?.value ?? '');
         if (!questionId) break;
-        dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value });
+        const kept = params?.kept === true;
+        dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value, kept });
 
         const cardId = params?.cardId ? String(params.cardId) : undefined;
         // No event is posted for a tap on an option: the chat sends all the answers together once every question on the card is
@@ -161,7 +163,7 @@ export function useCardActions() {
           // ChatPanel's useEffect monitors dynamicAnswers and will submit with fingerprint deduplication once all questions are answered
           if (!w.__handleClarifySubmit && (left === 0 || total <= 1)) {
             // Only if ChatPanel bridge is somehow absent, fallback to direct send
-            const clarificationText = `My answers:\n${answerSummary(updatedQuestions, answers)}`;
+            const clarificationText = `My answers:\n${answerSummary(updatedQuestions, answers, { ...state.dynamicKept, [questionId]: kept })}`;
             w.__journeySend?.(clarificationText);
           }
         } else {
@@ -437,7 +439,7 @@ export function useCardActions() {
         }
         break;
       case 'openUrl':
-        if (params?.url) window.open(String(params.url), '_blank', 'noopener');
+        if (params?.url) openLink(String(params.url));
         break;
       default: {
         const fallbackText = params?.text || params?.label || params?.value;

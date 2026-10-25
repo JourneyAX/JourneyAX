@@ -43,10 +43,10 @@ function fmtMoney(amount: unknown, currency?: string): string | null {
 /** Fire a catalog action with a value merged into its params (for value-carrying primitives). */
 function useEmitValue(props: P) {
   const { execute } = useActions();
-  return (value: unknown) => {
+  return (value: unknown, extra?: Record<string, unknown>) => {
     if (!props.action) return;
     const key = props.valueKey || 'value';
-    void execute({ action: String(props.action), params: { ...(props.params || {}), [key]: value } } as any);
+    void execute({ action: String(props.action), params: { ...(props.params || {}), ...(extra || {}), [key]: value } } as any);
   };
 }
 
@@ -298,7 +298,8 @@ const components = {
       if (!valid) return;
       if (outside && questioned !== typed) { setQuestioned(typed); return; }
       setQuestioned('');
-      fire(typed);
+      // A number the card questioned and the customer kept is sent as kept, so the consultant does not ask about it again.
+      fire(typed, outside ? { kept: true } : undefined);
     };
     return (
       <form className="jx-question-input" noValidate onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); submit(); }}>

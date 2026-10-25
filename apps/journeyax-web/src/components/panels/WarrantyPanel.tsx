@@ -1,6 +1,7 @@
 'use client';
 
 import { useJourney } from '@/context/JourneyContext';
+import { linkProps } from '@/lib/links';
 
 // Hoisted out of the component (react-hooks/static-components): defining a
 // component inside render remounts it every pass. Pure presentational row.
@@ -30,7 +31,7 @@ export default function WarrantyPanel() {
           <Row label="DIY vs plumber" value={w.installationNote} />
 
           {w.documentUrl && (
-            <a href={w.documentUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 16, fontSize: 12.5, fontWeight: 700, color: 'var(--text)', textDecoration: 'underline' }}>
+            <a href={w.documentUrl} {...linkProps} style={{ display: 'inline-block', marginTop: 16, fontSize: 12.5, fontWeight: 700, color: 'var(--text)', textDecoration: 'underline' }}>
               View official warranty document →
             </a>
           )}

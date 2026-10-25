@@ -38,7 +38,7 @@ import { normaliseCardState } from './card-state';
 import { areaToSquareMetres, estimateQuantity, type QuantityHelperConfig, type QuantityEstimate } from './quantity-estimate';
 import { generateVisual, type VisualiserConfig } from './visual-generator';
 import { hasReadableText, readGuides } from './product-guides';
-import { findPage, pageAsGuide, searchPages, type ContentPageRecord, type PageHit } from './content-pages';
+import { findPage, pageAsGuide, readableTitle, searchPages, type ContentPageRecord, type PageHit } from './content-pages';
 import { buildReview, type ReviewLine, type ReviewState, type ReviewSuggestion } from './checkout-review';
 import type { LastProducts } from './auto-card';
 import { addOtherOption, checkShelfQuestions, type QuestionCardSettings, type Shelf } from './question-shelves';
@@ -1902,16 +1902,17 @@ export async function executeAgentTool(
         if (parsed.success) ctx.allowedClaimClasses.add(parsed.data);
       }
       const guide = reading.guides[0];
+      const tidyTitle = (value: string) => readableTitle(value, { keep: [String((ctx.release as any)?.profile?.companyName || '')].filter(Boolean), locale: (ctx.release as any)?.profile?.primaryLocale });
       return {
         ok: true,
         found: true,
         query,
-        page: { page: chosen.pageId, title: chosen.title, link: chosen.url, summary: chosen.summary, filedUnder: chosen.categories, passages: guide.passages, ...(guide.outline ? { headings: guide.outline.map((entry) => `${entry.n}: ${entry.heading}`) } : {}), ...(guide.truncated ? { note: 'The stored text stops before the end of this page.' } : {}) },
+        page: { page: chosen.pageId, title: tidyTitle(chosen.title), link: chosen.url, summary: chosen.summary, filedUnder: chosen.categories, passages: guide.passages, ...(guide.outline ? { headings: guide.outline.map((entry) => `${entry.n}: ${entry.heading}`) } : {}), ...(guide.truncated ? { note: 'The stored text stops before the end of this page.' } : {}) },
         answeredFromPage: reading.matched,
         passages: reading.passages.map((passage) => ({ passage: `${passage.n} of ${passage.of}`, text: passage.text })),
         ...(reading.next ? { continueWith: { page: chosen.pageId, from: reading.next.from } } : {}),
         featuredProducts: featured,
-        ...(hits.length > 1 ? { otherPages: hits.slice(1).map((hit) => ({ page: hit.pageId, title: hit.title, summary: hit.summary ? hit.summary.slice(0, 200) : undefined, link: hit.url })) } : {}),
+        ...(hits.length > 1 ? { otherPages: hits.slice(1).map((hit) => ({ page: hit.pageId, title: tidyTitle(hit.title), summary: hit.summary ? hit.summary.slice(0, 200) : undefined, link: hit.url })) } : {}),
         message: 'These passages are our own words from our website page named here. Explain them in plain language, as a member of our team would, and say which page they come from ("our page on ... says..."), with its link as a markdown link [page title](address). Keep every figure, name and rule exactly as written and add nothing from general knowledge. If the page does not cover what was asked, say so and look at otherPages or open another page (page = its id) before giving up. featuredProducts are real catalogue products the page features: if the customer wants ideas or products for the project, show them on a products card (present_card) and say in a sentence why each is there; never show a product that is not in this list or another tool result. For building-code, consent or structural questions the page is general information: tell the customer to confirm with the council, the designer or a licensed building practitioner.',
       };
     }

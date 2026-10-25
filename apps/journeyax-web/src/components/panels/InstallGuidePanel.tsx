@@ -1,6 +1,7 @@
 'use client';
 
 import { useJourney } from '@/context/JourneyContext';
+import { linkProps } from '@/lib/links';
 
 export default function InstallGuidePanel() {
   const { state } = useJourney();
@@ -24,7 +25,7 @@ export default function InstallGuidePanel() {
                   <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>{doc.title}</div>
                   {doc.kind && <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{doc.kind}</div>}
                 </div>
-                <a href={doc.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', textDecoration: 'underline', whiteSpace: 'nowrap' }}>View</a>
+                <a href={doc.url} {...linkProps} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', textDecoration: 'underline', whiteSpace: 'nowrap' }}>View</a>
                 <a href={doc.url} download style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>Download</a>
               </div>
             ))}

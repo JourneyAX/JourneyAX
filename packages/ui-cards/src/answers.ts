@@ -27,12 +27,17 @@ export function answerLabel(question: AnswerQuestion, answer: unknown): string {
   return label || text;
 }
 
-/** One "question → answer" line per question, as the server reads a tapped answer. */
-export function answerSummary(questions: AnswerQuestion[], answers: Record<string, string | undefined>): string {
+/** Said after a number the card questioned ("did you mean 1.2?") and the customer kept as typed, so it is not asked about again. */
+export const KEPT_AS_TYPED = '(checked, kept as typed)';
+
+/** One "question → answer" line per question, as the server reads a tapped answer. `kept` names the questions whose number the customer kept after the card questioned it. */
+export function answerSummary(questions: AnswerQuestion[], answers: Record<string, string | undefined>, kept?: Record<string, boolean | undefined>): string {
   return questions
     .map((question) => {
       const given = (question.id !== undefined ? answers[question.id] : undefined) ?? question.answer;
-      return `${question.text || question.title || question.id} → ${given === undefined || given === null ? 'Not answered' : answerLabel(question, given)}`;
+      const label = given === undefined || given === null ? 'Not answered' : answerLabel(question, given);
+      const note = given !== undefined && given !== null && question.id !== undefined && kept?.[question.id] ? ` ${KEPT_AS_TYPED}` : '';
+      return `${question.text || question.title || question.id} → ${label}${note}`;
     })
     .join('\n');
 }

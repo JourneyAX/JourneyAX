@@ -120,6 +120,43 @@ export function findPage(pages: ContentPageRecord[], reference: string): Content
 }
 
 /** A page in the shape the passage reader takes. */
+/** Words of an English title that are written in lower case when the whole title was typed in capitals. */
+const TITLE_SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'the', 'to', 'with']);
+
+/** Everyday three-letter English words: in a title typed in capitals they are ordinary words, not names or abbreviations. */
+const TITLE_SHORT_WORDS = new Set([
+  'all', 'any', 'are', 'bar', 'bed', 'big', 'box', 'but', 'buy', 'can', 'cut', 'day', 'dry', 'end', 'few', 'fit', 'fix', 'get', 'has', 'her', 'his', 'how', 'its', 'job', 'let', 'low',
+  'new', 'not', 'now', 'old', 'one', 'our', 'out', 'put', 'raw', 'run', 'see', 'set', 'she', 'top', 'two', 'use', 'wet', 'who', 'why', 'way', 'you', 'zip',
+]);
+
+/**
+ * A page title typed entirely in capitals ("PLACEMAKERS WARDROBES") is written the way a person would write it ("PlaceMakers wardrobes"):
+ * sentence case, the shop's own name as the shop spells it, and short words that look like names or abbreviations (up to three
+ * letters, "GIB", "LBP") left as they are. A title with any lower-case letter is already written by a person and is left alone.
+ * Only for English: another language's capitalisation rules are not guessed at.
+ */
+export function readableTitle(title: string, options: { keep?: string[]; locale?: string } = {}): string {
+  const text = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || /[a-z]/.test(text) || !/[A-Z]/.test(text)) return text;
+  if (options.locale && !/^en\b/i.test(options.locale)) return text;
+  const kept = new Map((options.keep || []).map((name) => [name.toLowerCase(), name]));
+  let first = true;
+  return text
+    .split(' ')
+    .map((word) => {
+      const bare = word.replace(/[^A-Za-z]/g, '');
+      const own = kept.get(bare.toLowerCase());
+      let out: string;
+      if (own) out = word.replace(bare, own);
+      else if (bare.length > 0 && bare.length <= 3 && !TITLE_SMALL_WORDS.has(bare.toLowerCase()) && !TITLE_SHORT_WORDS.has(bare.toLowerCase())) out = word;
+      else out = word.toLowerCase();
+      if (first && !own) out = out.replace(/[a-z]/, (letter) => letter.toUpperCase());
+      first = false;
+      return out;
+    })
+    .join(' ');
+}
+
 export function pageAsGuide(page: ContentPageRecord): ProductGuideRecord {
   return { tenantId: page.tenantId, docId: page.pageId, title: page.title, kind: 'page', url: page.url, text: page.text, textChars: page.textChars, truncated: page.truncated, skus: [] };
 }
