@@ -75,6 +75,9 @@ export class RuntimeAuthGuard implements CanActivate {
     }
 
     const req = context.switchToHttp().getRequest();
+    // This guard is attached to the whole service and again on the controller, so it runs twice for one request. The first run decides;
+    // running the assertion check again would claim the same jti a second time and refuse the request as a replay.
+    if (req.authContext) return true;
     const params = req.params || {};
     const headers = req.headers || {};
     const body = req.body || {};

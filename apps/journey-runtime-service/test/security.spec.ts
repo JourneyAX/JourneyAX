@@ -446,6 +446,37 @@ async function runSecurityTests() {
     );
   });
 
+  await test('The guard runs twice for one request (service-wide and on the controller) without calling the assertion a replay', async () => {
+    const assertionSecret = 'test-secret-key-32-bytes-long!';
+    process.env.GATEWAY_ASSERTION_SECRET = assertionSecret;
+    const assertion = signGatewayAssertion(
+      { tenantId: 'workweargroup', environmentId: 'production', sub: 'usr-staff-1', role: 'consultant', groups: ['sales'] },
+      assertionSecret,
+      { jti: `twice_jti_${Date.now()}` }
+    );
+    const request = () => createMockExecutionContext({
+      params: { tenantId: 'workweargroup', environmentId: 'production' },
+      headers: { 'x-tenant-id': 'workweargroup', 'x-gateway-assertion': assertion },
+      body: {},
+    });
+
+    const ctx = request();
+    (guard as any).reflector = (ctx as any)._reflector;
+    assert.equal(await guard.canActivate(ctx), true);
+    assert.equal(await guard.canActivate(ctx), true, 'the second run on the same request must reuse the first answer');
+    const auth = ctx.switchToHttp().getRequest().authContext;
+    assert.equal(auth.principalRole, 'consultant');
+    assert.deepEqual(auth.principalGroups, ['sales']);
+
+    // A different request carrying the same assertion is still a replay.
+    const other = request();
+    (guard as any).reflector = (other as any)._reflector;
+    await assert.rejects(
+      async () => await guard.canActivate(other),
+      (err: any) => err instanceof UnauthorizedException && err.message.includes('replayed')
+    );
+  });
+
   console.log(`\n==================================================`);
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   console.log(`==================================================\n`);
