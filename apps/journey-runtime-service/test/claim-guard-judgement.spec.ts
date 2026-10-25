@@ -64,6 +64,7 @@ const keptSentences = [
   'Good news, I found a Makita cordless combo kit with a hammer drill function, which is the key feature for drilling into masonry or concrete.',
   'Inventory availability hasn’t been checked yet, so we’d need your branch before saying what’s in stock.',
   'If this is for load-bearing framing or a structural job, the span, loads and NZS 3604 requirements need to be checked by an LBP or structural engineer before choosing timber.',
+  'Also, for fixing details, spans, clearances and warranty conditions, the product’s own guide should be checked before you install.',
   // general trade know-how, hedged, that names no installation action
   'For drilling into concrete, you’ll generally want a cordless hammer drill rather than a standard drill, plus masonry drill bits.',
   'For concrete, you’ll generally want a cordless **hammer drill** rather than a standard drill.',
@@ -75,7 +76,7 @@ for (const sentence of keptSentences) {
   assert.deepEqual(verdict.forbidden, [], `a sentence that states no wrong fact must be kept: ${sentence}`);
   assert.equal(withholdUnsupportedClaims(sentence, ['suggestion'], packOptions, { knownNames }).text, sentence, `kept whole: ${sentence}`);
 }
-assert.equal(keptSentences.length, 33);
+assert.equal(keptSentences.length, 34);
 
 // One of the 31 stays withheld by this guard on purpose: it states that a product suits a use, which only a source can say. The repair round
 // asks the model to say it from what the tools returned.
@@ -136,6 +137,7 @@ const invented: Array<[string, string]> = [
   ['warranty', 'Tell me your area, and the paint has a lifetime warranty.'],
   ['stock', 'Stock hasn’t been checked yet, and we have 40 in stock at the Hamilton branch.'],
   ['requirement', 'The span needs to be checked by an engineer and the deck must have a 1 m balustrade.'],
+  ['requirement', 'The guide should be checked first, and insulation needs to be fitted without gaps.'],
   // a product's own name does not excuse a claim made about it
   ['warranty', 'The Makita cordless hammer drill combo kit is guaranteed for 3 years.'],
   ['installation_step', 'Install the Makita 12V CXT combo kit charger on a dry wall.'],
