@@ -22,6 +22,7 @@ import { errorFor, redact, send, setting, vendorMessage } from '../../src/http';
 import type { Deps, Env, Rec } from '../../src/types';
 import { linkSalesforceAccounts, type SalesforceLink } from './salesforce';
 import { cents, readFlags, required, sampleCollection, sleep, slug } from './shared';
+import { plan as storyPlan, repFor } from './story';
 
 const SYSTEM = 'commercetools';
 const LOCALE = 'en-NZ';
@@ -52,13 +53,13 @@ const tally = (): Tally => ({ created: 0, existing: 0 });
 export interface B2bSummary {
   project: string[];
   customerGroups: Tally; categories: Tally; products: Tally; branches: Tally; inventory: Tally; roles: Tally;
-  customers: Tally; companies: Tally; divisions: Tally; carts: Tally; orders: Tally;
+  customers: Tally; companies: Tally; divisions: Tally; carts: Tally; orders: Tally; launchOrders: Tally; managersChanged: number; launchTotals: Array<{ order: string; commercetools: number; salesforce: number }>;
   salesforce: { found: number; missing: number; noted: number } | 'not used';
   ids: Array<{ accountId: string; unit: string; customerId?: string; openCartId?: string; orderNumber: string; salesforceId?: string }>;
 }
 
 interface Person { key: string; customerNumber: string; email: string; firstName: string; lastName: string; group: string; companyName: string }
-interface Unit { key: string; account: Rec; parent?: string; name: string; associates: Array<{ person: Person; role: string }> }
+interface Unit { key: string; account: Rec; parent?: string; name: string; manager: string; associates: Array<{ person: Person; role: string }> }
 
 /** Who works where. Pure and deterministic, so a dry run, a load and a second load all agree. */
 export function plan(products: number, accounts: number) {
@@ -98,9 +99,10 @@ export function plan(products: number, accounts: number) {
     const admin: Person = { key: id, customerNumber: String(account.accountId), email: String(account.contactEmail ?? `${slug(String(account.name))}@example.test`), firstName, lastName: rest.join(' ') || 'Trade', group: String(account.tier), companyName: String(account.name) };
     const associates: Unit['associates'] = [{ person: admin, role: 'account-admin' }, { person: someone(account, 'buyer', ++n), role: 'buyer' }];
     if (index % 3 === 0) associates.push({ person: someone(account, 'ap', ++n), role: 'accounts-payable' });
-    units.push({ key: id, account, name: String(account.name), associates });
+    const manager = repFor(account, index).name;
+    units.push({ key: id, account, name: String(account.name), manager, associates });
     if (biggest.has(account.accountId)) {
-      DIVISIONS.forEach((division, d) => units.push({ key: `${id}-div${d + 1}`, account, parent: id, name: `${account.name} - ${division}`, associates: [{ person: someone(account, `site${d + 1}`, ++n), role: 'site-manager' }] }));
+      DIVISIONS.forEach((division, d) => units.push({ key: `${id}-div${d + 1}`, account, parent: id, name: `${account.name} - ${division}`, manager, associates: [{ person: someone(account, `site${d + 1}`, ++n), role: 'site-manager' }] }));
     }
   });
   const people = units.flatMap((unit) => unit.associates.map((associate) => associate.person));
@@ -119,10 +121,14 @@ export async function loadCommercetoolsB2b(options: { env: Env; deps: Deps; appl
   const data = plan(options.products ?? 100, options.accounts ?? 30);
   const stockPlanned = data.stock.length;
   const companies = data.units.filter((unit) => !unit.parent);
+  // The deals Salesforce shows as won: the story always works from the whole catalogue; only the ones this load can place are orders.
+  const loadedSkus = new Set(data.sampleProducts.map((product) => String(product.sku)));
+  const won = storyPlan({ accounts: options.accounts }).opportunities
+    .filter((deal) => deal.stage === 'Closed Won' && companies.some((unit) => unit.account.accountId === deal.accountId) && deal.lines.every((line) => loadedSkus.has(line.sku)));
   const useSalesforce = options.salesforce !== false && Boolean(setting(env, 'SALESFORCE_INSTANCE_URL')) && Boolean((setting(env, 'SALESFORCE_CLIENT_ID') && setting(env, 'SALESFORCE_CLIENT_SECRET')) || setting(env, 'SALESFORCE_LOADER_ACCESS_TOKEN'));
   const summary: B2bSummary = {
     project: [], customerGroups: tally(), categories: tally(), products: tally(), branches: tally(), inventory: tally(), roles: tally(),
-    customers: tally(), companies: tally(), divisions: tally(), carts: tally(), orders: tally(), salesforce: 'not used', ids: [],
+    customers: tally(), companies: tally(), divisions: tally(), carts: tally(), orders: tally(), launchOrders: tally(), managersChanged: 0, launchTotals: [], salesforce: 'not used', ids: [],
   };
   log(`${apply ? 'Loading' : 'Dry run. Would load'} into commercetools:`);
   log(`  project settings: add the ${CURRENCY} currency, the ${COUNTRY} country and the ${LOCALE} language if they are missing (nothing is removed)`);
@@ -131,6 +137,7 @@ export async function loadCommercetoolsB2b(options: { env: Env; deps: Deps; appl
   log(`  ${data.usedBranches.length} branch channels with ${stockPlanned} stock entries`);
   log(`  ${ROLES.length} associate roles (${ROLES.map((role) => role.key).join(', ')}) and 1 account type for business units`);
   log(`  ${companies.length} business units (companies) + ${data.units.length - companies.length} divisions, with ${data.people.length} people, and 1 order and 1 open cart for each company`);
+  log(`  the launch: ${won.length} orders for the deals Salesforce shows as won, with the same products and prices; each unit's account manager is its Salesforce rep`);
   log(`  Salesforce: ${useSalesforce ? `would look the ${data.accounts.length} accounts up by name, record each id on its unit, and write the account number into each account's description` : 'not used (no Salesforce settings, or --no-salesforce)'}`);
   if (!apply) return summary;
 
@@ -250,7 +257,7 @@ export async function loadCommercetoolsB2b(options: { env: Env; deps: Deps; appl
       type: { typeId: 'type', key: ACCOUNT_TYPE },
       fields: {
         accountNumber: String(account.accountId), tradeType: String(account.tradeType ?? ''), tier: String(account.tier ?? ''), homeBranchCode: String(account.homeBranchCode ?? ''),
-        accountManager: String(account.accountManager ?? ''), paymentTerms: String(account.paymentTerms ?? ''),
+        accountManager: unit.manager, paymentTerms: String(account.paymentTerms ?? ''),
         creditLimit: { type: 'centPrecision', currencyCode: CURRENCY, centAmount: cents(account.creditLimit ?? 0), fractionDigits: 2 },
         ...(salesforceId ? { salesforceAccountId: salesforceId } : {}),
       },
@@ -265,6 +272,15 @@ export async function loadCommercetoolsB2b(options: { env: Env; deps: Deps; appl
     }
   }
   log(`Business units: ${summary.companies.created} companies and ${summary.divisions.created} divisions created, ${summary.companies.existing + summary.divisions.existing} already there.`);
+
+  // The account manager is the unit's Salesforce rep. Units made before the reps were chosen are brought into line.
+  for (const unit of data.units) {
+    const current = (await call('GET', `/business-units/key=${encodeURIComponent(unit.key)}`)).json;
+    if (current?.custom?.fields?.accountManager === unit.manager) continue;
+    await call('POST', `/business-units/key=${encodeURIComponent(unit.key)}`, { version: current.version, actions: [{ action: 'setCustomField', name: 'accountManager', value: unit.manager }] });
+    summary.managersChanged++;
+  }
+  if (summary.managersChanged) log(`Account managers: ${summary.managersChanged} units now name their Salesforce rep.`);
 
   // 8. One order and one open cart for each company, placed by its buyer, so every commercetools tool has something to read.
   for (const [index, unit] of companies.entries()) {
@@ -289,6 +305,24 @@ export async function loadCommercetoolsB2b(options: { env: Env; deps: Deps; appl
     summary.ids.push({ accountId: String(unit.account.accountId), unit: unit.key, customerId, openCartId, orderNumber, salesforceId: link?.ids.get(String(unit.account.name)) });
   }
   log(`Orders: ${summary.orders.created} created, ${summary.orders.existing} already there. Open carts: ${summary.carts.created} created, ${summary.carts.existing} already there.`);
+
+  // 9. The deals Salesforce shows as won are orders here too, with the same products at the same tier prices (see story.ts).
+  for (const deal of won) {
+    const unit = companies.find((entry) => entry.account.accountId === deal.accountId)!;
+    const customerId = customerIds.get(unit.associates.find((associate) => associate.role === 'buyer')!.person.key)!;
+    const present = await call('GET', `/orders/order-number=${deal.orderNumber}`, undefined, [404]);
+    if (present.status !== 404) { summary.launchOrders.existing++; continue; }
+    const cart = (await call('POST', '/carts', {
+      currency: CURRENCY, country: COUNTRY, customerId, businessUnit: { typeId: 'business-unit', key: unit.key }, store: { typeId: 'store', key: STORE }, taxMode: 'Disabled',
+      lineItems: deal.lines.map((line) => ({ sku: line.sku, quantity: line.quantity })), shippingAddress: { country: COUNTRY, city: branchCity(String(unit.account.homeBranchCode)), streetName: '12 Trade Street' },
+    })).json;
+    const order = (await call('POST', '/orders', { id: cart.id, version: cart.version, orderNumber: deal.orderNumber })).json;
+    summary.launchOrders.created++;
+    summary.launchTotals.push({ order: deal.orderNumber, commercetools: Number(order?.totalPrice?.centAmount ?? cart.totalPrice?.centAmount) / 100, salesforce: deal.amount });
+  }
+  const different = summary.launchTotals.filter((total) => Math.abs(total.commercetools - total.salesforce) > 0.01);
+  log(`Launch orders: ${summary.launchOrders.created} created, ${summary.launchOrders.existing} already there${summary.launchTotals.length ? `; ${summary.launchTotals.length - different.length} of ${summary.launchTotals.length} totals match the Salesforce deal to the cent` : ''}.`);
+  for (const total of different) log(`  note: ${total.order} is ${total.commercetools} in commercetools but ${total.salesforce} in Salesforce.`);
   return summary;
 }
 

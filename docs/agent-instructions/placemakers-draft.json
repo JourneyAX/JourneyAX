@@ -521,6 +521,51 @@
               "summary": "Get one support case."
             },
             {
+              "name": "find_lead",
+              "sideEffect": "read",
+              "summary": "Find leads (new prospects) by name, company, status, rating or the campaign they came from."
+            },
+            {
+              "name": "list_opportunities",
+              "sideEffect": "read",
+              "summary": "List deals by account, stage (open, won, lost), rep or close date.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "get_opportunity",
+              "sideEffect": "read",
+              "summary": "Get one deal with its products at the trade price, contact, owner, next step, calls and meetings.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "pipeline_summary",
+              "sideEffect": "read",
+              "summary": "The pipeline in numbers: deals and money at each stage, or each rep's open and won deals.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "list_campaigns",
+              "sideEffect": "read",
+              "summary": "List marketing campaigns with their status, budget and how many answered.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "get_campaign",
+              "sideEffect": "read",
+              "summary": "Get one campaign with its brief, channels, who answered and the deals of the accounts that answered.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
               "name": "create_case",
               "sideEffect": "write",
               "summary": "Open a new support case for an account."
@@ -999,6 +1044,80 @@
             "customer-service",
             "sales",
             "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "find_lead",
+          "audience": "staff",
+          "groups": [
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "list_opportunities",
+          "audience": "staff",
+          "groups": [
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "get_opportunity",
+          "audience": "staff",
+          "groups": [
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "pipeline_summary",
+          "audience": "staff",
+          "groups": [
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "list_campaigns",
+          "audience": "staff",
+          "groups": [
+            "sales",
+            "sales-managers",
+            "marketing",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "get_campaign",
+          "audience": "staff",
+          "groups": [
+            "sales",
+            "sales-managers",
+            "marketing",
             "leadership",
             "administrators"
           ],

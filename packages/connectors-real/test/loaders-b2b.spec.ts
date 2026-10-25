@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { loadCommercetoolsB2b, plan, ROLES } from '../scripts/loaders/commercetools-b2b';
 import { setting } from '../src/http';
+import { plan as launch } from '../scripts/loaders/story';
 import { mockVendor, realDeps, suite, leaks, type Seen } from './helpers';
 
 const t = suite('connectors-real: the B2B loader that sets up commercetools like a trade business');
@@ -72,20 +73,40 @@ function commercetoolsShop(options: { failOnProduct?: string } = {}) {
       customersByEmail.add(body.email);
       return { status: 201, json: { customer: { id: of('customers').get(body.key).id } } };
     }
+    const unitByKey = /^\/business-units\/key=(.+)$/.exec(p);
+    if (unitByKey) {
+      const unit = of('business-units').get(decodeURIComponent(unitByKey[1]));
+      if (!unit) return { status: 404, json: { message: 'no such unit' } };
+      if (request.method === 'GET') return { json: { ...unit, version: unit.version ?? 1 } };
+      for (const action of request.body.actions) if (action.action === 'setCustomField') unit.custom.fields[action.name] = action.value;
+      unit.version = (unit.version ?? 1) + 1;
+      return { json: unit };
+    }
     if (p.startsWith('/customers/key=')) { const found = of('customers').get(decodeURIComponent(p.split('=')[1])); return found ? { json: { id: found.id } } : { status: 404, json: { message: 'nope' } }; }
     if (p.startsWith('/orders/order-number=')) return orders.has(p.split('=')[1]) ? { json: { id: 'o' } } : { status: 404, json: { message: 'nope' } };
     if (p === '/carts' && request.method === 'POST') {
       const body = request.body;
       if (!has('business-units', body.businessUnit.key) || !has('stores', body.store.key)) return missing('business-unit or store');
       const id = `cart-${carts.size + 1}`;
-      carts.set(id, { id, customerId: body.customerId, state: 'Active', body });
-      return { status: 201, json: { id, version: 1 } };
+      // Priced the way the shop prices it: the customer's tier price where the product has one, else the retail price.
+      const group = [...of('customers').values()].find((customer) => customer.id === body.customerId)?.customerGroup?.key;
+      let total = 0;
+      for (const line of body.lineItems) {
+        const product = [...of('products').values()].find((entry) => entry.masterVariant.sku === line.sku);
+        if (!product) return missing('product');
+        const prices = product.masterVariant.prices;
+        const price = prices.find((entry: any) => group && entry.customerGroup?.key === group) ?? prices.find((entry: any) => !entry.customerGroup);
+        total += price.value.centAmount * line.quantity;
+      }
+      const cart = { id, version: 1, totalPrice: { centAmount: total, currencyCode: 'NZD' } };
+      carts.set(id, { id, customerId: body.customerId, state: 'Active', body, cart });
+      return { status: 201, json: cart };
     }
     if (p === '/carts' && request.method === 'GET') {
       const customerId = /customerId="([^"]+)"/.exec(request.query.get('where') ?? '')?.[1];
       return { json: { results: [...carts.values()].filter((cart) => cart.customerId === customerId && cart.state === 'Active').map((cart) => ({ id: cart.id })) } };
     }
-    if (p === '/orders' && request.method === 'POST') { orders.add(request.body.orderNumber); carts.get(request.body.id)!.state = 'Ordered'; return { status: 201, json: { id: `order-${orders.size}` } }; }
+    if (p === '/orders' && request.method === 'POST') { orders.add(request.body.orderNumber); const held = carts.get(request.body.id)!; held.state = 'Ordered'; held.orderNumber = request.body.orderNumber; return { status: 201, json: { id: `order-${orders.size}`, totalPrice: held.cart.totalPrice } }; }
     return undefined;
   };
   return { answer, project, things, of, carts, orders };
@@ -215,6 +236,33 @@ async function main() {
     const login = ct.seen.find((request) => request.path === '/oauth/token')!;
     assert.equal(login.headers.authorization, `Basic ${Buffer.from(`loader-id:${SECRET}`).toString('base64')}`, 'it signs in as the loader');
     await ct.close(); await sf.close();
+  });
+
+  await t.test('the deals Salesforce shows as won become orders here with the same products at the same prices, and each unit names its Salesforce rep, also for units made before the reps were chosen', async () => {
+    const shop = commercetoolsShop();
+    const ct = await mockVendor(shop.answer);
+    const summary = await loadCommercetoolsB2b({ env: envFor(ct.url, 'http://127.0.0.1:9'), deps, apply: true, salesforce: false });
+    const won = launch().opportunities.filter((deal) => deal.stage === 'Closed Won');
+    assert.equal(won.length, 6);
+    assert.deepEqual(summary.launchOrders, { created: 6, existing: 0 });
+    assert.deepEqual(summary.launchTotals.map((entry) => entry.order).sort(), won.map((deal) => deal.orderNumber).sort());
+    assert.ok(summary.launchTotals.every((entry) => Math.abs(entry.commercetools - entry.salesforce) < 0.005), 'each order totals what the Salesforce deal does');
+    for (const deal of won) {
+      const placed = [...shop.carts.values()].find((cart) => cart.orderNumber === deal.orderNumber)!;
+      assert.equal(placed.body.businessUnit.key, deal.accountId.toLowerCase());
+      assert.deepEqual(placed.body.lineItems, deal.lines.map((line) => ({ sku: line.sku, quantity: line.quantity })));
+      const buyer = [...shop.of('customers').values()].find((customer) => customer.id === placed.customerId)!;
+      assert.equal(buyer.customerGroup.key, deal.tier, 'the buyer is in the account\'s tier, which is what makes the prices match');
+    }
+    // The account manager is the Salesforce rep. Make one unit wrong, as an earlier load would have left it, and run again.
+    const unit = shop.of('business-units').get('acc-0001')!;
+    assert.equal(unit.custom.fields.accountManager, 'Hemi Ashworth');
+    unit.custom.fields.accountManager = 'Someone Else';
+    const again = await loadCommercetoolsB2b({ env: envFor(ct.url, 'http://127.0.0.1:9'), deps, apply: true, salesforce: false });
+    assert.equal(again.managersChanged, 1);
+    assert.equal(shop.of('business-units').get('acc-0001')!.custom.fields.accountManager, 'Hemi Ashworth');
+    assert.deepEqual(again.launchOrders, { created: 0, existing: 6 }, 'the orders are not made twice');
+    await ct.close();
   });
 
   await t.test('running it again creates nothing in either system', async () => {
