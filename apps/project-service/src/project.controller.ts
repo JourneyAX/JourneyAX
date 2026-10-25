@@ -694,9 +694,9 @@ export class ProjectController {
     return this.projectService.addTeam(projectId, body.orgId || project.orgId, body);
   }
 
-  /** "View as": which agents a shopper, or a member of staff in the given groups, would get from the project's current settings. Read-only. */
+  /** "View as": which agents a shopper, or a member of staff in the given groups, would get from the project's current settings. Read-only, for those who may edit the configuration (it names the project's teams). */
   @Get(':projectId/access-preview')
-  @RequirePermission('project.read')
+  @RequirePermission('config.edit')
   async accessPreview(
     @Param('projectId') projectId: string,
     @Query('audience') audience?: string,

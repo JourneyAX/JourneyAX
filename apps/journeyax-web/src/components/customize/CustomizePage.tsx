@@ -23,6 +23,7 @@ import { type AgentDraft, type AgentDraftInput, draftToPackAgentJson, loadDrafts
 import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledgeSource, OverviewSkill } from '@/lib/customize/types';
 import AgentForm from './AgentForm';
 import { useOverview } from './useOverview';
+import { ViewAs } from './ViewAs';
 
 type TabId = 'agents' | 'skills' | 'knowledge' | 'connectors';
 type Scope = 'yours' | 'discover';
@@ -379,6 +380,7 @@ function AgentsTab({ scope, query, overview, drafts, by, onTry, onPublish, publi
           </ul>
         </>
       )}
+      {!query.trim() && <ViewAs />}
     </>
   );
 }

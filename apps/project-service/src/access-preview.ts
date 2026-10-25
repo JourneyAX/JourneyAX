@@ -49,9 +49,11 @@ export function buildAccessPreview(
   const access = resolveAccess(agents, table, { audience: input.audience, groups });
 
   const packDefault = asString(project?.defaultAgentId) || asString(project?.routingPolicy?.defaultAgentId) || asString(agents.find((a) => a.isDefault === true)?.agentId);
+  // Which agent opens first: a locked one, the table's default, or the pack's own default when this person may use it. When none of
+  // those applies the journey's stage decides at run time, which this preview does not guess at.
   const opening = access.lockedAgentId
     || access.defaultAgentId
-    || (access.agents.some((a) => a.agentId === packDefault) ? packDefault : access.agents[0]?.agentId);
+    || (access.agents.some((a) => a.agentId === packDefault) ? packDefault : undefined);
 
   const known = new Set<string>();
   for (const team of teams) {

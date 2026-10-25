@@ -43,7 +43,11 @@ export class AgentRouter {
     });
 
     // A locked person has one agent and cannot ask for another.
-    if (access.lockedAgentId) return resolved(agents.find((a) => a.agentId === access.lockedAgentId) || agents[0]);
+    if (access.lockedAgentId) {
+      const locked = agents.find((a) => a.agentId === access.lockedAgentId);
+      if (!locked) throw new Error(`[AgentRouter] The agent '${access.lockedAgentId}' this person is locked to is not in the pack; failing closed.`);
+      return resolved(locked);
+    }
 
     // The agent the person chose to talk to wins, but only if they may use it; any other id (another tenant's, or a staff agent they may not
     // use) is ignored.
