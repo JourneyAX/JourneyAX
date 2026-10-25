@@ -26,6 +26,10 @@ const ENVIRONMENT = 'production';
 const KEY = 'e2e-real-connectors-key-6c1f0a9d2b7e4c35';
 const VENDOR_SECRET = 'vendor-client-secret-never-seen-by-the-model-77';
 const DRAFT = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
+// The pack as published switches the real systems on one at a time, as each vendor account is ready. This test is about all four fitting
+// together, so it works on a copy of the draft's connectors with all four on.
+const REAL_IDS = ['commercetools', 'salesforce', 'google-analytics', 'power-bi'];
+const ALL_REAL_ON = { ...DRAFT.extensions.connectors, connectors: DRAFT.extensions.connectors.connectors.map((c: any) => (REAL_IDS.includes(c.connectorId) ? { ...c, enabled: true } : c)) };
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 
 let server: RealConnectorServer;
@@ -83,7 +87,7 @@ after(async () => { await server.close(); await shop.close(); await analytics.cl
 
 const agents = DRAFT.agents.map((a: any) => ({ ...a, modelPolicyRef: 'default' }));
 const release = () => {
-  const pack: any = connectorPack(DRAFT.extensions.connectors, { tenantId: TENANT, environmentId: ENVIRONMENT, agents });
+  const pack: any = connectorPack(ALL_REAL_ON, { tenantId: TENANT, environmentId: ENVIRONMENT, agents });
   // The plugins and who has them are the draft's own, so a connector a plugin names is the person's only if they have that plugin.
   pack.extensions = { ...pack.extensions, plugins: DRAFT.extensions.plugins, agentAccess: DRAFT.extensions.agentAccess };
   return pack;

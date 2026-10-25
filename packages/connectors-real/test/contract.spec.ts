@@ -16,12 +16,13 @@ const connectors = createRealConnectors({});
 const t = suite('connectors-real: the pack and the real servers agree');
 
 async function main() {
-  await t.test('every real connector is in the pack, marked real (not sample), switched on, and signs in with the real connectors\' key', () => {
+  // Whether a real connector is switched on is a decision for each publish (it goes on when its vendor account is connected); it is the project-service persona test that pins which ones are on now.
+  await t.test('every real connector is in the pack, marked real (not sample), has a switch, and signs in with the real connectors\' key', () => {
     for (const connector of connectors) {
       const entry = registry.get(connector.connectorId);
       assert.ok(entry, `${connector.connectorId} is in the pack`);
       assert.equal(entry.sample, false, `${connector.connectorId} is not marked sample`);
-      assert.equal(entry.enabled, true, `${connector.connectorId} is switched on`);
+      assert.equal(typeof entry.enabled, 'boolean', `${connector.connectorId} has an on/off switch`);
       assert.equal(entry.secretRef, 'tenant-secret://placemakers/production/real-connectors-key', `${connector.connectorId} uses the real connectors' key`);
       assert.ok(!/sample/i.test(entry.displayName), `${connector.connectorId} is not named "(sample)"`);
     }

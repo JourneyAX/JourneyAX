@@ -43,7 +43,10 @@ const STATE: Record<string, string> = { A: 'allow', K: 'ask', '-': 'blocked' };
 const PARKED = ['sap-commerce', 'ace-erp', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location'];
 
 const draft = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
-const connectors = draft.extensions.connectors as ConnectorsExtension;
+const published = draft.extensions.connectors as ConnectorsExtension;
+const REAL = ['commercetools', 'salesforce', 'google-analytics', 'power-bi'];
+/** The pack as published switches the real systems on one at a time, as each vendor account is ready. The table below is about who may do what once they are all on, so it works on a copy with the four real ones on. */
+const connectors = { ...published, connectors: published.connectors.map((connector) => (REAL.includes(connector.connectorId) ? { ...connector, enabled: true } : connector)) } as ConnectorsExtension;
 const plan = planDemoStaff('placemakers');
 
 /** Who each column is, the way the gateway would sign them: staff with the group their team becomes, the admin with the reserved group, a shopper with nothing. */
@@ -96,6 +99,11 @@ async function main() {
   await suite.test('a shopper, signed in or not, can use no connector at all', () => {
     assert.deepEqual(usableConnectors(connectors, people.shopper), []);
     assert.deepEqual(usableConnectors(connectors, { audience: 'shopper', groups: ['sales'] }), [], 'a group claimed by a shopper changes nothing');
+  });
+
+  await suite.test('the pack as published has only the systems that are really connected switched on: Salesforce, and Marketing Cloud as a sample', () => {
+    const on = published.connectors.filter((connector) => connector.enabled !== false).map((connector) => connector.connectorId).sort();
+    assert.deepEqual(on, ['marketing-cloud', 'salesforce'], 'switch commercetools, Google Analytics and Power BI on here only when their vendor accounts are connected');
   });
 
   await suite.test('the parked systems are switched off for everyone, the admin included, and are still in the pack so they can be switched back on', () => {

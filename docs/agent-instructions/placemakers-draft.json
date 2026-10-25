@@ -359,7 +359,7 @@
           "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
           "sample": false,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "find_product",
@@ -685,7 +685,7 @@
           "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
           "sample": false,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "list_reports",
@@ -718,7 +718,7 @@
           "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
           "sample": false,
-          "enabled": true,
+          "enabled": false,
           "tools": [
             {
               "name": "traffic_by_page",
