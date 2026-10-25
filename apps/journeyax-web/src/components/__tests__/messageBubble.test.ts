@@ -33,4 +33,66 @@ check('Edit is not offered on a reply and Try again is not offered on a customer
   assert.ok(!render({ message: user, onRetry: () => {} }).includes('Try again'));
 });
 
+const replyWith = (text: string) => render({ message: { id: 'msg-3', role: 'ai', text } });
+const count = (html: string, tag: string) => (html.match(new RegExp(`<${tag}[ >]`, 'g')) || []).length;
+
+// The reply the live chat gave for a connector price question, word for word.
+const PRICES = [
+  'For SKU 1357685, "Rusticated Weatherboard", the trade prices (sample data) are:',
+  '* **Retail Price:** NZD 25.79 per linear meter',
+  '* **Bronze Tier:** NZD 24.50 per linear meter',
+  '* **Silver Tier:** NZD 23.21 per linear meter',
+  '* **Gold Tier:** NZD 21.92 per linear meter',
+  '',
+  'These prices are effective from 2026-05-25. Is there anything else I can help you with?',
+].join('\n');
+
+check('bullet lines show as a list with their bold labels, not as italics with stray asterisks', () => {
+  const html = replyWith(PRICES);
+  assert.equal(count(html, 'ul'), 1);
+  assert.equal(count(html, 'li'), 4);
+  assert.ok(html.includes('<strong>Retail Price:</strong> NZD 25.79 per linear meter'));
+  assert.ok(!html.includes('<em>'), 'nothing is read as italic');
+  assert.ok(!html.includes('*'), 'no asterisk is left on screen');
+  assert.ok(html.includes('the trade prices (sample data) are:') && html.includes('These prices are effective from 2026-05-25.'), 'the words around the list stay');
+});
+
+check('a list is never put inside a paragraph, and the lead-in line stays a paragraph of its own', () => {
+  const html = replyWith(PRICES);
+  assert.ok(!/<p[^>]*>(?:(?!<\/p>).)*<ul/s.test(html), 'a list inside a paragraph is invalid markup');
+  assert.ok(/<p[^>]*><span>For SKU 1357685/.test(html));
+});
+
+check('numbered lines show as an ordered list that keeps its first number; bullets and numbers stay separate lists', () => {
+  const html = replyWith('Steps:\n3. Fit the bracket\n4) Fix the rail\n- Check it is level');
+  assert.equal(count(html, 'ol'), 1);
+  assert.ok(html.includes('<ol class="msg__list" start="3"'));
+  assert.equal(count(html, 'ul'), 1);
+  assert.equal(count(html, 'li'), 3);
+});
+
+check('a line that merely starts with bold or italic text, or has a dash inside a sentence, is not a list', () => {
+  for (const text of ['**Note:** the price is sample data', '*Sample data* only', 'Sizes 90-120mm - ask us', '2026-05-25 is the date', '3.5 metres long']) {
+    const html = replyWith(text);
+    assert.equal(count(html, 'ul') + count(html, 'ol') + count(html, 'li'), 0, text);
+  }
+  assert.ok(replyWith('**Note:** the price is sample data').includes('<strong>Note:</strong>'));
+  assert.ok(replyWith('*Sample data* only').includes('<em>Sample data</em>'));
+});
+
+check('a reply without list lines renders exactly as before: paragraphs and line breaks', () => {
+  const html = replyWith('First line\nsecond line\n\nNext paragraph with **bold**.');
+  assert.equal(count(html, 'p'), 2);
+  assert.ok(html.includes('<span>First line</span><span><br/>second line</span>'));
+  assert.ok(html.includes('Next paragraph with <strong>bold</strong>.'));
+  assert.equal(count(html, 'ul') + count(html, 'ol'), 0);
+});
+
+check('links and order numbers inside a list item still work', () => {
+  const html = replyWith('See:\n- [the guide](https://example.com/guide)\n- https://example.com/pergolas');
+  assert.equal(count(html, 'li'), 2);
+  assert.ok(html.includes('href="https://example.com/guide"') && html.includes('>the guide</a>'));
+  assert.ok(html.includes('example.com/pergolas'));
+});
+
 console.log(`✅ web: message bubble: ${passed} passed, 0 failed`);

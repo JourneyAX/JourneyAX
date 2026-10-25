@@ -21,7 +21,36 @@ interface Props {
   onRetry?: () => void;
 }
 
-// Simple markdown parser for chat messages — handles **bold**, *italic*, and line breaks
+// A bullet line ("- a", "* a", "• a") or a numbered line ("1. a", "2) a"). The marker must be followed by a space, so "**bold** text" and
+// "*italic*" at the start of a line are not mistaken for a list.
+const BULLET_LINE = /^\s*[-*•–]\s+(.*)$/;
+const NUMBERED_LINE = /^\s*(\d{1,3})[.)]\s+(.*)$/;
+
+type Block =
+  | { kind: 'text'; lines: string[] }
+  | { kind: 'bullets'; items: string[] }
+  | { kind: 'numbers'; start: number; items: string[] };
+
+/** The lines of one paragraph as runs of plain lines, bullet lines and numbered lines, in order. */
+function blocksOf(lines: string[]): Block[] {
+  const blocks: Block[] = [];
+  for (const line of lines) {
+    const bullet = BULLET_LINE.exec(line);
+    const numbered = bullet ? null : NUMBERED_LINE.exec(line);
+    const last = blocks[blocks.length - 1];
+    if (bullet) {
+      if (last?.kind === 'bullets') last.items.push(bullet[1]);
+      else blocks.push({ kind: 'bullets', items: [bullet[1]] });
+    } else if (numbered) {
+      if (last?.kind === 'numbers') last.items.push(numbered[2]);
+      else blocks.push({ kind: 'numbers', start: Number(numbered[1]), items: [numbered[2]] });
+    } else if (last?.kind === 'text') last.lines.push(line);
+    else blocks.push({ kind: 'text', lines: [line] });
+  }
+  return blocks;
+}
+
+// Simple markdown parser for chat messages — handles **bold**, *italic*, bullet and numbered lists, and line breaks
 function renderMarkdown(text: string) {
   const sanitized = sanitizeMessageText(text);
   if (!sanitized) return null;
@@ -32,6 +61,32 @@ function renderMarkdown(text: string) {
   return paragraphs.map((para, pIdx) => {
     // Handle single line breaks within a paragraph
     const lines = para.split('\n');
+
+    // A paragraph with list lines becomes text and lists in order; any other paragraph renders exactly as it always has.
+    if (lines.some((line) => BULLET_LINE.test(line) || NUMBERED_LINE.test(line))) {
+      return (
+        <div key={pIdx} style={{ margin: pIdx > 0 ? '10px 0 0' : 0 }}>
+          {blocksOf(lines).map((block, bIdx) => {
+            if (block.kind === 'text') {
+              return (
+                <p key={bIdx} style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>
+                  {block.lines.map((line, lIdx) => (
+                    <span key={lIdx}>
+                      {lIdx > 0 && <br />}
+                      {parseBold(line)}
+                    </span>
+                  ))}
+                </p>
+              );
+            }
+            const items = block.items.map((item, iIdx) => <li key={iIdx}>{parseBold(item)}</li>);
+            return block.kind === 'bullets'
+              ? <ul key={bIdx} className="msg__list" style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>{items}</ul>
+              : <ol key={bIdx} className="msg__list" start={block.start} style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>{items}</ol>;
+          })}
+        </div>
+      );
+    }
 
     return (
       <p key={pIdx} style={{ margin: pIdx > 0 ? '10px 0 0' : 0 }}>

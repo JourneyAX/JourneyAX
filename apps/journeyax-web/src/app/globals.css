@@ -1682,6 +1682,11 @@ body {
   font-weight: 700;
   color: var(--dark);
 }
+/* Bullet and numbered lines in a reply (figures from a connector, steps). */
+.msg__bubble--ai .msg__list { padding-left: 22px; }
+.msg__bubble--ai ul.msg__list { list-style: disc; }
+.msg__bubble--ai ol.msg__list { list-style: decimal; }
+.msg__bubble--ai .msg__list li { margin: 2px 0; padding-left: 2px; }
 /* ── Validating Panel ───────────────────────────────────────────────── */
 .validating-panel {
   display: flex;
