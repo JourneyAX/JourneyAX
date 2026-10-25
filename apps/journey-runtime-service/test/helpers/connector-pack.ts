@@ -7,14 +7,16 @@ export const SECRET_REF = `tenant-secret://${TENANT}/test/stock-key`;
 export const SECRET_VALUE = 'canary-secret-for-connector-tests-0001';
 
 /** A small pack with three agents (one that cannot reach connectors) and a connector registry. */
-export function connectorPack(connectors?: unknown): BusinessPackRelease {
+export function connectorPack(connectors?: unknown, options: { tenantId?: string; environmentId?: string; agents?: any[] } = {}): BusinessPackRelease {
+  const tenantId = options.tenantId ?? TENANT;
+  const environmentId = options.environmentId ?? 'test';
   const base = ['search_products', 'present_card', 'hand_off_to_human'];
   const agent = (agentId: string, allowedTools: string[], isDefault = false) => ({
     agentId, name: agentId, purpose: 'Help people with questions about the business.', systemPromptTemplate: 'You help people.',
     allowedTools, modelPolicyRef: 'default', maxTurns: 6, handoffConditions: [], ...(isDefault ? { isDefault: true } : {}),
   });
   return {
-    manifest: { packId: 'connector-test-pack', tenantId: TENANT, environmentId: 'test', version: '1.0.0', name: 'Connector test', description: 'x', status: 'active', publishedAt: new Date().toISOString(), publishedBy: 'test', checksum: 'chk' },
+    manifest: { packId: 'connector-test-pack', tenantId, environmentId, version: '1.0.0', name: 'Connector test', description: 'x', status: 'active', publishedAt: new Date().toISOString(), publishedBy: 'test', checksum: 'chk' },
     profile: { companyName: 'Test Co', industry: 'Retail', primaryCurrency: 'NZD', supportedCurrencies: ['NZD'], primaryLocale: 'en-NZ', supportedLocales: ['en-NZ'], sellingScope: { inScope: ['things'], outOfScope: [] } },
     vocabulary: { version: '1.0.0', terms: [], acronyms: {}, slotSynonyms: {}, slotMappings: {}, prohibitedTerms: [] },
     entities: { version: '1.0.0', entities: [] },
@@ -24,7 +26,7 @@ export function connectorPack(connectors?: unknown): BusinessPackRelease {
       referrals: { 'en-NZ': ['consult a professional'] }, extraClaimPatterns: {}, withheldAnswerMessage: 'Withheld.',
     },
     journeys: [{ journeyId: 'general_journey', version: '1.0.0', goals: ['Help'], initialStage: 'stage_help', stages: { stage_help: { stageId: 'stage_help', displayName: 'Help', requiredFacts: [], allowedCapabilities: ['catalog.search'], nextDecisionPolicy: 'dependency-first', exitConditions: [] } } }],
-    agents: [
+    agents: options.agents ?? [
       agent('front_desk', [...base, 'list_connectors', 'get_connector_tools', 'call_connector_tool'], true),
       agent('no_connectors', base),
       agent('everything', ['*']),
@@ -34,9 +36,9 @@ export function connectorPack(connectors?: unknown): BusinessPackRelease {
   } as any;
 }
 
-export function workspace(): WorkspaceState {
+export function workspace(tenantId = TENANT, environmentId = 'test'): WorkspaceState {
   return {
-    tenantId: TENANT, environmentId: 'test', workspaceId: 'ws-connector-test', packVersionId: '1.0.0', journeyId: 'general_journey', currentStage: 'stage_help',
+    tenantId, environmentId, workspaceId: 'ws-connector-test', packVersionId: '1.0.0', journeyId: 'general_journey', currentStage: 'stage_help',
     goal: 'Help', facts: {}, decisions: [], selectedObjects: [], openQuestions: [], status: 'active', stateVersion: 1,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   } as any;

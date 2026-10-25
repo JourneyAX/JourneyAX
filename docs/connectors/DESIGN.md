@@ -68,10 +68,15 @@ A pack extension, `extensions.connectors`, built the same way as `extensions.age
 ```
 
 - `tools` is the **approved list** of the connector's tools. The live server may offer more; any tool that is not on the list is treated as **new and starts blocked** until an admin adds it (Claude does the same: new tools start blocked until re-enabled).
+- A tool may carry `claimClasses`: what kinds of statement its answer may support in the reply (the claim classes the reply checker already knows, for example the one for stock). Without one, the reply checker holds back a sentence that quotes the tool's figures, exactly as it holds back any figure no tool vouched for; a test shows the same sentence let through with the class and withheld without it.
 - `sample: true` means the connector runs on made-up or copied data. Every result from it says so, so the chat can say "this is sample data".
 - `secretRef` is a reference (`tenant-secret://<tenant>/<environment>/<name>`, the schemes the pack already allows). A raw key in the pack is refused by the schema, the validator and the pack-wide secret scan. The reference must name the pack's own tenant and environment.
 - `connectionScope` and `connectionRef` are described under "Connections" below.
 - The address of the server is **not** in the pack. The pack names the server (`mcpServerName`); the runtime's configuration says where it lives (`CONNECTOR_MCP_SERVERS` or `CONNECTOR_MCP_BASE_URL`). That keeps a pack the same in dev, test and production.
+
+### When the model is offered the connector tools
+
+Both must hold: the person has at least one usable connector (a tool that is allow or ask for them), **and** the agent's `allowedTools` names `list_connectors`, `get_connector_tools` and `call_connector_tool` (or allows everything). A pack without `extensions.connectors`, a shopper whose rows are all blocked, or an agent that does not name the tools sees no change at all: no tool, no prompt text. The server also refuses a call to a connector tool that was not offered, in the same place it refuses any other tool the agent may not use.
 
 ### Who may use what: the three states
 
@@ -137,14 +142,16 @@ Some connectors are used with one shared sign-in for the whole shop (stock, prod
 
 ## 5. The sample connectors
 
-`packages/connectors-sample` serves the 11 connectors of the plan. The server code is generic (it knows nothing about any shop); each connector is data: a `connector.json` (its tools, each with a small declarative description of what it does to the records) and a `seed.json` (the records). A build script writes the seed files from the PlaceMakers data folder; invented records carry `sample: true`. See `packages/connectors-sample/README.md` and the per-connector README for what is real and what is made up.
+`packages/connectors-sample` serves the 11 connectors of the plan (45 tools) from one process, one MCP endpoint per connector (`POST /mcp/<connector>`). The server code is generic (it knows nothing about any shop); each connector is data: a `connector.json` (its tools, each with a small declarative description of what it does to the records) and a `seed.json` (the records). A build script writes the seed files from the PlaceMakers data folder (read only); invented records carry `sample: true`. Each tenant the server is started for gets its own copy of the records, so a write by one is never seen by another. See `packages/connectors-sample/README.md` for how to run it and for the record counts, and each connector's README for which fields are real and which are made up.
+
+The pack's draft (`docs/agent-instructions/placemakers-draft.json`) declares all 11 as data under `extensions.connectors`: every read tool is allow, every tool that writes (`add_to_cart`, `create_case`, `send_message`) is ask first, for staff only. The two staff-facing agents in the draft name the three connector tools in their `allowedTools`.
 
 ## 6. What is not needed
 
 - **No connector secrets in the chat.** The browser and the model never see a key or a token.
 - **No new database.** The registry is part of the pack. Sample data and writes are files and memory.
 - **No change for shoppers' chats today.** With no `extensions.connectors` in a pack, none of the three tools is offered and the prompt is unchanged. The draft pack declares the connectors for staff only.
-- **No OAuth screens, no connection store, no admin screen, no approval card** in this branch (see below).
+- **No OAuth screens, no connection store, no admin screen, no approval card, no "test this connector" button, no store for the audit events** in this branch. The audit hook exists (`connectorAudit` on the gateway) and a `connector_call` trace goes to the chat stream; nothing writes the events to a database yet.
 
 ## 7. Open decisions for the owner
 
