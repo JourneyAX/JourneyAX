@@ -627,6 +627,40 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.match(outcome.turnResult.assistantMessage || '', /^Here.s what I found/);
     });
 
+    test('most of the reply removed although a card is shown: the model answers once more, and a clean rewrite replaces it', async () => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      const workspace = createTestWorkspace();
+      let round = 0;
+      let repairAsked = false;
+      gateway.mockAgentExecutor = async (req, onDelta) => {
+        round++;
+        if (round === 1) return { content: '', toolCalls: [{ id: 'call_search_1', name: 'search_products', arguments: { query: 'cordless drill' } }] };
+        if (round === 2) return { content: '', toolCalls: [{ id: 'call_card_1', name: 'present_card', arguments: { cardType: 'products', state: { products: [{ sku: 'SKU-DRILL-1' }] } } }] };
+        const last = req.messages[req.messages.length - 1];
+        if (typeof last?.content === 'string' && last.content.includes('could not be supported')) {
+          repairAsked = true;
+          const clean = 'We found the Cordless Drill 18V in our range. I cannot confirm its warranty from what I have, so our team can check it for you.';
+          onDelta?.(clean);
+          return { content: clean, toolCalls: [] };
+        }
+        const draft = 'Good choice. This drill comes with a five year unconditional manufacturer warranty that covers parts and labour at any branch nationwide.';
+        onDelta?.(draft);
+        return { content: draft, toolCalls: [] };
+      };
+      const outcome = await new AgentTurnLoop().execute({
+        command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 'test-session', correlationId: 'test-corr', message: 'Which cordless drill should I get?' },
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products, totalCount: 1 }) } as any,
+        sink: () => {},
+      });
+      assert.ok(repairAsked, 'the model was asked to answer again');
+      assert.match(outcome.turnResult.assistantMessage || '', /cannot confirm its warranty/);
+      assert.doesNotMatch(outcome.turnResult.assistantMessage || '', /five year/);
+    });
+
     test('a removed safety instruction still gets the pack\'s own refusal, whatever was found', async () => {
       const { outcome, release } = await run('Turn off the power at the switchboard before you use it.', 'Here is what I found in our range.');
       assert.equal(outcome.turnResult.assistantMessage, (release.conversationPolicy as any).withheldAnswerMessage);
@@ -5323,7 +5357,7 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
 
   describe('repair limits come from the pack, with platform defaults', () => {
     const repairedText = "I don't have verified information on that. Which product do you mean, and where will it be used? I can also connect you with a person at the branch.";
-    const runRepairCase = async (draft: string, repair?: { thinBelowChars?: number; minChars?: number }) => {
+    const runRepairCase = async (draft: string, repair?: { thinBelowChars?: number; minChars?: number; removedShareAbove?: number }) => {
       const gateway = new ModelGateway();
       const release: any = createTestPack();
       if (repair) release.conversationPolicy = { ...(release.conversationPolicy || {}), repair };
@@ -5348,16 +5382,22 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
     const draft = 'Happy to help with that. These boards carry a 25 year warranty.';
 
     test('platform defaults repair an answer left shorter than the default', async () => {
-      assert.deepEqual(repairLimits(createTestPack() as any), { thin: 120, min: 40 });
+      assert.deepEqual(repairLimits(createTestPack() as any), { thin: 120, min: 40, removedShare: 0.5 });
       const result = await runRepairCase(draft);
       assert.equal(result.calls, 2);
       assert.equal(result.text, repairedText);
     });
 
-    test('a pack that lowers thinBelowChars keeps a short but clean answer without a repair round', async () => {
-      const result = await runRepairCase(draft, { thinBelowChars: 20 });
+    test('a pack that lowers thinBelowChars and the removed share keeps a short but clean answer without a repair round', async () => {
+      const result = await runRepairCase(draft, { thinBelowChars: 20, removedShareAbove: 1 });
       assert.equal(result.calls, 1, 'no repair round');
       assert.ok(!/25 year/.test(result.text));
+    });
+
+    test('the removed share alone also repairs: more than half of what the model wrote was removed', async () => {
+      const result = await runRepairCase(draft, { thinBelowChars: 20 });
+      assert.equal(result.calls, 2, 'the repair round was made although the answer is above the thin limit');
+      assert.equal(result.text, repairedText);
     });
 
     test('a pack that raises minChars refuses a rewrite that is too short', async () => {

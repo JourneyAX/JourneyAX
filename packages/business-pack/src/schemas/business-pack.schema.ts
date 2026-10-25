@@ -202,12 +202,15 @@ export const ConversationPolicySchema = z.object({
   /**
    * When the claim guard removes statements from an answer, the model gets one chance to answer again without them.
    * `thinBelowChars`: an answer left shorter than this counts as gutted and is repaired.
-   * `minChars`: a rewrite replaces the answer only if it is at least this long. Platform defaults apply when unset.
+   * `minChars`: a rewrite replaces the answer only if it is at least this long.
+   * `removedShareAbove`: an answer is also repaired when the removed sentences were at least this share of what the model wrote, even if product cards are shown.
+   * Platform defaults apply when unset.
    */
   repair: z
     .object({
       thinBelowChars: z.number().int().min(20).max(2000).optional(),
       minChars: z.number().int().min(10).max(1000).optional(),
+      removedShareAbove: z.number().min(0.1).max(1).optional(),
     })
     .optional(),
 });

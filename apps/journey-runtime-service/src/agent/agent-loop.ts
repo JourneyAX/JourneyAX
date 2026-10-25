@@ -23,7 +23,7 @@ import {
   knownNamesOf,
   type AgentToolContext,
 } from './agent-tools';
-import { chooseWithheldFallback, foundMessageOf } from './withheld-fallback';
+import { chooseWithheldFallback, foundMessageOf, needsRepair } from './withheld-fallback';
 import agentLoopDefaults from '../defaults/agent-loop.json';
 import { chooseCardSkus } from './auto-card';
 import { prefetchCallsFor, formatPrefetched, accessoriesCardFrom } from './event-prefetch';
@@ -190,11 +190,12 @@ export function getWithheldFallbackMessage(release?: any, locale = 'en-NZ'): str
  * rewritten once, and the rewrite replaces it only if it has at least `min` characters. The pack's conversationPolicy.repair
  * overrides the platform defaults.
  */
-export function repairLimits(release?: BusinessPackRelease): { thin: number; min: number } {
+export function repairLimits(release?: BusinessPackRelease): { thin: number; min: number; removedShare: number } {
   const own = (release?.conversationPolicy as any)?.repair;
   return {
     thin: Number.isFinite(own?.thinBelowChars) ? own.thinBelowChars : agentLoopDefaults.repair.thinBelowChars,
     min: Number.isFinite(own?.minChars) ? own.minChars : agentLoopDefaults.repair.minChars,
+    removedShare: Number.isFinite(own?.removedShareAbove) ? own.removedShareAbove : agentLoopDefaults.repair.removedShareAbove,
   };
 }
 
@@ -1027,13 +1028,20 @@ function extractToolResultCount(result: any): number | undefined {
     shaper.flush();
     finalAssistantText = shaper.getStreamedText().trim();
 
-    // Self-repair: when the claim guard removed statements and little is left, ask the model once to answer again without
-    // the removed claims (using only what the tools confirmed) instead of showing a canned message.
+    // Self-repair: when the claim guard removed statements and little is left (or the removed ones were most of what the model wrote,
+    // even with cards shown), ask the model once to answer again without them (using only what the tools confirmed) instead of
+    // showing a canned message. A rewrite replaces the answer only when the guard leaves it whole, so the reply never gets worse.
+    const repairRule = repairLimits(release);
     if (
       !toolContext.isHumanHandoffRequested &&
-      shaper.getWithheldCount() > 0 &&
-      finalAssistantText.length < repairLimits(release).thin &&
-      !toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok) &&
+      needsRepair({
+        withheldCount: shaper.getWithheldCount(),
+        removedChars: shaper.getWithheldSentences().reduce((total, sentence) => total + sentence.length, 0),
+        keptChars: finalAssistantText.length,
+        cardShown: toolsTrace.some((trace) => trace.name === 'present_card' && trace.ok),
+        thinBelowChars: repairRule.thin,
+        removedShareAbove: repairRule.removedShare,
+      }) &&
       (!options.timeoutMs || Date.now() - loopStart < options.timeoutMs * 0.7)
     ) {
       try {
@@ -1045,7 +1053,7 @@ function extractToolResultCount(result: any): number | undefined {
             role: 'user',
             content:
               `Some statements in your last draft could not be supported by verified information and were removed: ${removed} ` +
-              'Write the reply again without them. Use only what the tool results confirm, and do not replace them with general knowledge of your own. ' +
+              'Write the reply again without them, keeping what the tool results do support. Use only what the tool results confirm, and do not replace them with general knowledge of your own. ' +
               'Say plainly what you cannot confirm, ask the customer the questions you need (together, in one message), and offer one clear next step or a person who can help.',
           },
         ];
@@ -1060,7 +1068,7 @@ function extractToolResultCount(result: any): number | undefined {
         repairShaper.flush();
         const repaired = repairShaper.getStreamedText().trim();
         // Only a clean rewrite replaces the answer: if the guard had to cut it again, the pack's own message is used.
-        if (repaired.length >= repairLimits(release).min && repairShaper.getWithheldCount() === 0) {
+        if (repaired.length >= repairRule.min && repairShaper.getWithheldCount() === 0) {
           finalAssistantText = repaired;
           repairedByModel = true;
           sink('token', { replace: repaired, delta: repaired });

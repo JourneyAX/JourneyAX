@@ -44,3 +44,22 @@ export function chooseWithheldFallback(input: {
   if (input.onlyQuestions) return showFound ? undefined : input.withheldMessage;
   return undefined;
 }
+
+/**
+ * Should the model be asked once to answer again without the removed statements?
+ * Yes when little is left of the reply (and no card carries it), or when the removed sentences were most of what the model wrote:
+ * a reply that lost its recommendation reads as an answer that never came, whether or not cards are shown after it.
+ */
+export function needsRepair(input: {
+  withheldCount: number;
+  removedChars: number;
+  keptChars: number;
+  cardShown: boolean;
+  thinBelowChars: number;
+  removedShareAbove: number;
+}): boolean {
+  if (input.withheldCount === 0) return false;
+  if (input.keptChars < input.thinBelowChars && !input.cardShown) return true;
+  const written = input.removedChars + input.keptChars;
+  return written > 0 && input.removedChars / written >= input.removedShareAbove;
+}

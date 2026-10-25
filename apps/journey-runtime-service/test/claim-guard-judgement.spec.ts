@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { validateOkfGeneratedClaims, withholdUnsupportedClaims } from '../src/kernel/okf-claim-validator';
+import { chooseWithheldFallback, needsRepair, DEFAULT_FOUND_MESSAGE, foundMessageOf } from '../src/agent/withheld-fallback';
 
 const draft = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
 const packOptions = { locale: 'en-NZ', referrals: draft.conversationPolicy?.referrals, extraClaimPatterns: draft.conversationPolicy?.extraClaimPatterns };
@@ -144,5 +145,29 @@ const mixed = withholdUnsupportedClaims(
 );
 assert.equal(mixed.text, 'Good news, we found a Makita cordless hammer drill combo kit. Tell me what you’re drilling into and how many holes you need.');
 assert.deepEqual(mixed.removed.map((entry) => entry.classes), [['warranty']]);
+
+// ── 4. When the model is asked to answer again, and what the customer reads if nothing is left ──────────────────────────────────────────────
+const limits = { thinBelowChars: 120, removedShareAbove: 0.5 };
+assert.equal(needsRepair({ withheldCount: 0, removedChars: 0, keptChars: 0, cardShown: false, ...limits }), false, 'nothing removed, nothing to repair');
+assert.equal(needsRepair({ withheldCount: 1, removedChars: 80, keptChars: 60, cardShown: false, ...limits }), true, 'little left and no card to carry it');
+assert.equal(needsRepair({ withheldCount: 1, removedChars: 30, keptChars: 60, cardShown: true, ...limits }), false, 'a short reply with a card is fine');
+assert.equal(needsRepair({ withheldCount: 1, removedChars: 300, keptChars: 200, cardShown: true, ...limits }), true, 'most of what was written was removed, card or not');
+assert.equal(needsRepair({ withheldCount: 1, removedChars: 100, keptChars: 400, cardShown: true, ...limits }), false, 'a small part removed from a full reply is left as it is');
+
+const found = foundMessageOf(undefined);
+assert.equal(found, DEFAULT_FOUND_MESSAGE);
+assert.equal(foundMessageOf({ conversationPolicy: { foundMessage: 'Have a look at these.' } }), 'Have a look at these.');
+assert.equal(foundMessageOf({ conversationPolicy: { foundMessage: { 'en-NZ': 'Kia ora, these are ours.', default: 'x' } } }, 'en-NZ'), 'Kia ora, these are ours.');
+const fallback = (reply: string, onlyQuestions: boolean, hasProducts: boolean, classes: any[]) =>
+  chooseWithheldFallback({ reply, onlyQuestions, hasProducts, withheldClasses: classes, foundMessage: 'FOUND', withheldMessage: 'REFUSAL' });
+assert.equal(fallback('', false, true, ['warranty']), 'FOUND', 'products found, a warranty line removed');
+assert.equal(fallback('', false, true, ['installation_step', 'requirement']), 'FOUND');
+assert.equal(fallback('', false, true, ['safety_instruction']), 'REFUSAL', 'a safety line removed: the tenant refusal');
+assert.equal(fallback('', false, true, ['care_safety']), 'REFUSAL');
+assert.equal(fallback('', false, true, ['legal_requirement']), 'REFUSAL');
+assert.equal(fallback('', false, false, ['warranty']), 'REFUSAL', 'nothing to show: the tenant refusal');
+assert.equal(fallback('Which one do you mean?', true, true, ['warranty']), undefined, 'questions kept with the cards');
+assert.equal(fallback('Which one do you mean?', true, false, ['warranty']), 'REFUSAL');
+assert.equal(fallback('Here are the options.', false, false, ['warranty']), undefined, 'a reply with a statement is never replaced');
 
 console.log('✅ claim guard: real sentences kept, invented claims still removed');
