@@ -27,6 +27,11 @@ export interface ExecutionRequest<TInput = any> {
   input: TInput;
   idempotencyKey?: string;
   userConfirmationConfirmed?: boolean;
+  /**
+   * The connector policy state the access layer worked out for this person and tool (`allow`, `ask` first, `blocked`). Set by server code
+   * only, never from model output. When present it decides the call: the legacy role and side-effect checks are replaced by it.
+   */
+  policyState?: 'allow' | 'ask' | 'blocked';
 }
 
 export type ExecutionStatus = 'success' | 'failure' | 'requires_approval' | 'denied';

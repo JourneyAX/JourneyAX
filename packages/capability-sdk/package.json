@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsx test/dispatcher.spec.ts"
+    "test": "tsx test/dispatcher.spec.ts && tsx test/mcp.spec.ts"
   },
   "dependencies": {
     "@journeyax/journey-core": "*",

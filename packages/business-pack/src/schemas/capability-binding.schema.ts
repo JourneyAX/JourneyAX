@@ -187,6 +187,8 @@ export const ExecutorSchema = z.object({
   secretRef: SecretRefSchema.optional(),
   openApiOpId: z.string().optional(),
   mcpServerName: z.string().optional(),
+  /** The tool's name on the MCP server, when it differs from the tool id. */
+  mcpToolName: z.string().optional(),
   agentId: z.string().optional(),
 });
 
