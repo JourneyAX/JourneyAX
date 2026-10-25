@@ -60,7 +60,12 @@ const keptSentences = [
   'The Milwaukee right-angle drill is more for tight spaces and drilling/fastening, so I wouldn’t make that the first pick for concrete unless access is the issue.',
   'The standard cordless drill may suit lighter jobs only, but you’d need to confirm it has the hammer function and capacity you need before using it on concrete.',
   'Kia ora — I’m taking “cordles drll” as cordless drill.',
+  // from the re-run after the first fixes
+  'Good news, I found a Makita cordless combo kit with a hammer drill function, which is the key feature for drilling into masonry or concrete.',
+  'Inventory availability hasn’t been checked yet, so we’d need your branch before saying what’s in stock.',
+  'If this is for load-bearing framing or a structural job, the span, loads and NZS 3604 requirements need to be checked by an LBP or structural engineer before choosing timber.',
   // general trade know-how, hedged, that names no installation action
+  'For drilling into concrete, you’ll generally want a cordless hammer drill rather than a standard drill, plus masonry drill bits.',
   'For concrete, you’ll generally want a cordless **hammer drill** rather than a standard drill.',
   'For concrete, you’ll generally want a cordless hammer drill rather than a standard drill.',
   'For concrete, you’ll want a hammer drill function rather than a standard drill-only tool.',
@@ -70,12 +75,15 @@ for (const sentence of keptSentences) {
   assert.deepEqual(verdict.forbidden, [], `a sentence that states no wrong fact must be kept: ${sentence}`);
   assert.equal(withholdUnsupportedClaims(sentence, ['suggestion'], packOptions, { knownNames }).text, sentence, `kept whole: ${sentence}`);
 }
-assert.equal(keptSentences.length, 29);
+assert.equal(keptSentences.length, 33);
 
-// Two of the 31 stay withheld by this guard on purpose. They are handled by the repair round (the model is asked to say it from what the
-// tools returned) and, for hedged general know-how, by the pack setting, not by loosening the words.
+// One of the 31 stays withheld by this guard on purpose: it states that a product suits a use, which only a source can say. The repair round
+// asks the model to say it from what the tools returned.
 assert.deepEqual(judge('Yes — good news, we have exterior paint suitable for exterior walls, and our range also includes the prep gear that usually goes with repainting weatherboards.').forbidden, ['compatibility']);
-assert.deepEqual(judge('For drilling into concrete, you’ll generally want a cordless hammer drill rather than a standard drill, plus masonry drill bits.').forbidden, ['installation_step']);
+// "drilling into" as the use a tool is for is a description; an instruction to drill is not.
+assert.deepEqual(judge('A hammer function is what you want for drilling into concrete.').forbidden, []);
+assert.ok(judge('Start by drilling into the stud, then fit the bracket.').forbidden.includes('installation_step'));
+assert.ok(judge('You should drill into the stud first.').forbidden.includes('installation_step'));
 
 // The product names are what make the difference for "wire wardrobe" and the like, but a plain sentence about the thing is judged by what it says.
 assert.deepEqual(validateOkfGeneratedClaims('We have a Wire Wardrobe Kit and a Mounting Bracket 90mm in our range.', ['suggestion'], packOptions).forbidden, []);
@@ -126,6 +134,8 @@ const invented: Array<[string, string]> = [
   ['requirement', 'If it’s near the coast, it must be stainless.'],
   ['requirement', 'Please speak to a builder, but it must be fixed every 300 mm.'],
   ['warranty', 'Tell me your area, and the paint has a lifetime warranty.'],
+  ['stock', 'Stock hasn’t been checked yet, and we have 40 in stock at the Hamilton branch.'],
+  ['requirement', 'The span needs to be checked by an engineer and the deck must have a 1 m balustrade.'],
   // a product's own name does not excuse a claim made about it
   ['warranty', 'The Makita cordless hammer drill combo kit is guaranteed for 3 years.'],
   ['installation_step', 'Install the Makita 12V CXT combo kit charger on a dry wall.'],
@@ -150,14 +160,14 @@ assert.equal(mixed.text, 'Good news, we found a Makita cordless hammer drill com
 assert.deepEqual(mixed.removed.map((entry) => entry.classes), [['warranty']]);
 
 // ── 3b. Hedged general know-how: a pack setting, off by default ───────────────────────────────────────────────────────────────────────────
-const knowHowSentence = 'For drilling into concrete, you’ll generally want a cordless hammer drill rather than a standard drill, plus masonry drill bits.';
+const knowHowSentence = 'You’ll generally fix the rail to the wall with masonry anchors rather than plain screws.';
 const withKnowHow = (setting: any) => ({ ...packOptions, conversationPolicy: { ...draft.conversationPolicy, claimPolicy: { hedgedKnowHow: setting } } });
 const judgeWith = (options: any, text: string) => validateOkfGeneratedClaims(text, ['suggestion'], options, { knownNames, productNames }).forbidden;
 
 assert.deepEqual(judgeWith(packOptions, knowHowSentence), ['installation_step'], 'off by default: the sentence is still withheld');
 assert.deepEqual(judgeWith(withKnowHow({ enabled: false }), knowHowSentence), ['installation_step'], 'explicitly off');
 assert.deepEqual(judgeWith(withKnowHow({ enabled: true }), knowHowSentence), [], 'on: hedged general know-how is said');
-assert.ok(judgeWith(withKnowHow({ enabled: true }), 'For drilling into concrete, you’ll want a cordless hammer drill rather than a standard drill.').includes('installation_step'), 'on, but not hedged: still withheld');
+assert.ok(judgeWith(withKnowHow({ enabled: true }), 'You’ll fix the rail to the wall with masonry anchors rather than plain screws.').includes('installation_step'), 'on, but not hedged: still withheld');
 assert.deepEqual(judgeWith(withKnowHow({ enabled: true, hedgeWords: ['as a rule'] }), 'As a rule, drill into the stud first.'), [], 'the pack chooses the hedge words');
 assert.ok(judgeWith(withKnowHow({ enabled: true, hedgeWords: ['as a rule'] }), knowHowSentence).includes('installation_step'), 'and only those');
 assert.deepEqual(judgeWith(withKnowHow({ enabled: true, hedgeWords: { 'en-NZ': ['typically'], default: ['usually'] } }), 'Typically you would drill into the stud first.'), [], 'hedge words per locale');

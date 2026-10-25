@@ -23,7 +23,7 @@ const CLAIM_PATTERNS: ReadonlyArray<[ClaimClass, RegExp]> = [
   ['substitution', /\b(?:equivalent|substitut(?:e|ion)|interchangeable|replacement for)\b/i],
   // An installation step is something a person is told to DO: an install, or a verb with what it is done to. A bare "drill" or "wire" is as
   // often a product ("cordless drill", "wire wardrobe") and a bare "mounting bracket" a product name, so the verb must be doing something.
-  ['installation_step', /\b(?:install(?:ed|ing|ation|s)?|mount(?:ed|ing|s)?\s+(?:\w+\s+){0,3}?(?:to|on|onto|into|with|using|at)|attach(?:ed|ing|es)?\s+(?:\w+\s+){0,3}?(?:to|onto|with|using)|drill(?:ed|ing|s)?\s+(?:\w+\s+){0,2}?(?:into|through|a\s+(?:\d+\s*mm\s+)?(?:pilot\s+)?holes?|holes|pilot)|wire[sd]?\s+(?:\w+\s+){0,2}?(?:to|into|up)\b|wiring\s+(?:to|into|up)|fix(?:ing|ed|es)?\s+(?:\w+\s+){0,3}?to|connect(?:ed|ing|s)?\s+(?:\w+\s+){0,3}?to|fasten(?:ed|s)?\s+(?:\w+\s+){0,3}?(?:to|with|using|down|every)|fastening\s+(?:to|with|into|down))\b/i],
+  ['installation_step', /\b(?:install(?:ed|ing|ation|s)?|mount(?:ed|ing|s)?\s+(?:\w+\s+){0,3}?(?:to|on|onto|into|with|using|at)|attach(?:ed|ing|es)?\s+(?:\w+\s+){0,3}?(?:to|onto|with|using)|(?<!\b(?:for|when|while|of)\s)drill(?:ed|ing|s)?\s+(?:\w+\s+){0,2}?(?:into|through|a\s+(?:\d+\s*mm\s+)?(?:pilot\s+)?holes?|holes|pilot)|wire[sd]?\s+(?:\w+\s+){0,2}?(?:to|into|up)\b|wiring\s+(?:to|into|up)|fix(?:ing|ed|es)?\s+(?:\w+\s+){0,3}?to|connect(?:ed|ing|s)?\s+(?:\w+\s+){0,3}?to|fasten(?:ed|s)?\s+(?:\w+\s+){0,3}?(?:to|with|using|down|every)|fastening\s+(?:to|with|into|down))\b/i],
   ['care_safety', /\b(?:dilut(?:e|es|ed|ing|ion)|abrasive|chemical|ventilat(?:e|es|ed|ing|ion)|clean(?:er|ing)? safely)\b/i],
   [
     'safety_instruction',
@@ -231,13 +231,13 @@ function checkClauseForClaims(
 const CLAUSE_BREAK = /\s*(?:,\s*)?\b(?:but|however|although|though|yet|except|while|so)\b\s+|\s*;\s*|\s+[—–]\s+/i;
 
 /** Says what is NOT known or NOT found: the honest answer the assistant is told to give. */
-const DISCLAIMER = /\b(?:(?:could not|couldn[’']t|can[’']?t|cannot|unable to|not able to|wasn[’']t able to|haven[’']t been able to)\s+(?:\w+\s+){0,2}?(?:confirm|verify|find|see|say|tell|check|state|establish|rule out)|(?:don[’']t|do not|doesn[’']t|does not|didn[’']t|did not|hasn[’']t|has not)\s+(?:\w+\s+){0,2}?(?:have|show|say|state|confirm|mention|list|specify|include|return|give|carry|come with)|not (?:been )?(?:confirmed|verified|stated|specified|listed|shown|returned|checked)|no (?:installation |warranty |care )?(?:guide|details|information|record|note|literature) (?:was |were |is |are )?(?:found|on file|available|returned|listed)|I(?:[’']m| am) not sure)\b/i;
+const DISCLAIMER = /\b(?:(?:could not|couldn[’']t|can[’']?t|cannot|unable to|not able to|wasn[’']t able to|haven[’']t been able to)\s+(?:\w+\s+){0,2}?(?:confirm|verify|find|see|say|tell|check|state|establish|rule out)|(?:don[’']t|do not|doesn[’']t|does not|didn[’']t|did not|hasn[’']t|has not)\s+(?:\w+\s+){0,2}?(?:have|show|say|state|confirm|mention|list|specify|include|return|give|carry|come with)|(?:not|hasn[’']t|has not|haven[’']t|have not|wasn[’']t|was not|isn[’']t|is not|aren[’']t|are not|weren[’']t|yet to)\s+(?:yet\s+)?(?:been\s+|be\s+)?(?:confirmed|verified|stated|specified|listed|shown|returned|checked|looked up)|no (?:installation |warranty |care )?(?:guide|details|information|record|note|literature) (?:was |were |is |are )?(?:found|on file|available|returned|listed)|I(?:[’']m| am) not sure)\b/i;
 
 /** A request to the customer, or an invitation to answer, written as a statement ("tell me…", "a few choices will help sort…"). */
 const REQUEST_START = /^(?:please\b|tell me\b|let me know\b|just (?:tell|let|pick|answer)\b|pick\b|choose\b|answer\b|send me\b|(?:to|so that i can) (?:narrow|point|help|find|make sure|get|work out|give|recommend)\b[^.]{0,100}?\b(?:i (?:just |first |still )?need|tell me|let me know)\b|i (?:just |first |still )?need to (?:know|ask|narrow|check|confirm|find out|understand|see)\b|a few (?:quick )?(?:choices|questions|details|answers|things)\b[^.]{0,80}\bwill help\b)/i;
 
 /** Sends the customer to check or ask someone: a referral or a "check this" suggestion. */
-const DIRECTIVE = /\b(?:please (?:check|confirm|speak|talk|ask|contact|see|consult|refer)|(?:also |first )?check (?:that |the |whether |with |if |you[’']ve|it |they )|(?:speak|talk|chat|check|confirm|consult|ask|contact) (?:with |to )?(?:your |our |a |an |the )?(?:\w+ ){0,3}?(?:builder|surveyor|LBP|licensed|qualified|professional|engineer|electrician|gasfitter|council|team|branch|manufacturer|specialist|staff|installer|plumber|supplier|documentation|documents)|it[’']?s worth (?:checking|confirming|asking|speaking|double-checking)|(?:should|best to|worth) (?:confirm|check|verify)|you (?:may|might|will|[’']ll) (?:want|need) to (?:check|confirm|ask|speak|measure))\b/i;
+const DIRECTIVE = /\b(?:please (?:check|confirm|speak|talk|ask|contact|see|consult|refer)|(?:also |first )?check (?:that |the |whether |with |if |you[’']ve|it |they )|(?:speak|talk|chat|check|confirm|consult|ask|contact) (?:with |to )?(?:your |our |a |an |the )?(?:\w+ ){0,3}?(?:builder|surveyor|LBP|licensed|qualified|professional|engineer|electrician|gasfitter|council|team|branch|manufacturer|specialist|staff|installer|plumber|supplier|documentation|documents)|(?:checked|confirmed|signed off|reviewed|assessed|approved|verified|decided|specified)\s+by\s+(?:an?\s+|your\s+|our\s+|the\s+)?(?:\w+\s+){0,3}?(?:builder|surveyor|LBP|licensed|qualified|professional|engineer|electrician|gasfitter|council|team|branch|manufacturer|specialist|staff|installer|plumber|supplier)|it[’']?s worth (?:checking|confirming|asking|speaking|double-checking)|(?:should|best to|worth) (?:confirm|check|verify)|you (?:may|might|will|[’']ll) (?:want|need) to (?:check|confirm|ask|speak|measure))\b/i;
 
 /** Opens a condition: "if you can confirm it is suitable…", "whether it needs to handle…". */
 const CONDITIONAL_CLAUSE = /^(?:if|whether|unless|in case|when)\b/i;
@@ -259,6 +259,7 @@ function withoutConditions(clause: string): string {
   return rest
     .replace(/\b(?:if|where|when|whenever|as|should it be)\s+(?:be\s+)?(?:required|necessary|needed|mandatory)\b/gi, ' ')
     .replace(/\b(?:if|unless|whether|in case)\b[^,;]*/gi, ' ')
+    .replace(/\b(?:saying|say|tell(?:ing)?|know(?:ing)?|check(?:ing)?|confirm(?:ing)?|sure|see(?:ing)?|show(?:ing)?)\s+(?:you\s+|me\s+)?(?:what|which|how many|how much)\b[^,;]*/gi, ' ')
     .trim();
 }
 
