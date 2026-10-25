@@ -9,6 +9,7 @@
       "public-path",
       "capability-sdk",
       "connectors-sample",
+      "connectors-real",
       "database",
       "project-service",
       "journey-runtime-service",
@@ -23,6 +24,7 @@
       "tsc:knowledge",
       "tsc:capability-sdk",
       "tsc:connectors-sample",
+      "tsc:connectors-real",
       "tsc:database",
       "tsc:project-service",
       "tsc:journey-runtime-service",
@@ -174,6 +176,14 @@
     "tsc:connectors-sample": {
       "cwd": "packages/connectors-sample",
       "command": "npx tsc --noEmit -p ."
+    },
+    "connectors-real": {
+      "cwd": "packages/connectors-real",
+      "command": "npm test"
+    },
+    "tsc:connectors-real": {
+      "cwd": "packages/connectors-real",
+      "command": "npx tsc --noEmit -p tsconfig.test.json"
     }
   }
 }

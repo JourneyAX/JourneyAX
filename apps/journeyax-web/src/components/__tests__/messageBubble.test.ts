@@ -59,7 +59,7 @@ check('bullet lines show as a list with their bold labels, not as italics with s
 
 check('a list is never put inside a paragraph, and the lead-in line stays a paragraph of its own', () => {
   const html = replyWith(PRICES);
-  assert.ok(!/<p[^>]*>(?:(?!<\/p>).)*<ul/s.test(html), 'a list inside a paragraph is invalid markup');
+  assert.ok(!/<p[^>]*>(?:(?!<\/p>)[\s\S])*<ul/.test(html), 'a list inside a paragraph is invalid markup');
   assert.ok(/<p[^>]*><span>For SKU 1357685/.test(html));
 });
 
