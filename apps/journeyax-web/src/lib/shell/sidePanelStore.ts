@@ -12,15 +12,11 @@ export interface OpenPanel {
   cardType: string;
 }
 
-/** The working surfaces that open in the side panel without being a card: the cart, the payment form and a placed order. */
-export type CanvasKind = 'cart' | 'checkout' | 'order';
-export interface CanvasRequest {
-  kind: CanvasKind;
-  /** The order to show ('order'), or the order being paid ('checkout'). */
-  orderId?: string;
-  /** What the payment form needs to open ('checkout'): Stripe's client secret and the public key. */
-  payment?: { clientSecret: string; publishableKey: string };
-}
+import { canvasCanOpen, type CanvasRequest } from './canvasRegistry';
+
+/** The working surfaces that open in the side panel without being a card (the cart, the payment form, a placed order, a form, a report, a plugin's view) are declared in canvasRegistry.ts. */
+export type CanvasKind = string;
+export type { CanvasRequest };
 
 let canvas: CanvasRequest | null = null;
 let openPanel: OpenPanel | null = null;
@@ -61,6 +57,8 @@ export function getCanvas(): CanvasRequest | null { return canvas; }
 
 /** Opens a working surface in the panel, replacing whatever the panel showed. */
 export function openCanvas(request: CanvasRequest): void {
+  // A request nobody registered, or one that lacks what its surface needs, is not opened: an empty panel helps no one.
+  if (!canvasCanOpen(request)) return;
   canvas = request;
   openPanel = null;
   emit();

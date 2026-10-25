@@ -19,20 +19,16 @@ import {
 } from '@/lib/shell/panel';
 import { isPanelCardType, panelCardCopy } from '@/lib/shell/panelCards';
 import { closePanelCard, resolvePanelCard, useCanvas, useOpenPanel } from '@/lib/shell/sidePanelStore';
-import CartCanvas from '@/components/canvas/CartCanvas';
-import CheckoutCanvas from '@/components/canvas/CheckoutCanvas';
-import OrderCanvas from '@/components/canvas/OrderCanvas';
-import { orderRef } from '@/components/canvas/money';
+import { drawCanvas } from '@/components/canvas/registry';
+import { canvasHeading, canvasMinWidth } from '@/lib/shell/canvasRegistry';
 import type { CardInstance } from '@/lib/types';
 import { CloseIcon, PanelIcon } from './icons';
 import { useShell } from './ShellContext';
 
 type Action = (name: string, params?: Record<string, unknown>) => void;
 
-/** A working surface needs room for lines, prices and a payment form. */
-const CANVAS_MIN_WIDTH = 560;
-
-const canvasTitle = (kind: string, orderId?: string) => (kind === 'cart' ? 'Your order' : kind === 'checkout' ? 'Pay securely' : `Order${orderId ? ` #${orderRef(orderId)}` : ''}`);
+/** The narrowest a surface nobody registered is drawn at. */
+const CANVAS_FALLBACK_MIN_WIDTH = 560;
 
 /** The card the panel is showing right now, or null. Shared by the host and by the thread (which marks its note "showing"). */
 export function useShownPanelCard(cards: CardInstance[], enabled: boolean): CardInstance | null {
@@ -69,7 +65,7 @@ export default function SidePanelHost({ cards, onAction, enabled, composerSelect
 
   const mode = panelMode(viewport, sidebarWidth);
   const showCanvas = !!canvas && enabled;
-  const width = clampPanelWidth(showCanvas ? Math.max(wanted, CANVAS_MIN_WIDTH) : wanted, viewport, sidebarWidth);
+  const width = clampPanelWidth(showCanvas ? Math.max(wanted, canvasMinWidth(canvas!, CANVAS_FALLBACK_MIN_WIDTH)) : wanted, viewport, sidebarWidth);
   const isOpen = !!card || showCanvas;
 
   const close = useCallback(() => {
@@ -135,7 +131,7 @@ export default function SidePanelHost({ cards, onAction, enabled, composerSelect
   const resetWidth = () => { setWanted(PANEL_DEFAULT_WIDTH); remember(PANEL_DEFAULT_WIDTH); };
 
   if (!card && !showCanvas) return null;
-  const copy = card ? panelCardCopy(card) : { kind: canvasTitle(canvas!.kind, canvas!.orderId), title: canvasTitle(canvas!.kind, canvas!.orderId), note: '' };
+  const copy = card ? panelCardCopy(card) : { kind: canvasHeading(canvas!), title: canvasHeading(canvas!), note: '' };
   const sheet = mode === 'sheet';
 
   return (
@@ -179,9 +175,7 @@ export default function SidePanelHost({ cards, onAction, enabled, composerSelect
         </header>
         <div className="ax-panel__body">
           {card ? <CardTile key={card.id} card={card} onAction={onAction} /> : null}
-          {showCanvas && canvas!.kind === 'cart' && <CartCanvas />}
-          {showCanvas && canvas!.kind === 'checkout' && canvas!.payment && canvas!.orderId && <CheckoutCanvas key={canvas!.orderId} orderId={canvas!.orderId} payment={canvas!.payment} />}
-          {showCanvas && canvas!.kind === 'order' && canvas!.orderId && <OrderCanvas key={canvas!.orderId} orderId={canvas!.orderId} />}
+          {showCanvas ? drawCanvas(canvas!) : null}
         </div>
       </aside>
     </>
