@@ -122,6 +122,15 @@ async function main() {
     await vendor.close();
   });
 
+  await t.test('list_cases understands "open" and "closed" as every status that is not closed, or closed, so the assistant need not ask which statuses count', async () => {
+    const { vendor, call } = await setup();
+    await call('list_cases', { accountId: ACCOUNT, status: 'open' });
+    await call('list_cases', { status: 'Closed' });
+    assert.equal(soqlSeen(vendor)[0], `SELECT Id, CaseNumber, Subject, Status, Priority, AccountId, Account.Name, CreatedDate FROM Case WHERE AccountId = '${ACCOUNT}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 10`);
+    assert.ok(soqlSeen(vendor)[1]!.includes('WHERE IsClosed = true ORDER BY'), 'closed is the closed flag too');
+    await vendor.close();
+  });
+
   await t.test('ids and statuses that could break out of the query are refused before anything is sent', async () => {
     const { vendor, call } = await setup();
     for (const [tool, args] of [['get_account', { accountId: "x' OR Name != '" }], ['list_cases', { accountId: "a' OR '1'='1" }], ['list_cases', { status: "New' OR Subject != '" }], ['get_case', { caseId: "1' OR '1'='1" }], ['create_case', { accountId: 'bad id', subject: 'x' }]] as const) {

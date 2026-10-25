@@ -123,7 +123,7 @@ export function salesforce(env: Env, deps: Deps): RealConnector {
     {
       name: 'list_cases',
       readOnly: true,
-      description: 'Support cases, newest first, for an account or by status or priority. Standard statuses are New, Working, Escalated and Closed; priorities are low, medium and high.',
+      description: 'Support cases, newest first, for an account or by status or priority. For status pass "open" (every case that is not closed: New, Working or Escalated), "closed", or one exact status such as Working. Priorities are low, medium (or normal) and high.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -136,7 +136,11 @@ export function salesforce(env: Env, deps: Deps): RealConnector {
       async run(args) {
         const where: string[] = [];
         if (args.accountId) where.push(`AccountId = ${lit(String(args.accountId))}`);
-        if (args.status) where.push(`Status = ${lit(String(args.status))}`);
+        if (args.status) {
+          const status = String(args.status).trim();
+          // "open" and "closed" are groups of statuses, so they are asked for by Salesforce's own closed flag, not by a status name.
+          where.push(/^open$/i.test(status) ? 'IsClosed = false' : /^closed$/i.test(status) ? 'IsClosed = true' : `Status = ${lit(status)}`);
+        }
         if (args.priority) where.push(`Priority = ${lit(PRIORITIES[String(args.priority)])}`);
         const limit = boundedInt(args.limit, 10, 1, 25);
         const { totalSize, records } = await query(`SELECT Id, CaseNumber, Subject, Status, Priority, AccountId, Account.Name, CreatedDate FROM Case${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY CreatedDate DESC LIMIT ${limit}`);
