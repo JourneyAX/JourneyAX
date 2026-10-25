@@ -377,7 +377,10 @@
             {
               "name": "get_cart",
               "sideEffect": "read",
-              "summary": "Get a cart with its lines."
+              "summary": "Get a cart with its lines.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             },
             {
               "name": "add_to_cart",
@@ -387,12 +390,18 @@
             {
               "name": "get_order",
               "sideEffect": "read",
-              "summary": "Get an order with its lines: status, delivery type, branch and totals."
+              "summary": "Get an order with its lines: status, delivery type, branch and totals.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             },
             {
               "name": "order_history",
               "sideEffect": "read",
-              "summary": "List the orders of a trade account, newest first."
+              "summary": "List the orders of a trade account, newest first.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             }
           ]
         },
@@ -453,13 +462,17 @@
               "sideEffect": "read",
               "summary": "Stock on hand for a product, branch by branch.",
               "claimClasses": [
-                "stock"
+                "stock",
+                "catalog_fact"
               ]
             },
             {
               "name": "trade_price",
               "sideEffect": "read",
-              "summary": "The retail price and the trade prices by tier (bronze, silver, gold) for a product."
+              "summary": "The retail price and the trade prices by tier (bronze, silver, gold) for a product.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             },
             {
               "name": "delivery_status",
@@ -469,7 +482,10 @@
             {
               "name": "account_balance",
               "sideEffect": "read",
-              "summary": "The balance, credit limit and overdue amount of a trade account."
+              "summary": "The balance, credit limit and overdue amount of a trade account.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             },
             {
               "name": "list_branches",
@@ -624,12 +640,18 @@
             {
               "name": "get_report_figures",
               "sideEffect": "read",
-              "summary": "The figures of one report, period by period."
+              "summary": "The figures of one report, period by period.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             },
             {
               "name": "report_totals",
               "sideEffect": "read",
-              "summary": "The total of a report's figures for each split (for example for each branch)."
+              "summary": "The total of a report's figures for each split (for example for each branch).",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             }
           ]
         },
