@@ -36,8 +36,13 @@ const scenarioFile = read('scripts/okf/tenants/placemakers.scenarios.json');
 export const catalogMapping = read('docs/migrations/placemakers-catalog-mapping.json').catalogMapping;
 export const TENANT = 'placemakers';
 /** The exact data files the pack is published from, so the evaluation measures the real instructions and reply style. */
-const agentDraft = read('docs/agent-instructions/placemakers-draft.json');
-const agentSettings = read('docs/agent-instructions/placemakers-agent-settings.json');
+// An experiment can point a run at copies of the two files (an absolute path in these variables) without touching the committed ones.
+const readVariant = (variable: string, fallback: string) => {
+  const file = process.env[variable];
+  return file ? JSON.parse(readFileSync(path.resolve(file), 'utf8')) : read(fallback);
+};
+const agentDraft = readVariant('PLACEMAKERS_DRAFT_FILE', 'docs/agent-instructions/placemakers-draft.json');
+const agentSettings = readVariant('PLACEMAKERS_SETTINGS_FILE', 'docs/agent-instructions/placemakers-agent-settings.json');
 export const ENVIRONMENT = 'test';
 
 // ── catalogue fixture, shaped like the real products collection (path, category, price in priceUSD.min, currency per product) ──
