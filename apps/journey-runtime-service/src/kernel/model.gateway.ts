@@ -2,6 +2,7 @@ import { BusinessPackRelease } from '@journeyax/business-pack';
 import { ModelRouter, TaskType, ModelRouteResult } from '../model/model-router';
 import { AgentRouter, ResolvedAgent } from './agent.router';
 import { WorkspaceState } from '@journeyax/journey-core';
+import { buildGeminiAgentBody, geminiStreamEndpoint, newGeminiStreamState, readGeminiChunk } from './gemini-agent';
 
 /**
  * The temperature part of a Claude request. Claude's newer models (the 5.x family) refuse the setting ("`temperature` is deprecated for
@@ -105,6 +106,8 @@ export interface AgentToolCall {
   id: string;
   name: string;
   arguments: Record<string, any>;
+  /** Gemini only: the signature the model attached to this call, which has to go back with it on the next request. */
+  thoughtSignature?: string;
 }
 
 export interface AgentMessage {
@@ -867,6 +870,13 @@ export class ModelGateway {
           },
           body: JSON.stringify(payload),
         });
+      } else if (route.provider === 'google') {
+        resp = await fetch(geminiStreamEndpoint(endpoint), {
+          method: 'POST',
+          signal,
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey || '' },
+          body: JSON.stringify(buildGeminiAgentBody(req, route)),
+        });
       } else {
         throw new ModelGatewayError(
           `Provider '${route.provider}' does not support agent tool-calling streaming.`,
@@ -898,10 +908,33 @@ export class ModelGateway {
     }
 
     let content = '';
-    const toolCallsMap = new Map<number, { id: string; name: string; argsStr: string }>();
+    const toolCallsMap = new Map<number, { id: string; name: string; argsStr: string; signature?: string }>();
     let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
 
-    if (route.provider === 'openai' || route.provider === 'open-model' || route.provider === 'custom') {
+    if (route.provider === 'google') {
+      const state = newGeminiStreamState();
+      await readSseStream(
+        resp.body,
+        (line) => {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) return;
+          try {
+            readGeminiChunk(JSON.parse(trimmed.slice(5).trim()), state, onDelta);
+          } catch {}
+        },
+        signal
+      );
+      content = state.content;
+      usage = state.usage;
+      state.toolCalls.forEach((call, index) => toolCallsMap.set(index, { id: call.id, name: call.name, argsStr: JSON.stringify(call.args), signature: call.thoughtSignature }));
+      if (!content.trim() && state.toolCalls.length === 0) {
+        throw new ModelMalformedResponseError(
+          route.provider,
+          route.model,
+          `Gemini returned neither text nor tool calls (finishReason: ${state.finishReason || 'none'}, blockReason: ${state.blockReason || 'none'})`
+        );
+      }
+    } else if (route.provider === 'openai' || route.provider === 'open-model' || route.provider === 'custom') {
       await readSseStream(
         resp.body,
         (line) => {
@@ -1005,6 +1038,7 @@ export class ModelGateway {
         id: item.id,
         name: item.name,
         arguments: args,
+        ...(item.signature ? { thoughtSignature: item.signature } : {}),
       });
     }
 
