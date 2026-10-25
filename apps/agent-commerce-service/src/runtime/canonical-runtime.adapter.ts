@@ -170,6 +170,8 @@ export class CanonicalRuntimeAdapter {
         // What the customer did on a card: without it the agent only sees the line the thread shows.
         customerEvent: (command as any).customerEvent || (command as any).customer_event,
         agentId: (command as any).agentId,
+        // The earlier message this one continues from (try again, edit): without it the runtime follows the newest message.
+        parentMessageId: (command as any).parentMessageId,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),
@@ -225,6 +227,7 @@ export class CanonicalRuntimeAdapter {
       }
       const engine = result.trace?.engine || (result.trace?.agentMode ? 'agent' : 'canonical');
       const agentId = result.trace?.agentId;
+      const messageIds = command.turnId ? { customer: `${command.turnId}:customer`, assistant: `${command.turnId}:assistant` } : undefined;
       emit('data', {
         sessionId: command.sessionId,
         workspaceId: command.workspaceId,
@@ -232,6 +235,7 @@ export class CanonicalRuntimeAdapter {
         trace: result.trace,
         engine,
         agentId,
+        messageIds,
       });
       emit('done', {
         sessionId: command.sessionId,
@@ -240,6 +244,7 @@ export class CanonicalRuntimeAdapter {
         trace: result.trace,
         engine,
         agentId,
+        messageIds,
         response: result.assistantMessage || '',
         assistantMessage: result.assistantMessage || '',
         message: { role: 'assistant', content: result.assistantMessage || '' },
@@ -271,6 +276,8 @@ export class CanonicalRuntimeAdapter {
         // What the customer did on a card: without it the agent only sees the line the thread shows.
         customerEvent: (command as any).customerEvent || (command as any).customer_event,
         agentId: (command as any).agentId,
+        // The earlier message this one continues from (try again, edit): without it the runtime follows the newest message.
+        parentMessageId: (command as any).parentMessageId,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),

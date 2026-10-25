@@ -311,6 +311,8 @@ export interface JourneyMessage {
   agentId?: string;          // resolved agent ID
   /** What the turn that produced this reply did ("Worked for 12 s" and its plain-language steps). */
   trace?: { seconds: number; steps: string[] };
+  /** Index of the message in the chat's own list, so an edit or a try-again can name it. Absent on the greeting. */
+  rawIndex?: number;
 }
 
 // ── Quote totals ───────────────────────────────────────────────────────

@@ -696,6 +696,23 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.ok(!/hose reels/.test(next.history), 'the abandoned turn stays out of the path');
     });
 
+    test('starting over from the first message reads nothing of the old conversation, and the next turn follows the new start', async () => {
+      const store = new TurnTranscriptStore({ explicitMemory: true });
+      const workspace = createTestWorkspace();
+      const plain = (text: string) => (round: number, _req: any, onDelta?: (t: string) => void) => {
+        onDelta?.(text);
+        return { content: text, toolCalls: [] };
+      };
+      await run({ store, workspace, turnId: 'turn-1', message: 'cordless drill for concrete', script: plain('Here are two options.') });
+      await run({ store, workspace, turnId: 'turn-2', message: 'something about hose reels', script: plain('We have a few hose reels.') });
+      const restart = await run({ store, workspace, turnId: 'turn-3', message: 'I need a ladder instead', parentMessageId: 'root', script: plain('We have step ladders and extension ladders.') });
+      assert.equal(restart.history, '', 'nothing before the edited first message is read');
+      assert.equal(restart.outcome.thread?.[0].parentId, null, 'the new first message has no parent');
+      const next = await run({ store, workspace, turnId: 'turn-4', message: 'the taller one', script: plain('The extension ladder is taller.') });
+      assert.match(next.history, /I need a ladder instead/);
+      assert.ok(!/cordless drill|hose reels/.test(next.history), 'the old first message and what followed are out of the path');
+    });
+
     test('another tenant never reads this conversation, even with the same workspace id', async () => {
       const store = new TurnTranscriptStore({ explicitMemory: true });
       const workspace = createTestWorkspace();
@@ -1727,6 +1744,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           environmentId: 'test',
           workspaceId: workspace.workspaceId,
           sessionId: 'test-session',
+          turnId: 'turn-ids-1',
           correlationId: 'test-corr',
           message: 'Show me pine timber',
         },
@@ -1762,6 +1780,9 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       const doneEvents = events.filter((e) => e.event === 'done');
       assert.equal(doneEvents.length, 1, 'Must emit EXACTLY ONE done event');
       assert.equal(doneEvents[0].data.response, result.assistantMessage);
+      // The chat is told the ids the two messages are kept under, so an edit or a retry can continue from the right place.
+      assert.deepEqual(doneEvents[0].data.messageIds, { customer: 'turn-ids-1:customer', assistant: 'turn-ids-1:assistant' });
+      assert.deepEqual(dataEvents[0].data.messageIds, doneEvents[0].data.messageIds);
 
       // Verify that after commitWorkspace, text already streamed is not re-sent as an additional full token
       const totalTokenText = tokenEvents.map((t) => t.data.delta || t.data.token || '').join('');

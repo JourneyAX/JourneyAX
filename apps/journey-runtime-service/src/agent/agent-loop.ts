@@ -624,7 +624,10 @@ export class AgentTurnLoop {
         if (recentTurns.length > 0) {
           const thread = threadFromRecords(recentTurns as any);
           const wanted = (command as any).parentMessageId as string | undefined;
-          const path = threadPath(thread, wanted && thread.some((message) => message.id === wanted) ? wanted : undefined);
+          // 'root' = start over from the first message (editing the very first thing the customer said): nothing before it is read.
+          const path = wanted === 'root'
+            ? []
+            : threadPath(thread, wanted && thread.some((message) => message.id === wanted) ? wanted : undefined);
           threadParentId = path[path.length - 1]?.id ?? null;
           earlierShown = shownSkus(path);
           const budget = release.extensions?.dialoguePolicy?.history?.maxTokens;
@@ -636,7 +639,8 @@ export class AgentTurnLoop {
     }
     toolContext.earlierShownSkus = new Set(earlierShown.keys());
 
-    if (!historyText) {
+    // Starting over from the first message must not fall back to the workspace's short history, which still holds the old branch.
+    if (!historyText && (command as any).parentMessageId !== 'root') {
       const pastTurns = readHistory(workspace?.facts);
       if (pastTurns.length > 0) {
         historyText = formatHistoryBlock(pastTurns);

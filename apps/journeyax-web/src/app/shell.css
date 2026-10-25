@@ -317,6 +317,27 @@
   background: var(--ax-fill-strong); color: var(--ax-text); border-radius: 18px; padding: 11px 16px;
   font-size: 15.5px; line-height: 1.6; white-space: pre-line;
 }
+/* Edit and Try again: quiet until the message is hovered or focused; always there on touch screens, which cannot hover. */
+.app-layout .msg__actions { display: flex; gap: 4px; margin-top: 2px; min-height: 26px; opacity: 0; transition: opacity 0.12s ease; }
+.app-layout .msg--user .msg__actions { justify-content: flex-start; }
+.app-layout .msg:hover .msg__actions, .app-layout .msg:focus-within .msg__actions { opacity: 1; }
+@media (hover: none) { .app-layout .msg__actions { opacity: 1; } }
+.app-layout .msg__action {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 0; border-radius: 7px; background: none;
+  color: var(--ax-muted); font-size: 13px; cursor: pointer;
+}
+.app-layout .msg__action:hover { background: var(--ax-fill); color: var(--ax-text-2); }
+.app-layout .msg__action:focus-visible { outline: 2px solid var(--ax-accent); outline-offset: 1px; }
+.app-layout .msg__action:disabled { opacity: 0.5; cursor: default; }
+.app-layout .msg__action--primary { background: var(--ax-accent); color: var(--ax-accent-ink); }
+.app-layout .msg__action--primary:hover { background: var(--ax-accent); color: var(--ax-accent-ink); filter: brightness(0.95); }
+.app-layout .msg--editing { width: min(100%, 560px); gap: 6px; }
+.app-layout .msg__edit-box {
+  width: 100%; resize: vertical; box-sizing: border-box; padding: 11px 16px; border: 1px solid var(--ax-border); border-radius: 18px;
+  background: var(--ax-bg, transparent); color: var(--ax-text); font: inherit; font-size: 15.5px; line-height: 1.6;
+}
+.app-layout .msg__edit-box:focus { outline: 2px solid var(--ax-accent); outline-offset: 0; }
+.app-layout .msg__edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .app-layout .msg__note { background: var(--ax-accent-soft); border: 1px solid var(--ax-border); border-left: 3px solid var(--ax-accent); border-radius: 10px; }
 .app-layout .msg__note-content { color: var(--ax-text-2); }
 .app-layout .msg__note-head { color: var(--ax-accent-text); }

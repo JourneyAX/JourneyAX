@@ -31,6 +31,13 @@ async function main() {
     }
   });
 
+  await suite.test('the ids the turn\'s two messages are kept under reach the browser, so it can name one to continue from', () => {
+    const ids = { customer: 'turn-7:customer', assistant: 'turn-7:assistant' };
+    const projected = projectPublicEvent('done', { ...done, messageIds: ids })!;
+    assert.deepEqual((projected.data as any).messageIds, ids);
+    assert.ok(!text(projected).includes('concept://'), 'and still nothing else');
+  });
+
   await suite.test('internal-only events never reach the browser', () => {
     assert.equal(projectPublicEvent('trace', internalTrace), null);
     assert.equal(projectPublicEvent('data', { decision: done.decision, trace: internalTrace }), null);

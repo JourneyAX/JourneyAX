@@ -305,6 +305,8 @@ export class JourneyAXController {
       customer_event?: unknown;
       /** Which of the tenant's agents the customer chose to talk to (the runtime ignores an id the pack does not define). */
       agentId?: string;
+      /** The earlier message this one continues from (try again, edit): 'root' for the first message; the newest one when absent. */
+      parentMessageId?: string;
     }
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
@@ -335,6 +337,7 @@ export class JourneyAXController {
         customerEvent: body.customerEvent,
         customer_event: body.customer_event,
         agentId: body.agentId,
+          parentMessageId: body.parentMessageId,
       });
 
       return result;
@@ -404,6 +407,8 @@ export class JourneyAXController {
       customer_event?: unknown;
       /** Which of the tenant's agents the customer chose to talk to (the runtime ignores an id the pack does not define). */
       agentId?: string;
+      /** The earlier message this one continues from (try again, edit): 'root' for the first message; the newest one when absent. */
+      parentMessageId?: string;
     },
     @Res() res: Response,
   ) {
@@ -473,6 +478,7 @@ export class JourneyAXController {
           customerEvent: body.customerEvent,
           customer_event: body.customer_event,
           agentId: body.agentId,
+          parentMessageId: body.parentMessageId,
         },
         emit,
       );

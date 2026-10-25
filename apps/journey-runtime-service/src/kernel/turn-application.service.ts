@@ -33,7 +33,7 @@ import { ApprovalService } from './approval.service';
 import { ExecutionRepository } from './execution.repository';
 import { OutboxRepository } from './outbox.repository';
 import { PresentationPort } from './presentation.port';
-import { catalogOutcome, decideConversation, describeTurn, pendingReadingMode, readState, readsWithoutModel, resolveConversationPolicy, STATE_KEY, writeState, readHistory, appendHistory, formatHistoryBlock, HISTORY_KEY } from '../conversation';
+import { catalogOutcome, decideConversation, describeTurn, pendingReadingMode, readState, readsWithoutModel, resolveConversationPolicy, STATE_KEY, writeState, readHistory, appendHistory, formatHistoryBlock, HISTORY_KEY, customerMessageId, assistantMessageId } from '../conversation';
 import type { ConversationPlan } from '../conversation';
 import { TurnInterpreter, isAmbiguousMeasurementAnswer } from '../turn/interpret-event';
 import { resolveFactRole, resolveInterpretationPolicy } from '../turn/fact-semantics';
@@ -2132,6 +2132,10 @@ export class TurnApplicationService {
       (turnResult.trace as any).agentId = agentId;
     }
 
+    // The ids this turn's two messages are kept under in the conversation thread, so the chat can say "continue from here" (try again,
+    // edit an earlier message) by naming one as the parent of the next message.
+    const messageIds = command.turnId ? { customer: customerMessageId(command.turnId), assistant: assistantMessageId(command.turnId) } : undefined;
+
     // 4. data: state, decision, and trace
     sink('data', {
       sessionId: command.sessionId,
@@ -2140,6 +2144,7 @@ export class TurnApplicationService {
       trace: turnResult.trace,
       engine,
       agentId,
+      messageIds,
     });
 
     // 5. done: final outcome — exactly one done event
@@ -2150,6 +2155,7 @@ export class TurnApplicationService {
       trace: turnResult.trace,
       engine,
       agentId,
+      messageIds,
       response: text,
       assistantMessage: text,
       message: { role: 'assistant', content: text },

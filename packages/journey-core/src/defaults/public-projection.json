@@ -6,7 +6,7 @@
     "capability": { "fields": ["toolId", "name", "status"] },
     "token": { "fields": ["token", "delta"] },
     "uiAction": { "fields": ["name", "arguments", "card"] },
-    "done": { "fields": ["sessionId", "workspaceId", "response", "assistantMessage", "message", "uiActions", "conversation"] },
+    "done": { "fields": ["sessionId", "workspaceId", "response", "assistantMessage", "message", "uiActions", "conversation", "messageIds"] },
     "error": { "fields": ["code"], "message": "from_code" }
   },
   "dropEvents": ["trace", "data"],

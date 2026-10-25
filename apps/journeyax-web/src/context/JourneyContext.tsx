@@ -14,6 +14,7 @@ import {
 import { activeSessionId } from '@/lib/conversations';
 import { buildReviewEvent, reviewFingerprint } from '@/lib/cards/reviewEvent';
 import { closeCanvas, openCanvas } from '@/lib/shell/sidePanelStore';
+import { keepCardsUpTo } from '@/lib/chat/branching';
 
 type Action =
   | { type: 'SET_PHASE'; phase: Phase }
@@ -71,7 +72,9 @@ type Action =
   | { type: 'POP_CARD'; id?: string }
   | { type: 'PATCH_CARD'; id: string; state: Record<string, unknown> }
   | { type: 'SET_WORKING'; working: JourneyState['working'] }
-  | { type: 'CLEAR_CARDS' };
+  | { type: 'CLEAR_CARDS' }
+  /** A message was replaced (edit, try again): the cards of that turn and of the turns after it leave the thread. */
+  | { type: 'TRIM_CARDS_AFTER'; count: number };
 
 function reducer(state: JourneyState, action: Action): JourneyState {
   switch (action.type) {
@@ -355,6 +358,12 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       return { ...state, working: action.working };
     case 'CLEAR_CARDS':
       return { ...state, cards: [], activeCardId: undefined };
+    case 'TRIM_CARDS_AFTER': {
+      const cards = keepCardsUpTo(state.cards, action.count);
+      if (cards.length === state.cards.length) return state;
+      const activeCardId = cards.some((c) => c.id === state.activeCardId) ? state.activeCardId : cards[cards.length - 1]?.id;
+      return { ...state, cards, activeCardId };
+    }
 
     case 'RESET':
       return { ...INITIAL_STATE };

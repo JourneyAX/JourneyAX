@@ -68,6 +68,8 @@ export interface ChatRequest {
   sessionId?: string;
   customerId?: string;
   demoPrincipalId?: string;
+  /** The earlier message this one continues from (try again, edit); see the runtime's conversation thread. */
+  parentMessageId?: string;
   imageBase64?: string;
   imageUrl?: string;
   idempotencyKey?: string;

@@ -29,7 +29,8 @@ import { orderRef, rememberOrder } from '@/components/canvas/money';
 import { closeCanvas, closePanelCard, getCanvas, openCanvas, openPanelCard } from '@/lib/shell/sidePanelStore';
 import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
 import { resolveHero } from '@/lib/shell/greeting';
-import { CHAT_REQUEST_ACCEPTS_AGENT_ID } from '@/lib/shell/capabilities';
+import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } from '@/lib/shell/capabilities';
+import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
 
@@ -253,7 +254,7 @@ async function streamChat(
       doneData = payload;
       const engine = payload.engine || payload.trace?.engine;
       const agentId = payload.agentId || payload.trace?.agentId;
-      setMessages([...newMessages, { role: 'assistant', content: streamText || payload.message?.content || '', engine, agentId }]);
+      setMessages([...withMessageIds(newMessages, payload.messageIds), answerWithId({ role: 'assistant', content: streamText || payload.message?.content || '', engine, agentId }, payload.messageIds)]);
       if (payload.sessionId) capturedSessionId = payload.sessionId;
       if (workingSteps.length) workingSteps[workingSteps.length - 1].status = 'done';
       dispatch?.({
@@ -585,7 +586,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   // Sign-in is a cookie session via the BFF; signing out lives in the sidebar's account menu (shell/AppSidebar), and the
   // gate (shell/AppGate) then shows the login screen.
 
-  const sendToAI = useCallback(async (newMessages: any[]) => {
+  const sendToAI = useCallback(async (newMessages: any[], opts: { parentMessageId?: string } = {}) => {
     setIsLoading(true);
     // The user can switch/start a new conversation while this turn is still in
     // flight (e.g. impatient-retry during a slow "busy" turn). Pin the thread
@@ -625,6 +626,8 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
         ...(demoPrincipalRef.current ? { demoPrincipalId: demoPrincipalRef.current } : {}),
         // The chat request cannot carry an agent id yet (lib/shell/capabilities); when it can, the picked agent rides along.
         ...(CHAT_REQUEST_ACCEPTS_AGENT_ID && pickedAgentRef.current ? { agentId: pickedAgentRef.current } : {}),
+        // Try again / edit: the earlier message this one continues from, so the assistant reads only the conversation up to there.
+        ...(CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE && opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {}),
         // customerId will be attached here once storefront auth lands (long-term memory key).
       });
 
@@ -677,7 +680,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
         if (aiText) {
           const engine = data.engine || data.trace?.engine;
           const agentId = data.agentId || data.trace?.agentId;
-          const updatedMessages = [...newMessages, { role: 'assistant', content: aiText, engine, agentId }];
+          const updatedMessages = [...withMessageIds(newMessages, data.messageIds), answerWithId({ role: 'assistant', content: aiText, engine, agentId }, data.messageIds)];
           guardedSetMessages(updatedMessages);
         }
       }
@@ -1059,6 +1062,27 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     dispatch({ type: 'SET_THINKING', thinking: false });
   }, [messages, sendToAI, dispatch]);
 
+  // Try again / edit: send the customer message at `index` again, with `text` as its words, from the place in the conversation it was
+  // first sent from. The assistant then reads only what came before it; the replaced reply, and whatever followed it, leave the thread
+  // (the server keeps them as a branch it no longer follows).
+  const branchFrom = useCallback(async (index: number, text: string) => {
+    if (!CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE || isLoading || state.isThinking) return;
+    if (!canBranchAt(messages, index)) return;
+    const words = text.trim();
+    if (!words) return;
+    const parentMessageId = messages[index].parentMessageId as string;
+    const newMessages = [...branchBase(messages, index), { role: 'user', content: words }];
+    setMessages(newMessages);
+    dispatch({ type: 'TRIM_CARDS_AFTER', count: cardCountToKeep(index, stateRef.current.messages.length) });
+
+    dispatch({ type: 'SET_PHASE', phase: 'validating' });
+    dispatch({ type: 'SET_THINKING', thinking: true });
+
+    await sendToAI(newMessages, { parentMessageId });
+
+    dispatch({ type: 'SET_THINKING', thinking: false });
+  }, [messages, sendToAI, dispatch, isLoading, state.isThinking]);
+
   useEffect(() => {
     (window as any).__handleUserMessage = handleUserMessage;
     return () => { delete (window as any).__handleUserMessage; };
@@ -1092,12 +1116,14 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   // Hide tool results and tool-call-only turns — they carry machine data
   // (e.g. {"success":true}) and must never render as chat bubbles.
   const allMessages = [...state.messages, ...messages
+    .map((m, rawIndex) => ({ m, rawIndex }))
     // `silent` turns are storefront events sent on the customer's behalf
     // ("Payment received for order …") — the agent answers them, the
     // customer never sees them as their own bubble.
-    .filter(m => m.role !== 'tool' && !m.tool_calls && !m.silent)
-    .map((m, i) => ({
+    .filter(({ m }) => m.role !== 'tool' && !m.tool_calls && !m.silent)
+    .map(({ m, rawIndex }, i) => ({
       id: `msg-${i}`,
+      rawIndex,
       role: m.role as 'user' | 'ai' | 'note',
       // Display-side safety net: an open model's `TOOL_CALL: name({...})` is a
       // machine instruction, never chat. The server strips balanced calls and
@@ -1155,6 +1181,8 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   strayCards.forEach((card) => timeline.push({ kind: 'card', card }));
 
   const showWorking = state.isThinking || isLoading;
+  // The customer message whose reply "Try again" would replace (-1 when there is none that can be sent again from a known place).
+  const retryAt = retryableIndex(messages);
 
   // The empty screen: nothing said yet, nothing shown yet. The greeting and the composer sit together in the middle of the page.
   const isEmpty = messages.length === 0
@@ -1236,7 +1264,14 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             <div className="chat-thread">
               {timeline.map((item, i) => {
                 const live = showWorking && i === liveAfter ? <WorkingLive key="working-live" working={state.working} /> : null;
-                if (item.kind === 'msg') return <Fragment key={item.msg.id}><MessageBubble message={item.msg} />{live}</Fragment>;
+                if (item.kind === 'msg') {
+                  const at = item.msg.rawIndex;
+                  const idle = !showWorking;
+                  // Edit: a message the customer typed, whose place in the conversation is known. Try again: the last reply.
+                  const onEdit = idle && at !== undefined && item.msg.role === 'user' && canBranchAt(messages, at) ? (text: string) => { void branchFrom(at, text); } : undefined;
+                  const onRetry = idle && at !== undefined && at === retryAt + 1 ? () => { void branchFrom(retryAt, messages[retryAt].content || ''); } : undefined;
+                  return <Fragment key={item.msg.id}><MessageBubble message={item.msg} onEdit={CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE ? onEdit : undefined} onRetry={CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE ? onRetry : undefined} />{live}</Fragment>;
+                }
                 const card = item.card;
                 if (panelEnabled && isPanelCardType(card.cardType)) {
                   const inline = inlineCardIds.has(card.id);

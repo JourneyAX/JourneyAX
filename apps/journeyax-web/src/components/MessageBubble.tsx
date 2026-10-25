@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { JourneyMessage } from '@/lib/types';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
@@ -15,6 +15,10 @@ export { sanitizeMessageText };
 
 interface Props {
   message: JourneyMessage;
+  /** Send this customer message again with new words, from where it was first sent. Given only where that is possible. */
+  onEdit?: (text: string) => void;
+  /** Ask for this reply again. Given only on the last reply, and only where that is possible. */
+  onRetry?: () => void;
 }
 
 // Simple markdown parser for chat messages — handles **bold**, *italic*, and line breaks
@@ -102,15 +106,71 @@ function brandInitials(name: string): string {
   return base.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function MessageBubble({ message }: Props) {
+/** The customer's own words with an Edit control: the bubble turns into a box with the words in it, and sending replaces this turn. */
+function UserMessage({ message, onEdit }: { message: JourneyMessage; onEdit?: (text: string) => void }) {
+  const words = sanitizeMessageText(readableUserText(message.text));
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(words);
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const el = box.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [editing]);
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text || !onEdit) return;
+    setEditing(false);
+    onEdit(text);
+  };
+
+  if (editing && onEdit) {
+    return (
+      <div className="msg msg--user msg--editing">
+        <textarea
+          ref={box}
+          className="msg__edit-box"
+          aria-label="Edit your message"
+          value={draft}
+          rows={Math.min(8, Math.max(2, draft.split('\n').length))}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
+            if (e.key === 'Escape') { setEditing(false); setDraft(words); }
+          }}
+        />
+        <div className="msg__edit-actions">
+          <button type="button" className="msg__action" onClick={() => { setEditing(false); setDraft(words); }}>Cancel</button>
+          <button type="button" className="msg__action msg__action--primary" onClick={send} disabled={!draft.trim()}>Send</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="msg msg--user">
+      <div className="msg__bubble--user">{words}</div>
+      {onEdit && (
+        <div className="msg__actions">
+          <button type="button" className="msg__action" onClick={() => { setDraft(words); setEditing(true); }} aria-label="Edit this message">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            Edit
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function MessageBubble({ message, onEdit, onRetry }: Props) {
   const cfg = useStorefrontConfig();
 
   if (message.role === 'user') {
-    return (
-      <div className="msg msg--user">
-        <div className="msg__bubble--user">{sanitizeMessageText(readableUserText(message.text))}</div>
-      </div>
-    );
+    return <UserMessage message={message} onEdit={onEdit} />;
   }
 
   if (message.role === 'note') {
@@ -167,6 +227,14 @@ export default function MessageBubble({ message }: Props) {
         </div>
         {message.trace && <WorkedSummary trace={message.trace} />}
         <div className="msg__bubble--ai">{renderMarkdown(message.text)}</div>
+        {onRetry && (
+          <div className="msg__actions">
+            <button type="button" className="msg__action" onClick={onRetry} aria-label="Ask for this answer again">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              Try again
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
