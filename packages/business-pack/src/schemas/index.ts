@@ -5,6 +5,7 @@ export * from './entities.schema';
 export * from './model-policy.schema';
 export * from './agent.schema';
 export * from './skill.schema';
+export * from './access.schema';
 export * from './journey.schema';
 export * from './rule.schema';
 export * from './capability-binding.schema';
