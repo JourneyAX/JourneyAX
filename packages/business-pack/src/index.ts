@@ -1,4 +1,5 @@
 export * from './schemas';
+export * from './access';
 export * from './validator';
 export * from './journey';
 export * from './loader';
