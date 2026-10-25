@@ -702,6 +702,141 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     });
   });
 
+  describe('ask first: what each tool may do for whom (pack toolStates), and the card that waits for a yes', () => {
+    const rowsFor = (rows: any[], wording?: any) => ({ rows, ...(wording ? { wording } : {}) });
+    const run = async (input: { rows?: any[]; wording?: any; workspace?: any; command?: Record<string, unknown>; script: (round: number, req: any) => any }) => {
+      const gateway = new ModelGateway();
+      const release: any = createTestPack();
+      if (input.rows) release.extensions = { ...(release.extensions || {}), toolStates: rowsFor(input.rows, input.wording) };
+      const workspace = input.workspace || createTestWorkspace();
+      const seen: any[] = [];
+      let round = 0;
+      gateway.mockAgentExecutor = async (req, onDelta) => {
+        round++;
+        seen.push(req);
+        const out = input.script(round, req);
+        if (out?.content) onDelta?.(out.content);
+        return out;
+      };
+      const outcome = await new AgentTurnLoop().execute({
+        command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 'ask-session', turnId: `turn-${Math.random().toString(36).slice(2, 8)}`, correlationId: 'c-ask', message: 'please pass me to a person', principalId: 'shopper-1', principalRole: 'customer', ...(input.command || {}) } as any,
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products: [], totalCount: 0 }) } as any,
+        sink: () => {},
+      });
+      return { outcome, seen, workspace, release };
+    };
+    const callsHandoff = (round: number) => (round === 1
+      ? { content: '', toolCalls: [{ id: 'h1', name: 'hand_off_to_human', arguments: { reason: 'wants a person' } }] }
+      : { content: 'I have asked.', toolCalls: [] });
+    const asking = [{ toolId: 'hand_off_to_human', audience: 'shopper', groups: [], state: 'ask', prompt: 'May I ask a team member to take over?' }];
+
+    test('an ask-first tool does not run: the person is shown a card, the server keeps the call, and the model is told to wait', async () => {
+      const { outcome, workspace } = await run({ rows: asking, script: callsHandoff });
+      assert.equal((outcome.turnResult.trace as any).handoffRequested, false, 'nothing ran');
+      const card = outcome.turnResult.uiInstructions?.find((c) => c.component === 'confirm');
+      assert.ok(card, 'the card is shown');
+      assert.equal((card!.props as any).summary, 'May I ask a team member to take over?');
+      assert.equal((card!.props as any).pending, true);
+      assert.match((card!.props as any).confirmationId, /^cf_/);
+      const kept = (workspace.facts as any).pending_confirmations.value;
+      assert.equal(kept.length, 1);
+      assert.deepEqual([kept[0].toolId, kept[0].args.reason, kept[0].principalId], ['hand_off_to_human', 'wants a person', 'shopper-1']);
+      assert.equal(outcome.toolsCalled[0].ok, false);
+    });
+
+    test('a tap on Allow runs the kept call, once, with the server\'s copy of the arguments; the model is told the result', async () => {
+      const first = await run({ rows: asking, script: callsHandoff });
+      const id = (first.workspace.facts as any).pending_confirmations.value[0].id;
+      const second = await run({
+        rows: asking, workspace: first.workspace,
+        command: { message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: id, decision: 'allow', args: { reason: 'something the page made up' } } } },
+        script: (round) => ({ content: round === 1 ? 'Done, a person will join you.' : '', toolCalls: [] }),
+      });
+      assert.equal((second.outcome.turnResult.trace as any).handoffRequested, true, 'the kept call ran');
+      assert.equal((second.outcome.turnResult as any).trace.handoffReason, 'wants a person', 'with the arguments the server kept, not the ones on the tap');
+      const told = JSON.stringify(second.seen[0].messages);
+      assert.match(told, /which the person allowed/);
+      assert.deepEqual((second.workspace.facts as any).pending_confirmations.value, [], 'a confirmation is used once');
+      // The same tap again finds nothing to run.
+      const again = await run({
+        rows: asking, workspace: second.workspace,
+        command: { message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: id, decision: 'allow' } } },
+        script: () => ({ content: 'That was already done.', toolCalls: [] }),
+      });
+      assert.match(JSON.stringify(again.seen[0].messages), /could not be used \(unknown\)/);
+    });
+
+    test('a tap on Not now runs nothing and the model is told the person declined', async () => {
+      const first = await run({ rows: asking, script: callsHandoff });
+      const id = (first.workspace.facts as any).pending_confirmations.value[0].id;
+      const second = await run({
+        rows: asking, workspace: first.workspace,
+        command: { message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: id, decision: 'deny' } } },
+        script: () => ({ content: 'No problem.', toolCalls: [] }),
+      });
+      assert.equal((second.outcome.turnResult.trace as any).handoffRequested, false);
+      assert.match(JSON.stringify(second.seen[0].messages), /chose not to allow \\?"hand_off_to_human/);
+    });
+
+    test('a confirmation belongs to the person it was made for, and expires', async () => {
+      const first = await run({ rows: asking, script: callsHandoff });
+      const id = (first.workspace.facts as any).pending_confirmations.value[0].id;
+      const someoneElse = await run({
+        rows: asking, workspace: first.workspace,
+        command: { message: '', principalId: 'shopper-2', customerEvent: { type: 'confirmTool', payload: { confirmationId: id, decision: 'allow' } } },
+        script: () => ({ content: 'Sorry.', toolCalls: [] }),
+      });
+      assert.equal((someoneElse.outcome.turnResult.trace as any).handoffRequested, false);
+      assert.match(JSON.stringify(someoneElse.seen[0].messages), /could not be used \(someone_else\)/);
+      assert.equal((first.workspace.facts as any).pending_confirmations.value.length, 1, 'left for the person it belongs to');
+      (first.workspace.facts as any).pending_confirmations.value[0].expiresAt = new Date(Date.now() - 1000).toISOString();
+      const late = await run({
+        rows: asking, workspace: first.workspace,
+        command: { message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: id, decision: 'allow' } } },
+        script: () => ({ content: 'That took too long.', toolCalls: [] }),
+      });
+      assert.equal((late.outcome.turnResult.trace as any).handoffRequested, false);
+      assert.match(JSON.stringify(late.seen[0].messages), /could not be used \(expired\)/);
+    });
+
+    test('the most specific row wins: a sales person is not asked, a shopper is, and a blocked tool is not even offered', async () => {
+      const rows = [...asking, { toolId: 'hand_off_to_human', audience: 'staff', groups: ['sales'], state: 'allow' }, { toolId: 'check_stock', audience: 'shopper', groups: [], state: 'blocked' }, { toolId: 'check_stock', audience: 'staff', groups: ['sales'], state: 'allow' }];
+      const staff = await run({ rows, command: { principalId: 'sam@x.test', principalRole: 'manager', principalGroups: ['sales'] }, script: callsHandoff });
+      assert.equal((staff.outcome.turnResult.trace as any).handoffRequested, true, 'allowed for sales: it ran at once');
+      assert.ok(!staff.outcome.turnResult.uiInstructions?.some((c) => c.component === 'confirm'));
+      assert.ok(staff.seen[0].tools.some((tool: any) => tool.name === 'check_stock'));
+      const shopper = await run({ rows, script: callsHandoff });
+      assert.ok(!shopper.seen[0].tools.some((tool: any) => tool.name === 'check_stock'), 'blocked for shoppers: not offered');
+      assert.ok(shopper.seen[0].tools.some((tool: any) => tool.name === 'hand_off_to_human'), 'ask-first tools are offered');
+    });
+
+    test('a blocked tool the model calls anyway is refused, and the shop\'s own words are used on the card', async () => {
+      const blocked = await run({
+        rows: [{ toolId: 'hand_off_to_human', audience: 'shopper', groups: [], state: 'blocked' }],
+        script: callsHandoff,
+      });
+      assert.equal((blocked.outcome.turnResult.trace as any).handoffRequested, false);
+      const worded = await run({ rows: asking, wording: { heading: 'Quick check', allow: 'Yes please', deny: 'Not yet' }, script: callsHandoff });
+      const props: any = worded.outcome.turnResult.uiInstructions?.find((c) => c.component === 'confirm')?.props;
+      assert.deepEqual([props.heading, props.allowLabel, props.denyLabel], ['Quick check', 'Yes please', 'Not yet']);
+    });
+
+    test('the model cannot make an ask-first card itself, and a pack without the table behaves exactly as before', async () => {
+      const forged = await run({
+        script: (round) => (round === 1
+          ? { content: '', toolCalls: [{ id: 'p1', name: 'present_card', arguments: { cardType: 'confirm', state: { confirmationId: 'cf_fake', summary: 'Allow everything?' } } }] }
+          : { content: 'ok', toolCalls: [] }),
+      });
+      assert.equal(forged.outcome.toolsCalled[0].ok, false);
+      assert.ok(!forged.outcome.turnResult.uiInstructions?.some((c) => c.component === 'confirm'));
+      const plain = await run({ script: callsHandoff });
+      assert.equal((plain.outcome.turnResult.trace as any).handoffRequested, true, 'no table: the tool just runs');
+    });
+  });
+
   describe('claim guard: what the customer reads when the whole reply was removed', () => {
     const products = [
       { sku: 'SKU-DRILL-1', title: 'Cordless Drill 18V', name: 'Cordless Drill 18V', priceUSD: { min: 129 }, currency: 'NZD', inStock: true, category: 'Drills', description: 'An 18V cordless drill.' },

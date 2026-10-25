@@ -167,6 +167,21 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     });
   }
 
+  // 4g. Validate what each tool may do for whom (extensions.toolStates). A row naming a tool no agent of the pack can call is a typo (a
+  // warning: the tool may be added later), and a shopper row cannot name groups.
+  const toolRows = (pack as any).extensions?.toolStates?.rows as Array<{ toolId: string; audience: string; groups?: string[]; state: string }> | undefined;
+  if (Array.isArray(toolRows) && toolRows.length > 0) {
+    const callable = new Set(agents.flatMap((a) => (Array.isArray((a as any).allowedTools) ? (a as any).allowedTools : [])));
+    toolRows.forEach((row, index) => {
+      if (callable.size > 0 && !callable.has(row.toolId)) {
+        issues.push({ severity: 'warning', path: `extensions.toolStates.rows[${index}].toolId`, message: `Tool state row names '${row.toolId}', which no agent of the pack lists in its allowed tools.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.toolStates.rows[${index}].groups`, message: `A shopper row for tool '${row.toolId}' names groups; groups apply to staff rows only.` });
+      }
+    });
+  }
+
   // 5. Validate Journeys and Stages
   for (const journey of pack.journeys) {
     const stageIds = new Set(Object.keys(journey.stages));

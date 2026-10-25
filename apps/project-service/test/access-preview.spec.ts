@@ -97,6 +97,19 @@ async function main() {
     assert.ok(preview.unknownGroups.includes('custmer-service'));
   });
 
+  await suite.test('the preview says what each named tool may do for the person: asks first, blocked or free', () => {
+    const tools = { rows: [
+      { toolId: 'update_cart', audience: 'shopper', groups: [], state: 'ask', prompt: 'Change your order?' },
+      { toolId: 'update_cart', audience: 'staff', groups: ['sales'], state: 'allow' },
+      { toolId: 'hand_off_to_human', audience: 'staff', groups: [], state: 'allow' },
+    ] };
+    const base = project(rows, { extensions: { agentAccess: { rows }, toolStates: tools } });
+    const state = (audience: 'shopper' | 'staff', groups: string[]) => Object.fromEntries(buildAccessPreview(base, teams, { audience, groups }).tools.map((t) => [t.toolId, t.state]));
+    assert.deepEqual(state('shopper', []), { update_cart: 'ask', hand_off_to_human: 'blocked' });
+    assert.deepEqual(state('staff', ['sales']), { update_cart: 'allow', hand_off_to_human: 'allow' });
+    assert.deepEqual(buildAccessPreview(project(rows), teams, { audience: 'shopper', groups: [] }).tools, [], 'no table: nothing to say');
+  });
+
   suite.finish();
 }
 

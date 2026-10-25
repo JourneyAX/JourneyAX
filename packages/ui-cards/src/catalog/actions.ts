@@ -54,6 +54,10 @@ export const actions = {
     description: 'Answer a clarifying choice (question id + chosen value).',
     params: z.object({ questionId: z.string(), value: z.string() }),
   },
+  confirmTool: {
+    description: 'Answer an ask-first card: allow the assistant to do what it asked once, or not.',
+    params: z.object({ confirmationId: z.string(), decision: z.enum(['allow', 'deny']) }),
+  },
   selectBranch: {
     description: 'Choose a fulfilment branch / store.',
     params: z.object({ branchId: z.string() }),

@@ -85,6 +85,7 @@ export const SAMPLE_STATE: Record<CardType, Record<string, unknown>> = {
   warranty: { items: [{ title: 'Standard warranty', text: '10 years on the cabinetry, 5 years on the mechanism.' }, { title: 'Installation', text: 'DIY installation keeps the warranty intact for this product.' }] },
   fitment: { recommendation: 'We recommend size M', confidenceText: 'Based on your usual size and the brand’s size chart.', alternatives: ['S', 'L'] },
   disclosure: { title: 'Custom print terms', text: 'Custom-printed items are made to order and cannot be returned once production has started.', acceptLabel: 'I understand' },
+  confirm: { confirmationId: 'cf_sample', heading: 'Please check before I go ahead', summary: 'May I add these two items to your order?', details: [{ label: 'Action', value: 'Update cart' }, { label: 'Items', value: '2 items' }], allowLabel: 'Allow', denyLabel: 'Not now', allowedText: 'You allowed this.', deniedText: 'You chose not to.', pending: true },
   suggestions: { chips: ['Show me cheaper options', 'Compare with another brand', 'Add to my quote'] },
   working: { elapsed: 8, label: 'Building your quote', heard: 'One-piece toilet, steady drip, I’ll DIY this myself.', steps: [{ title: 'Searched the catalogue', status: 'done' }, { title: 'Checked stock', status: 'done' }, { title: 'Building your quote', status: 'running' }], lastReply: 'Here’s what I’d start with — all in stock, ready today.' },
   action_button_group: {

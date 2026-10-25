@@ -172,6 +172,19 @@ export function useCardActions() {
         }
         break;
       }
+      case 'confirmTool': {
+        // An ask-first card: the person's answer goes to the server, which holds the exact call; only the id and the choice travel.
+        const confirmationId = String(params?.confirmationId ?? '').trim();
+        const decision = params?.decision === 'allow' ? 'allow' : 'deny';
+        if (!confirmationId) break;
+        const card = state.cards.find((c) => c.cardType === 'confirm' && (c.state as any)?.confirmationId === confirmationId);
+        if (card) {
+          const said = decision === 'allow' ? (card.state as any)?.allowedText : (card.state as any)?.deniedText;
+          dispatch({ type: 'PATCH_CARD', id: card.id, state: { ...card.state, pending: false, outcome: said || (decision === 'allow' ? 'Allowed.' : 'Not now.') } });
+        }
+        postCustomerEvent({ type: 'confirmTool', payload: { confirmationId, decision }, sourceCard: { id: card?.id, cardType: 'confirm' } });
+        break;
+      }
       case 'selectItem': {
         const sku = String(params?.sku ?? '').trim();
         const title = String(params?.title || params?.name || params?.label || '').trim();

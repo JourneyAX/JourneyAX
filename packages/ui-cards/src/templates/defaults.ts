@@ -457,6 +457,18 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     accept: el('Button', { label: S('/acceptLabel'), variant: 'primary' }, { on: { press: { action: 'sendMessage', params: { text: 'I accept' } } } }),
   }),
 
+  confirm: spec('root', {
+    root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '560px' }, { children: ['title', 'summary', 'details', 'buttons', 'outcome'] }),
+    title: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
+    summary: el('Text', { text: S('/summary'), variant: 'body' }),
+    details: el('Box', { gap: 'xs' }, { children: ['d'], repeat: { statePath: '/details', key: 'label' }, visible: [S('/details')] }),
+    d: el('KeyValue', { label: I('label'), value: I('value'), inline: true }),
+    buttons: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['allow', 'deny'], visible: [S('/pending')] }),
+    allow: el('Button', { label: S('/allowLabel'), variant: 'primary' }, { on: { press: { action: 'confirmTool', params: { confirmationId: S('/confirmationId'), decision: 'allow' } } } }),
+    deny: el('Button', { label: S('/denyLabel'), variant: 'secondary' }, { on: { press: { action: 'confirmTool', params: { confirmationId: S('/confirmationId'), decision: 'deny' } } } }),
+    outcome: el('Text', { text: S('/outcome'), variant: 'small', tone: 'muted' }, { visible: [S('/outcome')] }),
+  }),
+
   suggestions: spec('root', {
     root: el('Chips', { items: S('/chips'), action: 'sendMessage', valueKey: 'text' }),
   }),

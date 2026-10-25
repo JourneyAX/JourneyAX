@@ -308,6 +308,25 @@ export const CARD_TYPES = {
     description: 'Policy / disclosure text the merchant requires before a step (returns, custom-print terms).',
     state: z.object({ title: z.string(), text: z.string(), acceptLabel: z.string().optional() }),
   },
+  confirm: {
+    title: 'Ask first',
+    description: 'The assistant is about to do something and waits for the person to allow it once, or not. Built by the server only, never by the model.',
+    state: z.object({
+      confirmationId: z.string(),
+      heading: z.string().optional(),
+      summary: z.string(),
+      details: z.array(z.object({ label: z.string(), value: z.string() })).max(8).optional(),
+      allowLabel: z.string().optional(),
+      denyLabel: z.string().optional(),
+      /** What the card says after the person has answered. */
+      allowedText: z.string().optional(),
+      deniedText: z.string().optional(),
+      /** True while the card waits for an answer; the page sets it to false once the person has answered. */
+      pending: z.boolean().optional(),
+      /** What the person chose, written by the page once they have answered. */
+      outcome: z.string().optional(),
+    }),
+  },
   hero: {
     title: 'Intro / hero',
     description: 'Opening stage before the first turn: headline, sub-copy, starter chips.',

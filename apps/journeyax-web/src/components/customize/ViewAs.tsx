@@ -6,7 +6,7 @@
  * and never changes anything.
  */
 import { useState } from 'react';
-import { describePreviewAgent, describePreviewSkill, previewNote, previewQuery, readAccessPreview, type AccessPreview, type PreviewAudience } from '@/lib/customize/accessPreview';
+import { describePreviewAgent, describePreviewSkill, describePreviewTool, previewNote, previewQuery, readAccessPreview, type AccessPreview, type PreviewAudience } from '@/lib/customize/accessPreview';
 
 export function ViewAs() {
   const [audience, setAudience] = useState<PreviewAudience>('shopper');
@@ -84,6 +84,19 @@ export function ViewAs() {
             </ul>
           ) : (
             <p>No skills in this pack yet.</p>
+          )}
+          {preview.tools.length > 0 && (
+            <>
+              <h3 style={{ margin: '16px 0 6px', fontSize: 15 }}>What they may do</h3>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {preview.tools.map((tool) => (
+                  <li key={tool.toolId} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                    <strong>{tool.toolId.replace(/_/g, ' ')}</strong>
+                    <span className="ax-tag">{describePreviewTool(tool)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           {preview.hiddenSkills.length > 0 && (
             <p style={{ marginTop: 8 }}><strong>Not theirs:</strong> {preview.hiddenSkills.map((skill) => skill.name).join(', ')}.</p>

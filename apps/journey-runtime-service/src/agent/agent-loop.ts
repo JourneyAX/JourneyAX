@@ -5,7 +5,7 @@ import type {
   Decision,
   UIInstruction,
 } from '@journeyax/journey-core';
-import { normalizePlaybookStages, resolveAgentSkills, resolveSkillTiers, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
+import { normalizePlaybookStages, resolveAgentSkills, resolveSkillTiers, toolStateFor, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
 import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
 import { principalFrom } from '@journeyax/shared-types';
 import {
@@ -25,6 +25,7 @@ import {
   type AgentToolContext,
 } from './agent-tools';
 import { chooseWithheldFallback, foundMessageOf, needsRepair } from './withheld-fallback';
+import { outcomeWording, takePendingConfirmation } from './confirmation';
 import agentLoopDefaults from '../defaults/agent-loop.json';
 import { chooseCardSkus } from './auto-card';
 import { prefetchCallsFor, formatPrefetched, accessoriesCardFrom } from './event-prefetch';
@@ -483,6 +484,11 @@ export class AgentTurnLoop {
     const resolvedAgent = agentRouter.resolveAgent(release, workspace, (command as any).agentId, principal);
     const person: SkillPerson = { audience: principal.audience, groups: principal.groups };
     const personSkills = skillsForPerson(release, resolvedAgent.agent, person);
+    // What each tool may do for this person (pack `extensions.toolStates`): blocked tools are not offered, ask-first tools wait for a card.
+    const toolStatesTable = (release as any)?.extensions?.toolStates;
+    const toolStateOf = toolStatesTable && Array.isArray(toolStatesTable.rows) && toolStatesTable.rows.length > 0
+      ? (toolId: string) => toolStateFor(toolId, toolStatesTable, person)
+      : undefined;
 
     // 1. Resolve pinned OKF release content for business profile and knowledge tools
     let okfContent: OkfReleaseContent | null = null;
@@ -535,6 +541,8 @@ export class AgentTurnLoop {
       agentRelationshipTypes: (resolvedAgent?.agent as any)?.agentRelationshipTypes,
       agentPlaybook: normalizePlaybookStages(resolvedAgent?.agent?.journeyPlaybook),
       agentSkillIds: personSkills.map((entry) => entry.skill.skillId),
+      toolStateOf,
+      confirmationWording: toolStatesTable?.wording,
       usedSkillIds: new Set<string>(),
       customerEvent,
       signal,
@@ -554,7 +562,9 @@ export class AgentTurnLoop {
     const toolDefs = getAgentToolDefinitions(release, okfContent);
     // use_skill is platform plumbing for the agent's own on-demand skills: offered exactly when it has some, whatever allowedTools says.
     const hasOnDemandSkills = personSkills.some((entry) => entry.tier === 'on_demand');
-    const availableTools = toolDefs.filter((t) => (t.name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(t.name, allowedTools, release)));
+    const availableTools = toolDefs
+      .filter((t) => (t.name === 'use_skill' ? hasOnDemandSkills : isToolAllowed(t.name, allowedTools, release)))
+      .filter((t) => !toolStateOf || toolStateOf(t.name).state !== 'blocked');
     if (process.env.AGENT_TRACE_RESULTS) console.log(`[agent] ${resolvedAgent.agent.agentId} offered ${availableTools.length} tools: ${availableTools.map((t) => t.name).join(', ')}; skills: ${(resolvedAgent.agent.skills || []).join(', ')}`);
 
     // 5. Honour maxTurns from resolved agent
@@ -648,6 +658,33 @@ export class AgentTurnLoop {
         eventLines.push(`Payload: ${JSON.stringify(customerEvent.payload, null, 2)}`);
       }
       eventLines.push('</customer_event>');
+      // A tap on an ask-first card: the call the server kept for the person is run (or dropped) now, and the agent is told what happened.
+      if (customerEvent.type === 'confirmTool') {
+        const payload: any = customerEvent.payload || {};
+        const taken = takePendingConfirmation(workspace as any, String(payload.confirmationId || ''), toolContext.principalId || 'anonymous');
+        const words = outcomeWording(toolContext.confirmationWording);
+        if (taken.ok === false) {
+          eventLines.push(`Result: this confirmation could not be used (${taken.reason}), so nothing was run. Tell the person, and offer to ask again if they still want it.`);
+        } else if (payload.decision !== 'allow') {
+          eventLines.push(`Result: the person chose not to allow "${taken.pending.toolId}" (${words.denied}). Nothing was run. Acknowledge in one short sentence and offer something else.`);
+        } else if (!isToolAllowed(taken.pending.toolId, resolvedAgent.allowedTools || [], release) || toolContext.toolStateOf?.(taken.pending.toolId).state === 'blocked') {
+          eventLines.push(`Result: "${taken.pending.toolId}" is no longer available to this person, so nothing was run. Say so plainly.`);
+        } else {
+          const started = Date.now();
+          let result: any;
+          let ok = true;
+          try {
+            result = await executeAgentTool(taken.pending.toolId, taken.pending.args, toolContext, { confirmed: true });
+            ok = result?.ok !== false;
+          } catch (err: any) {
+            if (signal?.aborted || toolContext.signal?.aborted) throw err;
+            result = { ok: false, error: String(err?.message || err).slice(0, 200) };
+            ok = false;
+          }
+          prefetchedTrace.push({ name: taken.pending.toolId, durationMs: Date.now() - started, ok, arguments: { confirmed: true, ...taken.pending.args }, resultCount: extractToolResultCount(result) });
+          eventLines.push(`Result of "${taken.pending.toolId}", which the person allowed (${words.allowed}): ${JSON.stringify(result).slice(0, 4000)}\nTell the person plainly what happened, from this result only.`);
+        }
+      }
       // Lookups the tenant has declared for this kind of tap are made now, in parallel, and shown to the agent with it.
       const prefetchCalls = prefetchCallsFor((release as any)?.extensions?.eventPrefetch, customerEvent).filter((call) => isToolAllowed(call.tool, resolvedAgent.allowedTools || [], release));
       if (prefetchCalls.length > 0) {

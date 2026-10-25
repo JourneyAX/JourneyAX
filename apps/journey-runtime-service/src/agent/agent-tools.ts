@@ -31,6 +31,7 @@ import type { KnowledgeGapRepository } from '../kernel/knowledge-gap.repository'
 import type { ProductGuideRepository } from '../kernel/product-guide.repository';
 import type { ContentPageRepository } from '../kernel/content-page.repository';
 import { deriveJourneyChecklist } from './journey-checklist';
+import { confirmCardState, createPendingConfirmation, defaultPrompt, type ConfirmationWording } from './confirmation';
 import { browseRange, exampleOrder, goesWithForTrail, resolveCatalogPaths } from './range-browser';
 import { productCardFacts } from './card-facts';
 import { summariseOptions } from './option-facets';
@@ -70,6 +71,10 @@ export interface AgentToolContext {
   contentPageRepo?: ContentPageRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
+  /** What each tool may do for this person (pack `extensions.toolStates`). Absent: every tool runs, as before the table existed. */
+  toolStateOf?: (toolId: string) => { state: 'allow' | 'ask' | 'blocked'; prompt?: string };
+  /** The shop's words on the ask-first card (pack `extensions.toolStates.wording`). */
+  confirmationWording?: ConfirmationWording;
   turnProductSkus: Set<string>;
   /** Products an earlier turn of this conversation showed (read from the stored thread, never from the customer or the model): one of them may sit on a card after a catalogue lookup by SKU, without a new search. */
   earlierShownSkus?: Set<string>;
@@ -920,10 +925,32 @@ export function isReadOnlyTool(toolName: string): boolean {
  * Executes an individual tool call within the server-verified execution context.
  * Strictly enforces tenant isolation: no tool receives tenantId or environmentId from model arguments.
  */
+/**
+ * A tool whose state for this person is "ask first" does not run: the call is kept by the server and a card asks the person to allow it
+ * once (see confirmation.ts). The model is told nothing has run and to wait. Without somewhere to keep the call it fails closed.
+ */
+function holdForConfirmation(toolName: string, args: Record<string, any>, prompt: string | undefined, ctx: AgentToolContext): any {
+  if (!ctx.workspace) return { ok: false, error: 'This needs the person\'s yes and there is nowhere to keep the question, so it was not done. Say you cannot do it here.' };
+  const wording = ctx.confirmationWording || {};
+  const { pending, reused } = createPendingConfirmation(ctx.workspace as any, { toolId: toolName, args, summary: prompt || defaultPrompt(wording), principalId: ctx.principalId || 'anonymous' });
+  if (!reused) {
+    const state = confirmCardState(pending, wording);
+    ctx.presentedCards.push({ cardType: 'confirm', state });
+    ctx.emitUiAction?.({ name: 'presentCard', arguments: { card: { id: `confirm-${pending.id}`, cardType: 'confirm', state } } });
+  }
+  return {
+    ok: false,
+    status: 'needs_confirmation',
+    confirmationId: pending.id,
+    message: 'The person has been asked to allow this and nothing has run yet. Do not call it again. Say in one short sentence what you are waiting for.',
+  };
+}
+
 export async function executeAgentTool(
   toolName: string,
   rawArgs: Record<string, any>,
-  ctx: AgentToolContext
+  ctx: AgentToolContext,
+  options: { confirmed?: boolean } = {}
 ): Promise<any> {
   if (ctx.signal?.aborted) {
     throw ctx.signal.reason || new Error('Agent turn aborted');
@@ -933,6 +960,15 @@ export async function executeAgentTool(
   const args = { ...rawArgs };
   delete args.tenantId;
   delete args.environmentId;
+
+  // What this tool may do for this person: not at all, only with their yes, or freely (the pack's tool state table).
+  if (ctx.toolStateOf && !options.confirmed) {
+    const effective = ctx.toolStateOf(toolName);
+    if (effective.state === 'blocked') {
+      return { ok: false, blocked: true, error: `"${toolName}" is not available to this person. Do not try it again; say plainly that you cannot do that for them here.` };
+    }
+    if (effective.state === 'ask') return holdForConfirmation(toolName, args, effective.prompt, ctx);
+  }
 
   switch (toolName) {
     case 'get_journey_checklist': {
@@ -2199,6 +2235,11 @@ export async function executeAgentTool(
           ok: false,
           error: `Rejected card: Unknown card type "${cardType}". Approved card types: ${CARD_TYPE_NAMES.join(', ')}.`,
         };
+      }
+
+      // The ask-first card is the server's: it is made from a call the server kept, never from what the model writes.
+      if (cardType === 'confirm') {
+        return { ok: false, error: 'Rejected card: an ask-first card is made by the system when a tool needs the person\'s yes. Call the tool and the system asks.' };
       }
 
       const state: any = normaliseCardState(cardType, args.state);

@@ -23,6 +23,12 @@ export interface PreviewSkill {
   via: 'own' | 'row';
 }
 
+export interface PreviewTool {
+  toolId: string;
+  state: 'allow' | 'ask' | 'blocked';
+  prompt?: string;
+}
+
 export interface AccessPreview {
   audience: PreviewAudience;
   groups: string[];
@@ -34,6 +40,7 @@ export interface AccessPreview {
   skills: PreviewSkill[];
   hiddenSkills: Array<{ skillId: string; name: string }>;
   hasSkillTable: boolean;
+  tools: PreviewTool[];
 }
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -75,9 +82,14 @@ export function readAccessPreview(value: unknown): AccessPreview | undefined {
     .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
     .map((entry) => ({ skillId: str(entry.skillId), name: str(entry.name) || str(entry.skillId) }))
     .filter((entry) => entry.skillId);
+  const tools: PreviewTool[] = (Array.isArray(raw.tools) ? raw.tools : [])
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => ({ toolId: str(entry.toolId), state: entry.state === 'ask' || entry.state === 'blocked' ? entry.state : 'allow', ...(str(entry.prompt) ? { prompt: str(entry.prompt) } : {}) }) as PreviewTool)
+    .filter((entry) => entry.toolId);
   return {
     audience,
     groups: strings(raw.groups),
+    tools,
     skills,
     hiddenSkills,
     hasSkillTable: raw.hasSkillTable === true,
@@ -110,4 +122,11 @@ export function describePreviewSkill(skill: PreviewSkill): string {
   if (skill.level === 'default') return 'Installed for this group';
   if (skill.level === 'available') return 'Opened when a request fits';
   return skill.tier === 'always' ? 'Always on' : 'Opened when a request fits';
+}
+
+/** One plain line for what a tool may do for a person. */
+export function describePreviewTool(tool: PreviewTool): string {
+  if (tool.state === 'blocked') return 'Not available';
+  if (tool.state === 'ask') return 'Asks first';
+  return 'Runs freely';
 }
