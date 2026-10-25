@@ -1,5 +1,6 @@
 export * from './schemas';
 export * from './access';
+export * from './connector-policy';
 export * from './validator';
 export * from './journey';
 export * from './loader';

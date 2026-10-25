@@ -152,6 +152,61 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     }
   }
 
+  // 4f. Validate the connectors the chat may reach (extensions.connectors). A policy row that names a connector or tool the pack does not
+  // list is a typo that would silently leave a tool blocked (or, worse, look as if it were governed); a shopper row cannot name groups;
+  // a secret reference must be a reference to this pack's own tenant and environment; a tool that changes data and is set to "allow" is
+  // flagged so it is a decision and not an accident; and a connector nobody can use is flagged because new tools start blocked.
+  const connectorsExt = (pack as any).extensions?.connectors as
+    | { connectors?: Array<{ connectorId: string; enabled?: boolean; sample?: boolean; secretRef?: string; tools?: Array<{ name: string; sideEffect?: string }> }>; policy?: Array<{ connectorId: string; tool: string; audience: string; groups?: string[]; state: string }> }
+    | undefined;
+  if (connectorsExt && Array.isArray(connectorsExt.connectors)) {
+    const byId = new Map<string, NonNullable<typeof connectorsExt.connectors>[number]>();
+    connectorsExt.connectors.forEach((connector, index) => {
+      if (byId.has(connector.connectorId)) {
+        issues.push({ severity: 'error', path: `extensions.connectors.connectors[${index}].connectorId`, message: `Connector '${connector.connectorId}' is declared twice.` });
+      }
+      byId.set(connector.connectorId, connector);
+      const toolNames = (connector.tools || []).map((tool) => tool.name);
+      if (new Set(toolNames).size !== toolNames.length) {
+        issues.push({ severity: 'error', path: `extensions.connectors.connectors[${index}].tools`, message: `Connector '${connector.connectorId}' lists the same tool twice.` });
+      }
+      if (connector.secretRef) {
+        for (const refIssue of validateSecretReference(connector.secretRef, pack.manifest?.tenantId, pack.manifest?.environmentId)) {
+          issues.push({ severity: 'error', path: `extensions.connectors.connectors[${index}].secretRef`, message: refIssue.message });
+        }
+      }
+      if (connector.sample && pack.manifest?.environmentId === 'production') {
+        issues.push({ severity: 'warning', path: `extensions.connectors.connectors[${index}].sample`, message: `Connector '${connector.connectorId}' runs on sample data but this pack is for production.` });
+      }
+    });
+    const rows = connectorsExt.policy || [];
+    rows.forEach((row, index) => {
+      const connector = byId.get(row.connectorId);
+      if (!connector) {
+        issues.push({ severity: 'error', path: `extensions.connectors.policy[${index}].connectorId`, message: `Policy row names connector '${row.connectorId}', which is not in the pack.` });
+        return;
+      }
+      const tool = row.tool === '*' ? undefined : (connector.tools || []).find((entry) => entry.name === row.tool);
+      if (row.tool !== '*' && !tool) {
+        issues.push({ severity: 'error', path: `extensions.connectors.policy[${index}].tool`, message: `Policy row names tool '${row.tool}', which connector '${row.connectorId}' does not list. Tools that are not listed start blocked.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.connectors.policy[${index}].groups`, message: `A shopper row for connector '${row.connectorId}' names groups; groups apply to staff rows only.` });
+      }
+      if (row.state === 'allow') {
+        const writes = row.tool === '*' ? (connector.tools || []).filter((entry) => entry.sideEffect === 'write').map((entry) => entry.name) : tool?.sideEffect === 'write' ? [tool.name] : [];
+        if (writes.length > 0) {
+          issues.push({ severity: 'warning', path: `extensions.connectors.policy[${index}].state`, message: `Connector '${row.connectorId}': ${writes.join(', ')} change data in the other system but ${row.tool === '*' ? 'the default row' : 'this row'} lets ${row.audience === 'shopper' ? 'everyone' : 'staff'} run it without asking first.` });
+        }
+      }
+    });
+    byId.forEach((connector, id) => {
+      if (connector.enabled !== false && !rows.some((row) => row.connectorId === id && row.state !== 'blocked')) {
+        issues.push({ severity: 'warning', path: `extensions.connectors.connectors[${id}]`, message: `Connector '${id}' is enabled but no policy row lets anyone use any of its tools: new tools start blocked.` });
+      }
+    });
+  }
+
   // 5. Validate Journeys and Stages
   for (const journey of pack.journeys) {
     const stageIds = new Set(Object.keys(journey.stages));
