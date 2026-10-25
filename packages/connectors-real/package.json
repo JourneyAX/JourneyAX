@@ -1,0 +1,17 @@
+{
+  "name": "@journeyax/connectors-real",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real connectors served over MCP: the same tool names as the sample connectors, backed by the vendors' own APIs (Salesforce, Google Analytics, Power BI, commercetools).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "serve": "tsx src/cli.ts",
+    "check": "tsx scripts/live-check.ts",
+    "test": "tsx test/server.spec.ts && tsx test/commercetools.spec.ts && tsx test/salesforce.spec.ts && tsx test/google-analytics.spec.ts && tsx test/power-bi.spec.ts && tsx test/contract.spec.ts && tsx test/live-check.spec.ts && tsx test/loaders.spec.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}
