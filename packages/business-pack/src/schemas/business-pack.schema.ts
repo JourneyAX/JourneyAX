@@ -195,6 +195,8 @@ export const ConversationPolicySchema = z.object({
   referrals: z.union([z.array(z.string()), z.record(z.string(), z.array(z.string()))]).optional(),
   extraClaimPatterns: z.record(z.string(), z.union([z.array(z.string()), z.record(z.string(), z.array(z.string()))])).optional(),
   withheldAnswerMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
+  /** Said, ahead of the product cards, when the claim guard removed a whole reply about products and nothing it removed was about safety, care or the law. */
+  foundMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
   /** How long a whole agent turn may take before the customer is handed to a person (default 20 s when unset). */
   turnDeadlineMs: z.number().int().min(5000).max(120000).optional(),
   /**

@@ -23,6 +23,7 @@ import {
   knownNamesOf,
   type AgentToolContext,
 } from './agent-tools';
+import { chooseWithheldFallback, foundMessageOf } from './withheld-fallback';
 import agentLoopDefaults from '../defaults/agent-loop.json';
 import { chooseCardSkus } from './auto-card';
 import { prefetchCallsFor, formatPrefetched, accessoriesCardFrom } from './event-prefetch';
@@ -1088,10 +1089,21 @@ function extractToolResultCount(result: any): number | undefined {
         sink('token', { delta: ` ${handoffMsg}` });
       }
     } else if (!finalAssistantText || (!repairedByModel && shaper.getWithheldCount() > 0 && hasOnlyQuestions(finalAssistantText))) {
-      // If sentences were withheld by claim guard and what remains has no statement (only questions or empty),
-      // provide the pack's withheld answer message (or industry-neutral default).
-      finalAssistantText = getWithheldFallbackMessage(release, (command as any).locale);
-      sink('token', { replace: finalAssistantText, delta: finalAssistantText });
+      // The guard left nothing to say (empty, or only questions). With products to show and nothing cautious removed the customer is told
+      // what was found and the cards follow; otherwise the pack's withheld answer message (or the industry-neutral default) is used.
+      const locale = (command as any).locale;
+      const replacement = chooseWithheldFallback({
+        reply: finalAssistantText,
+        onlyQuestions: Boolean(finalAssistantText) && hasOnlyQuestions(finalAssistantText),
+        hasProducts: toolContext.presentedCards.length > 0 || Boolean(toolContext.lastProducts && !toolContext.lastProducts.relaxed && toolContext.lastProducts.skus.length > 0),
+        withheldClasses: [...shaper.getWithheldClasses()],
+        foundMessage: foundMessageOf(release, locale),
+        withheldMessage: getWithheldFallbackMessage(release, locale),
+      });
+      if (replacement !== undefined) {
+        finalAssistantText = replacement;
+        sink('token', { replace: finalAssistantText, delta: finalAssistantText });
+      }
     }
 
     // 6b. The products the reply is about are shown on a card after it. Asking the model for a separate present_card call cost a

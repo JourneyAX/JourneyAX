@@ -589,6 +589,50 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.doesNotMatch(fullText, /25 year unconditional replacement warranty/i);
   });
 
+  describe('claim guard: what the customer reads when the whole reply was removed', () => {
+    const products = [
+      { sku: 'SKU-DRILL-1', title: 'Cordless Drill 18V', name: 'Cordless Drill 18V', priceUSD: { min: 129 }, currency: 'NZD', inStock: true, category: 'Drills', description: 'An 18V cordless drill.' },
+    ];
+    const run = async (finalText: string, found: string | undefined) => {
+      const gateway = new ModelGateway();
+      const release = createTestPack();
+      if (found) (release.conversationPolicy as any).foundMessage = found;
+      const workspace = createTestWorkspace();
+      let round = 0;
+      gateway.mockAgentExecutor = async (_req, onDelta) => {
+        round++;
+        if (round === 1) return { content: '', toolCalls: [{ id: 'call_search_1', name: 'search_products', arguments: { query: 'cordless drill' } }] };
+        onDelta?.(finalText);
+        return { content: finalText, toolCalls: [] };
+      };
+      const outcome = await new AgentTurnLoop().execute({
+        command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 'test-session', correlationId: 'test-corr', message: 'Which cordless drill should I get?' },
+        release,
+        workspace,
+        modelGateway: gateway,
+        catalogSearchHandler: { execute: async () => ({ products, totalCount: 1 }) } as any,
+        sink: () => {},
+      });
+      return { outcome, release };
+    };
+
+    test('products were found and the only thing removed was a warranty claim: "here is what I found" and the cards', async () => {
+      const { outcome } = await run('This drill comes with a 5-year unconditional warranty.', 'Here is what I found in our range. Ask me if you want anything else checked.');
+      assert.equal(outcome.turnResult.assistantMessage, 'Here is what I found in our range. Ask me if you want anything else checked.');
+      assert.equal(outcome.turnResult.uiInstructions?.[0]?.component, 'products', 'the products found are shown after the line');
+    });
+
+    test('without the pack\'s own wording a neutral line is used', async () => {
+      const { outcome } = await run('This drill comes with a 5-year unconditional warranty.', undefined);
+      assert.match(outcome.turnResult.assistantMessage || '', /^Here.s what I found/);
+    });
+
+    test('a removed safety instruction still gets the pack\'s own refusal, whatever was found', async () => {
+      const { outcome, release } = await run('Turn off the power at the switchboard before you use it.', 'Here is what I found in our range.');
+      assert.equal(outcome.turnResult.assistantMessage, (release.conversationPolicy as any).withheldAnswerMessage);
+    });
+  });
+
   test('fallback: runtime falls back to rule-based path on model error or timeout', async () => {
     const failingGateway = new ModelGateway();
     failingGateway.mockAgentExecutor = async () => {

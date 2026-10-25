@@ -187,6 +187,7 @@ export class IncrementalSentenceShaper {
   private buffer = '';
   private emittedSentences: string[] = [];
   private withheldSentences: string[] = [];
+  private withheldClasses = new Set<ClaimClass>();
   private streamedText = '';
   private compiledShape: CompiledShapeContext;
   private questionsSeen = 0;
@@ -221,6 +222,11 @@ export class IncrementalSentenceShaper {
     return [...this.withheldSentences];
   }
 
+  /** The claim classes the removed sentences asserted, so the caller can tell a removed product line from a removed safety line. */
+  getWithheldClasses(): ClaimClass[] {
+    return [...this.withheldClasses];
+  }
+
   processDelta(chunk: string): void {
     this.buffer += chunk;
     const parts = this.buffer.split(/(?<!\b\d+[.!?])(?<=[.!?])\s+|\n+/);
@@ -252,6 +258,7 @@ export class IncrementalSentenceShaper {
       const claimResult = validateOkfGeneratedClaims(sentence, allowed, this.packOrOptions, { knownNames: this.knownNames });
       if (!claimResult.valid) {
         this.withheldSentences.push(sentence);
+        for (const claim of claimResult.forbidden) this.withheldClasses.add(claim);
         console.warn(`[ClaimGuard] withheld sentence during stream: "${sentence}" asserting ${claimResult.forbidden.join(', ')}`);
         return;
       }
