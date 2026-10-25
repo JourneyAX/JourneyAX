@@ -78,6 +78,34 @@ export function connectorSummaries(release: { extensions?: Record<string, any> }
   }));
 }
 
+/** One connector as the chat's "+" menu shows it to the person: what it is, and what they can do with it. Never a secret, never an address. */
+export interface ConnectorListItem {
+  connector: string;
+  name: string;
+  description: string;
+  owner: string;
+  sample: boolean;
+  /** What the person can use, without its inputs: a name, a line, and whether it only looks things up. A blocked tool is not listed. */
+  tools: Array<{ name: string; summary?: string; kind: 'read' | 'write'; state: 'allow' | 'ask' }>;
+}
+
+/** The connectors this person may use, with the tools they may use (the same table the assistant is held to), for the person to see. */
+export function connectorList(release: { extensions?: Record<string, any> } | undefined, person: ConnectorPerson): ConnectorListItem[] {
+  const gate = pluginGate(release?.extensions?.plugins, person);
+  return usableConnectors(release?.extensions?.connectors as ConnectorsExtension | undefined, person)
+    .filter((connector) => gate.allows('connectors', connector.connectorId))
+    .map((connector) => ({
+      connector: connector.connectorId,
+      name: connector.displayName,
+      description: connector.description,
+      owner: connector.owner,
+      sample: Boolean(connector.sample),
+      tools: connector.tools
+        .filter((tool) => tool.state !== 'blocked')
+        .map((tool) => ({ name: tool.name, ...(tool.summary ? { summary: tool.summary } : {}), kind: tool.sideEffect, state: tool.state as 'allow' | 'ask' })),
+    }));
+}
+
 const DEFAULT_MAX_TOOLS_LISTED = 30;
 
 const SAMPLE_NOTICE = 'This connector runs on sample data, not on the live system. Say so when you use what it returns.';

@@ -14,7 +14,7 @@ import { useDismiss } from './useDismiss';
 
 const MAX_HEIGHT = 220;
 
-export default function Composer({ value, onChange, onSubmit, onStop, busy, placeholder, agentChip, autoFocus }: {
+export default function Composer({ value, onChange, onSubmit, onStop, busy, placeholder, agentChip, autoFocus, plusExtra }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -24,6 +24,8 @@ export default function Composer({ value, onChange, onSubmit, onStop, busy, plac
   placeholder: string;
   agentChip?: ReactNode;
   autoFocus?: boolean;
+  /** More for the "+" menu below the attachment entry (the connectors section). */
+  plusExtra?: ReactNode;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLDivElement>(null);
@@ -90,6 +92,7 @@ export default function Composer({ value, onChange, onSubmit, onStop, busy, plac
                   Add files or photos <span className="ax-badge">Soon</span>
                 </button>
                 <p className="ax-popover__note">Attachments are not available yet.</p>
+                {plusExtra}
               </div>
             )}
           </div>

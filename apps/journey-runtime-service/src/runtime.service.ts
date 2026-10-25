@@ -34,6 +34,8 @@ import {
   getVerifiedBusinessPackMetadata,
 } from '@journeyax/business-pack';
 import { isInCanaryBucket } from '@journeyax/journey-core';
+import { principalFrom } from '@journeyax/shared-types';
+import { connectorList, type ConnectorListItem } from './kernel/connector.runtime';
 import { idleRepinHours, isIdleBeyond, packHostsWorkspace } from './kernel/pin-lifecycle';
 import { isAgentModeEnabled } from './agent/agent-loop';
 import { getAgentToolDefinitions } from './agent/agent-tools';
@@ -835,6 +837,22 @@ export class RuntimeService {
    */
   async getOutboxMetrics(tenantId?: string): Promise<{ pending: number; leased: number; published: number; deadLetter: number }> {
     return this.appService.outboxRepo.getMetrics(tenantId);
+  }
+
+  /** The connectors this person may use under the tenant's active pack, for the chat's "+" menu. Empty when there is no pack or no connector. */
+  async listConnectors(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    person: { userId?: string; role?: string; groups?: string[] }
+  ): Promise<{ connectors: ConnectorListItem[]; packVersion?: string }> {
+    let pack: any = null;
+    try {
+      pack = await this.appService.packRepo.loadActivePack(tenantId, environmentId);
+    } catch {
+      return { connectors: [] };
+    }
+    const principal = principalFrom({ userId: person.userId, tenantId, role: person.role, groups: person.groups });
+    return { connectors: connectorList(pack, { audience: principal.audience, groups: principal.groups }), packVersion: pack?.manifest?.version };
   }
 
   /**

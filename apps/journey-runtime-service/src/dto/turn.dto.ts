@@ -39,6 +39,8 @@ export const TurnCommandRequestSchema = z.object({
   agentId: z.string().max(80).regex(/^[A-Za-z0-9_.-]+$/).optional(),
   /** The message this one answers (a branch: edit and retry). Without it the turn follows the newest message of the conversation. */
   parentMessageId: z.string().max(160).optional(),
+  /** Connectors the person switched off for this chat; they can only narrow what the pack allows. */
+  disabledConnectors: z.array(z.string().max(80)).max(50).optional(),
   inputFacts: z.record(z.string(), z.any()).optional(),
   customerContext: z.record(z.string(), z.any()).optional(),
   approvalRequestId: z.string().optional(),

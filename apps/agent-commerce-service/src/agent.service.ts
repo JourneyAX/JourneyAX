@@ -22,6 +22,10 @@ export * from './orchestration/journey-coordinator';
 export class AgentService {
   constructor(@Inject(JourneyCoordinator) private readonly coordinator: JourneyCoordinator) {}
 
+  async listConnectors(tenantId: string, person: { sub?: string; role?: string; groups?: string[] } | undefined) {
+    return this.coordinator.listConnectors(tenantId, person);
+  }
+
   async processChat(request: ChatRequest): Promise<ChatResponse> {
     return this.coordinator.executeChat(request);
   }

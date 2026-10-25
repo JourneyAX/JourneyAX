@@ -15,6 +15,8 @@ import AppShell from './shell/AppShell';
 import { useShell } from './shell/ShellContext';
 import Composer from './shell/Composer';
 import AgentChip from './shell/AgentChip';
+import ConnectorMenu from './shell/ConnectorMenu';
+import { parseConnectorList, readOff, toggled, writeOff, type ConnectorItem } from '@/lib/connectors/connectors';
 import SidePanelHost, { PanelNote, useShownPanelCard } from './shell/SidePanel';
 import { BagIcon, SidebarIcon, UserIcon } from './shell/icons';
 import CartDrawer from './CartDrawer';
@@ -394,6 +396,11 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   // sendToAI is a stable closure; reading convoId directly would pin whichever
   // thread was open when it was created.
   const convoIdRef = useRef('');
+  // The connectors the signed-in person may use (the server decides), and which of them this conversation has switched off.
+  const [connectorItems, setConnectorItems] = useState<ConnectorItem[]>([]);
+  const [connectorsOff, setConnectorsOff] = useState<string[]>([]);
+  const connectorsOffRef = useRef<string[]>([]);
+  connectorsOffRef.current = connectorsOff;
   convoIdRef.current = convoId;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -461,6 +468,22 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     } catch { setMessages([]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.projectId]);
+  // What the signed-in person may use is the server's call (their role and staff groups); load it for the "+" menu when the project or
+  // the person changes. No list, or a failure, simply means the menu has no connector section.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !authUser) { setConnectorItems([]); return; }
+    let cancelled = false;
+    fetch('/api/connectors', { credentials: 'same-origin', cache: 'no-store', headers: cfg.projectId ? { 'X-Tenant-ID': cfg.projectId } : {} })
+      .then((res) => (res.ok ? res.json() : { connectors: [] }))
+      .catch(() => ({ connectors: [] }))
+      .then((json) => { if (!cancelled) setConnectorItems(parseConnectorList(json)); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.projectId, authUser?.email]);
+  // Each conversation keeps its own switches.
+  useEffect(() => {
+    setConnectorsOff(convoId ? readOff(cfg.projectId, convoId, connectorItems) : []);
+  }, [cfg.projectId, convoId, connectorItems]);
   const restoredRef = useRef(false);
   useEffect(() => {
     if (typeof window === 'undefined' || !msgKey || !convoId) return;
@@ -628,6 +651,8 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
         ...(CHAT_REQUEST_ACCEPTS_AGENT_ID && pickedAgentRef.current ? { agentId: pickedAgentRef.current } : {}),
         // Try again / edit: the earlier message this one continues from, so the assistant reads only the conversation up to there.
         ...(CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE && opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {}),
+        // Connectors switched off for this conversation (it can only narrow what the person's role allows).
+        ...(connectorsOffRef.current.length ? { disabledConnectors: connectorsOffRef.current } : {}),
         // customerId will be attached here once storefront auth lands (long-term memory key).
       });
 
@@ -1308,6 +1333,17 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             <CompareTray onCompare={(skus) => onCardAction('compareProducts', { skus })} />
             <QuantityStepHost />
             <Composer
+              plusExtra={connectorItems.length ? (
+                <ConnectorMenu
+                  items={connectorItems}
+                  off={connectorsOff}
+                  onToggle={(id) => {
+                    const next = toggled(connectorsOffRef.current, id);
+                    setConnectorsOff(next);
+                    writeOff(cfg.projectId, convoIdRef.current, next);
+                  }}
+                />
+              ) : undefined}
               value={prompt}
               onChange={setPrompt}
               onSubmit={submitPrompt}

@@ -13,6 +13,7 @@ import { ConfigLoader } from './pipeline/config-loader';
 import { SessionStore } from './pipeline/session-store';
 import { BusinessPackLoader } from '@journeyax/business-pack';
 import { publicEmitter, publicErrorMessage } from '@journeyax/journey-core';
+import { cleanDisabledConnectors, verifiedIdentity } from './identity';
 
 @Controller('api/v1/:projectId/commerce')
 export class JourneyAXController {
@@ -272,11 +273,26 @@ export class JourneyAXController {
    * 
    * Flow: Client → API Gateway → JourneyAXController → AgentService → ProductService → MongoDB
    */
+  /**
+   * The connectors the signed-in person may use, for the chat's "+" menu. The person is whoever the gateway signed; a call without a
+   * valid signature is a shopper. Returns an empty list rather than an error when anything is unavailable.
+   */
+  @Get('connectors')
+  async connectors(
+    @Param('projectId') projectId: string,
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
+  ) {
+    const tenantId = (projectId || tenantHeader || '').toLowerCase().trim();
+    return this.agentService.listConnectors(tenantId, verifiedIdentity(gatewayAssertion, tenantId));
+  }
+
   @Post('chat')
   @UseGuards(ChatThrottleGuard)
   async chat(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
     @Body() body: {
       message?: string;
       messages?: any[];
@@ -307,6 +323,8 @@ export class JourneyAXController {
       agentId?: string;
       /** The earlier message this one continues from (try again, edit): 'root' for the first message; the newest one when absent. */
       parentMessageId?: string;
+      /** Connectors the person switched off for this chat. */
+      disabledConnectors?: string[];
     }
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
@@ -338,6 +356,8 @@ export class JourneyAXController {
         customer_event: body.customer_event,
         agentId: body.agentId,
           parentMessageId: body.parentMessageId,
+        verifiedIdentity: verifiedIdentity(gatewayAssertion, tenantId),
+        disabledConnectors: cleanDisabledConnectors(body.disabledConnectors),
       });
 
       return result;
@@ -383,6 +403,7 @@ export class JourneyAXController {
   async chatStream(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
     @Headers('x-internal-key') internalKey: string | undefined,
     @Body() body: {
       message?: string;
@@ -409,6 +430,8 @@ export class JourneyAXController {
       agentId?: string;
       /** The earlier message this one continues from (try again, edit): 'root' for the first message; the newest one when absent. */
       parentMessageId?: string;
+      /** Connectors the person switched off for this chat. */
+      disabledConnectors?: string[];
     },
     @Res() res: Response,
   ) {
@@ -479,6 +502,8 @@ export class JourneyAXController {
           customer_event: body.customer_event,
           agentId: body.agentId,
           parentMessageId: body.parentMessageId,
+        verifiedIdentity: verifiedIdentity(gatewayAssertion, tenantId),
+        disabledConnectors: cleanDisabledConnectors(body.disabledConnectors),
         },
         emit,
       );

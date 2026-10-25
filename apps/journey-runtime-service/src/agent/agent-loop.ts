@@ -525,7 +525,9 @@ export class AgentTurnLoop {
 
     // Connectors this person may use (from the pack's registry and who they are). With none, no connector tool or prompt text exists.
     const connectorRuntime = options.connectorRuntime ?? capabilityGateway?.getConnectorRuntime?.();
-    const connectors = connectorRuntime ? connectorSummaries(release, { audience: principal.audience, groups: principal.groups }) : [];
+    // A connector the person switched off for this chat (from the "+" menu) is left out: this can only narrow what their role allows.
+    const switchedOff = new Set<string>(Array.isArray((command as any).disabledConnectors) ? (command as any).disabledConnectors.map(String) : []);
+    const connectors = connectorRuntime ? connectorSummaries(release, { audience: principal.audience, groups: principal.groups }).filter((summary) => !switchedOff.has(summary.connector)) : [];
 
     // 2. Prepare Tool Context (server-enforced tenant isolation)
     const toolContext: AgentToolContext = {
@@ -537,6 +539,7 @@ export class AgentTurnLoop {
       principalId: command.principalId || (command as any).userId || (command as any).customerId || 'customer',
       principalRole: (command as any).principalRole || (command as any).role || 'customer',
       principal: { audience: principal.audience, groups: principal.groups },
+      disabledConnectors: switchedOff,
       idempotencyKey: command.idempotencyKey || (command as any).turnId,
       release,
       workspace,

@@ -5,6 +5,7 @@ import { ModelGateway, type AgentExecutionRequest } from '../src/kernel/model.ga
 import { AgentTurnLoop } from '../src/agent/agent-loop';
 import { CapabilityGateway } from '../src/kernel/capability.gateway';
 import { startTestServer, structured } from '../../../packages/capability-sdk/test/helpers/mcp-test-server';
+import { connectorList } from '../src/kernel/connector.runtime';
 import { FakeApprovals, REGISTRY, SECRET_REF, SECRET_VALUE, TENANT, connectorPack, workspace } from './helpers/connector-pack';
 
 delete process.env.MONGODB_URI;
@@ -42,7 +43,7 @@ async function setup(options: { registry?: unknown; tools?: Record<string, any> 
 
 type World = Awaited<ReturnType<typeof setup>>;
 
-async function turn(world: World, steps: Step[], who: { role?: string; groups?: string[]; agentId?: string; message?: string; workspace?: any; customerEvent?: any } = {}) {
+async function turn(world: World, steps: Step[], who: { role?: string; groups?: string[]; agentId?: string; message?: string; workspace?: any; customerEvent?: any; disabledConnectors?: string[] } = {}) {
   const model = new ModelGateway();
   const requests: AgentExecutionRequest[] = [];
   const toolMessages: string[] = [];
@@ -60,6 +61,7 @@ async function turn(world: World, steps: Step[], who: { role?: string; groups?: 
       tenantId: TENANT, environmentId: 'test', workspaceId: 'ws-connector-test', sessionId: 'sess-1', correlationId: 'corr-1', message: who.message ?? 'Is there stock?',
       principalId: who.role ? `${who.role}@example.test` : undefined, principalRole: who.role, principalGroups: who.groups, agentId: who.agentId ?? 'front_desk',
       ...(who.customerEvent ? { customerEvent: who.customerEvent } : {}),
+      ...(who.disabledConnectors ? { disabledConnectors: who.disabledConnectors } : {}),
     } as any,
     release: world.release,
     workspace: who.workspace ?? workspace(),
@@ -78,6 +80,66 @@ const parse = (text: string) => JSON.parse(text);
 const lastTool = (toolMessages: string[]) => parse(toolMessages[toolMessages.length - 1]);
 
 describe('Connector tools in the agent loop', () => {
+  describe('the list the person sees in the chat\'s + menu, and switching a connector off for one chat', () => {
+    const release = connectorPack(REGISTRY);
+    const staff = { audience: 'staff' as const, groups: ['customer-service'] };
+
+    test('the list is exactly what this person may use: tools they may call, ask-first ones marked, blocked ones left out, nothing a shopper may not', () => {
+      const list = connectorList(release, staff);
+      assert.deepEqual(list.map((item) => item.connector), ['stock-system', 'crm']);
+      const stock = list.find((item) => item.connector === 'stock-system')!;
+      assert.deepEqual(stock.tools.map((tool) => `${tool.name}:${tool.kind}:${tool.state}`), ['stock_by_branch:read:allow', 'delivery_status:read:allow', 'reserve_stock:write:ask']);
+      const crm = list.find((item) => item.connector === 'crm')!;
+      assert.deepEqual(crm.tools.map((tool) => `${tool.name}:${tool.state}`), ['find_account:allow', 'create_case:ask']);
+      assert.equal(stock.sample, true);
+      // finance staff are blocked from delivery_status, and have no CRM row
+      const finance = connectorList(release, { audience: 'staff', groups: ['finance'] });
+      assert.deepEqual(finance.map((item) => item.connector), ['stock-system']);
+      assert.ok(!finance[0].tools.some((tool) => tool.name === 'delivery_status'));
+      // a shopper may look up stock by branch and nothing else
+      const shopper = connectorList(release, { audience: 'shopper', groups: [] });
+      assert.deepEqual(shopper.map((item) => item.connector), ['stock-system']);
+      assert.deepEqual(shopper[0].tools.map((tool) => tool.name), ['stock_by_branch']);
+      assert.deepEqual(connectorList(connectorPack(undefined), staff), [], 'a pack without a registry lists nothing');
+      assert.equal(JSON.stringify(list).includes('tenant-secret'), false, 'no secret reference reaches the person');
+    });
+
+    test('a connector switched off for the chat is left out of the prompt, and the connector tools refuse it; the others still work', async () => {
+      const world = await setup();
+      const { requests, toolMessages } = await turn(world, [
+        () => ({ toolCalls: [call('c1', 'get_connector_tools', { connector: 'stock-system' }), call('c2', 'get_connector_tools', { connector: 'crm' })] }),
+        () => ({ content: 'Done.' }),
+      ], { role: 'operator', groups: ['customer-service'], disabledConnectors: ['stock-system'] });
+      const prompt = requests[0].systemPrompt ?? '';
+      assert.ok(!prompt.includes('- stock-system:'), 'the switched-off connector is not described to the model');
+      assert.match(prompt, /- crm: Accounts and support cases\./);
+      assert.match(toolMessages.join('\n'), /stock-system connector is switched off for this chat/);
+      assert.match(toolMessages.join('\n'), /find_account/, 'the connector left on loads normally');
+      assert.equal(world.server.seen.filter((seen: any) => /stock/.test(JSON.stringify(seen))).length, 0, 'nothing reached the switched-off connector\'s server');
+    });
+
+    test('a call to a switched-off connector never runs, even when the model names it', async () => {
+      const world = await setup();
+      const { toolMessages } = await turn(world, [
+        () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'stock-system', tool: 'stock_by_branch', arguments: { sku: 'S-1' } })] }),
+        () => ({ content: 'Done.' }),
+      ], { role: 'operator', groups: ['customer-service'], disabledConnectors: ['stock-system'] });
+      assert.equal(lastTool(toolMessages).ok, false);
+      assert.match(lastTool(toolMessages).error, /switched off for this chat/);
+      assert.equal(world.server.seen.length, 0);
+    });
+
+    test('switching everything off removes the connector tools and text altogether, and a name the person has no right to cannot be switched on', async () => {
+      const world = await setup();
+      const { requests } = await turn(world, [() => ({ content: 'Hello.' })], { role: 'operator', groups: ['customer-service'], disabledConnectors: ['stock-system', 'crm'] });
+      assert.ok(!toolNames(requests[0]).some((name) => /connector/.test(name)));
+      assert.ok(!(requests[0].systemPrompt ?? '').includes('Connectors you can use'));
+      // naming a connector only narrows: a shopper cannot gain the CRM by it
+      const shopper = await turn(world, [() => ({ content: 'Hello.' })], { disabledConnectors: [] });
+      assert.ok(!(shopper.requests[0].systemPrompt ?? '').includes('- crm:'));
+    });
+  });
+
   test('a pack without a registry changes nothing: no connector tool is offered, even to an agent that allows everything, and the prompt has no connector text', async () => {
     const world = await setup({ registry: null });
     const { requests } = await turn(world, [() => ({ content: 'Hello there.' })], { role: 'operator', agentId: 'everything' });

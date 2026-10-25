@@ -37,6 +37,18 @@ export class JourneyCoordinator {
   /**
    * Executes a buffered chat turn.
    */
+  /** The connectors this person may use, for the chat's "+" menu. Never throws: no list means no menu entry, not a broken chat. */
+  async listConnectors(tenantId: string, person: { sub?: string; role?: string; groups?: string[] } | undefined): Promise<{ connectors: any[]; packVersion?: string }> {
+    const tenant = (tenantId || '').toLowerCase().trim();
+    if (!tenant) return { connectors: [] };
+    try {
+      return await this.canonicalRuntime.listConnectors(tenant, person);
+    } catch (error: any) {
+      console.warn(`[JourneyCoordinator] connector list unavailable for ${tenant}: ${String(error?.message || error).slice(0, 160)}`);
+      return { connectors: [] };
+    }
+  }
+
   async executeChat(request: ChatRequest): Promise<ChatResponse> {
     const tenantId = (request.tenantId || '').toLowerCase().trim();
     if (!tenantId) {
@@ -82,7 +94,10 @@ export class JourneyCoordinator {
         turnId,
         correlationId,
         principalId: request.demoPrincipalId || request.customerId || 'anonymous',
-        principalRole: 'customer',
+        // The role and staff groups the gateway signed for this person; a request without a valid assertion is a shopper.
+        principalRole: (request as any).verifiedIdentity?.role ?? 'customer',
+        principalGroups: (request as any).verifiedIdentity?.groups,
+        disabledConnectors: (request as any).disabledConnectors,
         message: request.message || (request.messages?.slice(-1)[0]?.content ?? ''),
         customerEvent: (request as any).customerEvent || (request as any).customer_event || (request as any).event,
         customer_event: (request as any).customer_event || (request as any).customerEvent,
@@ -200,7 +215,10 @@ export class JourneyCoordinator {
         turnId,
         correlationId,
         principalId: request.demoPrincipalId || request.customerId || 'anonymous',
-        principalRole: 'customer',
+        // The role and staff groups the gateway signed for this person; a request without a valid assertion is a shopper.
+        principalRole: (request as any).verifiedIdentity?.role ?? 'customer',
+        principalGroups: (request as any).verifiedIdentity?.groups,
+        disabledConnectors: (request as any).disabledConnectors,
         message: request.message || (request.messages?.slice(-1)[0]?.content ?? ''),
         customerEvent: (request as any).customerEvent || (request as any).customer_event || (request as any).event,
         customer_event: (request as any).customer_event || (request as any).customerEvent,

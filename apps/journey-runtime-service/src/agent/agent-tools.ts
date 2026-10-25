@@ -110,6 +110,8 @@ export interface AgentToolContext {
   connectorRuntime?: ConnectorRuntime;
   /** Connectors the agent loaded or called this turn, for the trace. */
   usedConnectorIds?: Set<string>;
+  /** Connectors the person switched off for this chat: the three connector tools refuse them. */
+  disabledConnectors?: Set<string>;
   /** The quantity estimates of this turn by SKU: a quantity card shows only a number the estimate tool returned. */
   lastEstimates?: Map<string, Extract<QuantityEstimate, { ok: true }> & { title: string; unitLabel: string; working: Array<{ label: string; value: string }>; ctaLabel: string }>;
   /** The picture made this turn: a picture card shows only this one. */

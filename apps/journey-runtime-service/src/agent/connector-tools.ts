@@ -78,13 +78,17 @@ export async function executeConnectorMetaTool(
   if (!runtime) return { ok: false, error: 'Connectors are not available in this conversation.' };
   const person = ctx.principal ?? ANONYMOUS_SHOPPER;
 
+  const switchedOff = ctx.disabledConnectors;
+  const offered = () => runtime.summaries(ctx.release as any, person).filter((summary) => !switchedOff?.has(summary.connector));
+
   if (toolName === 'list_connectors') {
-    const connectors = runtime.summaries(ctx.release as any, person);
+    const connectors = offered();
     return { ok: true, connectors, ...(connectors.length === 0 ? { message: 'You have no connectors.' } : {}) };
   }
 
   const connector = String(args.connector ?? '').trim();
-  if (!connector) return { ok: false, error: 'Say which connector.', available: runtime.summaries(ctx.release as any, person).map((summary) => summary.connector) };
+  if (!connector) return { ok: false, error: 'Say which connector.', available: offered().map((summary) => summary.connector) };
+  if (switchedOff?.has(connector)) return { ok: false, error: `The ${connector} connector is switched off for this chat. The person can switch it on from the + menu in the chat box.`, available: offered().map((summary) => summary.connector) };
 
   if (toolName === 'get_connector_tools') {
     const loaded = await runtime.loadTools(ctx.release as any, person, execContext, connector, typeof args.query === 'string' ? args.query : undefined);

@@ -262,6 +262,8 @@ export interface TurnCommand {
   principalRole?: string;
   /** The staff groups the gateway signed for this person; empty or absent for a shopper. Set only by the server, never from the request body. */
   principalGroups?: string[];
+  /** Connectors the person switched off for this chat. It can only narrow what their role allows, never widen it. */
+  disabledConnectors?: string[];
   correlationId: string;
 
   message?: string;
