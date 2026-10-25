@@ -213,6 +213,18 @@ check('the gate warns, without refusing, about a write tool set to allow, a conn
   assert.ok(warnings.some((m) => m.includes('sample data but this pack is for production')));
 });
 
+check('a default row set to allow does not warn about a write tool that has its own row', () => {
+  const covered = clone(registry);
+  covered.policy = [
+    { connectorId: 'crm', tool: '*', audience: 'staff', groups: [], state: 'allow' },
+    { connectorId: 'crm', tool: 'create_case', audience: 'staff', groups: [], state: 'ask' },
+  ];
+  covered.connectors = [covered.connectors[1]];
+  assert.deepEqual(issuesFor(covered).filter((i) => i.message.includes('without asking first')), []);
+  covered.policy.pop();
+  assert.equal(issuesFor(covered).filter((i) => i.message.includes('create_case') && i.message.includes('without asking first')).length, 1, 'with no row of its own the default row does cover it');
+});
+
 check('a pack without the registry is not touched by the gate', () => {
   const pack: any = clone(rawLegacyFixture);
   assert.deepEqual(validateBusinessPack(pack).issues.filter((i) => i.path.startsWith('extensions.connectors')), []);

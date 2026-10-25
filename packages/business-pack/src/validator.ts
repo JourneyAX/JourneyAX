@@ -194,7 +194,10 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
         issues.push({ severity: 'error', path: `extensions.connectors.policy[${index}].groups`, message: `A shopper row for connector '${row.connectorId}' names groups; groups apply to staff rows only.` });
       }
       if (row.state === 'allow') {
-        const writes = row.tool === '*' ? (connector.tools || []).filter((entry) => entry.sideEffect === 'write').map((entry) => entry.name) : tool?.sideEffect === 'write' ? [tool.name] : [];
+        // A default row only covers the tools that have no row of their own.
+        const writes = row.tool === '*'
+          ? (connector.tools || []).filter((entry) => entry.sideEffect === 'write' && !rows.some((other) => other.connectorId === row.connectorId && other.tool === entry.name)).map((entry) => entry.name)
+          : tool?.sideEffect === 'write' ? [tool.name] : [];
         if (writes.length > 0) {
           issues.push({ severity: 'warning', path: `extensions.connectors.policy[${index}].state`, message: `Connector '${row.connectorId}': ${writes.join(', ')} change data in the other system but ${row.tool === '*' ? 'the default row' : 'this row'} lets ${row.audience === 'shopper' ? 'everyone' : 'staff'} run it without asking first.` });
         }
