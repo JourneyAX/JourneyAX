@@ -114,9 +114,9 @@ async function main() {
     assert.deepEqual(usableConnectors(connectors, { audience: 'shopper', groups: ['sales'] }), [], 'a group claimed by a shopper changes nothing');
   });
 
-  await suite.test('the pack as published has only the systems that are really connected switched on: commercetools and Salesforce, and Marketing Cloud as a sample', () => {
+  await suite.test('the pack as published has only the systems that are really connected switched on: commercetools, Salesforce and Zendesk, and Marketing Cloud as a sample', () => {
     const on = published.connectors.filter((connector) => connector.enabled !== false).map((connector) => connector.connectorId).sort();
-    assert.deepEqual(on, ['commercetools', 'marketing-cloud', 'salesforce'], 'switch Google Analytics and Power BI on here only when their vendor accounts are connected');
+    assert.deepEqual(on, ['commercetools', 'marketing-cloud', 'salesforce', 'zendesk'], 'switch Google Analytics and Power BI on here only when their vendor accounts are connected');
   });
 
   await suite.test('the parked systems are switched off for everyone, the admin included, and are still in the pack so they can be switched back on', () => {

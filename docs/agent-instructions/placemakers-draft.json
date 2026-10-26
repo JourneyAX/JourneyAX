@@ -580,7 +580,7 @@
           "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
           "connectionScope": "shop",
           "sample": false,
-          "enabled": false,
+          "enabled": true,
           "tools": [
             {
               "name": "find_tickets",
