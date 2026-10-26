@@ -124,6 +124,28 @@ function chat(r) {
       await r.click(button, 600);
       await button.evaluate((el) => el.removeAttribute('data-rec-target')).catch(() => {});
     },
+    /**
+     * Presses Add on the latest product or accessory whose card names this kind of thing (a mixer, a waste), whichever way the assistant laid
+     * it out. When none is offered it asks once, in the customer's words, and looks again.
+     */
+    async addMatching(pattern, { ifMissingAsk } = {}) {
+      const mark = () => page.evaluate((source) => {
+        const re = new RegExp(source, 'i');
+        const buttons = [...document.querySelectorAll('button')].filter((b) => /^\s*Add\s*$/.test(b.textContent) && !b.closest('[role="dialog"]'));
+        for (const b of buttons.reverse()) {
+          const card = b.closest('.jx-card');
+          if (card && re.test(card.textContent || '')) { b.setAttribute('data-rec-target', 'yes'); return true; }
+        }
+        return false;
+      }, pattern.source);
+      let found = false;
+      for (let i = 0; i < 10 && !(found = await mark()); i += 1) await wait(2000);
+      if (!found && ifMissingAsk) { await this.ask(ifMissingAsk); for (let i = 0; i < 5 && !(found = await mark()); i += 1) await wait(2000); }
+      if (!found) throw new Error(`nothing to add for ${pattern}`);
+      const button = page.locator('[data-rec-target="yes"]').first();
+      await r.click(button, 600);
+      await button.evaluate((el) => el.removeAttribute('data-rec-target')).catch(() => {});
+    },
     async openBag() { await r.click(page.locator('button[aria-label^="View your"]').first(), 1500); },
     /** Stripe's payment form in the panel, filled quickly with a test person and Stripe's published test card. */
     async payWithTestCard() {
@@ -232,8 +254,8 @@ const SCENARIOS = [
       await r.step('The warranty', 'No warranty on file, so it says so, and offers a person.', async () => { await c.press('Warranty and guarantee'); await c.waitAnswer(); });
       await r.step('Who installs it', 'And whether she needs a plumber or can do it herself.', async () => { await c.press('Who installs it?'); await c.waitAnswer(); });
       await r.step('Only what the job needs', 'Only what the job needs: a basin mixer and a waste.', async () => { await c.closePanel(); await c.addFromTile(); await c.confirmQuantity(); await c.waitAnswer(); });
-      await c.addFromGroup('Basin mixer'); await c.confirmQuantity(); await c.waitAnswer();
-      await c.addFromGroup('Basin waste'); await c.confirmQuantity(); await c.waitAnswer();
+      await c.addMatching(/mixer/); await c.confirmQuantity(); await c.waitAnswer();
+      await c.addMatching(/waste/, { ifMissingAsk: 'What waste fitting does the basin need?' }); await c.confirmQuantity(); await c.waitAnswer();
       await r.step('A last look', 'A last look before she pays.', async () => {
         await c.openBag(); await wait(1800);
         await r.click(r.page.locator('button.cv__btn--primary').first(), 800);
