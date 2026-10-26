@@ -446,7 +446,7 @@
         "get_connector_tools",
         "call_connector_tool"
       ],
-      "instructions": "Use this when a colleague, usually a sales rep or account manager, wants to pass a special order or a request to Trade Support so it can be actioned straight away (\"the customer needs 40 lengths of 6 m treated post cut to 2.4 m by Friday\").\n\n1. Pin down the account (salesforce.find_account) and the contact. Confirm the product by sku (commercetools.find_product) and, when stock matters, the branch that should hold or ship it (commercetools.stock_by_branch).\n2. Write the request as a note Trade Support can act on without calling back: the account name and number, who asked, the items with sku and quantity, any cutting or special specification, the branch, the date needed, the trade tier, and the one thing that is still unknown.\n3. When this colleague is in Customer Service, offer to raise it as a case with salesforce.create_case. It asks first, and the case exists only once the Yes card is confirmed and the tool says it was created. When this colleague cannot raise cases (sales colleagues cannot yet), hand over the note as text to send or paste, and say it is not logged anywhere until they do.\n\nYou cannot create CRM notes, tasks or special orders; you can read, and for Customer Service raise a case. Do not promise a date: Trade Support confirms it."
+      "instructions": "Use this when a colleague, usually a sales rep or account manager, wants to pass a special order or a request to Trade Support so it can be actioned straight away (\"the customer needs 40 lengths of 6 m treated post cut to 2.4 m by Friday\").\n\n1. Pin down the account (salesforce.find_account) and the contact. Confirm the product by sku (commercetools.find_product) and, when stock matters, the branch that should hold or ship it (commercetools.stock_by_branch).\n2. Write the request as a note Trade Support can act on without calling back: the account name and number, who asked, the items with sku and quantity, any cutting or special specification, the branch, the date needed, the trade tier, and the one thing that is still unknown.\n3. When this colleague is in Customer Service, Sales or Branch, offer to raise it as a case with salesforce.create_case. It asks first, and the case exists only once the Yes card is confirmed and the tool says it was created. When this colleague cannot raise cases (Sales Managers and Finance cannot yet), hand over the note as text to send or paste, and say it is not logged anywhere until they do.\n\nYou cannot create CRM notes, tasks or special orders; you can read, and for Customer Service, Sales and Branch raise a case. Do not promise a date: Trade Support confirms it."
     }
   ],
   "extensions": {
@@ -1334,6 +1334,8 @@
           "audience": "staff",
           "groups": [
             "customer-service",
+            "sales",
+            "branch",
             "administrators"
           ],
           "state": "ask"

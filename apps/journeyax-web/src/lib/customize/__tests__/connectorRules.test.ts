@@ -41,7 +41,10 @@ check('each cell is the pack\'s own answer for that team: what is allowed, asked
   assert.equal(sf.grid.list_opportunities.sales, 'allow');
   assert.equal(sf.grid.list_opportunities['customer-service'], 'blocked');
   assert.equal(sf.grid.create_case['customer-service'], 'ask');
-  assert.equal(sf.grid.create_case.sales, 'blocked');
+  assert.equal(sf.grid.create_case.sales, 'ask', 'Sales and Branch may raise a case (asked first)');
+  assert.equal(sf.grid.create_case.branch, 'ask');
+  assert.equal(sf.grid.create_case.finance, 'blocked');
+  assert.equal(sf.grid.create_case['sales-managers'], 'blocked');
   assert.equal(view(ext(), 'commercetools').grid.add_to_cart.branch, 'ask');
   assert.equal(view(ext(), 'zendesk').grid.find_tickets['customer-service'], 'allow');
   for (const v of buildConnectorRules(ext(), TEAMS)) for (const tool of v.tools) for (const column of v.columns) assert.equal(v.grid[tool.name][column.id], engine(ext(), v.connectorId, tool.name, column.id), `${v.connectorId}.${tool.name} ${column.id}`);
@@ -116,7 +119,7 @@ check('a tool that changes data cannot be set to allow, for anyone; ask first an
   const refused = applyRulesChange(e, { connectorId: 'salesforce', cells: { create_case: { ...v.grid.create_case, sales: 'allow' } } });
   assert.equal(refused.ok, false);
   assert.match((refused as { errors: string[] }).errors.join(' '), /changes data in Salesforce.*Ask first or Blocked/);
-  good(applyRulesChange(e, { connectorId: 'salesforce', cells: { create_case: { ...v.grid.create_case, sales: 'ask' } } }));
+  good(applyRulesChange(e, { connectorId: 'salesforce', cells: { create_case: { ...v.grid.create_case, finance: 'ask' } } }));
 });
 
 check('a rule for everyone (shoppers too) is left alone, and a change it would defeat is refused with the reason', () => {

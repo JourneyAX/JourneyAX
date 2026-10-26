@@ -177,16 +177,16 @@
         "commercetools.find_product",
         "commercetools.stock_by_branch"
       ],
-      "ask": [],
-      "blocked": [
+      "ask": [
         "salesforce.create_case"
       ],
+      "blocked": [],
       "shouldSay": [
         "a note Trade Support can act on without calling back",
-        "that it is not logged anywhere until the rep sends it"
+        "an offer to raise it as a case, asked on a Yes/No card"
       ],
       "shouldNot": [
-        "say a case, task or note was created",
+        "say a case, task or note was created before the card is confirmed",
         "promise Friday"
       ]
     },
@@ -198,17 +198,18 @@
       "prompt": "Raise a case for Ngata & Penrose Joinery about their shed order.",
       "opensOn": "placemakers_sales_quote",
       "allow": [],
-      "ask": [],
-      "blocked": [
+      "ask": [
         "salesforce.create_case"
       ],
+      "blocked": [],
       "shouldSay": [
-        "that sales colleagues cannot raise cases yet and the wording ready for Customer Service"
+        "a Yes/No card before anything is created",
+        "the case only reported as raised once the tool says so"
       ],
       "shouldNot": [
-        "raise it anyway"
+        "say it is raised before the card is confirmed"
       ],
-      "note": "Open decision for the owner: should a sales rep be able to raise a case (asked first)? Today only customer service can."
+      "note": "Decided 2026-10-26: Sales and Branch may raise a case, and it asks first. Sales Managers and Finance still cannot (see TC-28)."
     },
     {
       "id": "TC-10",
@@ -561,6 +562,49 @@
       "shouldNot": [
         "show any order"
       ]
+    },
+    {
+      "id": "TC-27",
+      "login": "branch",
+      "useCase": "B04-UC02",
+      "playbook": "order-enquiry",
+      "prompt": "The customer collecting order OPP-0007 says two sheets arrived cracked. Raise a case, high priority.",
+      "opensOn": "placemakers_customer_service",
+      "allow": [
+        "commercetools.get_order"
+      ],
+      "ask": [
+        "salesforce.create_case"
+      ],
+      "blocked": [],
+      "shouldSay": [
+        "a Yes/No card before anything is created",
+        "the case only reported as raised once the tool says so"
+      ],
+      "shouldNot": [
+        "say it is raised before the card is confirmed"
+      ],
+      "note": "Decided 2026-10-26: Branch may raise a case, and it asks first."
+    },
+    {
+      "id": "TC-28",
+      "login": "sales.manager",
+      "useCase": null,
+      "playbook": "special-order-handover",
+      "prompt": "Raise a case for Ngata & Penrose Joinery about their shed order.",
+      "opensOn": "placemakers_sales_quote",
+      "allow": [],
+      "ask": [],
+      "blocked": [
+        "salesforce.create_case"
+      ],
+      "shouldSay": [
+        "that Sales Managers cannot raise cases yet and the wording ready for Customer Service"
+      ],
+      "shouldNot": [
+        "raise it anyway"
+      ],
+      "note": "Open decision for the owner: should a Sales Manager (or Finance) be able to raise a case (asked first)? Today only Customer Service, Sales and Branch can."
     }
   ]
 }

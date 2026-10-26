@@ -1,6 +1,6 @@
 # PlaceMakers test set: who to sign in as, what to type, what should happen
 
-26 cases. Sign in as the login named in each case (the demo logins and passwords are in `scripts/placemakers/demo-staff.ts`), type the question, and read the answer against the lists below.
+28 cases. Sign in as the login named in each case (the demo logins and passwords are in `scripts/placemakers/demo-staff.ts`), type the question, and read the answer against the lists below.
 The "doors" (what is allowed, asked first or blocked for that person) are checked by `apps/project-service/test/personas-cases.spec.ts` with no model call. What the assistant says is for reading by eye: **no case has been run against a model yet.**
 
 ## TC-01 · Handle any account enquiry (B02-UC01, partly ready)
@@ -71,17 +71,17 @@ The "doors" (what is allowed, asked first or blocked for that person) are checke
 - **Type:** Pass a special order to Trade Support: Talbot & Nguyen need four Garrison Gable Roof sheds 2.02 x 2.02m Zinc at Hamilton by Friday.
 - **Playbook it should open:** `special-order-handover`
 - **Allowed:** `salesforce.find_account`, `commercetools.find_product`, `commercetools.stock_by_branch`
-- **Blocked:** `salesforce.create_case`
-- **Should say:** a note Trade Support can act on without calling back; that it is not logged anywhere until the rep sends it
-- **Should not:** say a case, task or note was created; promise Friday
+- **Asks first (Yes/No card):** `salesforce.create_case`
+- **Should say:** a note Trade Support can act on without calling back; an offer to raise it as a case, asked on a Yes/No card
+- **Should not:** say a case, task or note was created before the card is confirmed; promise Friday
 
 ## TC-09
 - **Sign in as:** sales@placemakers.demo (Demo Sales Rep); opens on PlaceMakers Sales & Quote Consultant
 - **Type:** Raise a case for Ngata & Penrose Joinery about their shed order.
-- **Blocked:** `salesforce.create_case`
-- **Should say:** that sales colleagues cannot raise cases yet and the wording ready for Customer Service
-- **Should not:** raise it anyway
-- **Note:** Open decision for the owner: should a sales rep be able to raise a case (asked first)? Today only customer service can.
+- **Asks first (Yes/No card):** `salesforce.create_case`
+- **Should say:** a Yes/No card before anything is created; the case only reported as raised once the tool says so
+- **Should not:** say it is raised before the card is confirmed
+- **Note:** Decided 2026-10-26: Sales and Branch may raise a case, and it asks first. Sales Managers and Finance still cannot (see TC-28).
 
 ## TC-10
 - **Sign in as:** sales.manager@placemakers.demo (Demo Sales Manager); opens on PlaceMakers Sales & Quote Consultant
@@ -222,3 +222,23 @@ The "doors" (what is allowed, asked first or blocked for that person) are checke
 - **Blocked:** `commercetools.order_history`, `commercetools.get_order`, `salesforce.get_account`
 - **Should say:** that insights sees web traffic and reports, not customer records
 - **Should not:** show any order
+
+## TC-27 · Support Skip the Counter (B04-UC02, partly ready)
+- **Sign in as:** branch@placemakers.demo (Demo Branch Counter); opens on PlaceMakers Customer Service
+- **Type:** The customer collecting order OPP-0007 says two sheets arrived cracked. Raise a case, high priority.
+- **Playbook it should open:** `order-enquiry`
+- **Allowed:** `commercetools.get_order`
+- **Asks first (Yes/No card):** `salesforce.create_case`
+- **Not in the systems yet:** ACE (sample data only); branch POS (not connected)
+- **Should say:** a Yes/No card before anything is created; the case only reported as raised once the tool says so
+- **Should not:** say it is raised before the card is confirmed
+- **Note:** Decided 2026-10-26: Branch may raise a case, and it asks first.
+
+## TC-28
+- **Sign in as:** sales.manager@placemakers.demo (Demo Sales Manager); opens on PlaceMakers Sales & Quote Consultant
+- **Type:** Raise a case for Ngata & Penrose Joinery about their shed order.
+- **Playbook it should open:** `special-order-handover`
+- **Blocked:** `salesforce.create_case`
+- **Should say:** that Sales Managers cannot raise cases yet and the wording ready for Customer Service
+- **Should not:** raise it anyway
+- **Note:** Open decision for the owner: should a Sales Manager (or Finance) be able to raise a case (asked first)? Today only Customer Service, Sales and Branch can.

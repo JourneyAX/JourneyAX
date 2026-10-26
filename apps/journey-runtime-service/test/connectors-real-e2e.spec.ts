@@ -201,11 +201,12 @@ describe('The real connectors, end to end with a scripted model and pretend vend
   test('a tool the person\'s team may not use is blocked before anything is sent: not listed, not callable, and the vendor never hears of it', async () => {
     const before = { analytics: analytics.seen.length, crm: crm.seen.length, shop: shop.seen.length };
     const { toolResults } = await turn([
-      () => ({ toolCalls: [call('c1', 'get_connector_tools', { connector: 'salesforce' }), call('c2', 'call_connector_tool', { connector: 'salesforce', tool: 'create_case', arguments: { accountId: '0015g00000AbCdEfGh', subject: 'x' } }), call('c3', 'call_connector_tool', { connector: 'google-analytics', tool: 'daily_traffic', arguments: {} })] }),
+      () => ({ toolCalls: [call('c1', 'get_connector_tools', { connector: 'salesforce' }), call('c2', 'call_connector_tool', { connector: 'salesforce', tool: 'pipeline_summary', arguments: {} }), call('c3', 'call_connector_tool', { connector: 'google-analytics', tool: 'daily_traffic', arguments: {} })] }),
       () => ({ content: 'ok' }),
     ], people.sales);
     const [loaded, createCase, traffic] = toolResults.map((r) => r.body);
-    assert.ok(!loaded.tools.map((tool: any) => tool.name).includes('create_case'), 'sales do not even see create_case');
+    assert.ok(!loaded.tools.map((tool: any) => tool.name).includes('pipeline_summary'), 'sales do not even see pipeline_summary (only the sales managers and leadership do)');
+    assert.ok(loaded.tools.map((tool: any) => tool.name).includes('create_case'), 'sales may raise a case, so they see create_case (it asks first)');
     assert.equal(createCase.status, 'blocked');
     assert.equal(traffic.ok, false, 'a system the team cannot use at all is not available');
     assert.equal(crm.seen.length + analytics.seen.length, before.crm + before.analytics, 'neither vendor was contacted');

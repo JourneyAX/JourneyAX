@@ -46,7 +46,7 @@ check('a summary says how many personas and use cases there are and when and by 
   const html = render({});
   assert.ok(html.includes('43 personas') && html.includes('86 use cases'));
   assert.ok(html.includes('loaded') && html.includes('import-personas'));
-  assert.ok(html.includes('10 tools work') && html.includes('5 gaps') && html.includes('33 no tools named') && html.includes('38 not checked'));
+  assert.ok(html.includes('13 tools work') && html.includes('2 gaps') && html.includes('33 no tools named') && html.includes('38 not checked'));
 });
 
 check('each team is a section: live or planned, its note, who answers it, what it is waiting on, and its personas as cards', () => {

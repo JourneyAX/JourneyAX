@@ -39,7 +39,7 @@ const TABLE: Record<string, string> = {
   'zendesk.get_ticket':               'A A A A - - A - - -',
   'zendesk.create_ticket':            'K K - - - - - - - -',
   'zendesk.add_ticket_note':          'K K K K - - - - - -',
-  'salesforce.create_case':           'K K - - - - - - - -',
+  'salesforce.create_case':           'K K K - - - - K - -',
   'google-analytics.traffic_by_page': 'A - - - A A A - - -',
   'google-analytics.top_searches':    'A - - - A A A - - -',
   'google-analytics.daily_traffic':   'A - - - A A A - - -',
@@ -232,9 +232,9 @@ async function main() {
     // Who is sent to a tool they may not use, written out so the owner can read it and say "customer service should see deals".
     assert.deepEqual(gaps, {
       'account-360': { csr: ['salesforce.list_opportunities'], branch: ['salesforce.list_opportunities'], finance: ['salesforce.list_opportunities'] },
-      'order-enquiry': { sales: ['salesforce.create_case'], 'sales.manager': ['salesforce.create_case'], branch: ['salesforce.create_case'], finance: ['salesforce.create_case'] },
+      'order-enquiry': { 'sales.manager': ['salesforce.create_case'], finance: ['salesforce.create_case'] },
       'escalated-account-brief': { csr: ['salesforce.list_opportunities'], branch: ['salesforce.list_opportunities'] },
-      'special-order-handover': { sales: ['salesforce.create_case'], 'sales.manager': ['salesforce.create_case'] },
+      'special-order-handover': { 'sales.manager': ['salesforce.create_case'] },
     });
     for (const skillId of Object.keys(gaps)) {
       const text = String(draft.skills.find((skill: any) => skill.skillId === skillId).instructions);

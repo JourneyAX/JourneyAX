@@ -39,7 +39,9 @@ check('what each team may do with a tool is the pack\'s own rule: allowed, asked
   assert.equal(state('salesforce.list_opportunities', 'sales'), 'allow');
   assert.equal(state('salesforce.list_opportunities', 'customer-service'), 'blocked');
   assert.equal(state('salesforce.create_case', 'customer-service'), 'ask');
-  assert.equal(state('salesforce.create_case', 'sales'), 'blocked');
+  assert.equal(state('salesforce.create_case', 'sales'), 'ask');
+  assert.equal(state('salesforce.create_case', 'branch'), 'ask');
+  assert.equal(state('salesforce.create_case', 'finance'), 'blocked');
   assert.equal(state('commercetools.add_to_cart', 'branch'), 'ask');
   assert.equal(state('commercetools.stock_by_branch', 'finance'), 'blocked');
   assert.equal(state('commercetools.get_order', 'finance'), 'allow');
