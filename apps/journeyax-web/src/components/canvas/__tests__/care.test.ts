@@ -6,7 +6,8 @@
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CARE_TICKETS, nextCareTicket, slaClock, STATUS_WORD } from '../care/careData';
+import { CARE_STAGES, CARE_TICKETS, arrivalTicket, nextCareTicket, slaClock, stageIndex, STATUS_WORD } from '../care/careData';
+import { applyCareEvent, getCareTickets, resetCareStore } from '../care/careStore';
 import CareQueueCanvas from '../care/CareQueueCanvas';
 import CareTicketCanvas from '../care/CareTicketCanvas';
 import CareBoardCanvas from '../care/CareBoardCanvas';
@@ -82,11 +83,45 @@ check('an unknown ticket gets a plain message and a way back', () => {
   assert.ok(out.includes('We could not find that ticket') && out.includes('Back to my tickets'));
 });
 
-check('the board says its time figures are medians and splits the AI drafts three ways', () => {
+check('the board shows the seven stages the tickets move through, says its time figures are medians, and splits the AI drafts three ways', () => {
   const out = html(React.createElement(CareBoardCanvas));
   assert.ok(out.includes('time figures are medians'));
   assert.ok(out.includes('Sent as written 61%') && out.includes('Edited 31%') && out.includes('Discarded 8%'));
-  assert.ok(out.includes('Waiting the longest'));
+  assert.ok(out.includes('How the tickets are moving'));
+  for (const word of ['Arrived', 'AI read it', 'AI researched', 'Draft ready', 'Waiting for approval', 'Changes running', 'Done']) assert.ok(out.includes(word), word);
+});
+
+check('a ticket moves through the stages in order, and each stage says what it does', () => {
+  assert.deepEqual(CARE_STAGES.map((s) => s.id), ['arrived', 'read', 'researched', 'drafted', 'waiting', 'running', 'done']);
+  for (const s of CARE_STAGES) assert.ok(s.word.length > 3 && s.doing.length > 10);
+  assert.ok(stageIndex('read') < stageIndex('researched') && stageIndex('waiting') < stageIndex('running'));
+});
+
+check('the timeline grows by one dated line per stage, and the AI stages say what the AI did', () => {
+  const lengths = (['arrived', 'read', 'researched', 'drafted', 'waiting'] as const).map((st) => arrivalTicket(st).timeline.length);
+  assert.deepEqual(lengths, [1, 2, 3, 4, 5]);
+  const full = arrivalTicket('waiting');
+  assert.ok(full.timeline[0].note.includes('reached Zendesk'));
+  assert.ok(full.timeline[1].note.includes('topic delivery'));
+  assert.ok(full.timeline[2].note.includes('commercetools'));
+  assert.ok(full.timeline.every((e) => /^\d+:\d\d:\d\d$/.test(e.at)));
+  assert.equal(arrivalTicket('read').status, 'ai');
+  assert.equal(arrivalTicket('waiting').status, 'decide');
+});
+
+check('a new ticket appears at the top the moment it arrives, moves on stage by stage, and never goes backwards', () => {
+  resetCareStore();
+  const before = getCareTickets().length;
+  applyCareEvent({ type: 'ticket', ticket: arrivalTicket('arrived') });
+  assert.equal(getCareTickets().length, before + 1);
+  assert.equal(getCareTickets()[0].ref, '4322');
+  applyCareEvent({ type: 'ticket', ticket: arrivalTicket('researched') });
+  assert.equal(getCareTickets().length, before + 1, 'the same ticket is replaced, not added twice');
+  assert.equal(getCareTickets()[0].stage, 'researched');
+  applyCareEvent({ type: 'ticket', ticket: arrivalTicket('read') });
+  assert.equal(getCareTickets()[0].stage, 'researched', 'an older message does not undo newer work');
+  resetCareStore();
+  assert.equal(getCareTickets().length, before);
 });
 
 console.log(`✅ web: customer care canvases: ${passed} passed, 0 failed`);

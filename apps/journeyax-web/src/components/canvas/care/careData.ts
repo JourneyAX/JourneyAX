@@ -7,7 +7,27 @@
  */
 
 /** Where a ticket stands for the person looking at it. One word each, always shown with an icon and a colour. */
-export type CareStatus = 'decide' | 'waiting' | 'done' | 'lead';
+export type CareStatus = 'ai' | 'decide' | 'waiting' | 'done' | 'lead';
+
+/**
+ * Where a ticket is in the AI's work, from the moment it reaches the ticket desk to the moment it is solved. The portal shows these as
+ * they happen. `arrived` to `drafted` are the AI's; `waiting` is a named person's; `running` and `done` are the approved changes.
+ */
+export type CareStage = 'arrived' | 'read' | 'researched' | 'drafted' | 'waiting' | 'running' | 'done';
+
+export interface CareStageInfo { id: CareStage; word: string; doing: string }
+export const CARE_STAGES: CareStageInfo[] = [
+  { id: 'arrived', word: 'Arrived', doing: 'Reached the ticket desk. Waiting for the AI.' },
+  { id: 'read', word: 'AI read it', doing: 'Reading what the customer wrote: topic, mood, any order number.' },
+  { id: 'researched', word: 'AI researched', doing: 'Looking up the order, the account and earlier tickets.' },
+  { id: 'drafted', word: 'Draft ready', doing: 'Writing the summary, the reply and the list of changes.' },
+  { id: 'waiting', word: 'Waiting for approval', doing: 'With a named care person to approve, edit or reject.' },
+  { id: 'running', word: 'Changes running', doing: 'Making the approved changes in each system.' },
+  { id: 'done', word: 'Done', doing: 'Solved. Recorded with who approved it.' },
+];
+export const stageIndex = (stage: CareStage): number => CARE_STAGES.findIndex((s) => s.id === stage);
+
+export interface CareTimelineEntry { stage: CareStage; at: string; note: string }
 
 export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce';
 
@@ -66,6 +86,9 @@ export interface CareTicket {
   needsLead?: boolean;
   /** The one-line summary shown in the list. */
   summary: string;
+  stage: CareStage;
+  /** What happened at each stage, with the time, oldest first. */
+  timeline: CareTimelineEntry[];
 }
 
 export interface CareBoard {
@@ -81,7 +104,9 @@ export interface CareBoard {
 
 const rep = { name: 'Aroha Ngata', id: 'CSR-1041' };
 
-export const CARE_TICKETS: CareTicket[] = [
+type Seed = Omit<CareTicket, 'stage' | 'timeline'> & { stage?: CareStage; clock?: string };
+
+const SEEDS: Seed[] = [
   {
     id: 't4312', ref: '4312', subject: 'My vanity has not arrived', status: 'decide', channel: 'Contact form',
     message: 'I ordered a vanity on the 18th and it was meant to be here on Thursday. Nobody has called. Where is it?',
@@ -197,6 +222,61 @@ export const CARE_TICKETS: CareTicket[] = [
   },
 ];
 
+const two = (n: number) => String(n).padStart(2, '0');
+const OFFSET_SECONDS: Record<CareStage, number> = { arrived: 0, read: 2, researched: 7, drafted: 15, waiting: 15, running: 41, done: 49 };
+
+/** What the AI and the person did at each stage up to `upTo`, with the time, for the "How I got here" list. */
+export function timelineFor(t: Seed, upTo: CareStage, startMinute: number): CareTimelineEntry[] {
+  const systems = [...new Set(t.found.map((f) => f.source.system))];
+  const notes: Record<CareStage, string> = {
+    arrived: `Ticket ${t.ref} reached Zendesk (${t.channel}).`,
+    read: `Read it: topic ${t.topic.value.toLowerCase()}, mood ${t.mood.value.toLowerCase()}${t.order ? `, order ${t.order.ref} named` : ''}.`,
+    researched: `Looked in ${systems.length ? systems.join(', ') : 'the sources'}${t.notChecked.length ? `; ${t.notChecked.length} thing could not be checked` : ''}.`,
+    drafted: `Wrote a summary, ${t.draft.isReply ? 'a reply' : 'call notes'} and ${t.steps.length} change${t.steps.length === 1 ? '' : 's'}.`,
+    waiting: t.needsLead ? 'Held for the team lead: a complaint, and the AI is not sure.' : `Assigned to ${t.assignee.name} (${t.assignee.id}) to decide.`,
+    running: 'Approved. Making the changes.',
+    done: `Approved by ${t.assignee.name}. All changes made.`,
+  };
+  return CARE_STAGES.filter((s) => stageIndex(s.id) <= stageIndex(upTo)).map((s) => {
+    const sec = OFFSET_SECONDS[s.id];
+    return { stage: s.id, at: `9:${two(startMinute + Math.floor(sec / 60))}:${two(sec % 60)}`, note: notes[s.id] };
+  });
+}
+
+export const CARE_TICKETS: CareTicket[] = SEEDS.map((seed, i) => {
+  const stage: CareStage = seed.stage ?? (seed.status === 'done' ? 'done' : 'waiting');
+  return { ...seed, stage, timeline: timelineFor(seed, stage, 41 - i * 3) };
+});
+
+/** A ticket that reaches the ticket desk while the person is watching. The store reveals it stage by stage. */
+const ARRIVAL: Seed = {
+  id: 't4322', ref: '4322', subject: 'Where is my pergola order?', status: 'decide', channel: 'Contact form',
+  message: 'I ordered the pergola posts last week. The page says processing. When will they be here?',
+  customer: { name: 'Sam Shopper', account: 'Retail customer', since: '2025', earlier: 'No open tickets' },
+  assignee: rep, slaMinutes: 240, topic: { value: 'Delivery', confidence: 'High' }, mood: { value: 'Neutral', confidence: 'High' },
+  summary: 'Picked and ready. Give a firm date.',
+  found: [
+    { text: 'Order B13E7A55 is picked and waiting for the carrier. Promised for 29 Oct.', source: { system: 'commercetools', label: 'Order B13E7A55' } },
+    { text: 'Paid in full. Delivery to Auckland 1010.', source: { system: 'commercetools', label: 'Payment' } },
+    { text: 'One earlier order, no open cases.', source: { system: 'Salesforce', label: 'Account' } },
+  ],
+  notChecked: [],
+  recommendation: 'Tell Sam the posts are picked and due on 29 Oct, and note it on the order.',
+  otherOption: 'Offer pick-up from the Albany branch if the date does not suit.',
+  order: { ref: 'B13E7A55', states: { order: 'Confirmed', shipment: 'Ready', payment: 'Paid' }, promised: '29 Oct', lines: [{ name: 'Glulam post 88 x 88 pre-primed 2.7m', quantity: 4 }], notes: [] },
+  draft: { isReply: true, text: 'Kia ora Sam,\n\nYour posts are picked and ready for the carrier. They are due with you on 29 October. I will let you know if that changes.\n\nNgā mihi,\nAroha' },
+  replyChecks: [{ label: 'No refund, replacement or amount promised', ok: true }, { label: 'Dates come from the order', ok: true }],
+  steps: [
+    { id: 's1', system: 'Zendesk', kind: 'customer', what: 'Send the reply and set the ticket to', before: 'Open', after: 'Pending' },
+    { id: 's2', system: 'commercetools', kind: 'internal', what: 'Add a note on order B13E7A55', after: 'Customer told: due 29 Oct' },
+  ],
+};
+
+/** The arriving ticket as it looks once it has reached `stage`. */
+export function arrivalTicket(stage: CareStage): CareTicket {
+  return { ...ARRIVAL, status: stage === 'waiting' ? 'decide' : stage === 'done' ? 'done' : stage === 'running' ? 'waiting' : 'ai', stage, timeline: timelineFor(ARRIVAL, stage, 44) };
+}
+
 export const CARE_BOARD: CareBoard = {
   open: 7, waitingOnUs: 3, nearBreach: 2, firstReplyMinutes: 14, firstReplyTargetMinutes: 30,
   drafts: { asIs: 61, edited: 31, discarded: 8 }, csat: { percent: 88, ratings: 24 },
@@ -227,6 +307,7 @@ export function slaClock(minutes: number): { text: string; tone: 'ok' | 'warn' |
 }
 
 export const STATUS_WORD: Record<CareStatus, { word: string; icon: string; tone: 'wait' | 'info' | 'ok' | 'bad' }> = {
+  ai: { word: 'AI working', icon: '◐', tone: 'info' },
   decide: { word: 'Decide', icon: '●', tone: 'wait' },
   waiting: { word: 'Waiting', icon: '◐', tone: 'info' },
   done: { word: 'Done', icon: '✓', tone: 'ok' },
