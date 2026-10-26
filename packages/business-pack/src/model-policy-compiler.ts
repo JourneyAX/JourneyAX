@@ -12,7 +12,7 @@ export interface CompileModelPolicyInput {
     fallbackProvider?: string;
     fallbackModel?: string;
     /** Per-policy overrides of the platform defaults (see defaults/model-policies.json). */
-    policyOverrides?: Record<string, { provider?: string; model?: string; timeoutMs?: number; reasoningEffort?: string }> | null;
+    policyOverrides?: Record<string, { provider?: string; model?: string; timeoutMs?: number; reasoningEffort?: string; maxOutputTokens?: number }> | null;
   } | null;
   dataResidency?: string;
 }
@@ -42,12 +42,16 @@ export function validatePolicyOverrides(overrides: unknown): string[] {
   for (const [policyId, override] of Object.entries(overrides as Record<string, any>)) {
     if (!KNOWN_POLICY_IDS.includes(policyId)) { problems.push(`ai.policyOverrides.${policyId}: unknown policy (expected one of ${KNOWN_POLICY_IDS.join(', ')})`); continue; }
     if (!override || typeof override !== 'object' || Array.isArray(override)) { problems.push(`ai.policyOverrides.${policyId} must be an object`); continue; }
-    const unknown = Object.keys(override).filter((key) => !['provider', 'model', 'timeoutMs', 'reasoningEffort'].includes(key));
+    const unknown = Object.keys(override).filter((key) => !['provider', 'model', 'timeoutMs', 'reasoningEffort', 'maxOutputTokens'].includes(key));
     if (unknown.length) problems.push(`ai.policyOverrides.${policyId}: unknown key(s) ${unknown.join(', ')}`);
     if (override.model !== undefined && (typeof override.model !== 'string' || !override.model.trim())) problems.push(`ai.policyOverrides.${policyId}.model must be a non-empty string`);
     if (override.provider !== undefined && (typeof override.provider !== 'string' || !override.provider.trim())) problems.push(`ai.policyOverrides.${policyId}.provider must be a non-empty string`);
     if (override.reasoningEffort !== undefined && !['none', 'minimal', 'low', 'medium', 'high'].includes(override.reasoningEffort)) {
       problems.push(`ai.policyOverrides.${policyId}.reasoningEffort must be one of none, minimal, low, medium, high`);
+    }
+    // A model that thinks before it answers spends part of this on the thinking, so a larger one may need a larger limit than the default.
+    if (override.maxOutputTokens !== undefined && (!Number.isInteger(override.maxOutputTokens) || override.maxOutputTokens < 500 || override.maxOutputTokens > 16000)) {
+      problems.push(`ai.policyOverrides.${policyId}.maxOutputTokens must be a whole number between 500 and 16000`);
     }
     if (override.timeoutMs !== undefined && (!Number.isInteger(override.timeoutMs) || override.timeoutMs < minTimeoutMs || override.timeoutMs > maxTimeoutMs)) {
       problems.push(`ai.policyOverrides.${policyId}.timeoutMs must be a whole number of milliseconds between ${minTimeoutMs} and ${maxTimeoutMs}`);
@@ -165,7 +169,7 @@ export function compileModelPolicy(input: CompileModelPolicyInput): ModelPolicy 
       timeoutMs: override?.timeoutMs ?? defaults.timeoutMs,
       fallbackAllowed: hasExplicitFallback,
       maxInputTokens: defaults.maxInputTokens,
-      maxOutputTokens: defaults.maxOutputTokens,
+      maxOutputTokens: override?.maxOutputTokens ?? defaults.maxOutputTokens,
     };
   });
 

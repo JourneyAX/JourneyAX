@@ -89,6 +89,25 @@ export const ProductGuidesSchema = z.object({
   /** Passages returned by one read, and the most characters of each. */
   maxPassages: z.number().int().min(1).max(20).optional(),
   passageChars: z.number().int().min(200).max(3000).optional(),
+  /** A single guide up to this many characters is read whole, in its own order, instead of the best few passages (default 12000; 0 never). */
+  wholeGuideChars: z.number().int().min(0).max(30000).optional(),
+}).strict();
+
+/**
+ * Tenant settings for a signed-in business customer's own account (pack `extensions.customerAccount`): which connector answers when a customer
+ * the back office has linked to a company asks about their deliveries, balance or prices, and which of its tools do each of the three jobs.
+ * A tenant without it (or with `enabled` false) has the feature off: nobody is offered the account tools.
+ */
+export const CustomerAccountSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** The connector that holds the accounts (its id in `extensions.connectors`). */
+  connector: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/, 'a connector id uses letters, digits and _ . -').optional(),
+  /** The connector's own tools for the three lookups; each must be a tool that only reads. */
+  tools: z.object({
+    balance: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
+    deliveries: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
+    price: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
+  }).strict().optional(),
 }).strict();
 
 /**

@@ -78,7 +78,7 @@ async function main() {
           calls++;
         }
       }
-      assert.equal(calls, 46);
+      assert.equal(calls, 47);
     });
 
     await check('what comes back is real-shaped: products with SKUs and prices, stock with branches, orders with lines, a cart that grows when a line is added', async () => {

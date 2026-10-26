@@ -18,10 +18,12 @@ import { overlayDraft, withDemoPrices, withModel } from './pack-overlay';
 const previewModel = String(process.env.PREVIEW_MODEL || '').trim();
 /** Optional: show demo prices in this preview only (PREVIEW_DEMO_PRICES=1). */
 const previewDemoPrices = process.env.PREVIEW_DEMO_PRICES === '1';
+let modelLogged = 0;
 const laid = (pack: any) => {
   let out: any = overlayDraft(pack, draft);
   if (previewModel) out = withModel(out, previewModel);
   if (previewDemoPrices) out = withDemoPrices(out);
+  if (modelLogged++ < 1) console.log(`[preview-runtime] answering models for complex_reasoning: ${(out.modelPolicy?.policies || []).find((p: any) => p.policyId === 'complex_reasoning')?.candidates?.map((c: any) => `${c.provider}/${c.model}${c.reasoningEffort ? `:${c.reasoningEffort}` : ''}`).join(', ')}; demo prices ${previewDemoPrices ? 'on' : 'off'}`);
   return out;
 };
 

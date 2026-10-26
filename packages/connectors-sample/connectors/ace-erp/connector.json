@@ -185,6 +185,67 @@
       }
     },
     {
+      "name": "find_account",
+      "description": "Find a trade account by part of its name: returns its ERP account number (such as ACC-0028), its name, price tier and payment terms. Use the number with the other tools. No balances.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Part of the account name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 10).",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "Talbot"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "account_balances",
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "name",
+              "weight": 3
+            },
+            {
+              "field": "accountId",
+              "weight": 2
+            }
+          ],
+          "mode": "all"
+        },
+        "limit": {
+          "arg": "limit",
+          "default": 5,
+          "max": 10
+        },
+        "sort": {
+          "field": "name",
+          "order": "asc"
+        },
+        "select": [
+          "accountId",
+          "name",
+          "tier",
+          "terms"
+        ]
+      }
+    },
+    {
       "name": "account_balance",
       "description": "The balance, credit limit and overdue amount of a trade account.",
       "inputSchema": {

@@ -138,6 +138,11 @@
           "summary": "A trade account's deliveries, newest first."
         },
         {
+          "name": "find_account",
+          "sideEffect": "read",
+          "summary": "Find a trade account by name."
+        },
+        {
           "name": "account_balance",
           "sideEffect": "read",
           "summary": "The balance, credit limit and overdue amount of a trade account.",

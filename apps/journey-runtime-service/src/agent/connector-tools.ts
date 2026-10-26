@@ -54,7 +54,7 @@ export function formatConnectors(summaries: ConnectorSummary[]): string {
   if (summaries.length === 0) return '';
   return (
     '# Connectors you can use\n' +
-    'Connectors are other systems the business keeps data in or acts on. Their tools are not loaded yet: when a request needs one, load that connector\'s tools with get_connector_tools, then use call_connector_tool. Do not guess tool names or inputs. If a result is marked sample, say it is sample data.\n' +
+    'Connectors are other systems the business keeps data in or acts on. Their tools are not loaded yet: when a request needs one, load that connector\'s tools with get_connector_tools, then use call_connector_tool. The connectors you can use are listed below, so you do not need list_connectors first: go straight to get_connector_tools for the one you need, and when a request needs two systems, load and call both in the same step. Do not guess tool names or inputs. If a result is marked sample, say it is sample data.\n' +
     summaries.map((summary) => `- ${summary.connector}: ${summary.description}${summary.sample ? ' (sample data)' : ''}`).join('\n')
   );
 }

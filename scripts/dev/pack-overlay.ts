@@ -67,6 +67,9 @@ export function withModel(pack: Json, spec: string): Json {
   for (const policy of out.modelPolicy.policies) {
     if (!['complex_reasoning', 'response_generation', 'tool_selection'].includes(policy.policyId)) continue;
     const first = (policy.candidates || [])[0] || {};
+    // A model that thinks before it answers needs room to think and time to do it.
+    policy.timeoutMs = Math.max(policy.timeoutMs || 0, 60000);
+    policy.maxOutputTokens = Math.max(policy.maxOutputTokens || 0, 8000);
     policy.candidates = [
       { provider, model, priority: 1, ...(first.temperature !== undefined ? { temperature: first.temperature } : {}), ...(effort ? { reasoningEffort: effort } : {}) },
       ...(policy.candidates || []).map((c: Json, i: number) => ({ ...c, priority: i + 2 })),
