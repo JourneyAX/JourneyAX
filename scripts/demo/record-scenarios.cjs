@@ -185,7 +185,12 @@ function chat(r) {
       await fill('cardCvc', '123'); await shot('p6-card');
       await wait(700);
       if (stopBeforePay) return;
-      await r.click(frame().getByRole('button', { name: /pay/i }).last(), 600);
+      // Pay too: the cursor glides to it, the browser's own click presses it (a click at a worked-out spot can miss while the form shifts).
+      const pay = frame().getByRole('button', { name: /pay/i }).last();
+      await pay.waitFor({ state: 'visible', timeout: 12000 });
+      await r.point(pay).catch(() => {});
+      await pay.click({ timeout: 10000 });
+      await wait(600);
     },
     /** Waits for the order panel ("Order #XXXXXXXX") and returns its number. */
     async orderNumber() {
