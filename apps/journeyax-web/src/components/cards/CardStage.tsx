@@ -19,6 +19,7 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
 import { clarifyProgress, mapClarifyCard } from '@/lib/cards/mappers';
 import { buildDetailProduct, fetchProductDetail } from '@/lib/cards/productDetail';
+import { matchBuyerFeedback } from '@/lib/cards/buyerFeedback';
 import { MAX_COMPARE, clearCompare, getCompareSelection, toggleCompare, useCompareSelection } from '@/lib/cards/compareStore';
 import { decorateProductRows } from '@/lib/cards/productTiles';
 import { buildComparisonCard, toCompareSource } from '@/lib/cards/comparison';
@@ -270,7 +271,9 @@ export function useCardActions() {
         void (async () => {
           const detail = await fetchProductDetail(sku, cfgRef.current.projectId);
           if (!p && !detail) return;
-          const product = buildDetailProduct(p as any, detail, sku);
+          const built = buildDetailProduct(p as any, detail, sku);
+          const feedback = matchBuyerFeedback(cfgRef.current.buyerFeedback, { title: String(built.title || ''), category: built.category as string | undefined });
+          const product = feedback ? { ...built, ...feedback } : built;
           const detailId = `productDetail-${sku}-${Date.now()}`;
           openPanelCard(detailId, 'productDetail');
           dispatch({

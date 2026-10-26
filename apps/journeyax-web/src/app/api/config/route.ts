@@ -42,6 +42,16 @@ export async function GET(req: Request) {
       // 'quote' so existing fixtures/kit tenants are unchanged when unset.
       commerceMode: p?.commerceMode === 'cart' ? 'cart' : 'quote',
       checkoutReview: p?.extensions?.checkoutReview?.enabled === true,
+      // What buyers often mention about a kind of product (pack extension buyerFeedback): shown on the product's details.
+      buyerFeedback: Array.isArray(p?.extensions?.buyerFeedback?.rules)
+        ? p.extensions.buyerFeedback.rules
+            .filter((rule: any) => rule && Array.isArray(rule.when) && Array.isArray(rule.mentions))
+            .map((rule: any) => ({
+              when: rule.when.map(String),
+              mentions: rule.mentions.map(String),
+              ...(Array.isArray(rule.watchFor) ? { watchFor: rule.watchFor.map(String) } : {}),
+            }))
+        : [],
       payment: p?.extensions?.payment?.embedded === true
         ? { embedded: true, collectShipping: p.extensions.payment.collectShipping === true, shippingCountries: Array.isArray(p.extensions.payment.shippingCountries) ? p.extensions.payment.shippingCountries.map(String) : [] }
         : undefined,

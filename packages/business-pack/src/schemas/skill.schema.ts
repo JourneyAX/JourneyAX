@@ -130,6 +130,43 @@ export const ContentPagesSchema = z.object({
  * asks the consultant for a review card (quantities, what else may be needed, pick-up or delivery, warranty and guides), and the
  * card's own button goes on to payment. A tenant without it pays straight away, as before.
  */
+/**
+ * Tenant settings for what goes with a product (pack `extensions.accessoryHelper`): the words around a list of suggestions, and, for a kind
+ * of product, the things the job really needs. When a kind of product has a "must have" list, that list is all the shop offers with it
+ * (no "also bought" extras); a kind with none keeps the knowledge's suggestions.
+ */
+export const AccessoryHelperSchema = z.object({
+  /** The words used around a list of suggestions (for example `suggestionsNote`, `shopSuggestions`). */
+  labels: z.record(z.string(), z.string().max(200)).optional(),
+  mustHave: z.array(z.object({
+    /** The product is of this kind when its category trail has one of these names (any case), or its name has one of them as a word. */
+    when: z.array(z.string().min(1).max(80)).min(1).max(10),
+    needs: z.array(z.object({
+      /** What the customer sees the group called ("Basin mixer"). */
+      label: z.string().min(1).max(80),
+      /** The words that find it in the catalogue ("basin mixer"). */
+      query: z.string().min(1).max(120),
+      /** Why the job needs it, in the shop's own words ("Needed to run water to the basin"). */
+      reason: z.string().max(200).optional(),
+      /** How many products to show for it (default 3). */
+      maxItems: z.number().int().min(1).max(6).optional(),
+    }).strict()).min(1).max(6),
+  }).strict()).max(30).optional(),
+}).strict();
+
+/**
+ * What buyers often mention about a kind of product (pack `extensions.buyerFeedback`), shown on the product's details beside what is
+ * worth checking before buying. It is the shop's own wording kept as data, so a real review feed can replace it later; each rule applies to
+ * a product whose category (or a word of its name) is one of `when`.
+ */
+export const BuyerFeedbackSchema = z.object({
+  rules: z.array(z.object({
+    when: z.array(z.string().min(1).max(80)).min(1).max(10),
+    mentions: z.array(z.string().min(1).max(200)).min(1).max(6),
+    watchFor: z.array(z.string().min(1).max(200)).max(4).optional(),
+  }).strict()).max(30),
+}).strict();
+
 export const CheckoutReviewSchema = z.object({
   enabled: z.boolean().optional(),
   /** The words on the card (heading, section titles, button labels); anything left out keeps the platform's plain wording. */

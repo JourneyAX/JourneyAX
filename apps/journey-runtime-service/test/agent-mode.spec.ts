@@ -23,6 +23,7 @@ import {
   getAgentToolDefinitions,
   resolveBoundCapability,
   AGENT_TOOL_DEFINITIONS,
+  mustHaveRuleFor,
   type AgentToolContext,
 } from '../src/agent/agent-tools';
 import {
@@ -6230,6 +6231,38 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.match(without.message, /Never present the product's own alternatives as accessories/);
     assert.deepEqual(goesWithForTrail(okf, ['Building', 'Wallboard', 'Specialist Board', 'Deeper']).map((g) => g.name), ['Jointing Tape'], 'a link on a shelf above the product still applies');
     assert.deepEqual(goesWithForTrail(okf, undefined), []);
+  });
+
+  test('accessories: when the shop says what the job needs, only those are offered, found by the shop\'s own words, each with its reason, and the knowledge\'s extras are left out', async () => {
+    const mustHave = [{ when: ['Specialist Board'], needs: [
+      { label: 'Jointing tape', query: 'tape', reason: 'Needed to finish the joins', maxItems: 2 },
+      { label: 'Pull saw', query: 'saw', reason: 'Needed to cut it to size' },
+      { label: 'Gold plating', query: 'nothing matches this' },
+    ] }];
+    const contextFor = (rules: unknown): AgentToolContext => ({
+      tenantId: 'test-tenant', environmentId: 'test', correlationId: 'c', release: { ...createTestPack(), catalogMapping: undefined, extensions: { accessoryHelper: { mustHave: rules } } } as any, okfContent: okf,
+      catalogSearchHandler: new CatalogSearchHandler(products), turnProductSkus: new Set(), catalogProductCache: new Map(),
+      readSourceIds: new Set(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false,
+    });
+    const ctx = contextFor(mustHave);
+    const result: any = await executeAgentTool('get_related_products', { sku: 'X1' }, ctx);
+    assert.equal(result.source, 'must_have');
+    assert.deepEqual(result.groups.map((group: any) => [group.label, group.hint, group.required, group.items.map((item: any) => item.sku)]), [
+      ['Jointing tape', 'Needed to finish the joins', true, ['T1']],
+      ['Pull saw', 'Needed to cut it to size', true, ['W1']],
+    ], 'a need nothing in the catalogue matches is left out, never invented');
+    assert.deepEqual(result.relatedProducts.map((p: any) => [p.sku, p.reason]), [['T1', 'Needed to finish the joins'], ['W1', 'Needed to cut it to size']]);
+    assert.match(result.message, /Offer only these/);
+    assert.ok(ctx.turnProductSkus.has('T1') && ctx.turnProductSkus.has('W1'), 'they can be shown on a card this turn');
+    // A product the rule does not name keeps what the knowledge suggests.
+    const other: any = await executeAgentTool('get_related_products', { sku: 'S1' }, contextFor(mustHave));
+    assert.notEqual(other.source, 'must_have');
+    // The rule can name the product by a word of its name, in any case.
+    const byName: any = await executeAgentTool('get_related_products', { sku: 'S1' }, contextFor([{ when: ['wallboard'], needs: [{ label: 'Jointing tape', query: 'tape' }] }]));
+    assert.equal(byName.source, 'must_have');
+    assert.deepEqual(mustHaveRuleFor(mustHave, { categoryTrail: ['Building', 'Wallboard', 'specialist board'] })?.needs.length, 3);
+    assert.equal(mustHaveRuleFor(mustHave, { categoryTrail: ['Timber'] }), undefined);
+    assert.equal(mustHaveRuleFor(undefined, { categoryTrail: ['Timber'] }), undefined);
   });
 
   test('accessories: with no goes-with links the shop\'s own suggestions on the product are used, minus the product\'s own shelf', async () => {

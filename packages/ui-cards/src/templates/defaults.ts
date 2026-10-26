@@ -283,7 +283,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     top: el('Box', { direction: 'row', gap: 'lg', wrap: true }, { children: ['gallery', 'info'] }),
     gallery: el('Box', { flex: '1 1 180px', maxWidth: '240px', gap: 'sm' }, { children: ['hero'] }),
     hero: el('Image', { src: S('/product/imageUrl'), alt: S('/product/title'), ratio: '1:1', radius: 'md', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
-    info: el('Box', { flex: '1 1 340px', gap: 'md' }, { children: ['brand', 'title', 'price', 'rating', 'stock', 'stockWarn', 'desc', 'actions', 'site'] }),
+    info: el('Box', { flex: '1 1 340px', gap: 'md' }, { children: ['brand', 'title', 'price', 'rating', 'stock', 'stockWarn', 'desc', 'actions', 'asks', 'site'] }),
     brand: el('Text', { text: S('/product/brand'), variant: 'eyebrow' }, { visible: [S('/product/brand')] }),
     title: el('Text', { text: S('/product/title'), variant: 'title' }),
     price: el('Price', { amount: S('/product/price'), currency: S('/product/currency'), compareAt: S('/product/compareAtPrice'), size: 'lg' }),
@@ -292,7 +292,14 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     stockWarn: el('StatusDot', { label: S('/product/stockLabel'), tone: 'warning' }, { visible: [S('/product/stockWarn')] }),
     desc: el('Markdown', { text: S('/product/description') }, { visible: [S('/product/description')] }),
     site: el('Link', { label: 'See it on the website', href: S('/product/productUrl'), external: true }, { visible: [S('/product/hasProductUrl')] }),
-    sections: el('Box', { gap: 'lg' }, { children: ['features', 'specs', 'docs', 'suggested', 'related'] }),
+    sections: el('Box', { gap: 'lg' }, { children: ['features', 'feedback', 'watch', 'specs', 'docs', 'suggested', 'related'] }),
+    // What buyers often mention, and what is worth checking, from the shop's own words for this kind of product (never from the model).
+    feedback: el('Box', { gap: 'xs' }, { children: ['feedbackHead', 'feedbackList'], visible: [S('/product/hasFeedback')] }),
+    feedbackHead: el('Text', { text: 'What buyers often mention', variant: 'subheading' }),
+    feedbackList: el('Markdown', { text: S('/product/feedbackText') }),
+    watch: el('Box', { gap: 'xs' }, { children: ['watchHead', 'watchList'], visible: [S('/product/hasWatch')] }),
+    watchHead: el('Text', { text: 'Worth checking before you buy', variant: 'subheading' }),
+    watchList: el('Markdown', { text: S('/product/watchText') }),
     features: el('Box', { gap: 'xs' }, { children: ['featuresHead', 'featuresList'], visible: [S('/product/hasFeatures')] }),
     featuresHead: el('Text', { text: 'Key features', variant: 'subheading' }),
     featuresList: el('Markdown', { text: S('/product/featuresText') }),
@@ -320,6 +327,11 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     relTitle: el('Text', { text: I('title'), variant: 'small', lines: 2 }),
     relPrice: el('Price', { amount: I('price'), currency: I('currency'), size: 'sm' }),
     actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'handoff', 'ask', 'compare'] }),
+    // Three questions customers ask most, one tap each; the consultant answers from the shop's own guides and records.
+    asks: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: ['askWhy', 'askWarranty', 'askInstall'] }),
+    askWhy: el('Button', { label: 'Why this one?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Why do you recommend ${/product/title} for me?' } } } } }),
+    askWarranty: el('Button', { label: 'Warranty and guarantee', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'What is the warranty and guarantee on ${/product/title}?' } } } } }),
+    askInstall: el('Button', { label: 'Who installs it?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Do I need a licensed tradesperson to install ${/product/title}, or can I do it myself? How is it installed?' } } } } }),
     add: el('Button', { label: { $template: 'Add to ${/closing}' }, variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1, title: S('/product/title') } } } }),
     // A configured hand-off (e.g. "Design it in The Forge") — a product whose
     // sale closes in the tenant's own tool, not in the bag. Present only when

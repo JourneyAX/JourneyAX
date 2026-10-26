@@ -1039,6 +1039,18 @@ function holdForConfirmation(toolName: string, args: Record<string, any>, prompt
   };
 }
 
+/** The shop's own "what the job needs" rule for this product, when one applies (pack `extensions.accessoryHelper.mustHave`). */
+type MustHaveRule = { when: string[]; needs: Array<{ label: string; query: string; reason?: string; maxItems?: number }> };
+export function mustHaveRuleFor(rules: unknown, product: any): MustHaveRule | undefined {
+  if (!Array.isArray(rules) || !product) return undefined;
+  const trail = (Array.isArray(product.categoryTrail) ? product.categoryTrail : []).map((segment: unknown) => String(segment).trim().toLowerCase());
+  const nameWords = String(product.title || product.name || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return (rules as MustHaveRule[]).find((rule) => Array.isArray(rule?.when) && rule.when.some((word) => {
+    const w = String(word).trim().toLowerCase();
+    return Boolean(w) && (trail.includes(w) || nameWords.includes(w));
+  }));
+}
+
 export async function executeAgentTool(
   toolName: string,
   rawArgs: Record<string, any>,
@@ -1686,10 +1698,24 @@ export async function executeAgentTool(
         }
       }
 
-      // What customers commonly buy with this product's shelf, from the knowledge's own goes-with links (suggestions, not requirements).
-      const goesWith = goesWithForTrail(ctx.okfContent, mainProd?.categoryTrail);
+      // For some kinds of product the shop says what the job really needs (a vanity needs a basin mixer and a waste). When one applies,
+      // only those are offered, found by the shop's own words in the catalogue; the knowledge's "also bought" suggestions are left out.
+      const mustHaveRule = mustHaveRuleFor((ctx.release as any)?.extensions?.accessoryHelper?.mustHave, mainProd);
+      const goesWith = mustHaveRule ? [] : goesWithForTrail(ctx.okfContent, mainProd?.categoryTrail);
       const execCtx: any = makeExecContext(ctx);
-      let groups: Array<{ key: string; label: string; hint?: string; items: any[] }> = [];
+      let groups: Array<{ key: string; label: string; hint?: string; required?: boolean; items: any[] }> = [];
+      if (mustHaveRule) {
+        for (const need of mustHaveRule.needs) {
+          const found = await ctx.catalogSearchHandler.execute({ query: need.query, maxResults: Math.max(need.maxItems ?? 3, 3) + 4 } as any, execCtx).catch(() => undefined);
+          const items = ((found?.products || found?.items || []) as any[])
+            .filter((p: any) => p?.sku && p.sku !== sku && !isProductDiscontinued(p))
+            .sort((a: any, b: any) => Number(Boolean(b.inStock)) - Number(Boolean(a.inStock)))
+            .slice(0, need.maxItems ?? 3);
+          if (items.length === 0) continue;
+          for (const it of items) { ctx.turnProductSkus.add(it.sku); ctx.catalogProductCache.set(it.sku, it); }
+          groups.push({ key: need.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), label: need.label, ...(need.reason ? { hint: need.reason } : {}), required: true, items });
+        }
+      }
       if (goesWith.length > 0) {
         const looked = await ctx.catalogSearchHandler.execute({
           isAgentMode: true,
@@ -1712,8 +1738,8 @@ export async function executeAgentTool(
       }
       // No goes-with links in the knowledge for this shelf: the shop's own "have you considered" list on the product's record is the next
       // best grounded source. Products on the product's own shelf are its colours and sizes, not accessories, so they are left out.
-      let source: 'knowledge' | 'shop_suggestions' | 'none' = groups.length > 0 ? 'knowledge' : 'none';
-      if (groups.length === 0 && Array.isArray(mainProd?.accessorySkus) && mainProd.accessorySkus.length > 0) {
+      let source: 'knowledge' | 'must_have' | 'shop_suggestions' | 'none' = groups.length > 0 ? (mustHaveRule ? 'must_have' : 'knowledge') : 'none';
+      if (groups.length === 0 && !mustHaveRule && Array.isArray(mainProd?.accessorySkus) && mainProd.accessorySkus.length > 0) {
         const shelf = (p: any) => (Array.isArray(p?.categoryTrail) ? p.categoryTrail.join('\u0001').toLowerCase() : '');
         const mainShelf = shelf(mainProd);
         const suggested: any[] = [];
@@ -1745,9 +1771,11 @@ export async function executeAgentTool(
         grounded: groups.length > 0,
         source,
         ...(groups.length > 0 ? { note: String((ctx.release as any)?.extensions?.accessoryHelper?.labels?.suggestionsNote || 'Suggestions to check, not confirmed requirements or compatibility.') } : {}),
-        groups: groups.map((group) => ({ key: group.key, label: group.label, items: group.items.map(compact) })),
-        relatedProducts: groups.flatMap((group) => group.items.map((p: any) => ({ ...compact(p), relation: group.label }))),
-        message: source === 'shop_suggestions'
+        groups: groups.map((group) => ({ key: group.key, label: group.label, ...(group.hint ? { hint: group.hint } : {}), ...(group.required ? { required: true } : {}), items: group.items.map(compact) })),
+        relatedProducts: groups.flatMap((group) => group.items.map((p: any) => ({ ...compact(p), relation: group.label, ...(group.hint ? { reason: group.hint } : {}) }))),
+        message: source === 'must_have'
+          ? 'These are the things this job needs, as the shop sets them out: each group is something the customer must have, with a real product list. Offer only these, with each group\'s hint as the reason; do not add extras such as mirrors or showers, and do not call anything else a requirement.'
+          : source === 'shop_suggestions'
           ? 'The knowledge has no goes-with links for this shelf, but the shop\'s own product record suggests these items with it (not its own colours or sizes). They are suggestions to check, not confirmed requirements or compatibility. Show them on an accessories card and say in one sentence what each is for; you may still search for other kinds that usually go with it.'
           : groups.length > 0
           ? 'These are the groups customers commonly buy with this product, from the shop\'s own knowledge; each group lists real products. They are suggestions to check, not confirmed requirements or compatibility. Show them on an accessories card (one group per card group), and say in one sentence what each is for.'
@@ -1992,7 +2020,7 @@ export async function executeAgentTool(
           if (!sku || seen.has(sku)) continue;
           seen.add(sku);
           const cached = ctx.catalogProductCache.get(sku);
-          suggestions.push({ sku, title: String(item.title || cached?.title || sku), imageUrl: typeof cached?.imageUrl === 'string' ? cached.imageUrl : undefined, reason: typeof item.relation === 'string' ? item.relation : undefined });
+          suggestions.push({ sku, title: String(item.title || cached?.title || sku), imageUrl: typeof cached?.imageUrl === 'string' ? cached.imageUrl : undefined, reason: typeof item.reason === 'string' ? item.reason : typeof item.relation === 'string' ? item.relation : undefined });
         }
       }
       const review = buildReview({

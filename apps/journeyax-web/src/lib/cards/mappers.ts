@@ -292,13 +292,20 @@ export function mapPlanCard(plan: ProjectPlan) {
   };
 }
 
+/** "26 Oct 2026, 10:28 am" instead of the raw timestamp the order carries; an unreadable one is left out. */
+export function placedAtText(iso: string | undefined | null): string | undefined {
+  if (!iso) return undefined;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? undefined : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 export function mapOrderStatusCard(order: NonNullable<JourneyState['placedOrder']>) {
   return {
     orderId: order.orderId,
     orderRef: String(order.orderId || '').replace(/^ord_/, '').slice(-8).toUpperCase(),
     status: order.status,
     statusText: `Order #${String(order.orderId || '').replace(/^ord_/, '').slice(-8).toUpperCase()} is ${order.status}.`,
-    placedAt: order.paidAt || undefined,
+    placedAt: placedAtText(order.paidAt),
     lines: (order.lines || []).map((l) => ({
       sku: l.sku, title: l.name || l.sku, imageUrl: usableImage(l.imageUrl),
       price: l.unitPrice ?? null, qty: l.quantity ?? 1, lineTotal: l.lineTotal,

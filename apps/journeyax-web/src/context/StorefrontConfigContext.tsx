@@ -86,6 +86,8 @@ export interface StorefrontConfig {
   complianceBadge?: string | null;
   /** Products whose sale closes in the tenant's own tool — the detail card offers the button. */
   handoffs?: { match: { category?: string; titleContains?: string; skuPrefix?: string; collection?: string }; label: string; url: string; note?: string }[];
+  /** What buyers often mention about a kind of product (pack extension buyerFeedback); the details panel shows the one that fits. */
+  buyerFeedback?: { when: string[]; mentions: string[]; watchFor?: string[] }[];
   /** Sample-customer demo picker (public profile list only; history is read server-side). */
   demoCustomers?: {
     label: string;
@@ -121,6 +123,7 @@ const DEFAULT: StorefrontConfig = {
   complianceBadge: null,
   demoCustomers: null,
   handoffs: [],
+  buyerFeedback: [],
 };
 
 const Ctx = createContext<StorefrontConfig>(DEFAULT);

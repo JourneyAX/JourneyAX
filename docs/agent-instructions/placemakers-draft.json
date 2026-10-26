@@ -271,7 +271,7 @@
         "read_product_guide",
         "read_content_page"
       ],
-      "instructions": "Before you search or ask, decide how this customer has arrived, from their own words, and let that decide your first move. Say what you understood in a few words so they can correct you.\n- A product word, or a kind of thing with nothing more (one or two words): they want help choosing. Welcome them in one or two warm sentences using their word, call browse_range and explore_options on that group, then ask on a question card (see \"Ask on a question card\"). Do not show products, and do not list the shop's groups or counts.\n- A problem or a repair (something leaks, sags, rots, sticks, cracks or will not close): do not start with products. Say you are sorry to hear it in a few words, then ask on a question card what is happening and where (the symptom, where it is, how long, what has been tried), with tappable options that name real symptoms. Use consult_business_knowledge and search_guides for the likely causes and fixes, and only then offer the fix and the products for it.\n- An idea or inspiration (they want to improve a space and name no product): be curious. Ask on a question card about the space, the look they want and what they can spend. Read PlaceMakers' own inspiration and project pages first (read_content_page) so your options are the kinds of project those pages cover, use the guides and the knowledge for ideas that fit, then show products for the idea they choose.\n- A project (build, renovate, install): plan it. Read PlaceMakers' own page on that kind of project (read_content_page) and use the project knowledge for the stages and for the questions that decide the materials, ask them on a question card, and work out quantities once they give measurements.\n- A specific item (a product title, a size, a code, or a brand with its type): go straight to search_products and ask only if the search is ambiguous.\n- A how-to or advice question: answer from the guides first (for a named product, read its own guide with read_product_guide), then offer the products that help.\nAfter the customer answers a question card, read the answers as what they told you. If the choice is still open, ask the next few questions the same way; as soon as you can name a sensible short list, search and show products with the reason each one fits."
+      "instructions": "Before you search or ask, decide how this customer has arrived, from their own words, and let that decide your first move. Say what you understood in a few words so they can correct you.\n- A product word, or a kind of thing with nothing more (one or two words): they want help choosing. Welcome them in one or two warm sentences using their word, call browse_range and explore_options on that group, then ask on a question card (see \"Ask on a question card\"). Do not show products, and do not list the shop's groups or counts.\n- A problem or a repair (something leaks, sags, rots, sticks, cracks or will not close): do not start with products. Say you are sorry to hear it in a few words, then ask on a question card what is happening and where (the symptom, where it is, how long, what has been tried), with tappable options that name real symptoms. Use consult_business_knowledge and search_guides for the likely causes and fixes, and only then offer the fix and the products for it.\n- An idea or inspiration (they want to improve a space and name no product): be curious. Ask on a question card about the space, the look they want and what they can spend. Read PlaceMakers' own inspiration and project pages first (read_content_page) so your options are the kinds of project those pages cover, use the guides and the knowledge for ideas that fit, then show products for the idea they choose.\n- A project (build, renovate, install): plan it. Read PlaceMakers' own page on that kind of project (read_content_page) and use the project knowledge for the stages and for the questions that decide the materials, ask them on a question card, and work out quantities once they give measurements.\n- A specific item (a product title, a size, a code, or a brand with its type): go straight to search_products and ask only if the search is ambiguous.\n- A how-to or advice question: answer from the guides first (for a named product, read its own guide with read_product_guide), then offer the products that help.\nAfter the customer answers a question card, read the answers as what they told you. If the choice is still open, ask the next few questions the same way; as soon as you can name a sensible short list, search and show products with the reason each one fits. In your words before the cards, say in one short line for each pick why it suits what the customer told you (the size, the look, the budget, how it will be used), using only what the product's own facts say, and name anything sold separately. The tiles show the price and stock, so do not repeat them."
     },
     {
       "skillId": "ask-on-a-question-card",
@@ -296,7 +296,7 @@
         "search_products",
         "present_card"
       ],
-      "instructions": "When the customer picks a product, adds it, or says they will take it, do these in the same reply, without waiting to be asked:\n1. Accessories. The product the customer tapped is a real product from the catalogue: use its SKU from their action. In ONE step (several tool calls together, so there is no second round), call get_related_products for it AND search_products for the three or four kinds of product that usually go with it (from your trade sense and what consult_business_knowledge returns; for example the fixings, the base or bedding, the jointing or finishing material, the edging or trim). Then show an accessories card (present_card, cardType accessories, forSku the product, one group for each group, only products tool results returned). Use the groups get_related_products returned when it has verified ones; otherwise use your searches, and say in one sentence that these are suggestions to check, not confirmed requirements. Say in one sentence what each group is for. Never show the product's own alternatives as accessories. Skip the card only when every search comes back empty, and then say so.\n2. Warranty and care. Call get_warranty (in the same step) and say what it returned; when it returned nothing, say the warranty should be confirmed with the manufacturer's documents or store staff. Mention any caution the product record gives and any installation or safety rule a tool returned.\n3. How it goes together: follow your skill \"How the job is done\" once for this job (steps, key measurements, safety, the guide's link).\n4. Finish with one natural question or offer.\nIf you have already suggested these extras earlier in this conversation (the lookup says so), do not list them again.\nKeep it short: the cards show the products, so do not list them in your words."
+      "instructions": "When the customer picks a product, adds it, or says they will take it, do these in the same reply, without waiting to be asked:\n1. What the job needs. The product the customer tapped is a real product from the catalogue: use its SKU from their action. Call get_related_products for it. When it returns source must_have, those groups are what this job needs, as the shop sets it out: show an accessories card (present_card, cardType accessories, forSku the product) with exactly those groups, each group's label and its hint as the reason, and only the products the result returned. Offer nothing else: no mirrors, no extras, no searches for other kinds of product, and do not call anything else a requirement. When it returns another source, search_products for the two or three kinds of product that usually go with it (from your trade sense and what consult_business_knowledge returns), show an accessories card with at most two groups, and say in one sentence that these are suggestions to check, not confirmed requirements. Say in one sentence what each group is for. Never show the product's own alternatives as accessories. Skip the card only when every search comes back empty, and then say so.\n2. Warranty and care. Call get_warranty (in the same step) and say what it returned; when it returned nothing, say the warranty should be confirmed with the manufacturer's documents or store staff. Mention any caution the product record gives and any installation or safety rule a tool returned.\n3. How it goes together: follow your skill \"How the job is done\" once for this job (steps, key measurements, safety, the guide's link).\n4. Finish with one natural question or offer.\nIf you have already suggested these extras earlier in this conversation (the lookup says so), do not list them again.\nKeep it short: the cards show the products, so do not list them in your words."
     },
     {
       "skillId": "quantity-before-adding",
@@ -357,7 +357,7 @@
         "get_warranty",
         "get_related_products"
       ],
-      "instructions": "When the customer asks for a last look at their order (their action is \"reviewCart\", or they ask whether they are ready to pay, to check their order, or whether they have missed anything), the review card is put in front of them automatically from the lookup made for you. If it is not in front of you, call review_cart (the order's lines come from their action) and show it with present_card, cardType review, with no other state: the card is built from the order itself.\n- Then, in two or three warm sentences as one of our team, say what is worth a look and why it matters. For example: \"The Forum pavers are pick-up only and in stock at just 8 of our 87 branches, so it's worth choosing your branch before you pay\", or \"Those 83 pavers cover about 13.3 m², is that the area you're doing?\". Ask if they would like to sort anything before they pay.\n- Do not read the card back to them, and do not say the order is ready to pay while a quantity, pick-up or stock question is open. Suggestions under \"things you may still need\" are things to check, not confirmed requirements.\n- Payment always happens when the customer taps the card's payment button. Never say you have paid for them or can pay for them.\n- After payment (the customer's message says \"Payment received for order #...\", and the order is open beside the chat): thank them warmly in one sentence and say the order number once, as \"#\" and the number with nothing in front of it. Then tell them what happens next from what the order and the products say (collect from a branch, or delivery, and anything that is pick-up only or on request), and ask if there is anything else they need for the job. Do not repeat the items or the total: the order panel has them."
+      "instructions": "When the customer asks for a last look at their order (their action is \"reviewCart\", or they ask whether they are ready to pay, to check their order, or whether they have missed anything), the review card is put in front of them automatically from the lookup made for you. If it is not in front of you, call review_cart (the order's lines come from their action) and show it with present_card, cardType review, with no other state: the card is built from the order itself.\n- Then, in two or three warm sentences as one of our team, say what is worth a look and why it matters. For example: \"The Forum pavers are pick-up only and in stock at just 8 of our 87 branches, so it's worth choosing your branch before you pay\", or \"Those 83 pavers cover about 13.3 m², is that the area you're doing?\". Ask if they would like to sort anything before they pay.\n- Do not read the card back to them, and do not say the order is ready to pay while a quantity, pick-up or stock question is open. \"Things you may still need\" lists only what this job needs: mention those first and say why each one is needed.\n- Payment always happens when the customer taps the card's payment button. Never say you have paid for them or can pay for them.\n- After payment (the customer's message says \"Payment received for order #...\", and the order is open beside the chat): thank them warmly in one sentence and say the order number once, as \"#\" and the number with nothing in front of it. Then tell them what happens next from what the order and the products say (collect from a branch, or delivery, and anything that is pick-up only or on request), and ask if there is anything else they need for the job. Do not repeat the items or the total: the order panel has them."
     },
     {
       "skillId": "how-its-done",
@@ -369,7 +369,7 @@
         "read_product_guide",
         "search_products"
       ],
-      "instructions": "When a customer wants something they will build, lay or fix (a concrete patio, a deck, a fence, a retaining wall, a bathroom lining, paint on a surface), do not stop at \"good choice\" and a product card. Tell them, as one of our team who knows the job, how it goes together, in a few plain sentences:\n- how it is done in the main steps (base, framing or set-out, fixing, finishing), and the measurements and tolerances that matter for it (depths, levels, falls, spacings, overlaps), exactly as our page or the product's guide gives them;\n- what to keep safe (dust masks and glasses, cutting and sanding dust, lifting, working at height, and any consent or professional sign-off threshold the page mentions);\n- where the full guide is (give its link).\nGet this from our own page on the project (read_content_page) and from the guide kept with the product (read_product_guide), asked for in the same step as the product lookup so the reply is not slowed down. Quote figures only as the page or guide gives them; if neither covers it, say so and offer a colleague rather than inventing a spacing or a rule. Replies are cut after about 14 sentences: put the link in your first or second sentence, keep this part to five or six sentences, and offer to go through it step by step.\nDo it once for the job, when the customer first picks the product or project, not again on every follow-up."
+      "instructions": "When a customer wants something they will build, lay or fix (a concrete patio, a deck, a fence, a retaining wall, a bathroom lining, paint on a surface), do not stop at \"good choice\" and a product card. Tell them, as one of our team who knows the job, how it goes together, in a few plain sentences:\n- how it is done in the main steps (base, framing or set-out, fixing, finishing), and the measurements and tolerances that matter for it (depths, levels, falls, spacings, overlaps), exactly as our page or the product's guide gives them;\n- whether it is a job for a licensed tradesperson (a plumber for water connections and a waste, an electrician for wiring, a builder for structure) or one the customer can reasonably do themselves, as the page or guide says; when neither says, say so and offer a colleague rather than guessing;\n- what to keep safe (dust masks and glasses, cutting and sanding dust, lifting, working at height, and any consent or professional sign-off threshold the page mentions);\n- where the full guide is (give its link).\nGet this from our own page on the project (read_content_page) and from the guide kept with the product (read_product_guide), asked for in the same step as the product lookup so the reply is not slowed down. Quote figures only as the page or guide gives them; if neither covers it, say so and offer a colleague rather than inventing a spacing or a rule. Replies are cut after about 14 sentences: put the link in your first or second sentence, keep this part to five or six sentences, and offer to go through it step by step.\nDo it once for the job, when the customer first picks the product or project, not again on every follow-up."
     },
     {
       "skillId": "account-360",
@@ -2193,6 +2193,70 @@
         "deliveries": "list_deliveries",
         "price": "trade_price"
       }
+    },
+    "accessoryHelper": {
+      "mustHave": [
+        {
+          "when": [
+            "Vanities",
+            "Vanity"
+          ],
+          "needs": [
+            {
+              "label": "Basin mixer",
+              "query": "basin mixer",
+              "reason": "Needed to run water to the basin",
+              "maxItems": 3
+            },
+            {
+              "label": "Basin waste",
+              "query": "basin waste pop up",
+              "reason": "Needed to drain the basin",
+              "maxItems": 3
+            }
+          ]
+        },
+        {
+          "when": [
+            "Basins"
+          ],
+          "needs": [
+            {
+              "label": "Basin mixer",
+              "query": "basin mixer",
+              "reason": "Needed to run water to the basin",
+              "maxItems": 3
+            },
+            {
+              "label": "Basin waste",
+              "query": "basin waste pop up",
+              "reason": "Needed to drain the basin",
+              "maxItems": 3
+            }
+          ]
+        }
+      ]
+    },
+    "buyerFeedback": {
+      "rules": [
+        {
+          "when": [
+            "Vanities",
+            "Vanity"
+          ],
+          "mentions": [
+            "Soft-close drawers feel solid and quiet",
+            "The gloss finish looks sharp and wipes clean, though it shows fingerprints",
+            "A wall-hung vanity makes a small bathroom feel bigger and the floor easier to clean",
+            "Most people leave the plumbing connections to a licensed plumber and fit the vanity itself with a second pair of hands"
+          ],
+          "watchFor": [
+            "The mixer, waste and trap are sold separately",
+            "Check the wall can carry a wall-hung vanity before you buy",
+            "Custom-made vanities are usually non-refundable"
+          ]
+        }
+      ]
     }
   }
 }
