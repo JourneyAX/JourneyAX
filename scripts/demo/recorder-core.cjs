@@ -33,6 +33,7 @@ function chromiumPath() {
 
 /* ── what is drawn over the page: a caption, a cursor and a click ripple ───────────────────────────────────────────────────────────── */
 const OVERLAY = `(() => {
+  if (window.top !== window) return;
   const css = 'nextjs-portal{display:none!important}#__cap{position:fixed;left:50%;bottom:34px;transform:translateX(-50%);z-index:2147483647;max-width:1500px;padding:16px 30px;border-radius:16px;background:rgba(32,26,22,.92);color:#fff;font:600 30px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.35);pointer-events:none;transition:opacity .25s}#__cap:empty{opacity:0}'
     + '#__cur{position:fixed;left:0;top:0;width:34px;height:34px;z-index:2147483647;pointer-events:none;transform:translate(-4px,-2px);filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}'
     + '.__rip{position:fixed;z-index:2147483646;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:4px solid #a8346f;pointer-events:none;animation:__rip .55s ease-out forwards}@keyframes __rip{to{transform:scale(4.2);opacity:0}}';

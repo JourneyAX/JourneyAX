@@ -25,6 +25,9 @@ const OUT = path.resolve(opt('out', path.join(os.tmpdir(), 'scenario-videos')));
 const BASE = opt('base', 'http://localhost:3108').replace(/\/$/, '');
 const PROJECT = opt('project', 'placemakers');
 const ONLY = (opt('only', '') || '').split(',').filter(Boolean);
+/** The signed-in browser state of the commercetools Merchant Center (made by the owner signing in; a private file), and where its orders are. */
+const MC_STATE = opt('mc-state', '');
+const MC_ORDERS = opt('mc-orders', 'https://mc.us-central1.gcp.commercetools.com/placemaker/orders');
 const { openRecorder } = createKit({ out: OUT, keepFrames: flag('keep-frames'), voice: opt('voice', 'Karen'), rate: Number(opt('rate', '168')), captionAt: 'top', captions: flag('captions') });
 
 /* ── what a person does in the chat ────────────────────────────────────────────────────────────────────────────────────────────────── */
@@ -58,7 +61,7 @@ function chat(r) {
     async pointAtSignIn() { await r.point(page.locator('#login-email')); await wait(1500); },
     /** Moves the cursor along the first few product cards of the latest answer, and along the row if it scrolls sideways. */
     async pointAtProducts() {
-      const cards = page.locator('.product-card');
+      const cards = page.locator('[data-card-type="products"] .jx-card');
       const n = await cards.count();
       if (n === 0) return false;
       await cards.first().scrollIntoViewIfNeeded().catch(() => {});
@@ -67,6 +70,104 @@ function chat(r) {
       await page.evaluate(() => { const row = [...document.querySelectorAll('.product-card')].map((el) => el.parentElement).find((el) => el && el.scrollWidth > el.clientWidth + 4); if (row) row.scrollTo({ left: row.scrollWidth, behavior: 'smooth' }); });
       await wait(1200);
       return true;
+    },
+    /** Signs in fast, the way someone who knows the form does: the email, then the password (dots), then Sign in. */
+    async signInQuick(persona) {
+      const login = demoLogin(persona);
+      const email = page.locator('#login-email');
+      await email.waitFor({ timeout: 30000 });
+      await wait(500);
+      await r.type(email, login.email, 12);
+      await r.type(page.locator('#login-password'), login.password, 12);
+      await r.click(page.locator('#login-submit'), 300);
+      await page.waitForSelector('#chat-input-field', { timeout: 60000 });
+      await wait(700);
+    },
+    /** Presses a button by its words (the first one, or the last), optionally only inside one part of the page. */
+    async press(label, { within, last = false, pause = 800 } = {}) {
+      const scope = within ? page.locator(within) : page;
+      const buttons = scope.getByRole('button', { name: label, exact: typeof label === 'string' });
+      const button = last ? buttons.last() : buttons.first();
+      await button.waitFor({ timeout: 30000 });
+      await r.click(button, pause);
+    },
+    /** Scrolls the open side panel until a heading is in the middle. */
+    async scrollPanelTo(text) {
+      const heading = page.getByText(text, { exact: true }).first();
+      await heading.waitFor({ timeout: 15000 });
+      await heading.evaluate((node) => node.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      await wait(1700);
+    },
+    async closePanel() { await r.click(page.locator('button[aria-label="Close side panel"]').first(), 700); },
+    /** "Add" on the first product tile of the latest recommendations. */
+    async addFromTile() { await this.press('Add', { within: '[data-card-type="products"]' }); },
+    /** The "How many do you need?" box: Add 1. */
+    async confirmQuantity() {
+      const add = page.getByRole('button', { name: /^Add \d+$/ });
+      await add.first().waitFor({ timeout: 20000 });
+      await r.click(add.first(), 700);
+    },
+    /** The first "Add" under one group of the accessories card ("Basin mixer", "Basin waste"). */
+    async addFromGroup(label) {
+      const marked = await page.evaluate((text) => {
+        const card = [...document.querySelectorAll('[data-card-type="accessories"]')].pop();
+        if (!card) return false;
+        const heading = [...card.querySelectorAll('*')].find((el) => el.children.length === 0 && el.textContent.trim() === text);
+        if (!heading) return false;
+        const button = [...card.querySelectorAll('button')].find((b) => /^\s*Add\s*$/.test(b.textContent) && (heading.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
+        if (!button) return false;
+        button.setAttribute('data-rec-target', 'yes');
+        return true;
+      }, label);
+      if (!marked) throw new Error(`no Add under "${label}"`);
+      const button = page.locator('[data-rec-target="yes"]').first();
+      await r.click(button, 600);
+      await button.evaluate((el) => el.removeAttribute('data-rec-target')).catch(() => {});
+    },
+    async openBag() { await r.click(page.locator('button[aria-label^="View your"]').first(), 1500); },
+    /** Stripe's payment form in the panel, filled quickly with a test person and Stripe's published test card. */
+    async payWithTestCard() {
+      await page.waitForSelector('iframe[src*="stripe"]', { timeout: 60000 });
+      await wait(6000);
+      const frame = page.frames().find((f) => /embedded-checkout-inner/.test(f.url()));
+      if (!frame) throw new Error('the payment form did not open');
+      const fill = async (id, value) => { await r.click(frame.locator(`#${id}`), 150); await page.keyboard.type(value, { delay: 9 }); };
+      await fill('email', 'shopper@placemakers.demo');
+      await fill('shippingName', 'Sam Shopper');
+      await frame.locator('#shippingCountry').selectOption('NZ').catch(() => {});
+      const manual = frame.getByText(/enter address manually/i).first();
+      if (await manual.count()) await manual.click({ timeout: 10000 }).catch(() => {});
+      await wait(600);
+      await fill('shippingAddressLine1', '1 Queen Street');
+      await page.keyboard.press('Escape');
+      await wait(400);
+      await fill('shippingLocality', 'Auckland');
+      await fill('shippingPostalCode', '1010');
+      await fill('phoneNumber', '021 123 4567').catch(() => {});
+      await fill('cardNumber', '4242 4242 4242 4242');
+      await fill('cardExpiry', '12 / 34');
+      await fill('cardCvc', '123');
+      await wait(700);
+      await r.click(frame.getByRole('button', { name: /pay/i }).last(), 600);
+    },
+    /** Waits for the order panel ("Order #XXXXXXXX") and returns its number. */
+    async orderNumber() {
+      const heading = page.locator('text=/Order #[A-Z0-9]{6,}/').first();
+      await heading.waitFor({ timeout: 150000 });
+      const match = /#([A-Z0-9]{6,})/.exec(await heading.innerText());
+      return match ? match[1] : '';
+    },
+    /** The commercetools Merchant Center: the orders list, then the order opened. */
+    async showMerchantCenterOrder(number) {
+      // What the conversation said, kept before the picture leaves the chat.
+      r.savedThread = await page.evaluate(() => (document.querySelector('.chat-messages') || document.body).innerText).catch(() => '');
+      await page.goto(MC_ORDERS, { waitUntil: 'domcontentloaded' });
+      const row = page.getByText(number, { exact: true }).first();
+      await row.waitFor({ timeout: 120000 });
+      await wait(1500);
+      await r.click(row, 1500);
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await wait(3500);
     },
     async typeAndSend(text) {
       await r.type(input(), text, 34);
@@ -111,6 +212,40 @@ function chat(r) {
 
 /* ── the scenarios ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
 const SCENARIOS = [
+  {
+    id: '01-bathroom-end-to-end',
+    title: 'A bathroom remodel, from the first question to the order in commercetools',
+    persona: 'shopper',
+    mcState: true,
+    async run(r, c) {
+      await c.open();
+      await c.signInQuick('shopper');
+      await r.step('The question', 'A homeowner, renovating a bathroom.', () => c.typeAndSend('We are renovating our bathroom and need a new vanity, a basin and tapware. Where should we start?'));
+      await r.step('Its questions', 'It asks what a good counter person would ask.', async () => { await c.waitAnswer(); await wait(1200); await c.typeAndSend('A small family bathroom, about 1.8 by 2.4 metres. We like a modern white look and want the vanity to be around $800.'); });
+      await r.step('The products', 'Real products, real prices and stock, four to a row.', async () => { await c.waitAnswer(); await c.pointAtProducts(); });
+      await r.step('The details', 'The details open beside the chat.', async () => {
+        await c.press('Details', { within: '[data-card-type="products"]' }); await wait(3500);
+        await c.scrollPanelTo('What buyers often mention'); await wait(1500);
+        await c.scrollPanelTo('Worth checking before you buy'); await wait(1200);
+      });
+      await r.step('Why this one', 'She asks why this one.', async () => { await c.press('Why this one?'); await c.waitAnswer(); });
+      await r.step('The warranty', 'No warranty on file, so it says so, and offers a person.', async () => { await c.press('Warranty and guarantee'); await c.waitAnswer(); });
+      await r.step('Who installs it', 'And whether she needs a plumber or can do it herself.', async () => { await c.press('Who installs it?'); await c.waitAnswer(); });
+      await r.step('Only what the job needs', 'Only what the job needs: a basin mixer and a waste.', async () => { await c.closePanel(); await c.addFromTile(); await c.confirmQuantity(); await c.waitAnswer(); });
+      await c.addFromGroup('Basin mixer'); await c.confirmQuantity(); await c.waitAnswer();
+      await c.addFromGroup('Basin waste'); await c.confirmQuantity(); await c.waitAnswer();
+      await r.step('A last look', 'A last look before she pays.', async () => {
+        await c.openBag(); await wait(1800);
+        await r.click(r.page.locator('button.cv__btn--primary').first(), 800);
+        await c.waitAnswer();
+      });
+      await r.step('Payment', 'Secure payment. This is a test card.', async () => { await c.press(/Take me to payment/, { last: true }); await c.payWithTestCard(); });
+      let number = '';
+      await r.step('The order', 'Paid. This is her order number.', async () => { number = await c.orderNumber(); await wait(3500); });
+      await r.step('In commercetools', 'The same order, with the same number, is in commercetools.', () => c.showMerchantCenterOrder(number));
+      await r.step('The end', 'From the first question to the order, in one conversation.', async () => { await wait(3500); });
+    },
+  },
   {
     id: '01-homeowner-bathroom',
     title: 'A homeowner plans a bathroom',
@@ -249,11 +384,11 @@ const SCENARIOS = [
   if (!flag('yes-run-real-chats')) { console.log('Dry run: nothing was recorded. Add --yes-run-real-chats to record (each scenario is a set of real model runs; scenario 04 raises one real case in Salesforce).'); return; }
   fs.mkdirSync(OUT, { recursive: true });
   for (const s of chosen) {
-    const r = await openRecorder(s.id);
+    const r = await openRecorder(s.id, s.mcState && MC_STATE ? { storageState: MC_STATE } : {});
     try { await s.run(r, chat(r)); } catch (error) { console.error(`  ✗ ${s.id}: ${String(error.message || error).slice(0, 300)}`); }
     // What the conversation said, kept beside the video so it can be checked against the commentary.
     try {
-      const thread = await r.page.evaluate(() => (document.querySelector('.chat-messages') || document.body).innerText);
+      const thread = r.savedThread || await r.page.evaluate(() => (document.querySelector('.chat-messages') || document.body).innerText);
       fs.writeFileSync(path.join(OUT, `${s.id}.thread.txt`), `${s.title}\nsigned in as ${s.persona}\n\n${thread}\n`);
     } catch { /* the page may be gone */ }
     console.log(`    ${s.title}: ${r.seconds()} s`);
