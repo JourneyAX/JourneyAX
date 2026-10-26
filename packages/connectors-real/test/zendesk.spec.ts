@@ -60,6 +60,35 @@ async function setup(answer: (request: Seen) => any, extra: Rec = {}) {
 }
 
 async function main() {
+  await t.test('list_recent_tickets reads the current ticket list, newest change first, and returns only what changed after `since`', async () => {
+    const seen: string[] = [];
+    const { vendor, call } = await setup((request) => {
+      if (request.path === '/api/v2/tickets.json') {
+        seen.push(`${request.query.get('sort_by')} ${request.query.get('sort_order')} ${request.query.get('per_page')}`);
+        return { json: { tickets: [
+          { id: 4322, subject: 'Where is my pergola order?', status: 'new', requester_id: 7, created_at: '2026-10-26T09:44:00Z', updated_at: '2026-10-26T09:44:00Z', description: 'I ordered the posts last week.\n\nWhere are they?', via: { channel: 'web' }, tags: [] },
+          { id: 4300, subject: 'Older', status: 'open', requester_id: 7, created_at: '2026-10-25T08:00:00Z', updated_at: '2026-10-25T08:00:00Z', description: 'Old one.' },
+        ] } };
+      }
+      if (request.path === '/api/v2/users/show_many.json') return { json: { users: [{ id: 7, name: 'Sam Shopper', email: 'sam@example.test' }] } };
+      return undefined;
+    });
+    try {
+      const all: any = await call('list_recent_tickets', {});
+      assert.equal(all.payload.returned, 2);
+      assert.equal(all.payload.records[0].ticketId, 4322);
+      assert.equal(all.payload.records[0].requester.email, 'sam@example.test');
+      assert.equal(all.payload.records[0].description, 'I ordered the posts last week. Where are they?', 'the first message, tidied');
+      assert.equal(all.payload.records[0].via, 'web');
+      assert.equal(seen[0], 'updated_at desc 25', 'it asks for the list, not the search (the search can lag)');
+      const recent: any = await call('list_recent_tickets', { since: '2026-10-26T00:00:00Z', limit: 5 });
+      assert.deepEqual(recent.payload.records.map((r: any) => r.ticketId), [4322], 'only the ticket changed after since');
+      assert.equal(seen[1], 'updated_at desc 5');
+      const bad: any = await call('list_recent_tickets', { since: 'yesterday-ish' });
+      assert.equal(bad.payload.error.code, 'invalid_arguments');
+    } finally { await vendor.close(); }
+  });
+
   await t.test('without its settings it is served but offers no tools and says it is not connected', async () => {
     const server = serverFor(zendesk({}, deps));
     assert.deepEqual(await listTools(server, 'zendesk'), []);
@@ -73,7 +102,7 @@ async function main() {
   await t.test('it offers four tools and only create_ticket and add_ticket_note change anything', async () => {
     const { server, vendor } = await setup(() => undefined);
     const tools = await listTools(server, 'zendesk');
-    assert.deepEqual(tools.map((tool) => tool.name), ['find_tickets', 'get_ticket', 'create_ticket', 'add_ticket_note']);
+    assert.deepEqual(tools.map((tool) => tool.name), ['find_tickets', 'list_recent_tickets', 'get_ticket', 'create_ticket', 'add_ticket_note']);
     assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['create_ticket', 'add_ticket_note']);
     await vendor.close();
   });

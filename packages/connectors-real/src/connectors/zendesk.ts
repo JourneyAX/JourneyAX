@@ -128,6 +128,35 @@ export function zendesk(env: Env, deps: Deps): RealConnector {
       },
     },
     {
+      name: 'list_recent_tickets',
+      readOnly: true,
+      description: 'The tickets changed most recently, latest change first, each with its first message and when it was created and last changed. This is how a new or changed ticket is noticed as it happens: unlike a search, the list is current (a search can lag by minutes). Give `since` to get only what changed after that time.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', maxLength: 40, description: 'An ISO 8601 time. Only tickets changed after it are returned.' },
+          limit: { type: 'integer', minimum: 1, maximum: 50, description: 'How many to look at (default 25).' },
+        },
+      },
+      async run(args) {
+        let sinceMs: number | undefined;
+        if (args.since !== undefined) {
+          sinceMs = Date.parse(String(args.since));
+          if (Number.isNaN(sinceMs)) throw new ToolError('invalid_arguments', 'since is not a time (use ISO 8601, for example 2026-10-26T09:41:00Z).');
+        }
+        const limit = boundedInt(args.limit, 25, 1, 50);
+        const answer = await api('GET', '/tickets.json', { query: { sort_by: 'updated_at', sort_order: 'desc', per_page: limit } });
+        const all: any[] = Array.isArray(answer.tickets) ? answer.tickets : [];
+        const tickets = all.filter((ticket) => sinceMs === undefined || Date.parse(String(ticket.updated_at)) > sinceMs).slice(0, limit);
+        const people = await peopleById(tickets.map((ticket) => ticket.requester_id));
+        return {
+          returned: tickets.length,
+          checkedAt: new Date(deps.now()).toISOString(),
+          records: tickets.map((ticket) => ({ ...ticketRecord(ticket, people), description: ticket.description ? clip(String(ticket.description).replace(/\s+/g, ' ').trim(), 1500) : undefined, via: ticket.via?.channel })),
+        };
+      },
+    },
+    {
       name: 'get_ticket',
       readOnly: true,
       description: 'One ticket by its number, with the conversation so far: who wrote each message, whether it was a public reply or an internal note, and what it said.',
