@@ -15,9 +15,13 @@ export function vendorMessage(json: any, text: string): string {
   const candidates: unknown[] = [];
   if (Array.isArray(json)) candidates.push(json[0]?.message, json[0]?.error_description);
   if (json && typeof json === 'object' && !Array.isArray(json)) {
+    // Zendesk: {"error":"RecordInvalid","description":"Record validation errors","details":{"subject":[{"description":"Subject: cannot be blank"}]}}
+    const detail = json.details && typeof json.details === 'object' ? Object.values(json.details).flat().map((entry: any) => entry?.description ?? entry?.message).find((text) => typeof text === 'string') : undefined;
+    if (detail) candidates.push(`${typeof json.description === 'string' ? json.description : 'Rejected'}: ${detail}`);
     candidates.push(
       json.error?.['pbi.error']?.details?.[0]?.detail?.value, // Power BI: the useful part of a failed query
       json.message, json.error_description, json.error?.message, json.errors?.[0]?.message, json.error?.details?.[0]?.message,
+      typeof json.description === 'string' ? json.description : undefined,
       typeof json.error === 'string' ? json.error : undefined,
     );
   }
@@ -106,8 +110,10 @@ export interface VendorClientOptions {
   deps: Deps;
   /** Secret values to strip from anything said about a failure. */
   secrets: () => string[];
-  /** A current bearer token. */
+  /** A current bearer token (or, with `scheme: 'Basic'`, the base64 of the credentials). */
   token: () => Promise<string>;
+  /** How the token is presented: Bearer (the default) or Basic. */
+  scheme?: 'Bearer' | 'Basic';
   /** Forget the token (called once after a 401, then the call is tried again). */
   forgetToken: () => void;
   headers?: Record<string, string>;
@@ -122,7 +128,7 @@ export class VendorClient {
   async json(method: string, url: string, request: Omit<RequestOptions, 'form'> = {}): Promise<any> {
     const attempt = async () => send(this.options.deps, this.options.system, method, url, {
       ...request,
-      headers: { ...(this.options.headers ?? {}), ...(request.headers ?? {}), authorization: `Bearer ${await this.options.token()}` },
+      headers: { ...(this.options.headers ?? {}), ...(request.headers ?? {}), authorization: `${this.options.scheme ?? 'Bearer'} ${await this.options.token()}` },
     });
     let answer = await attempt();
     if (answer.status === 401) {

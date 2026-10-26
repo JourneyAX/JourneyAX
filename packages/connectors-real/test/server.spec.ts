@@ -105,9 +105,9 @@ async function main() {
 
   await server.close();
 
-  await t.test('the four real connectors are all there, named as the pack names them, and none is connected without settings', async () => {
+  await t.test('the five real connectors are all there, named as the pack names them, and none is connected without settings', async () => {
     const connectors = createRealConnectors({});
-    assert.deepEqual(connectors.map((connector) => connector.connectorId), ['commercetools', 'salesforce', 'google-analytics', 'power-bi']);
+    assert.deepEqual(connectors.map((connector) => connector.connectorId), ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'zendesk']);
     assert.ok(connectors.every((connector) => connector.missing().length > 0));
     const all = new RealConnectorServer({ connectors });
     const health = all.health() as any;

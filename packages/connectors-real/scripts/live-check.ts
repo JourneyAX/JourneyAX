@@ -2,11 +2,12 @@
  * Proves each real connection with a few harmless reads, the way the chat would use it. Prints what worked and what did not, in plain
  * words, and never prints a secret. Nothing is changed in any vendor system unless --writes is given.
  *
- *   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/live-check.ts [commercetools|salesforce|google-analytics|power-bi] [--writes]
+ *   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/live-check.ts [commercetools|salesforce|google-analytics|power-bi|zendesk] [--writes]
  *
  * With --writes it also tries the one change each connector can make, on a throwaway record, and says so:
  *   salesforce      opens one case on the first account it finds, titled "JourneyAX connection check (safe to delete)"
  *   commercetools   adds one unit of the first product it finds to the cart named in CHECK_COMMERCETOOLS_CART_ID (a test cart you made)
+ *   zendesk         raises one ticket titled "JourneyAX connection check (safe to delete)" for the agent's own address, then adds an internal note to it
  *
  * Some checks need an id only you know; set these to include them:
  *   CHECK_COMMERCETOOLS_ACCOUNT_ID (a customer id)   CHECK_COMMERCETOOLS_CART_ID   CHECK_COMMERCETOOLS_ORDER_ID (an id or an order number)
@@ -98,7 +99,19 @@ async function powerBi() {
   }
 }
 
-const RUNNERS: Record<string, () => Promise<void>> = { commercetools, salesforce, 'google-analytics': googleAnalytics, 'power-bi': powerBi };
+async function zendeskCheck() {
+  const list = await check('zendesk', 'find_tickets', { limit: 3 }, counts);
+  const first = list?.records?.[0]?.ticketId;
+  if (first) await check('zendesk', 'get_ticket', { ticketId: first }, (p) => `ticket ${p.record.ticketId}: ${p.record.conversation?.length ?? 0} message(s), ${p.record.status}`);
+  else skip('get_ticket', 'no ticket to look at (are the sample tickets loaded? Zendesk\'s search can take a few minutes to find new ones)');
+  if (!WRITES) { skip('create_ticket', 'a change; run with --writes'); skip('add_ticket_note', 'a change; run with --writes'); return; }
+  const email = process.env.ZENDESK_EMAIL;
+  if (!email) { skip('create_ticket', 'needs ZENDESK_EMAIL'); return; }
+  const made = await check('zendesk', 'create_ticket', { subject: 'JourneyAX connection check (safe to delete)', description: 'Made by the connection check. Delete it.', requesterEmail: email, tags: ['connection-check'] }, (p) => `ticket ${p.record.ticketId} raised`);
+  if (made?.record?.ticketId) await check('zendesk', 'add_ticket_note', { ticketId: made.record.ticketId, note: 'Internal note from the connection check.' }, (p) => `note added to ticket ${p.record.ticketId}`);
+}
+
+const RUNNERS: Record<string, () => Promise<void>> = { commercetools, salesforce, 'google-analytics': googleAnalytics, 'power-bi': powerBi, zendesk: zendeskCheck };
 
 async function main() {
   if (only && !RUNNERS[only]) throw new Error(`Unknown connector "${only}". Use one of: ${Object.keys(RUNNERS).join(', ')}.`);

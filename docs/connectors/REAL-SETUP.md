@@ -114,6 +114,23 @@ Notes: a standard org has no "customer tier" or "home branch" fields. If you add
 
 How figures work: Power BI only lets a program read data by running a DAX query against a dataset. The assistant never sends a query. The administrator's figures file lists each figure, its dataset and its DAX; the connector runs only those. To offer another report, add an entry to that file (the top of `packages/connectors-real/src/connectors/power-bi.ts` shows the format).
 
+### Zendesk (the customer-service ticket desk) — 14-day trial
+
+Zendesk is the ticket desk for the customer-service team: tickets are the conversations with customers (an order that has not arrived, a quote request, a warranty question). Salesforce cases stay the CRM's record of the same customers' problems.
+
+1. Start the trial at zendesk.com. Note the **subdomain** (the part before `.zendesk.com`).
+2. Admin Center > Apps and integrations > APIs > **API configuration**: read and accept Zendesk's developer terms (that is your decision, so you tick it), then switch on token access.
+3. APIs > **API tokens** > Add API token, name it "JourneyAX connector". The token is shown once. Put the subdomain, the agent's e-mail and the token in `.env.connectors` as `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`.
+4. Load sample tickets (dry run first):
+   ```bash
+   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/zendesk.ts            # dry run
+   npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/zendesk.ts --apply    # for real
+   ```
+   36 tickets and 120 messages, with their real dates: delivery questions about the orders of the won deals (tagged with the account and the order number), tickets for the service cases, quote requests from the launch's leads, and everyday shopper questions. It uses Zendesk's ticket import, which sends no e-mail and runs no trigger. Running it again changes nothing.
+5. Prove it: `... live-check.ts zendesk` (add `--writes` to raise one clearly-labelled test ticket and add an internal note to it). Zendesk's search can take a few minutes to find tickets that were just imported.
+
+What the assistant can do: find tickets, read one with its conversation, raise a ticket (asks first), and add an **internal** note (asks first). It cannot send a public reply, close or edit a ticket. The trial is 14 days; the connector and the loader are the same on a paid plan.
+
 ### Marketing Cloud — stays sample for now
 
 There is no confirmed free trial and a Developer Edition does not include it. Ask a Salesforce representative (or your company's Salesforce partner contact) for a Marketing Cloud trial or demo org. Until then it keeps its sample data, is labelled "Sample data" in the "+" menu, and nothing it "sends" goes anywhere. When a real org exists, a fifth adapter is added to this package the same way as the four above.

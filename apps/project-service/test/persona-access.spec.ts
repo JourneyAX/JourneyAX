@@ -35,6 +35,10 @@ const TABLE: Record<string, string> = {
   'salesforce.pipeline_summary':      'A - - A - - A -',
   'salesforce.list_campaigns':        'A - A A A - A -',
   'salesforce.get_campaign':          'A - A A A - A -',
+  'zendesk.find_tickets':             'A A A A - - A -',
+  'zendesk.get_ticket':               'A A A A - - A -',
+  'zendesk.create_ticket':            'K K - - - - - -',
+  'zendesk.add_ticket_note':          'K K K K - - - -',
   'salesforce.create_case':           'K K - - - - - -',
   'google-analytics.traffic_by_page': 'A - - - A A A -',
   'google-analytics.top_searches':    'A - - - A A A -',
@@ -53,7 +57,7 @@ const PARKED = ['sap-commerce', 'ace-erp', 'mulesoft', 'salsify', 'bloomreach', 
 
 const draft = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
 const published = draft.extensions.connectors as ConnectorsExtension;
-const REAL = ['commercetools', 'salesforce', 'google-analytics', 'power-bi'];
+const REAL = ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'zendesk'];
 /** The pack as published switches the real systems on one at a time, as each vendor account is ready. The table below is about who may do what once they are all on, so it works on a copy with the four real ones on. */
 const connectors = { ...published, connectors: published.connectors.map((connector) => (REAL.includes(connector.connectorId) ? { ...connector, enabled: true } : connector)) } as ConnectorsExtension;
 const plan = planDemoStaff('placemakers');
@@ -92,7 +96,7 @@ async function main() {
   });
 
   await suite.test('the table covers every tool the pack lists for the connectors in scope, so nothing is open by accident', () => {
-    const inScope = ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'marketing-cloud'];
+    const inScope = ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'marketing-cloud', 'zendesk'];
     const listed = connectors.connectors.filter((connector) => inScope.includes(connector.connectorId)).flatMap((connector) => connector.tools.map((tool) => `${connector.connectorId}.${tool.name}`));
     assert.deepEqual([...listed].sort(), Object.keys(TABLE).sort());
   });
@@ -129,13 +133,13 @@ async function main() {
       const gate = pluginGate(draft.extensions.plugins, people[who]);
       return usableConnectors(connectors, people[who]).filter((connector) => gate.allows('connectors', connector.connectorId)).map((connector) => connector.connectorId).sort();
     };
-    const all = ['commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce'];
+    const all = ['commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk'];
     assert.deepEqual(menu('admin'), all);
     assert.deepEqual(menu('exec'), all);
-    assert.deepEqual(menu('csr'), ['commercetools', 'marketing-cloud', 'salesforce']);
-    assert.deepEqual(menu('sales'), ['commercetools', 'marketing-cloud', 'salesforce']);
-    assert.deepEqual(menu('sales.manager'), ['commercetools', 'marketing-cloud', 'power-bi', 'salesforce']);
-    assert.deepEqual(menu('marketing'), all);
+    assert.deepEqual(menu('csr'), ['commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
+    assert.deepEqual(menu('sales'), ['commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
+    assert.deepEqual(menu('sales.manager'), ['commercetools', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk']);
+    assert.deepEqual(menu('marketing'), all.filter((id) => id !== 'zendesk'), 'marketing has no use for the ticket desk');
     assert.deepEqual(menu('insights'), ['google-analytics', 'power-bi']);
     assert.deepEqual(menu('shopper'), []);
   });

@@ -573,6 +573,38 @@
           ]
         },
         {
+          "connectorId": "zendesk",
+          "displayName": "Zendesk",
+          "description": "The customer-service ticket desk: support tickets and their conversations. Use it to find a customer's tickets, read what was said, raise a new ticket, or add an internal note for the team.",
+          "owner": "Customer service team",
+          "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
+          "connectionScope": "shop",
+          "sample": false,
+          "enabled": false,
+          "tools": [
+            {
+              "name": "find_tickets",
+              "sideEffect": "read",
+              "summary": "Find support tickets by words, status, priority, requester or tag."
+            },
+            {
+              "name": "get_ticket",
+              "sideEffect": "read",
+              "summary": "Get one ticket with its conversation."
+            },
+            {
+              "name": "create_ticket",
+              "sideEffect": "write",
+              "summary": "Raise a new support ticket for a customer."
+            },
+            {
+              "name": "add_ticket_note",
+              "sideEffect": "write",
+              "summary": "Add an internal note to a ticket (never a public reply)."
+            }
+          ]
+        },
+        {
           "connectorId": "ace-erp",
           "displayName": "ACE ERP (sample)",
           "description": "The business system: stock by branch, trade prices by tier, delivery status and account balances.",
@@ -1124,6 +1156,54 @@
           "state": "allow"
         },
         {
+          "connectorId": "zendesk",
+          "tool": "find_tickets",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "zendesk",
+          "tool": "get_ticket",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "zendesk",
+          "tool": "create_ticket",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "administrators"
+          ],
+          "state": "ask"
+        },
+        {
+          "connectorId": "zendesk",
+          "tool": "add_ticket_note",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "administrators"
+          ],
+          "state": "ask"
+        },
+        {
           "connectorId": "salesforce",
           "tool": "create_case",
           "audience": "staff",
@@ -1618,7 +1698,8 @@
             "connectors": [
               "salesforce",
               "commercetools",
-              "marketing-cloud"
+              "marketing-cloud",
+              "zendesk"
             ],
             "tools": []
           }
@@ -1636,7 +1717,8 @@
             "connectors": [
               "commercetools",
               "salesforce",
-              "marketing-cloud"
+              "marketing-cloud",
+              "zendesk"
             ],
             "tools": []
           }
