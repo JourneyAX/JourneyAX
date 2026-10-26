@@ -7,6 +7,7 @@
  *   node scripts/demo/record-scenarios.cjs --list
  *   node scripts/demo/record-scenarios.cjs --out <folder> --base http://localhost:3108 [--only 04-customer-care-ticket,06-installation-guide] --yes-run-real-chats [--no-allow]
  *        --no-allow: for a rehearsal, do not press "Allow" on the ask-first card (so no case is raised)
+ *        --captions: draw each scene's title over the picture (off by default: the picture shows only the app and the cursor)
  *
  * Every scenario is a real model run (several questions each), and the customer-care scenario raises one real case in the connected Salesforce
  * (the person in the video presses "Allow" on the ask-first card, exactly as a colleague would). Without --yes-run-real-chats nothing is
@@ -24,7 +25,7 @@ const OUT = path.resolve(opt('out', path.join(os.tmpdir(), 'scenario-videos')));
 const BASE = opt('base', 'http://localhost:3108').replace(/\/$/, '');
 const PROJECT = opt('project', 'placemakers');
 const ONLY = (opt('only', '') || '').split(',').filter(Boolean);
-const { openRecorder } = createKit({ out: OUT, keepFrames: flag('keep-frames'), voice: opt('voice', 'Karen'), rate: Number(opt('rate', '168')), captionAt: 'top' });
+const { openRecorder } = createKit({ out: OUT, keepFrames: flag('keep-frames'), voice: opt('voice', 'Karen'), rate: Number(opt('rate', '168')), captionAt: 'top', captions: flag('captions') });
 
 /* ── what a person does in the chat ────────────────────────────────────────────────────────────────────────────────────────────────── */
 function chat(r) {

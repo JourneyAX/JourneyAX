@@ -55,7 +55,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const clock = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
 /** A recording kit that writes into `out`. */
-function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, captionAt = 'bottom' }) {
+function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, captionAt = 'bottom', captions = true }) {
   // The caption sits at the bottom of the picture, or at the top where the screen has a message box at the bottom (a chat).
   const overlay = captionAt === 'top' ? OVERLAY.replace('bottom:34px', 'top:12px').replace('padding:16px 30px', 'padding:10px 26px').replace('font:600 30px/1.3', 'font:600 26px/1.3') : OVERLAY;
   async function openRecorder(name, { storageState } = {}) {
@@ -92,7 +92,8 @@ function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, capti
     const rec = {
       page, context, browser, dir, name, spoken,
       seconds: () => Math.round((Date.now() - started) / 100) / 10,
-      async caption(text) { await page.evaluate((t) => { try { sessionStorage.setItem('__cap', t); } catch {} const el = document.getElementById('__cap'); if (el) el.textContent = t; }, text); },
+      /** The line of text drawn over the picture; nothing is drawn when the kit is made with captions: false (the speaker notes still keep the scene's title). */
+      async caption(text) { if (!captions) return; await page.evaluate((t) => { try { sessionStorage.setItem('__cap', t); } catch {} const el = document.getElementById('__cap'); if (el) el.textContent = t; }, text); },
       async hold(ms) { await wait(ms); },
       async goto(url) { await page.goto(url, { waitUntil: 'domcontentloaded' }); await page.waitForLoadState('networkidle').catch(() => {}); await wait(900); },
       pos: { x: 960, y: 540 },
