@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test": "tsx test/public-registration.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -20,6 +21,7 @@
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
+    "@journeyax/test-support": "*",
     "@types/express": "^5.0.0",
     "@types/node": "^20.17.9",
     "@types/jsonwebtoken": "^9.0.9",

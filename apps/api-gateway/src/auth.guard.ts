@@ -9,7 +9,7 @@ import { requiredPermission, can, permissionsFor, resolveServiceUrl } from '@jou
  *  - a tenant user → may only act on their own project (tenantId === projectId)
  * Returns true if allowed. Guests (no jwt) are handled by the caller.
  */
-function projectAllowed(projectId: string, role?: string, tenantId?: string): boolean {
+export function projectAllowed(projectId: string, role?: string, tenantId?: string): boolean {
   if (role === 'admin' || tenantId === 'platform') return true;
   return !!tenantId && tenantId === projectId;
 }

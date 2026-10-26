@@ -7,7 +7,7 @@ import {
   gatewayRoleFor,
   GatewayRole,
 } from '@journeyax/database';
-import { isStaffRole, ADMIN_GROUP } from '@journeyax/shared-types';
+import { isStaffRole, ADMIN_GROUP, isPlatformTenantId, checkSelfServiceTenant } from '@journeyax/shared-types';
 import { GroupDirectory } from './group-directory';
 
 // ---------------------------------------------------------------------------
@@ -271,6 +271,11 @@ function ttlForPath(path: string): number {
  */
 const NO_CACHE_DOMAINS: ReadonlySet<string> = new Set(['commerce', 'runtime']);
 
+/** Is this the open registration route? Tolerates a query string, repeated or trailing slashes and capital letters, which the web server would route the same way. */
+export function isRegistrationPath(path: string): boolean {
+  return path.split(/[?#]/)[0].replace(/\/{2,}/g, '/').replace(/\/+$/, '').toLowerCase() === '/api/v1/auth/register';
+}
+
 export function isCacheable(method: string, path: string): boolean {
   if (method !== 'GET') return false;
   if (NO_CACHE_PREFIXES.some(p => path.startsWith(p))) return false;
@@ -371,9 +376,18 @@ export class GatewayService {
 
   /**
    * Validate that a tenant is active. Caches the result to avoid spamming the project service.
+   * The platform's own tenants always pass; anything else must be a project the project service knows.
    */
   private async validateTenant(tenantId: string): Promise<boolean> {
-    if (tenantId === 'system' || tenantId === 'global' || tenantId === 'platform') return true;
+    if (isPlatformTenantId(tenantId)) return true;
+    return this.isActiveProject(tenantId);
+  }
+
+  /**
+   * Is there a project with this id? The project service answers for it (cached for a minute). Unlike `validateTenant`, the platform's
+   * own tenants get no free pass here: they are not projects.
+   */
+  private async isActiveProject(tenantId: string): Promise<boolean> {
     const key = `tenant_status:${tenantId}`;
     const cached = await cacheGet(key);
     if (cached !== null) {
@@ -410,6 +424,24 @@ export class GatewayService {
   }
 
   /**
+   * The open sign-up (`POST /api/v1/auth/register`, no token needed) as it leaves the gateway: only email, password, tenantId and
+   * fullName are forwarded (a `role` or any other field is dropped), and the tenant must be a real customer-facing project, not one of
+   * the platform's own or a name nobody has created. The sign-in service enforces the role and tenant rules again on its own; this
+   * adds the one check only the gateway can make, whether the project exists.
+   */
+  private async checkOpenSignUp(body: unknown): Promise<{ status: 'ok'; body: Record<string, unknown> } | { status: 'refused'; message: string }> {
+    const input = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+    const tenant = checkSelfServiceTenant(input.tenantId);
+    if (tenant.status === 'refused') {
+      return { status: 'refused', message: tenant.reason === 'missing' ? 'email, password, tenantId, and fullName are required.' : 'tenantId must name a customer-facing project.' };
+    }
+    if (!(await this.isActiveProject(tenant.tenantId))) {
+      return { status: 'refused', message: 'tenantId must name a customer-facing project.' };
+    }
+    return { status: 'ok', body: { email: input.email, password: input.password, tenantId: tenant.tenantId, fullName: input.fullName } };
+  }
+
+  /**
    * Proxy a request to the resolved backend service.
    */
   async proxyRequest(
@@ -431,6 +463,15 @@ export class GatewayService {
     const queryProjectId = queryMatch ? decodeURIComponent(queryMatch[1]) : null;
     const effectiveProjectId = projectId || queryProjectId;
     const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || '');
+
+    // ── Open sign-up: a plain customer in a real project, nothing else ───
+    if (method.toUpperCase() === 'POST' && isRegistrationPath(path)) {
+      const checked = await this.checkOpenSignUp(body);
+      if (checked.status === 'refused') {
+        return { status: 400, data: { error: 'Bad Request', message: checked.message } };
+      }
+      body = checked.body;
+    }
 
     // ── Edge Validation ──────────────────────────────────────────────────
     if (domain !== 'auth' && domain !== 'projects' && domain !== 'organizations') {

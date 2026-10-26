@@ -14,6 +14,7 @@
       "project-service",
       "journey-runtime-service",
       "api-gateway",
+      "auth-service",
       "backoffice-admin",
       "web-unit"
     ],
@@ -29,6 +30,7 @@
       "tsc:project-service",
       "tsc:journey-runtime-service",
       "tsc:api-gateway",
+      "tsc:auth-service",
       "tsc:agent-commerce-service",
       "tsc:journeyax-web",
       "tsc:backoffice-admin",
@@ -75,6 +77,10 @@
     },
     "api-gateway": {
       "cwd": "apps/api-gateway",
+      "command": "npm test"
+    },
+    "auth-service": {
+      "cwd": "apps/auth-service",
       "command": "npm test"
     },
     "agent-commerce-service": {
@@ -127,6 +133,10 @@
     },
     "tsc:api-gateway": {
       "cwd": "apps/api-gateway",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:auth-service": {
+      "cwd": "apps/auth-service",
       "command": "npx tsc --noEmit -p ."
     },
     "hardcoding-guard": {

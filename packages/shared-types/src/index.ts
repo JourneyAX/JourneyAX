@@ -137,3 +137,4 @@ export interface CreateCheckoutResult {
 export * from "./rbac";
 export * from './service-url';
 export * from './principal';
+export * from './tenancy';
