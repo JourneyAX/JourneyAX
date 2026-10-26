@@ -386,6 +386,25 @@ async function main() {
     assert.equal((await processor.rescue(TENANT, 't4322'))!.stage, 'waiting', 'a ticket already with a person is left alone');
   });
 
+  await suite.test('the reply is written for the care person who will decide it and signed with their name, never "Unassigned"; the ticket is handed to that same person', async () => {
+    for (const viaRescue of [false, true]) {
+      const store = newStore();
+      const events = new CareEvents();
+      const c = connectors(desk(ticket()));
+      const intake = new CareIntake({ store, events, connectors: c, now: () => NOW });
+      await store.setCursor(TENANT, '2026-10-26T09:00:00Z');
+      await intake.poll(TENANT);
+      const processor = new CareProcessor({ store, events, connectors: c, model: null, team: DEFAULT_TEAM, refundLimit: 500, now: () => NOW });
+      let done;
+      if (viaRescue) { await store.claim(TENANT, 't4322', NOW.toISOString()); done = (await processor.rescue(TENANT, 't4322'))!; }
+      else done = (await processor.run(TENANT, 't4322'))!;
+      const way = viaRescue ? 'rescued' : 'worked';
+      assert.equal(done.assignee.id, 'CSR-1041', `${way}: the delivery person`);
+      assert.ok(done.draft.text.includes('Ngā mihi,\nAroha'), `${way}: signed by the person who decides it`);
+      assert.ok(!JSON.stringify([done.draft, done.steps]).includes('Unassigned'), `${way}: the placeholder never reaches the reply or a change`);
+    }
+  });
+
   suite.finish();
 }
 

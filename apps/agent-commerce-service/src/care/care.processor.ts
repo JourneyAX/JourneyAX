@@ -100,6 +100,8 @@ export class CareProcessor {
       let t0 = Date.now(); let tools: CareTrace['tools'] = []; let u0 = this.usage();
       const reading = await this.read(doc);
       mark('read', t0, tools, u0, reading.fallback);
+      // The reply is written for whoever will decide it, so the person is chosen now (the topic is known) and handed over unchanged at the end.
+      doc.assignee = await this.ownerFor(doc, reading.topic.value, false);
       await this.move(doc, 'read', 'ai', `Read it: topic ${reading.topic.value.toLowerCase()}, mood ${reading.mood.value.toLowerCase()}${reading.orders[0] ? `, order ${reading.orders[0]} named` : ''}.`, { topic: reading.topic, mood: reading.mood });
       t0 = Date.now(); tools = []; u0 = this.usage();
       const research = await this.research(doc, reading.orders, tools);
@@ -125,6 +127,7 @@ export class CareProcessor {
   }
 
   private async finishWithWhatWeHave(doc: CareCase, reason: unknown) {
+    if (!doc.assignee.id) doc.assignee = await this.ownerFor(doc, doc.topic.value, false);
     const w = fallbackWords(doc.topic.value || 'Product question', doc.customer.name, doc.assignee.name);
     doc.notChecked.push(`The AI could not finish its work: ${text(reason, 160)}`);
     if (!doc.draft.text) { doc.draft = { isReply: doc.topic.value !== 'Complaint', text: w.reply, original: w.reply }; doc.summary = w.summary; doc.recommendation = w.recommendation; doc.otherOption = w.otherOption; }
@@ -133,10 +136,17 @@ export class CareProcessor {
     await this.move(doc, 'drafted', 'ai', 'The AI could not finish; what it has is here for you to complete.');
   }
 
-  private async handOver(doc: CareCase): Promise<CareCase> {
+  /** The care person for a topic: the one with the right skills and the fewest open tickets, or the team lead when only a lead may decide. */
+  private async ownerFor(doc: CareCase, topic: string, needsLead: boolean) {
     const open = Object.fromEntries(this.d.team.reps.map((r) => [r.id, 0]));
     for (const c of await this.d.store.list(doc.tenantId)) if (c.status === 'decide' && open[c.assignee.id] !== undefined) open[c.assignee.id] += 1;
-    const owner = assign(this.d.team, doc.topic.value, open, doc.needsLead);
+    return assign(this.d.team, topic, open, needsLead);
+  }
+
+  private async handOver(doc: CareCase): Promise<CareCase> {
+    // Keep the person the reply was written for, unless the ticket turned out to be one only the team lead may decide.
+    const kept = !doc.needsLead && this.d.team.reps.some((r) => r.id === doc.assignee.id);
+    const owner = kept ? doc.assignee : await this.ownerFor(doc, doc.topic.value, doc.needsLead);
     doc.assignee = owner;
     await this.move(doc, 'waiting', doc.needsLead ? 'lead' : 'decide', doc.needsLead ? 'Held for the team lead: a complaint, an upset customer, money over the limit, or the AI is not sure.' : `Assigned to ${owner.name} (${owner.id}) to decide.`, { assignee: owner });
     return doc;
