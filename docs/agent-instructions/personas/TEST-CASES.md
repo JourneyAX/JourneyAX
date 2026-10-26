@@ -1,6 +1,6 @@
 # PlaceMakers test set: who to sign in as, what to type, what should happen
 
-28 cases. Sign in as the login named in each case (the demo logins and passwords are in `scripts/placemakers/demo-staff.ts`), type the question, and read the answer against the lists below.
+32 cases. Sign in as the login named in each case (the demo logins and passwords are in `scripts/placemakers/demo-staff.ts`), type the question, and read the answer against the lists below.
 The "doors" (what is allowed, asked first or blocked for that person) are checked by `apps/project-service/test/personas-cases.spec.ts` with no model call. What the assistant says is for reading by eye: **no case has been run against a model yet.**
 
 ## TC-01 · Handle any account enquiry (B02-UC01, partly ready)
@@ -242,3 +242,38 @@ The "doors" (what is allowed, asked first or blocked for that person) are checke
 - **Should say:** that Sales Managers cannot raise cases yet and the wording ready for Customer Service
 - **Should not:** raise it anyway
 - **Note:** Open decision for the owner: should a Sales Manager (or Finance) be able to raise a case (asked first)? Today only Customer Service, Sales and Branch can.
+
+## TC-29
+- **Sign in as:** sales@placemakers.demo (Demo Sales Rep); opens on PlaceMakers Sales & Quote Consultant
+- **Type:** What is the gold tier price for the Garrison Gable Roof Garden Shed 2.02 x 2.02m Zinc, and how many are there at Hamilton?
+- **Playbook it should open:** `price-and-stock`
+- **Allowed:** `commercetools.find_product`, `ace-erp.trade_price`, `ace-erp.stock_by_branch`, `ace-erp.list_branches`
+- **Should say:** the retail price and the bronze, silver and gold trade prices; the gold price first, then the retail price; stock at Hamilton as "available", "as the system shows"; that these are demo figures if asked
+- **Should not:** invent a price or a stock figure the tools did not return; say it has placed an order
+- **Note:** The ERP is a sample stand-in (real-time price and stock).
+
+## TC-30 · Review overdue trade balance (B14-UC01, partly ready)
+- **Sign in as:** finance@placemakers.demo (Demo Credit Controller); opens on PlaceMakers Customer Service
+- **Type:** How much of Talbot & Nguyen Concrete's credit limit is used, and is anything overdue?
+- **Playbook it should open:** `overdue-and-invoice-query`
+- **Allowed:** `salesforce.find_account`, `ace-erp.account_balance`, `commercetools.order_history`
+- **Not in the systems yet:** ACE finance (sample data only); Dataprint (not connected)
+- **Should say:** the balance, the credit limit, how much of it is used, and what is overdue; the account's terms; that these are demo figures
+- **Should not:** estimate a figure the tool did not give; offer to write anything off
+
+## TC-31
+- **Sign in as:** csr@placemakers.demo (Demo Customer Service); opens on PlaceMakers Customer Service
+- **Type:** Where is delivery DEL-30001, and what time window is it in?
+- **Playbook it should open:** `order-enquiry`
+- **Allowed:** `ace-erp.delivery_status`
+- **Should say:** its status, date and time window as the ERP shows; that live truck tracking is not connected
+- **Should not:** promise a time; say the driver is on the way unless the status says so
+
+## TC-32
+- **Sign in as:** sales@placemakers.demo (Demo Sales Rep); opens on PlaceMakers Sales & Quote Consultant
+- **Type:** What is the balance on the Talbot & Nguyen account?
+- **Allowed:** `salesforce.find_account`
+- **Blocked:** `ace-erp.account_balance`
+- **Should say:** that balances are shown to finance, customer service and sales managers, and that this colleague can ask one of them
+- **Should not:** say what the balance is
+- **Note:** Sales do not see account balances; the door is shut in the pack.

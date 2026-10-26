@@ -126,7 +126,8 @@
         "branch-stock-check",
         "overdue-and-invoice-query",
         "escalated-account-brief",
-        "special-order-handover"
+        "special-order-handover",
+        "price-and-stock"
       ]
     },
     {
@@ -164,7 +165,8 @@
         "branch-stock-check",
         "overdue-and-invoice-query",
         "escalated-account-brief",
-        "special-order-handover"
+        "special-order-handover",
+        "price-and-stock"
       ]
     }
   ],
@@ -374,7 +376,7 @@
         "get_connector_tools",
         "call_connector_tool"
       ],
-      "instructions": "Use this when a colleague asks about one trade account (\"tell me about Kauri Builders\", \"I'm visiting ACC-0007 tomorrow\", \"what's going on with this customer\"). Build the picture from three places, in this order, and say which system each fact came from.\n\n1. Find the account. salesforce.find_account (part of the name) gives the Salesforce account id, the owner (the sales rep) and, where it is known, the account number. commercetools.find_account (the name, the account number such as ACC-0001, or the unit key) gives the trade tier, the home branch, the account manager and the payment terms. When several accounts fit, list the two or three closest with their numbers and ask which one. Do not guess.\n2. Read the account. commercetools.get_account (unit key or account number): the terms, the people who work for it with their roles (account administrator, buyer, site manager, accounts payable), its divisions and how many orders it has. salesforce.get_account (account id): the main contacts and the latest cases.\n3. Read the activity. commercetools.order_history (accountId is the unit key, such as acc-0001; newest first) shows what they buy and how often. salesforce.list_opportunities (accountId, stage \"open\") shows deals in progress. salesforce.list_cases (accountId, status \"open\") shows anything unresolved. Not every team may read deals (Customer Service, Branch and Finance may not): when a tool is not allowed for this colleague, say so in one line, leave that part out of the brief, and carry on with the rest.\n\nGive the colleague a short brief: who the customer is, their tier and home branch; their last few orders with dates and totals; open deals with the next step; open cases with priority; and anything that looks late or unusual (an order gap far longer than their pattern, a high-priority case that has been open for days). Name the account manager so the colleague knows who owns the relationship.\n\nWhat you cannot see yet: balances, overdue amounts, credit limits and invoices (the finance system is not connected, so say so if asked, and never estimate them), and deliveries on the road. Do not read out a customer's e-mail address or phone number unless the colleague asks for contact details."
+      "instructions": "Use this when a colleague asks about one trade account (\"tell me about Kauri Builders\", \"I'm visiting ACC-0007 tomorrow\", \"what's going on with this customer\"). Build the picture from three places, in this order, and say which system each fact came from.\n\n1. Find the account. salesforce.find_account (part of the name) gives the Salesforce account id, the owner (the sales rep) and, where it is known, the account number. commercetools.find_account (the name, the account number such as ACC-0001, or the unit key) gives the trade tier, the home branch, the account manager and the payment terms. When several accounts fit, list the two or three closest with their numbers and ask which one. Do not guess.\n2. Read the account. commercetools.get_account (unit key or account number): the terms, the people who work for it with their roles (account administrator, buyer, site manager, accounts payable), its divisions and how many orders it has. salesforce.get_account (account id): the main contacts and the latest cases.\n3. Read the activity. commercetools.order_history (accountId is the unit key, such as acc-0001; newest first) shows what they buy and how often. salesforce.list_opportunities (accountId, stage \"open\") shows deals in progress. salesforce.list_cases (accountId, status \"open\") shows anything unresolved. Not every team may read deals (Customer Service, Branch and Finance may not): when a tool is not allowed for this colleague, say so in one line, leave that part out of the brief, and carry on with the rest.\n\nGive the colleague a short brief: who the customer is, their tier and home branch; their last few orders with dates and totals; open deals with the next step; open cases with priority; and anything that looks late or unusual (an order gap far longer than their pattern, a high-priority case that has been open for days). Name the account manager so the colleague knows who owns the relationship.\n\nBalances, credit limits and overdue amounts are shown by the ERP to finance, customer service and sales managers only: when asked, point a colleague who is one of them to the overdue and invoice playbook, and anyone else to finance, and never estimate a figure. You cannot see invoices, statements or individual payments. Live truck tracking is not connected. Do not read out a customer's e-mail address or phone number unless the colleague asks for contact details."
     },
     {
       "skillId": "order-enquiry",
@@ -386,7 +388,7 @@
         "get_connector_tools",
         "call_connector_tool"
       ],
-      "instructions": "Use this when a colleague asks about an order: what is on it, what it cost, what state it is in, whether it can change, or when a customer says an order is wrong.\n\n1. Find it. commercetools.get_order takes the order id or the order number the customer sees. When you only have the account, commercetools.order_history (accountId is the unit key, such as acc-0001) lists the account's orders, newest first; add a status to narrow it, and ask for up to 25.\n2. Say what the order says: the lines with quantities and prices, the totals, its state, and the delivery town and postcode. The system shows only the town and postcode of the delivery address, so do not ask for or invent a street address.\n3. Look at the history around it. salesforce.list_cases for the account (status \"open\") shows whether the customer has already raised this order. Say so before suggesting anything new.\n\nChanging an order: you cannot edit, cancel or re-date an order. When a colleague wants a date, quantity or price corrected, collect the order number, what is wrong, what the customer wants and who asked, then offer to raise a case with salesforce.create_case (accountId, a subject that starts with the order number, the description, and a priority). It asks the colleague first with a Yes/No card; never say the case is raised until the card is confirmed and the tool says it was created. When this colleague is not allowed to raise cases, say so plainly and write the case wording ready for Customer Service to enter.\n\nCounter pick-ups (\"Skip the Counter\"): confirm the order exists, that the account or the buyer's name matches the person at the counter, and that its state allows collection. You cannot see the till or the yard, so the colleague confirms the handover.\n\nNever promise when a delivery will arrive. Delivery planning and tracking are not connected; say that dispatch confirms the day."
+      "instructions": "Use this when a colleague asks about an order: what is on it, what it cost, what state it is in, whether it can change, or when a customer says an order is wrong.\n\n1. Find it. commercetools.get_order takes the order id or the order number the customer sees. When you only have the account, commercetools.order_history (accountId is the unit key, such as acc-0001) lists the account's orders, newest first; add a status to narrow it, and ask for up to 25.\n2. Say what the order says: the lines with quantities and prices, the totals, its state, and the delivery town and postcode. The system shows only the town and postcode of the delivery address, so do not ask for or invent a street address.\n3. Look at the history around it. salesforce.list_cases for the account (status \"open\") shows whether the customer has already raised this order. Say so before suggesting anything new.\n\nChanging an order: you cannot edit, cancel or re-date an order. When a colleague wants a date, quantity or price corrected, collect the order number, what is wrong, what the customer wants and who asked, then offer to raise a case with salesforce.create_case (accountId, a subject that starts with the order number, the description, and a priority). It asks the colleague first with a Yes/No card; never say the case is raised until the card is confirmed and the tool says it was created. When this colleague is not allowed to raise cases, say so plainly and write the case wording ready for Customer Service to enter.\n\nCounter pick-ups (\"Skip the Counter\"): confirm the order exists, that the account or the buyer's name matches the person at the counter, and that its state allows collection. You cannot see the till or the yard, so the colleague confirms the handover.\n\nWhere is the delivery? ace-erp.delivery_status takes the delivery id (DEL-30001) or the order id and says whether it is scheduled, out or delivered, the date and the time window. If the ERP does not know the order, say so and that dispatch confirms the day. Give the window as the ERP shows it; never promise a time, and say that live truck tracking is not connected."
     },
     {
       "skillId": "case-queue-review",
@@ -410,7 +412,7 @@
         "get_connector_tools",
         "call_connector_tool"
       ],
-      "instructions": "Use this when a colleague at a counter or on the phone needs to know whether an item is in stock, where else it is held, or what could replace it.\n\n1. Identify the product. commercetools.find_product (query in plain words; brand and department are optional) returns the sku, the name, the retail price and the trade price for each tier. When several products fit, show the closest three with their skus and ask. Do not pick one for the customer.\n2. Check stock. commercetools.stock_by_branch (sku; branch is part of a branch name such as Hamilton, or its code, to look at one branch; limit up to 25) lists the branches that hold it, most first, with the total.\n3. When the branch is out, give the nearest branches that hold it and how many. Offer a substitute from commercetools.find_product in the same department with a close name, and say clearly that it is a substitute and how its price compares.\n\nSay \"as the system shows\" for stock figures; they are not a reservation. You cannot see the till, reservations, inbound shipments or lead times, so you cannot say when an out-of-stock item will return, and you must not guess. For \"which items do we often run out of at this branch\" you have no request or demand history; say so, and offer to check a list of skus one by one."
+      "instructions": "Use this when a colleague at a counter or on the phone needs to know whether an item is in stock, where else it is held, or what could replace it.\n\n1. Identify the product. commercetools.find_product (query in plain words; brand and department are optional) returns the sku, the name and the retail price. When several products fit, show the closest three with their skus and ask. Do not pick one for the customer.\n2. Check stock in the ERP, the business system. ace-erp.stock_by_branch (sku; branchCode to look at one branch) lists the branches that hold it with on hand, reserved and available. ace-erp.list_branches finds a branch's code from its name (Hamilton, Albany). Quote \"available\" (on hand less reserved), most first, with the total.\n3. When the branch is out, give the nearest branches that hold it and how many. Offer a substitute from commercetools.find_product in the same department with a close name, and say clearly that it is a substitute and how its price compares.\n\nSay \"as the system shows\" and give the date it was last counted when the tool gives one; stock figures are not a reservation. These are demo figures from a sample ERP: say so when asked whether they are real. You cannot see the till, inbound shipments or lead times, so you cannot say when an out-of-stock item will return, and you must not guess. For \"which items do we often run out of at this branch\" you have no request or demand history; say so, and offer to check a list of skus one by one."
     },
     {
       "skillId": "overdue-and-invoice-query",
@@ -422,7 +424,7 @@
         "get_connector_tools",
         "call_connector_tool"
       ],
-      "instructions": "Use this when finance or customer service is asked about a trade account's overdue balance, an invoice that looks wrong, or a charge to dispute.\n\nStart by saying what you can and cannot see. You can read orders (commercetools.get_order, commercetools.order_history) with their lines, prices and totals; the account's terms and trade tier (commercetools.get_account); and its cases (salesforce.list_cases, salesforce.get_case). You cannot see invoices, statements, payments, balances or credit limits: the finance system (ACE) is not connected yet. Say this at the start so nobody waits for numbers that will not come, and never estimate a balance from orders.\n\nFor an incorrect-charge question:\n1. Get the order the invoice refers to (commercetools.get_order) and read its lines, quantities and unit prices.\n2. Get the account's tier (commercetools.get_account). For each line, check the unit price against the trade price for that tier: commercetools.find_product with the sku as the query shows the trade price for each tier. List every line that differs and by how much, and show the arithmetic for the order total.\n3. Check for an existing case (salesforce.list_cases for the account).\n4. Give a verdict in plain words: the order matches the tier prices, or lines X and Y do not, and what that suggests. Whether the invoice itself matches the order has to be checked in the finance system.\n\nFor an overdue-balance question: list the account's recent orders with dates and totals so the colleague can match them in the finance system, and say that the balance and what is overdue must come from there.\n\nYou cannot adjust, credit, re-issue or write off anything."
+      "instructions": "Use this when finance or customer service is asked about a trade account's balance, what is overdue, whether an order fits the credit limit, an invoice that looks wrong, or a charge to dispute.\n\nStart by saying what you can and cannot see. From the ERP you can read the account's balance, credit limit, what is overdue, its terms and the date of its last payment (ace-erp.account_balance, with the account number such as ACC-0001). You can read orders (commercetools.get_order, commercetools.order_history) with their lines, prices and totals; the account's tier (commercetools.get_account); and its cases (salesforce.list_cases, salesforce.get_case). You cannot see invoices, statements or individual payments, and the ERP here is a demo with sample figures: say that at the start, and never estimate a figure the tools did not give.\n\nFor a balance or overdue question: find the account (salesforce.find_account or commercetools.find_account gives its account number), then ace-erp.account_balance. Report the balance, the credit limit, how much of the limit is used, and what is overdue, with the terms. If an amount is overdue, list the account's recent orders with dates and totals (commercetools.order_history) so the colleague can see what it relates to, and check for an open case (salesforce.list_cases).\n\nFor an incorrect-charge question:\n1. Get the order the invoice refers to (commercetools.get_order) and read its lines, quantities and unit prices.\n2. Get the account's tier (commercetools.get_account). For each line, check the unit price against the trade price for that tier: ace-erp.trade_price with the sku shows the retail price and the bronze, silver and gold prices. List every line that differs and by how much, and show the arithmetic for the order total.\n3. Check for an existing case (salesforce.list_cases for the account).\n4. Give a verdict in plain words: the order matches the tier prices, or lines X and Y do not, and what that suggests. Whether the invoice itself matches the order has to be checked against the invoice.\n\nYou cannot adjust, credit, re-issue or write off anything."
     },
     {
       "skillId": "escalated-account-brief",
@@ -447,6 +449,18 @@
         "call_connector_tool"
       ],
       "instructions": "Use this when a colleague, usually a sales rep or account manager, wants to pass a special order or a request to Trade Support so it can be actioned straight away (\"the customer needs 40 lengths of 6 m treated post cut to 2.4 m by Friday\").\n\n1. Pin down the account (salesforce.find_account) and the contact. Confirm the product by sku (commercetools.find_product) and, when stock matters, the branch that should hold or ship it (commercetools.stock_by_branch).\n2. Write the request as a note Trade Support can act on without calling back: the account name and number, who asked, the items with sku and quantity, any cutting or special specification, the branch, the date needed, the trade tier, and the one thing that is still unknown.\n3. When this colleague is in Customer Service, Sales or Branch, offer to raise it as a case with salesforce.create_case. It asks first, and the case exists only once the Yes card is confirmed and the tool says it was created. When this colleague cannot raise cases (Sales Managers and Finance cannot yet), hand over the note as text to send or paste, and say it is not logged anywhere until they do.\n\nYou cannot create CRM notes, tasks or special orders; you can read, and for Customer Service, Sales and Branch raise a case. Do not promise a date: Trade Support confirms it."
+    },
+    {
+      "skillId": "price-and-stock",
+      "name": "Real-time price and stock for a product",
+      "description": "A colleague wants the current price (retail and trade tiers) and the stock, branch by branch, for a product or a job's worth of products.",
+      "tier": "on_demand",
+      "tools": [
+        "list_connectors",
+        "get_connector_tools",
+        "call_connector_tool"
+      ],
+      "instructions": "Use this when a colleague asks \"what is the price and what have we got\" for a product, a trade account's price, or a list of items for a job.\n\n1. Identify the product. commercetools.find_product (plain words) returns the sku, name and retail price. When several fit, show the closest three with skus and ask; never choose for the customer.\n2. Get the price from the ERP. ace-erp.trade_price (sku) gives the retail price and the bronze, silver and gold trade prices with the unit and the date they apply from. When the colleague names an account, find its tier with commercetools.get_account and quote that tier's price first, then the retail price for comparison. With no account, give the retail price and the three tiers, and say which tier needs an account.\n3. Get the stock. ace-erp.stock_by_branch (sku; branchCode for one branch, from ace-erp.list_branches) gives on hand, reserved and available. Quote available, say \"as the system shows\", and give the nearest alternatives when the named branch is out.\n4. For a list of items, do each item and finish with a short table (product, price for this account, available at the branch) and the order total at that tier. Do the arithmetic from the tool's figures only.\n\nIf the colleague wants it ordered, say you cannot place an order from here; offer to add the items to a quote or to raise a case (it asks first). These are demo figures from a sample ERP: say so when asked whether they are real, and never invent a price or a stock figure the tools did not return."
     }
   ],
   "extensions": {
@@ -709,12 +723,12 @@
         {
           "connectorId": "ace-erp",
           "displayName": "ACE ERP (sample)",
-          "description": "The business system: stock by branch, trade prices by tier, delivery status and account balances.",
+          "description": "The business system (ERP): stock on hand by branch, retail and trade prices by tier, delivery status and trade account balances. It is a demo stand-in with sample data.",
           "owner": "Supply chain team",
           "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",
           "connectionScope": "shop",
           "sample": true,
-          "enabled": false,
+          "enabled": true,
           "tools": [
             {
               "name": "stock_by_branch",
@@ -1487,13 +1501,6 @@
           "state": "allow"
         },
         {
-          "connectorId": "ace-erp",
-          "tool": "*",
-          "audience": "staff",
-          "groups": [],
-          "state": "allow"
-        },
-        {
           "connectorId": "mulesoft",
           "tool": "*",
           "audience": "staff",
@@ -1534,6 +1541,77 @@
           "audience": "staff",
           "groups": [],
           "state": "ask"
+        },
+        {
+          "connectorId": "ace-erp",
+          "tool": "stock_by_branch",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "branch",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "ace-erp",
+          "tool": "trade_price",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "branch",
+            "finance",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "ace-erp",
+          "tool": "delivery_status",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "branch",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "ace-erp",
+          "tool": "account_balance",
+          "audience": "staff",
+          "groups": [
+            "finance",
+            "customer-service",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "ace-erp",
+          "tool": "list_branches",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "branch",
+            "finance",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
         }
       ]
     },
@@ -1828,7 +1906,8 @@
               "salesforce",
               "commercetools",
               "marketing-cloud",
-              "zendesk"
+              "zendesk",
+              "ace-erp"
             ],
             "tools": []
           }
@@ -1847,7 +1926,8 @@
               "commercetools",
               "salesforce",
               "marketing-cloud",
-              "zendesk"
+              "zendesk",
+              "ace-erp"
             ],
             "tools": []
           }
@@ -2028,6 +2108,19 @@
             "sales",
             "sales-managers",
             "customer-service",
+            "administrators"
+          ],
+          "level": "available"
+        },
+        {
+          "skillId": "price-and-stock",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "branch",
+            "leadership",
             "administrators"
           ],
           "level": "available"

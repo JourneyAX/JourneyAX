@@ -52,7 +52,7 @@ check('each cell offers allow, ask first and blocked, shows the current state, a
 });
 
 check('it says what the table hides, and that nothing is changed until Make live', () => {
-  const html = render('ace-erp');
+  const html = render('sap-commerce');
   assert.ok(html.includes('1 default rule'));
   assert.ok(html.includes('writes its rules for each team explicitly'));
   assert.ok(html.includes('No changes yet.'));

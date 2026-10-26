@@ -51,8 +51,9 @@ check('each cell is the pack\'s own answer for that team: what is allowed, asked
 });
 
 check('the table says what it hides: default rows, rows for all staff, and rows for everyone', () => {
-  const ace = view(ext(), 'ace-erp');
-  assert.deepEqual(ace.notes, { defaultRows: 1, allStaffRows: 1, everyoneRows: 0 });
+  const parked = view(ext(), 'sap-commerce');
+  assert.deepEqual(parked.notes, { defaultRows: 1, allStaffRows: 2, everyoneRows: 0 }, 'the default row, which counts as an all-staff row too, and one more');
+  assert.deepEqual(view(ext(), 'ace-erp').notes, { defaultRows: 0, allStaffRows: 0, everyoneRows: 0 }, 'the ERP has a rule per tool and no default');
   assert.deepEqual(view(ext(), 'salesforce').notes, { defaultRows: 0, allStaffRows: 0, everyoneRows: 0 });
 });
 
@@ -101,16 +102,16 @@ check('the rows written are one per state (allow, ask first), the administrators
 
 check('a system with a default row (every tool with no row of its own) gets an explicit blocked row so a blocked team really is blocked', () => {
   const e = ext();
-  const v = view(e, 'ace-erp');
-  assert.equal(v.grid.stock_by_branch.sales, 'allow', 'the default row lets all staff in');
-  const wanted = { ...v.grid.stock_by_branch, sales: 'blocked' as ToolState };
-  const done = good(applyRulesChange(e, { connectorId: 'ace-erp', cells: { stock_by_branch: wanted } }));
-  const after = view(done.extension, 'ace-erp');
-  assert.equal(after.grid.stock_by_branch.sales, 'blocked');
-  assert.equal(after.grid.stock_by_branch.finance, 'allow');
-  assert.equal(after.grid.trade_price.sales, 'allow', 'tools that were not edited still follow the default row');
-  assert.ok(done.extension.policy.some((r) => r.connectorId === 'ace-erp' && r.tool === 'stock_by_branch' && r.state === 'blocked' && r.groups.includes('sales')));
-  assert.ok(done.extension.policy.some((r) => r.connectorId === 'ace-erp' && r.tool === '*'), 'the default row stays');
+  const v = view(e, 'mulesoft');
+  assert.equal(v.grid.order_sync_status.sales, 'allow', 'the default row lets all staff in');
+  const wanted = { ...v.grid.order_sync_status, sales: 'blocked' as ToolState };
+  const done = good(applyRulesChange(e, { connectorId: 'mulesoft', cells: { order_sync_status: wanted } }));
+  const after = view(done.extension, 'mulesoft');
+  assert.equal(after.grid.order_sync_status.sales, 'blocked');
+  assert.equal(after.grid.order_sync_status.finance, 'allow');
+  assert.equal(after.grid.integration_run_log.sales, 'allow', 'tools that were not edited still follow the default row');
+  assert.ok(done.extension.policy.some((r) => r.connectorId === 'mulesoft' && r.tool === 'order_sync_status' && r.state === 'blocked' && r.groups.includes('sales')));
+  assert.ok(done.extension.policy.some((r) => r.connectorId === 'mulesoft' && r.tool === '*'), 'the default row stays');
 });
 
 check('a tool that changes data cannot be set to allow, for anyone; ask first and blocked are fine', () => {

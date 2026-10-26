@@ -383,6 +383,9 @@
     "special-order-handover": [
       "B01-UC02",
       "B08-UC02"
+    ],
+    "price-and-stock": [
+      "B04-UC01"
     ]
   }
 }

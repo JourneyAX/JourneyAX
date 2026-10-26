@@ -51,7 +51,7 @@ async function main() {
   });
 
   await suite.test('the test set travels with the library: every case has the e-mail to sign in with, and the page the owner reads says the same', () => {
-    assert.equal(library.testCases?.length, 28);
+    assert.equal(library.testCases?.length, 32);
     for (const entry of library.testCases ?? []) assert.ok(DEMO_STAFF.some((person) => person.email === entry.loginEmail), `${entry.id}: ${entry.loginEmail}`);
     assert.ok(!JSON.stringify(library.testCases).includes('demo-2026'), 'no password in the library');
   });

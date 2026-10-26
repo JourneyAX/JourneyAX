@@ -40,6 +40,11 @@ const TABLE: Record<string, string> = {
   'zendesk.create_ticket':            'K K - - - - - - - -',
   'zendesk.add_ticket_note':          'K K K K - - - - - -',
   'salesforce.create_case':           'K K K - - - - K - -',
+  'ace-erp.stock_by_branch':          'A A A A - - A A - -',
+  'ace-erp.trade_price':              'A A A A - - A A A -',
+  'ace-erp.delivery_status':          'A A A A - - A A - -',
+  'ace-erp.account_balance':          'A A - A - - A - A -',
+  'ace-erp.list_branches':            'A A A A - - A A A -',
   'google-analytics.traffic_by_page': 'A - - - A A A - - -',
   'google-analytics.top_searches':    'A - - - A A A - - -',
   'google-analytics.daily_traffic':   'A - - - A A A - - -',
@@ -66,9 +71,10 @@ const PLAYBOOKS: Record<string, string> = {
   'overdue-and-invoice-query':        'O O - O - - - - O -',
   'escalated-account-brief':          'O O - O - - O O - -',
   'special-order-handover':           'O O O O - - - - - -',
+  'price-and-stock':                  'O O O O - - O O - -',
 };
 
-const PARKED = ['sap-commerce', 'ace-erp', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location'];
+const PARKED = ['sap-commerce', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location'];
 
 const draft = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
 const published = draft.extensions.connectors as ConnectorsExtension;
@@ -113,7 +119,7 @@ async function main() {
   });
 
   await suite.test('the table covers every tool the pack lists for the connectors in scope, so nothing is open by accident', () => {
-    const inScope = ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'marketing-cloud', 'zendesk'];
+    const inScope = ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'marketing-cloud', 'zendesk', 'ace-erp'];
     const listed = connectors.connectors.filter((connector) => inScope.includes(connector.connectorId)).flatMap((connector) => connector.tools.map((tool) => `${connector.connectorId}.${tool.name}`));
     assert.deepEqual([...listed].sort(), Object.keys(TABLE).sort());
   });
@@ -131,9 +137,9 @@ async function main() {
     assert.deepEqual(usableConnectors(connectors, { audience: 'shopper', groups: ['sales'] }), [], 'a group claimed by a shopper changes nothing');
   });
 
-  await suite.test('the pack as published has only the systems that are really connected and wanted switched on: commercetools and Salesforce, and Marketing Cloud as a sample', () => {
+  await suite.test('the pack as published has only the systems that are really connected and wanted switched on: commercetools and Salesforce, and Marketing Cloud and the ERP as samples', () => {
     const on = published.connectors.filter((connector) => connector.enabled !== false).map((connector) => connector.connectorId).sort();
-    assert.deepEqual(on, ['commercetools', 'marketing-cloud', 'salesforce'], 'switch Google Analytics and Power BI on here only when their vendor accounts are connected');
+    assert.deepEqual(on, ['ace-erp', 'commercetools', 'marketing-cloud', 'salesforce'], 'switch Google Analytics and Power BI on here only when their vendor accounts are connected');
   });
 
   await suite.test('Zendesk is connected and loaded but switched off: PlaceMakers\' ticket desk is Salesforce Service Cloud, so a customer\'s tickets are Salesforce cases', () => {
@@ -159,15 +165,15 @@ async function main() {
       const gate = pluginGate(draft.extensions.plugins, people[who]);
       return usableConnectors(connectors, people[who]).filter((connector) => gate.allows('connectors', connector.connectorId)).map((connector) => connector.connectorId).sort();
     };
-    const all = ['commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk'];
+    const all = ['ace-erp', 'commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk'];
     assert.deepEqual(menu('admin'), all);
     assert.deepEqual(menu('exec'), all);
-    assert.deepEqual(menu('csr'), ['commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
-    assert.deepEqual(menu('sales'), ['commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
-    assert.deepEqual(menu('sales.manager'), ['commercetools', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk']);
-    assert.deepEqual(menu('marketing'), all.filter((id) => id !== 'zendesk'), 'marketing has no use for the ticket desk');
-    assert.deepEqual(menu('branch'), ['commercetools', 'salesforce'], 'the counter reads stock, orders and cases; nothing else');
-    assert.deepEqual(menu('finance'), ['commercetools', 'salesforce']);
+    assert.deepEqual(menu('csr'), ['ace-erp', 'commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
+    assert.deepEqual(menu('sales'), ['ace-erp', 'commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
+    assert.deepEqual(menu('sales.manager'), ['ace-erp', 'commercetools', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk']);
+    assert.deepEqual(menu('marketing'), all.filter((id) => id !== 'zendesk' && id !== 'ace-erp'), 'marketing has no use for the ticket desk or the ERP');
+    assert.deepEqual(menu('branch'), ['ace-erp', 'commercetools', 'salesforce'], 'the counter reads stock and prices from the ERP, and orders and cases; nothing else');
+    assert.deepEqual(menu('finance'), ['ace-erp', 'commercetools', 'salesforce'], 'finance reads balances from the ERP');
     assert.deepEqual(menu('insights'), ['google-analytics', 'power-bi']);
     assert.deepEqual(menu('shopper'), []);
   });
@@ -246,7 +252,7 @@ async function main() {
     const project = { agents: draft.agents, extensions: draft.extensions, skills: draft.skills, defaultAgentId: draft.defaultAgentId };
     const ids = Object.keys(PLAYBOOKS).sort();
     const csr = buildAccessPreview(project as any, plan.teams, people.csr);
-    assert.deepEqual(csr.skills.filter((skill) => ids.includes(skill.skillId)).map((skill) => skill.skillId).sort(), ['account-360', 'branch-stock-check', 'case-queue-review', 'escalated-account-brief', 'order-enquiry', 'overdue-and-invoice-query', 'special-order-handover'].sort());
+    assert.deepEqual(csr.skills.filter((skill) => ids.includes(skill.skillId)).map((skill) => skill.skillId).sort(), ['account-360', 'branch-stock-check', 'case-queue-review', 'escalated-account-brief', 'order-enquiry', 'overdue-and-invoice-query', 'price-and-stock', 'special-order-handover'].sort());
     assert.ok(csr.skills.filter((skill) => ids.includes(skill.skillId)).every((skill) => skill.tier === 'on_demand' && skill.via === 'row'));
     const shopper = buildAccessPreview(project as any, plan.teams, people.shopper);
     assert.deepEqual(shopper.skills.filter((skill) => ids.includes(skill.skillId)), []);

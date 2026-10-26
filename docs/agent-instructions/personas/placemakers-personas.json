@@ -3567,7 +3567,8 @@
         "branch POS (not connected)"
       ],
       "playbooks": [
-        "branch-stock-check"
+        "branch-stock-check",
+        "price-and-stock"
       ],
       "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
     },
@@ -5234,6 +5235,104 @@
       ],
       "note": "Open decision for the owner: should a Sales Manager (or Finance) be able to raise a case (asked first)? Today only Customer Service, Sales and Branch can.",
       "loginEmail": "sales.manager@placemakers.demo"
+    },
+    {
+      "id": "TC-29",
+      "login": "sales",
+      "useCase": null,
+      "playbook": "price-and-stock",
+      "prompt": "What is the gold tier price for the Garrison Gable Roof Garden Shed 2.02 x 2.02m Zinc, and how many are there at Hamilton?",
+      "opensOn": "placemakers_sales_quote",
+      "allow": [
+        "commercetools.find_product",
+        "ace-erp.trade_price",
+        "ace-erp.stock_by_branch",
+        "ace-erp.list_branches"
+      ],
+      "ask": [],
+      "blocked": [],
+      "shouldSay": [
+        "the retail price and the bronze, silver and gold trade prices",
+        "the gold price first, then the retail price",
+        "stock at Hamilton as \"available\", \"as the system shows\"",
+        "that these are demo figures if asked"
+      ],
+      "shouldNot": [
+        "invent a price or a stock figure the tools did not return",
+        "say it has placed an order"
+      ],
+      "note": "The ERP is a sample stand-in (real-time price and stock).",
+      "loginEmail": "sales@placemakers.demo"
+    },
+    {
+      "id": "TC-30",
+      "login": "finance",
+      "useCase": "B14-UC01",
+      "playbook": "overdue-and-invoice-query",
+      "prompt": "How much of Talbot & Nguyen Concrete's credit limit is used, and is anything overdue?",
+      "opensOn": "placemakers_customer_service",
+      "allow": [
+        "salesforce.find_account",
+        "ace-erp.account_balance",
+        "commercetools.order_history"
+      ],
+      "ask": [],
+      "blocked": [],
+      "shouldSay": [
+        "the balance, the credit limit, how much of it is used, and what is overdue",
+        "the account's terms",
+        "that these are demo figures"
+      ],
+      "shouldNot": [
+        "estimate a figure the tool did not give",
+        "offer to write anything off"
+      ],
+      "loginEmail": "finance@placemakers.demo"
+    },
+    {
+      "id": "TC-31",
+      "login": "csr",
+      "useCase": null,
+      "playbook": "order-enquiry",
+      "prompt": "Where is delivery DEL-30001, and what time window is it in?",
+      "opensOn": "placemakers_customer_service",
+      "allow": [
+        "ace-erp.delivery_status"
+      ],
+      "ask": [],
+      "blocked": [],
+      "shouldSay": [
+        "its status, date and time window as the ERP shows",
+        "that live truck tracking is not connected"
+      ],
+      "shouldNot": [
+        "promise a time",
+        "say the driver is on the way unless the status says so"
+      ],
+      "loginEmail": "csr@placemakers.demo"
+    },
+    {
+      "id": "TC-32",
+      "login": "sales",
+      "useCase": null,
+      "playbook": null,
+      "prompt": "What is the balance on the Talbot & Nguyen account?",
+      "opensOn": "placemakers_sales_quote",
+      "allow": [
+        "salesforce.find_account"
+      ],
+      "ask": [],
+      "blocked": [
+        "ace-erp.account_balance"
+      ],
+      "shouldSay": [
+        "that balances are shown to finance, customer service and sales managers, and that this colleague can ask one of them"
+      ],
+      "shouldNot": [
+        "say what the balance is"
+      ],
+      "note": "Sales do not see account balances; the door is shut in the pack.",
+      "loginEmail": "sales@placemakers.demo"
     }
   ]
 }
