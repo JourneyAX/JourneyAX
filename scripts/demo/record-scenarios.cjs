@@ -242,8 +242,12 @@ const SCENARIOS = [
       await r.step('Payment', 'Secure payment. This is a test card.', async () => { await c.press(/Take me to payment/, { last: true }); await c.payWithTestCard(); });
       let number = '';
       await r.step('The order', 'Paid. This is her order number.', async () => { number = await c.orderNumber(); await wait(3500); });
-      await r.step('In commercetools', 'The same order, with the same number, is in commercetools.', () => c.showMerchantCenterOrder(number));
-      await r.step('The end', 'From the first question to the order, in one conversation.', async () => { await wait(3500); });
+      // The order number is kept beside the video: the commercetools screens are made from the owner's own signed-in Merchant Center afterwards.
+      fs.writeFileSync(path.join(OUT, '01-bathroom-end-to-end.order.txt'), `${number}\n`);
+      if (MC_STATE) {
+        await r.step('In commercetools', 'The same order, with the same number, is in commercetools.', () => c.showMerchantCenterOrder(number));
+        await r.step('The end', 'From the first question to the order, in one conversation.', async () => { await wait(3500); });
+      }
     },
   },
   {
