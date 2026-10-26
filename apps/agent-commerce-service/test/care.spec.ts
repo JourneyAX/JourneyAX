@@ -316,6 +316,13 @@ async function main() {
     assert.equal(refundCheck({ ...base, shipment: 'Delivered' }, 'Damaged item', 500).verdict, 'person');
     assert.match(refundCheck({ ...base, shipment: 'Pending' }, 'Cancel order', 100).note, /team lead decides/);
     assert.equal(refundCheck({ ...base, shipment: 'Pending' }, 'Delivery', 500).verdict, 'ok');
+    // An order the shop recorded in commercetools has no shipment state: the desk must not claim it was not dispatched.
+    for (const unknown of ['Unknown', '', undefined]) {
+      const check = refundCheck({ ...base, shipment: unknown }, 'Cancel order', 500);
+      assert.equal(check.verdict, 'person', `shipment ${JSON.stringify(unknown)}: a person decides`);
+      assert.equal(check.cancelAllowed, true, 'the cancel is still proposed, with the doubt written on it');
+      assert.ok(!/has not been dispatched, so/.test(check.note) && /confirm/.test(check.note), `shipment ${JSON.stringify(unknown)}: says it cannot tell`);
+    }
     const noCancel = stepsFor({ ticketId: 1, topic: 'Cancel order', customerName: 'Lina', orderRef: 'X1', orderTotal: 412.5, currency: 'NZD', subject: 's', message: 'm', repName: 'Aroha', cancelAllowed: false });
     assert.ok(noCancel.every((s) => s.kind !== 'money'), 'a dispatched order gets no cancel step');
   });

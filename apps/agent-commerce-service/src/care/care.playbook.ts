@@ -84,6 +84,8 @@ export function refundCheck(order: { state?: string; shipment?: string; payment?
     if (String(order.state || '').toLowerCase() === 'cancelled') return { verdict: 'no', note: 'The order is already cancelled.', cancelAllowed: false };
     if (['shipped', 'delivered', 'partial'].includes(shipment)) return { verdict: 'no', note: 'The order has already been dispatched, so it cannot be cancelled. It becomes a return, which a person decides.', cancelAllowed: false };
     if (shipment === 'ready') return { verdict: 'person', note: `The order is picked and waiting. The branch has to stop it before it can be cancelled.${over}`, cancelAllowed: true };
+    // An order the shop recorded has no shipment state, so nothing says whether it was dispatched: never state that it was not.
+    if (!shipment || shipment === 'unknown') return { verdict: 'person', note: `No shipment is recorded for this order, so nothing here says whether it has been dispatched. The branch has to confirm that before it is cancelled.${over}`, cancelAllowed: true };
     if (!paid) return { verdict: 'person', note: 'Payment is not recorded as paid, so there may be nothing to refund.', cancelAllowed: true };
     return { verdict: 'ok', note: `The order has not been dispatched, so it can be cancelled and refunded.${over}`, cancelAllowed: true };
   }
