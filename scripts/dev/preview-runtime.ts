@@ -12,7 +12,18 @@ import 'reflect-metadata';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { PackRepository } from '@journeyax/business-pack';
-import { overlayDraft } from './pack-overlay';
+import { overlayDraft, withDemoPrices, withModel } from './pack-overlay';
+
+/** Optional: try another answering model in this preview only (`provider/model[:effort]`). */
+const previewModel = String(process.env.PREVIEW_MODEL || '').trim();
+/** Optional: show demo prices in this preview only (PREVIEW_DEMO_PRICES=1). */
+const previewDemoPrices = process.env.PREVIEW_DEMO_PRICES === '1';
+const laid = (pack: any) => {
+  let out: any = overlayDraft(pack, draft);
+  if (previewModel) out = withModel(out, previewModel);
+  if (previewDemoPrices) out = withDemoPrices(out);
+  return out;
+};
 
 const tenant = String(process.env.PREVIEW_TENANT || '').toLowerCase();
 const draftPath = process.env.PREVIEW_DRAFT;
@@ -25,7 +36,7 @@ const original = PackRepository.prototype.loadActivePack;
 PackRepository.prototype.loadActivePack = async function patched(this: PackRepository, ...args: Parameters<typeof original>) {
   const live: any = await original.apply(this, args);
   if (!live || String(args[0]).toLowerCase() !== tenant) return live;
-  const overlaid: any = overlayDraft(live, draft);
+  const overlaid: any = laid(live);
   if (overlayLogged++ < 3) console.log(`[preview-runtime] draft laid over '${tenant}' (${String(args[1])}): advisor tools ${(overlaid.agents || []).find((a: any) => a.isDefault)?.allowedTools?.length ?? '?'}, skills ${(overlaid.extensions?.skills || []).length}`);
   // The release-activation gate compares the pack with the checksum approved for the live release. This preview deliberately runs a
   // different pack, so it carries the live release's verification stamp. That holds only inside this preview process; the live
@@ -40,7 +51,7 @@ const originalPinned = PackRepository.prototype.loadPinnedPack;
 PackRepository.prototype.loadPinnedPack = async function patchedPinned(this: PackRepository, ...args: Parameters<typeof originalPinned>) {
   const pinned: any = await originalPinned.apply(this, args);
   if (!pinned || String(args[0]).toLowerCase() !== tenant) return pinned;
-  const overlaid: any = overlayDraft(pinned, draft);
+  const overlaid: any = laid(pinned);
   const stamp = pinned[VERIFIED_RELEASE_METADATA];
   if (stamp) Object.defineProperty(overlaid, VERIFIED_RELEASE_METADATA, { value: stamp, enumerable: false, configurable: false, writable: false });
   return overlaid;

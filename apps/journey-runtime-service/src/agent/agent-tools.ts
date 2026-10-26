@@ -196,6 +196,49 @@ async function findProductByTitle(ctx: AgentToolContext, asked: string): Promise
   return same[0];
 }
 
+/** Words that say what the customer wants done, not which product: left out when matching a product by its words. */
+const GUIDE_WORDS_IGNORED = new Set(['the', 'and', 'for', 'with', 'how', 'can', 'you', 'please', 'guide', 'guides', 'installation', 'install', 'read', 'take', 'through', 'explain', 'steps', 'step', 'tell', 'show', 'about', 'what', 'does', 'say', 'from', 'this', 'that', 'bought', 'building', 'buy', 'got', 'have', 'need', 'want', 'putting', 'i', 'im', 'me', 'my', 'we', 'our', 'it', 'them', 'of', 'to', 'in', 'on', 'is', 'are', 'a', 'an']);
+
+/** The words of a product description worth matching on: lower case, no filler, no single letters ("x" in "88 x 88"). */
+function productWordsOf(text: string): string[] {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9.\s-]/g, ' ').split(/\s+/).map((w) => w.replace(/^[-.]+|[-.]+$/g, '')).filter((w) => w.length >= 2 && !GUIDE_WORDS_IGNORED.has(w));
+}
+
+/** True when the product's name carries every one of the words (a plural matches its singular), so it is the product that was described and not merely a near one. */
+function namesEveryWord(product: any, words: string[]): boolean {
+  if (words.length === 0) return false;
+  const name = String(product.title || product.name || '').toLowerCase();
+  return words.every((w) => name.includes(w) || (w.length > 3 && /s$/.test(w) && name.includes(w.replace(/es$|s$/, ''))));
+}
+
+/**
+ * The products nearest to the words the model gave where a SKU was wanted (the product's description first, then what it passed as the SKU, then the customer's own sentence),
+ * each marked with whether a guide is kept for it, those with a guide first.
+ */
+async function guideCandidates(ctx: AgentToolContext, ...asked: string[]): Promise<Array<{ sku: string; title: string; hasGuide: boolean; product: any; guideKey: string }>> {
+  const queries = [...asked, ctx.customerQuestion].map((text) => productWordsOf(String(text || '')).join(' ').slice(0, 240)).filter((text, at, all) => text.length >= 3 && all.indexOf(text) === at);
+  const found = new Map<string, any>();
+  for (const query of queries) {
+    try {
+      const res = await ctx.catalogSearchHandler.execute({ query, maxResults: 5 } as any, makeExecContext(ctx));
+      for (const p of (res.products || res.items || []) as any[]) if (p?.sku && !found.has(String(p.sku))) found.set(String(p.sku), p);
+    } catch {
+      // A search that fails leaves the model with the plain "look it up first" message.
+    }
+    if (found.size >= 3) break;
+  }
+  const out: Array<{ sku: string; title: string; hasGuide: boolean; product: any; guideKey: string }> = [];
+  for (const p of [...found.values()].slice(0, 6)) {
+    ctx.turnProductSkus.add(p.sku);
+    ctx.catalogProductCache.set(p.sku, p);
+    const kept = ctx.productGuideRepo ? await ctx.productGuideRepo.findForProducts(ctx.tenantId, [String(p.sku), String(p.parentSku || '')].filter(Boolean)).catch(() => []) : [];
+    // What the guides kept for this product say, as one key: two products with the same key share the same guide, word for word.
+    const guideKey = kept.length ? createHash('sha256').update(kept.map((record: any) => `${record.title}\n${record.text}`).sort().join('\n--\n')).digest('hex').slice(0, 16) : '';
+    out.push({ sku: String(p.sku), title: String(p.title || p.name || p.sku), hasGuide: kept.length > 0, product: p, guideKey });
+  }
+  return [...out.filter((c) => c.hasGuide), ...out.filter((c) => !c.hasGuide)];
+}
+
 /** Words on the quantity card's working lines; the tenant's own words (pack `extensions.quantityHelper.labels`) replace these. */
 const DEFAULT_QUANTITY_LABELS = {
   area: 'Your area', areaUnit: 'm²', perPiece: 'One piece covers', perPack: 'One pack covers', coats: 'Coats', allowance: 'Allowance for cuts and waste',
@@ -623,12 +666,13 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
     parameters: {
       type: 'object',
       properties: {
-        sku: { type: 'string', description: 'The SKU of the product whose guide to read (the product the customer is looking at, if they opened one).' },
+        sku: { type: 'string', description: 'The SKU of the product whose guide to read (the product the customer is looking at, if they opened one). Never invent one: if you do not have it, leave it out and give product instead.' },
+        product: { type: 'string', description: 'When you do not have the SKU: the words that name the product, as the customer said them (for example "glulam post 88 x 88 2.7m pre-primed H5"). The guide is read if exactly one product fits; otherwise you get the closest products to choose from.' },
         question: { type: 'string', description: 'What the customer wants to know, in their own words (for example "how far apart do the fixings go"). Leave out to read the start of the guide.' },
         guide: { type: 'string', description: 'Optional: read only one guide, by part of its title (for example "Installation") when the product has several.' },
         from: { type: 'number', description: 'Optional, with one guide: the passage number to read from, to keep reading after a first read said there is more.' },
       },
-      required: ['sku'],
+      required: [],
     },
   },
   {
@@ -1788,12 +1832,35 @@ export async function executeAgentTool(
     }
 
     case 'read_product_guide': {
-      const config: { enabled?: boolean; unlocks?: string[]; maxPassages?: number; passageChars?: number } = (ctx.release as any)?.extensions?.productGuides || {};
+      const config: { enabled?: boolean; unlocks?: string[]; maxPassages?: number; passageChars?: number; wholeGuideChars?: number } = (ctx.release as any)?.extensions?.productGuides || {};
       if (config.enabled === false) return { ok: false, error: 'Reading product guides is not switched on for this shop. Say you cannot read it here and point to the product page.' };
-      const sku = skuFromEvent(String(args.sku || '').trim(), ctx.customerEvent);
-      if (!sku) return { ok: false, error: 'Give the SKU of the product whose guide to read.' };
-      const product = (await findProductBySku(ctx, sku)) || (await findProductByTitle(ctx, sku));
-      if (!product) return { ok: false, error: `No product with SKU "${sku}" was found. Look the product up first (search_products), then call this with its SKU.` };
+      const productWords = String(args.product || '').replace(/\s+/g, ' ').trim();
+      let sku = skuFromEvent(String(args.sku || '').trim(), ctx.customerEvent);
+      if (!sku && !productWords) return { ok: false, error: 'Give the SKU of the product whose guide to read, or the words that name the product (the product argument).' };
+      let product = sku ? (await findProductBySku(ctx, sku)) || (await findProductByTitle(ctx, sku)) : undefined;
+      let readFor: string | undefined;
+      if (!product) {
+        // The model often passes the product's words, a code or part of a title instead of the SKU. Find the product from those words: it is taken only when exactly one product names every word;
+        // otherwise the closest products come back, with whether each has a guide, so the model can choose and read in the same turn.
+        const near = await guideCandidates(ctx, productWords, sku);
+        // Only words given as the product are matched this way; something passed as a SKU that is not one is never taken for a product, however close.
+        const words = productWordsOf(productWords);
+        const fits = productWords ? near.filter((c) => namesEveryWord(c.product, words)) : [];
+        // Several products that fit are still one answer when every one of them keeps the very same guide: it is read once, and the reply says which products it covers.
+        const sameGuide = fits.length > 1 && !!fits[0].guideKey && fits.every((c) => c.guideKey === fits[0].guideKey);
+        if (fits.length === 1 || sameGuide) {
+          product = fits[0].product;
+          sku = String(product.sku);
+          readFor = sameGuide ? `${fits[0].title} (the same guide is kept for: ${fits.slice(1).map((c) => c.title).join('; ')})` : fits[0].title;
+        } else {
+          const shown = near.map(({ sku: candidate, title: candidateTitle, hasGuide }) => ({ sku: candidate, title: candidateTitle, hasGuide }));
+          return {
+            ok: false,
+            error: `No single product matched ${sku ? `"${sku}"` : 'those words'}.${shown.length ? ' These are the closest products to what the customer described. Call read_product_guide again NOW with the SKU of the one that best fits their words (prefer one that has a guide) and say in your answer which product you read it for; ask the customer only if the candidates are really different products and nothing in what they said separates them.' : ' Look the product up first (search_products), then call this with its SKU.'}`,
+            ...(shown.length ? { candidates: shown } : {}),
+          };
+        }
+      }
       const title = String(product.title || product.name || sku);
       const records = ctx.productGuideRepo ? await ctx.productGuideRepo.findForProducts(ctx.tenantId, [String(product.sku || ''), String(product.parentSku || ''), sku]) : [];
       if (records.length === 0) {
@@ -1820,6 +1887,7 @@ export async function executeAgentTool(
         from: args.from === undefined || args.from === null || args.from === '' ? undefined : Number(args.from),
         maxPassages: config.maxPassages,
         passageChars: config.passageChars,
+        wholeGuideChars: config.wholeGuideChars ?? 12000,
       });
       if ('error' in reading && reading.error === 'no_readable_text') {
         if (ctx.knowledgeGapRepo) {
@@ -1852,6 +1920,7 @@ export async function executeAgentTool(
         found: true,
         sku: product.sku || sku,
         title,
+        ...(readFor ? { foundFromWords: `This guide is for "${readFor}", found from the customer's words and not from a SKU: say which product you read it for.` } : {}),
         guides: reading.guides.map((guide) => ({ guide: guide.title, kind: guide.kind, pages: guide.pages, link: guide.url, passages: guide.passages, ...(guide.outline ? { headings: guide.outline.map((entry) => `${entry.n}: ${entry.heading}`) } : {}), ...(guide.truncated ? { note: 'The stored text stops before the end of this guide.' } : {}) })),
         answeredFromGuide: reading.matched,
         ...(reading.unreadable ? { alsoKept: reading.unreadable.map((guide) => ({ guide: guide.title, kind: guide.kind, link: guide.url, note: 'no readable words are held for this one: give its link and do not say what it contains' })) } : {}),

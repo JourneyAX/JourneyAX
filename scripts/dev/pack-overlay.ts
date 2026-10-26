@@ -58,3 +58,33 @@ export function overlayDraft(live: Json, draft: Json): Json {
   if (draft.conversationPolicy) pack.conversationPolicy = deepMerge(pack.conversationPolicy || {}, draft.conversationPolicy);
   return pack;
 }
+
+/**
+ * Tries another answering model in a preview, from a spec like `anthropic/claude-sonnet-5-5` or `google/gemini-2.5-flash:medium` (the part after
+ * the colon is the thinking effort). The named model goes first for the policies that answer and choose tools; the live candidates stay behind
+ * it as fallbacks. In memory only, like the rest of the overlay.
+ */
+export function withModel(pack: Json, spec: string): Json {
+  const [route, effort] = spec.split(':');
+  const [provider, ...rest] = route.split('/');
+  const model = rest.join('/');
+  if (!provider || !model || !pack.modelPolicy?.policies) return pack;
+  const out: Json = structuredClone(pack);
+  for (const policy of out.modelPolicy.policies) {
+    if (!['complex_reasoning', 'response_generation', 'tool_selection'].includes(policy.policyId)) continue;
+    const first = (policy.candidates || [])[0] || {};
+    policy.candidates = [
+      { provider, model, priority: 1, ...(first.temperature !== undefined ? { temperature: first.temperature } : {}), ...(effort ? { reasoningEffort: effort } : {}) },
+      ...(policy.candidates || []).map((c: Json, i: number) => ({ ...c, priority: i + 2 })),
+    ];
+  }
+  return out;
+}
+
+/** Shows demo prices (a made-up price for a product with no real one) in a preview, the way `pricing.demoFallback` does once published. In memory only. */
+export function withDemoPrices(pack: Json): Json {
+  if (!pack.catalogMapping?.pricing) return pack;
+  const out: Json = structuredClone(pack);
+  out.catalogMapping.pricing.demoFallback = { enabled: true, currency: 'NZD', min: 4.9, max: 480 };
+  return out;
+}

@@ -51,6 +51,8 @@ export interface ReadOptions {
   from?: number;
   maxPassages?: number;
   passageChars?: number;
+  /** A single guide up to this many characters comes back whole, in its own order, instead of the best few passages: a short guide read whole is a better answer than a skim. 0 (the default here) never does. */
+  wholeGuideChars?: number;
 }
 
 export const DEFAULT_MAX_PASSAGES = 8;
@@ -235,6 +237,17 @@ export function readGuides(records: ProductGuideRecord[], options: ReadOptions =
       matched: false,
       ...(unreadable.length > 0 ? { unreadable } : {}),
       ...(end < book.passages.length ? { next: { guideId: book.record.docId, from: end + 1 } } : {}),
+    };
+  }
+
+  // A short guide is read whole: every passage, in the guide's own order, so the steps are not skipped by a ranking on the question's words.
+  const wholeLimit = Math.max(0, Math.floor(options.wholeGuideChars ?? 0));
+  if (books.length === 1 && wholeLimit > 0 && books[0].record.text.length <= wholeLimit && books[0].passages.length <= 20) {
+    return {
+      guides: [guides[0]],
+      passages: books[0].passages.map((_, index) => passageOf(books[0], index)),
+      matched: true,
+      ...(unreadable.length > 0 ? { unreadable } : {}),
     };
   }
 

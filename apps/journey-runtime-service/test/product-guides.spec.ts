@@ -145,6 +145,18 @@ async function main() {
     assert.ok(/300mm centres/.test(goto.passages.map((p: any) => p.text).join(' ')), 'reading from the section\'s passage reaches its text');
   });
 
+  await suite.test('a short guide is read whole and in order when the shop allows it, a longer one is still read in parts', () => {
+    const short = record({ docId: 'e'.repeat(32), title: 'Installation Guide', text: INSTALL_TEXT });
+    const skim: any = readGuides([short], { question: 'fasteners spaced', maxPassages: 2, passageChars: 300 });
+    assert.ok(skim.passages.length <= 2, 'without the option only the best passages come back');
+    const whole: any = readGuides([short], { question: 'fasteners spaced', maxPassages: 2, passageChars: 300, wholeGuideChars: 12000 });
+    assert.equal(whole.passages.length, whole.guides[0].passages, 'every passage of the guide comes back');
+    assert.deepEqual(whole.passages.map((p: any) => p.n), whole.passages.map((_: any, i: number) => i + 1), 'in the guide\'s own order');
+    assert.equal(whole.next, undefined, 'nothing is left to read on');
+    const tooLong: any = readGuides([short], { question: 'fasteners spaced', maxPassages: 2, passageChars: 300, wholeGuideChars: 100 });
+    assert.ok(tooLong.passages.length <= 2, 'a guide over the limit is not read whole');
+  });
+
   await suite.test('a product the model names by its exact title is found, and one it only half names is not guessed', async () => {
     const ctx = shop([record({ docId: 'a'.repeat(32), title: 'Specification Guide', text: SPEC_TEXT })]);
     const byTitle: any = await executeAgentTool('read_product_guide', { sku: 'Nailbond Fast Adhesive 300ml' }, ctx);
@@ -152,6 +164,53 @@ async function main() {
     assert.equal(byTitle.sku, 'G1');
     const half: any = await executeAgentTool('read_product_guide', { sku: 'Nailbond Adhesive' }, shop([record({ docId: 'a'.repeat(32), title: 'Specification Guide', text: SPEC_TEXT })]));
     assert.equal(half.ok, false, 'a near match is never taken for the product');
+  });
+
+  await suite.test('a code or half a title is not a dead end: the closest products come back with whether each has a guide, and none is chosen for the model', async () => {
+    const ctx = shop([record({ docId: 'a'.repeat(32), title: 'Installation Guide', text: SPEC_TEXT })]);
+    const half: any = await executeAgentTool('read_product_guide', { sku: 'Nailbond Adhesive' }, ctx);
+    assert.equal(half.ok, false);
+    assert.ok(Array.isArray(half.candidates) && half.candidates.length >= 1, JSON.stringify(half));
+    const nailbond = half.candidates.find((c: any) => c.sku === 'G1');
+    assert.ok(nailbond, 'the product the words point at is offered');
+    assert.equal(nailbond.hasGuide, true);
+    assert.ok(/Call read_product_guide again NOW/.test(half.error), 'the error says what to do next');
+    assert.ok(half.candidates.every((c: any) => c.product === undefined), 'candidates carry a SKU, a title and whether there is a guide, not whole records');
+    assert.equal(half.found, undefined, 'no guide text is returned for a product nobody chose');
+    // A made-up code finds nothing, but the customer's own sentence does.
+    const said = shop([record({ docId: 'a'.repeat(32), title: 'Installation Guide', text: SPEC_TEXT })]);
+    said.customerQuestion = 'How do I use the Nailbond Fast Adhesive 300ml?';
+    const viaWords: any = await executeAgentTool('read_product_guide', { sku: 'nb300fast-xyz' }, said);
+    assert.equal(viaWords.ok, false);
+    assert.equal(viaWords.candidates?.[0]?.sku, 'G1', JSON.stringify(viaWords));
+    assert.equal(viaWords.candidates?.[0]?.hasGuide, true);
+    // Product words in place of a SKU: read straight away when exactly one product names every word, and say it was found that way.
+    const byWords: any = await executeAgentTool('read_product_guide', { product: 'nailbond fast adhesive 300ml', question: 'how long can I reposition it' }, shop([record({ docId: 'a'.repeat(32), title: 'Specification Guide', text: SPEC_TEXT })]));
+    assert.equal(byWords.ok, true, JSON.stringify(byWords));
+    assert.equal(byWords.sku, 'G1');
+    assert.ok(/found from the customer's words/.test(byWords.foundFromWords), 'the reply is told which product it read the guide for');
+    // Words that fit two products, or none, read nothing and offer the choice.
+    const vague: any = await executeAgentTool('read_product_guide', { product: 'sheet' }, shop([record({ docId: 'b'.repeat(32), title: 'Installation Guide', text: SPEC_TEXT, skus: ['G2'] })]));
+    assert.ok(vague.ok === false || vague.sku === 'G2', 'one product with that word may be read; it is never guessed among several');
+    // Two products fit the words but each keeps a different guide: nothing is chosen. When they keep the very same guide it is read once and the reply is told it covers both.
+    const twinShop = (sameText: boolean) => {
+      const ctx = shop([record({ docId: 'c'.repeat(32), title: 'Installation Guide', text: SPEC_TEXT, skus: ['G1'] }), record({ docId: 'd'.repeat(32), title: 'Installation Guide', text: sameText ? SPEC_TEXT : INSTALL_TEXT, skus: ['G3'] })]);
+      (ctx.catalogSearchHandler as any).inMemoryProducts.push({ projectId: 'test-tenant', sku: 'G3', parentSku: 'G3', name: 'Nailbond Fast Adhesive 600ml', title: 'Nailbond Fast Adhesive 600ml', category: 'Adhesives', categoryPath: ['Adhesives'], price: { amount: 18, currency: 'NZD' }, inStock: true });
+      return ctx;
+    };
+    const differ: any = await executeAgentTool('read_product_guide', { product: 'nailbond fast adhesive' }, twinShop(false));
+    assert.equal(differ.ok, false, 'two products with different guides are not chosen between');
+    assert.equal(differ.candidates?.length, 2);
+    const twins: any = await executeAgentTool('read_product_guide', { product: 'nailbond fast adhesive' }, twinShop(true));
+    assert.equal(twins.ok, true, JSON.stringify(twins).slice(0, 300));
+    assert.ok(/the same guide is kept for/.test(twins.foundFromWords), twins.foundFromWords);
+    const neither: any = await executeAgentTool('read_product_guide', {}, shop([]));
+    assert.equal(neither.ok, false);
+    assert.ok(/product argument/.test(neither.error));
+    const nothing: any = await executeAgentTool('read_product_guide', { sku: 'zzqxv' }, shop([]));
+    assert.equal(nothing.ok, false);
+    assert.equal(nothing.candidates, undefined, 'no candidates when nothing is near');
+    assert.ok(/search_products/.test(nothing.error));
   });
 
   await suite.test('the store answers for the tenant that asks, by the product or its parent, and an unreachable database is no guide rather than an error', async () => {
