@@ -22,9 +22,11 @@ import { WhatsappController } from './whatsapp.controller';
 import { OkfContextLoader } from './okf/okf-context-loader';
 import { ReactAgentOrchestrator } from './orchestration/react-agent-orchestrator';
 import { TradeKnowledgeService } from './knowledge/trade-knowledge.service';
+import { CareController } from './care/care.controller';
+import { CareService } from './care/care.service';
 
 @Module({
-  controllers: [JourneyAXController, WhatsappController],
+  controllers: [JourneyAXController, WhatsappController, CareController],
   providers: [
     AgentService,
     JourneyCoordinator,
@@ -46,6 +48,7 @@ import { TradeKnowledgeService } from './knowledge/trade-knowledge.service';
     RosterService,
     SchoolResearchService,
     WhatsAppService,
+    CareService,
   ],
   exports: [
     AgentService,
