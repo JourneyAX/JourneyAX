@@ -3,7 +3,7 @@
  * Asks the assistant one real question in a browser and prints what it answered and the steps it took: a way to see what a person would see.
  *
  *   node scripts/demo/ask.cjs --yes-run-real-chats --question "How do I install ..." [--question "a follow-up" ...] [--base http://localhost:3008]
- *        [--project placemakers] [--persona trade.admin] [--wait 180] [--shot out.png] [--steps]
+ *        [--project placemakers] [--persona trade.admin] [--click Allow] [--wait 180] [--shot out.png] [--steps]
  *
  * Each run is a real model run (and writes a conversation record), so it only runs with --yes-run-real-chats. It signs in with the sign-in
  * screen's own persona button (--persona <id>) or "Quick Demo Sign-in" button (the app's built-in dev login) when it meets the screen; it never types a password.
@@ -20,6 +20,7 @@ const base = opt('base', 'http://localhost:3008').replace(/\/$/, '');
 const project = opt('project', 'placemakers');
 const questions = args.flatMap((a, i) => (a === '--question' && args[i + 1] ? [args[i + 1]] : []));
 const persona = opt('persona', '');
+const clickLabel = opt('click', '');
 const waitSeconds = Number(opt('wait', '180'));
 if (!args.includes('--yes-run-real-chats')) { console.log('Dry run: this would ask the assistant at', base, 'one real question. Add --yes-run-real-chats to run it.'); process.exit(0); }
 if (questions.length === 0) throw new Error('--question "..." is needed');
@@ -39,6 +40,9 @@ function chromiumPath() {
   const browser = await chromium.launch({ executablePath: chromiumPath() });
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
   const page = await context.newPage();
+  if (args.includes('--net')) page.on('response', async (res) => { const u = res.url(); if (/chat|agent|runtime|turn|stream/i.test(u) && !/_next|\.js|\.css/.test(u)) console.log('NET', res.status(), res.request().method(), u.replace(base, '').slice(0, 110)); if (args.includes('--net-body') && /chat\/stream/.test(u)) { try { const t = await res.text(); console.log('BODY', t.length, JSON.stringify(t.slice(-1200))); } catch (e) { console.log('BODY unreadable', String(e.message).slice(0, 80)); } } });
+  if (args.includes('--net-req')) page.on('request', (req) => { if (/chat\/stream/.test(req.url())) { try { const b = JSON.parse(req.postData() || '{}'); delete b.messages; delete b.state; console.log('REQ', JSON.stringify(b).slice(0, 700)); } catch { console.log('REQ (not json)'); } } });
+  if (args.includes('--net')) page.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE', m.text().slice(0, 200)); });
   await page.goto(`${base}/?project=${project}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#chat-input-field, #quick-login-btn, [data-persona]', { timeout: 60000 });
   if (persona) {
@@ -58,6 +62,15 @@ function chromiumPath() {
       await page.waitForTimeout(1000);
     }
     await page.waitForTimeout(1500);
+  }
+  if (clickLabel) {
+    // Presses a button of the last card (for example "Allow") and waits for what follows.
+    const button = page.locator('button', { hasText: new RegExp(`^${clickLabel}$`) }).last();
+    await button.click({ timeout: 20000 });
+    const pressedAt = Date.now();
+    await page.waitForTimeout(3000);
+    while (Date.now() - pressedAt < waitSeconds * 1000 && (await page.locator('#chat-stop-btn').count()) > 0) await page.waitForTimeout(1000);
+    await page.waitForTimeout(4000);
   }
   await page.waitForTimeout(2500);
   if (args.includes('--steps')) {

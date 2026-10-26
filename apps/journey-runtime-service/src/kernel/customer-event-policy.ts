@@ -11,7 +11,8 @@ export type CustomerEventAction = 'start_turn' | 'record_only';
  * - recordOnlyEvents (e.g. cart.removed, removeFromCart, like) -> 'record_only'
  *
  * Neutral defaults apply when not configured in the pack:
- * - Primary intent actions (addToCart, addToQuote, cart.added, quote.approved, viewProduct, compareProducts) start a turn.
+ * - Primary intent actions (addToCart, addToQuote, cart.added, quote.approved, viewProduct, compareProducts) start a turn, and so does an answer
+ *   someone is waiting for (confirmTool on an ask-first card, submitForm).
  * - Secondary actions (removeFromCart, like, dismiss) are recorded only.
  * - Tapping an option on a question card is recorded only: the answers are sent together as one message once every question on the
  *   card is answered, so a turn per tap would answer half a set of answers.
@@ -56,6 +57,9 @@ export function resolveCustomerEventAction(
     // The customer opened a product's details or asked to see products side by side: a consultant would explain it.
     'viewproduct',
     'compareproducts',
+    // The person's answer on an ask-first card (Allow or Not now) and a form they sent: each is an answer someone is waiting for, so each runs a turn.
+    'confirmtool',
+    'submitform',
   ];
   if (defaultAutoTurn.includes(target)) {
     return 'start_turn';

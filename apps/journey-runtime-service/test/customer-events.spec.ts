@@ -45,6 +45,12 @@ test('P3: Customer actions are events, not silent local state', async (t) => {
     );
   });
 
+  await t.test('1a. An answer someone is waiting for always starts a turn: Allow or Not now on an ask-first card, and a form that was sent', () => {
+    for (const type of ['confirmTool', 'confirm_tool', 'submitForm']) {
+      assert.equal(resolveCustomerEventAction(type, {}), 'start_turn', `${type} runs the held action or says it was sent`);
+    }
+  });
+
   await t.test('1b. Neutral defaults: opening a product or comparing products starts a turn; unknown or secondary actions are only recorded', () => {
     for (const type of ['viewProduct', 'compareProducts', 'view_product', 'addToCart']) {
       assert.equal(resolveCustomerEventAction(type, {}), 'start_turn', `${type} asks for an explanation`);
