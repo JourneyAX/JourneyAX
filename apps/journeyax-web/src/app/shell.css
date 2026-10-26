@@ -614,4 +614,69 @@ li[data-active="true"] > .ax-agentlist__row { background: var(--ax-fill); }
 .cv__mini { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 4px; color: var(--ax-muted); font-size: 13px; }
 .cv__pay { min-height: 120px; margin: 4px -4px 0; }
 .cv__secure { margin-top: 14px; }
+/* Customer care canvases (same surface, same variables as the cart and the order). Every status carries a word and an icon as well as a colour. */
+.cv__chip--info { background: #e6eefa; color: #274a7a; }
+.cv__chip--bad { background: #fdeceb; color: #8a1c14; }
+.cv__ai { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 999px; background: var(--ax-accent-soft); color: var(--ax-accent-text); }
+.cv__tabs { display: flex; gap: 6px; margin: 0 0 14px; }
+.cv__tabs button { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--ax-border-strong, var(--ax-border)); background: transparent; color: var(--ax-text); font-size: 13px; cursor: pointer; }
+.cv__tabs button[aria-pressed="true"] { background: var(--ax-text); color: var(--ax-surface); border-color: var(--ax-text); }
+.cv__tickets { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cv__ticket { display: grid; gap: 4px; width: 100%; text-align: left; padding: 11px 13px; border: 1px solid var(--ax-border); border-radius: 8px; background: var(--ax-surface); color: var(--ax-text); cursor: pointer; font: inherit; }
+.cv__ticket:hover { border-color: var(--ax-border-strong, var(--ax-border)); background: var(--ax-bg); }
+.cv__ticket--done { opacity: 0.7; }
+.cv__ticket-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cv__ticket-subject { font-weight: 700; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cv__ticket-ai { font-size: 13px; color: var(--ax-text); }
+.cv__clock { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.cv__clock--ok { color: #1f6b43; }
+.cv__clock--warn { color: #8a5a00; }
+.cv__clock--bad { color: #8a1c14; }
+.cv__back { margin: 0 0 10px; }
+.cv__head-right { display: grid; gap: 6px; justify-items: end; }
+.cv__labels { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cv__label { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--ax-border); background: var(--ax-surface); color: var(--ax-text); cursor: pointer; }
+.cv__label:disabled { cursor: default; }
+.cv__label--pick { padding: 2px 6px; }
+.cv__quote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--ax-border-strong, var(--ax-border)); background: var(--ax-bg); border-radius: 0 6px 6px 0; line-height: 1.45; }
+.cv__found { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cv__found li { display: grid; gap: 2px; }
+.cv__src { font-size: 12px; color: var(--ax-muted); }
+.cv__src::before { content: "Source: "; }
+.cv__gap { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: #fdf3dc; color: #6e4700; font-size: 13px; }
+.cv__orderbox { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--ax-border); border-radius: 8px; background: var(--ax-bg); }
+.cv__states { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.cv__rec { margin: 0 0 4px; font-weight: 600; line-height: 1.4; }
+.cv__public, .cv__internal { margin: 0 0 6px; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+.cv__public { background: #fdf3dc; color: #6e4700; }
+.cv__internal { background: var(--ax-bg); color: var(--ax-muted); }
+.cv__draft { white-space: pre-wrap; line-height: 1.5; padding: 12px 14px; border: 1px solid var(--ax-border); border-radius: 8px; background: var(--ax-surface); }
+.cv__draft--edit { width: 100%; font: inherit; color: var(--ax-text); border-color: var(--ax-accent); resize: vertical; }
+.cv__row--tight { margin-top: 6px; gap: 14px; }
+.cv__checks { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.cv__check--ok { color: #1f6b43; }
+.cv__check--look { color: #6e4700; font-weight: 600; }
+.cv__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cv__step { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 10px 12px; border: 1px solid var(--ax-border); border-radius: 8px; background: var(--ax-surface); }
+.cv__step--removed { opacity: 0.55; }
+.cv__step-top { display: flex; gap: 10px; align-items: baseline; }
+.cv__kind { font-size: 12px; color: var(--ax-muted); }
+.cv__change { font-weight: 700; margin-top: 2px; }
+.cv__step-side { display: grid; gap: 6px; justify-items: end; align-content: start; }
+.cv__fail { margin-top: 6px; font-size: 13px; color: #8a1c14; font-weight: 600; }
+.cv__alert--lead { background: #fdf3dc; color: #6e4700; margin: 0; }
+.cv__rejected { margin: 14px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--ax-bg); border: 1px solid var(--ax-border); font-size: 14px; }
+.cv__nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.cv__num { padding: 12px; border: 1px solid var(--ax-border); border-radius: 8px; background: var(--ax-bg); display: grid; gap: 2px; }
+.cv__big { font-size: 24px; font-weight: 800; line-height: 1.1; }
+.cv__split { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--ax-border); }
+.cv__split-a { background: var(--ax-accent); }
+.cv__split-b { background: #d8a24a; }
+.cv__split-c { background: #8a8a8a; }
+.cv__legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 13px; color: var(--ax-muted); }
+.cv__people { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cv__people li { display: grid; grid-template-columns: 1fr 120px 24px; gap: 12px; align-items: center; }
+.cv__bar { height: 8px; border-radius: 4px; background: var(--ax-border); overflow: hidden; display: block; }
+.cv__bar span { display: block; height: 100%; background: var(--ax-accent); }
+@media (max-width: 560px) { .cv__nums { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .cv__cols { grid-template-columns: 1fr; } .cv__body { padding: 14px 16px 20px; } .cv__foot { padding: 12px 16px 16px; } }
