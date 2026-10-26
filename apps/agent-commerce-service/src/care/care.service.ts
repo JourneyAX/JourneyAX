@@ -26,6 +26,9 @@ import { UnavailableWriteBack, type CareActor, type CareWriteBack } from './care
 import { httpConnectorCaller } from './connector-rpc';
 import type { VerifiedIdentity } from '../identity';
 
+/** The staff groups that are customer care: the project's "Customer Service" team as the gateway signs it (lower case, dashes), and `csr` as an alias. */
+export const CARE_GROUPS = ['customer-service', 'csr'];
+
 @Injectable()
 export class CareService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('care');
@@ -75,7 +78,7 @@ export class CareService implements OnModuleInit, OnModuleDestroy {
   actorFor(identity: VerifiedIdentity | undefined): CareActor | null {
     if (!identity) return null;
     if (identity.role === 'admin' || identity.groups.includes(ADMIN_GROUP)) return { name: this.team.lead.name, id: this.team.lead.id, isLead: true };
-    if (!identity.groups.includes('csr')) return null;
+    if (!CARE_GROUPS.some((group) => identity.groups.includes(group))) return null;
     const rep = this.team.reps.find((r) => r.email && r.email.toLowerCase() === String(identity.sub).toLowerCase()) ?? this.team.reps[0];
     return { name: rep.name, id: rep.id, isLead: false };
   }

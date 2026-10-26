@@ -38,6 +38,7 @@ import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } fr
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
+import { CARE_ENTRIES, useCareAccess } from '@/components/canvas/care/careAccess';
 
 /** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
  *  Deliberately generic — a tenant's own vocabulary lives in the card's own
@@ -376,6 +377,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const [isLoading, setIsLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>('');
   const { user: authUser } = useAuth();
+  const careAccess = useCareAccess(authUser?.email);
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
@@ -1373,8 +1375,13 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
               placeholder={introPlaceholder}
               autoFocus={typeof window !== 'undefined' && window.innerWidth > 860}
             />
-            {isEmpty && starters.length > 0 && (
+            {isEmpty && (careAccess || starters.length > 0) && (
               <div className="ax-suggestions" role="group" aria-label="Things you can ask">
+                {careAccess && CARE_ENTRIES.map((entry) => (
+                  <button key={entry.kind} type="button" className="ax-suggestion" onClick={() => openCanvas({ kind: entry.kind })}>
+                    {entry.label}
+                  </button>
+                ))}
                 {starters.map((s, i) => (
                   <button key={i} type="button" className="ax-suggestion" onClick={() => append({ role: 'user', content: s.prompt })}>
                     {s.label}

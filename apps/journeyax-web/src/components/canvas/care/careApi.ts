@@ -13,6 +13,19 @@ export interface CareActor { name: string; id: string; isLead: boolean }
 
 const withProject = (path: string) => `/api/care/${path}${typeof window !== 'undefined' && window.location.search ? `?${window.location.search.slice(1)}` : ''}`;
 
+/**
+ * Whether the signed-in person is care staff, as the server says. Anyone else, and any failure, is "no": this only decides whether the chat
+ * offers the care screens, it never gives access (every care call is checked again on the server).
+ */
+export async function fetchCareAccess(): Promise<boolean> {
+  try {
+    const res = await fetch(withProject('me'), { cache: 'no-store', credentials: 'same-origin' });
+    if (!res.ok) return false;
+    const body = await res.json().catch(() => ({}));
+    return body?.care === true;
+  } catch { return false; }
+}
+
 export async function fetchTickets(): Promise<{ tickets: CareTicket[]; actor?: CareActor } | { error: string }> {
   try {
     const res = await fetch(withProject('tickets'), { cache: 'no-store', credentials: 'same-origin' });

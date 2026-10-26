@@ -2,6 +2,7 @@
  * What the portal's care canvases call. Every route needs a care person (the signed identity the gateway adds says who): the browser never says who
  * it is. The tickets and the decisions are the desk's; this file only carries them.
  *
+ *   GET  care/me                      { care: true, actor } for care staff, { care: false } for anyone else signed in
  *   GET  care/tickets                 the tickets, soonest promised time first
  *   GET  care/tickets/:id             one ticket
  *   GET  care/board                   how many tickets are at each stage, and who has what
@@ -30,6 +31,14 @@ export class CareController {
     if (result.ok) return result;
     const code = (result as any).code;
     throw new HttpException({ error: (result as any).message }, code === 'not_found' ? HttpStatus.NOT_FOUND : code === 'not_allowed' ? HttpStatus.FORBIDDEN : HttpStatus.CONFLICT);
+  }
+
+  /** Whether the signed-in person is care staff: the one care route that answers "no" instead of refusing, so the chat can decide whether to offer the care screens. */
+  @Get('me')
+  me(@Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const tenantId = (projectId || '').toLowerCase().trim();
+    const actor = this.care.actorFor(verifiedIdentity(assertion, tenantId));
+    return actor ? { care: true, actor: { name: actor.name, id: actor.id, isLead: actor.isLead } } : { care: false };
   }
 
   @Get('tickets')

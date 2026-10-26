@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CARE_TICKETS, arrivalTicket } from '../care/careData';
-import { FIXTURES, decide, fetchTickets } from '../care/careApi';
+import { FIXTURES, decide, fetchCareAccess, fetchTickets } from '../care/careApi';
+import { CARE_ENTRIES } from '../care/careAccess';
 import { getCareTickets, replaceCareTickets, resetCareStore, syncCareNow } from '../care/careStore';
 import CareQueueCanvas from '../care/CareQueueCanvas';
 import CareTicketCanvas from '../care/CareTicketCanvas';
@@ -69,6 +70,27 @@ async function main() {
       answering(403, { error: 'Only the team lead can decide this one.' });
       assert.deepEqual(await decide('t4322', 'approve'), { ok: false, error: 'Only the team lead can decide this one.' });
     } finally { restore(); }
+  });
+
+  await check('the chat offers the care screens only when the server says the person is care staff; anything else, or a failure, is "no"', async () => {
+    try {
+      const seen = answering(200, { care: true, actor: { name: 'Aroha Ngata', id: 'CSR-1041', isLead: false } });
+      assert.equal(await fetchCareAccess(), true);
+      assert.equal(seen[0].url.startsWith('/api/care/me'), true);
+      answering(200, { care: false });
+      assert.equal(await fetchCareAccess(), false, 'signed in but not care staff');
+      answering(200, {});
+      assert.equal(await fetchCareAccess(), false, 'an answer that does not say yes is no');
+      answering(200, { care: 'true' });
+      assert.equal(await fetchCareAccess(), false, 'only a real yes counts');
+      answering(401, { error: 'Sign in.' });
+      assert.equal(await fetchCareAccess(), false, 'signed out');
+      answering(500, {});
+      assert.equal(await fetchCareAccess(), false);
+      (globalThis as any).fetch = async () => { throw new Error('offline'); };
+      assert.equal(await fetchCareAccess(), false, 'a desk that is down shows nothing extra');
+    } finally { restore(); }
+    assert.deepEqual(CARE_ENTRIES, [{ label: 'My tickets', kind: 'care-queue' }, { label: 'Care board', kind: 'care-board' }]);
   });
 
   await check('a ticket that is not there says so and offers the way back, with no ticket invented', () => {

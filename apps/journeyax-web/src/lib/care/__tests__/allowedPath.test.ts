@@ -15,6 +15,11 @@ check('the list, one ticket, the board and a poll are read or asked for with the
   assert.equal(allowedCarePath('GET', ['board']), true);
   assert.equal(allowedCarePath('POST', ['poll']), true);
 });
+check('"am I care staff?" is a plain GET and nothing else', () => {
+  assert.equal(allowedCarePath('GET', ['me']), true);
+  assert.equal(allowedCarePath('POST', ['me']), false);
+  assert.equal(allowedCarePath('GET', ['me', 'x']), false);
+});
 check('a decision is a POST on a ticket with one of four known actions', () => {
   for (const a of ['approve', 'retry', 'reject', 'to-lead']) assert.equal(allowedCarePath('POST', ['tickets', 't4322', a]), true, a);
   assert.equal(allowedCarePath('POST', ['tickets', 't4322', 'delete']), false);
