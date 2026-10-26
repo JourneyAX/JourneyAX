@@ -196,7 +196,7 @@ export function applySkillDelete(state: ProjectSkillState, skillId: string): Del
 
 interface FingerprintParts { name: string; description: string; tier: string; instructions: string; tools: string[]; rows: Array<{ audience: string; groups: string[]; level: string }>; agents: string[] }
 
-function hash(text: string): string {
+export function hashText(text: string): string {
   let x = 2166136261;
   for (let i = 0; i < text.length; i++) { x ^= text.charCodeAt(i); x = Math.imul(x, 16777619); }
   return `${(x >>> 0).toString(16)}-${text.length}`;
@@ -204,7 +204,7 @@ function hash(text: string): string {
 
 export function fingerprintOf(parts: FingerprintParts): string {
   const rows = parts.rows.map((row) => ({ audience: row.audience === 'staff' ? 'staff' : 'shopper', groups: [...row.groups].sort(), level: row.level })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  return hash(JSON.stringify({ n: parts.name.trim(), d: parts.description.trim(), t: parts.tier, i: parts.instructions.trim(), x: [...parts.tools].sort(), r: rows, a: [...parts.agents].sort() }));
+  return hashText(JSON.stringify({ n: parts.name.trim(), d: parts.description.trim(), t: parts.tier, i: parts.instructions.trim(), x: [...parts.tools].sort(), r: rows, a: [...parts.agents].sort() }));
 }
 
 /** The fingerprint of a skill in the project's settings; undefined when there is no such skill. */

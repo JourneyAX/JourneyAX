@@ -22,11 +22,18 @@
  *   - web storefront (channel): always-on, no config             → Live
  *
  * Never upgrade a badge below without re-verifying the adapter file itself.
+ *
+ * Updated 2026-10-26: the cards above are the PLATFORM'S OWN adapters. The assistant also reaches some systems directly, through its own
+ * connected-systems list (project extensions.connectors: Salesforce, commercetools, the ticket desk...), which is a different thing and is
+ * live for Salesforce and commercetools. A card whose system the assistant reaches says so, read from the project, and the section under
+ * the grid lists every connected system with its switch. That list is edited on the storefront's Customize page (Connectors tab).
  */
 import React, { useState } from "react";
 import { Globe, Plug } from "lucide-react";
+import type { Project } from "../lib/api";
+import { ASSISTANT_SYSTEM_OF_CARD, describeAssistantSystem, readAssistantSystems } from "../lib/assistantSystems";
 
-type ConnectorStatus = "live" | "coming-soon" | "not-built";
+type ConnectorStatus = "live" | "coming-soon" | "not-built" | "assistant";
 
 type Connector = {
   id: string;
@@ -54,7 +61,7 @@ const CONNECTORS: Connector[] = [
     category: "Commerce",
     status: "live",
     logo: "/assets/connectors/commercetools.svg",
-    blurb: "Knowledge/retrieval adapter is live (OAuth2 + real API calls). Commerce (cart/checkout) adapter isn't built yet.",
+    blurb: "Knowledge/retrieval adapter is live (OAuth2 + real API calls). The platform has no commerce (cart/checkout) adapter for it; the assistant reaches commercetools directly instead (see below).",
     navTarget: "integrations",
   },
   {
@@ -79,7 +86,7 @@ const CONNECTORS: Connector[] = [
     category: "CRM",
     status: "coming-soon",
     logo: "/assets/connectors/salesforce.svg",
-    blurb: "Adapter scaffolded, methods not yet implemented.",
+    blurb: "The platform's own CRM adapter is scaffolded, methods not yet implemented. The assistant's direct Salesforce connection (accounts, cases, deals, campaigns) is separate: see below.",
   },
   {
     id: "sap",
@@ -112,21 +119,28 @@ const STATUS_LABEL: Record<ConnectorStatus, string> = {
   live: "Live",
   "coming-soon": "Coming soon",
   "not-built": "Not yet built",
+  assistant: "Live for the assistant",
 };
 
 const STATUS_PILL: Record<ConnectorStatus, string> = {
   live: "p-active",
   "coming-soon": "p-draft",
   "not-built": "p-offline",
+  assistant: "p-active",
 };
 
 const STATUS_NOTE: Record<Exclude<ConnectorStatus, "live">, string> = {
   "coming-soon": "Adapter in development.",
   "not-built": "Not yet available.",
+  assistant: "The platform's own adapter is not built; the assistant reaches this system directly.",
 };
 
-export function Connectors({ onNavigate }: { onNavigate?: (tab: "integrations" | "channels") => void }) {
+export function Connectors({ onNavigate, project }: { onNavigate?: (tab: "integrations" | "channels") => void; project?: Project | null }) {
   const [note, setNote] = useState<string | null>(null);
+  const assistant = readAssistantSystems(project);
+  const assistantOf = (cardId: string) => assistant.find((system) => system.id === ASSISTANT_SYSTEM_OF_CARD[cardId]);
+  // A card the platform has no adapter for, but whose system the assistant reaches (and has switched on), is live for the assistant.
+  const statusOf = (c: Connector): ConnectorStatus => (c.status !== "live" && assistantOf(c.id)?.enabled ? "assistant" : c.status);
 
   function onCardClick(c: Connector) {
     if (c.status === "live") {
@@ -155,7 +169,8 @@ export function Connectors({ onNavigate }: { onNavigate?: (tab: "integrations" |
           gap: 12,
         }}
       >
-        {CONNECTORS.map((c) => {
+        {CONNECTORS.map((card) => {
+          const c = { ...card, status: statusOf(card) };
           const clickable = c.status === "live" && !!c.navTarget;
           return (
             <div
@@ -208,6 +223,11 @@ export function Connectors({ onNavigate }: { onNavigate?: (tab: "integrations" |
               <p className="micro" style={{ color: "var(--jx-gray-600)", textTransform: "none", letterSpacing: 0, fontFamily: "inherit", fontSize: 11.5, lineHeight: 1.4, margin: 0 }}>
                 {c.blurb}
               </p>
+              {ASSISTANT_SYSTEM_OF_CARD[c.id] && project && (
+                <span className="micro" style={{ color: "var(--jx-gray-600)", textTransform: "none", letterSpacing: 0, fontFamily: "inherit", fontSize: 11.5 }}>
+                  {describeAssistantSystem(assistantOf(c.id))}
+                </span>
+              )}
               {note === c.id && c.status !== "live" && (
                 <span className="micro" style={{ color: "#8A6D00", textTransform: "none", letterSpacing: 0, fontFamily: "inherit", fontSize: 11.5 }}>
                   {STATUS_NOTE[c.status]}
@@ -217,6 +237,31 @@ export function Connectors({ onNavigate }: { onNavigate?: (tab: "integrations" |
           );
         })}
       </div>
+
+      <h4 style={{ margin: "18px 0 4px" }}>Systems your assistant reaches</h4>
+      <p className="micro" style={{ color: "var(--jx-gray-600)", margin: "0 0 8px", textTransform: "none", letterSpacing: 0, fontFamily: "inherit", fontSize: 12 }}>
+        What the assistant can look things up in (and, with a person&apos;s yes, change), as saved in this project. Who may do what with each tool is set on the
+        storefront&apos;s Customize page, under Connectors; changes reach customers after Publish.
+      </p>
+      {assistant.length === 0 ? (
+        <p className="micro" style={{ color: "var(--jx-gray-600)", textTransform: "none", letterSpacing: 0, fontFamily: "inherit", fontSize: 12 }}>
+          This project&apos;s configuration lists no connected systems.
+        </p>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
+          {assistant.map((system) => (
+            <div key={system.id} style={{ border: "1.5px solid var(--jx-gray-200)", borderRadius: 10, padding: 10, background: "#fff", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <strong style={{ fontSize: 13 }}>{system.name}</strong>
+                <span className={`pill ${system.enabled ? "p-active" : "p-offline"}`}>{system.enabled ? "On" : "Switched off"}</span>
+              </div>
+              <span className="micro" style={{ color: "var(--jx-gray-600)", textTransform: "none", letterSpacing: 0, fontFamily: "inherit", fontSize: 11.5 }}>
+                {system.sample ? "Sample data" : "Real data"} · {system.tools} tool{system.tools === 1 ? "" : "s"}{system.writes ? ` · ${system.writes} change data` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -137,7 +137,7 @@ export function IntegrationsConfig({ project, onSaved, onNavigate }: { project: 
       {error && <div className="panel" style={{ borderColor: "#B7392D", color: "#B7392D" }}>{error}</div>}
 
       {/* Connectors gallery — visual front door for the dropdown-driven config below */}
-      <Connectors onNavigate={onNavigate} />
+      <Connectors onNavigate={onNavigate} project={project} />
 
       {/* Per-domain platform switch */}
       <div className="panel">

@@ -21,12 +21,14 @@ import { forSidebar } from '@/lib/shell/conversationNav';
 import { copyText } from '@/lib/shell/clipboard';
 import { type AgentDraft, type AgentDraftInput, draftToPackAgentJson, loadDrafts, removeDraft, saveDrafts, upsertDraft } from '@/lib/customize/drafts';
 import { describePluginAccess, describeSkillAccess } from '@/lib/customize/overview';
-import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledgeSource, OverviewPlugin, OverviewSkill, OverviewSystem } from '@/lib/customize/types';
+import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewConnectorRules, OverviewKnowledgeSource, OverviewPlugin, OverviewSkill, OverviewSystem, ToolState } from '@/lib/customize/types';
 import {
   EMPTY_SKILL, agentsCarrying, draftFromSkill, draftToInput, fingerprintOfOverviewSkill, loadSkillDrafts, removeSkillDraft, saveSkillDrafts, upsertSkillDraft,
   type SkillDraft, type SkillDraftInput,
 } from '@/lib/customize/skillDrafts';
+import { describeStatus, teamsWithAccess } from '@/lib/customize/ruleGrid';
 import AgentForm from './AgentForm';
+import ConnectorRulesDialog from './ConnectorRulesDialog';
 import SkillForm from './SkillForm';
 import { useOverview } from './useOverview';
 import { ViewAs } from './ViewAs';
@@ -64,8 +66,8 @@ const BANNERS: Record<TabId, { title: string; text: string; icons: ReactNode[] }
     icons: [<BookIcon key="b" size={22} />, <SparkIcon key="s" size={22} />],
   },
   connectors: {
-    title: 'Connectors are the tools agents can call',
-    text: 'Search the range, check stock, build a quote, hand over to a person. Each agent is allowed only the connectors it needs.',
+    title: 'Connected systems, and the tools agents can call',
+    text: 'The other systems your assistant reaches (the CRM, the shop, the ticket desk) with who may do what in each, and the platform\'s own built-in tools. Each agent is allowed only the tools it needs.',
     icons: [<PlugIcon key="p" size={22} />, <AgentIcon key="a" size={22} />],
   },
 };
@@ -103,6 +105,8 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const [skillDrafts, setSkillDrafts] = useState<SkillDraft[]>([]);
   const [skillForm, setSkillForm] = useState<{ draft?: SkillDraft; seed: SkillDraftInput } | null>(null);
   const [skillBusy, setSkillBusy] = useState('');
+  const [rulesFor, setRulesFor] = useState<OverviewConnectorRules | null>(null);
+  const [rulesBusy, setRulesBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const addRef = useRef<HTMLDivElement>(null);
@@ -226,6 +230,32 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const describeHolders = (draft: SkillDraft) => (draft.access.length === 0
     ? 'It has no rows saying who has it, so EVERYONE, shoppers included, gets it.'
     : `Who has it: ${draft.access.map((r) => describeSkillAccess({ audience: r.audience, groups: r.groups, level: r.level })).join('; ')}.`);
+
+  // Saves the rules of one connected system and makes them live: the server publishes through the publication gate and puts everything back if it is refused.
+  const saveRules = async (system: OverviewConnectorRules, change: { enabled?: boolean; cells?: Record<string, Record<string, ToolState>> }, summary: string) => {
+    if (rulesBusy) return;
+    const ok = window.confirm(`${system.name}: ${summary}, and publish?\n\nThe change is live for everyone as soon as it is published. The publication check runs first; if it refuses, nothing is changed.`);
+    if (!ok) return;
+    setRulesBusy(true);
+    try {
+      const res = await fetch(`/api/customize/connectors?project=${encodeURIComponent(tenant || '')}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectorId: system.connectorId, base: system.base, ...change }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(String(result?.error || 'The rules could not be made live.'));
+        if (res.status === 409) { setRulesFor(null); reload(); }
+        return;
+      }
+      setRulesFor(null);
+      setToast(`${system.name}: ${summary}${result?.version ? ` (configuration ${result.version})` : ''}.${Array.isArray(result?.warnings) && result.warnings.length ? ` Note: ${result.warnings[0]}` : ''}`);
+      reload();
+    } catch {
+      setToast('The rules could not be made live: the service did not answer.');
+    } finally {
+      setRulesBusy(false);
+    }
+  };
 
   const by = cfg.companyName || 'Your organisation';
   const agents = useMemo(() => data?.agents ?? [], [data]);
@@ -370,7 +400,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
             {data && tab === 'knowledge' && <KnowledgeTab scope={scope} query={query} knowledge={data.knowledge} by={by} />}
             {data && tab === 'connectors' && (
               <>
-                <ConnectorsTab scope={scope} query={query} connectors={data.connectors} systems={data.systems} agents={agents} onAddToAgent={(id) => setForm({ presetTools: [id] })} />
+                <ConnectorsTab scope={scope} query={query} connectors={data.connectors} systems={data.systems} rules={data.canEdit ? data.connectorRules : []} agents={agents} onAddToAgent={(id) => setForm({ presetTools: [id] })} onManage={setRulesFor} />
               </>
             )}
           </div>
@@ -378,6 +408,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
       </div>
 
       {form && <AgentForm overview={data} draft={form.draft} presetTools={form.presetTools} onSave={saveDraft} onClose={() => setForm(null)} />}
+      {rulesFor && <ConnectorRulesDialog key={rulesFor.connectorId} system={rulesFor} busy={rulesBusy} onSave={(change, summary) => saveRules(rulesFor, change, summary)} onClose={() => setRulesFor(null)} />}
       {skillForm && data && <SkillForm overview={data} draft={skillForm.draft} seed={skillForm.seed} onSave={saveSkillDraft} onClose={() => setSkillForm(null)} />}
       {toast && <div className="ax-toast" role="status">{toast}</div>}
     </div>
@@ -668,29 +699,55 @@ function KnowledgeTab({ scope, query, knowledge, by }: {
 }
 
 /* ── Connectors ──────────────────────────────────────────────────────── */
-function ConnectorsTab({ scope, query, connectors, systems, agents, onAddToAgent }: {
-  scope: Scope; query: string; connectors: OverviewConnector[]; systems: OverviewSystem[]; agents: OverviewAgent[]; onAddToAgent: (id: string) => void;
+function ConnectorsTab({ scope, query, connectors, systems, rules, agents, onAddToAgent, onManage }: {
+  scope: Scope; query: string; connectors: OverviewConnector[]; systems: OverviewSystem[]; rules: OverviewConnectorRules[]; agents: OverviewAgent[];
+  onAddToAgent: (id: string) => void; onManage: (system: OverviewConnectorRules) => void;
 }) {
-  const shownSystems = scope === 'yours' ? systems.filter((s) => matches(query, s.name, s.description, s.connectorId, s.owner)) : [];
+  const editing = rules.length > 0;
+  // People who may change the rules see every system, on or off: those that are on are "Yours", those that are off are "Discover" (there, but not in use).
+  const ruleCard = (r: OverviewConnectorRules) => {
+    const status = describeStatus(r.status);
+    const writes = r.tools.filter((t) => t.sideEffect === 'write').length;
+    const teams = teamsWithAccess(r);
+    return (
+      <Card
+        key={`rules-${r.connectorId}`} icon={<PlugIcon size={20} />} title={r.name} by={r.owner || 'the shop'} description={r.description}
+        tags={[
+          <span key="on" className={`ax-tag${r.enabled ? '' : ' ax-tag--draft'}`}>{r.enabled ? 'On' : 'Switched off'}</span>,
+          <span key="real" className="ax-tag">{r.sample ? 'Sample data' : 'Real data'}</span>,
+          <span key="st" className={`ax-tag${status.tone === 'bad' ? ' ax-tag--draft' : ''}`} title={status.detail}>{status.label}</span>,
+          <span key="t" className="ax-tag">{plural(r.tools.length, 'tool')}</span>,
+          ...(writes > 0 ? [<span key="w" className="ax-tag">{plural(writes, 'tool')} change data</span>] : []),
+          <span key="teams" className="ax-tag">{teams === 0 ? 'No team may use it' : `${plural(teams, 'team')} may use it`}</span>,
+        ]}
+        actions={<button type="button" className="ax-btn ax-btn--small" onClick={() => onManage(r)}>Rules</button>}
+      />
+    );
+  };
+  const shownRules = editing ? rules.filter((r) => (scope === 'yours' ? r.enabled : !r.enabled) && matches(query, r.name, r.description, r.connectorId, r.owner)) : [];
+  const shownSystems = !editing && scope === 'yours' ? systems.filter((s) => matches(query, s.name, s.description, s.connectorId, s.owner)) : [];
   const wanted = connectors.filter((c) => (scope === 'yours' ? c.usedBy.length > 0 : c.usedBy.length === 0));
   const shown = wanted.filter((c) => matches(query, c.name, c.description, c.id));
-  const systemCards = shownSystems.map((s) => (
-    <Card
-      key={`system-${s.connectorId}`} icon={<PlugIcon size={20} />} title={s.name} by={s.owner || 'the shop'} description={s.description}
-      tags={[
-        <span key="t" className="ax-tag">{plural(s.tools, 'tool')}</span>,
-        ...(s.writes > 0 ? [<span key="w" className="ax-tag">{plural(s.writes, 'tool')} change data</span>] : []),
-        ...(s.sample ? [<span key="s" className="ax-tag">Sample data</span>] : []),
-      ]}
-    />
-  ));
+  const systemCards = [
+    ...shownRules.map(ruleCard),
+    ...shownSystems.map((s) => (
+      <Card
+        key={`system-${s.connectorId}`} icon={<PlugIcon size={20} />} title={s.name} by={s.owner || 'the shop'} description={s.description}
+        tags={[
+          <span key="t" className="ax-tag">{plural(s.tools, 'tool')}</span>,
+          ...(s.writes > 0 ? [<span key="w" className="ax-tag">{plural(s.writes, 'tool')} change data</span>] : []),
+          ...(s.sample ? [<span key="s" className="ax-tag">Sample data</span>] : []),
+        ]}
+      />
+    )),
+  ];
   if (wanted.length === 0 && systemCards.length > 0) return <ul className="ax-grid">{systemCards}</ul>;
   if (wanted.length === 0) {
     return scope === 'yours'
       ? <Empty title="No connectors in use">None of the agents in the active pack is allowed to call a connector.</Empty>
-      : <Empty title="Everything is already in use">Every built-in connector is allowed for at least one agent.</Empty>;
+      : <Empty title="Everything is already in use">Every built-in connector is allowed for at least one agent{editing ? ', and no connected system is switched off' : ''}.</Empty>;
   }
-  if (shown.length === 0) return <Empty title="No connectors match your search">Try a different word, or clear the search.</Empty>;
+  if (shown.length === 0 && systemCards.length === 0) return <Empty title="No connectors match your search">Try a different word, or clear the search.</Empty>;
   const agentName = (id: string) => agents.find((a) => a.agentId === id)?.name || id;
   return (
     <ul className="ax-grid">

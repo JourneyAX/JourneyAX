@@ -111,6 +111,33 @@ export interface OverviewToolOption {
   states?: Record<string, ToolState>;
 }
 
+/** A column of the rules table: a team of the project, the platform administrators, or a group the rules name that no team has. */
+export interface RuleColumn { id: string; name: string; note?: string }
+
+/** What the connection check (the connector server's own health answer) says about one system; absent when no check is configured. */
+export interface SystemStatus { checked: true; connected: boolean; missing: string[] }
+
+/**
+ * One connected system with who may do what with each of its tools, for people who may change the rules. `grid` is the state each column
+ * gets for each tool under the pack's rules (strictest row wins; a tool nobody has a row for is blocked); `base` is a fingerprint of the
+ * system's settings and rows as read, so a save made on top of a change made elsewhere is refused instead of overwriting it.
+ */
+export interface OverviewConnectorRules {
+  connectorId: string;
+  name: string;
+  description: string;
+  owner: string;
+  sample: boolean;
+  enabled: boolean;
+  tools: Array<{ name: string; label: string; summary: string; sideEffect: 'read' | 'write' }>;
+  columns: RuleColumn[];
+  grid: Record<string, Record<string, ToolState>>;
+  /** Rules that the grid hides: default rows (every tool with no row of its own), rows for all staff, rows for everyone (shoppers too). */
+  notes: { defaultRows: number; allStaffRows: number; everyoneRows: number };
+  base: string;
+  status?: SystemStatus;
+}
+
 export interface CustomizeOverview {
   tenantId: string;
   packVersion?: string;
@@ -129,4 +156,6 @@ export interface CustomizeOverview {
   teams: OverviewTeam[];
   /** Every tool a skill may name, built-in and connected, with what each team may do with it. */
   toolOptions: OverviewToolOption[];
+  /** Every connected system, switched on or off, with its rules table. Only for people who may change them. */
+  connectorRules: OverviewConnectorRules[];
 }

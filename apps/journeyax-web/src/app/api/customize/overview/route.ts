@@ -16,6 +16,8 @@ import { COOKIE_AT, readCookie, unauthorized, upstreamAuthHeaders } from '@/lib/
 import { normaliseGroupId } from '@journeyax/shared-types';
 import { buildOverview } from '@/lib/customize/overview';
 import { buildToolOptions } from '@/lib/customize/toolOptions';
+import { buildConnectorRules } from '@/lib/customize/connectorRules';
+import { readConnectorStatuses, statusUrlsFromEnv } from '@/lib/customize/connectorStatus';
 import type { OverviewTeam } from '@/lib/customize/types';
 
 export const dynamic = 'force-dynamic';
@@ -117,7 +119,8 @@ export async function GET(req: Request) {
   // Editing skills needs the publish permission (the same one "Make live" needs); only then are the teams and the tool list read.
   const canEdit = can(role, 'config.publish');
   const teams = canEdit && auth.Authorization ? await readTeams(tenantId, auth.Authorization) : [];
-  const overview = buildOverview(tenantId, published, { canViewInstructions, canEdit, teams, toolOptions: canEdit ? buildToolOptions(published, teams) : [] });
+  const connectorRules = canEdit ? buildConnectorRules((published.extensions as Record<string, unknown> | undefined)?.connectors as any, teams, await readConnectorStatuses(statusUrlsFromEnv(process.env.CONNECTOR_STATUS_URLS))) : [];
+  const overview = buildOverview(tenantId, published, { canViewInstructions, canEdit, teams, toolOptions: canEdit ? buildToolOptions(published, teams) : [], connectorRules });
 
   if (overview.knowledge.releaseId && auth.Authorization && can(role, 'knowledge.read')) {
     const details = await releaseDetails(tenantId, overview.knowledge.releaseId, auth.Authorization);

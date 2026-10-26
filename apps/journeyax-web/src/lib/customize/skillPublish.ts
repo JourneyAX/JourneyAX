@@ -11,6 +11,7 @@
  */
 import { applySkillDelete, applySkillSave, fingerprintInState, type AccessRowInput, type EditContext, type ProjectSkillState, type SkillInput, type SkillPatch } from './skillEdit';
 import { BUILT_IN_TOOL_IDS, connectorToolIds } from './toolOptions';
+import { fail, ok, readProjectSettings, saveAndPublish, type ChangeResult, type WriteDeps } from './projectWrite';
 
 type Rec = Record<string, any>;
 
@@ -49,19 +50,10 @@ export function readSkillOp(body: unknown): SkillOp | { error: string } {
   return { kind: 'save', mode, input, ...(base ? { base } : {}) };
 }
 
-export interface ChangeDeps {
-  /** `<project api>/api/v1/projects/<tenant>` */
-  base: string;
-  /** Authorization and tenant headers (and the JSON content type). */
-  headers: Record<string, string>;
-  fetchImpl?: typeof fetch;
-  environmentId?: string;
-}
+export type ChangeDeps = WriteDeps;
+export type { ChangeResult };
 
-export interface ChangeResult { status: number; body: Rec }
 
-const ok = (body: Rec): ChangeResult => ({ status: 200, body });
-const fail = (status: number, error: string, extra: Rec = {}): ChangeResult => ({ status, body: { error, ...extra } });
 
 function stateOf(project: Rec): ProjectSkillState {
   const ext = (project?.extensions && typeof project.extensions === 'object' ? project.extensions : {}) as Rec;
@@ -87,15 +79,9 @@ function undoOf(patch: SkillPatch, before: ProjectSkillState): Rec {
 }
 
 export async function changeSkill(deps: ChangeDeps, op: SkillOp): Promise<ChangeResult> {
-  const call = deps.fetchImpl ?? fetch;
-  let project: Rec;
-  try {
-    const current = await call(deps.base, { headers: deps.headers, signal: AbortSignal.timeout(6000), cache: 'no-store' });
-    if (!current.ok) return fail(502, 'The project could not be read.');
-    project = await current.json();
-  } catch {
-    return fail(502, 'The project could not be read: the service did not answer.');
-  }
+  const read = await readProjectSettings(deps);
+  if ('error' in read) return read.error;
+  const project = read.project;
   const before = stateOf(project);
   const ext = (project?.extensions && typeof project.extensions === 'object' ? project.extensions : {}) as Rec;
   const context: EditContext = {
@@ -117,34 +103,11 @@ export async function changeSkill(deps: ChangeDeps, op: SkillOp): Promise<Change
   const skillId = op.kind === 'delete' ? op.skillId : (done as { skillId: string }).skillId;
 
   const body: Rec = { ...(patch.skills ? { skills: patch.skills } : {}), ...(patch.agents ? { agents: patch.agents } : {}), ...(patch.extensions ? { extensions: patch.extensions } : {}) };
-  const put = async (payload: Rec) => call(deps.base, { method: 'PATCH', headers: deps.headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(8000) });
-
-  let saved: Response;
-  try { saved = await put(body); } catch { return fail(502, 'The skill could not be saved: the service did not answer.'); }
-  if (!saved.ok) {
-    const detail: Rec = await saved.json().catch(() => ({}));
-    return fail(saved.status === 400 || saved.status === 422 ? 422 : 502, `The skill could not be saved to the project${detail?.message ? `: ${String(detail.message).slice(0, 300)}` : '.'}`);
-  }
-
   const name = op.kind === 'delete' ? skillId : op.input.name.trim();
-  try {
-    const published = await call(`${deps.base}/publish`, {
-      method: 'POST', headers: deps.headers, signal: AbortSignal.timeout(60000),
-      body: JSON.stringify({ environmentId: deps.environmentId ?? 'production', note: `Skill "${name}" ${op.kind === 'delete' ? 'deleted' : op.mode === 'create' ? 'added' : 'changed'} from the Customize page` }),
-    });
-    if (published.ok) {
-      const result: Rec = await published.json().catch(() => ({}));
-      return ok({ ok: true, skillId, ...(result?.version ? { version: result.version } : {}), ...(op.kind === 'delete' ? { affected: (done as { affected: Rec }).affected } : {}) });
-    }
-    const detail: Rec = await published.json().catch(() => ({}));
-    const restored = await restore(put, patch, before);
-    return fail(422, `The configuration was not published: ${String(detail?.message || published.status)}${restored ? '' : ' The settings could not be put back; check them in the back office.'}`);
-  } catch {
-    const restored = await restore(put, patch, before);
-    return fail(502, `The configuration could not be published: the service did not answer.${restored ? '' : ' The settings could not be put back; check them in the back office.'}`);
-  }
-}
-
-async function restore(put: (payload: Rec) => Promise<Response>, patch: SkillPatch, before: ProjectSkillState): Promise<boolean> {
-  try { return (await put(undoOf(patch, before))).ok; } catch { return false; }
+  const written = await saveAndPublish(deps, {
+    patch: body, undo: undoOf(patch, before), subject: 'skill',
+    note: `Skill "${name}" ${op.kind === 'delete' ? 'deleted' : op.mode === 'create' ? 'added' : 'changed'} from the Customize page`,
+  });
+  if (!written.ok) return written.result;
+  return ok({ ok: true, skillId, ...(written.version ? { version: written.version } : {}), ...(op.kind === 'delete' ? { affected: (done as { affected: Rec }).affected } : {}) });
 }
