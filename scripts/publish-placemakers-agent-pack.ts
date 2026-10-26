@@ -29,6 +29,8 @@ if (typeof (process as any).loadEnvFile === 'function' && fs.existsSync('.env'))
 }
 
 const isApply = process.argv.includes('--apply');
+/** Demo project only: a product with no real price gets a made-up, always-the-same one (never "Price on request"). Off unless asked for. */
+const withDemoPrices = process.argv.includes('--demo-prices');
 
 const pmJourneyPlaybook = [
   {
@@ -152,6 +154,7 @@ async function main() {
         { path: 'priceUSD', rangeKey: 'min', unit: 'major', currencyPath: 'currency' },
         { path: 'variants.0.msrpUSD', unit: 'major', currencyPath: 'currency' },
       ],
+      ...(withDemoPrices ? { demoFallback: { enabled: true, currency: 'NZD', min: 4.9, max: 480 } } : {}),
     },
     imagePaths: ['Main_Image_URL', 'imageUrl', 'images.0'],
     availability: {

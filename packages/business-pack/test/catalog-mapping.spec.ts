@@ -56,4 +56,59 @@ check('normalisation never invents a currency', () => {
   assert.equal(declared.currency, 'NZD');
 });
 
+const DEMO = { enabled: true, currency: 'nzd', min: 4.9, max: 480 };
+const demoMapping = () => resolveCatalogMapping({ pricing: { demoFallback: DEMO } });
+const labels = { title: 'P', category: 'G' };
+
+check('demo prices are off unless the mapping asks for them: an unpriced product stays without a price', () => {
+  const plain = normalizeCatalogProduct({ sku: '1015371', name: 'Radiata framing' }, resolveCatalogMapping(), labels);
+  assert.equal(plain.priceCents, null);
+  assert.equal(plain.priceIsDemo, undefined);
+  assert.equal(resolveCatalogMapping().pricing.demoFallback, undefined);
+});
+
+check('with demo prices on, a product with no price gets one: the same every time, in range, in the shop currency, marked as a demo price', () => {
+  const doc = { sku: '1015371', name: 'Radiata framing' };
+  const first = normalizeCatalogProduct(doc, demoMapping(), labels);
+  const again = normalizeCatalogProduct({ ...doc }, demoMapping(), labels);
+  assert.ok(first.priceCents! >= 490 && first.priceCents! <= 48000, String(first.priceCents));
+  assert.equal(first.priceCents, again.priceCents, 'a product does not change price between turns');
+  assert.equal(first.currency, 'NZD');
+  assert.equal(first.priceIsDemo, true);
+  assert.equal(first.price, first.priceCents! / 100);
+});
+
+check('a real price always wins, and is never marked as a demo price', () => {
+  const real = normalizeCatalogProduct({ sku: '2200499', name: 'Fascia', priceCents: 2750, currency: 'NZD' }, demoMapping(), labels);
+  assert.equal(real.priceCents, 2750);
+  assert.equal(real.priceIsDemo, undefined);
+});
+
+check('a product marked as having no price (price on application) stays unpriced, and a product with no identifier gets nothing', () => {
+  const poa = normalizeCatalogProduct({ sku: '77', name: 'Custom', status: 'POA' }, demoMapping(), labels);
+  assert.equal(poa.availability, 'unpriced');
+  assert.equal(poa.priceCents, null);
+  const nameless = normalizeCatalogProduct({ name: 'No id' }, demoMapping(), labels);
+  assert.equal(nameless.priceCents, null);
+});
+
+check('demo prices read like shelf prices and look like a building range: mostly small, ending in .90, .50 or .00, never outside min and max', () => {
+  const mapping = demoMapping();
+  const cents: number[] = [];
+  for (let n = 0; n < 2000; n += 1) cents.push(normalizeCatalogProduct({ sku: `SKU${1000000 + n * 37}`, name: 'x' }, mapping, labels).priceCents!);
+  assert.ok(cents.every((c) => c >= 490 && c <= 48000));
+  assert.ok(cents.every((c) => c >= 10000 ? c % 100 === 0 : [0, 50, 90].includes(c % 100)), 'ends in .00, .50 or .90 (whole dollars from $100)');
+  const sorted = [...cents].sort((a, b) => a - b);
+  assert.ok(sorted[1000] < 12000, `the middle price is $${sorted[1000] / 100}, below $120`);
+  assert.ok(new Set(cents).size > 150, 'a good spread of different prices');
+});
+
+check('the setting is checked: a three-letter currency, positive numbers, and a maximum that is not below the minimum', () => {
+  const bad = (demoFallback: unknown) => { try { resolveCatalogMapping({ pricing: { demoFallback } }); return false; } catch { return true; } };
+  assert.equal(bad({ enabled: true, currency: 'NZ', min: 1, max: 2 }), true);
+  assert.equal(bad({ enabled: true, currency: 'NZD', min: 0, max: 2 }), true);
+  assert.equal(bad({ enabled: true, currency: 'NZD', min: 5, max: 2 }), true);
+  assert.equal(bad({ enabled: false, currency: 'NZD', min: 1, max: 2 }), false, 'switched off is still a valid setting');
+});
+
 console.log(`✅ Business Pack catalogMapping: ${passed} passed, 0 failed`);

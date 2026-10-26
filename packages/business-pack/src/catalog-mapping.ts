@@ -46,6 +46,17 @@ export const CatalogMappingSchema = z.object({
   searchPaths: Paths.optional(),
   pricing: z.object({
     sources: z.array(PriceSourceSchema).optional(),
+    /**
+     * For a demo or a catalogue that does not publish prices: a product with NO real price gets a made-up one, the same every time for
+     * the same product, between `min` and `max` (mostly toward `min`, as a real range of building products is). A real price always wins,
+     * and a product marked as having no price (an unpriced status) stays unpriced. Never switch this on for a shop that sells for real.
+     */
+    demoFallback: z.object({
+      enabled: z.boolean(),
+      currency: z.string().length(3),
+      min: z.number().positive(),
+      max: z.number().positive(),
+    }).refine((value) => value.max >= value.min, { message: 'max must not be below min' }).optional(),
     /** When true (platform default) a price without a declared currency is treated as unpriced. */
     requireDeclaredCurrency: z.boolean().optional(),
   }).optional(),
@@ -95,7 +106,7 @@ export interface ResolvedCatalogMapping {
   categoryScopePaths: string[];
   categoryHierarchyPaths: string[];
   searchPaths: string[];
-  pricing: { sources: PriceSource[]; requireDeclaredCurrency: boolean };
+  pricing: { sources: PriceSource[]; requireDeclaredCurrency: boolean; demoFallback?: { enabled: boolean; currency: string; min: number; max: number } };
   stock: { booleanPaths: string[]; countPaths: string[] };
   availability: { excludeFlagPaths: string[]; statusPaths: string[]; excludedStatuses: string[]; unpricedStatuses: string[] };
   attributeAliases: Record<string, string[]>;
@@ -130,6 +141,7 @@ export function resolveCatalogMapping(tenant?: unknown): ResolvedCatalogMapping 
     pricing: {
       sources: parsed.pricing?.sources ?? base.pricing.sources,
       requireDeclaredCurrency: parsed.pricing?.requireDeclaredCurrency ?? base.pricing.requireDeclaredCurrency,
+      ...(parsed.pricing?.demoFallback ? { demoFallback: parsed.pricing.demoFallback } : {}),
     },
     stock: { ...base.stock, ...stripUndefined(parsed.stock) },
     availability: { ...base.availability, ...stripUndefined(parsed.availability) },
@@ -169,6 +181,25 @@ export interface NormalizedPrice {
   currency?: string;
   /** True when a numeric price exists but no declared currency could be established. */
   currencyUndeclared: boolean;
+  /** True when the price is a made-up demo price (see `pricing.demoFallback`), not one the catalogue holds. */
+  demo?: boolean;
+}
+
+/** A small stable hash (FNV-1a), so the same product always gets the same demo price. */
+function stableFraction(text: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) { hash ^= text.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
+  return hash / 0x100000000;
+}
+
+/** The demo price of one product, in cents: between min and max, skewed toward min, and written like a shelf price (ends in .90, .50 or .00). */
+export function demoPriceCents(key: string, range: { min: number; max: number }): number {
+  const fraction = stableFraction(key);
+  const raw = range.min + (range.max - range.min) * fraction * fraction * fraction;
+  const step = raw < 20 ? 0.1 : raw < 100 ? 0.5 : 1;
+  const stepped = Math.max(range.min, Math.round(raw / step) * step);
+  const shelf = stepped < 100 ? Math.floor(stepped) + (stepped - Math.floor(stepped) >= 0.5 ? 0.9 : 0.5) : Math.round(stepped);
+  return Math.round(Math.min(range.max, Math.max(range.min, shelf)) * 100);
 }
 
 export function extractPrice(doc: unknown, mapping: ResolvedCatalogMapping): NormalizedPrice {
@@ -181,6 +212,11 @@ export function extractPrice(doc: unknown, mapping: ResolvedCatalogMapping): Nor
     if (!declared && mapping.pricing.requireDeclaredCurrency) { undeclared = true; continue; }
     const priceCents = source.unit === 'minor' ? Math.round(raw) : Math.round(raw * 100);
     return { priceCents, currency: declared ? declared.toUpperCase() : undefined, currencyUndeclared: false };
+  }
+  const demo = mapping.pricing.demoFallback;
+  if (demo?.enabled) {
+    const key = String(firstValue(doc, mapping.identifierPaths) ?? (doc as any)?._id ?? '');
+    if (key) return { priceCents: demoPriceCents(key, demo), currency: demo.currency.toUpperCase(), currencyUndeclared: false, demo: true };
   }
   return { priceCents: null, currencyUndeclared: undeclared };
 }
@@ -222,6 +258,8 @@ export interface NormalizedCatalogProduct {
   price?: number;
   currency?: string;
   currencyUndeclared: boolean;
+  /** True when `price` is a made-up demo price rather than the catalogue's own. */
+  priceIsDemo?: boolean;
   inStock?: boolean;
   availableQuantity?: number;
   certifications: string[];
@@ -333,6 +371,7 @@ export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMappin
     // A priced item carries the currency it was priced in; an unpriced one only a currency the product itself declares.
     currency: priceCents != null ? priced.currency : declaredCurrency(doc, mapping),
     currencyUndeclared: priceCents == null && priced.currencyUndeclared,
+    ...(priceCents != null && priced.demo ? { priceIsDemo: true } : {}),
     inStock: extractStock(doc, mapping),
     availableQuantity: typeof quantity === 'number' ? quantity : undefined,
     certifications: Array.isArray(certifications) ? certifications.filter((c): c is string => typeof c === 'string') : [],

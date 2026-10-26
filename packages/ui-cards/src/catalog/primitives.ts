@@ -84,6 +84,16 @@ export const primitives = {
       style: rawStyle,
     }),
   },
+  Carousel: {
+    description: 'One scrolling row of children, with snapping and previous/next buttons. Use with `repeat` for a swipeable list of cards (recommendations, similar products).',
+    props: z.object({
+      itemWidth: z.string().optional(),
+      gap: spacing.optional(),
+      label: z.string().optional(),
+      className: z.string().optional(),
+      style: rawStyle,
+    }),
+  },
   Text: {
     description: 'Text run. Variant picks the type scale; bind `text` to state.',
     props: z.object({

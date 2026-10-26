@@ -14,10 +14,10 @@ import { WorkingLive } from './shell/WorkedFold';
 import AppShell from './shell/AppShell';
 import { useShell } from './shell/ShellContext';
 import Composer from './shell/Composer';
-import AgentChip from './shell/AgentChip';
 import PlusMenu from './shell/PlusMenu';
 import { useOverview } from './customize/useOverview';
 import { plusMenuModel, skillPrompt } from '@/lib/shell/plusMenu';
+import { startersFor } from '@/lib/shell/starters';
 import { parseConnectorList, readOff, toggled, writeOff, type ConnectorItem } from '@/lib/connectors/connectors';
 import SidePanelHost, { PanelNote, useShownPanelCard } from './shell/SidePanel';
 import { BagIcon, SidebarIcon, UserIcon } from './shell/icons';
@@ -1221,9 +1221,11 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     && state.messages.every((m) => m.id === 'welcome');
   const personalGreeting = cfg.greeting ? personaliseGreeting(cfg.greeting, demoProfile?.name) : '';
   const hero = resolveHero({ headline: cfg.intro?.heroHeadline, subtitle: cfg.intro?.heroSubtitle, greeting: personalGreeting, name: displayName });
+  // What the empty chat offers: the demo customer's own questions, else a few taken from what this person may use (an adviser is offered
+  // cases and orders, marketing is offered campaigns), else the shop's own starters.
   const starters = demoProfile?.tryAsking?.length
     ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
-    : introStarters;
+    : startersFor(connectorItems, introStarters);
 
   // Product details and comparisons open in the side panel; the thread keeps a one-line note where each one was.
   const shownPanelCard = useShownPanelCard(state.cards, panelEnabled);
@@ -1364,13 +1366,6 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
               busy={isLoading}
               placeholder={introPlaceholder}
               autoFocus={typeof window !== 'undefined' && window.innerWidth > 860}
-              agentChip={(
-                <AgentChip
-                  answeringAgentId={answeringAgentId}
-                  selectedAgentId={pickedAgentId}
-                  onSelect={CHAT_REQUEST_ACCEPTS_AGENT_ID ? setPickedAgentId : undefined}
-                />
-              )}
             />
             {isEmpty && starters.length > 0 && (
               <div className="ax-suggestions" role="group" aria-label="Things you can ask">
@@ -1381,14 +1376,11 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
                 ))}
               </div>
             )}
-            <p className="chat-input-hint">
-              {cfg.systemName || 'This assistant'} is AI and can make mistakes. Please check important details.
-            </p>
-            {demoProfile && cfg.demoCustomers && (
-              <div className="chat-demo-note">
-                Exploring as <b>{demoProfile.name}{demoProfile.country ? ` · ${demoProfile.country}` : ''}</b>
-                {demoProfile.scenario ? ` — ${demoProfile.scenario}` : ''}. {cfg.demoCustomers.disclaimer}
-              </div>
+            {/* As in Claude, the new-chat screen has only the box and its suggestions; the reminder appears once a conversation has started. */}
+            {!isEmpty && (
+              <p className="chat-input-hint">
+                {cfg.systemName || 'This assistant'} is AI and can make mistakes. Please check important details.
+              </p>
             )}
           </div>
         </div>
@@ -1422,6 +1414,7 @@ function ChatTopbar({ title, bagLabel, bagTitle, bagCount, bagOpen, onBag }: {
         {title && <h1 className="chat-topbar__title" title={title}>{title}</h1>}
       </div>
       <div className="chat-topbar__right">
+        {(bagCount > 0 || bagOpen) && (
         <button
           type="button"
           className="chat-topbar__bag"
@@ -1433,6 +1426,7 @@ function ChatTopbar({ title, bagLabel, bagTitle, bagCount, bagOpen, onBag }: {
           <BagIcon size={18} />
           {bagCount > 0 && <span className="chat-topbar__bag-count">{bagCount}</span>}
         </button>
+        )}
       </div>
     </header>
   );

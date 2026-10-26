@@ -137,6 +137,11 @@ const components = {
       {children}
     </div>
   ),
+  Carousel: ({ props, children, rootRef }: RP) => (
+    <CarouselView itemWidth={props.itemWidth} gap={sp(props.gap ?? 'md')} label={props.label} className={props.className} style={props.style} rootRef={rootRef}>
+      {children}
+    </CarouselView>
+  ),
   Text: ({ props }: RP) => {
     const v = props.variant || 'body';
     const Tag: any = v === 'display' || v === 'title' ? 'h2' : v === 'heading' ? 'h3' : v === 'subheading' ? 'h4' : v === 'label' || v === 'eyebrow' || v === 'caption' ? 'span' : 'p';
@@ -471,13 +476,57 @@ function adaptForCreateRenderer(map: Record<string, (rp: RP) => React.ReactEleme
   return out;
 }
 
+/**
+ * A scrolling row of cards: one row that snaps to each card, with previous/next buttons that appear only when there is more to
+ * scroll to (so a short list looks like a plain row). Keyboard: focus the row and use the arrow keys. Touch: swipe.
+ */
+function CarouselView({ itemWidth, gap, label, className, style, rootRef, children }: {
+  itemWidth?: string; gap?: string; label?: string; className?: string; style?: React.CSSProperties; rootRef?: React.Ref<HTMLElement>; children?: React.ReactNode;
+}) {
+  const track = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ start: true, end: true });
+  const update = React.useCallback(() => {
+    const el = track.current;
+    if (!el) return;
+    setEdge({ start: el.scrollLeft <= 2, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
+  }, []);
+  React.useEffect(() => {
+    update();
+    const el = track.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [update, children]);
+  const by = (direction: -1 | 1) => {
+    const el = track.current;
+    if (el) el.scrollBy({ left: direction * Math.max(220, el.clientWidth * 0.85), behavior: 'smooth' });
+  };
+  return (
+    <div className={cls('jx-carousel', className)} ref={rootRef as React.Ref<HTMLDivElement>} role="region" aria-roledescription="carousel" aria-label={label || 'Products'} style={style}>
+      <div
+        className="jx-carousel__track"
+        ref={track}
+        tabIndex={0}
+        onScroll={update}
+        onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); by(1); } else if (event.key === 'ArrowLeft') { event.preventDefault(); by(-1); } }}
+        style={{ gap, ['--jx-carousel-item' as any]: itemWidth || '300px' }}
+      >
+        {children}
+      </div>
+      {!edge.start && <button type="button" className="jx-carousel__nav jx-carousel__nav--prev" aria-label="Previous" onClick={() => by(-1)}>‹</button>}
+      {!edge.end && <button type="button" className="jx-carousel__nav jx-carousel__nav--next" aria-label="Next" onClick={() => by(1)}>›</button>}
+    </div>
+  );
+}
+
 /** The renderer bound to the platform catalog. */
 export const CatalogRenderer = createRenderer(catalog as any, adaptForCreateRenderer(components) as any);
 
 const noopEmit = () => undefined;
 
 /** Layout primitives whose root is a flex/grid container — Puck must mark these `inline` and attach `dragRef` here. */
-export const LAYOUT_PRIMITIVE_NAMES = ['Box', 'Card', 'Grid'] as const;
+export const LAYOUT_PRIMITIVE_NAMES = ['Box', 'Card', 'Grid', 'Carousel'] as const;
 export type LayoutPrimitiveName = (typeof LAYOUT_PRIMITIVE_NAMES)[number];
 
 /** Render one catalog primitive. Used by the storefront renderer and the backoffice Puck editor. */

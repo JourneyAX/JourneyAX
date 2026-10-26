@@ -31,6 +31,14 @@
 .jx-card.jx-selected { border-color: var(--jx-color-brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--jx-color-brand) 30%, transparent); }
 .jx-card.jx-interactive { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
 .jx-card.jx-interactive:hover { transform: translateY(-1px); box-shadow: var(--jx-shadow-md); }
+/* carousel: one scrolling row that snaps to each card; the buttons show only when there is more to scroll to */
+.jx-carousel { position: relative; min-width: 0; }
+.jx-carousel__track { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding: 0 var(--jx-space-xs); padding: 2px 2px var(--jx-space-sm); scrollbar-width: thin; -webkit-overflow-scrolling: touch; outline-offset: 2px; }
+.jx-carousel__track > * { flex: 0 0 min(var(--jx-carousel-item, 300px), 86%); min-width: 0; scroll-snap-align: start; }
+.jx-carousel__nav { position: absolute; top: 40%; transform: translateY(-50%); z-index: 2; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--jx-color-border); background: var(--jx-color-surface); color: var(--jx-color-text, inherit); box-shadow: var(--jx-shadow-md); font-size: 20px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.jx-carousel__nav:hover { background: var(--jx-color-surface-alt, var(--jx-color-surface)); }
+.jx-carousel__nav--prev { left: -6px; } .jx-carousel__nav--next { right: -6px; }
+@media (hover: none) { .jx-carousel__nav { display: none; } }
 .jx-card-header, .jx-card-footer { display: flex; flex-direction: column; gap: var(--jx-space-xs); }
 
 /* text scale */
