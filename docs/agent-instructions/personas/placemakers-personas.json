@@ -1,0 +1,4574 @@
+{
+  "$schema": "placemakers-personas/1",
+  "tenantId": "placemakers",
+  "source": {
+    "files": {
+      "PlaceMakers_AccessModel.csv": "1d61ec3aec34b1f487ef2534e28d2f40c0645953d1b2f1514adfb44707bcf360",
+      "PlaceMakers_Personas_Import.csv": "64688844ee219763415a8addd4210aff89de59f12de6172fe1f530daf84d9448",
+      "PlaceMakers_TicketingTools.csv": "fdf05b554e337e24d69a10133ac2b29403f936f4c9a6f44e0ee540e1b4f59830",
+      "PlaceMakers_UseCases_Import.csv": "9f9afc542cf24cd6978d61da4c68dcf7cbce849a4d48f4e14221ad5c6deae79a"
+    },
+    "note": "Built from the owner's catalogue sheets (October 2026) and mapping.json. The sheets say these are proposed personas and roles, not an export of real PlaceMakers logins."
+  },
+  "counts": {
+    "personas": 43,
+    "customers": 19,
+    "staff": 24,
+    "useCases": 86,
+    "accessRoles": 16,
+    "teams": 13,
+    "readiness": {
+      "fully ready": 8,
+      "partly ready": 62,
+      "sample or pending only": 10,
+      "not possible yet": 6
+    },
+    "priorityP0": {
+      "personas": 20,
+      "useCases": 40
+    }
+  },
+  "systems": [
+    {
+      "name": "SAP Commerce",
+      "state": "ready",
+      "note": "commercetools stands in for SAP Commerce in this demo (real trial project, B2B structure loaded).",
+      "personas": 29,
+      "useCases": 58
+    },
+    {
+      "name": "ACE",
+      "state": "sample",
+      "note": "the ERP: prices on account, balances, deliveries. Sample data only until the real details arrive.",
+      "personas": 13,
+      "useCases": 26
+    },
+    {
+      "name": "Salesforce",
+      "state": "ready",
+      "personas": 10,
+      "useCases": 20
+    },
+    {
+      "name": "branch inventory",
+      "state": "ready",
+      "personas": 3,
+      "useCases": 6
+    },
+    {
+      "name": "Descartes Route Planner",
+      "state": "not-connected",
+      "personas": 3,
+      "useCases": 6
+    },
+    {
+      "name": "PIM",
+      "state": "sample",
+      "personas": 3,
+      "useCases": 6
+    },
+    {
+      "name": "PlaceMakers Estimations",
+      "state": "not-connected",
+      "personas": 3,
+      "useCases": 6
+    },
+    {
+      "name": "Salesforce Sales Cloud",
+      "state": "ready",
+      "personas": 3,
+      "useCases": 6
+    },
+    {
+      "name": "Salesforce Service Cloud",
+      "state": "ready",
+      "personas": 3,
+      "useCases": 6
+    },
+    {
+      "name": "account dashboard",
+      "state": "ready",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "ACE finance",
+      "state": "sample",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "Bloomreach",
+      "state": "sample",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "delivery planning",
+      "state": "not-connected",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "design services",
+      "state": "not-connected",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "GA4",
+      "state": "pending",
+      "note": "needs a GA4 property and a Google service-account key.",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "Glympse",
+      "state": "not-connected",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "Jira",
+      "state": "not-connected",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "Power BI",
+      "state": "pending",
+      "note": "needs a Power BI workspace the owner controls.",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "Salsify",
+      "state": "sample",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "Trade Portal",
+      "state": "ready",
+      "note": "counted as PlaceMakers' own site: the chat sits beside it.",
+      "personas": 2,
+      "useCases": 4
+    },
+    {
+      "name": "account permissions",
+      "state": "ready",
+      "note": "the B2B associate roles in commercetools (account-admin, buyer, site-manager, accounts-payable).",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "ACE ERP",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "BI",
+      "state": "pending",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "branch POS",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Dataprint",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Dataprint Saber",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "delivery systems",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "delivery tracking",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Descartes",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "design consultation",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "ERP",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "ERP/AP",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "finance/AP",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "fulfilment",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Google Tag Manager",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "GroupGate",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "logistics",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "loyalty",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Marketing Cloud",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "MuleSoft",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "PlaceMakers iSupplier",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "PlaceMakers iSupplier portal",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "reporting",
+      "state": "pending",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Salesforce Marketing Cloud",
+      "state": "sample",
+      "note": "stays sample data by decision.",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Salsify PIM",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "SAP Commerce Cloud",
+      "state": "ready",
+      "note": "commercetools stands in for SAP Commerce in this demo.",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Search Console",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Service Cloud",
+      "state": "ready",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "ServiceNow (FletcherTech)",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Solace",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Spartacus",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "UXCam",
+      "state": "sample",
+      "personas": 1,
+      "useCases": 2
+    },
+    {
+      "name": "Zebra Yard App",
+      "state": "not-connected",
+      "personas": 1,
+      "useCases": 2
+    }
+  ],
+  "teams": [
+    {
+      "team": "customer-service",
+      "name": "Customer Service",
+      "status": "live",
+      "agent": "placemakers_customer_service",
+      "note": "Cases, orders, accounts and stock; raises a case after asking.",
+      "personas": [
+        "B02",
+        "B03",
+        "B13"
+      ],
+      "useCases": 6,
+      "readiness": {
+        "fully ready": 2,
+        "partly ready": 4,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [
+        "Customer service case agent"
+      ],
+      "waitingOn": [
+        {
+          "system": "ACE",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "BI",
+          "state": "pending",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "sales",
+      "name": "Sales",
+      "status": "live",
+      "agent": "placemakers_sales_quote",
+      "note": "Accounts, deals, leads, campaigns; quotes.",
+      "personas": [
+        "B01",
+        "B08"
+      ],
+      "useCases": 4,
+      "readiness": {
+        "fully ready": 2,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [
+        "Trade account manager"
+      ],
+      "waitingOn": [
+        {
+          "system": "design services",
+          "state": "not-connected",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "sales-managers",
+      "name": "Sales Managers",
+      "status": "live",
+      "agent": "placemakers_sales_quote",
+      "note": "Everything sales sees plus the pipeline and reports.",
+      "personas": [],
+      "useCases": 0,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [],
+      "waitingOn": []
+    },
+    {
+      "team": "branch",
+      "name": "Branch",
+      "status": "live",
+      "agent": "placemakers_customer_service",
+      "note": "Counter staff and branch managers: stock by branch, orders, accounts, cases (read only).",
+      "personas": [
+        "B04",
+        "B05"
+      ],
+      "useCases": 4,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 4,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "waitingOn": [
+        {
+          "system": "ACE",
+          "state": "sample",
+          "useCases": 4
+        },
+        {
+          "system": "branch POS",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "reporting",
+          "state": "pending",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "finance",
+      "name": "Finance",
+      "status": "live",
+      "agent": "placemakers_customer_service",
+      "note": "Credit control: orders, account terms and cases (read only). Balances wait for the ERP.",
+      "personas": [
+        "B14",
+        "B15"
+      ],
+      "useCases": 4,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      },
+      "accessRoles": [
+        "Finance controller"
+      ],
+      "waitingOn": [
+        {
+          "system": "ACE finance",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "Dataprint",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "ERP/AP",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "PlaceMakers iSupplier",
+          "state": "not-connected",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "marketing",
+      "name": "Marketing",
+      "status": "live",
+      "agent": "placemakers_product_advisor",
+      "note": "Campaigns, messages, web traffic.",
+      "personas": [
+        "B18"
+      ],
+      "useCases": 2,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [],
+      "waitingOn": [
+        {
+          "system": "loyalty",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "Salesforce Marketing Cloud",
+          "state": "sample",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "insights",
+      "name": "Insights",
+      "status": "live",
+      "agent": "placemakers_product_advisor",
+      "note": "Web traffic and reports; no customer records.",
+      "personas": [
+        "B19"
+      ],
+      "useCases": 2,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      },
+      "accessRoles": [
+        "Digital analyst"
+      ],
+      "waitingOn": [
+        {
+          "system": "GA4",
+          "state": "pending",
+          "useCases": 2
+        },
+        {
+          "system": "Google Tag Manager",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "Power BI",
+          "state": "pending",
+          "useCases": 2
+        },
+        {
+          "system": "Search Console",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "UXCam",
+          "state": "sample",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "leadership",
+      "name": "Leadership",
+      "status": "live",
+      "agent": "placemakers_product_advisor",
+      "note": "Reads everything; changes nothing.",
+      "personas": [
+        "B24"
+      ],
+      "useCases": 2,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [],
+      "waitingOn": [
+        {
+          "system": "ACE",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "Power BI",
+          "state": "pending",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "operations",
+      "name": "Operations",
+      "status": "planned",
+      "agent": null,
+      "note": "Pickers, yard, dispatch, drivers: needs the ERP, delivery planning and tracking.",
+      "personas": [
+        "B09",
+        "B10",
+        "B11",
+        "B12"
+      ],
+      "useCases": 8,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 4,
+        "not possible yet": 2
+      },
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "waitingOn": [
+        {
+          "system": "ACE",
+          "state": "sample",
+          "useCases": 6
+        },
+        {
+          "system": "Descartes Route Planner",
+          "state": "not-connected",
+          "useCases": 4
+        },
+        {
+          "system": "Descartes",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "fulfilment",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "Glympse",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "Zebra Yard App",
+          "state": "not-connected",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "estimating",
+      "name": "Estimating",
+      "status": "planned",
+      "agent": null,
+      "note": "Estimators and planners: needs the Estimations system.",
+      "personas": [
+        "B06",
+        "B07"
+      ],
+      "useCases": 4,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      },
+      "accessRoles": [],
+      "waitingOn": [
+        {
+          "system": "PlaceMakers Estimations",
+          "state": "not-connected",
+          "useCases": 4
+        },
+        {
+          "system": "delivery planning",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "ERP",
+          "state": "sample",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "product-data",
+      "name": "Product Data",
+      "status": "planned",
+      "agent": null,
+      "note": "Product information and merchandising: needs the product-information system (Salsify) and Bloomreach live.",
+      "personas": [
+        "B16",
+        "B17"
+      ],
+      "useCases": 4,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 4,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [],
+      "waitingOn": [
+        {
+          "system": "Bloomreach",
+          "state": "sample",
+          "useCases": 4
+        },
+        {
+          "system": "Salsify",
+          "state": "sample",
+          "useCases": 4
+        },
+        {
+          "system": "ACE",
+          "state": "sample",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "digital-product",
+      "name": "Digital Product",
+      "status": "planned",
+      "agent": null,
+      "note": "Digital commerce product owner: needs Jira and GA4.",
+      "personas": [
+        "B20"
+      ],
+      "useCases": 2,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [],
+      "waitingOn": [
+        {
+          "system": "GA4",
+          "state": "pending",
+          "useCases": 2
+        },
+        {
+          "system": "Jira",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "Spartacus",
+          "state": "not-connected",
+          "useCases": 2
+        }
+      ]
+    },
+    {
+      "team": "it-integration",
+      "name": "IT and Integration",
+      "status": "planned",
+      "agent": null,
+      "note": "CRM admin, integration and support engineers: needs MuleSoft, ACE logs and Jira.",
+      "personas": [
+        "B21",
+        "B22",
+        "B23"
+      ],
+      "useCases": 6,
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 6,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      },
+      "accessRoles": [
+        "Technology support"
+      ],
+      "waitingOn": [
+        {
+          "system": "ACE ERP",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "Jira",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "Marketing Cloud",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "MuleSoft",
+          "state": "sample",
+          "useCases": 2
+        },
+        {
+          "system": "ServiceNow (FletcherTech)",
+          "state": "not-connected",
+          "useCases": 2
+        },
+        {
+          "system": "Solace",
+          "state": "not-connected",
+          "useCases": 2
+        }
+      ]
+    }
+  ],
+  "accessRoles": [
+    {
+      "role": "Guest retail user",
+      "side": "external",
+      "scope": "View public catalog, select store, see public price",
+      "restriction": "No trade-account prices or invoices",
+      "validation": "Confirmed website access; role name proposed",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "signIn": "guest",
+      "note": "Not signed in.",
+      "personas": [
+        "C01",
+        "C16"
+      ]
+    },
+    {
+      "role": "Registered retail customer",
+      "side": "external",
+      "scope": "Save wishlists, retail orders, own order history",
+      "restriction": "No access to trade prices or business balances",
+      "validation": "Proposed RBAC mapping; validate settings",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "signIn": "buyer",
+      "note": "A signed-in shopper; no company.",
+      "personas": [
+        "C01",
+        "C02",
+        "C16"
+      ]
+    },
+    {
+      "role": "Trade Cash account holder",
+      "side": "external",
+      "scope": "Trade app/portal; home branch online orders; pay at purchase; estimate/quote",
+      "restriction": "No charge-account online invoicing; online branch limited to home branch",
+      "validation": "Confirmed account offering",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "signIn": "buyer",
+      "commercetoolsRole": "buyer",
+      "note": "One person, pays at purchase.",
+      "personas": [
+        "C03",
+        "C12",
+        "C13",
+        "C14",
+        "C15"
+      ]
+    },
+    {
+      "role": "Trade Charge account holder",
+      "side": "external",
+      "scope": "Trade app/portal; all branches online; credit terms; online invoices; delegate staff",
+      "restriction": "Credit/spending governed by account and permissions",
+      "validation": "Confirmed account offering",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "signIn": "buyer",
+      "commercetoolsRole": "account-admin",
+      "note": "The company on credit terms; its holder administers it.",
+      "personas": [
+        "C04",
+        "C05",
+        "C09",
+        "C12",
+        "C13",
+        "C14",
+        "C15"
+      ]
+    },
+    {
+      "role": "Trade account administrator",
+      "side": "external",
+      "scope": "Invite/remove users; grant pricing/order permissions; set spend caps",
+      "restriction": "No access to other companies or trade accounts",
+      "validation": "Permission capability documented; role name proposed",
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/",
+      "signIn": "buyer",
+      "commercetoolsRole": "account-admin",
+      "personas": [
+        "C04"
+      ]
+    },
+    {
+      "role": "Delegated buyer",
+      "side": "external",
+      "scope": "View authorized jobs; place/order change where allowed",
+      "restriction": "Limits and expiry controlled by account owner",
+      "validation": "Permission capability documented; role name proposed",
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/",
+      "signIn": "buyer",
+      "commercetoolsRole": "buyer",
+      "note": "Spend caps and expiry are not modelled in commercetools yet.",
+      "personas": [
+        "C06",
+        "C08",
+        "C09",
+        "C10"
+      ]
+    },
+    {
+      "role": "Order/Job viewer",
+      "side": "external",
+      "scope": "View assigned jobs, orders, delivery statuses",
+      "restriction": "No ordering or company finance",
+      "validation": "Suggested access role",
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/",
+      "signIn": "buyer",
+      "commercetoolsRole": "site-manager",
+      "gap": "A view-only job role does not exist yet: site-manager can also place orders, which this role must not.",
+      "personas": [
+        "C06",
+        "C07"
+      ]
+    },
+    {
+      "role": "Trade finance viewer",
+      "side": "external",
+      "scope": "View/download authorized invoices, statements and balances",
+      "restriction": "No ordering; privacy controls apply",
+      "validation": "Suggested access role",
+      "source": "https://dataprint.co.nz/case-studies/placemakers/",
+      "signIn": "buyer",
+      "commercetoolsRole": "accounts-payable",
+      "personas": [
+        "C11"
+      ]
+    },
+    {
+      "role": "Buying-group user",
+      "side": "external",
+      "scope": "Sign in via GroupGate",
+      "restriction": "Entitlements and exact permissions unverified",
+      "validation": "Confirmed login segment; access model to validate",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "signIn": "buyer",
+      "gap": "GroupGate sign-in is not connected.",
+      "personas": [
+        "C17"
+      ]
+    },
+    {
+      "role": "Supplier portal user",
+      "side": "external",
+      "scope": "Own supplier transactions; remittances; rebates and credit documents",
+      "restriction": "Own supplier records only",
+      "validation": "Confirmed supplier portal",
+      "source": "https://isupplier.placemakers.co.nz/",
+      "signIn": "buyer",
+      "gap": "The iSupplier portal is not connected.",
+      "personas": [
+        "C18"
+      ]
+    },
+    {
+      "role": "Customer service case agent",
+      "side": "business",
+      "scope": "Create/read customer cases; order context; knowledge; reply",
+      "restriction": "Access limited by account/queue permissions",
+      "validation": "Confirmed Salesforce Service Cloud; exact profiles unverified",
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study",
+      "team": "customer-service",
+      "personas": [
+        "B02",
+        "B03",
+        "B13"
+      ]
+    },
+    {
+      "role": "Trade account manager",
+      "side": "business",
+      "scope": "Customer 360, account notes, estimates and follow-up",
+      "restriction": "Should not bypass ERP/financial approvals",
+      "validation": "Confirmed sales role",
+      "source": "https://underconstruction.placemakers.co.nz/next-level-trade-support/",
+      "team": "sales",
+      "personas": [
+        "B01",
+        "B08"
+      ]
+    },
+    {
+      "role": "Branch / warehouse operator",
+      "side": "business",
+      "scope": "Inventory, picking, collection and branch order operations",
+      "restriction": "Branch/site restrictions should be validated",
+      "validation": "Business role model",
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane",
+      "team": "branch",
+      "alsoTeams": [
+        "operations"
+      ],
+      "personas": [
+        "B04",
+        "B05",
+        "B09",
+        "B10",
+        "B11",
+        "B12"
+      ]
+    },
+    {
+      "role": "Finance controller",
+      "side": "business",
+      "scope": "Trade balances, payment processing and account exceptions",
+      "restriction": "Finance permissions controlled by accounting policy",
+      "validation": "Proposed RBAC mapping",
+      "source": "https://dataprint.co.nz/case-studies/placemakers/",
+      "team": "finance",
+      "personas": [
+        "B14",
+        "B15"
+      ]
+    },
+    {
+      "role": "Digital analyst",
+      "side": "business",
+      "scope": "GA4, Google Tag Manager, Search Console, Power BI views",
+      "restriction": "No unauthorized edits to customer records",
+      "validation": "Documented platforms; persona role suggested",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/5135859717/Placemakers+B2B+B2C+Delivery+Assessment+2026-09-24",
+      "team": "insights",
+      "personas": [
+        "B19"
+      ]
+    },
+    {
+      "role": "Technology support",
+      "side": "business",
+      "scope": "Jira engineering defect tracking; group ITSM ServiceNow, where entitled",
+      "restriction": "Do not assume PlaceMakers-specific ServiceNow access",
+      "validation": "Jira confirmed; ServiceNow Fletcher group only",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/5008719903/Placemakers+B2B+B2C+Delivery+Assessment",
+      "team": "it-integration",
+      "personas": [
+        "B21",
+        "B22",
+        "B23"
+      ]
+    }
+  ],
+  "personas": [
+    {
+      "id": "C01",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "DIY Retail Shopper",
+      "group": "Retail B2C",
+      "description": "Individual buying building and home-improvement products without a trade account.",
+      "goal": "Find the right product at an accessible price and local store.",
+      "channel": "B2C website; branch",
+      "systems": [
+        "SAP Commerce",
+        "branch inventory"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced retail segment",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "accessRoles": [
+        "Guest retail user",
+        "Registered retail customer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "C01-UC01",
+        "C01-UC02"
+      ],
+      "readiness": {
+        "fully ready": 2,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C02",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Renovating Homeowner",
+      "group": "Retail B2C",
+      "description": "Homeowner planning a new bathroom, kitchen or renovation, often needing guidance.",
+      "goal": "Choose compatible products and obtain design advice.",
+      "channel": "B2C website; design showroom",
+      "systems": [
+        "SAP Commerce",
+        "design consultation"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced customer need",
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/",
+      "accessRoles": [
+        "Registered retail customer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "C02-UC01",
+        "C02-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C03",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Trade Cash Sole Trader",
+      "group": "Trade B2B",
+      "description": "Independent builder using Trade Cash, purchasing at point of sale and online through the home branch.",
+      "goal": "Order competitively without maintaining a credit account.",
+      "channel": "Trade Portal; Trade App; branch",
+      "systems": [
+        "Trade Portal",
+        "SAP Commerce",
+        "ACE"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced account segment",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "accessRoles": [
+        "Trade Cash account holder"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer"
+      ],
+      "useCases": [
+        "C03-UC01",
+        "C03-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C04",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Trade Charge Business Owner",
+      "group": "Trade B2B",
+      "description": "Trade business principal owning a charge account with invoicing, branch access and team permissions.",
+      "goal": "Control spending and purchasing across jobs and staff.",
+      "channel": "Trade Portal; Trade App",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Salesforce",
+        "account dashboard"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced account segment",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "accessRoles": [
+        "Trade Charge account holder",
+        "Trade account administrator"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "account-admin"
+      ],
+      "useCases": [
+        "C04-UC01",
+        "C04-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C05",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Head Contractor / Construction Firm",
+      "group": "Trade B2B",
+      "description": "Main contractor running multiple residential or commercial projects and project job accounts.",
+      "goal": "Coordinate bulk purchases, budgets and site deliveries.",
+      "channel": "Trade Portal; Trade App; account manager",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "ACE",
+        "delivery systems"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced customer type",
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/",
+      "accessRoles": [
+        "Trade Charge account holder"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "account-admin"
+      ],
+      "useCases": [
+        "C05-UC01",
+        "C05-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C06",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Construction Project Manager",
+      "group": "Trade B2B",
+      "description": "Builder-side manager accountable for project materials, variations and delivery schedules.",
+      "goal": "Keep projects on schedule without site shortages.",
+      "channel": "Trade Portal; Trade App",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "ACE",
+        "logistics"
+      ],
+      "priority": "P0",
+      "roleBasis": "Modelled from documented workflows",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information",
+      "accessRoles": [
+        "Delegated buyer",
+        "Order/Job viewer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer",
+        "site-manager"
+      ],
+      "useCases": [
+        "C06-UC01",
+        "C06-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C07",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Site Foreman / Supervisor",
+      "group": "Trade B2B",
+      "description": "Lead on site responsible for daily supply readiness and urgent materials.",
+      "goal": "Resolve immediate stock gaps and know delivery times.",
+      "channel": "Trade App; phone; branch",
+      "systems": [
+        "SAP Commerce",
+        "delivery tracking",
+        "Salesforce"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced field scenario",
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/",
+      "accessRoles": [
+        "Order/Job viewer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "site-manager"
+      ],
+      "useCases": [
+        "C07-UC01",
+        "C07-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C08",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Apprentice / Delegated Team Buyer",
+      "group": "Trade B2B",
+      "description": "Team member authorized by a trade account owner to purchase limited items.",
+      "goal": "Place small orders without unrestricted account access.",
+      "channel": "Trade App; branch",
+      "systems": [
+        "Trade Portal",
+        "SAP Commerce",
+        "account permissions"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced permission capability",
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/",
+      "accessRoles": [
+        "Delegated buyer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer"
+      ],
+      "useCases": [
+        "C08-UC01",
+        "C08-UC02"
+      ],
+      "readiness": {
+        "fully ready": 2,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C09",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Construction Procurement Buyer",
+      "group": "Trade B2B",
+      "description": "Purchasing professional coordinating material orders across several jobs or branches.",
+      "goal": "Obtain availability, negotiated prices and reliable delivery.",
+      "channel": "Trade Portal; account manager",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Salesforce",
+        "PIM"
+      ],
+      "priority": "P1",
+      "roleBasis": "Modelled persona",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "accessRoles": [
+        "Delegated buyer",
+        "Trade Charge account holder"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer",
+        "account-admin"
+      ],
+      "useCases": [
+        "C09-UC01",
+        "C09-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C10",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Builder Quantity Surveyor / Estimator",
+      "group": "Trade B2B",
+      "description": "Builder-side professional pricing materials and preparing customer quotations.",
+      "goal": "Prepare accurate cost estimates and compare costs by stage.",
+      "channel": "Trade Portal; estimate files",
+      "systems": [
+        "SAP Commerce",
+        "PlaceMakers Estimations"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced process, inferred title",
+      "source": "https://underconstruction.placemakers.co.nz/build-it-stacks-up-better-than-ever/",
+      "accessRoles": [
+        "Delegated buyer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer"
+      ],
+      "useCases": [
+        "C10-UC01",
+        "C10-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C11",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Trade Accounts Administrator / Bookkeeper",
+      "group": "Trade B2B",
+      "description": "Office person managing invoices, balances, payments and job cost coding for a trade business.",
+      "goal": "Reconcile purchases and control liabilities.",
+      "channel": "Trade Portal; Saber/account portal",
+      "systems": [
+        "ACE finance",
+        "Dataprint Saber",
+        "SAP Commerce"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced user type",
+      "source": "https://dataprint.co.nz/case-studies/placemakers/",
+      "accessRoles": [
+        "Trade finance viewer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "accounts-payable"
+      ],
+      "useCases": [
+        "C11-UC01",
+        "C11-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C12",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Plumbing Contractor",
+      "group": "Specialist trade",
+      "description": "Professional sourcing pipes, drains, fittings, tapware and bathroom materials.",
+      "goal": "Buy compatible supplies quickly with trade pricing.",
+      "channel": "Trade Portal; Trade App; branch",
+      "systems": [
+        "SAP Commerce",
+        "PIM",
+        "branch inventory"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced trade category",
+      "source": "https://www.placemakers.co.nz/online/bathrooms-plumbing/c/RDD2",
+      "accessRoles": [
+        "Trade Cash account holder",
+        "Trade Charge account holder"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer",
+        "account-admin"
+      ],
+      "useCases": [
+        "C12-UC01",
+        "C12-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C13",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Electrician / Electrical Contractor",
+      "group": "Specialist trade",
+      "description": "Electrician buying building-site electrical supplies, tools and fittings.",
+      "goal": "Locate correct technical specifications and stock.",
+      "channel": "Trade Portal; Trade App; branch",
+      "systems": [
+        "SAP Commerce",
+        "PIM",
+        "branch inventory"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced trade segment",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "accessRoles": [
+        "Trade Cash account holder",
+        "Trade Charge account holder"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer",
+        "account-admin"
+      ],
+      "useCases": [
+        "C13-UC01",
+        "C13-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C14",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Landscaping / Outdoor Contractor",
+      "group": "Specialist trade",
+      "description": "Tradesperson supplying decks, fencing, retaining walls and outdoor spaces.",
+      "goal": "Determine quantities and arrange bulky deliveries.",
+      "channel": "Trade Portal; branch",
+      "systems": [
+        "SAP Commerce",
+        "delivery planning"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced trade segment",
+      "source": "https://underconstruction.placemakers.co.nz/inspiring-outdoor-transformations-with-placemakers/",
+      "accessRoles": [
+        "Trade Cash account holder",
+        "Trade Charge account holder"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer",
+        "account-admin"
+      ],
+      "useCases": [
+        "C14-UC01",
+        "C14-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C15",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Kitchen / Bathroom Installer",
+      "group": "Specialist trade",
+      "description": "Installer coordinating with homeowners, builders and PlaceMakers design consultants.",
+      "goal": "Get the right cabinets, fixtures and accessories before install.",
+      "channel": "Trade Portal; consultant; branch",
+      "systems": [
+        "SAP Commerce",
+        "design services",
+        "Salesforce"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced service relationship",
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/",
+      "accessRoles": [
+        "Trade Cash account holder",
+        "Trade Charge account holder"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [
+        "buyer",
+        "account-admin"
+      ],
+      "useCases": [
+        "C15-UC01",
+        "C15-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C16",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Architect / Product Specifier",
+      "group": "Specifier partner",
+      "description": "Professional comparing product dimensions, specifications and suitability for plans.",
+      "goal": "Recommend compliant product options to construction clients.",
+      "channel": "B2C website; catalog; branch consultation",
+      "systems": [
+        "Salsify PIM",
+        "SAP Commerce"
+      ],
+      "priority": "P2",
+      "roleBasis": "Reasonable adjacent persona; not confirmed portal role",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "accessRoles": [
+        "Guest retail user",
+        "Registered retail customer"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "C16-UC01",
+        "C16-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C17",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Buying Group Member",
+      "group": "Buying group",
+      "description": "Purchaser accessing the separate GroupGate sign-in advertised on the PlaceMakers site.",
+      "goal": "Reach buying-group-specific shopping functions.",
+      "channel": "GroupGate; B2C website",
+      "systems": [
+        "GroupGate",
+        "SAP Commerce"
+      ],
+      "priority": "P2",
+      "roleBasis": "Confirmed login segment; role workflows unverified",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "accessRoles": [
+        "Buying-group user"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "C17-UC01",
+        "C17-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "C18",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Supplier / Manufacturer Portal User",
+      "group": "External supplier",
+      "description": "Supplier checking remittance, rebates, transaction and payment records.",
+      "goal": "Resolve payment questions without manual AP enquiries.",
+      "channel": "Supplier Portal",
+      "systems": [
+        "PlaceMakers iSupplier portal",
+        "finance/AP"
+      ],
+      "priority": "P1",
+      "roleBasis": "Confirmed supplier portal user",
+      "source": "https://isupplier.placemakers.co.nz/",
+      "accessRoles": [
+        "Supplier portal user"
+      ],
+      "signIn": "buyer",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "C18-UC01",
+        "C18-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 2
+      }
+    },
+    {
+      "id": "C19",
+      "kind": "customer",
+      "side": "Customer / partner",
+      "name": "Third-party Carrier / 3PL Partner",
+      "group": "External delivery partner",
+      "description": "Outside transport operator completing assigned site deliveries when subcontracted.",
+      "goal": "Receive delivery instructions, meet delivery windows and report exceptions.",
+      "channel": "Transport/driver applications",
+      "systems": [
+        "Descartes Route Planner",
+        "Glympse"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced partner in historical model; current contract scope unverified",
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane",
+      "accessRoles": [],
+      "commercetoolsRoles": [],
+      "useCases": [
+        "C19-UC01",
+        "C19-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 2
+      }
+    },
+    {
+      "id": "B01",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Trade Account Manager",
+      "group": "Sales and account management",
+      "description": "Field sales relationship owner supporting trade accounts, project needs, quotes and customer growth.",
+      "goal": "Retain customers and proactively support their jobs.",
+      "channel": "Salesforce CRM; phone; site visits",
+      "systems": [
+        "Salesforce Sales Cloud",
+        "SAP Commerce"
+      ],
+      "priority": "P0",
+      "roleBasis": "Explicit documented role",
+      "source": "https://underconstruction.placemakers.co.nz/same-page-trade-support/",
+      "team": "sales",
+      "accessRoles": [
+        "Trade account manager"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B01-UC01",
+        "B01-UC02"
+      ],
+      "readiness": {
+        "fully ready": 2,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B02",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Trade Support Advisor / Telesales",
+      "group": "Customer service",
+      "description": "Frontline adviser responding to trade phone, email, portal order messages and purchase queries.",
+      "goal": "Resolve requests without forcing customers to repeat details.",
+      "channel": "Salesforce Service Cloud; phone; email",
+      "systems": [
+        "Salesforce Service Cloud",
+        "ACE",
+        "SAP Commerce"
+      ],
+      "priority": "P0",
+      "roleBasis": "Explicit documented role",
+      "source": "https://underconstruction.placemakers.co.nz/next-level-trade-support/",
+      "team": "customer-service",
+      "accessRoles": [
+        "Customer service case agent"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B02-UC01",
+        "B02-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B03",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Trade Support Team Leader",
+      "group": "Customer service",
+      "description": "Supervisor managing support queues, staff coverage, escalations and service consistency.",
+      "goal": "Keep service timely and prevent lost enquiries.",
+      "channel": "Salesforce Service Cloud; reporting",
+      "systems": [
+        "Salesforce Service Cloud",
+        "BI"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced business role",
+      "source": "https://underconstruction.placemakers.co.nz/next-level-trade-support/",
+      "team": "customer-service",
+      "teamLead": "team leader",
+      "accessRoles": [
+        "Customer service case agent"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B03-UC01",
+        "B03-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B04",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Branch Counter Sales Associate",
+      "group": "Branch retail",
+      "description": "In-branch staff helping walk-in customers select products, check stock and complete collection.",
+      "goal": "Serve trade and DIY customers quickly.",
+      "channel": "POS; SAP Commerce; branch tools",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "branch POS"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced branch function",
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly",
+      "team": "branch",
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B04-UC01",
+        "B04-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B05",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Branch Manager / Operator",
+      "group": "Branch operations",
+      "description": "Local store leader accountable for sales, inventory, team productivity and customer issues.",
+      "goal": "Balance customer service, branch revenue and stock.",
+      "channel": "Branch reports; SAP Commerce; CRM",
+      "systems": [
+        "ACE",
+        "SAP Commerce",
+        "Salesforce",
+        "reporting"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced branch management role",
+      "source": "https://www.trademe.co.nz/a/jobs/advertiser/placemakers",
+      "team": "branch",
+      "teamLead": "branch manager",
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B05-UC01",
+        "B05-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B06",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Estimations Specialist / Coordinator",
+      "group": "Estimating",
+      "description": "In-branch or national estimator translating building plans into project estimates.",
+      "goal": "Provide timely accurate stage-by-stage materials estimates.",
+      "channel": "Estimating platform; CRM",
+      "systems": [
+        "PlaceMakers Estimations",
+        "Salesforce",
+        "SAP Commerce"
+      ],
+      "priority": "P0",
+      "roleBasis": "Explicit documented role",
+      "source": "https://underconstruction.placemakers.co.nz/rebuilding-estimations-bringing-people-processes-systems-together/",
+      "team": "estimating",
+      "accessRoles": [],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B06-UC01",
+        "B06-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B07",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Frame and Truss Planner",
+      "group": "Manufacturing / estimating",
+      "description": "Specialist coordinating frame-and-truss design, manufacture and supply timelines.",
+      "goal": "Align technical components and manufacturing capacity with delivery dates.",
+      "channel": "Estimating; plant planning",
+      "systems": [
+        "PlaceMakers Estimations",
+        "ERP",
+        "delivery planning"
+      ],
+      "priority": "P1",
+      "roleBasis": "Explicit documented function",
+      "source": "https://underconstruction.placemakers.co.nz/rebuilding-estimations-bringing-people-processes-systems-together/",
+      "team": "estimating",
+      "accessRoles": [],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B07-UC01",
+        "B07-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B08",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Kitchen and Bathroom Design Consultant",
+      "group": "Design / showroom",
+      "description": "Showroom specialist helping builders and end clients choose kitchen or bathroom products.",
+      "goal": "Turn design needs into orders and coordinated delivery.",
+      "channel": "Showroom; CRM; catalog",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "design services"
+      ],
+      "priority": "P1",
+      "roleBasis": "Explicit documented role",
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/",
+      "team": "sales",
+      "accessRoles": [
+        "Trade account manager"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B08-UC01",
+        "B08-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B09",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Warehouse Picker / Fulfilment Associate",
+      "group": "Warehouse / branch",
+      "description": "Warehouse employee assembling order lines for counter pickup or site delivery.",
+      "goal": "Ship correct items and prevent shortages.",
+      "channel": "Warehouse/yard device",
+      "systems": [
+        "ACE",
+        "fulfilment",
+        "Descartes"
+      ],
+      "priority": "P0",
+      "roleBasis": "Documented fulfilment function",
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane",
+      "team": "operations",
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B09-UC01",
+        "B09-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B10",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Yard Manager / Inventory Controller",
+      "group": "Warehouse / branch",
+      "description": "Person responsible for yard stock accuracy, loading and physical material availability.",
+      "goal": "Maintain reliable inventory and safe material movement.",
+      "channel": "Yard app; ERP; scanning device",
+      "systems": [
+        "ACE",
+        "Zebra Yard App",
+        "SAP Commerce"
+      ],
+      "priority": "P0",
+      "roleBasis": "Confirmed yard function and device app opportunity",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information",
+      "team": "operations",
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B10-UC01",
+        "B10-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B11",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Delivery Planner / Dispatcher",
+      "group": "Logistics",
+      "description": "Planner building routes, assigning delivery slots and resolving exceptions.",
+      "goal": "Deliver high-volume bulky materials at promised times.",
+      "channel": "Transport management dashboard",
+      "systems": [
+        "Descartes Route Planner",
+        "Glympse",
+        "ACE"
+      ],
+      "priority": "P0",
+      "roleBasis": "Explicit documented function",
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane",
+      "team": "operations",
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B11-UC01",
+        "B11-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B12",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Company Fleet Driver",
+      "group": "Logistics",
+      "description": "PlaceMakers truck driver transporting building supplies to customer sites.",
+      "goal": "Follow route safely and confirm delivery outcomes.",
+      "channel": "Driver/route app",
+      "systems": [
+        "Descartes Route Planner"
+      ],
+      "priority": "P1",
+      "roleBasis": "Explicit documented transport role",
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane",
+      "team": "operations",
+      "accessRoles": [
+        "Branch / warehouse operator"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B12-UC01",
+        "B12-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 2
+      }
+    },
+    {
+      "id": "B13",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "General Customer Service / Returns Agent",
+      "group": "Customer service",
+      "description": "Agent handling consumer enquiries, item defects, returns, and unresolved orders.",
+      "goal": "Resolve customer problems with complete case history.",
+      "channel": "Salesforce Service Cloud; email; chat",
+      "systems": [
+        "Salesforce Service Cloud",
+        "SAP Commerce"
+      ],
+      "priority": "P1",
+      "roleBasis": "Confirmed Service Cloud function; role split inferred",
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study",
+      "team": "customer-service",
+      "accessRoles": [
+        "Customer service case agent"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B13-UC01",
+        "B13-UC02"
+      ],
+      "readiness": {
+        "fully ready": 2,
+        "partly ready": 0,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B14",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Credit Controller / Accounts Receivable",
+      "group": "Finance",
+      "description": "Finance user responsible for trade balances, invoices, limits and overdue accounts.",
+      "goal": "Reduce credit risk and improve collection accuracy.",
+      "channel": "Accounts dashboard; finance tools",
+      "systems": [
+        "ACE finance",
+        "account dashboard",
+        "Dataprint"
+      ],
+      "priority": "P0",
+      "roleBasis": "Evidenced finance workflow",
+      "source": "https://dataprint.co.nz/case-studies/placemakers/",
+      "team": "finance",
+      "accessRoles": [
+        "Finance controller"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B14-UC01",
+        "B14-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B15",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Accounts Payable / Supplier Payments Officer",
+      "group": "Finance",
+      "description": "Finance clerk reconciling supplier payments, remittances and rebates.",
+      "goal": "Pay correctly and respond to supplier queries.",
+      "channel": "Supplier Portal; finance/ERP",
+      "systems": [
+        "PlaceMakers iSupplier",
+        "ERP/AP"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced AP portal and team",
+      "source": "https://isupplier.placemakers.co.nz/",
+      "team": "finance",
+      "accessRoles": [
+        "Finance controller"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B15-UC01",
+        "B15-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B16",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Product Information / PIM Specialist",
+      "group": "Product data",
+      "description": "Catalog steward maintaining item names, technical specifications, attributes and images.",
+      "goal": "Keep descriptions and filters consistent across channels.",
+      "channel": "Salsify; SAP Commerce",
+      "systems": [
+        "Salsify",
+        "SAP Commerce",
+        "Bloomreach"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced systems; role inferred",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information",
+      "team": "product-data",
+      "accessRoles": [],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B16-UC01",
+        "B16-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B17",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Category / Pricing / Merchandising Manager",
+      "group": "Merchandising",
+      "description": "Commercial owner of category assortment, discounts, branch pricing and product prominence.",
+      "goal": "Improve revenue without sacrificing availability.",
+      "channel": "Merchandising tools; ERP; BI",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Bloomreach",
+        "Salsify"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced business function",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information",
+      "team": "product-data",
+      "accessRoles": [],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B17-UC01",
+        "B17-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B18",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Marketing & Loyalty Manager",
+      "group": "Marketing",
+      "description": "Manager creating trade-targeted offers, loyalty rewards and mobile engagement.",
+      "goal": "Increase repeat purchases and campaign performance.",
+      "channel": "Salesforce Marketing Cloud; Trade App",
+      "systems": [
+        "Salesforce Marketing Cloud",
+        "loyalty",
+        "Salesforce Sales Cloud"
+      ],
+      "priority": "P1",
+      "roleBasis": "Explicit deployed product and documented program",
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study",
+      "team": "marketing",
+      "accessRoles": [],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B18-UC01",
+        "B18-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B19",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Digital Analytics / SEO Specialist",
+      "group": "Analytics / marketing",
+      "description": "Analyst managing web and app measurement, search performance and conversion dashboards.",
+      "goal": "Trust journey data and detect drop-offs or broken tracking.",
+      "channel": "GA4; GTM; Google Search Console; Power BI",
+      "systems": [
+        "GA4",
+        "Google Tag Manager",
+        "Search Console",
+        "Power BI",
+        "UXCam"
+      ],
+      "priority": "P1",
+      "roleBasis": "Documented tools and support role",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4788224019/Placemakers+Delivery+Assessment+22+May+2026",
+      "team": "insights",
+      "accessRoles": [
+        "Digital analyst"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B19-UC01",
+        "B19-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 0,
+        "sample or pending only": 2,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B20",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Digital Commerce Product Owner",
+      "group": "Digital product",
+      "description": "Accountable for customer journeys, portal roadmap, mobile experience and release scope.",
+      "goal": "Prioritise the most valuable commerce improvements.",
+      "channel": "Jira; analytics; Commerce Admin",
+      "systems": [
+        "SAP Commerce",
+        "Spartacus",
+        "Jira",
+        "GA4"
+      ],
+      "priority": "P0",
+      "roleBasis": "Confirmed product owner role",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information",
+      "team": "digital-product",
+      "accessRoles": [],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B20-UC01",
+        "B20-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B21",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Salesforce CRM / Case Administrator",
+      "group": "Business applications",
+      "description": "Platform admin responsible for CRM roles, support queues, rules and customer-data quality.",
+      "goal": "Keep Salesforce secure, consistent and reliable.",
+      "channel": "Salesforce Admin; Service Cloud",
+      "systems": [
+        "Salesforce Sales Cloud",
+        "Service Cloud",
+        "Marketing Cloud"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced deployed platform; role inferred",
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study",
+      "team": "it-integration",
+      "accessRoles": [
+        "Technology support"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B21-UC01",
+        "B21-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B22",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Integration / ACE ERP Specialist",
+      "group": "Enterprise IT",
+      "description": "Technologist maintaining MuleSoft, SAP Commerce API and ACE ERP transaction consistency.",
+      "goal": "Keep orders, prices and inventory synchronized across systems.",
+      "channel": "Integration logs; ERP",
+      "systems": [
+        "MuleSoft",
+        "Solace",
+        "ACE ERP",
+        "SAP Commerce"
+      ],
+      "priority": "P1",
+      "roleBasis": "Evidenced integrations; role inferred",
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information",
+      "team": "it-integration",
+      "accessRoles": [
+        "Technology support"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B22-UC01",
+        "B22-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B23",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Enterprise IT / Support Engineer",
+      "group": "Enterprise IT",
+      "description": "FletcherTech or delivery support staff resolving enterprise service incidents, access issues and platform defects.",
+      "goal": "Restore services quickly with documented incident ownership.",
+      "channel": "IT service platform; Jira; support tools",
+      "systems": [
+        "ServiceNow (FletcherTech)",
+        "Jira",
+        "SAP Commerce Cloud"
+      ],
+      "priority": "P1",
+      "roleBasis": "FletcherTech group role; PlaceMakers scope unverified",
+      "source": "https://nz.linkedin.com/jobs/view/senior-servicenow-platform-engineer-at-fletcher-building-4448688873",
+      "team": "it-integration",
+      "accessRoles": [
+        "Technology support"
+      ],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B23-UC01",
+        "B23-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    },
+    {
+      "id": "B24",
+      "kind": "staff",
+      "side": "Business / staff",
+      "name": "Regional Trade Sales / Operations Manager",
+      "group": "Leadership",
+      "description": "Leader responsible for trade account growth and branch commercial performance.",
+      "goal": "Identify sales risks and improve account retention.",
+      "channel": "CRM dashboards; finance reports",
+      "systems": [
+        "Salesforce",
+        "Power BI",
+        "ACE"
+      ],
+      "priority": "P2",
+      "roleBasis": "Evidenced leadership function; workflow inferred",
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study",
+      "team": "leadership",
+      "accessRoles": [],
+      "signIn": "staff",
+      "commercetoolsRoles": [],
+      "useCases": [
+        "B24-UC01",
+        "B24-UC02"
+      ],
+      "readiness": {
+        "fully ready": 0,
+        "partly ready": 2,
+        "sample or pending only": 0,
+        "not possible yet": 0
+      }
+    }
+  ],
+  "useCases": [
+    {
+      "id": "C01-UC01",
+      "personaId": "C01",
+      "persona": "DIY Retail Shopper",
+      "title": "Find in-stock materials",
+      "story": "As a diy retail shopper, I want to choose my store and check stock before checkout, so that I avoid a wasted store visit.",
+      "workflow": "Discover > select branch > stock > basket",
+      "feature": "Branch-stock visibility",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "branch inventory"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C01-UC02",
+      "personaId": "C01",
+      "persona": "DIY Retail Shopper",
+      "title": "Order for home project",
+      "story": "As a diy retail shopper, I want to buy common DIY supplies for collection or delivery, so that I can complete a small project quickly.",
+      "workflow": "Browse > select quantity > order > fulfilment",
+      "feature": "Retail order and fulfilment",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "branch inventory"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C02-UC01",
+      "personaId": "C02",
+      "persona": "Renovating Homeowner",
+      "title": "Plan a bathroom or kitchen",
+      "story": "As a renovating homeowner, I want to get advice about layout and product choices, so that my renovation meets budget and space needs.",
+      "workflow": "Inspiration > consultation > product selection",
+      "feature": "Design consultation",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "design consultation"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "design consultation (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/"
+    },
+    {
+      "id": "C02-UC02",
+      "personaId": "C02",
+      "persona": "Renovating Homeowner",
+      "title": "Get a consolidated quote",
+      "story": "As a renovating homeowner, I want to review fixture, cabinet and accessory options together, so that I understand total material costs.",
+      "workflow": "Consultation > selections > quote > order",
+      "feature": "Quote bundle",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "design consultation"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "design consultation (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/"
+    },
+    {
+      "id": "C03-UC01",
+      "personaId": "C03",
+      "persona": "Trade Cash Sole Trader",
+      "title": "Order from home branch",
+      "story": "As a trade cash sole trader, I want to buy materials online using my Trade Cash terms, so that I can keep a small job moving.",
+      "workflow": "Login > home branch > pricing > pay",
+      "feature": "Trade Cash checkout restrictions",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Trade Portal",
+        "SAP Commerce",
+        "ACE"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C03-UC02",
+      "personaId": "C03",
+      "persona": "Trade Cash Sole Trader",
+      "title": "Order from a build estimate",
+      "story": "As a trade cash sole trader, I want to select products for the next stage from my estimate, so that I reduce manual re-entry.",
+      "workflow": "Jobs > BUILD IT estimate > stage > order",
+      "feature": "Estimate-to-order",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Trade Portal",
+        "SAP Commerce",
+        "ACE"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C04-UC01",
+      "personaId": "C04",
+      "persona": "Trade Charge Business Owner",
+      "title": "Delegate purchase permissions",
+      "story": "As a trade charge business owner, I want to add staff and set what they can order or see, so that I maintain control over account spending.",
+      "workflow": "Account > invite > role > credit limit",
+      "feature": "Delegated team access",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Salesforce",
+        "account dashboard"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C04-UC02",
+      "personaId": "C04",
+      "persona": "Trade Charge Business Owner",
+      "title": "Review credit and invoices",
+      "story": "As a trade charge business owner, I want to see balances, statements and invoices for my business, so that I can manage cash flow.",
+      "workflow": "Account > balances > invoices > reconciliation",
+      "feature": "Live account dashboard",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Salesforce",
+        "account dashboard"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C05-UC01",
+      "personaId": "C05",
+      "persona": "Head Contractor / Construction Firm",
+      "title": "Track multiple construction jobs",
+      "story": "As a head contractor / construction firm, I want to see orders grouped by job account, so that I can control each project independently.",
+      "workflow": "Jobs > job account > orders > status",
+      "feature": "Multi-job order visibility",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "ACE",
+        "delivery systems"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "delivery systems (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/"
+    },
+    {
+      "id": "C05-UC02",
+      "personaId": "C05",
+      "persona": "Head Contractor / Construction Firm",
+      "title": "Stage site deliveries",
+      "story": "As a head contractor / construction firm, I want to order different material groups for each construction stage, so that crews receive the right materials at the right time.",
+      "workflow": "Estimates > scheduled deliveries > dispatch",
+      "feature": "Stage-of-build fulfilment",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "ACE",
+        "delivery systems"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "delivery systems (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/"
+    },
+    {
+      "id": "C06-UC01",
+      "personaId": "C06",
+      "persona": "Construction Project Manager",
+      "title": "Create phased material plan",
+      "story": "As a construction project manager, I want to turn suggested delivery items into draft orders, so that the site receives materials when needed.",
+      "workflow": "Suggested deliveries > draft order > cart",
+      "feature": "Suggested deliveries phase 1",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "ACE",
+        "logistics"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "logistics (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "C06-UC02",
+      "personaId": "C06",
+      "persona": "Construction Project Manager",
+      "title": "Change an order",
+      "story": "As a construction project manager, I want to request delivery date or order item changes, so that my project plan stays accurate.",
+      "workflow": "Active order > message or edit request > support",
+      "feature": "Order updates; phase 2 enhancement",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "ACE",
+        "logistics"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "logistics (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "C07-UC01",
+      "personaId": "C07",
+      "persona": "Site Foreman / Supervisor",
+      "title": "Get urgent consumables",
+      "story": "As a site foreman / supervisor, I want to find live stock and request courier or pickup, so that my site crew avoids downtime.",
+      "workflow": "Trade App > stock > express order",
+      "feature": "Urgent order",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "delivery tracking",
+        "Salesforce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "delivery tracking (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/"
+    },
+    {
+      "id": "C07-UC02",
+      "personaId": "C07",
+      "persona": "Site Foreman / Supervisor",
+      "title": "Check delivery status",
+      "story": "As a site foreman / supervisor, I want to view the live ETA and delivery status for site orders, so that I can plan crew work.",
+      "workflow": "Order dashboard > delivery tracking",
+      "feature": "Order status",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "delivery tracking",
+        "Salesforce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "delivery tracking (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/"
+    },
+    {
+      "id": "C08-UC01",
+      "personaId": "C08",
+      "persona": "Apprentice / Delegated Team Buyer",
+      "title": "Order within a spending limit",
+      "story": "As a apprentice / delegated team buyer, I want to purchase site consumables under my delegated cap, so that I can work without waiting for the owner.",
+      "workflow": "Invite > delegated access > approved order",
+      "feature": "Spend cap and permissions",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Trade Portal",
+        "SAP Commerce",
+        "account permissions"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/"
+    },
+    {
+      "id": "C08-UC02",
+      "personaId": "C08",
+      "persona": "Apprentice / Delegated Team Buyer",
+      "title": "See only relevant jobs",
+      "story": "As a apprentice / delegated team buyer, I want to track the items ordered for my assigned project, so that I can coordinate pickup.",
+      "workflow": "Job visibility > status > pickup",
+      "feature": "Job-scoped access",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Trade Portal",
+        "SAP Commerce",
+        "account permissions"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/trade-app-coming-your-way/"
+    },
+    {
+      "id": "C09-UC01",
+      "personaId": "C09",
+      "persona": "Construction Procurement Buyer",
+      "title": "Choose supply branch",
+      "story": "As a construction procurement buyer, I want to compare branch stock against the job deadline, so that I avoid shortages.",
+      "workflow": "Product > branch availability > order",
+      "feature": "Branch-aware buying",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Salesforce",
+        "PIM"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C09-UC02",
+      "personaId": "C09",
+      "persona": "Construction Procurement Buyer",
+      "title": "Batch purchase materials",
+      "story": "As a construction procurement buyer, I want to create a large order from a job estimate, so that I reduce purchase administration.",
+      "workflow": "Estimate > multiple items > checkout",
+      "feature": "Bulk staged ordering",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Salesforce",
+        "PIM"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C10-UC01",
+      "personaId": "C10",
+      "persona": "Builder Quantity Surveyor / Estimator",
+      "title": "Review a BUILD IT estimate",
+      "story": "As a builder quantity surveyor / estimator, I want to see stage-by-stage material quantities and costs, so that I can budget and quote accurately.",
+      "workflow": "Jobs > estimate > review",
+      "feature": "BUILD IT estimates",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "PlaceMakers Estimations"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PlaceMakers Estimations (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/build-it-stacks-up-better-than-ever/"
+    },
+    {
+      "id": "C10-UC02",
+      "personaId": "C10",
+      "persona": "Builder Quantity Surveyor / Estimator",
+      "title": "Convert approved estimate",
+      "story": "As a builder quantity surveyor / estimator, I want to order selected items straight from an approved estimate, so that I do not enter them again.",
+      "workflow": "Approved estimate > order stage",
+      "feature": "Estimate-to-order",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "PlaceMakers Estimations"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PlaceMakers Estimations (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/build-it-stacks-up-better-than-ever/"
+    },
+    {
+      "id": "C11-UC01",
+      "personaId": "C11",
+      "persona": "Trade Accounts Administrator / Bookkeeper",
+      "title": "Download statements",
+      "story": "As a trade accounts administrator / bookkeeper, I want to find invoices and recent account payments in one portal, so that I can reconcile my books.",
+      "workflow": "Account > statement > invoice > download",
+      "feature": "Account self-service",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "ACE finance",
+        "Dataprint Saber",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE finance (sample data only)",
+        "Dataprint Saber (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://dataprint.co.nz/case-studies/placemakers/"
+    },
+    {
+      "id": "C11-UC02",
+      "personaId": "C11",
+      "persona": "Trade Accounts Administrator / Bookkeeper",
+      "title": "Verify job charges",
+      "story": "As a trade accounts administrator / bookkeeper, I want to match orders and invoice charges to individual jobs, so that I can dispute incorrect charges early.",
+      "workflow": "Invoice > job/order reference > query",
+      "feature": "Job charge reconciliation",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ACE finance",
+        "Dataprint Saber",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE finance (sample data only)",
+        "Dataprint Saber (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://dataprint.co.nz/case-studies/placemakers/"
+    },
+    {
+      "id": "C12-UC01",
+      "personaId": "C12",
+      "persona": "Plumbing Contractor",
+      "title": "Find compatible plumbing parts",
+      "story": "As a plumbing contractor, I want to filter pipes and fittings by size and availability, so that I avoid ordering unusable parts.",
+      "workflow": "Plumbing category > specifications > stock",
+      "feature": "Product attributes and stock",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "PIM",
+        "branch inventory"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/bathrooms-plumbing/c/RDD2"
+    },
+    {
+      "id": "C12-UC02",
+      "personaId": "C12",
+      "persona": "Plumbing Contractor",
+      "title": "Replace a failed component urgently",
+      "story": "As a plumbing contractor, I want to reserve an available fitting at a nearby branch, so that I can complete an urgent repair.",
+      "workflow": "Search > branch > pickup",
+      "feature": "Urgent repair buying",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "PIM",
+        "branch inventory"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/bathrooms-plumbing/c/RDD2"
+    },
+    {
+      "id": "C13-UC01",
+      "personaId": "C13",
+      "persona": "Electrician / Electrical Contractor",
+      "title": "Search technical tools",
+      "story": "As a electrician / electrical contractor, I want to find tools or electrical products using specs and product codes, so that I get the correct item first time.",
+      "workflow": "Product search > specs > availability",
+      "feature": "Search and catalog attributes",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "PIM",
+        "branch inventory"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C13-UC02",
+      "personaId": "C13",
+      "persona": "Electrician / Electrical Contractor",
+      "title": "Schedule jobsite supplies",
+      "story": "As a electrician / electrical contractor, I want to order quantities of electrical consumables for site delivery, so that I keep work uninterrupted.",
+      "workflow": "Job > order > delivery",
+      "feature": "Trade order workflow",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "PIM",
+        "branch inventory"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C14-UC01",
+      "personaId": "C14",
+      "persona": "Landscaping / Outdoor Contractor",
+      "title": "Plan outdoor materials",
+      "story": "As a landscaping / outdoor contractor, I want to compare fencing, paving and retaining products, so that I can build an accurate project materials list.",
+      "workflow": "Outdoor catalog > quantity > quote",
+      "feature": "Outdoor project discovery",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "delivery planning"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "delivery planning (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/inspiring-outdoor-transformations-with-placemakers/"
+    },
+    {
+      "id": "C14-UC02",
+      "personaId": "C14",
+      "persona": "Landscaping / Outdoor Contractor",
+      "title": "Schedule a heavy delivery",
+      "story": "As a landscaping / outdoor contractor, I want to arrange a suitable delivery time for landscaping materials, so that the site is ready for offload.",
+      "workflow": "Quote > order > delivery instructions",
+      "feature": "Bulky-goods delivery",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "delivery planning"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "delivery planning (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/inspiring-outdoor-transformations-with-placemakers/"
+    },
+    {
+      "id": "C15-UC01",
+      "personaId": "C15",
+      "persona": "Kitchen / Bathroom Installer",
+      "title": "Check all installation components",
+      "story": "As a kitchen / bathroom installer, I want to confirm fixtures and accessories are in the final order, so that I avoid missing parts at installation.",
+      "workflow": "Design > materials list > order",
+      "feature": "Installation-ready checklist",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "design services",
+        "Salesforce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "design services (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/"
+    },
+    {
+      "id": "C15-UC02",
+      "personaId": "C15",
+      "persona": "Kitchen / Bathroom Installer",
+      "title": "Coordinate installation timing",
+      "story": "As a kitchen / bathroom installer, I want to agree product delivery relative to the installation date, so that work can start on time.",
+      "workflow": "Consultant > delivery > site installation",
+      "feature": "Design-to-install coordination",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "design services",
+        "Salesforce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "design services (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/"
+    },
+    {
+      "id": "C16-UC01",
+      "personaId": "C16",
+      "persona": "Architect / Product Specifier",
+      "title": "Access technical product detail",
+      "story": "As a architect / product specifier, I want to view accurate dimensions and product attributes, so that I can specify appropriate items.",
+      "workflow": "Product category > detailed specifications",
+      "feature": "Technical product content",
+      "priority": "P2",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salsify PIM",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Salsify PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C16-UC02",
+      "personaId": "C16",
+      "persona": "Architect / Product Specifier",
+      "title": "Share specifications with builder",
+      "story": "As a architect / product specifier, I want to export a shortlist with codes for the buyer, so that the builder can obtain the same products.",
+      "workflow": "Search > shortlist > share",
+      "feature": "Specification-to-purchase",
+      "priority": "P2",
+      "scope": "Proposed enhancement; not verified as live",
+      "systems": [
+        "Salsify PIM",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Salsify PIM (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C17-UC01",
+      "personaId": "C17",
+      "persona": "Buying Group Member",
+      "title": "Access my group portal",
+      "story": "As a buying group member, I want to sign in through GroupGate instead of the trade portal, so that my account is routed correctly.",
+      "workflow": "Site > member of buying group > GroupGate",
+      "feature": "Dedicated login entry",
+      "priority": "P2",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "GroupGate",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "GroupGate (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C17-UC02",
+      "personaId": "C17",
+      "persona": "Buying Group Member",
+      "title": "View group purchase terms",
+      "story": "As a buying group member, I want to see only prices and permissions available to my member group, so that I purchase under the correct terms.",
+      "workflow": "GroupGate > catalog > terms",
+      "feature": "Group-specific entitlements",
+      "priority": "P2",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "GroupGate",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "GroupGate (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "C18-UC01",
+      "personaId": "C18",
+      "persona": "Supplier / Manufacturer Portal User",
+      "title": "Review transaction status",
+      "story": "As a supplier / manufacturer portal user, I want to see my supplier transactions and payments online, so that I can reconcile outstanding items.",
+      "workflow": "Supplier login > transaction list > status",
+      "feature": "Supplier self-service",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "PlaceMakers iSupplier portal",
+        "finance/AP"
+      ],
+      "readiness": "not possible yet",
+      "missing": [
+        "PlaceMakers iSupplier portal (not connected)",
+        "finance/AP (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://isupplier.placemakers.co.nz/"
+    },
+    {
+      "id": "C18-UC02",
+      "personaId": "C18",
+      "persona": "Supplier / Manufacturer Portal User",
+      "title": "Download remittance advice",
+      "story": "As a supplier / manufacturer portal user, I want to retrieve remittance and rebate credit documents, so that I can close accounting entries.",
+      "workflow": "Supplier Portal > documents > download",
+      "feature": "AP document access",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "PlaceMakers iSupplier portal",
+        "finance/AP"
+      ],
+      "readiness": "not possible yet",
+      "missing": [
+        "PlaceMakers iSupplier portal (not connected)",
+        "finance/AP (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://isupplier.placemakers.co.nz/"
+    },
+    {
+      "id": "C19-UC01",
+      "personaId": "C19",
+      "persona": "Third-party Carrier / 3PL Partner",
+      "title": "See assigned delivery details",
+      "story": "As a third-party carrier / 3pl partner, I want to receive route and site access information, so that I can deliver safely and on time.",
+      "workflow": "Assigned route > stop > delivery",
+      "feature": "Carrier delivery execution",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Descartes Route Planner",
+        "Glympse"
+      ],
+      "readiness": "not possible yet",
+      "missing": [
+        "Descartes Route Planner (not connected)",
+        "Glympse (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "C19-UC02",
+      "personaId": "C19",
+      "persona": "Third-party Carrier / 3PL Partner",
+      "title": "Report delay or failed drop",
+      "story": "As a third-party carrier / 3pl partner, I want to record a blocked access or delivery exception, so that customers and dispatch can be notified.",
+      "workflow": "Stop > exception > dispatcher notification",
+      "feature": "Delivery exceptions",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Descartes Route Planner",
+        "Glympse"
+      ],
+      "readiness": "not possible yet",
+      "missing": [
+        "Descartes Route Planner (not connected)",
+        "Glympse (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "B01-UC01",
+      "personaId": "B01",
+      "persona": "Trade Account Manager",
+      "title": "View customer 360 on site",
+      "story": "As a trade account manager, I want to read recent orders, enquiries and pricing before a visit, so that I can anticipate customer needs.",
+      "workflow": "Account visit > CRM account 360 > follow-up",
+      "feature": "Salesforce customer 360",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Sales Cloud",
+        "SAP Commerce"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [
+        "account-360"
+      ],
+      "source": "https://underconstruction.placemakers.co.nz/same-page-trade-support/"
+    },
+    {
+      "id": "B01-UC02",
+      "personaId": "B01",
+      "persona": "Trade Account Manager",
+      "title": "Coordinate special orders",
+      "story": "As a trade account manager, I want to create a request that Trade Support can action immediately, so that the customer receives a timely answer.",
+      "workflow": "Account visit > CRM note/task > Trade Support",
+      "feature": "Shared CRM workflow",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Sales Cloud",
+        "SAP Commerce"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [
+        "special-order-handover"
+      ],
+      "source": "https://underconstruction.placemakers.co.nz/same-page-trade-support/"
+    },
+    {
+      "id": "B02-UC01",
+      "personaId": "B02",
+      "persona": "Trade Support Advisor / Telesales",
+      "title": "Handle any account enquiry",
+      "story": "As a trade support advisor / telesales, I want to see previous phone, email, order and case records, so that I can help even if the usual adviser is away.",
+      "workflow": "Incoming call > customer 360 > case > resolution",
+      "feature": "Service Cloud shared history",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Service Cloud",
+        "ACE",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)"
+      ],
+      "playbooks": [
+        "account-360"
+      ],
+      "source": "https://underconstruction.placemakers.co.nz/next-level-trade-support/"
+    },
+    {
+      "id": "B02-UC02",
+      "personaId": "B02",
+      "persona": "Trade Support Advisor / Telesales",
+      "title": "Amend an order with oversight",
+      "story": "As a trade support advisor / telesales, I want to raise a stock, price or date issue against the original order, so that a correct change reaches the relevant systems.",
+      "workflow": "Order message > case/notification > order update",
+      "feature": "Order change handling",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Service Cloud",
+        "ACE",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)"
+      ],
+      "playbooks": [
+        "order-enquiry"
+      ],
+      "source": "https://underconstruction.placemakers.co.nz/next-level-trade-support/"
+    },
+    {
+      "id": "B03-UC01",
+      "personaId": "B03",
+      "persona": "Trade Support Team Leader",
+      "title": "Prioritise support queue",
+      "story": "As a trade support team leader, I want to see aged and high-priority customer cases, so that the team can meet service commitments.",
+      "workflow": "Cases > priority > assignment > SLA",
+      "feature": "Case queue supervision",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salesforce Service Cloud",
+        "BI"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "BI (account pending)"
+      ],
+      "playbooks": [
+        "case-queue-review"
+      ],
+      "source": "https://underconstruction.placemakers.co.nz/next-level-trade-support/"
+    },
+    {
+      "id": "B03-UC02",
+      "personaId": "B03",
+      "persona": "Trade Support Team Leader",
+      "title": "Review repeat contacts",
+      "story": "As a trade support team leader, I want to identify re-opened or recurring issues, so that we can remove root causes.",
+      "workflow": "Case analytics > trend > improvement",
+      "feature": "Support performance reporting",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salesforce Service Cloud",
+        "BI"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "BI (account pending)"
+      ],
+      "playbooks": [
+        "case-queue-review"
+      ],
+      "source": "https://underconstruction.placemakers.co.nz/next-level-trade-support/"
+    },
+    {
+      "id": "B04-UC01",
+      "personaId": "B04",
+      "persona": "Branch Counter Sales Associate",
+      "title": "Check store inventory",
+      "story": "As a branch counter sales associate, I want to locate an item or alternative branch stock, so that I can fulfil the sale.",
+      "workflow": "Customer request > SKU > availability",
+      "feature": "Branch inventory lookup",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "branch POS"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "branch POS (not connected)"
+      ],
+      "playbooks": [
+        "branch-stock-check"
+      ],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "B04-UC02",
+      "personaId": "B04",
+      "persona": "Branch Counter Sales Associate",
+      "title": "Support Skip the Counter",
+      "story": "As a branch counter sales associate, I want to validate pre-ordered trade collections, so that customers leave quickly with the right materials.",
+      "workflow": "Trade pickup > verify order > handover",
+      "feature": "Click and collect; Skip the Counter",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "branch POS"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "branch POS (not connected)"
+      ],
+      "playbooks": [
+        "order-enquiry"
+      ],
+      "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
+    },
+    {
+      "id": "B05-UC01",
+      "personaId": "B05",
+      "persona": "Branch Manager / Operator",
+      "title": "Spot stock bottlenecks",
+      "story": "As a branch manager / operator, I want to see frequently requested out-of-stock products, so that I can improve branch availability.",
+      "workflow": "Branch dashboard > stock exceptions > action",
+      "feature": "Branch operations dashboard",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ACE",
+        "SAP Commerce",
+        "Salesforce",
+        "reporting"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "reporting (account pending)"
+      ],
+      "playbooks": [
+        "branch-stock-check"
+      ],
+      "source": "https://www.trademe.co.nz/a/jobs/advertiser/placemakers"
+    },
+    {
+      "id": "B05-UC02",
+      "personaId": "B05",
+      "persona": "Branch Manager / Operator",
+      "title": "Resolve escalated trade account issues",
+      "story": "As a branch manager / operator, I want to review order and service history for an escalated customer, so that we retain a valuable relationship.",
+      "workflow": "Service escalation > history > decision",
+      "feature": "Escalation handling",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ACE",
+        "SAP Commerce",
+        "Salesforce",
+        "reporting"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "reporting (account pending)"
+      ],
+      "playbooks": [
+        "account-360",
+        "escalated-account-brief"
+      ],
+      "source": "https://www.trademe.co.nz/a/jobs/advertiser/placemakers"
+    },
+    {
+      "id": "B06-UC01",
+      "personaId": "B06",
+      "persona": "Estimations Specialist / Coordinator",
+      "title": "Prepare shared estimate",
+      "story": "As a estimations specialist / coordinator, I want to access approved plans, materials and changes from one system, so that our estimate is consistent across teams.",
+      "workflow": "Plans > estimate > review > approval",
+      "feature": "Replatformed estimation process",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "PlaceMakers Estimations",
+        "Salesforce",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PlaceMakers Estimations (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/rebuilding-estimations-bringing-people-processes-systems-together/"
+    },
+    {
+      "id": "B06-UC02",
+      "personaId": "B06",
+      "persona": "Estimations Specialist / Coordinator",
+      "title": "Send usable estimate to builder",
+      "story": "As a estimations specialist / coordinator, I want to publish approved stage quantities for portal ordering, so that the customer can order without re-entry.",
+      "workflow": "Approved estimate > Jobs dashboard > order",
+      "feature": "Estimate-to-order",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "PlaceMakers Estimations",
+        "Salesforce",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "PlaceMakers Estimations (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/rebuilding-estimations-bringing-people-processes-systems-together/"
+    },
+    {
+      "id": "B07-UC01",
+      "personaId": "B07",
+      "persona": "Frame and Truss Planner",
+      "title": "Synchronise structural requirements",
+      "story": "As a frame and truss planner, I want to see the same project plans as estimating staff, so that manufacturing uses the latest requirements.",
+      "workflow": "Job plan > F&T input > approval",
+      "feature": "Shared estimations information",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "PlaceMakers Estimations",
+        "ERP",
+        "delivery planning"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "PlaceMakers Estimations (not connected)",
+        "ERP (sample data only)",
+        "delivery planning (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/rebuilding-estimations-bringing-people-processes-systems-together/"
+    },
+    {
+      "id": "B07-UC02",
+      "personaId": "B07",
+      "persona": "Frame and Truss Planner",
+      "title": "Plan long-lead assemblies",
+      "story": "As a frame and truss planner, I want to schedule frames and trusses by expected site readiness, so that the builder avoids installation delays.",
+      "workflow": "Order > manufacturing slot > delivery",
+      "feature": "Production-to-site coordination",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "PlaceMakers Estimations",
+        "ERP",
+        "delivery planning"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "PlaceMakers Estimations (not connected)",
+        "ERP (sample data only)",
+        "delivery planning (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/rebuilding-estimations-bringing-people-processes-systems-together/"
+    },
+    {
+      "id": "B08-UC01",
+      "personaId": "B08",
+      "persona": "Kitchen and Bathroom Design Consultant",
+      "title": "Develop customer design selection",
+      "story": "As a kitchen and bathroom design consultant, I want to create a coherent fixture/cabinet set against project needs, so that the customer can approve a complete design.",
+      "workflow": "Consultation > design > quote",
+      "feature": "Design consultation",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "design services"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "design services (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/"
+    },
+    {
+      "id": "B08-UC02",
+      "personaId": "B08",
+      "persona": "Kitchen and Bathroom Design Consultant",
+      "title": "Coordinate with builder",
+      "story": "As a kitchen and bathroom design consultant, I want to send approved specifications and delivery requirements to account manager, so that the builder can arrange installation.",
+      "workflow": "Customer approval > account manager > order",
+      "feature": "Design-to-order coordination",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "Salesforce",
+        "design services"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "design services (not connected)"
+      ],
+      "playbooks": [
+        "special-order-handover"
+      ],
+      "source": "https://underconstruction.placemakers.co.nz/from-concept-to-completion/"
+    },
+    {
+      "id": "B09-UC01",
+      "personaId": "B09",
+      "persona": "Warehouse Picker / Fulfilment Associate",
+      "title": "Pick correct order lines",
+      "story": "As a warehouse picker / fulfilment associate, I want to see item, quantity, job and dispatch priority, so that I can pack accurately.",
+      "workflow": "Order > picklist > validation > stage",
+      "feature": "Order picking",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "ACE",
+        "fulfilment",
+        "Descartes"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "ACE (sample data only)",
+        "fulfilment (not connected)",
+        "Descartes (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "B09-UC02",
+      "personaId": "B09",
+      "persona": "Warehouse Picker / Fulfilment Associate",
+      "title": "Flag a missing item",
+      "story": "As a warehouse picker / fulfilment associate, I want to report an unavailable line before loading, so that dispatch can arrange a substitute.",
+      "workflow": "Pick > shortage > alert",
+      "feature": "Fulfilment exception",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ACE",
+        "fulfilment",
+        "Descartes"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "ACE (sample data only)",
+        "fulfilment (not connected)",
+        "Descartes (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "B10-UC01",
+      "personaId": "B10",
+      "persona": "Yard Manager / Inventory Controller",
+      "title": "Reconcile physical stock",
+      "story": "As a yard manager / inventory controller, I want to scan stock movements by barcode, so that online availability stays accurate.",
+      "workflow": "Barcode scan > stock update > availability",
+      "feature": "Yard scanning",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ACE",
+        "Zebra Yard App",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "Zebra Yard App (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B10-UC02",
+      "personaId": "B10",
+      "persona": "Yard Manager / Inventory Controller",
+      "title": "Coordinate timber loading",
+      "story": "As a yard manager / inventory controller, I want to stage bulky material for scheduled trucks, so that dispatch can leave on time.",
+      "workflow": "Pick list > staging > load",
+      "feature": "Yard dispatch",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "ACE",
+        "Zebra Yard App",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "Zebra Yard App (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B11-UC01",
+      "personaId": "B11",
+      "persona": "Delivery Planner / Dispatcher",
+      "title": "Optimise daily deliveries",
+      "story": "As a delivery planner / dispatcher, I want to plan truck capacity against bulky loads and jobsite windows, so that we use fleet capacity efficiently.",
+      "workflow": "Orders > routing > dispatch",
+      "feature": "Descartes route planning",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Descartes Route Planner",
+        "Glympse",
+        "ACE"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "Descartes Route Planner (not connected)",
+        "Glympse (not connected)",
+        "ACE (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "B11-UC02",
+      "personaId": "B11",
+      "persona": "Delivery Planner / Dispatcher",
+      "title": "Notify of route changes",
+      "story": "As a delivery planner / dispatcher, I want to send status updates when a site delivery is delayed, so that customers can plan around a changed ETA.",
+      "workflow": "Route event > Glympse notification",
+      "feature": "Automated delivery notifications",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Descartes Route Planner",
+        "Glympse",
+        "ACE"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "Descartes Route Planner (not connected)",
+        "Glympse (not connected)",
+        "ACE (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "B12-UC01",
+      "personaId": "B12",
+      "persona": "Company Fleet Driver",
+      "title": "See assigned route stops",
+      "story": "As a company fleet driver, I want to access current route and jobsite instructions, so that I can complete deliveries reliably.",
+      "workflow": "Dispatch > route > stop",
+      "feature": "Driver mobile route",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Descartes Route Planner"
+      ],
+      "readiness": "not possible yet",
+      "missing": [
+        "Descartes Route Planner (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "B12-UC02",
+      "personaId": "B12",
+      "persona": "Company Fleet Driver",
+      "title": "Update drop status",
+      "story": "As a company fleet driver, I want to record arrival, delay or failed delivery, so that dispatch has current execution status.",
+      "workflow": "Arrive > deliver > status update",
+      "feature": "Live delivery execution",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Descartes Route Planner"
+      ],
+      "readiness": "not possible yet",
+      "missing": [
+        "Descartes Route Planner (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
+    },
+    {
+      "id": "B13-UC01",
+      "personaId": "B13",
+      "persona": "General Customer Service / Returns Agent",
+      "title": "Create a case from email",
+      "story": "As a general customer service / returns agent, I want to capture a complaint against the correct order, so that the customer receives a tracked response.",
+      "workflow": "Email-to-case > assign > resolve",
+      "feature": "Salesforce Service Cloud email-to-case",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Service Cloud",
+        "SAP Commerce"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [
+        "order-enquiry"
+      ],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    },
+    {
+      "id": "B13-UC02",
+      "personaId": "B13",
+      "persona": "General Customer Service / Returns Agent",
+      "title": "Use approved knowledge articles",
+      "story": "As a general customer service / returns agent, I want to answer product or return policy questions consistently, so that we reduce repeat calls.",
+      "workflow": "Search knowledge > reply > resolution",
+      "feature": "Knowledge base",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Service Cloud",
+        "SAP Commerce"
+      ],
+      "readiness": "fully ready",
+      "missing": [],
+      "playbooks": [],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    },
+    {
+      "id": "B14-UC01",
+      "personaId": "B14",
+      "persona": "Credit Controller / Accounts Receivable",
+      "title": "Review overdue trade balance",
+      "story": "As a credit controller / accounts receivable, I want to see unpaid transactions and linked account history, so that I can follow up early.",
+      "workflow": "Account > balance > overdue > follow-up",
+      "feature": "AR monitoring",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ACE finance",
+        "account dashboard",
+        "Dataprint"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE finance (sample data only)",
+        "Dataprint (not connected)"
+      ],
+      "playbooks": [
+        "overdue-and-invoice-query"
+      ],
+      "source": "https://dataprint.co.nz/case-studies/placemakers/"
+    },
+    {
+      "id": "B14-UC02",
+      "personaId": "B14",
+      "persona": "Credit Controller / Accounts Receivable",
+      "title": "Investigate incorrect charge",
+      "story": "As a credit controller / accounts receivable, I want to trace the invoice to its original order, so that we can correct the account quickly.",
+      "workflow": "Invoice dispute > order > adjustment",
+      "feature": "AR case resolution",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ACE finance",
+        "account dashboard",
+        "Dataprint"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE finance (sample data only)",
+        "Dataprint (not connected)"
+      ],
+      "playbooks": [
+        "overdue-and-invoice-query"
+      ],
+      "source": "https://dataprint.co.nz/case-studies/placemakers/"
+    },
+    {
+      "id": "B15-UC01",
+      "personaId": "B15",
+      "persona": "Accounts Payable / Supplier Payments Officer",
+      "title": "Respond to supplier invoice enquiries",
+      "story": "As a accounts payable / supplier payments officer, I want to find invoice and remittance status, so that suppliers get consistent answers.",
+      "workflow": "Supplier enquiry > AP record > resolution",
+      "feature": "Supplier account status",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "PlaceMakers iSupplier",
+        "ERP/AP"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "PlaceMakers iSupplier (not connected)",
+        "ERP/AP (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://isupplier.placemakers.co.nz/"
+    },
+    {
+      "id": "B15-UC02",
+      "personaId": "B15",
+      "persona": "Accounts Payable / Supplier Payments Officer",
+      "title": "Publish remittance details",
+      "story": "As a accounts payable / supplier payments officer, I want to make payment advice and rebate credits accessible online, so that supplier queries decrease.",
+      "workflow": "Finance posting > portal document",
+      "feature": "Supplier portal documents",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "PlaceMakers iSupplier",
+        "ERP/AP"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "PlaceMakers iSupplier (not connected)",
+        "ERP/AP (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://isupplier.placemakers.co.nz/"
+    },
+    {
+      "id": "B16-UC01",
+      "personaId": "B16",
+      "persona": "Product Information / PIM Specialist",
+      "title": "Correct product specifications",
+      "story": "As a product information / pim specialist, I want to update wrong dimensions, part codes or descriptions, so that customers choose the right items.",
+      "workflow": "PIM edit > validation > catalog",
+      "feature": "Salsify product governance",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salsify",
+        "SAP Commerce",
+        "Bloomreach"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Salsify (sample data only)",
+        "Bloomreach (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B16-UC02",
+      "personaId": "B16",
+      "persona": "Product Information / PIM Specialist",
+      "title": "Publish searchable attributes",
+      "story": "As a product information / pim specialist, I want to send category and filter metadata to commerce/search, so that trade buyers find the right product.",
+      "workflow": "PIM > product feed > search",
+      "feature": "Catalog search attributes",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salsify",
+        "SAP Commerce",
+        "Bloomreach"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Salsify (sample data only)",
+        "Bloomreach (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B17-UC01",
+      "personaId": "B17",
+      "persona": "Category / Pricing / Merchandising Manager",
+      "title": "Tune search ranking",
+      "story": "As a category / pricing / merchandising manager, I want to boost available and relevant products by branch, so that customers see purchasable results.",
+      "workflow": "Availability/sales feeds > Bloomreach ranking",
+      "feature": "Search boosting enhancement",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Bloomreach",
+        "Salsify"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "Bloomreach (sample data only)",
+        "Salsify (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B17-UC02",
+      "personaId": "B17",
+      "persona": "Category / Pricing / Merchandising Manager",
+      "title": "Review pricing by segment",
+      "story": "As a category / pricing / merchandising manager, I want to validate trade and retail price strategies, so that margin and customer fairness are maintained.",
+      "workflow": "Product/category > account prices > review",
+      "feature": "Pricing governance",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "ACE",
+        "Bloomreach",
+        "Salsify"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ACE (sample data only)",
+        "Bloomreach (sample data only)",
+        "Salsify (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B18-UC01",
+      "personaId": "B18",
+      "persona": "Marketing & Loyalty Manager",
+      "title": "Target a builder promotion",
+      "story": "As a marketing & loyalty manager, I want to segment customers by account and purchase behaviour, so that campaigns reach relevant trades.",
+      "workflow": "Audience > campaign > send",
+      "feature": "Marketing Cloud audience and campaign",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Marketing Cloud",
+        "loyalty",
+        "Salesforce Sales Cloud"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Salesforce Marketing Cloud (sample data only)",
+        "loyalty (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    },
+    {
+      "id": "B18-UC02",
+      "personaId": "B18",
+      "persona": "Marketing & Loyalty Manager",
+      "title": "Review loyalty engagement",
+      "story": "As a marketing & loyalty manager, I want to see points, campaign conversions and app participation, so that we can refine rewards.",
+      "workflow": "Loyalty activity > report > follow-up",
+      "feature": "Loyalty monitoring",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "Salesforce Marketing Cloud",
+        "loyalty",
+        "Salesforce Sales Cloud"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Salesforce Marketing Cloud (sample data only)",
+        "loyalty (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    },
+    {
+      "id": "B19-UC01",
+      "personaId": "B19",
+      "persona": "Digital Analytics / SEO Specialist",
+      "title": "Verify conversion tracking",
+      "story": "As a digital analytics / seo specialist, I want to inspect events from search through checkout, so that reported conversions are accurate.",
+      "workflow": "GTM event > GA4 validation > report",
+      "feature": "Tag and GA4 measurement",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "GA4",
+        "Google Tag Manager",
+        "Search Console",
+        "Power BI",
+        "UXCam"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "GA4 (account pending)",
+        "Google Tag Manager (not connected)",
+        "Search Console (not connected)",
+        "Power BI (account pending)",
+        "UXCam (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4788224019/Placemakers+Delivery+Assessment+22+May+2026"
+    },
+    {
+      "id": "B19-UC02",
+      "personaId": "B19",
+      "persona": "Digital Analytics / SEO Specialist",
+      "title": "Diagnose search traffic declines",
+      "story": "As a digital analytics / seo specialist, I want to compare Google Search Console pages and organic conversions, so that we can fix search visibility issues.",
+      "workflow": "Search Console > landing pages > GA4",
+      "feature": "SEO and organic performance",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "GA4",
+        "Google Tag Manager",
+        "Search Console",
+        "Power BI",
+        "UXCam"
+      ],
+      "readiness": "sample or pending only",
+      "missing": [
+        "GA4 (account pending)",
+        "Google Tag Manager (not connected)",
+        "Search Console (not connected)",
+        "Power BI (account pending)",
+        "UXCam (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4788224019/Placemakers+Delivery+Assessment+22+May+2026"
+    },
+    {
+      "id": "B20-UC01",
+      "personaId": "B20",
+      "persona": "Digital Commerce Product Owner",
+      "title": "Prioritise trade pain points",
+      "story": "As a digital commerce product owner, I want to compare order conversion and customer feedback, so that the roadmap reflects business value.",
+      "workflow": "Analytics > backlog > delivery",
+      "feature": "Portal product management",
+      "priority": "P0",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "SAP Commerce",
+        "Spartacus",
+        "Jira",
+        "GA4"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Spartacus (not connected)",
+        "Jira (not connected)",
+        "GA4 (account pending)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B20-UC02",
+      "personaId": "B20",
+      "persona": "Digital Commerce Product Owner",
+      "title": "Approve a release",
+      "story": "As a digital commerce product owner, I want to validate business acceptance of a portal enhancement, so that changes meet customer expectations.",
+      "workflow": "UAT > acceptance > deployment",
+      "feature": "Release acceptance",
+      "priority": "P0",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "SAP Commerce",
+        "Spartacus",
+        "Jira",
+        "GA4"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Spartacus (not connected)",
+        "Jira (not connected)",
+        "GA4 (account pending)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B21-UC01",
+      "personaId": "B21",
+      "persona": "Salesforce CRM / Case Administrator",
+      "title": "Control support permissions",
+      "story": "As a salesforce crm / case administrator, I want to restrict case and customer-data access to authorised employees, so that customer information stays protected.",
+      "workflow": "Role > queue > data permission",
+      "feature": "Salesforce security setup",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salesforce Sales Cloud",
+        "Service Cloud",
+        "Marketing Cloud"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Marketing Cloud (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    },
+    {
+      "id": "B21-UC02",
+      "personaId": "B21",
+      "persona": "Salesforce CRM / Case Administrator",
+      "title": "Monitor CRM order events",
+      "story": "As a salesforce crm / case administrator, I want to investigate missing order cases from integration, so that Trade Support has complete records.",
+      "workflow": "Integration alert > CRM case > resolution",
+      "feature": "Salesforce order event monitoring",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salesforce Sales Cloud",
+        "Service Cloud",
+        "Marketing Cloud"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Marketing Cloud (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    },
+    {
+      "id": "B22-UC01",
+      "personaId": "B22",
+      "persona": "Integration / ACE ERP Specialist",
+      "title": "Trace failed digital order",
+      "story": "As a integration / ace erp specialist, I want to identify where a commerce order failed between Salesforce and ACE, so that the customer gets a reliable order confirmation.",
+      "workflow": "SAP order > MuleSoft > Salesforce/ACE > recovery",
+      "feature": "Cross-system order monitoring",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "MuleSoft",
+        "Solace",
+        "ACE ERP",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "MuleSoft (sample data only)",
+        "Solace (not connected)",
+        "ACE ERP (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B22-UC02",
+      "personaId": "B22",
+      "persona": "Integration / ACE ERP Specialist",
+      "title": "Reconcile order amendments",
+      "story": "As a integration / ace erp specialist, I want to detect mismatched delivery dates or quantities across systems, so that fulfilment uses correct data.",
+      "workflow": "Update order > event/API > reconcile",
+      "feature": "Order Integration phase 2",
+      "priority": "P1",
+      "scope": "Existing capability or documented workflow",
+      "systems": [
+        "MuleSoft",
+        "Solace",
+        "ACE ERP",
+        "SAP Commerce"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "MuleSoft (sample data only)",
+        "Solace (not connected)",
+        "ACE ERP (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
+    },
+    {
+      "id": "B23-UC01",
+      "personaId": "B23",
+      "persona": "Enterprise IT / Support Engineer",
+      "title": "Triage an enterprise service incident",
+      "story": "As a enterprise it / support engineer, I want to receive and categorise a service request with a clear owner, so that technical incidents are resolved systematically.",
+      "workflow": "Service request > priority > assignment",
+      "feature": "ServiceNow ITSM at group level",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ServiceNow (FletcherTech)",
+        "Jira",
+        "SAP Commerce Cloud"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ServiceNow (FletcherTech) (not connected)",
+        "Jira (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://nz.linkedin.com/jobs/view/senior-servicenow-platform-engineer-at-fletcher-building-4448688873"
+    },
+    {
+      "id": "B23-UC02",
+      "personaId": "B23",
+      "persona": "Enterprise IT / Support Engineer",
+      "title": "Escalate a commerce defect",
+      "story": "As a enterprise it / support engineer, I want to link a production issue to a Jira defect and its root cause, so that fixes are tracked and auditable.",
+      "workflow": "Incident > Jira defect > RCA > release",
+      "feature": "Delivery defect tracking",
+      "priority": "P1",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "ServiceNow (FletcherTech)",
+        "Jira",
+        "SAP Commerce Cloud"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "ServiceNow (FletcherTech) (not connected)",
+        "Jira (not connected)"
+      ],
+      "playbooks": [],
+      "source": "https://nz.linkedin.com/jobs/view/senior-servicenow-platform-engineer-at-fletcher-building-4448688873"
+    },
+    {
+      "id": "B24-UC01",
+      "personaId": "B24",
+      "persona": "Regional Trade Sales / Operations Manager",
+      "title": "Review account sales health",
+      "story": "As a regional trade sales / operations manager, I want to see trade account activity and declining order frequency, so that we can address attrition before renewal.",
+      "workflow": "Sales Cloud > account report > outreach",
+      "feature": "Customer performance analytics",
+      "priority": "P2",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salesforce",
+        "Power BI",
+        "ACE"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Power BI (account pending)",
+        "ACE (sample data only)"
+      ],
+      "playbooks": [
+        "account-360"
+      ],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    },
+    {
+      "id": "B24-UC02",
+      "personaId": "B24",
+      "persona": "Regional Trade Sales / Operations Manager",
+      "title": "Benchmark branch service",
+      "story": "As a regional trade sales / operations manager, I want to compare order errors and support delays across branches, so that we can target improvement actions.",
+      "workflow": "Branch KPI > comparative report > coaching",
+      "feature": "Regional operational BI",
+      "priority": "P2",
+      "scope": "Illustrative scenario; validate workflow and permissions",
+      "systems": [
+        "Salesforce",
+        "Power BI",
+        "ACE"
+      ],
+      "readiness": "partly ready",
+      "missing": [
+        "Power BI (account pending)",
+        "ACE (sample data only)"
+      ],
+      "playbooks": [],
+      "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+    }
+  ],
+  "ticketing": {
+    "ourDesk": "Salesforce Service Cloud",
+    "tools": [
+      {
+        "tool": "Salesforce Service Cloud",
+        "workType": "Customer cases",
+        "users": "PlaceMakers customer support",
+        "status": "Confirmed PlaceMakers",
+        "details": "Email-to-case, live chat, knowledge, case management",
+        "evidence": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
+      },
+      {
+        "tool": "Salesforce-hosted Digital Support",
+        "workType": "Support portal login",
+        "users": "PlaceMakers employee/digital support",
+        "status": "Login confirmed, ticket functionality behind authentication",
+        "details": "Salesforce-branded Digital Support login; cannot view private case functions",
+        "evidence": "https://placemakers.my.site.com/login?locale=us"
+      },
+      {
+        "tool": "PlaceMakers order messaging",
+        "workType": "Order-specific conversations",
+        "users": "Trade Portal / Trade App; Trade Support",
+        "status": "Confirmed PlaceMakers; not necessarily a formal case",
+        "details": "Requests, additions, and changes recorded against orders",
+        "evidence": "https://underconstruction.placemakers.co.nz/next-level-trade-support/"
+      },
+      {
+        "tool": "Jira",
+        "workType": "Engineering bugs, stories, dependencies",
+        "users": "PlaceMakers delivery / enhancement teams",
+        "status": "Confirmed in Royal Cyber PlaceMakers delivery evidence",
+        "details": "Jira defect RCA comments, sprint tickets, integration dependencies",
+        "evidence": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/5008719903/Placemakers+B2B+B2C+Delivery+Assessment"
+      },
+      {
+        "tool": "ServiceNow",
+        "workType": "Group ITSM / service catalogue",
+        "users": "FletcherTech group",
+        "status": "FletcherTech confirmed; PlaceMakers-specific routing unverified",
+        "details": "FletcherTech recruiting for enterprise ServiceNow ITSM platform",
+        "evidence": "https://nz.linkedin.com/jobs/view/senior-servicenow-platform-engineer-at-fletcher-building-4448688873"
+      },
+      {
+        "tool": "Azure DevOps",
+        "workType": "Build pipelines / CI-CD",
+        "users": "PlaceMakers app engineering",
+        "status": "Confirmed build pipeline; not verified as ticketing system",
+        "details": "iOS pipeline management; not equivalent to Jira defect tracking",
+        "evidence": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/5100470286/Placemakers+B2B+B2C+Delivery+Assessment+2026-09-04"
+      },
+      {
+        "tool": "SAP Commerce Cloud support",
+        "workType": "Vendor infrastructure/platform escalation",
+        "users": "Fletcher Building SAP Commerce operations",
+        "status": "Confirmed support dependency; tool portal details unverified",
+        "details": "SAP support escalation for platform issues",
+        "evidence": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785635420/Fletcher+Building+AMS+E-Commerce+Managed+Support"
+      }
+    ]
+  }
+}

@@ -481,7 +481,9 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     assert.ok(skill('finish-the-job').instructions.includes('get_related_products') && skill('finish-the-job').instructions.includes('get_warranty'));
     assert.ok(skill('quantity-before-adding').instructions.includes('estimate_quantity'));
     assert.equal(skill('show-the-finished-job').tier, 'always');
-    assert.deepEqual(draft.agents[0].skills, skills.map((entry) => entry.skillId), 'the advisor carries every skill');
+    // The staff playbooks (the skills with access rows: on demand, for colleagues only) belong to the customer-service and sales assistants, not to the advisor.
+    const playbooks = new Set((draft.extensions.skillAccess?.rows ?? []).map((row: { skillId: string }) => row.skillId));
+    assert.deepEqual(draft.agents[0].skills, skills.filter((entry) => !playbooks.has(entry.skillId)).map((entry) => entry.skillId), 'the advisor carries every shopper skill');
     for (const tool of ['explore_options', 'estimate_quantity', 'generate_visual']) assert.ok(draft.agents[0].allowedTools.includes(tool), `${tool} is allowed`);
     assert.ok(SkillDefinitionSchema.array().safeParse(skills).success, 'every skill is valid');
   });

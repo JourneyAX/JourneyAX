@@ -1,5 +1,5 @@
 /**
- * Loads the demo people (six members of staff in six teams, and a signed-in shopper) so "who sees what" can be tried with real sign-ins.
+ * Loads the demo people (eight members of staff in eight teams, a signed-in shopper and three trade customers) so "who sees what" can be tried with real sign-ins.
  * Nothing is written without --apply, and --apply needs BOTH databases named: the logins go in the sign-in service's database
  * (--users-db) and the teams and memberships in the project service's (--project-db). They are different databases on the PlaceMakers
  * setup (`journeyx` and `journeyax`), so neither is assumed. A rehearsal may name the same scratch database twice.

@@ -1,7 +1,14 @@
 /**
- * Demo people for trying "who sees what" with real sign-ins: six members of staff, each in exactly one team the pack's access table
- * names (customer service, sales, sales managers, marketing, insights, leadership), and one signed-in shopper. Each person belongs to a
- * single team on purpose: when two rows disagree the stricter one wins, so a second team could only take access away, never add it.
+ * Demo people for trying "who sees what" with real sign-ins: eight members of staff, each in exactly one team the pack's access table
+ * names (customer service, sales, sales managers, branch, finance, marketing, insights, leadership), and four signed-in customers (a
+ * retail shopper and three trade customers). Each person belongs to a single team on purpose: when two rows disagree the stricter one
+ * wins, so a second team could only take access away, never add it. Each login stands for one persona of the PlaceMakers catalogue
+ * (`persona`, an id in docs/agent-instructions/personas/placemakers-personas.json), so a test can check that the team a person is in is the
+ * team the catalogue gives that persona.
+ *
+ * The trade customers are signed-in shoppers: they carry no team and the chat gives them no connector. They stand for the customer roles
+ * of the access model (trade account administrator, delegated buyer, order/job viewer). What the chat does not yet do for them is show
+ * their own company's orders, deliveries and balances: nothing binds a signed-in customer to a company on the server yet.
  * Pure planning and writing against any database object, so a test can rehearse it in memory.
  *
  * A staff sign-in has three parts, all in the one database the services read:
@@ -17,6 +24,8 @@ export interface DemoStaffPerson {
   fullName: string;
   /** The login role: `cs` (customer service) and `rep` are staff roles; `buyer` is a signed-in shopper, who is in no team. */
   role: 'cs' | 'rep' | 'buyer';
+  /** The persona of the PlaceMakers catalogue this login stands for (for example `B02`), when it stands for one. */
+  persona?: string;
   /** The member's role in the project (what the back office lets them do); read-only is enough to chat as staff. Staff only. */
   memberRole?: 'viewer' | 'analyst';
   /** The teams, by name; the pack's access rows name them in their normalised form (`Customer Service` -> `customer-service`). Empty for a shopper. */
@@ -28,19 +37,26 @@ export const DEMO_TEAMS: Array<{ name: string; description: string }> = [
   { name: 'Customer Service', description: 'Answers customers about orders, pick-up, deliveries and account questions.' },
   { name: 'Sales', description: 'Builds quotes and trade pricing for contractors and builders.' },
   { name: 'Sales Managers', description: 'Leads the sales team: everything sales can see, plus the sales and service reports.' },
+  { name: 'Branch', description: 'Counter staff and branch managers: stock by branch, orders and accounts, and the cases on them (read only).' },
+  { name: 'Finance', description: 'Credit control: orders, account terms and the cases on them (read only). Balances wait for the ERP.' },
   { name: 'Marketing', description: 'Plans and sends campaigns, and reads web traffic and the reports behind them.' },
   { name: 'Insights', description: 'Reads web traffic and the sales and service reports; sees no customer records.' },
   { name: 'Leadership', description: 'Reads everything across the business; changes nothing.' },
 ];
 
 export const DEMO_STAFF: DemoStaffPerson[] = [
-  { email: 'csr@placemakers.demo', fullName: 'Demo Customer Service', role: 'cs', memberRole: 'viewer', teams: ['Customer Service'], password: 'csr-demo-2026' },
-  { email: 'sales@placemakers.demo', fullName: 'Demo Sales Rep', role: 'rep', memberRole: 'viewer', teams: ['Sales'], password: 'sales-demo-2026' },
+  { email: 'csr@placemakers.demo', fullName: 'Demo Customer Service', role: 'cs', persona: 'B02', memberRole: 'viewer', teams: ['Customer Service'], password: 'csr-demo-2026' },
+  { email: 'sales@placemakers.demo', fullName: 'Demo Sales Rep', role: 'rep', persona: 'B01', memberRole: 'viewer', teams: ['Sales'], password: 'sales-demo-2026' },
   { email: 'sales.manager@placemakers.demo', fullName: 'Demo Sales Manager', role: 'rep', memberRole: 'viewer', teams: ['Sales Managers'], password: 'salesmanager-demo-2026' },
-  { email: 'marketing@placemakers.demo', fullName: 'Demo Marketing Manager', role: 'rep', memberRole: 'viewer', teams: ['Marketing'], password: 'marketing-demo-2026' },
-  { email: 'insights@placemakers.demo', fullName: 'Demo Insights Analyst', role: 'rep', memberRole: 'viewer', teams: ['Insights'], password: 'insights-demo-2026' },
-  { email: 'exec@placemakers.demo', fullName: 'Demo Executive', role: 'rep', memberRole: 'viewer', teams: ['Leadership'], password: 'exec-demo-2026' },
-  { email: 'shopper@placemakers.demo', fullName: 'Demo Shopper', role: 'buyer', teams: [], password: 'shopper-demo-2026' },
+  { email: 'branch@placemakers.demo', fullName: 'Demo Branch Counter', role: 'rep', persona: 'B04', memberRole: 'viewer', teams: ['Branch'], password: 'branch-demo-2026' },
+  { email: 'finance@placemakers.demo', fullName: 'Demo Credit Controller', role: 'rep', persona: 'B14', memberRole: 'viewer', teams: ['Finance'], password: 'finance-demo-2026' },
+  { email: 'marketing@placemakers.demo', fullName: 'Demo Marketing Manager', role: 'rep', persona: 'B18', memberRole: 'viewer', teams: ['Marketing'], password: 'marketing-demo-2026' },
+  { email: 'insights@placemakers.demo', fullName: 'Demo Insights Analyst', role: 'rep', persona: 'B19', memberRole: 'viewer', teams: ['Insights'], password: 'insights-demo-2026' },
+  { email: 'exec@placemakers.demo', fullName: 'Demo Executive', role: 'rep', persona: 'B24', memberRole: 'viewer', teams: ['Leadership'], password: 'exec-demo-2026' },
+  { email: 'shopper@placemakers.demo', fullName: 'Demo Shopper', role: 'buyer', persona: 'C02', teams: [], password: 'shopper-demo-2026' },
+  { email: 'trade.admin@placemakers.demo', fullName: 'Demo Trade Account Admin', role: 'buyer', persona: 'C04', teams: [], password: 'tradeadmin-demo-2026' },
+  { email: 'trade.buyer@placemakers.demo', fullName: 'Demo Delegated Buyer', role: 'buyer', persona: 'C08', teams: [], password: 'tradebuyer-demo-2026' },
+  { email: 'trade.foreman@placemakers.demo', fullName: 'Demo Site Foreman', role: 'buyer', persona: 'C07', teams: [], password: 'tradeforeman-demo-2026' },
 ];
 
 export interface DemoStaffPlan {

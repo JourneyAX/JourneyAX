@@ -87,14 +87,16 @@ before(async () => {
 after(async () => { await server.close(); await shop.close(); await analytics.close(); await crm.close(); });
 
 const agents = DRAFT.agents.map((a: any) => ({ ...a, modelPolicyRef: 'default' }));
-const release = () => {
+const release = (withSkills = false) => {
   const pack: any = connectorPack(ALL_REAL_ON, { tenantId: TENANT, environmentId: ENVIRONMENT, agents });
   // The plugins and who has them are the draft's own, so a connector a plugin names is the person's only if they have that plugin.
   pack.extensions = { ...pack.extensions, plugins: DRAFT.extensions.plugins, agentAccess: DRAFT.extensions.agentAccess };
+  // The staff playbooks are the draft's skills with the draft's access rows; most tests leave them out so the advisor's prompt stays as it was.
+  if (withSkills) pack.extensions = { ...pack.extensions, skills: DRAFT.skills, skillAccess: DRAFT.extensions.skillAccess };
   return pack;
 };
 
-async function turn(steps: Step[], who: { role?: string; groups?: string[]; agentId?: string; message?: string; workspace?: any; customerEvent?: any } = {}) {
+async function turn(steps: Step[], who: { role?: string; groups?: string[]; agentId?: string; message?: string; workspace?: any; customerEvent?: any; skills?: boolean } = {}) {
   const model = new ModelGateway();
   const requests: AgentExecutionRequest[] = [];
   const toolResults: any[] = [];
@@ -113,7 +115,7 @@ async function turn(steps: Step[], who: { role?: string; groups?: string[]; agen
       message: who.message ?? 'Hello', principalId: who.role ? 'person-1' : undefined, principalRole: who.role, principalGroups: who.groups, agentId: who.agentId ?? 'placemakers_product_advisor',
       ...(who.customerEvent ? { customerEvent: who.customerEvent } : {}),
     } as any,
-    release: release(),
+    release: release(who.skills === true),
     workspace: who.workspace ?? workspace(TENANT, ENVIRONMENT),
     modelGateway: model,
     catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
@@ -141,14 +143,15 @@ const vendorWrites = () => shop.seen.filter((request) => request.method === 'POS
 describe('The real connectors, end to end with a scripted model and pretend vendors', () => {
   test('each person is offered the systems their team may use: the real ones carry no sample label, the parked ones are never offered', async () => {
     const names = async (who: any) => (await menu(who)).map((entry) => entry.connector).sort();
-    assert.deepEqual(await names(people.sales), ['commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
+    assert.deepEqual(await names(people.sales), ['commercetools', 'marketing-cloud', 'salesforce']);
     assert.deepEqual(await names(people.marketing), ['commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce']);
     assert.deepEqual(await names(people.insights), ['google-analytics', 'power-bi']);
-    assert.deepEqual(await names(people.admin), ['commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk']);
+    assert.deepEqual(await names(people.admin), ['commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce']);
     const sales = await menu(people.sales);
     assert.equal(sales.find((entry) => entry.connector === 'commercetools')!.sample, false);
     assert.equal(sales.find((entry) => entry.connector === 'marketing-cloud')!.sample, true, 'Marketing Cloud is still sample data, and says so');
-    for (const parked of ['sap-commerce', 'ace-erp', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location']) assert.ok(!(await names(people.admin)).includes(parked), parked);
+    // Zendesk is connected and loaded but switched off in the pack: PlaceMakers' ticket desk is Salesforce Service Cloud, so tickets are Salesforce cases.
+    for (const parked of ['zendesk', 'sap-commerce', 'ace-erp', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location']) assert.ok(!(await names(people.admin)).includes(parked), parked);
   });
 
   test('on the default assistant a member of staff can use their connectors: it names the three connector tools, and a shopper is offered none of them', async () => {
@@ -272,5 +275,55 @@ describe('The real connectors, end to end with a scripted model and pretend vend
       () => ({ content: 'I will check with the branch and get back to you.' }),
     ], people.sales);
     assert.equal(handsOff.requests.length, 2, 'a promise that a person will follow up is an answer');
+  });
+});
+
+const PLAYBOOK_IDS = ['account-360', 'branch-stock-check', 'case-queue-review', 'escalated-account-brief', 'order-enquiry', 'overdue-and-invoice-query', 'special-order-handover'];
+const staff = {
+  csr: { role: 'cs', groups: ['customer-service'], agentId: 'placemakers_customer_service', skills: true },
+  branch: { role: 'rep', groups: ['branch'], agentId: 'placemakers_customer_service', skills: true },
+  sales: { role: 'rep', groups: ['sales'], agentId: 'placemakers_sales_quote', skills: true },
+  marketing: { role: 'rep', groups: ['marketing'], agentId: 'placemakers_product_advisor', skills: true },
+};
+
+describe('The staff playbooks, end to end with a scripted model', () => {
+  test('a colleague on the customer-service assistant sees every playbook listed on demand (name and description, not the instructions), and use_skill is offered', async () => {
+    const { requests } = await turn([() => ({ content: 'Hi.' })], staff.csr);
+    const prompt = requests[0].systemPrompt ?? '';
+    assert.match(prompt, /# Skills you can open/);
+    for (const id of PLAYBOOK_IDS) assert.match(prompt, new RegExp(`- ${id}: `), `${id} is listed`);
+    assert.ok(!prompt.includes('Build the picture from three places'), 'the instructions themselves are not in the prompt until the skill is opened');
+    assert.ok(tools(requests[0]).includes('use_skill'));
+  });
+
+  test('opening a playbook returns its instructions, and they name tools the colleague has', async () => {
+    const { toolResults } = await turn([() => ({ toolCalls: [call('s1', 'use_skill', { skillId: 'account-360' })] }), () => ({ content: 'ok' })], staff.branch);
+    assert.equal(toolResults[0].body.ok, true);
+    assert.match(toolResults[0].body.instructions, /salesforce\.find_account/);
+    assert.match(toolResults[0].body.instructions, /commercetools\.order_history/);
+  });
+
+  test('a playbook is only open to the teams it was written for: a sales rep opens the hand-over but not the support-queue review', async () => {
+    const opened = await turn([() => ({ toolCalls: [call('s1', 'use_skill', { skillId: 'special-order-handover' })] }), () => ({ content: 'ok' })], staff.sales);
+    assert.equal(opened.toolResults[0].body.ok, true);
+    const refused = await turn([() => ({ toolCalls: [call('s2', 'use_skill', { skillId: 'case-queue-review' })] }), () => ({ content: 'ok' })], staff.sales);
+    assert.equal(refused.toolResults[0].body.ok, false);
+    assert.match(refused.toolResults[0].body.error, /No skill "case-queue-review"/);
+  });
+
+  test('the product advisor carries no playbook, so a marketing colleague on it has none', async () => {
+    const { requests } = await turn([() => ({ content: 'Hi.' })], staff.marketing);
+    for (const id of PLAYBOOK_IDS) assert.ok(!(requests[0].systemPrompt ?? '').includes(`- ${id}: `), id);
+  });
+
+  test('a shopper on the same customer-service assistant has no playbook and is not offered use_skill; asking for one anyway is refused', async () => {
+    const asShopper = { agentId: 'placemakers_customer_service', skills: true };
+    const { requests } = await turn([() => ({ content: 'Hi.' })], asShopper);
+    const prompt = requests[0].systemPrompt ?? '';
+    for (const id of PLAYBOOK_IDS) assert.ok(!prompt.includes(id), `${id} is not in a shopper's prompt`);
+    assert.ok(!tools(requests[0]).includes('use_skill'));
+    const forced = await turn([() => ({ toolCalls: [call('s3', 'use_skill', { skillId: 'overdue-and-invoice-query' })] }), () => ({ content: 'ok' })], asShopper);
+    const body = forced.toolResults[0]?.body;
+    assert.ok(!body || body.ok === false, 'the instructions are never handed to a shopper');
   });
 });
