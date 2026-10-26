@@ -241,7 +241,7 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     {
       name: 'find_product',
       readOnly: true,
-      description: 'Search the online store\'s products by words in the name, and by brand or department. With no words it lists the most recently changed products. Returns sku, name, the retail price, the trade price for each tier (tierPrices: bronze, silver, gold) and brand. For stock use stock_by_branch.',
+      description: 'Search the online store\'s products by words in the name, and by brand or department. With no words it lists the most recently changed products. Returns sku, name, the retail price, the account price for each tier (tierPrices: bronze, silver, gold) and brand. For stock use stock_by_branch.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -411,7 +411,7 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     {
       name: 'find_account',
       readOnly: true,
-      description: 'Trade accounts (business units) by part of the name, the account number or the unit key, optionally only one tier (bronze, silver or gold). Returns the unit key, tier, home branch, account manager, payment terms, credit limit and the Salesforce account id.',
+      description: 'Customer accounts on credit terms (business units) by part of the name, the account number or the unit key, optionally only one tier (bronze, silver or gold). Returns the unit key, tier, home branch, account manager, payment terms, credit limit and the Salesforce account id.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -435,11 +435,11 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     {
       name: 'get_account',
       readOnly: true,
-      description: 'One trade account (business unit) by its unit key, account number or Salesforce account id: its terms, the people who work for it with their roles, its divisions and how many orders it has.',
+      description: 'One customer account (business unit) by its unit key, account number or Salesforce account id: its terms, the people who work for it with their roles, its divisions and how many orders it has.',
       inputSchema: { type: 'object', required: ['accountId'], properties: { accountId: { type: 'string', maxLength: 64, pattern: ID.source, description: 'The unit key (acc-0001), the account number (ACC-0001) or the Salesforce account id.' } } },
       async run(args) {
         const unit = await findUnit(String(args.accountId).trim());
-        if (!unit) throw new ToolError('not_found', `${SYSTEM} has no trade account ${String(args.accountId)}.`);
+        if (!unit) throw new ToolError('not_found', `${SYSTEM} has no account ${String(args.accountId)}.`);
         const associates: any[] = Array.isArray(unit.associates) ? unit.associates : [];
         const ids = associates.map((associate) => String(associate?.customer?.id ?? '')).filter((id) => UUID.test(id));
         const people = ids.length ? await api('GET', '/customers', { query: { where: `id in (${ids.map((id) => `"${id}"`).join(', ')})`, limit: 50 } }) : { results: [] };

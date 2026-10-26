@@ -249,7 +249,7 @@ export function salesforce(env: Env, deps: Deps): RealConnector {
     {
       name: 'get_opportunity',
       readOnly: true,
-      description: 'One deal by its id or its deal number (the OPP-0001 in its name): the products on it with quantities and prices, the price book (the account\'s trade tier), the contact, the owner, the next step and the latest calls and meetings.',
+      description: 'One deal by its id or its deal number (the OPP-0001 in its name): the products on it with quantities and prices, the price book (the account\'s price tier), the contact, the owner, the next step and the latest calls and meetings.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -361,7 +361,7 @@ export function salesforce(env: Env, deps: Deps): RealConnector {
             brief,
             channels: children.records.length ? children.records.map(campaignRecord) : undefined,
             members: Object.fromEntries(byStatus.records.map((entry) => [String(entry.status), Number(entry.members) || 0])),
-            responders: responders.records.map((member) => compact({ campaign: member.Campaign?.Name, name: member.Contact?.Name ?? member.Lead?.Name, company: member.Contact?.Account?.Name ?? member.Lead?.Company, kind: member.Contact ? 'trade contact' : 'lead' })),
+            responders: responders.records.map((member) => compact({ campaign: member.Campaign?.Name, name: member.Contact?.Name ?? member.Lead?.Name, company: member.Contact?.Account?.Name ?? member.Lead?.Company, kind: member.Contact ? 'contact' : 'lead' })),
             ...(pipeline ? { pipelineOfResponders: pipeline } : {}),
           },
         };

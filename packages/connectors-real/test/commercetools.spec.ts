@@ -194,7 +194,7 @@ async function main() {
     assert.equal(((await call('get_account', { accountId: SF_ID })) as any).payload.record.unitKey, 'acc-0001', 'and so does the Salesforce id');
     const missing: any = await call('get_account', { accountId: 'acc-9999' });
     assert.equal(missing.payload.error.code, 'not_found');
-    assert.match(missing.payload.error.message, /no trade account acc-9999/);
+    assert.match(missing.payload.error.message, /no account acc-9999/);
     const bad: any = await call('get_account', { accountId: 'a" or key is defined' });
     assert.equal(bad.payload.error.code, 'invalid_arguments');
     await vendor.close();

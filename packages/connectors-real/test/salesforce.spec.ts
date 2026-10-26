@@ -234,7 +234,7 @@ async function main() {
     assert.deepEqual(one.brief, { name: 'Launch brief', keyMessage: 'Everything for the deck.', targetAudience: 'Builders.', about: 'We are launching 12 products.', notes: 'Range list.' });
     assert.deepEqual(one.members, { Sent: 3, Responded: 15 });
     assert.equal(one.channels[0].name, 'Trade night');
-    assert.deepEqual(one.responders, [{ campaign: 'Trade night', name: 'Tessa Thornbury', company: 'Talbot & Nguyen Concrete Ltd', kind: 'trade contact' }, { campaign: 'Trade night', name: 'Emma Cooper', company: 'Coastal Homes Ltd', kind: 'lead' }]);
+    assert.deepEqual(one.responders, [{ campaign: 'Trade night', name: 'Tessa Thornbury', company: 'Talbot & Nguyen Concrete Ltd', kind: 'contact' }, { campaign: 'Trade night', name: 'Emma Cooper', company: 'Coastal Homes Ltd', kind: 'lead' }]);
     assert.deepEqual(one.pipelineOfResponders, { accountsThatResponded: 2, openDeals: { deals: 2, amount: 3000.5 }, wonDeals: { deals: 1, amount: 1849.5 } });
     const sent = soqlSeen(vendor).join('\n');
     assert.match(sent, /FROM Campaign WHERE Name LIKE '%Spring Outdoor%' ORDER BY ParentId NULLS FIRST/);
