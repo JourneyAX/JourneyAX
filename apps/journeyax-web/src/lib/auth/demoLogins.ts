@@ -6,6 +6,7 @@
  * no such file the screen shows no persona buttons and the sign-in route refuses (so a real shop never offers them). The browser is told
  * who each button is (name, a line about them, their group) and sends back only the button's id.
  */
+import path from 'node:path';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 
 export interface DemoLogin {
@@ -63,4 +64,15 @@ export function loadDemoLogins(env: NodeJS.ProcessEnv = process.env): DemoLogin[
     cache = { path: file, mtime, logins };
     return logins;
   } catch { return []; }
+}
+
+/**
+ * The environment the sign-in routes read the demo logins with: DEMO_LOGINS_FILE when it is set, otherwise a private `.env.demo-logins.json` in the
+ * repository root if one exists there (the web app runs from apps/journeyax-web, two folders down). So a running web app shows the demo box as soon as
+ * the file is made, with no restart and no change to how it was started; with no file there is no box.
+ */
+export function demoLoginsEnv(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): NodeJS.ProcessEnv {
+  if (env.DEMO_LOGINS_FILE) return env;
+  const fallback = path.resolve(cwd, '../../.env.demo-logins.json');
+  return existsSync(fallback) ? { ...env, DEMO_LOGINS_FILE: fallback } : env;
 }

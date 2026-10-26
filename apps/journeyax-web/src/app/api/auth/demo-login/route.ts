@@ -4,13 +4,13 @@
  * Refused (404) when there is no demo file, so a real shop never offers it.
  */
 import { NextResponse } from 'next/server';
-import { findDemoLogin, loadDemoLogins } from '../../../../lib/auth/demoLogins';
+import { demoLoginsEnv, findDemoLogin, loadDemoLogins } from '../../../../lib/auth/demoLogins';
 import { signInAndSetCookies } from '../../../../lib/auth/loginProxy';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  const logins = loadDemoLogins();
+  const logins = loadDemoLogins(demoLoginsEnv());
   if (logins.length === 0) return NextResponse.json({ success: false, message: 'Demo sign-ins are not switched on here.' }, { status: 404 });
   const body = await req.json().catch(() => ({}));
   const login = findDemoLogin(logins, (body as { id?: unknown })?.id);

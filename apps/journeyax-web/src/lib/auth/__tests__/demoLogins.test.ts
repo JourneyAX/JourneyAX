@@ -3,10 +3,10 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/auth/__tests__/demoLogins.test.ts
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { findDemoLogin, loadDemoLogins, parseDemoLogins, publicView } from '../demoLogins';
+import { demoLoginsEnv, findDemoLogin, loadDemoLogins, parseDemoLogins, publicView } from '../demoLogins';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -69,6 +69,22 @@ check('the file is read, and read again when it changes', () => {
     utimesSync(file, later, later);
     assert.deepEqual(loadDemoLogins(env).map((l) => l.id), ['csr', 'sales']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+check('with no variable the private file in the repository root is used if it is there, and the variable always wins; with neither there is no box', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'demo-root-'));
+  const web = path.join(root, 'apps', 'journeyax-web');
+  try {
+    mkdirSync(web, { recursive: true });
+    assert.equal(demoLoginsEnv({} as NodeJS.ProcessEnv, web).DEMO_LOGINS_FILE, undefined, 'no file, no variable: nothing');
+    assert.deepEqual(loadDemoLogins(demoLoginsEnv({} as NodeJS.ProcessEnv, web)), []);
+    writeFileSync(path.join(root, '.env.demo-logins.json'), JSON.stringify({ logins: [entry()] }));
+    const found = demoLoginsEnv({} as NodeJS.ProcessEnv, web);
+    assert.equal(found.DEMO_LOGINS_FILE, path.join(root, '.env.demo-logins.json'));
+    assert.deepEqual(loadDemoLogins(found).map((l) => l.id), ['csr']);
+    const named = demoLoginsEnv({ DEMO_LOGINS_FILE: '/somewhere/else.json' } as unknown as NodeJS.ProcessEnv, web);
+    assert.equal(named.DEMO_LOGINS_FILE, '/somewhere/else.json', 'the variable wins');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 console.log(`✅ web: demo persona sign-ins: ${passed} passed, 0 failed`);
