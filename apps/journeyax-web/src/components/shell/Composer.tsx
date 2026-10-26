@@ -24,8 +24,8 @@ export default function Composer({ value, onChange, onSubmit, onStop, busy, plac
   placeholder: string;
   agentChip?: ReactNode;
   autoFocus?: boolean;
-  /** More for the "+" menu below the attachment entry (the connectors section). */
-  plusExtra?: ReactNode;
+  /** More for the "+" menu below the attachment entry (skills, connectors, plugins). A function gets a way to close the menu. */
+  plusExtra?: ReactNode | ((menu: { close: () => void }) => ReactNode);
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLDivElement>(null);
@@ -92,7 +92,7 @@ export default function Composer({ value, onChange, onSubmit, onStop, busy, plac
                   Add files or photos <span className="ax-badge">Soon</span>
                 </button>
                 <p className="ax-popover__note">Attachments are not available yet.</p>
-                {plusExtra}
+                {typeof plusExtra === 'function' ? plusExtra({ close: closePlus }) : plusExtra}
               </div>
             )}
           </div>

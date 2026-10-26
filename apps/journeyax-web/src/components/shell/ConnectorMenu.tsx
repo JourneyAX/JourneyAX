@@ -7,11 +7,10 @@
  */
 import { connectorCapability, type ConnectorItem } from '@/lib/connectors/connectors';
 
-export default function ConnectorMenu({ items, off, onToggle }: { items: ConnectorItem[]; off: string[]; onToggle: (connector: string) => void }) {
-  if (items.length === 0) return null;
+/** The connector rows and their note: one switch each, for this conversation. */
+export function ConnectorRows({ items, off, onToggle }: { items: ConnectorItem[]; off: string[]; onToggle: (connector: string) => void }) {
   return (
-    <div className="ax-connectors" role="group" aria-label="Connectors">
-      <div className="ax-popover__title">Connectors</div>
+    <>
       {items.map((item) => {
         const on = !off.includes(item.connector);
         return (
@@ -36,6 +35,16 @@ export default function ConnectorMenu({ items, off, onToggle }: { items: Connect
         );
       })}
       <p className="ax-popover__note">Switch one off to keep the assistant from using it in this chat.</p>
+    </>
+  );
+}
+
+export default function ConnectorMenu({ items, off, onToggle }: { items: ConnectorItem[]; off: string[]; onToggle: (connector: string) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="ax-connectors" role="group" aria-label="Connectors">
+      <div className="ax-popover__title">Connectors</div>
+      <ConnectorRows items={items} off={off} onToggle={onToggle} />
     </div>
   );
 }

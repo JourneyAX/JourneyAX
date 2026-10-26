@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useRef, useEffect, useState, useCallback } from 'react';
+import { Fragment, useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
@@ -15,7 +15,9 @@ import AppShell from './shell/AppShell';
 import { useShell } from './shell/ShellContext';
 import Composer from './shell/Composer';
 import AgentChip from './shell/AgentChip';
-import ConnectorMenu from './shell/ConnectorMenu';
+import PlusMenu from './shell/PlusMenu';
+import { useOverview } from './customize/useOverview';
+import { plusMenuModel, skillPrompt } from '@/lib/shell/plusMenu';
 import { parseConnectorList, readOff, toggled, writeOff, type ConnectorItem } from '@/lib/connectors/connectors';
 import SidePanelHost, { PanelNote, useShownPanelCard } from './shell/SidePanel';
 import { BagIcon, SidebarIcon, UserIcon } from './shell/icons';
@@ -399,6 +401,9 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   // The connectors the signed-in person may use (the server decides), and which of them this conversation has switched off.
   const [connectorItems, setConnectorItems] = useState<ConnectorItem[]>([]);
   const [connectorsOff, setConnectorsOff] = useState<string[]>([]);
+  // The assistant's skills and plugins for the "+" menu (shown to people who manage it only; see lib/shell/plusMenu.ts).
+  const { data: overview } = useOverview();
+  const plusModel = useMemo(() => plusMenuModel(overview), [overview]);
   const connectorsOffRef = useRef<string[]>([]);
   connectorsOffRef.current = connectorsOff;
   convoIdRef.current = convoId;
@@ -1333,14 +1338,22 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             <CompareTray onCompare={(skus) => onCardAction('compareProducts', { skus })} />
             <QuantityStepHost />
             <Composer
-              plusExtra={connectorItems.length ? (
-                <ConnectorMenu
-                  items={connectorItems}
+              plusExtra={plusModel.showLists || connectorItems.length ? ({ close }) => (
+                <PlusMenu
+                  model={plusModel}
+                  connectors={connectorItems}
                   off={connectorsOff}
-                  onToggle={(id) => {
+                  search={typeof window === 'undefined' ? '' : window.location.search}
+                  onClose={close}
+                  onToggleConnector={(id) => {
                     const next = toggled(connectorsOffRef.current, id);
                     setConnectorsOff(next);
                     writeOff(cfg.projectId, convoIdRef.current, next);
+                  }}
+                  onPickSkill={(skill) => {
+                    setPrompt((current) => skillPrompt(skill.name, current));
+                    close();
+                    window.requestAnimationFrame(() => document.getElementById('chat-input-field')?.focus());
                   }}
                 />
               ) : undefined}

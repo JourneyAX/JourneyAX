@@ -158,6 +158,28 @@
 .ax-switch__knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.12s ease; }
 .ax-switch[data-on="true"] .ax-switch__knob { transform: translateX(14px); }
 
+/* The "+" menu's lists (Skills, Connectors, Plugins): a row each, opening a list beside the menu with Manage and Browse at the bottom. */
+.ax-popover:has(.ax-plusmenu) { width: min(268px, 86vw); }
+.ax-plusmenu { border-top: 1px solid var(--ax-border); margin-top: 6px; padding-top: 6px; }
+.ax-sub { position: relative; }
+.ax-sub__row[aria-expanded="true"] { background: var(--ax-fill); }
+.ax-sub__label { flex: 1; }
+.ax-sub__chev { color: var(--ax-muted); flex: 0 0 auto; }
+.ax-sub__panel {
+  position: absolute; z-index: 50; left: calc(100% + 6px); top: -8px; width: min(320px, 70vw); max-height: min(60vh, 440px);
+  overflow-y: auto; overscroll-behavior: contain; padding: 8px;
+  background: var(--ax-surface); color: var(--ax-text); border: 1px solid var(--ax-border); border-radius: 14px; box-shadow: var(--ax-shadow-2);
+}
+.ax-sub__foot { position: sticky; bottom: -8px; margin: 6px -8px -8px; padding: 6px 8px 8px; border-top: 1px solid var(--ax-border); border-radius: 0 0 14px 14px; background: var(--ax-surface); }
+.ax-skillitem { justify-content: space-between; min-width: 0; }
+.ax-skillitem .ax-badge { flex: 0 0 auto; white-space: nowrap; }
+.ax-skillitem__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-skillitem--stack { flex-direction: column; align-items: flex-start; gap: 1px; }
+@media (max-width: 640px) {
+  /* On a phone the list opens as a sheet at the bottom of the screen, so it is never pushed off the top. */
+  .ax-sub__panel { position: fixed; z-index: 70; left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 62dvh; }
+}
+
 /* ── Sidebar ───────────────────────────────────────────────────────── */
 .ax-sidebar {
   position: relative; flex: 0 0 var(--ax-sidebar-w); width: var(--ax-sidebar-w); height: 100%;

@@ -98,3 +98,21 @@ export const UserIcon = (p: IconProps) => (
 export const PanelIcon = (p: IconProps) => (
   <Svg {...p}><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M14.5 4.5v15" /></Svg>
 );
+export const ChevronLeftIcon = (p: IconProps) => (
+  <Svg {...p}><path d="m14.5 6-6 6 6 6" /></Svg>
+);
+export const QuestionIcon = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M9.7 9.6a2.4 2.4 0 0 1 4.6.9c0 1.6-2.3 1.9-2.3 3.3M12 16.7v.1" /></Svg>
+);
+export const BlockIcon = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M6 6l12 12" /></Svg>
+);
+export const DotsIcon = (p: IconProps) => (
+  <Svg {...p}><circle cx="6" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="18" cy="12" r="1" /></Svg>
+);
+export const UploadIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M12 15V5M7.5 9.5 12 5l4.5 4.5M5 15v3a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 18v-3" /></Svg>
+);
+export const BlocksIcon = (p: IconProps) => (
+  <Svg {...p}><rect x="4.5" y="4.5" width="6.5" height="6.5" rx="1.5" /><rect x="13" y="4.5" width="6.5" height="6.5" rx="1.5" /><rect x="4.5" y="13" width="6.5" height="6.5" rx="1.5" /><path d="M16.2 13v6.5M13 16.2h6.5" /></Svg>
+);

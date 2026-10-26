@@ -13,7 +13,7 @@ import AppShell from '@/components/shell/AppShell';
 import { useShell } from '@/components/shell/ShellContext';
 import { useConversationNav } from '@/components/shell/useConversationNav';
 import {
-  AgentIcon, BookIcon, CopyIcon, PlugIcon, PlusIcon, SearchIcon, SidebarIcon, SkillIcon, SparkIcon, TrashIcon,
+  AgentIcon, BookIcon, CopyIcon, PlugIcon, PlusIcon, SearchIcon, SidebarIcon, SkillIcon, SparkIcon, TrashIcon, UploadIcon,
 } from '@/components/shell/icons';
 import { useDismiss } from '@/components/shell/useDismiss';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
@@ -21,15 +21,19 @@ import { forSidebar } from '@/lib/shell/conversationNav';
 import { copyText } from '@/lib/shell/clipboard';
 import { type AgentDraft, type AgentDraftInput, draftToPackAgentJson, loadDrafts, removeDraft, saveDrafts, upsertDraft } from '@/lib/customize/drafts';
 import { describePluginAccess, describeSkillAccess } from '@/lib/customize/overview';
-import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewConnectorRules, OverviewKnowledgeSource, OverviewPlugin, OverviewSkill, OverviewSystem, ToolState } from '@/lib/customize/types';
+import type { CustomizeOverview, OverviewAgent, OverviewConnectorRules, OverviewKnowledgeSource, OverviewPlugin, OverviewSkill, OverviewSystem, ToolState } from '@/lib/customize/types';
 import {
   EMPTY_SKILL, agentsCarrying, draftFromSkill, draftToInput, fingerprintOfOverviewSkill, loadSkillDrafts, removeSkillDraft, saveSkillDrafts, upsertSkillDraft,
   type SkillDraft, type SkillDraftInput,
 } from '@/lib/customize/skillDrafts';
-import { describeStatus, teamsWithAccess } from '@/lib/customize/ruleGrid';
+import { connectorRows } from '@/lib/customize/connectorPage';
+import { readDeepLink } from '@/lib/customize/deepLink';
+import { MAX_SKILL_FILE_BYTES, parseSkillFile } from '@/lib/customize/skillFile';
 import AgentForm from './AgentForm';
 import ConnectorRulesDialog from './ConnectorRulesDialog';
+import ConnectorsPane from './ConnectorsPane';
 import SkillForm from './SkillForm';
+import SkillsPane from './SkillsPane';
 import { useOverview } from './useOverview';
 import { ViewAs } from './ViewAs';
 
@@ -100,6 +104,10 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const [tab, setTab] = useState<TabId>('agents');
   const [scope, setScope] = useState<Scope>('yours');
   const [query, setQuery] = useState('');
+  // The connector or skill whose own page is open (its id), and where the address says to start (the chat's "+" menu links here).
+  const [open, setOpen] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [addressRead, setAddressRead] = useState(false);
   const [drafts, setDrafts] = useState<AgentDraft[]>([]);
   const [form, setForm] = useState<{ draft?: AgentDraft; presetTools?: string[] } | null>(null);
   const [skillDrafts, setSkillDrafts] = useState<SkillDraft[]>([]);
@@ -115,6 +123,25 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const tenant = cfg.projectId;
 
   useEffect(() => { setDrafts(loadDrafts(tenant)); setSkillDrafts(loadSkillDrafts(tenant)); }, [tenant]);
+  useEffect(() => {
+    const link = readDeepLink(window.location.search);
+    if (link.tab) setTab(link.tab);
+    if (link.scope) setScope(link.scope);
+    if (link.open) setOpen(link.open);
+    setAddressRead(true);
+  }, []);
+  // Keep the address in step with the tab, Yours or Discover, and the open page, so a reload or a shared link lands in the same place.
+  useEffect(() => {
+    if (!addressRead) return;
+    try {
+      const url = new URL(window.location.href);
+      for (const key of ['tab', 'scope', 'open']) url.searchParams.delete(key);
+      if (tab !== 'agents') url.searchParams.set('tab', tab);
+      if (scope === 'discover') url.searchParams.set('scope', 'discover');
+      if (open) url.searchParams.set('open', open);
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch { /* the address is a convenience, never a requirement */ }
+  }, [addressRead, tab, scope, open]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(''), 3200);
@@ -259,13 +286,22 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
 
   const by = cfg.companyName || 'Your organisation';
   const agents = useMemo(() => data?.agents ?? [], [data]);
-  const skillCountByAgent = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const a of agents) for (const id of a.skills) map.set(id, [...(map.get(id) || []), a.name]);
-    return map;
-  }, [agents]);
 
-  const changeTab = (id: TabId) => { setTab(id); setQuery(''); };
+  const changeTab = (id: TabId) => { setTab(id); setQuery(''); setOpen(null); };
+  const changeScope = (next: Scope) => { setScope(next); setOpen(null); };
+  // Upload a skill file: it only fills in the skill form as a draft; nothing is saved or live.
+  const onSkillFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_SKILL_FILE_BYTES * 4) { setToast('That file is too large to be a skill.'); return; }
+    try {
+      const result = parseSkillFile(await file.text(), file.name);
+      if (!result.ok) { setToast(result.error); return; }
+      setSkillForm({ seed: result.seed });
+      if (result.note) setToast(result.note);
+    } catch {
+      setToast('The file could not be read.');
+    }
+  };
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const i = TABS.findIndex((t) => t.id === tab);
     let next = -1;
@@ -288,6 +324,11 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   };
 
   const banner = BANNERS[tab];
+  // A connector's or skill's own page replaces the list (and its toolbar and banner), as in Claude.
+  const inDetail = !!(open && data && (
+    (tab === 'skills' && data.skills.some((skill) => skill.skillId === open))
+    || (tab === 'connectors' && (() => { const rows = connectorRows(data); return [...rows.yours, ...rows.discover].some((row) => row.id === open); })())
+  ));
 
   return (
     <div className="ax-page">
@@ -315,10 +356,11 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
           </div>
 
           <div id="ax-tabpanel" role="tabpanel" aria-labelledby={`ax-tab-${tab}`}>
+            {!inDetail && (
             <div className="ax-toolbar">
               <div className="ax-segment" role="group" aria-label="Show">
-                <button type="button" aria-pressed={scope === 'yours'} onClick={() => setScope('yours')}>Yours</button>
-                <button type="button" aria-pressed={scope === 'discover'} onClick={() => setScope('discover')}>Discover</button>
+                <button type="button" aria-pressed={scope === 'yours'} onClick={() => changeScope('yours')}>Yours</button>
+                <button type="button" aria-pressed={scope === 'discover'} onClick={() => changeScope('discover')}>Discover</button>
               </div>
               <label className="ax-field">
                 <SearchIcon size={16} />
@@ -331,26 +373,52 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
                 </button>
                 {addOpen && (
                   <div className="ax-menu" role="menu" aria-label="Add">
-                    <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); setForm({}); }}>
-                      <AgentIcon size={16} /> New agent
-                    </button>
-                    {data?.canEdit ? (
-                      <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); setSkillForm({ seed: EMPTY_SKILL }); }}>
-                        <SkillIcon size={16} /> New skill
+                    {tab === 'skills' ? (
+                      data?.canEdit ? (
+                        <>
+                          <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); setSkillForm({ seed: EMPTY_SKILL }); }}>
+                            <SkillIcon size={16} /> Create a skill
+                          </button>
+                          <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); fileRef.current?.click(); }}>
+                            <UploadIcon size={16} /> Upload a skill file
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()} title="Changing skills needs permission to publish the configuration">
+                          <SkillIcon size={16} /> Create a skill <span className="ax-badge">Needs publish permission</span>
+                        </button>
+                      )
+                    ) : tab === 'connectors' ? (
+                      <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()} title="New systems are connected by your technical team in the back office">
+                        <PlugIcon size={16} /> Add custom connector <span className="ax-badge">Back office</span>
                       </button>
                     ) : (
-                      <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()} title="Changing skills needs permission to publish the configuration">
-                        <SkillIcon size={16} /> New skill <span className="ax-badge">Needs publish permission</span>
-                      </button>
+                      <>
+                        <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); setForm({}); }}>
+                          <AgentIcon size={16} /> New agent
+                        </button>
+                        {data?.canEdit ? (
+                          <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); setSkillForm({ seed: EMPTY_SKILL }); }}>
+                            <SkillIcon size={16} /> New skill
+                          </button>
+                        ) : (
+                          <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()} title="Changing skills needs permission to publish the configuration">
+                            <SkillIcon size={16} /> New skill <span className="ax-badge">Needs publish permission</span>
+                          </button>
+                        )}
+                        <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()}>
+                          <BookIcon size={16} /> Add knowledge <span className="ax-badge">Back office</span>
+                        </button>
+                      </>
                     )}
-                    <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()}>
-                      <BookIcon size={16} /> Add knowledge <span className="ax-badge">Back office</span>
-                    </button>
                   </div>
                 )}
               </div>
             </div>
+            )}
+            <input ref={fileRef} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden aria-hidden="true" tabIndex={-1} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void onSkillFile(file); }} />
 
+            {!inDetail && !((tab === 'skills' || tab === 'connectors') && scope === 'yours') && (
             <section className="ax-herocard" aria-label="About this tab">
               <div>
                 <h2>{banner.title}</h2>
@@ -360,6 +428,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
               </div>
               <div className="ax-herocard__art" aria-hidden="true">{banner.icons.map((icon, i) => <span key={i}>{icon}</span>)}</div>
             </section>
+            )}
 
             {error && !data && (
               <div className="ax-notice ax-notice--error" role="alert">
@@ -385,8 +454,8 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
               />
             )}
             {data && tab === 'skills' && (
-              <SkillsTab
-                scope={scope} query={query} overview={data} usedBy={skillCountByAgent} by={by} drafts={skillDrafts} busy={skillBusy}
+              <SkillsPane
+                scope={scope} query={query} overview={data} drafts={skillDrafts} busy={skillBusy} open={open} onOpen={setOpen}
                 onNew={() => setSkillForm({ seed: EMPTY_SKILL })}
                 onChange={(skill) => setSkillForm({ seed: draftFromSkill(skill, data.agents) })}
                 onEditDraft={(draft) => setSkillForm({ draft, seed: EMPTY_SKILL })}
@@ -394,14 +463,16 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
                 onDeleteDraft={(draft) => { if (window.confirm(`Delete the draft “${draft.name}”?`)) { persistSkills(removeSkillDraft(skillDrafts, draft.draftId)); setToast('Draft deleted.'); } }}
                 onRebase={rebaseSkillDraft}
                 onDelete={deleteLiveSkill}
+                onTry={onTry}
               />
             )}
             {data && tab === 'plugins' && <PluginsTab scope={scope} query={query} plugins={data.plugins} agents={agents} skills={data.skills} systems={data.systems} />}
             {data && tab === 'knowledge' && <KnowledgeTab scope={scope} query={query} knowledge={data.knowledge} by={by} />}
             {data && tab === 'connectors' && (
-              <>
-                <ConnectorsTab scope={scope} query={query} connectors={data.connectors} systems={data.systems} rules={data.canEdit ? data.connectorRules : []} agents={agents} onAddToAgent={(id) => setForm({ presetTools: [id] })} onManage={setRulesFor} />
-              </>
+              <ConnectorsPane
+                scope={scope} query={query} overview={data} open={open} busy={rulesBusy} onOpen={setOpen}
+                onSave={saveRules} onFullTable={setRulesFor} onAddToAgent={(id) => setForm({ presetTools: [id] })}
+              />
             )}
           </div>
         </div>
@@ -557,102 +628,6 @@ function PackAgentCard({ agent, by, onTry, connectorName, skillName }: {
   );
 }
 
-/* ── Skills ──────────────────────────────────────────────────────────── */
-function SkillsTab({ scope, query, overview, usedBy, by, drafts, busy, onNew, onChange, onEditDraft, onMakeLive, onDeleteDraft, onRebase, onDelete }: {
-  scope: Scope; query: string; overview: CustomizeOverview; usedBy: Map<string, string[]>; by: string; drafts: SkillDraft[]; busy: string;
-  onNew: () => void; onChange: (skill: OverviewSkill) => void; onEditDraft: (draft: SkillDraft) => void; onMakeLive: (draft: SkillDraft) => void;
-  onDeleteDraft: (draft: SkillDraft) => void; onRebase: (draft: SkillDraft) => void; onDelete: (skill: OverviewSkill) => void;
-}) {
-  const { skills, canViewInstructions, canEdit } = overview;
-  if (scope === 'discover') {
-    return <Empty title="No skills to discover yet">Skill templates will appear here when the platform or your organisation offers some.</Empty>;
-  }
-  const shownDrafts = drafts.filter((d) => matches(query, d.name, d.description));
-  if (skills.length === 0 && shownDrafts.length === 0) {
-    return (
-      <Empty title="No skills in this pack yet" action={canEdit ? <button type="button" className="ax-btn ax-btn--primary" onClick={onNew}><PlusIcon size={16} /> New skill</button> : undefined}>
-        Skills are reusable instructions an agent can carry. When the active pack defines some, they are listed here with the agents that use them.
-      </Empty>
-    );
-  }
-  const shown = skills.filter((s) => matches(query, s.name, s.description));
-  if (shown.length === 0 && shownDrafts.length === 0) return <Empty title="No skills match your search">Try a different word, or clear the search.</Empty>;
-  const agentName = (id: string) => overview.agents.find((a) => a.agentId === id)?.name || id;
-  return (
-    <>
-      {shownDrafts.length > 0 && (
-        <>
-          <h2 className="ax-section-title">Your drafts · not live</h2>
-          <ul className="ax-grid">
-            {shownDrafts.map((d) => {
-              const live = d.replaces ? skills.find((s) => s.skillId === d.replaces) : undefined;
-              const stale = !!(d.replaces && (!live || (d.base && live.instructions !== undefined && fingerprintOfOverviewSkill(live, overview.agents) !== d.base)));
-              return (
-                <Card
-                  key={d.draftId} icon={<SkillIcon size={20} />} title={d.name} by="you, in this browser" description={d.description}
-                  tags={[
-                    <span key="draft" className="ax-tag ax-tag--draft">Draft</span>,
-                    <span key="k" className="ax-tag">{d.replaces ? `Changes “${live?.name ?? d.replaces}”` : 'New skill'}</span>,
-                    <span key="t" className="ax-tag">{plural(d.tools.length, 'tool')}</span>,
-                    <span key="a" className="ax-tag">{d.agents.length ? `Carried by ${d.agents.map(agentName).join(', ')}` : 'No assistant carries it'}</span>,
-                    ...(stale ? [<span key="stale" className="ax-tag ax-tag--draft">{live ? 'Changed elsewhere since you started' : 'The live skill is gone'}</span>] : []),
-                  ]}
-                  actions={(
-                    <>
-                      <button type="button" className="ax-btn ax-btn--small" onClick={() => onEditDraft(d)}>Edit</button>
-                      {stale
-                        ? <button type="button" className="ax-btn ax-btn--small" onClick={() => onRebase(d)} title={live ? 'Keep my edits and replace the latest live version when I make it live' : 'The skill was deleted: keep my draft as a new skill'}>{live ? 'Keep mine' : 'Keep as a new skill'}</button>
-                        : <button type="button" className="ax-btn ax-btn--small ax-btn--primary" disabled={busy !== ''} onClick={() => onMakeLive(d)}>{busy === d.draftId ? 'Publishing…' : 'Make live'}</button>}
-                      <span className="ax-toolbar__spacer" />
-                      <button type="button" className="ax-iconbtn" onClick={() => onDeleteDraft(d)} aria-label={`Delete draft ${d.name}`} title="Delete draft"><TrashIcon size={16} /></button>
-                    </>
-                  )}
-                />
-              );
-            })}
-          </ul>
-          <p className="ax-notice">Drafts live only in this browser until you press Make live, which saves the skill, publishes through the publication check and puts everything back if it is refused.</p>
-        </>
-      )}
-      {shown.length > 0 && (
-        <>
-          {shownDrafts.length > 0 && <h2 className="ax-section-title">In your assistant</h2>}
-          <ul className="ax-grid">
-            {shown.map((s) => {
-              const agents = usedBy.get(s.skillId) || [];
-              return (
-                <Card
-                  key={s.skillId} icon={<SkillIcon size={20} />} title={s.name} by={by} description={s.description}
-                  tags={[
-                    <span key="tier" className="ax-tag">{s.tier === 'always' ? 'Always on' : 'On demand'}</span>,
-                    ...(s.tools.length ? [<span key="t" className="ax-tag">{plural(s.tools.length, 'tool')}</span>] : []),
-                    <span key="a" className="ax-tag">{agents.length ? `Used by ${agents.join(', ')}` : 'Not used by an agent yet'}</span>,
-                    ...s.access.map((entry, index) => <span key={`acc-${index}`} className="ax-tag">{describeSkillAccess(entry)}</span>),
-                  ]}
-                  actions={canEdit && s.instructions !== undefined ? (
-                    <>
-                      <button type="button" className="ax-btn ax-btn--small" disabled={busy !== ''} onClick={() => onChange(s)}>Change</button>
-                      <span className="ax-toolbar__spacer" />
-                      <button type="button" className="ax-iconbtn" disabled={busy !== ''} onClick={() => onDelete(s)} aria-label={`Delete skill ${s.name}`} title="Delete skill"><TrashIcon size={16} /></button>
-                    </>
-                  ) : undefined}
-                >
-                  {s.tools.length > 0 && (
-                    <details><summary>Tools</summary><div className="ax-hint">{s.tools.map((tool) => overview.toolOptions.find((o) => o.id === tool)?.label ? `${overview.toolOptions.find((o) => o.id === tool)!.label} (${overview.toolOptions.find((o) => o.id === tool)!.system})` : tool).join(', ')}</div></details>
-                  )}
-                  {canViewInstructions && s.instructions && (
-                    <details><summary>Instructions</summary><pre>{s.instructions}</pre></details>
-                  )}
-                </Card>
-              );
-            })}
-          </ul>
-        </>
-      )}
-    </>
-  );
-}
-
 /* ── Knowledge ───────────────────────────────────────────────────────── */
 function KnowledgeTab({ scope, query, knowledge, by }: {
   scope: Scope; query: string; knowledge: CustomizeOverview['knowledge']; by: string;
@@ -692,75 +667,6 @@ function KnowledgeTab({ scope, query, knowledge, by }: {
             ...(s.role ? [<span key="r" className="ax-tag">{s.role}</span>] : []),
             <span key="e" className="ax-tag">{s.enabled ? 'On' : 'Off'}</span>,
           ]}
-        />
-      ))}
-    </ul>
-  );
-}
-
-/* ── Connectors ──────────────────────────────────────────────────────── */
-function ConnectorsTab({ scope, query, connectors, systems, rules, agents, onAddToAgent, onManage }: {
-  scope: Scope; query: string; connectors: OverviewConnector[]; systems: OverviewSystem[]; rules: OverviewConnectorRules[]; agents: OverviewAgent[];
-  onAddToAgent: (id: string) => void; onManage: (system: OverviewConnectorRules) => void;
-}) {
-  const editing = rules.length > 0;
-  // People who may change the rules see every system, on or off: those that are on are "Yours", those that are off are "Discover" (there, but not in use).
-  const ruleCard = (r: OverviewConnectorRules) => {
-    const status = describeStatus(r.status);
-    const writes = r.tools.filter((t) => t.sideEffect === 'write').length;
-    const teams = teamsWithAccess(r);
-    return (
-      <Card
-        key={`rules-${r.connectorId}`} icon={<PlugIcon size={20} />} title={r.name} by={r.owner || 'the shop'} description={r.description}
-        tags={[
-          <span key="on" className={`ax-tag${r.enabled ? '' : ' ax-tag--draft'}`}>{r.enabled ? 'On' : 'Switched off'}</span>,
-          <span key="real" className="ax-tag">{r.sample ? 'Sample data' : 'Real data'}</span>,
-          <span key="st" className={`ax-tag${status.tone === 'bad' ? ' ax-tag--draft' : ''}`} title={status.detail}>{status.label}</span>,
-          <span key="t" className="ax-tag">{plural(r.tools.length, 'tool')}</span>,
-          ...(writes > 0 ? [<span key="w" className="ax-tag">{plural(writes, 'tool')} change data</span>] : []),
-          <span key="teams" className="ax-tag">{teams === 0 ? 'No team may use it' : `${plural(teams, 'team')} may use it`}</span>,
-        ]}
-        actions={<button type="button" className="ax-btn ax-btn--small" onClick={() => onManage(r)}>Rules</button>}
-      />
-    );
-  };
-  const shownRules = editing ? rules.filter((r) => (scope === 'yours' ? r.enabled : !r.enabled) && matches(query, r.name, r.description, r.connectorId, r.owner)) : [];
-  const shownSystems = !editing && scope === 'yours' ? systems.filter((s) => matches(query, s.name, s.description, s.connectorId, s.owner)) : [];
-  const wanted = connectors.filter((c) => (scope === 'yours' ? c.usedBy.length > 0 : c.usedBy.length === 0));
-  const shown = wanted.filter((c) => matches(query, c.name, c.description, c.id));
-  const systemCards = [
-    ...shownRules.map(ruleCard),
-    ...shownSystems.map((s) => (
-      <Card
-        key={`system-${s.connectorId}`} icon={<PlugIcon size={20} />} title={s.name} by={s.owner || 'the shop'} description={s.description}
-        tags={[
-          <span key="t" className="ax-tag">{plural(s.tools, 'tool')}</span>,
-          ...(s.writes > 0 ? [<span key="w" className="ax-tag">{plural(s.writes, 'tool')} change data</span>] : []),
-          ...(s.sample ? [<span key="s" className="ax-tag">Sample data</span>] : []),
-        ]}
-      />
-    )),
-  ];
-  if (wanted.length === 0 && systemCards.length > 0) return <ul className="ax-grid">{systemCards}</ul>;
-  if (wanted.length === 0) {
-    return scope === 'yours'
-      ? <Empty title="No connectors in use">None of the agents in the active pack is allowed to call a connector.</Empty>
-      : <Empty title="Everything is already in use">Every built-in connector is allowed for at least one agent{editing ? ', and no connected system is switched off' : ''}.</Empty>;
-  }
-  if (shown.length === 0 && systemCards.length === 0) return <Empty title="No connectors match your search">Try a different word, or clear the search.</Empty>;
-  const agentName = (id: string) => agents.find((a) => a.agentId === id)?.name || id;
-  return (
-    <ul className="ax-grid">
-      {systemCards}
-      {shown.map((c) => (
-        <Card
-          key={c.id} icon={<PlugIcon size={20} />} title={c.name} by="the platform (built in)" description={c.description}
-          tags={c.usedBy.length ? [<span key="u" className="ax-tag" title={c.usedBy.map(agentName).join(', ')}>Used by {c.usedBy.map(agentName).join(', ')}</span>] : [<span key="n" className="ax-tag">Not used yet</span>]}
-          actions={(
-            <button type="button" className="ax-btn ax-btn--small" onClick={() => onAddToAgent(c.id)} title="Start a new agent draft with this connector">
-              <PlusIcon size={15} /> Add to a new agent
-            </button>
-          )}
         />
       ))}
     </ul>
