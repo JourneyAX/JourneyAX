@@ -12,6 +12,7 @@ export class LlmCareModel implements CareModel {
   /** Calls made since the service started, so the cost of the work is visible in the logs. */
   calls = 0;
   tokens = 0;
+  usage() { return { calls: this.calls, tokens: this.tokens }; }
 
   constructor(private readonly log: (message: string) => void = () => {}) {}
 
@@ -27,8 +28,10 @@ export class LlmCareModel implements CareModel {
         { role: 'user' as const, content: user },
       ];
       let res;
-      try { res = await client.chat.completions.create({ model, messages, response_format: { type: 'json_object' }, ...(reasoning ? {} : { temperature: 0 }) }); }
-      catch { res = await client.chat.completions.create({ model, messages, ...(reasoning ? {} : { temperature: 0 }) }); }
+      // One call, thirty seconds at most, no automatic retries: a slow or failing model must not hold a ticket, and a person gets it either way.
+      const limits = { timeout: 30_000, maxRetries: 0 };
+      try { res = await client.chat.completions.create({ model, messages, response_format: { type: 'json_object' }, ...(reasoning ? {} : { temperature: 0 }) }, limits); }
+      catch { res = await client.chat.completions.create({ model, messages, ...(reasoning ? {} : { temperature: 0 }) }, limits); }
       this.calls += 1; this.tokens += Number(res.usage?.total_tokens) || 0;
       this.log(`care: model call ${this.calls} (${res.usage?.total_tokens ?? '?'} tokens, ${this.tokens} in all)`);
       const out = String(res.choices[0]?.message?.content || '');

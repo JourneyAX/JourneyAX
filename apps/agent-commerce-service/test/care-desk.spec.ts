@@ -152,6 +152,38 @@ async function main() {
     assert.ok(view.timeline.at(-1)!.note.includes('did not approve it and will handle it'));
   });
 
+
+  await suite.test('where the person disagrees with the AI\'s reading is kept: the labels they changed, from and to', async () => {
+    const { d } = await desk(recording().writeBack);
+    const result = await d.approve(TENANT, 't4322', aroha, { topic: 'Damaged item', mood: 'Upset' });
+    assert.equal(result.ok, true);
+    const view = result.ok ? result.ticket : null;
+    assert.equal(view!.topic.value, 'Damaged item');
+    assert.equal(view!.approval!.corrections!.topic!.to, 'Damaged item');
+    assert.ok(view!.approval!.corrections!.topic!.from.length > 0);
+    assert.equal(view!.approval!.corrections!.mood!.to, 'Upset');
+    const again = await desk(recording().writeBack);
+    const unchanged = await again.d.approve(TENANT, 't4322', aroha, { topic: 'Not a topic' });
+    assert.equal(unchanged.ok && unchanged.ticket.approval!.corrections, undefined, 'an unknown label is ignored, not stored');
+  });
+
+  await suite.test('a sweep finishes a ticket that has been marked "AI working" too long, and never touches one a person has', async () => {
+    const store = new MemoryCareStore();
+    const events = new CareEvents();
+    const c = connectors(ticket());
+    const intake = new CareIntake({ store, events, connectors: c, now: () => NOW });
+    const later = new Date(NOW.getTime() + 5 * 60_000);
+    const processor = new CareProcessor({ store, events, connectors: c, model: null, team: DEFAULT_TEAM, refundLimit: 500, now: () => later });
+    const d = new CareDesk({ store, events, processor, intake, writeBack: new UnavailableWriteBack(), team: DEFAULT_TEAM, now: () => later });
+    await store.setCursor(TENANT, '2026-10-26T09:00:00Z');
+    await intake.poll(TENANT);
+    await store.claim(TENANT, 't4322', NOW.toISOString());
+    await d.sweep(TENANT);
+    await d.idle();
+    assert.equal((await d.get(TENANT, 't4322'))!.stage, 'waiting');
+    assert.equal((await d.get(TENANT, 't4322'))!.status, 'decide');
+  });
+
   suite.finish();
 }
 

@@ -30,6 +30,7 @@ export function checkReply(text: string, ctx: { facts: string[]; steps: CareStep
   if (!names) checks.push({ label: 'No refund, replacement or amount promised', ok: true });
   else if (money) checks.push({ label: `Names a refund or an amount: it holds only if you approve the step "${money.what}"`, ok: false });
   else checks.push({ label: 'Names a refund, a replacement or an amount that no step covers: check it', ok: false });
+  if (/https?:\/\/|www\./i.test(text)) checks.push({ label: 'Contains a web link: check it before it is sent', ok: false });
   const known = new Set(ctx.facts.flatMap((f) => dateKeys(f)));
   const stray = dateKeys(text).filter((k) => !known.has(k));
   checks.push(stray.length ? { label: `Names a date the systems did not show (${[...new Set(stray)].join(', ')}): check it`, ok: false } : { label: 'Dates come from the systems', ok: true });

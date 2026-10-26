@@ -37,6 +37,18 @@ export interface CareOrder {
   notes: string[];
 }
 
+export interface CareCorrection { from: string; to: string }
+
+/** What the care desk did at one stage, for finding out afterwards what went wrong: how long, which tools, whether the model was used, any fallback. */
+export interface CareTrace {
+  stage: CareStage;
+  ms: number;
+  tools: Array<{ system: string; tool: string; ok: boolean; ms: number }>;
+  modelCalls: number;
+  tokens: number;
+  fallback?: string;
+}
+
 export interface CareApproval {
   by: { name: string; id: string };
   at: string;
@@ -44,6 +56,8 @@ export interface CareApproval {
   contentHash: string;
   edited: boolean;
   removedSteps: string[];
+  /** Where the person disagreed with the AI's reading: the labels they changed. */
+  corrections?: { topic?: CareCorrection; mood?: CareCorrection };
   results: Array<{ stepId: string; ok: boolean; message?: string }>;
 }
 
@@ -79,10 +93,14 @@ export interface CareCase {
   needsLead: boolean;
   timeline: CareTimelineEntry[];
   approval?: CareApproval;
+  /** Set when a worker takes the ticket, so two copies of the service never both work it. */
+  claimedAt?: string;
+  /** The record of how the AI got here, for the team and not for the customer. */
+  trace?: CareTrace[];
 }
 
 /** What the portal's canvases draw. The server-only parts (the actions behind the steps, the approval's fingerprint) are left out. */
-export interface CareTicketView extends Omit<CareCase, 'tenantId' | 'requester' | 'zendeskId' | 'zendeskUpdatedAt' | 'createdAt' | 'updatedAt' | 'dueAt' | 'steps' | 'draft' | 'approval'> {
+export interface CareTicketView extends Omit<CareCase, 'tenantId' | 'requester' | 'zendeskId' | 'zendeskUpdatedAt' | 'createdAt' | 'updatedAt' | 'dueAt' | 'steps' | 'draft' | 'approval' | 'claimedAt' | 'trace'> {
   slaMinutes: number;
   /** Who approved, when, and how each change went. The fingerprint stays on the server. */
   approval?: Omit<CareApproval, 'contentHash'>;

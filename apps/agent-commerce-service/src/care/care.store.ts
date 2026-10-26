@@ -9,6 +9,8 @@ export interface CareStore {
   get(tenantId: string, id: string): Promise<CareCase | null>;
   list(tenantId: string): Promise<CareCase[]>;
   save(doc: CareCase): Promise<void>;
+  /** Takes the ticket for this worker. True for exactly one caller, once: how two copies of the service avoid working the same ticket. */
+  claim(tenantId: string, id: string, at: string): Promise<boolean>;
   getCursor(tenantId: string): Promise<string | null>;
   setCursor(tenantId: string, iso: string): Promise<void>;
   createdSince(tenantId: string, iso: string): Promise<number>;
@@ -26,6 +28,12 @@ export class MemoryCareStore implements CareStore {
   async save(doc: CareCase) {
     if (!newerOrEqual(doc, this.docs.get(this.key(doc.tenantId, doc.id)) ?? null)) return;
     this.docs.set(this.key(doc.tenantId, doc.id), structuredClone(doc));
+  }
+  async claim(tenantId: string, id: string, at: string) {
+    const doc = this.docs.get(this.key(tenantId, id));
+    if (!doc || doc.claimedAt) return false;
+    doc.claimedAt = at;
+    return true;
   }
   async getCursor(tenantId: string) { return this.cursors.get(tenantId) ?? null; }
   async setCursor(tenantId: string, iso: string) { this.cursors.set(tenantId, iso); }
@@ -51,6 +59,11 @@ export class MongoCareStore implements CareStore {
     const current = await this.get(doc.tenantId, doc.id);
     if (!newerOrEqual(doc, current)) return;
     await this.cases!.replaceOne({ tenantId: doc.tenantId, id: doc.id }, doc, { upsert: true });
+  }
+  async claim(tenantId: string, id: string, at: string) {
+    await this.open();
+    const taken = await this.cases!.findOneAndUpdate({ tenantId, id, claimedAt: { $exists: false } }, { $set: { claimedAt: at } });
+    return !!taken;
   }
   async getCursor(tenantId: string) { await this.open(); return (await this.state!.findOne({ tenantId }))?.cursor ?? null; }
   async setCursor(tenantId: string, iso: string) { await this.open(); await this.state!.updateOne({ tenantId }, { $set: { cursor: iso } }, { upsert: true }); }

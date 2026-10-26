@@ -8,7 +8,8 @@
 import { useState } from 'react';
 import { openCanvas } from '@/lib/shell/sidePanelStore';
 import { CARE_STAGES, STATUS_WORD, nextCareTicket, slaClock, stageIndex, type CareStatus, type CareTicket } from './careData';
-import { useCareTickets } from './careStore';
+import { FIXTURES } from './careApi';
+import { useCareActor, useCareStatus, useCareSync, useCareTickets } from './careStore';
 
 type Filter = 'need' | 'all';
 
@@ -22,7 +23,11 @@ export function StatusChip({ status }: { status: CareStatus }) {
 }
 
 export default function CareQueueCanvas() {
+  useCareSync();
   const all = useCareTickets();
+  const actor = useCareActor();
+  const loadState = useCareStatus();
+  const who = actor ? `${actor.name} · ${actor.id}` : FIXTURES ? 'Aroha Ngata · CSR-1041' : '';
   const [filter, setFilter] = useState<Filter>('need');
   const working = all.filter((t) => t.status === 'ai');
   const rest = all.filter((t) => t.status !== 'ai').sort((a, b) => (needsMe(b) ? 1 : 0) - (needsMe(a) ? 1 : 0) || a.slaMinutes - b.slaMinutes);
@@ -40,7 +45,7 @@ export default function CareQueueCanvas() {
             <div className="cv__eyebrow">Customer care</div>
             <div className="cv__order-no">{toDecide} for you to decide</div>
             <div className="cv__meta">
-              {working.length > 0 ? `${working.length} being worked on by the AI · ` : ''}{forLead > 0 ? `${forLead} waiting for the team lead · ` : ''}Aroha Ngata · CSR-1041
+              {working.length > 0 ? `${working.length} being worked on by the AI · ` : ''}{forLead > 0 ? `${forLead} waiting for the team lead · ` : ''}{who}
             </div>
           </div>
           <button type="button" className="cv__link" onClick={() => openCanvas({ kind: 'care-board' })}>Care board</button>
@@ -51,6 +56,9 @@ export default function CareQueueCanvas() {
           <button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All ({rest.length + working.length})</button>
         </div>
 
+        {loadState.error && <p className="cv__alert" role="alert">{loadState.error}</p>}
+        {!loadState.loaded && !loadState.error && all.length === 0 && <p className="cv__empty-text">Looking for your tickets…</p>}
+        {loadState.loaded && all.length === 0 && <p className="cv__empty-text">No tickets yet. A new one appears here as soon as it reaches Zendesk, and you can watch the AI work on it.</p>}
         <ul className="cv__tickets" aria-live="polite">
           {[...working, ...shown].map((t) => {
             const clock = slaClock(t.slaMinutes);

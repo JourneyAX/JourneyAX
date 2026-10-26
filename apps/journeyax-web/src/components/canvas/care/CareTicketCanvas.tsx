@@ -12,7 +12,8 @@ import { useEffect, useRef, useState } from 'react';
 import { openCanvas } from '@/lib/shell/sidePanelStore';
 import { CARE_MOODS, CARE_STAGES, CARE_TOPICS, slaClock, stageIndex, type CareStage, type CareStep, type CareStepKind, type CareTicket } from './careData';
 import { StatusChip } from './CareQueueCanvas';
-import { applyCareEvent, useCareTicket } from './careStore';
+import { FIXTURES, decide } from './careApi';
+import { applyCareEvent, useCareActor, useCareSync, useCareTicket } from './careStore';
 
 type Phase = 'review' | 'running' | 'attention' | 'done' | 'rejected' | 'sent';
 type StepState = 'proposed' | 'running' | 'done' | 'failed' | 'removed';
@@ -39,17 +40,26 @@ function Working({ text }: { text: string }) {
 }
 
 export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: string; failStep?: string }) {
+  useCareSync();
   const ticket = useCareTicket(ticketId);
+  const actor = useCareActor();
+  const connected = !FIXTURES;
   const original = ticket?.draft.text ?? '';
   const [draft, setDraft] = useState(original);
   const [touched, setTouched] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [phase, setPhase] = useState<Phase>('review');
+  const [localPhase, setPhase] = useState<Phase>('review');
+  const [error, setError] = useState('');
   const [states, setStates] = useState<Record<string, StepState>>({});
   const [approvedAt, setApprovedAt] = useState('');
   const [topic, setTopic] = useState(ticket?.topic.value ?? '');
   const [mood, setMood] = useState(ticket?.mood.value ?? '');
   const [correcting, setCorrecting] = useState<'topic' | 'mood' | null>(null);
+  // Connected, the care desk says where the changes are (running, failed, done); a preview works it out on this page.
+  const serverResults = ticket?.approval?.results ?? [];
+  const serverFailed = serverResults.some((r) => !r.ok);
+  const serverPhase: Phase | null = connected && ticket ? (ticket.stage === 'done' ? 'done' : ticket.stage === 'running' ? (serverFailed ? 'attention' : 'running') : null) : null;
+  const phase: Phase = serverPhase ?? localPhase;
   const failed = useRef<Set<string>>(new Set());
   const timers = useRef<number[]>([]);
   const result = useRef<HTMLDivElement>(null);
@@ -75,10 +85,23 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
   const researched = reached(t, 'researched');
   const drafted = reached(t, 'drafted');
   const canDecide = reached(t, 'waiting') && !isDone && t.stage !== 'running';
-  const stateOf = (s: CareStep): StepState => states[s.id] ?? 'proposed';
+  const stateOf = (s: CareStep): StepState => {
+    if (states[s.id] === 'removed' && phase === 'review') return 'removed';
+    if (connected && t.approval) {
+      const r = serverResults.find((x) => x.stepId === s.id);
+      if (r) return r.ok ? 'done' : 'failed';
+      const firstOpen = t.steps.find((x) => !serverResults.some((y) => y.stepId === x.id));
+      if (t.stage === 'running' && !serverFailed && firstOpen?.id === s.id) return 'running';
+      return t.stage === 'done' ? 'done' : 'proposed';
+    }
+    return states[s.id] ?? 'proposed';
+  };
   const live = t.steps.filter((s) => stateOf(s) !== 'removed');
   const edited = draft !== original;
   const locked = phase !== 'review';
+  const me = actor ?? { name: t.assignee.name, id: t.assignee.id, isLead: false };
+  const leadOnly = t.needsLead && !actor?.isLead;
+  const mayDecide = !connected || !actor || actor.isLead || (!t.needsLead && t.assignee.id === actor.id);
   const nextStage = CARE_STAGES.find((s) => stageIndex(s.id) === stageIndex(t.stage) + 1);
 
   /** Tells the rest of the portal (the list, the board) where this ticket now is. */
@@ -106,14 +129,48 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
     };
     next();
   }
-  const approve = () => {
+  const approve = async () => {
+    setError('');
+    if (connected) {
+      setEditing(false); setPhase('running');
+      const removed = t.steps.filter((s) => states[s.id] === 'removed').map((s) => s.id);
+      const answer = await decide(t.id, 'approve', { draft, removedSteps: removed, topic, mood });
+      if (!answer.ok) { setPhase('review'); setError(answer.error); return; }
+      applyCareEvent({ type: 'ticket', ticket: answer.ticket });
+      return;
+    }
     setEditing(false); setApprovedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
     setPhase('running'); moveTo('running', 'waiting', `Approved by ${t.assignee.name}. Making the changes.`); run(live.map((s) => s.id), 0);
   };
-  const retry = () => {
+  const retry = async () => {
+    setError('');
+    if (connected) {
+      const answer = await decide(t.id, 'retry');
+      if (!answer.ok) { setError(answer.error); return; }
+      applyCareEvent({ type: 'ticket', ticket: answer.ticket });
+      return;
+    }
     const ids = live.map((s) => s.id);
     const first = ids.findIndex((id) => states[id] !== 'done');
     setPhase('running'); run(ids, Math.max(first, 0));
+  };
+  const reject = async () => {
+    setError('');
+    if (connected) {
+      const answer = await decide(t.id, 'reject');
+      if (!answer.ok) { setError(answer.error); return; }
+      applyCareEvent({ type: 'ticket', ticket: answer.ticket });
+    }
+    setPhase('rejected');
+  };
+  const toLead = async () => {
+    setError('');
+    if (connected) {
+      const answer = await decide(t.id, 'to-lead');
+      if (!answer.ok) { setError(answer.error); return; }
+      applyCareEvent({ type: 'ticket', ticket: answer.ticket });
+    }
+    setPhase('sent');
   };
   const remove = (id: string) => setStates((s) => ({ ...s, [id]: 'removed' }));
   const restore = (id: string) => setStates((s) => ({ ...s, [id]: 'proposed' }));
@@ -129,7 +186,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
             <div className="cv__eyebrow">Ticket</div>
             <div className="cv__order-no">#{t.ref}</div>
             <div className="cv__name">{t.subject}</div>
-            <div className="cv__meta">{t.customer.name} · {t.customer.account} · since {t.customer.since} · {t.customer.earlier}</div>
+            <div className="cv__meta">{[t.customer.name, t.customer.account, t.customer.since ? `since ${t.customer.since}` : '', t.customer.earlier].filter(Boolean).join(' · ')}</div>
             <div className="cv__meta">{t.channel} · assigned to {t.assignee.name} ({t.assignee.id})</div>
           </div>
           <div className="cv__head-right">
@@ -261,7 +318,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
         <div ref={result} />
         {phase === 'done' && (
           <div className="cv__notice">
-            Done. Approved by {t.assignee.name} ({t.assignee.id}) at {approvedAt}. The reply was {edited ? 'edited by you' : 'sent as written'}. {live.length} {live.length === 1 ? 'change' : 'changes'} made. Recorded, with the AI version beside yours.
+            Done. Approved by {t.approval?.by.name ?? t.assignee.name} ({t.approval?.by.id ?? t.assignee.id}) at {t.approval ? new Date(t.approval.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : approvedAt}. The reply was {(t.approval?.edited ?? edited) ? 'edited' : 'sent as written'}. {t.approval ? serverResults.length : live.length} {(t.approval ? serverResults.length : live.length) === 1 ? 'change' : 'changes'} made. Recorded, with the AI version beside the approved one.
           </div>
         )}
         {phase === 'rejected' && <div className="cv__rejected">Not approved. The ticket stays with you, the AI work-up stays on it as a note, and nothing was changed in any system.</div>}
@@ -270,19 +327,21 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
 
       <div className="cv__foot">
         {!reached(t, 'waiting') && <div className="cv__meta">The AI is still working on this one. What it has finished is above, and the rest fills in by itself.</div>}
-        {phase === 'review' && canDecide && (t.needsLead ? (
+        {phase === 'review' && canDecide && !mayDecide && <p className="cv__meta">This ticket is assigned to {t.assignee.name}. Only they, or the team lead, can decide it.</p>}
+        {phase === 'review' && canDecide && mayDecide && (leadOnly ? (
           <>
             <p className="cv__alert cv__alert--lead">Only the team lead can approve this one: it is a complaint, and the AI is not sure.</p>
-            <button type="button" className="cv__btn cv__btn--primary" onClick={() => setPhase('sent')}>Send to Hemi Parata (TL-2001)</button>
-            <button type="button" className="cv__btn cv__btn--ghost" onClick={() => setPhase('rejected')}>I will handle it</button>
+            <button type="button" className="cv__btn cv__btn--primary" onClick={toLead}>Send to Hemi Parata (TL-2001)</button>
+            <button type="button" className="cv__btn cv__btn--ghost" onClick={reject}>I will handle it</button>
           </>
         ) : (
           <>
             <button type="button" className="cv__btn cv__btn--primary" disabled={live.length === 0} onClick={approve}>Approve</button>
-            <button type="button" className="cv__btn cv__btn--ghost" onClick={() => setPhase('rejected')}>Reject, I will handle it</button>
-            <div className="cv__meta">Approving as {t.assignee.name} ({t.assignee.id}). Nothing is sent or changed until you approve.</div>
+            <button type="button" className="cv__btn cv__btn--ghost" onClick={reject}>Reject, I will handle it</button>
+            <div className="cv__meta">Approving as {me.name} ({me.id}). Nothing is sent or changed until you approve.</div>
           </>
         ))}
+        {error && <p className="cv__alert" role="alert">{error}</p>}
         {phase === 'running' && <div className="cv__meta">Making the approved changes…</div>}
         {phase === 'attention' && (
           <>

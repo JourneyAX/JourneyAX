@@ -8,15 +8,21 @@
 import { useState } from 'react';
 import { openCanvas } from '@/lib/shell/sidePanelStore';
 import { CARE_BOARD, CARE_STAGES, slaClock, stageIndex, type CareStage } from './careData';
-import { useCareTickets } from './careStore';
+import { FIXTURES } from './careApi';
+import { useCareSync, useCareTickets } from './careStore';
 import { StatusChip } from './CareQueueCanvas';
 
 /** What the rest of the team has at each stage, so the board counts the whole team and not only this person. */
-const TEAMMATES: Record<CareStage, number> = { arrived: 0, read: 0, researched: 0, drafted: 0, waiting: 3, running: 1, done: 21 };
+const TEAMMATES: Record<CareStage, number> = FIXTURES ? { arrived: 0, read: 0, researched: 0, drafted: 0, waiting: 3, running: 1, done: 21 } : { arrived: 0, read: 0, researched: 0, drafted: 0, waiting: 0, running: 0, done: 0 };
 
 export default function CareBoardCanvas() {
+  useCareSync();
   const tickets = useCareTickets();
   const b = CARE_BOARD;
+  const closeToLate = tickets.filter((t) => t.stage !== 'done' && t.status !== 'ai' && t.slaMinutes <= 15).length;
+  const approved = tickets.filter((t) => t.approval);
+  const asWritten = approved.filter((t) => !t.approval!.edited).length;
+  const byPerson = FIXTURES ? b.byPerson : Object.values(tickets.filter((t) => t.stage !== 'done').reduce<Record<string, { name: string; id: string; open: number }>>((acc, t) => { const k = t.assignee.id || 'none'; acc[k] = acc[k] ?? { name: t.assignee.name, id: t.assignee.id, open: 0 }; acc[k].open += 1; return acc; }, {})).filter((p) => p.id);
   const count = (stage: CareStage) => tickets.filter((t) => t.stage === stage).length + TEAMMATES[stage];
   const firstBusy = CARE_STAGES.find((s) => s.id !== 'done' && tickets.some((t) => t.stage === s.id))?.id ?? 'waiting';
   const [picked, setPicked] = useState<CareStage | null>(null);
@@ -25,7 +31,7 @@ export default function CareBoardCanvas() {
   const info = CARE_STAGES.find((s) => s.id === stage);
   const maxCount = Math.max(...CARE_STAGES.map((s) => count(s.id)), 1);
   const open = CARE_STAGES.filter((s) => s.id !== 'done').reduce((sum, s) => sum + count(s.id), 0);
-  const maxOpen = Math.max(...b.byPerson.map((p) => p.open), 1);
+  const maxOpen = Math.max(...byPerson.map((p) => p.open), 1);
 
   return (
     <div className="cv">
@@ -79,11 +85,13 @@ export default function CareBoardCanvas() {
         <h3 className="cv__h">Numbers</h3>
         <div className="cv__nums">
           <div className="cv__num"><div className="cv__meta">Open now</div><div className="cv__big">{open}</div><div className="cv__meta">{count('waiting')} wait on a person</div></div>
-          <div className="cv__num"><div className="cv__meta">Close to late</div><div className="cv__big">{b.nearBreach}</div><div className="cv__meta">under 15 minutes or late</div></div>
-          <div className="cv__num"><div className="cv__meta">First reply</div><div className="cv__big">{b.firstReplyMinutes} min</div><div className="cv__meta">target {b.firstReplyTargetMinutes} min</div></div>
-          <div className="cv__num"><div className="cv__meta">Satisfaction, 7 days</div><div className="cv__big">{b.csat.percent}%</div><div className="cv__meta">{b.csat.ratings} ratings</div></div>
+          <div className="cv__num"><div className="cv__meta">Close to late</div><div className="cv__big">{FIXTURES ? b.nearBreach : closeToLate}</div><div className="cv__meta">under 15 minutes or late</div></div>
+          {FIXTURES && <div className="cv__num"><div className="cv__meta">First reply</div><div className="cv__big">{b.firstReplyMinutes} min</div><div className="cv__meta">target {b.firstReplyTargetMinutes} min</div></div>}
+          {FIXTURES && <div className="cv__num"><div className="cv__meta">Satisfaction, 7 days</div><div className="cv__big">{b.csat.percent}%</div><div className="cv__meta">{b.csat.ratings} ratings</div></div>}
+          {!FIXTURES && <div className="cv__num"><div className="cv__meta">Approved today</div><div className="cv__big">{approved.length}</div><div className="cv__meta">{approved.length ? `${asWritten} sent as written` : 'none yet'}</div></div>}
         </div>
 
+        {FIXTURES && <>
         <h3 className="cv__h">AI drafts, last 7 days</h3>
         <div className="cv__split" role="img" aria-label={`${b.drafts.asIs} percent sent as written, ${b.drafts.edited} percent edited, ${b.drafts.discarded} percent discarded`}>
           <span style={{ width: `${b.drafts.asIs}%` }} className="cv__split-a" />
@@ -91,10 +99,11 @@ export default function CareBoardCanvas() {
           <span style={{ width: `${b.drafts.discarded}%` }} className="cv__split-c" />
         </div>
         <div className="cv__legend"><span>Sent as written {b.drafts.asIs}%</span><span>Edited {b.drafts.edited}%</span><span>Discarded {b.drafts.discarded}%</span></div>
+        </>}
 
         <h3 className="cv__h">Open by person</h3>
         <ul className="cv__people">
-          {b.byPerson.map((p) => (
+          {byPerson.map((p) => (
             <li key={p.id}>
               <span>{p.name} <span className="cv__meta">{p.id}</span></span>
               <span className="cv__bar"><span style={{ width: `${(p.open / maxOpen) * 100}%` }} /></span>

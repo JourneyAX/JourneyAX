@@ -70,6 +70,27 @@ export function assign(team: CareTeam, topic: string, openByPerson: Record<strin
 /** What the customer is told about the ticket after the reply goes out. */
 const AFTER_STATUS: Partial<Record<CareTopic, string>> = { 'Cancel order': 'Solved', Invoice: 'Solved', 'Product question': 'Solved' };
 
+/**
+ * A check, in code, of whether an order can be cancelled or refunded: the "policy check" that sits between the AI and any money. It decides what may be
+ * PROPOSED; a person still decides what happens. For faults the answer is always "a person": New Zealand's rules make the remedy depend on whether a
+ * fault is minor or substantial, which the AI never decides.
+ */
+export interface RefundCheck { verdict: 'ok' | 'person' | 'no'; note: string; cancelAllowed: boolean }
+export function refundCheck(order: { state?: string; shipment?: string; payment?: string; total?: number; currency?: string }, topic: string, limit: number): RefundCheck {
+  const shipment = String(order.shipment || '').toLowerCase();
+  const paid = String(order.payment || '').toLowerCase() === 'paid';
+  const over = typeof order.total === 'number' && order.total > limit ? ` It is over the ${limit} a rep may decide, so the team lead decides.` : '';
+  if (topic === 'Cancel order') {
+    if (String(order.state || '').toLowerCase() === 'cancelled') return { verdict: 'no', note: 'The order is already cancelled.', cancelAllowed: false };
+    if (['shipped', 'delivered', 'partial'].includes(shipment)) return { verdict: 'no', note: 'The order has already been dispatched, so it cannot be cancelled. It becomes a return, which a person decides.', cancelAllowed: false };
+    if (shipment === 'ready') return { verdict: 'person', note: `The order is picked and waiting. The branch has to stop it before it can be cancelled.${over}`, cancelAllowed: true };
+    if (!paid) return { verdict: 'person', note: 'Payment is not recorded as paid, so there may be nothing to refund.', cancelAllowed: true };
+    return { verdict: 'ok', note: `The order has not been dispatched, so it can be cancelled and refunded.${over}`, cancelAllowed: true };
+  }
+  if (['Damaged item', 'Wrong or missing item', 'Return or refund', 'Warranty'].includes(topic)) return { verdict: 'person', note: `A person decides the remedy: it depends on the kind of fault, which only a person judges.${over}`, cancelAllowed: false };
+  return { verdict: 'ok', note: 'No money is involved.', cancelAllowed: false };
+}
+
 export interface StepContext {
   ticketId: number;
   topic: string;
@@ -80,6 +101,8 @@ export interface StepContext {
   subject: string;
   message: string;
   repName: string;
+  /** False when the order has already been dispatched: a cancellation is then not proposed. */
+  cancelAllowed?: boolean;
 }
 
 /**
@@ -96,7 +119,7 @@ export function stepsFor(c: StepContext): CareStep[] {
   }
   steps.push({ id: 's1', system: 'Zendesk', kind: 'customer', what: 'Send the reply and set the ticket to', before: 'Open', after, action: { tool: 'reply_to_ticket', args: { ticketId: c.ticketId, status: after.toLowerCase() } } });
   if (c.orderRef) {
-    if (c.topic === 'Cancel order') {
+    if (c.topic === 'Cancel order' && c.cancelAllowed !== false) {
       const amount = c.orderTotal != null ? `${c.currency ?? ''} ${c.orderTotal.toFixed(2)}`.trim() : '';
       steps.push({ id: 's2', system: 'commercetools', kind: 'money', what: `Cancel order ${c.orderRef} and record the refund`, before: 'Open', after: amount ? `Cancelled · ${amount}` : 'Cancelled', action: { tool: 'cancel_order', args: { orderNumber: c.orderRef } } });
     } else {

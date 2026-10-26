@@ -89,6 +89,8 @@ export interface CareTicket {
   stage: CareStage;
   /** What happened at each stage, with the time, oldest first. */
   timeline: CareTimelineEntry[];
+  /** Who approved, when, and how each change went (set once a person has approved). */
+  approval?: { by: { name: string; id: string }; at: string; edited: boolean; removedSteps: string[]; corrections?: { topic?: { from: string; to: string }; mood?: { from: string; to: string } }; results: Array<{ stepId: string; ok: boolean; message?: string }> };
 }
 
 export interface CareBoard {

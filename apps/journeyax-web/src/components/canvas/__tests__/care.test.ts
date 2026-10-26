@@ -3,6 +3,7 @@
  * status is a word as well as a colour.
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/components/canvas/__tests__/care.test.ts
  */
+import './fixtures-on';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';

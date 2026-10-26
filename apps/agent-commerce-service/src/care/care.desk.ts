@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import type { CareEvents } from './care.events';
 import type { CareIntake } from './care.intake';
 import type { CareProcessor } from './care.processor';
-import type { CareTeam } from './care.playbook';
+import { MOODS, TOPICS, type CareTeam } from './care.playbook';
 import type { CareStore } from './care.store';
 import type { CareWriteBack, CareActor } from './care.writeback';
 import { stageRank, type CareCase, type CareTicketView } from './care.types';
@@ -29,6 +29,9 @@ export interface DeskDeps {
   now?: () => Date;
   log?: (message: string) => void;
 }
+
+/** A ticket still marked "AI working" this long after its last change is finished from plain words and given to a person. */
+const STUCK_MS = 120_000;
 
 const hashOf = (draft: string, stepIds: string[]) => createHash('sha256').update(JSON.stringify({ draft, stepIds })).digest('hex');
 
@@ -64,7 +67,20 @@ export class CareDesk {
     if (!this.d.intake) return 0;
     const made = await this.d.intake.poll(tenantId);
     for (const doc of made) this.work(tenantId, doc.id);
+    await this.sweep(tenantId);
     return made.length;
+  }
+
+  /** Finds tickets the AI never finished (a worker that stopped part way, or one never started) and gets them to a person. */
+  async sweep(tenantId: string): Promise<void> {
+    for (const c of await this.d.store.list(tenantId)) {
+      if (c.status !== 'ai' || this.now().getTime() - Date.parse(c.updatedAt) < STUCK_MS) continue;
+      if (!c.claimedAt) this.work(tenantId, c.id);
+      else {
+        const job = this.d.processor.rescue(tenantId, c.id).catch((error) => this.d.log?.(`care: rescuing ${c.id} failed: ${String(error?.message || error)}`)).finally(() => { this.inFlight.delete(job); });
+        this.inFlight.add(job);
+      }
+    }
   }
 
   /** Starts the AI's work on a case without making the caller wait for it. */
@@ -87,11 +103,11 @@ export class CareDesk {
    * Approves exactly the draft and the steps the person sent, then carries the steps out one by one, announcing each. A step that fails stops the
    * run: the ticket stays open at "changes running" with the reason, and `retry` carries on from that step.
    */
-  async approve(tenantId: string, id: string, actor: CareActor, input: { draft?: unknown; removedSteps?: unknown }): Promise<Decision<{ ticket: CareTicketView; done: boolean }>> {
+  async approve(tenantId: string, id: string, actor: CareActor, input: { draft?: unknown; removedSteps?: unknown; topic?: unknown; mood?: unknown }): Promise<Decision<{ ticket: CareTicketView; done: boolean }>> {
     const doc = await this.d.store.get(tenantId, id);
     if (!doc) return { ok: false, code: 'not_found', message: 'There is no such ticket.' };
     const allowed = this.mayDecide(doc, actor);
-    if (!allowed.ok) return allowed;
+    if (allowed.ok === false) return allowed;
     if (doc.stage !== 'waiting') return { ok: false, code: 'not_ready', message: doc.stage === 'done' ? 'This ticket is already done.' : 'This ticket is not waiting for a decision.' };
     const draft = typeof input.draft === 'string' ? input.draft.trim() : doc.draft.text;
     if (doc.draft.isReply && draft.length < 5) return { ok: false, code: 'invalid', message: 'The reply is empty.' };
@@ -100,7 +116,11 @@ export class CareDesk {
     const kept = doc.steps.filter((s) => !removed.includes(s.id));
     if (!kept.length) return { ok: false, code: 'invalid', message: 'Every step was removed. Nothing would be approved.' };
     doc.draft = { ...doc.draft, text: draft };
-    doc.approval = { by: { name: actor.name, id: actor.id }, at: this.now().toISOString(), contentHash: hashOf(draft, kept.map((s) => s.id)), edited: draft !== doc.draft.original, removedSteps: removed, results: [] };
+    // Where the person disagreed with the AI's reading is kept, as the plainest signal of how well it is reading tickets.
+    const corrections: NonNullable<CareCase['approval']>['corrections'] = {};
+    if (typeof input.topic === 'string' && (TOPICS as readonly string[]).includes(input.topic) && input.topic !== doc.topic.value) { corrections.topic = { from: doc.topic.value, to: input.topic }; doc.topic = { value: input.topic, confidence: 'High' }; }
+    if (typeof input.mood === 'string' && (MOODS as readonly string[]).includes(input.mood) && input.mood !== doc.mood.value) { corrections.mood = { from: doc.mood.value, to: input.mood }; doc.mood = { value: input.mood, confidence: 'High' }; }
+    doc.approval = { by: { name: actor.name, id: actor.id }, at: this.now().toISOString(), contentHash: hashOf(draft, kept.map((s) => s.id)), edited: draft !== doc.draft.original, removedSteps: removed, ...(Object.keys(corrections).length ? { corrections } : {}), results: [] };
     doc.steps = kept;
     return this.run(doc, actor, 0, `Approved by ${actor.name} (${actor.id})${doc.approval.edited ? ', with edits' : ''}. Making the changes.`);
   }
@@ -137,7 +157,7 @@ export class CareDesk {
     const doc = await this.d.store.get(tenantId, id);
     if (!doc) return { ok: false, code: 'not_found', message: 'There is no such ticket.' };
     const allowed = this.mayDecide(doc, actor);
-    if (!allowed.ok) return allowed;
+    if (allowed.ok === false) return allowed;
     if (doc.stage !== 'waiting') return { ok: false, code: 'not_ready', message: 'This ticket is not waiting for a decision.' };
     doc.timeline.push({ stage: 'waiting', at: this.clock(), note: `${actor.name} did not approve it and will handle it. Nothing was changed.` });
     await this.save(doc);

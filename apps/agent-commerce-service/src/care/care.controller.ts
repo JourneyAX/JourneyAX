@@ -53,7 +53,7 @@ export class CareController {
   }
 
   @Post('tickets/:id/approve')
-  async approve(@Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined, @Body() body: { draft?: unknown; removedSteps?: unknown }) {
+  async approve(@Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined, @Body() body: { draft?: unknown; removedSteps?: unknown; topic?: unknown; mood?: unknown }) {
     const { tenantId, actor } = this.who(projectId, assertion);
     return this.answer(await this.care.desk.approve(tenantId, id, actor, body || {}));
   }

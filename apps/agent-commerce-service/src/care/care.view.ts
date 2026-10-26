@@ -2,13 +2,13 @@ import type { CareCase, CareTicketView } from './care.types';
 
 /** The case as the portal draws it: minutes to the promised time, and nothing the server alone should hold (the actions behind each step). */
 export function toView(doc: CareCase, nowMs: number): CareTicketView {
-  const { tenantId, requester, zendeskId, zendeskUpdatedAt, createdAt, updatedAt, dueAt, steps, draft, approval, ...rest } = doc;
-  void tenantId; void requester; void zendeskId; void zendeskUpdatedAt; void createdAt; void updatedAt;
+  const { tenantId, requester, zendeskId, zendeskUpdatedAt, createdAt, updatedAt, dueAt, steps, draft, approval, claimedAt, trace, ...rest } = doc;
+  void tenantId; void requester; void zendeskId; void zendeskUpdatedAt; void createdAt; void updatedAt; void claimedAt; void trace;
   return {
     ...rest,
     slaMinutes: Math.round((Date.parse(dueAt) - nowMs) / 60_000),
     steps: steps.map(({ action, ...step }) => { void action; return step; }),
     draft: { isReply: draft.isReply, text: draft.text },
-    ...(approval ? { approval: { by: approval.by, at: approval.at, edited: approval.edited, removedSteps: approval.removedSteps, results: approval.results } } : {}),
+    ...(approval ? { approval: { by: approval.by, at: approval.at, edited: approval.edited, removedSteps: approval.removedSteps, corrections: approval.corrections, results: approval.results } } : {}),
   };
 }
