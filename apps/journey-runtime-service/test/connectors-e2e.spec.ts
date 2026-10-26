@@ -179,13 +179,16 @@ describe('Connectors, end to end with a scripted model', () => {
       () => ({ content: 'Looked.' }),
     ], { ...staff, registry });
     const quiet = await ask({ ...JSON.parse(JSON.stringify(SAMPLE_REGISTRY)), announceSample: false });
-    assert.ok(!(quiet.requests[0].systemPrompt ?? '').includes('(sample data)'), 'no sample label in the instructions');
+    assert.ok(!/sample/i.test(quiet.requests[0].systemPrompt ?? ''), 'nothing about sample data in the instructions');
     assert.equal(quiet.toolResults[0].body.ok, true);
     assert.equal(quiet.toolResults[0].body.notice, undefined, 'no notice in the answer');
     assert.equal(quiet.toolResults[0].body.sample, undefined);
+    assert.ok(!JSON.stringify(quiet.toolResults[0].body.result).includes('"sample"'), 'the records carry no sample mark either');
     const loud = await ask(SAMPLE_REGISTRY);
     assert.ok((loud.requests[0].systemPrompt ?? '').includes('(sample data)'), 'by default the instructions say which systems hold sample data');
+    assert.ok((loud.requests[0].systemPrompt ?? '').includes('If a result is marked sample, say it is sample data.'));
     assert.match(loud.toolResults[0].body.notice, /sample data/);
+    assert.ok(JSON.stringify(loud.toolResults[0].body.result).includes('"sample":true'), 'by default the records keep their mark');
   });
 
   test('what a tool may be quoted for is declared in the registry: with no claim class on stock, the reply checker still holds back a stock claim', async () => {

@@ -35,7 +35,7 @@ export const CONNECTOR_META_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'call_connector_tool',
-    description: 'Call one tool of a connector. Load the connector\'s tools first and follow their inputs exactly; never invent a tool name. A tool that changes data may need a person\'s approval first: you then get status needs_approval and nothing has been done; tell the person what is waiting, and call again with the approvalRequestId only after they say they approved. When a result is marked sample, tell the person it is sample data.',
+    description: 'Call one tool of a connector. Load the connector\'s tools first and follow their inputs exactly; never invent a tool name. A tool that changes data may need a person\'s approval first: you then get status needs_approval and nothing has been done; tell the person what is waiting, and call again with the approvalRequestId only after they say they approved.',
     parameters: {
       type: 'object',
       properties: {
@@ -52,9 +52,11 @@ export const CONNECTOR_META_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 /** The connector list as a block of the agent's instructions. Empty when the person has no connector. */
 export function formatConnectors(summaries: ConnectorSummary[]): string {
   if (summaries.length === 0) return '';
+  // Said only when a listed system is sample data and the pack wants that announced (the summaries carry the mark only then).
+  const sampleLine = summaries.some((summary) => summary.sample) ? ' If a result is marked sample, say it is sample data.' : '';
   return (
     '# Connectors you can use\n' +
-    'Connectors are other systems the business keeps data in or acts on. Their tools are not loaded yet: when a request needs one, load that connector\'s tools with get_connector_tools, then use call_connector_tool. The connectors you can use are listed below, so you do not need list_connectors first: go straight to get_connector_tools for the one you need, and when a request needs two systems, load and call both in the same step. Do not guess tool names or inputs. If a result is marked sample, say it is sample data.\n' +
+    'Connectors are other systems the business keeps data in or acts on. Their tools are not loaded yet: when a request needs one, load that connector\'s tools with get_connector_tools, then use call_connector_tool. The connectors you can use are listed below, so you do not need list_connectors first: go straight to get_connector_tools for the one you need, and when a request needs two systems, load and call both in the same step. Do not guess tool names or inputs.' + sampleLine + '\n' +
     summaries.map((summary) => `- ${summary.connector}: ${summary.description}${summary.sample ? ' (sample data)' : ''}`).join('\n')
   );
 }

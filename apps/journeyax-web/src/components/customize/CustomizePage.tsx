@@ -481,7 +481,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
                 onTry={onTry}
               />
             )}
-            {data && tab === 'plugins' && <PluginsTab scope={scope} query={query} plugins={data.plugins} agents={agents} skills={data.skills} systems={data.systems} />}
+            {data && tab === 'plugins' && <PluginsTab scope={scope} query={query} plugins={data.plugins} agents={agents} skills={data.skills} systems={data.systems} rules={data.connectorRules ?? []} />}
             {data && tab === 'knowledge' && <KnowledgeTab scope={scope} query={query} knowledge={data.knowledge} by={by} />}
             {data && tab === 'personas' && (
               <PersonasPane overview={data} query={query} tenant={tenant} open={open} onOpen={setOpen} onToast={setToast} onTryQuestion={(question) => { setPrefill(tenant, question); onTry(); }} />
@@ -692,8 +692,8 @@ function KnowledgeTab({ scope, query, knowledge, by }: {
 }
 
 /* ── Plugins ─────────────────────────────────────────────────────────── */
-function PluginsTab({ scope, query, plugins, agents, skills, systems }: {
-  scope: Scope; query: string; plugins: OverviewPlugin[]; agents: OverviewAgent[]; skills: OverviewSkill[]; systems: OverviewSystem[];
+function PluginsTab({ scope, query, plugins, agents, skills, systems, rules }: {
+  scope: Scope; query: string; plugins: OverviewPlugin[]; agents: OverviewAgent[]; skills: OverviewSkill[]; systems: OverviewSystem[]; rules: OverviewConnectorRules[];
 }) {
   if (scope === 'discover') {
     return <Empty title="No plugins to discover">{''}</Empty>;
@@ -708,7 +708,8 @@ function PluginsTab({ scope, query, plugins, agents, skills, systems }: {
   const nameOf = (list: Array<{ id: string; name: string }>) => (id: string) => list.find((entry) => entry.id === id)?.name || id;
   const agentName = nameOf(agents.map((a) => ({ id: a.agentId, name: a.name })));
   const skillName = nameOf(skills.map((s) => ({ id: s.skillId, name: s.name })));
-  const systemName = nameOf(systems.map((s) => ({ id: s.connectorId, name: tidyName(s.name) })));
+  // A system that is switched off is not in `systems`, but the rules list still has its name.
+  const systemName = nameOf([...systems, ...rules].map((s) => ({ id: s.connectorId, name: tidyName(s.name) })));
   return (
     <ul className="ax-grid">
       {shown.map((p) => {

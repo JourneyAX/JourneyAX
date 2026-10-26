@@ -115,6 +115,18 @@ const SAMPLE_NOTICE = 'This connector runs on sample data, not on the live syste
 const noticeFor = (registry: ConnectorsExtension | undefined, connector: { sample?: boolean }) =>
   connector.sample && registry?.announceSample !== false ? { sample: true, notice: SAMPLE_NOTICE } : {};
 
+/** A sample system's records carry `sample: true` of their own; a pack that does not want sample data announced does not show the assistant those marks either. */
+function withoutSampleMarks(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutSampleMarks);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key, entry]) => !(key === 'sample' && typeof entry === 'boolean')).map(([key, entry]) => [key, withoutSampleMarks(entry)]));
+  }
+  return value;
+}
+
+const shownResult = (registry: ConnectorsExtension | undefined, connector: { sample?: boolean }, result: unknown) =>
+  connector.sample && registry?.announceSample === false ? withoutSampleMarks(result) : result;
+
 export function connectorToolId(connectorId: string, tool: string): string {
   return `connector:${connectorId}.${tool}`;
 }
@@ -330,7 +342,7 @@ export class ConnectorRuntime {
       connector: connectorId,
       tool: toolName,
       ...noticeFor(registry, connector),
-      result: output.data !== undefined ? output.data : output.text ?? '',
+      result: shownResult(registry, connector, output.data !== undefined ? output.data : output.text ?? ''),
       ...(output.truncated ? { truncated: true, ...(output.omitted ? { omitted: output.omitted } : {}) } : {}),
       claimClasses: listed?.claimClasses ?? [],
     };
@@ -386,7 +398,8 @@ export class ConnectorRuntime {
     }
     audit('success');
     const output = (response.output ?? {}) as { text?: string; data?: unknown };
-    return { ok: true as const, ...noticeFor(this.registryOf(release), connector), result: output.data !== undefined ? output.data : output.text ?? '', claimClasses: listed.claimClasses ?? [] };
+    const registry = this.registryOf(release);
+    return { ok: true as const, ...noticeFor(registry, connector), result: shownResult(registry, connector, output.data !== undefined ? output.data : output.text ?? ''), claimClasses: listed.claimClasses ?? [] };
   }
 }
 
