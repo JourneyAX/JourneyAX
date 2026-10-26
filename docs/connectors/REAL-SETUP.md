@@ -119,8 +119,8 @@ How figures work: Power BI only lets a program read data by running a DAX query 
 Zendesk is the ticket desk for the customer-service team: tickets are the conversations with customers (an order that has not arrived, a quote request, a warranty question). Salesforce cases stay the CRM's record of the same customers' problems.
 
 1. Start the trial at zendesk.com. Note the **subdomain** (the part before `.zendesk.com`).
-2. Admin Center > Apps and integrations > APIs > **API configuration**: read and accept Zendesk's developer terms (that is your decision, so you tick it), then switch on token access.
-3. APIs > **API tokens** > Add API token, name it "JourneyAX connector". The token is shown once. Put the subdomain, the agent's e-mail and the token in `.env.connectors` as `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`.
+2. Admin Center > Apps and integrations > APIs > **API configuration**: read and accept Zendesk's developer terms (your decision), then switch on token access.
+3. **API tokens are gone for new accounts**: Zendesk stopped issuing them on 28 July 2026 and switches every one off on 30 April 2027. Connect with an **OAuth client** instead: APIs > **OAuth clients** > Add OAuth client. Name "JourneyAX connector", Identifier `journeyax_connector`, **Client kind: Confidential**. The page shows the generated **Secret once**, before you save: copy it then. Put the subdomain, identifier and secret in `.env.connectors` as `ZENDESK_SUBDOMAIN`, `ZENDESK_CLIENT_ID`, `ZENDESK_CLIENT_SECRET`. The connector gets a 30-minute access token with the client credentials grant and asks again when it runs out. The client acts as the administrator who made it.
 4. Load sample tickets (dry run first):
    ```bash
    npx tsx --env-file=.env.connectors packages/connectors-real/scripts/loaders/zendesk.ts            # dry run

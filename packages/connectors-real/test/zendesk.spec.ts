@@ -10,18 +10,29 @@ const deps = realDeps();
 const TOKEN = 'zd-api-token-very-private-4471';
 const EMAIL = 'agent@example.test';
 const BASIC = `Basic ${Buffer.from(`${EMAIL}/token:${TOKEN}`).toString('base64')}`;
+const CLIENT_ID = 'journeyax_connector';
+const CLIENT_SECRET = 'zd-oauth-secret-very-private-9981';
 
 type Rec = Record<string, any>;
 const envFor = (url: string, extra: Rec = {}) => ({ ZENDESK_SUBDOMAIN: 'placemakers-demo', ZENDESK_EMAIL: EMAIL, ZENDESK_API_TOKEN: TOKEN, ZENDESK_API_URL: url, ...extra });
+const oauthEnvFor = (url: string, extra: Rec = {}) => ({ ZENDESK_SUBDOMAIN: 'placemakers-demo', ZENDESK_CLIENT_ID: CLIENT_ID, ZENDESK_CLIENT_SECRET: CLIENT_SECRET, ZENDESK_API_URL: url, ...extra });
 
 /** A pretend Zendesk: it remembers the people and tickets it is given, answers the requests the connector and loader make, and checks the sign-in on every one. */
-function desk(options: { canned?: (request: Seen) => any } = {}) {
+function desk(options: { canned?: (request: Seen) => any; expireTokens?: boolean } = {}) {
+  const issued: string[] = [];
   const users = new Map<string, Rec>();
   const tickets: Rec[] = [];
   let ids = 1000;
   const rejected: string[] = [];
   const answer = (request: Seen) => {
-    if (request.headers.authorization !== BASIC) { rejected.push(request.path); return { status: 401, json: { error: 'Couldn\'t authenticate you' } }; }
+    if (request.path === '/oauth/tokens') {
+      const body = request.body ?? {};
+      if (body.grant_type !== 'client_credentials' || body.client_id !== CLIENT_ID || body.client_secret !== CLIENT_SECRET) return { status: 401, json: { error: 'invalid_client', error_description: `Client authentication failed ${body.client_secret}` } };
+      issued.push(`oauth-token-${issued.length + 1}`);
+      return { status: 201, json: { access_token: issued.at(-1), token_type: 'bearer', scope: body.scope, expires_in: 1800 } };
+    }
+    const signedIn = request.headers.authorization === BASIC || (Boolean(request.headers.authorization) && request.headers.authorization === `Bearer ${issued.at(-1)}` && !options.expireTokens);
+    if (!signedIn) { rejected.push(request.path); return { status: 401, json: { error: 'invalid_token', description: 'The access token provided is invalid' } }; }
     const path = request.path.replace('/api/v2', '');
     if (options.canned) { const custom = options.canned(request); if (custom) return custom; }
     if (path === '/users/me.json') return { json: { user: { id: 1, name: 'Agent', role: 'admin' } } };
@@ -39,7 +50,7 @@ function desk(options: { canned?: (request: Seen) => any } = {}) {
     }
     return undefined;
   };
-  return { answer, users, tickets, rejected };
+  return { answer, users, tickets, rejected, issued };
 }
 
 async function setup(answer: (request: Seen) => any, extra: Rec = {}) {
@@ -54,7 +65,9 @@ async function main() {
     assert.deepEqual(await listTools(server, 'zendesk'), []);
     const result: any = await callTool(server, 'zendesk', 'find_tickets', {});
     assert.equal(result.payload.error.code, 'not_connected');
-    assert.deepEqual(server.health().connectors[0].missing, ['ZENDESK_SUBDOMAIN', 'ZENDESK_EMAIL', 'ZENDESK_API_TOKEN']);
+    assert.deepEqual(server.health().connectors[0].missing, ['ZENDESK_SUBDOMAIN', 'ZENDESK_CLIENT_ID', 'ZENDESK_CLIENT_SECRET']);
+    assert.deepEqual(zendesk({ ZENDESK_SUBDOMAIN: 'x', ZENDESK_EMAIL: EMAIL, ZENDESK_API_TOKEN: TOKEN }, deps).missing(), [], 'the older e-mail and token pair still counts as connected');
+    assert.deepEqual(zendesk({ ZENDESK_SUBDOMAIN: 'x', ZENDESK_CLIENT_ID: CLIENT_ID }, deps).missing(), ['ZENDESK_CLIENT_SECRET']);
   });
 
   await t.test('it offers four tools and only create_ticket and add_ticket_note change anything', async () => {
@@ -65,7 +78,7 @@ async function main() {
     await vendor.close();
   });
 
-  await t.test('every call carries the e-mail/token sign-in as a Basic credential, there is no sign-in call, and a subdomain that is not a plain name is refused before anything is sent', async () => {
+  await t.test('with the older e-mail and API token every call carries them as a Basic credential, there is no sign-in call, and a subdomain that is not a plain name is refused before anything is sent', async () => {
     const { vendor, call } = await setup(() => ({ json: { results: [], count: 0 } }));
     await call('find_tickets', {});
     await call('find_tickets', { status: 'open' });
@@ -76,6 +89,50 @@ async function main() {
     const refused: any = await callTool(server, 'zendesk', 'find_tickets', {});
     assert.equal(refused.payload.error.code, 'not_connected');
     assert.match(refused.payload.error.message, /only the name before \.zendesk\.com/);
+  });
+
+  await t.test('with an OAuth client it asks Zendesk once for an access token (client credentials, read and write), sends it as a Bearer credential, and reuses it', async () => {
+    const zd = desk({ canned: (request) => (request.path.endsWith('/search.json') ? { json: { results: [], count: 0 } } : undefined) });
+    const vendor = await mockVendor(zd.answer);
+    const server = serverFor(zendesk(oauthEnvFor(vendor.url), deps));
+    await callTool(server, 'zendesk', 'find_tickets', {});
+    await callTool(server, 'zendesk', 'find_tickets', { status: 'open' });
+    const asked = vendor.seen.filter((request) => request.path === '/oauth/tokens');
+    assert.equal(asked.length, 1, 'one request for a token');
+    assert.equal(asked[0].method, 'POST');
+    assert.deepEqual(asked[0].body, { grant_type: 'client_credentials', client_id: CLIENT_ID, client_secret: CLIENT_SECRET, scope: 'read write' });
+    const calls = vendor.seen.filter((request) => request.path !== '/oauth/tokens');
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every((request) => request.headers.authorization === 'Bearer oauth-token-1'));
+    assert.equal(zd.rejected.length, 0);
+    await vendor.close();
+  });
+
+  await t.test('an access token Zendesk stops accepting is replaced once and the call repeated; a refused client is reported as a sign-in problem with no secret in it', async () => {
+    let calls = 0;
+    const zd = desk({ canned: (request) => {
+      if (!request.path.endsWith('/search.json')) return undefined;
+      calls++;
+      return request.headers.authorization === 'Bearer oauth-token-1' ? { status: 401, json: { error: 'invalid_token', description: 'The access token provided is invalid' } } : { json: { results: [], count: 0 } };
+    } });
+    const vendor = await mockVendor((request) => {
+      // The first token is refused by the search (as if it had run out); the second is accepted.
+      if (request.path.endsWith('/search.json') && request.headers.authorization === 'Bearer oauth-token-2') return { json: { results: [], count: 0 } };
+      if (request.path.endsWith('/search.json') && request.headers.authorization === 'Bearer oauth-token-1') return { status: 401, json: { error: 'invalid_token' } };
+      return zd.answer(request);
+    });
+    const server = serverFor(zendesk(oauthEnvFor(vendor.url), deps));
+    const renewed: any = await callTool(server, 'zendesk', 'find_tickets', {});
+    assert.equal(renewed.payload.ok, true);
+    assert.equal(vendor.seen.filter((request) => request.path === '/oauth/tokens').length, 2, 'a second token was asked for');
+    await vendor.close();
+    const wrong = await mockVendor(desk().answer);
+    const refused: any = await callTool(serverFor(zendesk(oauthEnvFor(wrong.url, { ZENDESK_CLIENT_SECRET: 'not-the-secret-0000000000000000' }), deps)), 'zendesk', 'find_tickets', {});
+    assert.equal(refused.payload.error.code, 'not_authorised');
+    assert.match(refused.payload.error.message, /did not accept our sign-in/);
+    assert.ok(!leaks(refused, CLIENT_SECRET) && !leaks(refused, 'not-the-secret-0000000000000000'), 'neither secret is in the message');
+    await wrong.close();
+    assert.ok(calls >= 0);
   });
 
   await t.test('find_tickets builds a safe search: words with operators taken out, status groups, priority, requester and tag, newest first, and shapes who asked', async () => {
@@ -198,7 +255,7 @@ async function main() {
     assert.equal(dry.tickets.created, 0);
     assert.equal(vendor.seen.length, 0);
     assert.match(logs[0], /Dry run\. Would load: 36 tickets \(13 solved, 10 open, 6 pending, 7 new\) from 32 customers/);
-    await assert.rejects(loadZendesk({ env: { ZENDESK_SUBDOMAIN: 'x' }, deps, apply: true }), /ZENDESK_EMAIL, ZENDESK_API_TOKEN/);
+    await assert.rejects(loadZendesk({ env: { ZENDESK_SUBDOMAIN: 'x' }, deps, apply: true }), /ZENDESK_CLIENT_ID, ZENDESK_CLIENT_SECRET/);
     await vendor.close();
   });
 
@@ -232,6 +289,19 @@ async function main() {
     assert.deepEqual(again.tickets, { created: 0, existing: 36 });
     assert.equal(vendor.seen.filter((request) => request.method === 'POST' && request.path.endsWith('/imports/tickets.json')).length, before, 'nothing imported twice');
     assert.equal(zd.tickets.length, 36);
+    await vendor.close();
+  });
+
+  await t.test('the loader signs in the same way as the connector: with an OAuth client it asks for a token, uses it as a Bearer credential, and loads the same tickets', async () => {
+    const zd = desk();
+    const vendor = await mockVendor(zd.answer);
+    const logs: string[] = [];
+    const summary = await loadZendesk({ env: oauthEnvFor(vendor.url), deps, apply: true, log: (line) => logs.push(line) });
+    assert.deepEqual(summary.tickets, { created: 36, existing: 0 });
+    assert.equal(zd.issued.length, 1, 'one token served the whole load');
+    assert.equal(zd.rejected.length, 0);
+    assert.ok(!leaks(logs, CLIENT_SECRET));
+    await assert.rejects(loadZendesk({ env: { ZENDESK_SUBDOMAIN: 'x', ZENDESK_CLIENT_ID: CLIENT_ID }, deps, apply: true }), /ZENDESK_CLIENT_ID, ZENDESK_CLIENT_SECRET/);
     await vendor.close();
   });
 

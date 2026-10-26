@@ -3,20 +3,24 @@
  * request, a warranty question); Salesforce cases are the CRM's record of the same customers' problems.
  *
  * Settings (names only here):
- *   ZENDESK_SUBDOMAIN   the part before .zendesk.com, for example placemakers-demo
- *   ZENDESK_EMAIL       the e-mail address of the agent the API token belongs to
- *   ZENDESK_API_TOKEN   Admin Center > Apps and integrations > APIs > Zendesk API > Add API token
- *   optional: ZENDESK_API_URL (override the address, for a test)
+ *   ZENDESK_SUBDOMAIN       the part before .zendesk.com, for example placemakers-demo
+ *   and one of:
+ *     ZENDESK_CLIENT_ID + ZENDESK_CLIENT_SECRET   an OAuth client (Admin Center > Apps and integrations > APIs > OAuth clients, kind Confidential): its
+ *                                                 Identifier and Secret. The connector asks Zendesk for a 30-minute access token with the client
+ *                                                 credentials grant, and asks again when it runs out. This is the way new accounts connect.
+ *     ZENDESK_EMAIL + ZENDESK_API_TOKEN           an agent's e-mail and an API token. Zendesk has stopped giving API tokens to new accounts and
+ *                                                 switches every API token off on 30 April 2027; this is kept only for accounts that still have one.
+ *   optional: ZENDESK_SCOPE (default "read write"), ZENDESK_API_URL (override the address, for a test)
  *
  * What it can change: it can raise a ticket (create_ticket) and add an INTERNAL note to one (add_ticket_note). It never sends a public reply, so
  * nothing the assistant does is read by a customer except the ticket-received message Zendesk itself sends for a new ticket. It cannot edit,
  * close or delete anything. Both writes ask the person first (the pack says so).
  */
 import { ToolError, type Deps, type Env, type RealConnector, type Rec, type ToolSpec } from '../types';
-import { TokenCache, VendorClient, boundedInt, clip, compact, setting, settingsMissing } from '../http';
+import { TokenCache, VendorClient, boundedInt, clip, compact, errorFor, redact, send, setting, vendorMessage } from '../http';
 
 const SYSTEM = 'Zendesk';
-const REQUIRED = ['ZENDESK_SUBDOMAIN', 'ZENDESK_EMAIL', 'ZENDESK_API_TOKEN'];
+const REQUIRED = ['ZENDESK_SUBDOMAIN', 'ZENDESK_CLIENT_ID', 'ZENDESK_CLIENT_SECRET'];
 const SUBDOMAIN = /^[a-z0-9][a-z0-9-]{0,62}$/i;
 const EMAIL = /^[^@\s"'<>]{1,64}@[^@\s"'<>]{1,255}$/;
 const TAG = /^[a-z0-9][a-z0-9_-]{0,59}$/;
@@ -26,8 +30,13 @@ const TYPES = ['question', 'incident', 'problem', 'task'];
 /** Tickets the assistant raises carry this tag, so a person can find them and Zendesk rules can route them. */
 const ASSISTANT_TAG = 'jx-assistant';
 
-export function zendesk(env: Env, deps: Deps): RealConnector {
-  const secrets = () => [setting(env, 'ZENDESK_API_TOKEN') ?? ''];
+/**
+ * How to reach Zendesk and sign in, shared by the connector and the sample-ticket loader: the address, the secrets to keep out of messages, and
+ * a current credential (an OAuth access token that is renewed, or the legacy e-mail/token pair).
+ */
+export function zendeskAccess(env: Env, deps: Deps) {
+  const oauth = () => Boolean(setting(env, 'ZENDESK_CLIENT_ID') && setting(env, 'ZENDESK_CLIENT_SECRET'));
+  const secrets = () => [setting(env, 'ZENDESK_CLIENT_SECRET') ?? '', setting(env, 'ZENDESK_API_TOKEN') ?? ''];
   const base = (): string => {
     const override = setting(env, 'ZENDESK_API_URL');
     if (override) return override.replace(/\/$/, '');
@@ -36,11 +45,27 @@ export function zendesk(env: Env, deps: Deps): RealConnector {
     if (!SUBDOMAIN.test(subdomain)) throw new ToolError('not_connected', 'ZENDESK_SUBDOMAIN must be only the name before .zendesk.com.');
     return `https://${subdomain}.zendesk.com`;
   };
-  // Zendesk signs in with "e-mail/token:API token" as a Basic credential. It does not expire; a 401 means the token was revoked.
   const tokens = new TokenCache(deps.now);
-  const credentials = async () => ({ token: Buffer.from(`${setting(env, 'ZENDESK_EMAIL')}/token:${setting(env, 'ZENDESK_API_TOKEN')}`).toString('base64'), expiresInSec: 3600 });
-  const client = new VendorClient({ system: SYSTEM, deps, secrets, token: () => tokens.get(credentials), forgetToken: () => tokens.clear(), scheme: 'Basic' });
-  const api = (method: string, path: string, request: { query?: Rec; body?: unknown } = {}) => client.json(method, `${base()}/api/v2${path}`, request);
+  async function fetchToken() {
+    if (!oauth()) {
+      // The legacy pair is itself the credential: "e-mail/token:API token", as a Basic credential. It does not expire.
+      return { token: Buffer.from(`${setting(env, 'ZENDESK_EMAIL')}/token:${setting(env, 'ZENDESK_API_TOKEN')}`).toString('base64'), expiresInSec: 3600 };
+    }
+    const answer = await send(deps, SYSTEM, 'POST', `${base()}/oauth/tokens`, {
+      body: { grant_type: 'client_credentials', client_id: setting(env, 'ZENDESK_CLIENT_ID'), client_secret: setting(env, 'ZENDESK_CLIENT_SECRET'), scope: setting(env, 'ZENDESK_SCOPE') ?? 'read write' },
+    });
+    if (!answer.ok || typeof answer.json?.access_token !== 'string') {
+      throw errorFor(SYSTEM, answer.status === 400 || answer.status === 401 ? 401 : answer.status || 500, redact(vendorMessage(answer.json, answer.text), secrets()));
+    }
+    return { token: answer.json.access_token as string, expiresInSec: Number(answer.json.expires_in) || 1800 };
+  }
+  return { base, secrets, scheme: (): 'Bearer' | 'Basic' => (oauth() ? 'Bearer' : 'Basic'), token: () => tokens.get(fetchToken), forget: () => tokens.clear() };
+}
+
+export function zendesk(env: Env, deps: Deps): RealConnector {
+  const access = zendeskAccess(env, deps);
+  const client = new VendorClient({ system: SYSTEM, deps, secrets: access.secrets, token: access.token, forgetToken: access.forget, scheme: access.scheme() });
+  const api = (method: string, path: string, request: { query?: Rec; body?: unknown } = {}) => client.json(method, `${access.base()}/api/v2${path}`, request);
 
   const peopleById = async (ids: Array<number | string | null | undefined>): Promise<Map<string, { name?: string; email?: string }>> => {
     const wanted = [...new Set(ids.filter((id): id is number | string => id !== null && id !== undefined).map(String))].slice(0, 100);
@@ -186,7 +211,14 @@ export function zendesk(env: Env, deps: Deps): RealConnector {
     title: 'Zendesk',
     description: 'The customer-service ticket desk: support tickets and their conversations.',
     required: REQUIRED,
-    missing: () => settingsMissing(env, REQUIRED),
+    missing: () => {
+      const missing: string[] = [];
+      if (!setting(env, 'ZENDESK_SUBDOMAIN') && !setting(env, 'ZENDESK_API_URL')) missing.push('ZENDESK_SUBDOMAIN');
+      const oauth = Boolean(setting(env, 'ZENDESK_CLIENT_ID') && setting(env, 'ZENDESK_CLIENT_SECRET'));
+      const legacy = Boolean(setting(env, 'ZENDESK_EMAIL') && setting(env, 'ZENDESK_API_TOKEN'));
+      if (!oauth && !legacy) for (const name of ['ZENDESK_CLIENT_ID', 'ZENDESK_CLIENT_SECRET']) if (!setting(env, name)) missing.push(name);
+      return missing;
+    },
     tools,
   };
 }
