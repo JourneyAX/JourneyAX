@@ -129,7 +129,7 @@ describe('Connectors, end to end with a scripted model', () => {
     assert.deepEqual(issues.filter((i) => i.severity === 'error'), [], 'the publication gate finds no error in the draft');
     const warned = new Set(issues.filter((i) => i.severity === 'warning').map((i) => /connectors\[(\d+)\]/.exec(i.path)?.[1]).filter(Boolean).map(Number));
     current.connectors.forEach((connector, index) => {
-      if (['commercetools', 'salesforce', 'google-analytics', 'power-bi'].includes(connector.connectorId)) {
+      if (['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'zendesk'].includes(connector.connectorId)) {
         assert.equal(connector.sample, false, `${connector.connectorId} is real`);
         assert.equal(warned.has(index), false, `${connector.connectorId} raises no sample-data warning`);
       } else assert.equal(connector.sample, true, `${connector.connectorId} is still sample data until a real system stands behind it`);
