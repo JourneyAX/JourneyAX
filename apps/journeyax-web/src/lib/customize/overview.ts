@@ -6,7 +6,7 @@
  * Agent system prompts are never part of the overview.
  */
 import { describeTool, PLATFORM_TOOLS } from './tool-catalog';
-import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledge, OverviewPlugin, OverviewSkill, OverviewSystem, SkillAccessEntry } from './types';
+import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledge, OverviewPlugin, OverviewSkill, OverviewSystem, OverviewTeam, OverviewToolOption, SkillAccessEntry } from './types';
 
 const str = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(str).filter(Boolean) : []);
@@ -148,7 +148,7 @@ export function buildConnectors(agents: OverviewAgent[]): OverviewConnector[] {
   return ids.map((id) => ({ id, ...describeTool(id), kind: 'platform_tool' as const, usedBy: usedBy.get(id) || [] }));
 }
 
-export function buildOverview(tenantId: string, published: Json, opts: { canViewInstructions: boolean }): CustomizeOverview {
+export function buildOverview(tenantId: string, published: Json, opts: { canViewInstructions: boolean; canEdit?: boolean; teams?: OverviewTeam[]; toolOptions?: OverviewToolOption[] }): CustomizeOverview {
   const agents = readAgents(published);
   const version = str(published.packVersion);
   return {
@@ -161,6 +161,9 @@ export function buildOverview(tenantId: string, published: Json, opts: { canView
     knowledge: readKnowledge(published),
     connectors: buildConnectors(agents),
     canViewInstructions: opts.canViewInstructions,
+    canEdit: opts.canEdit === true && opts.canViewInstructions,
+    teams: opts.teams ?? [],
+    toolOptions: opts.toolOptions ?? [],
   };
 }
 

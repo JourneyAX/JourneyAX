@@ -22,7 +22,12 @@ import { copyText } from '@/lib/shell/clipboard';
 import { type AgentDraft, type AgentDraftInput, draftToPackAgentJson, loadDrafts, removeDraft, saveDrafts, upsertDraft } from '@/lib/customize/drafts';
 import { describePluginAccess, describeSkillAccess } from '@/lib/customize/overview';
 import type { CustomizeOverview, OverviewAgent, OverviewConnector, OverviewKnowledgeSource, OverviewPlugin, OverviewSkill, OverviewSystem } from '@/lib/customize/types';
+import {
+  EMPTY_SKILL, agentsCarrying, draftFromSkill, draftToInput, fingerprintOfOverviewSkill, loadSkillDrafts, removeSkillDraft, saveSkillDrafts, upsertSkillDraft,
+  type SkillDraft, type SkillDraftInput,
+} from '@/lib/customize/skillDrafts';
 import AgentForm from './AgentForm';
+import SkillForm from './SkillForm';
 import { useOverview } from './useOverview';
 import { ViewAs } from './ViewAs';
 
@@ -95,6 +100,9 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const [query, setQuery] = useState('');
   const [drafts, setDrafts] = useState<AgentDraft[]>([]);
   const [form, setForm] = useState<{ draft?: AgentDraft; presetTools?: string[] } | null>(null);
+  const [skillDrafts, setSkillDrafts] = useState<SkillDraft[]>([]);
+  const [skillForm, setSkillForm] = useState<{ draft?: SkillDraft; seed: SkillDraftInput } | null>(null);
+  const [skillBusy, setSkillBusy] = useState('');
   const [toast, setToast] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const addRef = useRef<HTMLDivElement>(null);
@@ -102,7 +110,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   useDismiss(addRef, addOpen, closeAdd);
   const tenant = cfg.projectId;
 
-  useEffect(() => { setDrafts(loadDrafts(tenant)); }, [tenant]);
+  useEffect(() => { setDrafts(loadDrafts(tenant)); setSkillDrafts(loadSkillDrafts(tenant)); }, [tenant]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(''), 3200);
@@ -145,6 +153,79 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
       setPublishing('');
     }
   };
+
+  const persistSkills = (next: SkillDraft[]) => {
+    setSkillDrafts(next);
+    if (!saveSkillDrafts(tenant, next)) setToast('This browser would not keep the draft (storage is blocked or full).');
+  };
+  const saveSkillDraft = (input: SkillDraftInput) => {
+    const { list, draft } = upsertSkillDraft(skillDrafts, input, skillForm?.draft?.draftId);
+    persistSkills(list);
+    setSkillForm(null);
+    setTab('skills');
+    setScope('yours');
+    setToast(`Saved “${draft.name}” as a draft. It is not live.`);
+  };
+  const skillsApi = async (body: Record<string, unknown>) => {
+    const res = await fetch(`/api/customize/skills?project=${encodeURIComponent(tenant || '')}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const result = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, result };
+  };
+  // Makes a skill draft live: the server writes it, publishes through the publication gate, and puts everything back if the gate refuses.
+  const makeSkillLive = async (draft: SkillDraft) => {
+    if (skillBusy || !data) return;
+    const holders = describeHolders(draft);
+    const ok = window.confirm(`Make “${draft.name}” live?\n\n${draft.replaces ? 'It replaces the live skill and the configuration is published.' : 'It is added as a new skill and the configuration is published.'} It is carried by ${draft.agents.length ? draft.agents.map((id) => data.agents.find((a) => a.agentId === id)?.name || id).join(', ') : 'no assistant yet'}. ${holders}\n\nThe publication check runs first; if it refuses, nothing is changed.`);
+    if (!ok) return;
+    setSkillBusy(draft.draftId);
+    try {
+      const { ok: saved, status, result } = await skillsApi({ op: 'save', mode: draft.replaces ? 'update' : 'create', base: draft.base, skill: draftToInput(draft) });
+      if (!saved) { setToast(status === 409 ? `${String(result?.error || 'The skill changed elsewhere.')}` : String(result?.error || 'The skill could not be made live.')); return; }
+      persistSkills(removeSkillDraft(skillDrafts, draft.draftId));
+      setToast(`“${draft.name}” is live${result?.version ? ` (configuration ${result.version})` : ''}.`);
+      reload();
+    } catch {
+      setToast('The skill could not be made live: the service did not answer.');
+    } finally {
+      setSkillBusy('');
+    }
+  };
+  const deleteLiveSkill = async (skill: OverviewSkill) => {
+    if (skillBusy || !data) return;
+    const carriers = agentsCarrying(data.agents, skill.skillId).map((id) => data.agents.find((a) => a.agentId === id)?.name || id);
+    const plugins = data.plugins.filter((p) => p.provides.skills.includes(skill.skillId)).map((p) => p.name);
+    const ok = window.confirm(`Delete the skill “${skill.name}” and publish?\n\n${carriers.length ? `It stops being carried by ${carriers.join(', ')}.` : 'No assistant carries it.'}${plugins.length ? ` It is also removed from ${plugins.join(', ')}.` : ''}\n\nThe publication check runs first; if it refuses, nothing is changed. Deleting cannot be undone from this page (the earlier configuration can be restored from the back office).`);
+    if (!ok) return;
+    setSkillBusy(skill.skillId);
+    try {
+      const { ok: done, result } = await skillsApi({ op: 'delete', skillId: skill.skillId, base: fingerprintOfOverviewSkill(skill, data.agents) });
+      if (!done) { setToast(String(result?.error || 'The skill could not be deleted.')); return; }
+      setToast(`“${skill.name}” was deleted${result?.version ? ` (configuration ${result.version})` : ''}.`);
+      reload();
+    } catch {
+      setToast('The skill could not be deleted: the service did not answer.');
+    } finally {
+      setSkillBusy('');
+    }
+  };
+  /** Keep my edits on top of the latest live version of the skill the draft changes (the next Make live overwrites what was changed elsewhere). */
+  const rebaseSkillDraft = (draft: SkillDraft) => {
+    if (!data) return;
+    const live = data.skills.find((s) => s.skillId === draft.replaces);
+    if (!live) {
+      // The skill it changed has been deleted: the draft becomes a new skill.
+      persistSkills(skillDrafts.map((d) => { if (d.draftId !== draft.draftId) return d; const { replaces: _r, base: _b, ...rest } = d; return rest; }));
+      setToast('The skill you were changing is gone, so this draft will be added as a new skill when you make it live.');
+      return;
+    }
+    persistSkills(skillDrafts.map((d) => (d.draftId === draft.draftId ? { ...d, base: fingerprintOfOverviewSkill(live, data.agents) } : d)));
+    setToast('Your draft will now replace the latest live version when you make it live.');
+  };
+  const describeHolders = (draft: SkillDraft) => (draft.access.length === 0
+    ? 'It has no rows saying who has it, so EVERYONE, shoppers included, gets it.'
+    : `Who has it: ${draft.access.map((r) => describeSkillAccess({ audience: r.audience, groups: r.groups, level: r.level })).join('; ')}.`);
 
   const by = cfg.companyName || 'Your organisation';
   const agents = useMemo(() => data?.agents ?? [], [data]);
@@ -223,9 +304,15 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
                     <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); setForm({}); }}>
                       <AgentIcon size={16} /> New agent
                     </button>
-                    <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()}>
-                      <SkillIcon size={16} /> New skill <span className="ax-badge">Back office</span>
-                    </button>
+                    {data?.canEdit ? (
+                      <button type="button" role="menuitem" className="ax-menu__item" onClick={() => { setAddOpen(false); setSkillForm({ seed: EMPTY_SKILL }); }}>
+                        <SkillIcon size={16} /> New skill
+                      </button>
+                    ) : (
+                      <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()} title="Changing skills needs permission to publish the configuration">
+                        <SkillIcon size={16} /> New skill <span className="ax-badge">Needs publish permission</span>
+                      </button>
+                    )}
                     <button type="button" role="menuitem" className="ax-menu__item" aria-disabled="true" onClick={(e) => e.preventDefault()}>
                       <BookIcon size={16} /> Add knowledge <span className="ax-badge">Back office</span>
                     </button>
@@ -239,6 +326,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
                 <h2>{banner.title}</h2>
                 <p>{banner.text}</p>
                 {tab === 'agents' && <button type="button" className="ax-btn ax-btn--primary" style={{ marginTop: 14 }} onClick={() => setForm({})}><PlusIcon size={16} /> New agent</button>}
+                {tab === 'skills' && data?.canEdit && <button type="button" className="ax-btn ax-btn--primary" style={{ marginTop: 14 }} onClick={() => setSkillForm({ seed: EMPTY_SKILL })}><PlusIcon size={16} /> New skill</button>}
               </div>
               <div className="ax-herocard__art" aria-hidden="true">{banner.icons.map((icon, i) => <span key={i}>{icon}</span>)}</div>
             </section>
@@ -266,7 +354,18 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
                 }}
               />
             )}
-            {data && tab === 'skills' && <SkillsTab scope={scope} query={query} skills={data.skills} usedBy={skillCountByAgent} by={by} canViewInstructions={data.canViewInstructions} />}
+            {data && tab === 'skills' && (
+              <SkillsTab
+                scope={scope} query={query} overview={data} usedBy={skillCountByAgent} by={by} drafts={skillDrafts} busy={skillBusy}
+                onNew={() => setSkillForm({ seed: EMPTY_SKILL })}
+                onChange={(skill) => setSkillForm({ seed: draftFromSkill(skill, data.agents) })}
+                onEditDraft={(draft) => setSkillForm({ draft, seed: EMPTY_SKILL })}
+                onMakeLive={makeSkillLive}
+                onDeleteDraft={(draft) => { if (window.confirm(`Delete the draft “${draft.name}”?`)) { persistSkills(removeSkillDraft(skillDrafts, draft.draftId)); setToast('Draft deleted.'); } }}
+                onRebase={rebaseSkillDraft}
+                onDelete={deleteLiveSkill}
+              />
+            )}
             {data && tab === 'plugins' && <PluginsTab scope={scope} query={query} plugins={data.plugins} agents={agents} skills={data.skills} systems={data.systems} />}
             {data && tab === 'knowledge' && <KnowledgeTab scope={scope} query={query} knowledge={data.knowledge} by={by} />}
             {data && tab === 'connectors' && (
@@ -279,6 +378,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
       </div>
 
       {form && <AgentForm overview={data} draft={form.draft} presetTools={form.presetTools} onSave={saveDraft} onClose={() => setForm(null)} />}
+      {skillForm && data && <SkillForm overview={data} draft={skillForm.draft} seed={skillForm.seed} onSave={saveSkillDraft} onClose={() => setSkillForm(null)} />}
       {toast && <div className="ax-toast" role="status">{toast}</div>}
     </div>
   );
@@ -427,42 +527,98 @@ function PackAgentCard({ agent, by, onTry, connectorName, skillName }: {
 }
 
 /* ── Skills ──────────────────────────────────────────────────────────── */
-function SkillsTab({ scope, query, skills, usedBy, by, canViewInstructions }: {
-  scope: Scope; query: string; skills: OverviewSkill[]; usedBy: Map<string, string[]>; by: string; canViewInstructions: boolean;
+function SkillsTab({ scope, query, overview, usedBy, by, drafts, busy, onNew, onChange, onEditDraft, onMakeLive, onDeleteDraft, onRebase, onDelete }: {
+  scope: Scope; query: string; overview: CustomizeOverview; usedBy: Map<string, string[]>; by: string; drafts: SkillDraft[]; busy: string;
+  onNew: () => void; onChange: (skill: OverviewSkill) => void; onEditDraft: (draft: SkillDraft) => void; onMakeLive: (draft: SkillDraft) => void;
+  onDeleteDraft: (draft: SkillDraft) => void; onRebase: (draft: SkillDraft) => void; onDelete: (skill: OverviewSkill) => void;
 }) {
+  const { skills, canViewInstructions, canEdit } = overview;
   if (scope === 'discover') {
     return <Empty title="No skills to discover yet">Skill templates will appear here when the platform or your organisation offers some.</Empty>;
   }
-  if (skills.length === 0) {
+  const shownDrafts = drafts.filter((d) => matches(query, d.name, d.description));
+  if (skills.length === 0 && shownDrafts.length === 0) {
     return (
-      <Empty title="No skills in this pack yet">
+      <Empty title="No skills in this pack yet" action={canEdit ? <button type="button" className="ax-btn ax-btn--primary" onClick={onNew}><PlusIcon size={16} /> New skill</button> : undefined}>
         Skills are reusable instructions an agent can carry. When the active pack defines some, they are listed here with the agents that use them.
       </Empty>
     );
   }
   const shown = skills.filter((s) => matches(query, s.name, s.description));
-  if (shown.length === 0) return <Empty title="No skills match your search">Try a different word, or clear the search.</Empty>;
+  if (shown.length === 0 && shownDrafts.length === 0) return <Empty title="No skills match your search">Try a different word, or clear the search.</Empty>;
+  const agentName = (id: string) => overview.agents.find((a) => a.agentId === id)?.name || id;
   return (
-    <ul className="ax-grid">
-      {shown.map((s) => {
-        const agents = usedBy.get(s.skillId) || [];
-        return (
-          <Card
-            key={s.skillId} icon={<SkillIcon size={20} />} title={s.name} by={by} description={s.description}
-            tags={[
-              <span key="tier" className="ax-tag">{s.tier === 'always' ? 'Always on' : 'On demand'}</span>,
-              ...(s.tools.length ? [<span key="t" className="ax-tag">{plural(s.tools.length, 'connector')}</span>] : []),
-              <span key="a" className="ax-tag">{agents.length ? `Used by ${agents.join(', ')}` : 'Not used by an agent yet'}</span>,
-              ...s.access.map((entry, index) => <span key={`acc-${index}`} className="ax-tag">{describeSkillAccess(entry)}</span>),
-            ]}
-          >
-            {canViewInstructions && s.instructions && (
-              <details><summary>Instructions</summary><pre>{s.instructions}</pre></details>
-            )}
-          </Card>
-        );
-      })}
-    </ul>
+    <>
+      {shownDrafts.length > 0 && (
+        <>
+          <h2 className="ax-section-title">Your drafts · not live</h2>
+          <ul className="ax-grid">
+            {shownDrafts.map((d) => {
+              const live = d.replaces ? skills.find((s) => s.skillId === d.replaces) : undefined;
+              const stale = !!(d.replaces && (!live || (d.base && live.instructions !== undefined && fingerprintOfOverviewSkill(live, overview.agents) !== d.base)));
+              return (
+                <Card
+                  key={d.draftId} icon={<SkillIcon size={20} />} title={d.name} by="you, in this browser" description={d.description}
+                  tags={[
+                    <span key="draft" className="ax-tag ax-tag--draft">Draft</span>,
+                    <span key="k" className="ax-tag">{d.replaces ? `Changes “${live?.name ?? d.replaces}”` : 'New skill'}</span>,
+                    <span key="t" className="ax-tag">{plural(d.tools.length, 'tool')}</span>,
+                    <span key="a" className="ax-tag">{d.agents.length ? `Carried by ${d.agents.map(agentName).join(', ')}` : 'No assistant carries it'}</span>,
+                    ...(stale ? [<span key="stale" className="ax-tag ax-tag--draft">{live ? 'Changed elsewhere since you started' : 'The live skill is gone'}</span>] : []),
+                  ]}
+                  actions={(
+                    <>
+                      <button type="button" className="ax-btn ax-btn--small" onClick={() => onEditDraft(d)}>Edit</button>
+                      {stale
+                        ? <button type="button" className="ax-btn ax-btn--small" onClick={() => onRebase(d)} title={live ? 'Keep my edits and replace the latest live version when I make it live' : 'The skill was deleted: keep my draft as a new skill'}>{live ? 'Keep mine' : 'Keep as a new skill'}</button>
+                        : <button type="button" className="ax-btn ax-btn--small ax-btn--primary" disabled={busy !== ''} onClick={() => onMakeLive(d)}>{busy === d.draftId ? 'Publishing…' : 'Make live'}</button>}
+                      <span className="ax-toolbar__spacer" />
+                      <button type="button" className="ax-iconbtn" onClick={() => onDeleteDraft(d)} aria-label={`Delete draft ${d.name}`} title="Delete draft"><TrashIcon size={16} /></button>
+                    </>
+                  )}
+                />
+              );
+            })}
+          </ul>
+          <p className="ax-notice">Drafts live only in this browser until you press Make live, which saves the skill, publishes through the publication check and puts everything back if it is refused.</p>
+        </>
+      )}
+      {shown.length > 0 && (
+        <>
+          {shownDrafts.length > 0 && <h2 className="ax-section-title">In your assistant</h2>}
+          <ul className="ax-grid">
+            {shown.map((s) => {
+              const agents = usedBy.get(s.skillId) || [];
+              return (
+                <Card
+                  key={s.skillId} icon={<SkillIcon size={20} />} title={s.name} by={by} description={s.description}
+                  tags={[
+                    <span key="tier" className="ax-tag">{s.tier === 'always' ? 'Always on' : 'On demand'}</span>,
+                    ...(s.tools.length ? [<span key="t" className="ax-tag">{plural(s.tools.length, 'tool')}</span>] : []),
+                    <span key="a" className="ax-tag">{agents.length ? `Used by ${agents.join(', ')}` : 'Not used by an agent yet'}</span>,
+                    ...s.access.map((entry, index) => <span key={`acc-${index}`} className="ax-tag">{describeSkillAccess(entry)}</span>),
+                  ]}
+                  actions={canEdit && s.instructions !== undefined ? (
+                    <>
+                      <button type="button" className="ax-btn ax-btn--small" disabled={busy !== ''} onClick={() => onChange(s)}>Change</button>
+                      <span className="ax-toolbar__spacer" />
+                      <button type="button" className="ax-iconbtn" disabled={busy !== ''} onClick={() => onDelete(s)} aria-label={`Delete skill ${s.name}`} title="Delete skill"><TrashIcon size={16} /></button>
+                    </>
+                  ) : undefined}
+                >
+                  {s.tools.length > 0 && (
+                    <details><summary>Tools</summary><div className="ax-hint">{s.tools.map((tool) => overview.toolOptions.find((o) => o.id === tool)?.label ? `${overview.toolOptions.find((o) => o.id === tool)!.label} (${overview.toolOptions.find((o) => o.id === tool)!.system})` : tool).join(', ')}</div></details>
+                  )}
+                  {canViewInstructions && s.instructions && (
+                    <details><summary>Instructions</summary><pre>{s.instructions}</pre></details>
+                  )}
+                </Card>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </>
   );
 }
 

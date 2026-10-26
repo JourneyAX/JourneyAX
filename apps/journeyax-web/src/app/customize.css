@@ -131,6 +131,18 @@
 .ax-draftnote { padding: 10px 14px; border-radius: 11px; background: color-mix(in srgb, #C98A00 14%, var(--ax-surface)); color: var(--ax-text); font-size: 13.5px; line-height: 1.5; }
 .ax-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; padding: 10px 16px; border-radius: 12px; background: var(--ax-text); color: var(--ax-bg); font-size: 14px; box-shadow: var(--ax-shadow-2); }
 
+/* Skill editor */
+.ax-dialog--wide { max-width: 880px; }
+.ax-segment--wrap { flex-wrap: wrap; }
+.ax-accessrow { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--ax-border); border-radius: 12px; }
+.ax-accessrow__line { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ax-accessrow__line .ax-input { width: auto; min-width: 190px; }
+.ax-checks--teams { max-height: none; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.ax-checks--tools { max-height: 300px; margin: 6px 0 8px; }
+.ax-toolgroup { border: 1px solid var(--ax-border); border-radius: 12px; padding: 4px 12px; }
+.ax-toolgroup > summary { cursor: pointer; font-weight: 600; padding: 7px 0; display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.ax-hint--warn { color: color-mix(in srgb, #8A5C00 85%, var(--ax-text)); }
+
 @media (max-width: 860px) {
   .ax-page__scroll { padding: 0 16px 40px; }
   .ax-herocard { flex-direction: column; align-items: flex-start; padding: 20px; }

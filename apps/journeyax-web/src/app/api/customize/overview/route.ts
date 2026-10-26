@@ -13,7 +13,10 @@ import { NextResponse } from 'next/server';
 import { can } from '@journeyax/shared-types';
 import { resolveTenant } from '@/lib/tenant';
 import { COOKIE_AT, readCookie, unauthorized, upstreamAuthHeaders } from '@/lib/bff-auth';
+import { normaliseGroupId } from '@journeyax/shared-types';
 import { buildOverview } from '@/lib/customize/overview';
+import { buildToolOptions } from '@/lib/customize/toolOptions';
+import type { OverviewTeam } from '@/lib/customize/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,6 +64,31 @@ async function releaseDetails(tenantId: string, releaseId: string, authorization
   }
 }
 
+/** The project's teams (the groups a skill can be given to); empty when they cannot be read, so the page still loads. */
+async function readTeams(tenantId: string, authorization: string): Promise<OverviewTeam[]> {
+  try {
+    const res = await fetch(`${PROJECT_API}/api/v1/projects/${encodeURIComponent(tenantId)}/teams`, {
+      headers: { Authorization: authorization, 'X-Tenant-ID': tenantId },
+      signal: AbortSignal.timeout(4000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const rows: unknown = await res.json();
+    const seen = new Set<string>();
+    const out: OverviewTeam[] = [];
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const name = typeof row?.name === 'string' ? row.name.trim() : '';
+      const id = normaliseGroupId(name);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, name });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(req: Request) {
   const auth = upstreamAuthHeaders(req);
   if (!auth) return unauthorized();
@@ -86,7 +114,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'PackUnavailable', message: 'The assistant configuration could not be read just now.' }, { status: 502 });
   }
 
-  const overview = buildOverview(tenantId, published, { canViewInstructions });
+  // Editing skills needs the publish permission (the same one "Make live" needs); only then are the teams and the tool list read.
+  const canEdit = can(role, 'config.publish');
+  const teams = canEdit && auth.Authorization ? await readTeams(tenantId, auth.Authorization) : [];
+  const overview = buildOverview(tenantId, published, { canViewInstructions, canEdit, teams, toolOptions: canEdit ? buildToolOptions(published, teams) : [] });
 
   if (overview.knowledge.releaseId && auth.Authorization && can(role, 'knowledge.read')) {
     const details = await releaseDetails(tenantId, overview.knowledge.releaseId, auth.Authorization);

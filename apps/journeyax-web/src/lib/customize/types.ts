@@ -89,6 +89,28 @@ export interface OverviewSystem {
   writes: number;
 }
 
+/** A team of the project (a staff group): `id` is the group id the pack's access rows use. */
+export interface OverviewTeam { id: string; name: string }
+
+export type ToolState = 'allow' | 'ask' | 'blocked';
+
+/**
+ * One tool a skill may name: a built-in tool of the platform, or a tool of a connected system (written `system.tool`, for example
+ * `salesforce.list_cases`). For a connector tool, `states` says what each team may do with it under the pack's rules (`shopper` is
+ * everyone who is not staff), so the editor can say "Customer Service cannot use this" before anything is published.
+ */
+export interface OverviewToolOption {
+  id: string;
+  label: string;
+  systemId: string;
+  system: string;
+  summary: string;
+  sideEffect?: 'read' | 'write';
+  /** False when the system is switched off in the pack: naming its tools has no effect until it is switched on. */
+  enabled: boolean;
+  states?: Record<string, ToolState>;
+}
+
 export interface CustomizeOverview {
   tenantId: string;
   packVersion?: string;
@@ -101,4 +123,10 @@ export interface CustomizeOverview {
   connectors: OverviewConnector[];
   /** Whether the signed-in person can see skill instructions (and so edit configuration). */
   canViewInstructions: boolean;
+  /** Whether the signed-in person may change skills and make them live (the publish permission). */
+  canEdit: boolean;
+  /** The project's teams, for choosing who has a skill. Empty when they could not be read. */
+  teams: OverviewTeam[];
+  /** Every tool a skill may name, built-in and connected, with what each team may do with it. */
+  toolOptions: OverviewToolOption[];
 }
