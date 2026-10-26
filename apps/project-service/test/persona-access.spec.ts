@@ -37,6 +37,7 @@ const TABLE: Record<string, string> = {
   'salesforce.list_campaigns':        'A - A A A - A - - -',
   'salesforce.get_campaign':          'A - A A A - A - - -',
   'zendesk.find_tickets':             'A A A A - - A - - -',
+  'zendesk.list_recent_tickets':      '- - - - - - - - - -',
   'zendesk.get_ticket':               'A A A A - - A - - -',
   'zendesk.create_ticket':            'K K - - - - - - - -',
   'zendesk.add_ticket_note':          'K K K K - - - - - -',

@@ -709,6 +709,11 @@
           "enabled": true,
           "tools": [
             {
+              "name": "list_recent_tickets",
+              "sideEffect": "read",
+              "summary": "The tickets changed most recently, for the care screens to notice new ones. Nobody asks the assistant for it."
+            },
+            {
               "name": "find_tickets",
               "sideEffect": "read",
               "summary": "Find support tickets by words, status, priority, requester or tag."
