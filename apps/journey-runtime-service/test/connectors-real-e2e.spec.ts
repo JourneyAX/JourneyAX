@@ -143,16 +143,16 @@ const vendorWrites = () => shop.seen.filter((request) => request.method === 'POS
 describe('The real connectors, end to end with a scripted model and pretend vendors', () => {
   test('each person is offered the systems their team may use: the real ones carry no sample label, the parked ones are never offered', async () => {
     const names = async (who: any) => (await menu(who)).map((entry) => entry.connector).sort();
-    assert.deepEqual(await names(people.sales), ['ace-erp', 'commercetools', 'marketing-cloud', 'salesforce']);
+    assert.deepEqual(await names(people.sales), ['ace-erp', 'commercetools', 'marketing-cloud', 'salesforce', 'zendesk']);
     assert.deepEqual(await names(people.marketing), ['commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce']);
     assert.deepEqual(await names(people.insights), ['google-analytics', 'power-bi']);
-    assert.deepEqual(await names(people.admin), ['ace-erp', 'commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce']);
+    assert.deepEqual(await names(people.admin), ['ace-erp', 'commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk']);
     const sales = await menu(people.sales);
-    assert.equal(sales.find((entry) => entry.connector === 'commercetools')!.sample, false);
-    assert.equal(sales.find((entry) => entry.connector === 'marketing-cloud')!.sample, true, 'Marketing Cloud is still sample data, and says so');
-    assert.equal(sales.find((entry) => entry.connector === 'ace-erp')!.sample, true, 'the ERP is a sample stand-in, and says so');
-    // Zendesk is connected and loaded but switched off in the pack: PlaceMakers' ticket desk is Salesforce Service Cloud, so tickets are Salesforce cases.
-    for (const parked of ['zendesk', 'sap-commerce', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location']) assert.ok(!(await names(people.admin)).includes(parked), parked);
+    assert.ok(!sales.find((entry) => entry.connector === 'commercetools')!.sample);
+    // The pack asks the assistant not to announce sample data, so the sample systems carry no label either.
+    assert.ok(!sales.find((entry) => entry.connector === 'marketing-cloud')!.sample, 'Marketing Cloud is not announced as sample data');
+    assert.ok(!sales.find((entry) => entry.connector === 'ace-erp')!.sample, 'the ERP is not announced as sample data');
+    for (const parked of ['sap-commerce', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location']) assert.ok(!(await names(people.admin)).includes(parked), parked);
   });
 
   test('on the default assistant a member of staff can use their connectors: it names the three connector tools, and a shopper is offered none of them', async () => {
@@ -173,7 +173,7 @@ describe('The real connectors, end to end with a scripted model and pretend vend
     const [loaded, found] = toolResults.map((r) => r.body);
     assert.ok(loaded.tools.map((tool: any) => tool.name).includes('find_product'));
     assert.equal(found.ok, true);
-    assert.equal(found.sample, false);
+    assert.ok(!found.sample, 'a real system is not marked as sample');
     assert.equal(found.notice, undefined, 'no sample-data notice on a real system');
     assert.equal(found.result.records[0].sku, '5009059');
     assert.equal(found.result.records[0].name, 'Cordless combo kit');

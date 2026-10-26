@@ -6,6 +6,7 @@
  * gate, and puts everything back if the gate refuses. Shoppers can never use a connected system, so they have no column.
  */
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { tidyName } from '@/lib/customize/connectorPage';
 import { CloseIcon } from '@/components/shell/icons';
 import { changedTools, countChanges, describeStatus, rulesToSend, setColumn, type RuleEdit } from '@/lib/customize/ruleGrid';
 import type { OverviewConnectorRules, ToolState } from '@/lib/customize/types';
@@ -66,36 +67,23 @@ export default function ConnectorRulesDialog({ system, busy, onSave, onClose }: 
     <div className="ax-dialog-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="ax-dialog ax-dialog--xwide" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={ids.title}>
         <div className="ax-dialog__head">
-          <h2 id={ids.title}>{system.name}: who may use it</h2>
+          <h2 id={ids.title}>{tidyName(system.name)}</h2>
           <button type="button" className="ax-iconbtn" onClick={onClose} aria-label="Close"><CloseIcon size={18} /></button>
         </div>
         <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
           <div className="ax-dialog__body">
-            <p className="ax-hint" style={{ margin: 0 }}>{system.description}{system.owner ? ` Owner: ${system.owner}.` : ''}</p>
-
             <div className="ax-rules__switch">
               <label className="ax-check" htmlFor={ids.on}>
                 <input id={ids.on} type="checkbox" checked={edit.enabled} onChange={(e) => setEdit((prev) => ({ ...prev, enabled: e.target.checked }))} />
-                <span>Switched on for the assistant<small>When it is off the assistant never sees {system.name}, whatever the table below says.</small></span>
+                <span>On</span>
               </label>
               <div className="ax-card__meta">
-                <span className="ax-tag">{system.sample ? 'Sample data' : 'Real data'}</span>
-                <span className={`ax-tag${status.tone === 'bad' ? ' ax-tag--draft' : ''}`} title={status.detail}>{status.label}</span>
+                <span className="ax-tag">{system.sample ? 'Data' : 'Connector'}</span>
+                <span className={`ax-tag${status.tone === 'bad' ? ' ax-tag--draft' : ''}`} title={status.detail}>{system.sample ? 'Built in' : status.tone === 'bad' ? 'Not connected' : 'Connected'}</span>
               </div>
             </div>
-            {edit.enabled && !system.enabled && status.tone === 'bad' && (
-              <p className="ax-draftnote" role="status">The connection check says {system.name} is not connected yet{status.detail ? ` (${status.detail})` : ''}. If you switch it on now, the assistant will offer it and its calls will fail until it is connected.</p>
-            )}
-
-            {(system.notes.defaultRows > 0 || system.notes.allStaffRows > 0 || system.notes.everyoneRows > 0) && (
-              <p className="ax-hint ax-hint--warn" role="note">
-                This system also has {[system.notes.defaultRows > 0 && `${system.notes.defaultRows} default rule${system.notes.defaultRows === 1 ? '' : 's'} (for every tool without a rule of its own)`, system.notes.allStaffRows > 0 && `${system.notes.allStaffRows} rule${system.notes.allStaffRows === 1 ? '' : 's'} for all staff`, system.notes.everyoneRows > 0 && `${system.notes.everyoneRows} rule${system.notes.everyoneRows === 1 ? '' : 's'} for everyone, shoppers too`].filter(Boolean).join(', ')}.
-                The table shows what they add up to. Changing a tool writes its rules for each team explicitly, so a team created later starts blocked for it.
-              </p>
-            )}
-
             <div className="ax-rules__scroll">
-              <table className="ax-rules" aria-label={`What each team may do with each tool of ${system.name}`}>
+              <table className="ax-rules" aria-label={`What each team may do with each tool of ${tidyName(system.name)}`}>
                 <thead>
                   <tr>
                     <th scope="col" className="ax-rules__tool">Tool</th>

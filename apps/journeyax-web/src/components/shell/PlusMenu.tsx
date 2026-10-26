@@ -68,7 +68,7 @@ export default function PlusMenu({ model, connectors, off, search, onToggleConne
     <div className="ax-plusmenu" role="group" aria-label="Skills, connectors and plugins">
       {model.showLists && section('skills', 'Skills', <SkillIcon size={16} />, null, (
         <>
-          {model.skills.length === 0 && <p className="ax-popover__note">The assistant has no skills yet.</p>}
+          {model.skills.length === 0 && <p className="ax-popover__note">None</p>}
           {model.skills.map((skill) => (
             skill.always ? (
               <div key={skill.skillId} role="menuitem" aria-disabled="true" className="ax-menu__item ax-skillitem" title={`${skill.description} This skill is always on, so there is nothing to pick.`}>
@@ -90,7 +90,7 @@ export default function PlusMenu({ model, connectors, off, search, onToggleConne
 
       {section('connectors', 'Connectors', <PlugIcon size={16} />, off.length > 0 ? <span className="ax-badge">{off.length} off</span> : null, (
         <>
-          {connectors.length === 0 && <p className="ax-popover__note">No connected systems yet.</p>}
+          {connectors.length === 0 && <p className="ax-popover__note">None</p>}
           <ConnectorRows items={connectors} off={off} onToggle={onToggleConnector} />
           <div className="ax-sub__foot">
             {link('connectors', 'Manage connectors')}
@@ -101,11 +101,10 @@ export default function PlusMenu({ model, connectors, off, search, onToggleConne
 
       {model.showLists && section('plugins', 'Plugins', <BlocksIcon size={16} />, null, (
         <>
-          {model.plugins.length === 0 && <p className="ax-popover__note">The assistant has no plugins yet.</p>}
+          {model.plugins.length === 0 && <p className="ax-popover__note">None</p>}
           {model.plugins.map((plugin) => (
             <Link key={plugin.pluginId} role="menuitem" href={customizeHref(search, { tab: 'plugins' })} className="ax-menu__item ax-skillitem ax-skillitem--stack" onClick={onClose}>
               <span className="ax-skillitem__name">{plugin.name}</span>
-              {plugin.summary && <span className="ax-connector__line">{plugin.summary}</span>}
             </Link>
           ))}
           <div className="ax-sub__foot">

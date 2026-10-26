@@ -21,6 +21,7 @@ import { forSidebar } from '@/lib/shell/conversationNav';
 import { copyText } from '@/lib/shell/clipboard';
 import { type AgentDraft, type AgentDraftInput, draftToPackAgentJson, loadDrafts, removeDraft, saveDrafts, upsertDraft } from '@/lib/customize/drafts';
 import { describePluginAccess, describeSkillAccess } from '@/lib/customize/overview';
+import { tidyName } from '@/lib/customize/connectorPage';
 import type { CustomizeOverview, OverviewAgent, OverviewConnectorRules, OverviewKnowledgeSource, OverviewPlugin, OverviewSkill, OverviewSystem, ToolState } from '@/lib/customize/types';
 import {
   EMPTY_SKILL, agentsCarrying, draftFromSkill, draftToInput, fingerprintOfOverviewSkill, loadSkillDrafts, removeSkillDraft, saveSkillDrafts, upsertSkillDraft,
@@ -432,7 +433,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
             )}
             <input ref={fileRef} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden aria-hidden="true" tabIndex={-1} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void onSkillFile(file); }} />
 
-            {!inDetail && tab !== 'personas' && !((tab === 'skills' || tab === 'connectors') && scope === 'yours') && (
+            {!inDetail && tab !== 'personas' && tab !== 'connectors' && tab !== 'plugins' && !(tab === 'skills' && scope === 'yours') && (
             <section className="ax-herocard" aria-label="About this tab">
               <div>
                 <h2>{banner.title}</h2>
@@ -695,13 +696,11 @@ function PluginsTab({ scope, query, plugins, agents, skills, systems }: {
   scope: Scope; query: string; plugins: OverviewPlugin[]; agents: OverviewAgent[]; skills: OverviewSkill[]; systems: OverviewSystem[];
 }) {
   if (scope === 'discover') {
-    return <Empty title="No plugins to discover yet">Plugin templates will appear here when the platform or your organisation offers some.</Empty>;
+    return <Empty title="No plugins to discover">{''}</Empty>;
   }
   if (plugins.length === 0) {
     return (
-      <Empty title="No plugins in this pack yet">
-        A plugin bundles an agent, its skills, a form, the systems it reaches and its tools, and switches them on together for the people you choose.
-      </Empty>
+      <Empty title="No plugins">{''}</Empty>
     );
   }
   const shown = plugins.filter((p) => matches(query, p.name, p.description, p.pluginId));
@@ -709,7 +708,7 @@ function PluginsTab({ scope, query, plugins, agents, skills, systems }: {
   const nameOf = (list: Array<{ id: string; name: string }>) => (id: string) => list.find((entry) => entry.id === id)?.name || id;
   const agentName = nameOf(agents.map((a) => ({ id: a.agentId, name: a.name })));
   const skillName = nameOf(skills.map((s) => ({ id: s.skillId, name: s.name })));
-  const systemName = nameOf(systems.map((s) => ({ id: s.connectorId, name: s.name })));
+  const systemName = nameOf(systems.map((s) => ({ id: s.connectorId, name: tidyName(s.name) })));
   return (
     <ul className="ax-grid">
       {shown.map((p) => {
@@ -722,12 +721,11 @@ function PluginsTab({ scope, query, plugins, agents, skills, systems }: {
         ];
         return (
           <Card
-            key={p.pluginId} icon={<PlugIcon size={20} />} title={p.name} by="your shop" description={p.description}
+            key={p.pluginId} icon={<PlugIcon size={20} />} title={p.name} by="your shop" description=""
             tags={p.access.length === 0 ? [<span key="all" className="ax-tag">Everyone has it</span>] : p.access.map((row, index) => <span key={`row-${index}`} className="ax-tag">{describePluginAccess(row)}</span>)}
           >
             <div className="ax-hint">
               {parts.filter(([, names]) => names.length > 0).map(([label, names]) => <div key={label}><strong>{label}:</strong> {names.join(', ')}</div>)}
-              {parts.every(([, names]) => names.length === 0) && <div>This plugin does not name anything yet.</div>}
             </div>
           </Card>
         );

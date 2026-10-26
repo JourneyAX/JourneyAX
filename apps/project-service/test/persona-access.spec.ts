@@ -141,16 +141,16 @@ async function main() {
 
   await suite.test('the pack as published has only the systems that are really connected and wanted switched on: commercetools and Salesforce, and Marketing Cloud and the ERP as samples', () => {
     const on = published.connectors.filter((connector) => connector.enabled !== false).map((connector) => connector.connectorId).sort();
-    assert.deepEqual(on, ['ace-erp', 'commercetools', 'marketing-cloud', 'salesforce'], 'switch Google Analytics and Power BI on here only when their vendor accounts are connected');
+    assert.deepEqual(on, ['ace-erp', 'commercetools', 'marketing-cloud', 'salesforce', 'zendesk'], 'switch Google Analytics and Power BI on here only when their vendor accounts are connected');
   });
 
-  await suite.test('Zendesk is connected and loaded but switched off: PlaceMakers\' ticket desk is Salesforce Service Cloud, so a customer\'s tickets are Salesforce cases', () => {
+  await suite.test('Zendesk is the ticket desk: on, for the people whose rules name it (customer service, sales, sales managers, leadership, the admin) and for nobody else', () => {
     const zendesk = published.connectors.find((connector) => connector.connectorId === 'zendesk');
-    assert.ok(zendesk, 'still in the pack, so it can be switched back on');
-    assert.equal(zendesk!.enabled, false);
-    for (const who of COLUMNS) assert.equal(usableConnectors(published, people[who]).some((connector) => connector.connectorId === 'zendesk'), false, `zendesk for ${who}`);
-    const crm = published.connectors.find((connector) => connector.connectorId === 'salesforce')!;
-    assert.match(String(crm.description), /ticket desk/i, 'the assistant is told the cases are the tickets');
+    assert.ok(zendesk, 'in the pack');
+    assert.equal(zendesk!.enabled, true);
+    const has = (who: (typeof COLUMNS)[number]) => usableConnectors(published, people[who]).some((connector) => connector.connectorId === 'zendesk');
+    for (const who of ['csr', 'sales', 'sales.manager', 'exec', 'admin'] as const) assert.equal(has(who), true, `zendesk for ${who}`);
+    for (const who of ['branch', 'finance', 'marketing', 'insights', 'shopper'] as const) assert.equal(has(who), false, `zendesk for ${who}`);
   });
 
   await suite.test('the parked systems are switched off for everyone, the admin included, and are still in the pack so they can be switched back on', () => {

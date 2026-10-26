@@ -78,6 +78,11 @@ export const ConnectorsSchema = z.object({
    * service (a back-office approver), and the call is made again once approved.
    */
   askVia: z.enum(['approval', 'card']).default('approval'),
+  /**
+   * Whether the assistant is told to say, when it uses a connector that runs on sample data, that the data is a sample. On by default (an
+   * assistant should not present sample data as real); a demo that does not want the words in its answers turns it off here.
+   */
+  announceSample: z.boolean().default(true),
   connectors: z.array(ConnectorSchema).max(50),
   policy: z.array(ConnectorPolicyRowSchema).max(2000).default([]),
 }).strict();

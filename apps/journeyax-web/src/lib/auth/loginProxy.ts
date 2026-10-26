@@ -1,5 +1,5 @@
 /**
- * The storefront's sign-in, shared by the login form and the demo persona buttons: ask the auth service, and on success set the access and
+ * The storefront's sign-in: ask the auth service, and on success set the access and
  * refresh tokens as HttpOnly cookies. The browser never sees a token, only the person's name and role.
  */
 import { NextResponse } from 'next/server';

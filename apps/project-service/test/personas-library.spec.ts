@@ -80,13 +80,13 @@ async function main() {
     assert.equal(stateOf('Something new', small), 'not-connected', 'a system nobody has decided about is not connected');
   });
 
-  await suite.test('the ticket desk is Salesforce Service Cloud: the library says so, the pack has Salesforce on and Zendesk off', () => {
+  await suite.test('the ticket desk is Salesforce Service Cloud: the library says so, the pack has Salesforce on, and Zendesk on beside it for the tickets', () => {
     assert.equal(library.ticketing.ourDesk, 'Salesforce Service Cloud');
     assert.ok(library.ticketing.tools.some((tool) => tool.tool === 'Salesforce Service Cloud' && /Confirmed PlaceMakers/.test(tool.status)));
     assert.equal(library.ticketing.tools.some((tool) => /zendesk/i.test(tool.tool)), false, 'Zendesk is not in the owner\'s list');
     const enabled = new Set((draft.extensions.connectors.connectors as Array<{ connectorId: string; enabled?: boolean }>).filter((connector) => connector.enabled !== false).map((connector) => connector.connectorId));
     assert.equal(enabled.has('salesforce'), true);
-    assert.equal(enabled.has('zendesk'), false);
+    assert.equal(enabled.has('zendesk'), true);
   });
 
   await suite.test('every demo login stands for a persona of the catalogue, staff are in the team the catalogue gives that persona, and customers are signed-in shoppers with no team', () => {

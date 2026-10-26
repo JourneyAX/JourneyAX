@@ -58,10 +58,10 @@ async function main() {
 
   await check('switching a system on is a change of its own and says so in the note', async () => {
     const s = service();
-    const out = await changeRules(s.deps, { connectorId: 'zendesk', base: baseOf(s, 'zendesk'), enabled: true });
+    const out = await changeRules(s.deps, { connectorId: 'power-bi', base: baseOf(s, 'power-bi'), enabled: true });
     assert.equal(out.status, 200);
-    assert.match(s.calls[2].body.note, /^Zendesk: switched on, from the Customize page$/);
-    assert.equal(s.doc.extensions.connectors.connectors.find((c: any) => c.connectorId === 'zendesk').enabled, true);
+    assert.match(s.calls[2].body.note, /^Power BI: switched on, from the Customize page$/);
+    assert.equal(s.doc.extensions.connectors.connectors.find((c: any) => c.connectorId === 'power-bi').enabled, true);
   });
 
   await check('a system changed elsewhere since the page read it is not overwritten: 409, nothing written', async () => {

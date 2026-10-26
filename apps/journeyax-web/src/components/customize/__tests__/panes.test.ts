@@ -39,26 +39,27 @@ const skills = (props: Record<string, unknown>) => renderToStaticMarkup(React.cr
 
 console.log('the connectors table');
 
-check('a table with Connector, Type and Status; systems first with their status; built-in tools marked Built in', () => {
+check('a table with Connector, Type and Status; systems first; the words are Connector, Data, Built in, Connected, Not connected', () => {
   const html = connectors({});
   for (const head of ['Connector', 'Type', 'Status']) assert.ok(html.includes(`>${head}<`), head);
-  assert.ok(html.indexOf('Salesforce') < html.indexOf('Built in'), 'systems come first');
-  assert.ok(html.includes('Real data') && html.includes('Sample data') && html.includes('Connected'));
-  assert.ok(html.includes('Needs setup') && html.includes('needs CT_CLIENT_ID'), 'a system that is not connected says what it needs');
-  assert.ok(html.includes('Need another system?'));
-  assert.ok(!html.includes('Zendesk'), 'a switched-off system is under Discover');
+  assert.ok(html.indexOf('Salesforce') < html.indexOf('Browse the range'), 'systems come first');
+  assert.ok(html.includes('<td>Connector</td>') && html.includes('<td>Data</td>') && html.includes('Connected') && html.includes('Not connected'));
+  assert.ok(html.includes('>Salesforce Marketing Cloud<') && html.includes('>ACE ERP<'), 'the name and nothing else');
+  assert.ok(!/sample/i.test(html) && !html.includes('Real data') && !html.includes('Needs setup') && !html.includes('Need another system?'), 'no explanations');
+  assert.ok(html.includes('Zendesk'), 'the ticket desk is switched on');
+  assert.ok(!html.includes('MuleSoft'), 'a switched-off system is under Discover');
 });
 
-check('Discover lists what is switched off, and an empty search says so', () => {
+check('Discover lists what is switched off as Off, and an empty search says so', () => {
   const html = connectors({ scope: 'discover' });
-  assert.ok(html.includes('Zendesk') && html.includes('Switched off'));
+  assert.ok(html.includes('MuleSoft') && html.includes('>Off<') && !html.includes('Switched off'));
   assert.ok(connectors({ query: 'zzzz-nothing' }).includes('No connectors match your search'));
 });
 
-check('someone who cannot change the rules sees the systems in use, marked In use', () => {
+check('someone who cannot change the rules sees the same list', () => {
   const html = connectors({ overview: reader });
-  assert.ok(html.includes('Salesforce') && html.includes('In use'));
-  assert.ok(!html.includes('Needs setup'));
+  assert.ok(html.includes('Salesforce') && html.includes('Connected'));
+  assert.ok(!html.includes('Not connected'));
 });
 
 console.log('one connector');
@@ -69,8 +70,7 @@ check('a connected system\'s page: tool permissions in two groups, three buttons
   for (const text of ['Tool permissions', 'Interactive tools', 'Read-only tools', 'Create case', 'Find account']) assert.ok(html.includes(text), text);
   assert.ok(html.includes('role="switch"') && html.includes('aria-checked="true"'));
   assert.ok(html.includes('Customer Service') && html.includes('Branch'), 'the team picker');
-  assert.ok(html.includes('Shoppers can never use a connected system'));
-  const tools = editor.connectorRules.find((r) => r.connectorId === 'salesforce')!.tools.length;
+    const tools = editor.connectorRules.find((r) => r.connectorId === 'salesforce')!.tools.length;
   assert.equal((html.match(/aria-label="Allow"/g) || []).length, tools);
   assert.equal((html.match(/aria-label="Ask first"/g) || []).length, tools);
   assert.equal((html.match(/aria-label="Blocked"/g) || []).length, tools);
@@ -85,21 +85,21 @@ check('a tool that changes data cannot be simply allowed: its Allow button is of
 });
 
 check('a system that is not connected says so on its page, and one that is switched off shows the switch off', () => {
-  assert.ok(connectors({ open: 'commercetools' }).includes('Needs setup') || connectors({ open: 'commercetools' }).includes('Not connected yet'));
-  const off = connectors({ open: 'zendesk', scope: 'discover' });
-  assert.ok(off.includes('aria-checked="false"') && off.includes('While it is off the assistant never sees Zendesk'));
+  assert.ok(connectors({ open: 'commercetools' }).includes('Not connected'));
+  const off = connectors({ open: 'mulesoft', scope: 'discover' });
+  assert.ok(off.includes('aria-checked="false"') && !off.includes('While it is off'));
 });
 
-check('without permission to publish the page only describes the system, and says why it cannot be changed', () => {
+check('without permission to publish the page only names the system and its status', () => {
   const html = connectors({ overview: reader, open: 'salesforce' });
-  assert.ok(html.includes('needs permission to publish the configuration'));
+  assert.ok(html.includes('Connector') && html.includes('Connected'));
   assert.ok(!html.includes('role="switch"') && !html.includes('Tool permissions'));
 });
 
 check('a built-in tool\'s page says who may call it and offers to add it to a new agent', () => {
   const builtin = connectorRows(editor).yours.find((r) => r.kind === 'builtin')!;
   const html = connectors({ open: builtin.id });
-  assert.ok(html.includes('Built into the platform') && html.includes('Add to a new agent'));
+  assert.ok(html.includes('Built in') && html.includes('Add to a new agent'));
 });
 
 console.log('the skills list');

@@ -172,6 +172,22 @@ describe('Connectors, end to end with a scripted model', () => {
     assert.ok(reply && reply.includes(String(row.available)) && reply.includes(String(price.goldPrice)), `the answer reached the customer: ${reply}`);
   });
 
+  test('a pack that does not want sample data announced gets no sample label in the instructions and no notice in the answers; the default still announces it', async () => {
+    const row = seed('ace-erp', 'stock').find((r) => r.available > 0)!;
+    const ask = (registry: unknown) => turn([
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'ace-erp', tool: 'stock_by_branch', arguments: { sku: row.sku } })] }),
+      () => ({ content: 'Looked.' }),
+    ], { ...staff, registry });
+    const quiet = await ask({ ...JSON.parse(JSON.stringify(SAMPLE_REGISTRY)), announceSample: false });
+    assert.ok(!(quiet.requests[0].systemPrompt ?? '').includes('(sample data)'), 'no sample label in the instructions');
+    assert.equal(quiet.toolResults[0].body.ok, true);
+    assert.equal(quiet.toolResults[0].body.notice, undefined, 'no notice in the answer');
+    assert.equal(quiet.toolResults[0].body.sample, undefined);
+    const loud = await ask(SAMPLE_REGISTRY);
+    assert.ok((loud.requests[0].systemPrompt ?? '').includes('(sample data)'), 'by default the instructions say which systems hold sample data');
+    assert.match(loud.toolResults[0].body.notice, /sample data/);
+  });
+
   test('what a tool may be quoted for is declared in the registry: with no claim class on stock, the reply checker still holds back a stock claim', async () => {
     const row = seed('ace-erp', 'stock').find((r) => r.available > 0)!;
     const registry = JSON.parse(JSON.stringify(SAMPLE_REGISTRY));

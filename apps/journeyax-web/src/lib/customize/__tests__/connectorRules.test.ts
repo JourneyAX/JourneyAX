@@ -26,9 +26,10 @@ console.log('the connector rules table');
 check('every system of the pack is listed, switched on or off, with a column for each team, the administrators, and any group a rule names that is not a team', () => {
   const all = buildConnectorRules(ext(), TEAMS);
   assert.equal(all.length, draft.extensions.connectors.connectors.length);
-  const zendesk = all.find((v) => v.connectorId === 'zendesk')!;
-  assert.equal(zendesk.enabled, false);
-  assert.deepEqual(zendesk.columns.map((c) => c.id), [...TEAMS.map((t) => t.id), 'administrators']);
+  const powerBi = all.find((v) => v.connectorId === 'power-bi')!;
+  assert.equal(powerBi.enabled, false);
+  assert.equal(all.find((v) => v.connectorId === 'zendesk')!.enabled, true);
+  assert.deepEqual(powerBi.columns.map((c) => c.id), [...TEAMS.map((t) => t.id), 'administrators']);
   const odd = ext();
   odd.policy.push({ connectorId: 'salesforce', tool: 'list_cases', audience: 'staff', groups: ['old-team'], state: 'allow' });
   const salesforce = view(odd, 'salesforce');
@@ -47,6 +48,7 @@ check('each cell is the pack\'s own answer for that team: what is allowed, asked
   assert.equal(sf.grid.create_case['sales-managers'], 'blocked');
   assert.equal(view(ext(), 'commercetools').grid.add_to_cart.branch, 'ask');
   assert.equal(view(ext(), 'zendesk').grid.find_tickets['customer-service'], 'allow');
+  assert.equal(view(ext(), 'power-bi').grid.list_reports['sales-managers'], 'allow', 'a switched-off system still shows what its rules say');
   for (const v of buildConnectorRules(ext(), TEAMS)) for (const tool of v.tools) for (const column of v.columns) assert.equal(v.grid[tool.name][column.id], engine(ext(), v.connectorId, tool.name, column.id), `${v.connectorId}.${tool.name} ${column.id}`);
 });
 
@@ -176,11 +178,11 @@ check('a system can be switched on or off on its own, and the table warns when i
   assert.deepEqual(off.changes, { enabled: false, tools: [], cells: 0 });
   assert.equal(off.extension.connectors.find((c) => c.connectorId === 'salesforce')!.enabled, false);
   assert.deepEqual(off.extension.policy, e.policy, 'switching off does not touch the rules');
-  const on = good(applyRulesChange(e, { connectorId: 'zendesk', enabled: true }));
-  assert.equal(on.extension.connectors.find((c) => c.connectorId === 'zendesk')!.enabled, true);
-  const v = view(e, 'zendesk');
+  const on = good(applyRulesChange(e, { connectorId: 'power-bi', enabled: true }));
+  assert.equal(on.extension.connectors.find((c) => c.connectorId === 'power-bi')!.enabled, true);
+  const v = view(e, 'power-bi');
   const allBlocked = Object.fromEntries(v.tools.map((t) => [t.name, Object.fromEntries(v.columns.map((c) => [c.id, 'blocked' as ToolState]))]));
-  const nobody = good(applyRulesChange(e, { connectorId: 'zendesk', enabled: true, cells: allBlocked }));
+  const nobody = good(applyRulesChange(e, { connectorId: 'power-bi', enabled: true, cells: allBlocked }));
   assert.ok(nobody.warnings.some((w) => /no team may use any of its tools/.test(w)));
 });
 

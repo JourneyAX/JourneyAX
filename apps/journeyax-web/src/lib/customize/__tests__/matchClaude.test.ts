@@ -78,11 +78,14 @@ check('an editor sees every system: the ones on under Yours with their status, t
   const rows = connectorRows(editor);
   const sf = rows.yours.find((r) => r.key === 'system:salesforce');
   assert.ok(sf, 'Salesforce is on');
-  assert.deepEqual([sf!.type, sf!.status.tone, sf!.status.label], ['Real data', 'good', 'Connected']);
+  assert.deepEqual([sf!.type, sf!.status.tone, sf!.status.label], ['Connector', 'good', 'Connected']);
   const ct = rows.yours.find((r) => r.key === 'system:commercetools');
-  assert.deepEqual([ct!.status.tone, ct!.status.label, ct!.status.detail], ['warn', 'Needs setup', 'needs CT_CLIENT_ID']);
-  const zd = rows.discover.find((r) => r.key === 'system:zendesk');
-  assert.deepEqual([zd!.status.tone, zd!.status.label], ['off', 'Switched off'], 'Zendesk is switched off in the draft pack');
+  assert.deepEqual([ct!.status.tone, ct!.status.label, ct!.status.detail], ['warn', 'Not connected', 'needs CT_CLIENT_ID']);
+  const pb = rows.discover.find((r) => r.key === 'system:power-bi');
+  assert.deepEqual([pb!.status.tone, pb!.status.label], ['off', 'Off'], 'Power BI is switched off in the draft pack');
+  assert.ok(rows.yours.some((r) => r.key === 'system:zendesk'), 'the ticket desk is on');
+  const mc = rows.yours.find((r) => r.key === 'system:marketing-cloud');
+  assert.deepEqual([mc!.name, mc!.type, mc!.status.label], ['Salesforce Marketing Cloud', 'Data', 'Built in'], 'a system the platform holds is Data, Built in, with no (sample) in its name');
   assert.ok(rows.yours.some((r) => r.kind === 'builtin' && r.type === 'Built in'));
   const kinds = rows.yours.map((r) => r.kind);
   assert.deepEqual(kinds, [...kinds].sort((a, b) => (a === b ? 0 : a === 'system' ? -1 : 1)), 'connected systems come before the built-in tools');
@@ -90,17 +93,18 @@ check('an editor sees every system: the ones on under Yours with their status, t
   assert.deepEqual(systems, [...systems].sort((a, b) => a.localeCompare(b)));
 });
 
-check('someone who cannot change the rules sees the systems in use, marked In use, without a connection check', () => {
+check('someone who cannot change the rules sees the systems in use, marked Connected, without a connection check', () => {
   const rows = connectorRows(reader);
   const sf = rows.yours.find((r) => r.key === 'system:salesforce');
-  assert.deepEqual([sf!.status.label, sf!.status.tone], ['In use', 'good']);
+  assert.deepEqual([sf!.status.label, sf!.status.tone], ['Connected', 'good']);
   assert.ok(!rows.discover.some((r) => r.kind === 'system'), 'they are not shown what is switched off');
 });
 
 check('search looks at the name, what it does, its id and its type', () => {
   const rows = connectorRows(editor).yours;
   assert.ok(filterRows(rows, 'sales').some((r) => r.id === 'salesforce'));
-  assert.ok(filterRows(rows, 'real data').every((r) => r.type === 'Real data'));
+  assert.ok(filterRows(rows, 'connector').some((r) => r.type === 'Connector'));
+  assert.ok(filterRows(rows, 'data').some((r) => r.type === 'Data'));
   assert.equal(filterRows(rows, '  ').length, rows.length);
   assert.equal(filterRows(rows, 'zzzz-nothing').length, 0);
 });
@@ -226,16 +230,16 @@ check('skills fall in two groups, each in name order; search looks at the name, 
 });
 
 check('a skill\'s tools are listed under their system, built-in first; an editor sees names, anyone else sees the ids', () => {
-  const ids = ['present_card', 'salesforce.list_cases', 'salesforce.create_case', 'zendesk.find_tickets'];
+  const ids = ['present_card', 'salesforce.list_cases', 'salesforce.create_case', 'power-bi.list_reports'];
   const rich = groupSkillTools(ids, editor.toolOptions);
   assert.equal(rich[0].system, 'Built-in tools');
   const sf = rich.find((g) => g.system === 'Salesforce');
   assert.ok(sf && sf.tools.length === 2 && sf.tools.some((t) => t.changesData), 'Salesforce has a tool that changes data');
-  const zd = rich.find((g) => g.system === 'Zendesk');
-  assert.ok(zd && zd.tools[0].switchedOff, 'a tool of a switched-off system says so');
+  const pb = rich.find((g) => g.system === 'Power BI');
+  assert.ok(pb && pb.tools[0].switchedOff, 'a tool of a switched-off system says so');
   const plain = groupSkillTools(ids, []);
-  assert.deepEqual(plain.map((g) => g.system), ['Built-in tools', 'salesforce', 'zendesk']);
-  assert.equal(plain[1].tools[0].label, 'list_cases');
+  assert.deepEqual(plain.map((g) => g.system), ['Built-in tools', 'power-bi', 'salesforce']);
+  assert.equal(plain[2].tools[0].label, 'list_cases');
   assert.deepEqual(groupSkillTools([], editor.toolOptions), []);
 });
 

@@ -6,7 +6,7 @@
  *        [--project placemakers] [--persona trade.admin] [--click Allow] [--wait 180] [--shot out.png] [--steps]
  *
  * Each run is a real model run (and writes a conversation record), so it only runs with --yes-run-real-chats. It signs in with the sign-in
- * screen's own persona button (--persona <id>) or "Quick Demo Sign-in" button (the app's built-in dev login) when it meets the screen; it never types a password.
+ * demo person's email and password (--persona <id>, for example trade.admin; read from the private demo logins file, see recorder-core.cjs) or "Quick Demo Sign-in" button (the app's built-in dev login) when it meets the screen.
  * Give --question more than once to ask several messages in a row, each after the previous answer has finished.
  */
 const fs = require('node:fs');
@@ -15,6 +15,7 @@ const os = require('node:os');
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : fallback; };
 const ROOT = path.resolve(__dirname, '../..');
+const { demoLogin } = require('./recorder-core.cjs');
 const { chromium } = require(require.resolve('playwright', { paths: [ROOT] }));
 const base = opt('base', 'http://localhost:3008').replace(/\/$/, '');
 const project = opt('project', 'placemakers');
@@ -44,10 +45,13 @@ function chromiumPath() {
   if (args.includes('--net-req')) page.on('request', (req) => { if (/chat\/stream/.test(req.url())) { try { const b = JSON.parse(req.postData() || '{}'); delete b.messages; delete b.state; console.log('REQ', JSON.stringify(b).slice(0, 700)); } catch { console.log('REQ (not json)'); } } });
   if (args.includes('--net')) page.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE', m.text().slice(0, 200)); });
   await page.goto(`${base}/?project=${project}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#chat-input-field, #quick-login-btn, [data-persona]', { timeout: 60000 });
+  await page.waitForSelector('#chat-input-field, #quick-login-btn, #login-email', { timeout: 60000 });
   if (persona) {
     if (await page.locator('#chat-input-field').count()) throw new Error('already signed in; use a fresh browser to sign in as a persona');
-    await page.click(`[data-persona="${persona}"]`);
+    const login = demoLogin(persona);
+    await page.fill('#login-email', login.email);
+    await page.fill('#login-password', login.password);
+    await page.click('#login-submit');
     await page.waitForSelector('#chat-input-field', { timeout: 60000 });
   } else if (await page.locator('#quick-login-btn').count()) { await page.click('#quick-login-btn'); await page.waitForSelector('#chat-input-field', { timeout: 60000 }); }
   await page.waitForTimeout(1500);

@@ -73,7 +73,8 @@ export function connectorSummaries(release: { extensions?: Record<string, any> }
     connector: connector.connectorId,
     name: connector.displayName,
     description: connector.description,
-    sample: Boolean(connector.sample),
+    // What the assistant is told about each system: that it holds sample data only when the pack wants that said.
+    sample: Boolean(connector.sample) && (release?.extensions?.connectors as ConnectorsExtension | undefined)?.announceSample !== false,
     tools: connector.tools.filter((tool) => tool.state !== 'blocked').length,
   }));
 }
@@ -109,6 +110,10 @@ export function connectorList(release: { extensions?: Record<string, any> } | un
 const DEFAULT_MAX_TOOLS_LISTED = 30;
 
 const SAMPLE_NOTICE = 'This connector runs on sample data, not on the live system. Say so when you use what it returns.';
+
+/** The notice a sample connector's answer carries: only when the pack says the assistant should announce sample data (it does unless the pack turns that off). */
+const noticeFor = (registry: ConnectorsExtension | undefined, connector: { sample?: boolean }) =>
+  connector.sample && registry?.announceSample !== false ? { sample: true, notice: SAMPLE_NOTICE } : {};
 
 export function connectorToolId(connectorId: string, tool: string): string {
   return `connector:${connectorId}.${tool}`;
@@ -212,8 +217,7 @@ export class ConnectorRuntime {
       ok: true as const,
       connector: connectorId,
       name: connector.displayName,
-      sample: Boolean(connector.sample),
-      ...(connector.sample ? { notice: SAMPLE_NOTICE } : {}),
+      ...noticeFor(registry, connector),
       tools: chosen.slice(0, limit),
       ...(wanted.length > 0 && matched.length === 0 ? { note: `No tool matched "${query}"; these are all the tools you can use.` } : {}),
       ...(chosen.length > limit ? { more: chosen.length - limit } : {}),
@@ -325,8 +329,7 @@ export class ConnectorRuntime {
       ok: true as const,
       connector: connectorId,
       tool: toolName,
-      sample: Boolean(connector.sample),
-      ...(connector.sample ? { notice: SAMPLE_NOTICE } : {}),
+      ...noticeFor(registry, connector),
       result: output.data !== undefined ? output.data : output.text ?? '',
       ...(output.truncated ? { truncated: true, ...(output.omitted ? { omitted: output.omitted } : {}) } : {}),
       claimClasses: listed?.claimClasses ?? [],
@@ -383,7 +386,7 @@ export class ConnectorRuntime {
     }
     audit('success');
     const output = (response.output ?? {}) as { text?: string; data?: unknown };
-    return { ok: true as const, sample: Boolean(connector.sample), ...(connector.sample ? { notice: SAMPLE_NOTICE } : {}), result: output.data !== undefined ? output.data : output.text ?? '', claimClasses: listed.claimClasses ?? [] };
+    return { ok: true as const, ...noticeFor(this.registryOf(release), connector), result: output.data !== undefined ? output.data : output.text ?? '', claimClasses: listed.claimClasses ?? [] };
   }
 }
 

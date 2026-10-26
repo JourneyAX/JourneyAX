@@ -10,12 +10,12 @@
  *
  * Every scenario is a real model run (several questions each), and the customer-care scenario raises one real case in the connected Salesforce
  * (the person in the video presses "Allow" on the ask-first card, exactly as a colleague would). Without --yes-run-real-chats nothing is
- * recorded: the script only prints the plan. No password is typed or shown: the sign-in screen's own persona buttons are used.
+ * recorded: the script only prints the plan. Each person signs in by typing their own email and password (from the private demo logins file, see recorder-core.cjs); the password field shows dots.
  */
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { createKit, wait } = require('./recorder-core.cjs');
+const { createKit, wait, demoLogin } = require('./recorder-core.cjs');
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : fallback; };
@@ -41,18 +41,20 @@ function chat(r) {
   };
   return {
     async open() { await r.goto(`${BASE}/?project=${PROJECT}`); },
-    /** The sign-in screen's own button for a persona: no password is typed. */
+    /** Signs in the way a person does: types the email and the password (shown as dots) and presses Sign in. */
     async signIn(persona) {
-      const button = page.locator(`[data-persona="${persona}"]`);
-      await button.waitFor({ timeout: 30000 });
+      const login = demoLogin(persona);
+      const email = page.locator('#login-email');
+      await email.waitFor({ timeout: 30000 });
       await wait(2200);
-      await r.point(button);
-      await wait(1200);
-      await r.click(button, 600);
+      await r.type(email, login.email, 40);
+      await r.type(page.locator('#login-password'), login.password, 40);
+      await wait(600);
+      await r.click(page.locator('#login-submit'), 600);
       await page.waitForSelector('#chat-input-field', { timeout: 60000 });
       await wait(1200);
     },
-    async pointAtPersonas() { await r.point(page.locator('[data-persona]').nth(1)); await r.scroll(260, 1200); await wait(600); await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' })); await wait(700); },
+    async pointAtSignIn() { await r.point(page.locator('#login-email')); await wait(1500); },
     async typeAndSend(text) {
       await r.type(input(), text, 34);
       await wait(700);
@@ -102,8 +104,8 @@ const SCENARIOS = [
     persona: 'shopper',
     async run(r, c) {
       await c.open();
-      await r.step('The sign-in screen: twelve demo people', 'This is the PlaceMakers assistant. On the sign-in screen there are twelve demo people, customers and colleagues, so you can see what each of them gets. We start with the simplest: a homeowner, planning a new bathroom.', () => c.pointAtPersonas());
-      await r.step('Signed in as the homeowner', 'She signs in with one click. Notice the assistant does not start with a wall of products. It waits to hear what she wants, and the suggestions under the box are things a homeowner would ask.', () => c.signIn('shopper'));
+      await r.step('The sign-in screen', 'This is the PlaceMakers assistant. Every demo person, customers and colleagues, has their own username and password, so you can see what each of them gets. We start with the simplest: a homeowner, planning a new bathroom.', () => c.pointAtSignIn());
+      await r.step('Signed in as the homeowner', 'She signs in with her own username and password. Notice the assistant does not start with a wall of products. It waits to hear what she wants, and the suggestions under the box are things a homeowner would ask.', () => c.signIn('shopper'));
       await r.step('She says what she is doing', 'She says what she is doing in her own words: a bathroom renovation, and she does not know where to start. This is the most common kind of question, and the assistant treats it as a project, not a product search.', () => c.typeAndSend('We are renovating our bathroom and need a new vanity, a basin and tapware. Where should we start?'));
       await r.step('The assistant asks before it recommends', 'It asks the few questions a good person on the counter would ask: how big the room is, the look she wants, and a rough budget. The answers become tappable choices, so she is never staring at an empty box.', () => c.waitAnswer());
       await r.step('She answers in a sentence', 'She does not have to tap anything. She can just answer in a sentence: a small family bathroom, a modern white look, and a vanity around eight hundred dollars.', () => c.typeAndSend('A small family bathroom, about 1.8 by 2.4 metres. We like a modern white look and want the vanity to be around $800.'));

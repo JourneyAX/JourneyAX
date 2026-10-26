@@ -173,4 +173,17 @@ function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, capti
   return { openRecorder };
 }
 
-module.exports = { createKit, chromium, chromiumPath, wait, ROOT };
+/**
+ * The email and password of a demo person (its id is the part of the email before the @, for example "trade.admin"), read from the private file
+ * `scripts/placemakers/demo-logins.ts` writes (DEMO_LOGINS_FILE, else .env.demo-logins.json in the repo root). The file holds passwords: make it
+ * when recording and delete it afterwards.
+ */
+function demoLogin(persona) {
+  const file = process.env.DEMO_LOGINS_FILE || path.join(ROOT, '.env.demo-logins.json');
+  if (!fs.existsSync(file)) throw new Error('The demo logins file is missing: run "npx tsx scripts/placemakers/demo-logins.ts" first (it holds passwords; delete it when you are done).');
+  const entry = (JSON.parse(fs.readFileSync(file, 'utf8')).logins || []).find((login) => String(login.email).split('@')[0] === persona);
+  if (!entry) throw new Error(`There is no demo login for "${persona}" in ${file}.`);
+  return { email: entry.email, password: entry.password };
+}
+
+module.exports = { createKit, chromium, chromiumPath, wait, demoLogin, ROOT };

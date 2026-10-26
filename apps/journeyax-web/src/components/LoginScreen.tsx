@@ -6,38 +6,17 @@
  * Themed from the tenant config (logo, brand colour) so PlaceMakers, Caroma,
  * A&F each get their own sign-in, not a generic one.
  */
-import { useEffect, useState, type FormEvent } from 'react';
-import type { PublicDemoLogin } from '@/lib/auth/demoLogins';
-import PersonaLogins from './PersonaLogins';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 
 export default function LoginScreen() {
-  const { login, loginAs } = useAuth();
+  const { login } = useAuth();
   const cfg = useStorefrontConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // On a demo the server offers a button for each demo persona (see lib/auth/demoLogins.ts); otherwise this stays empty.
-  const [personas, setPersonas] = useState<PublicDemoLogin[]>([]);
-  const [personaBusy, setPersonaBusy] = useState('');
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/auth/demo-logins', { credentials: 'same-origin', cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : { logins: [] }))
-      .then((data) => { if (!cancelled && Array.isArray(data?.logins)) setPersonas(data.logins); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-  const signInAsPersona = async (id: string) => {
-    setError(null);
-    setPersonaBusy(id);
-    const r = await loginAs(id);
-    setPersonaBusy('');
-    if (!r.success) setError(r.message || 'Sign-in failed.');
-  };
-
   const brand = cfg.companyName || 'JourneyAX';
   const accent = cfg.theme?.primaryColor || '#00AEC7';
   const sidebar = cfg.theme?.sidebarColor || '#0B2A56';
@@ -151,7 +130,6 @@ export default function LoginScreen() {
             </p>
           )}
         </form>
-        <PersonaLogins logins={personas} busyId={personaBusy} accent={accent} onPick={signInAsPersona} />
       </div>
     </div>
   );

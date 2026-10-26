@@ -12,7 +12,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { BlockIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, PlugIcon, PlusIcon, QuestionIcon } from '@/components/shell/icons';
 import {
-  connectorRows, defaultColumn, describeEdit, filterRows, groupSetting, pickableColumns, setGroupState, setToolState, splitTools, stateOf, summarizeTools,
+  connectorRows, tidyName, defaultColumn, describeEdit, filterRows, groupSetting, pickableColumns, setGroupState, setToolState, splitTools, stateOf,
   type ConnectorRow,
 } from '@/lib/customize/connectorPage';
 import { countChanges, describeStatus, type RuleEdit } from '@/lib/customize/ruleGrid';
@@ -50,7 +50,7 @@ export default function ConnectorsPane({ scope, query, overview, open, busy, onO
         return (
           <section className="ax-detail" aria-label={tool.name}>
             <BackLink label="Your connectors" onClick={back} />
-            <Header icon={<PlugIcon size={22} />} title={tool.name} sub="Built into the platform" />
+            <Header icon={<PlugIcon size={22} />} title={tool.name} sub="Built in" />
             <p className="ax-detail__text">{tool.description}</p>
             <h3 className="ax-detail__h">Who uses it</h3>
             <p className="ax-detail__text">{names.length ? `${names.join(', ')} may call it.` : 'No assistant may call it yet.'}</p>
@@ -65,8 +65,8 @@ export default function ConnectorsPane({ scope, query, overview, open, busy, onO
   if (list.length === 0) {
     if (query.trim()) return <Empty title="No connectors match your search">Try a different word, or clear the search.</Empty>;
     return scope === 'yours'
-      ? <Empty title="No connectors in use">None of the agents in the active pack is allowed to call a connector.</Empty>
-      : <Empty title="Everything is already in use">Every connected system is switched on, and every built-in tool is allowed for at least one agent.</Empty>;
+      ? <Empty title="No connectors">{''}</Empty>
+      : <Empty title="Nothing more to add">{''}</Empty>;
   }
   return (
     <>
@@ -80,7 +80,7 @@ export default function ConnectorsPane({ scope, query, overview, open, busy, onO
               <th scope="row">
                 <button type="button" className="ax-ctable__name" onClick={(event) => { event.stopPropagation(); onOpen(row.id); }}>
                   <span className="ax-card__icon" aria-hidden="true"><PlugIcon size={18} /></span>
-                  <span><strong>{row.name}</strong><small>{row.description}</small></span>
+                  <span><strong>{row.name}</strong></span>
                 </button>
               </th>
               <td>{row.type}</td>
@@ -90,12 +90,6 @@ export default function ConnectorsPane({ scope, query, overview, open, busy, onO
           ))}
         </tbody>
       </table>
-      <aside className="ax-callout">
-        <div>
-          <strong>Need another system?</strong>
-          <p>New systems are connected by your technical team in the back office. Once one is connected it shows up here, under Discover, until you switch it on.</p>
-        </div>
-      </aside>
     </>
   );
 }
@@ -106,7 +100,6 @@ function StatusMark({ row }: { row: ConnectorRow }) {
     <span className={`ax-status ax-status--${status.tone}`} title={status.detail || undefined}>
       {status.tone === 'good' && <CheckIcon size={15} />}
       {status.label}
-      {status.tone === 'warn' && status.detail ? <small>{status.detail}</small> : null}
     </span>
   );
 }
@@ -136,10 +129,7 @@ function ReadOnlySystemPage({ system, row, onBack }: { system: OverviewSystem; r
   return (
     <section className="ax-detail" aria-label={system.name}>
       <BackLink label="Your connectors" onClick={onBack} />
-      <Header icon={<PlugIcon size={22} />} title={system.name} sub={`${row.type}${system.owner ? ` · ${system.owner}` : ''}`} />
-      <p className="ax-detail__text">{system.description}</p>
-      <p className="ax-detail__text">{system.tools} tool{system.tools === 1 ? '' : 's'}{system.writes > 0 ? `, ${system.writes} of which change data and ask first` : ''}.</p>
-      <p className="ax-notice">Changing who may use this system needs permission to publish the configuration.</p>
+      <Header icon={<PlugIcon size={22} />} title={tidyName(system.name)} sub={`${row.type} · ${row.status.label}`} />
     </section>
   );
 }
@@ -163,6 +153,8 @@ function SystemPage({ system, busy, onBack, onSave, onFullTable }: {
   const [team, setTeam] = useState(() => defaultColumn(system));
   const { interactive, readOnly } = useMemo(() => splitTools(system), [system]);
   const status = describeStatus(system.status);
+  // One plain word: a system the platform holds itself is Built in; the others are Connected or Not connected.
+  const shownStatus = system.sample ? 'Built in' : status.tone === 'good' ? 'Connected' : status.tone === 'bad' ? 'Not connected' : '';
   const changes = countChanges(system, edit);
   const switched = edit.enabled !== system.enabled;
   const teamName = teams.find((column) => column.id === team)?.name ?? team;
@@ -233,45 +225,34 @@ function SystemPage({ system, busy, onBack, onSave, onFullTable }: {
       <BackLink label="Your connectors" onClick={onBack} />
       <Header
         icon={<PlugIcon size={22} />}
-        title={system.name}
-        sub={<>{system.sample ? 'Sample data' : 'Real data'}{system.owner ? ` · ${system.owner}` : ''} · <span className={`ax-status ax-status--${status.tone === 'bad' ? 'warn' : status.tone === 'good' ? 'good' : 'plain'}`}>{status.label}{status.detail ? ` (${status.detail})` : ''}</span></>}
+        title={tidyName(system.name)}
+        sub={<>{system.sample ? 'Data' : 'Connector'}{shownStatus ? <> · <span className={`ax-status ax-status--${status.tone === 'bad' ? 'warn' : status.tone === 'good' ? 'good' : 'plain'}`}>{shownStatus}</span></> : null}</>}
         actions={(
           <>
             <button type="button" className="ax-btn ax-btn--small" onClick={onFullTable}>All teams</button>
             <div className="ax-switchlabel">
               <span>{edit.enabled ? 'On' : 'Off'}</span>
-              <button type="button" role="switch" aria-checked={edit.enabled} aria-label={`${system.name} is ${edit.enabled ? 'on' : 'off'} for the assistant`} className="ax-switch ax-switch--button" data-on={edit.enabled ? 'true' : 'false'} onClick={() => setEdit((prev) => ({ ...prev, enabled: !prev.enabled }))}>
+              <button type="button" role="switch" aria-checked={edit.enabled} aria-label={`${tidyName(system.name)} is ${edit.enabled ? 'on' : 'off'}`} className="ax-switch ax-switch--button" data-on={edit.enabled ? 'true' : 'false'} onClick={() => setEdit((prev) => ({ ...prev, enabled: !prev.enabled }))}>
                 <span className="ax-switch__knob" />
               </button>
             </div>
           </>
         )}
       />
-      <p className="ax-detail__text">{system.description}</p>
-      <p className="ax-detail__meta">{summarizeTools(system)}</p>
-      {edit.enabled && !system.enabled && status.tone === 'bad' && (
-        <p className="ax-draftnote" role="status">The connection check says {system.name} is not connected yet{status.detail ? ` (${status.detail})` : ''}. If you switch it on now, the assistant will offer it and its calls will fail until it is connected.</p>
-      )}
-      {!edit.enabled && <p className="ax-notice">While it is off the assistant never sees {system.name}, whatever the tool settings below say.</p>}
-
       <h3 className="ax-detail__h">Tool permissions</h3>
       <div className="ax-teampick">
         <label htmlFor={`team-${system.connectorId}`}>What may</label>
         <select id={`team-${system.connectorId}`} value={team} onChange={(event) => setTeam(event.target.value)}>
           {teams.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}
         </select>
-        <span className="ax-muted">do with {system.name}? Shoppers can never use a connected system.</span>
+        <span className="ax-muted">do with {tidyName(system.name)}?</span>
       </div>
-      {system.tools.length === 0 ? <p className="ax-muted">This system lists no tools.</p> : (
+      {system.tools.length === 0 ? <p className="ax-muted">No tools.</p> : (
         <>
           {group('Interactive tools', interactive, true)}
           {group('Read-only tools', readOnly, false)}
         </>
       )}
-      {(system.notes.defaultRows > 0 || system.notes.allStaffRows > 0 || system.notes.everyoneRows > 0) && (
-        <p className="ax-hint ax-hint--warn">This system also has default or all-staff rules. The settings above show what they add up to; changing a tool writes its rules for each team explicitly. The “All teams” table shows the same.</p>
-      )}
-
       {(changes > 0 || switched) && (
         <div className="ax-savebar" role="region" aria-label="Unsaved changes">
           <span>{describeEdit(system, edit)}.</span>

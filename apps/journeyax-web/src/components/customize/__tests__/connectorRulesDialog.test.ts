@@ -20,14 +20,18 @@ const render = (id: string, props: Record<string, unknown> = {}) => renderToStat
 
 console.log('the rules dialog');
 
-check('it shows the system, its switch, whether it is real or sample, and its connection status', () => {
+check('it shows the system name, its switch, and two plain words: connector or data, and whether it is connected', () => {
   const html = render('salesforce');
-  assert.ok(html.includes('Salesforce: who may use it'));
-  assert.ok(html.includes('Switched on for the assistant') && html.includes('checked'));
-  assert.ok(html.includes('Real data'));
-  assert.ok(html.includes('Not connected yet'));
-  assert.ok(render('marketing-cloud').includes('Sample data'));
-  assert.ok(render('commercetools').includes('Connection not checked'));
+  assert.ok(html.includes('>Salesforce</h2>'), 'the name and nothing else');
+  assert.ok(!html.includes('who may use it'));
+  assert.ok(/<input id="[^"]*" type="checkbox" checked=""\/><span>On<\/span>/.test(html), 'a system that is on has its switch on');
+  assert.ok(html.includes('ax-tag">Connector<') && html.includes('>Not connected<'));
+  const sample = render('marketing-cloud');
+  assert.ok(sample.includes('>Salesforce Marketing Cloud</h2>') && sample.includes('ax-tag">Data<') && sample.includes('>Built in<'));
+  assert.ok(!/sample/i.test(sample.replace(/aria-label="[^"]*"/g, '')), 'the word sample is not shown');
+  const unchecked = render('commercetools');
+  assert.ok(unchecked.includes('ax-tag">Connector<') && unchecked.includes('>Connected<'));
+  assert.ok(!html.includes('Switched on for the assistant') && !html.includes('Real data') && !html.includes('Owner:'), 'no explanations around the switch');
 });
 
 check('there is a column for each team and the administrators, never one for shoppers, and a row for each tool', () => {
@@ -51,20 +55,19 @@ check('each cell offers allow, ask first and blocked, shows the current state, a
   assert.ok(html.includes('changes data'));
 });
 
-check('it says what the table hides, and that nothing is changed until Make live', () => {
+check('nothing is changed until Make live, and the page does not explain what the table hides', () => {
   const html = render('sap-commerce');
-  assert.ok(html.includes('1 default rule'));
-  assert.ok(html.includes('writes its rules for each team explicitly'));
   assert.ok(html.includes('No changes yet.'));
   assert.ok(html.includes('Make live') && html.includes('disabled=""'));
+  assert.ok(!html.includes('default rule') && !html.includes('writes its rules for each team explicitly'));
 });
 
 check('a system that is switched off opens with its switch off, ready to be switched on', () => {
-  const html = render('zendesk');
-  const switchOf = (page: string) => /<input id="[^"]*" type="checkbox"( checked="")?\/><span>Switched on for the assistant/.exec(page);
+  const html = render('mulesoft');
+  const switchOf = (page: string) => /<input id="[^"]*" type="checkbox"( checked="")?\/><span>On/.exec(page);
   assert.ok(switchOf(render('salesforce'))?.[1], 'a system that is on has its switch on');
   assert.ok(switchOf(html) && !switchOf(html)![1], 'a system that is off has its switch off');
-  assert.ok(html.includes('Zendesk: who may use it'));
+  assert.ok(html.includes('>MuleSoft</h2>'));
 });
 
 console.log(`${passed} passed`);

@@ -23,12 +23,18 @@ check('nothing is drawn when the person has no connectors', () => {
   assert.equal(renderToStaticMarkup(React.createElement(ConnectorMenu as any, { items: [], off: [], onToggle: () => {} })), '');
 });
 
-check('each connector shows its name, a plain line about what it does, a sample-data mark, and a switch that is on', () => {
+check('each connector shows its name and a switch that is on, and nothing else', () => {
   const html = render([]);
-  for (const text of ['Connectors', 'Stock system', 'Looks things up; asks you first before changing anything', 'Sample data', 'CRM', 'Looks things up']) assert.ok(html.includes(text), `shows "${text}"`);
+  for (const text of ['Connectors', 'Stock system', 'CRM']) assert.ok(html.includes(text), `shows "${text}"`);
+  for (const text of ['Sample data', 'Looks things up', 'Switch one off']) assert.ok(!html.includes(text), `does not show "${text}"`);
   assert.equal((html.match(/aria-checked="true"/g) || []).length, 2, 'both start on');
   assert.equal((html.match(/role="menuitemcheckbox"/g) || []).length, 2);
-  assert.ok(html.includes('Switch one off to keep the assistant from using it in this chat.'));
+});
+
+check('a system named with (sample) is shown by its name alone', () => {
+  const named = parseConnectorList({ connectors: [{ connector: 'mc', name: 'Salesforce Marketing Cloud (sample)', description: 'Campaigns.', owner: 'Marketing', sample: true, tools: [{ name: 'list_campaigns', kind: 'read', state: 'allow' }] }] });
+  const html = renderToStaticMarkup(React.createElement(ConnectorMenu as any, { items: named, off: [], onToggle: () => {} }));
+  assert.ok(html.includes('Salesforce Marketing Cloud') && !/sample/i.test(html));
 });
 
 check('a connector switched off for the chat shows its switch off, the others stay on', () => {

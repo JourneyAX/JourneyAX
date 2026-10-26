@@ -65,26 +65,26 @@ check('Skills: every skill by name, the always-on ones only listed (not pickable
   assert.ok(html.includes('href="/customize?project=pm&amp;tab=skills&amp;scope=discover"') && html.includes('Browse skills'));
 });
 
-check('Connectors: one switch each, the sample marked, and Manage and Add linking to the Connectors tab', () => {
+check('Connectors: one switch each, the name alone, and Manage and Add linking to the Connectors tab', () => {
   const html = render({ initialOpen: 'connectors', off: ['stock'] });
   assert.equal((html.match(/role="menuitemcheckbox"/g) || []).length, 2);
   assert.equal((html.match(/aria-checked="false"/g) || []).length, 1);
-  assert.ok(html.includes('Sample data'));
+  assert.ok(!html.includes('Sample data') && !/sample/i.test(html));
   assert.ok(html.includes('href="/customize?project=pm&amp;tab=connectors"') && html.includes('Manage connectors'));
   assert.ok(html.includes('href="/customize?project=pm&amp;tab=connectors&amp;scope=discover"') && html.includes('Add connector'));
 });
 
-check('Plugins: each plugin with what it brings, and Manage and Browse linking to the Plugins tab', () => {
+check('Plugins: each plugin by name, and Manage and Browse linking to the Plugins tab', () => {
   const html = render({ initialOpen: 'plugins' });
   assert.ok(html.includes('Customer service') && html.includes('Trade desk'));
-  assert.ok(html.includes('1 agent'), 'what a plugin brings is said');
+  assert.ok(!html.includes('1 agent'), 'no summary of what a plugin brings');
   assert.ok(html.includes('href="/customize?project=pm&amp;tab=plugins"') && html.includes('Manage plugins') && html.includes('Browse plugins'));
 });
 
 check('a list with nothing in it says so instead of showing an empty box', () => {
-  assert.ok(render({ initialOpen: 'connectors', connectors: [] }).includes('No connected systems yet.'));
-  assert.ok(render({ initialOpen: 'skills', model: { showLists: true, skills: [], plugins: [] } }).includes('The assistant has no skills yet.'));
-  assert.ok(render({ initialOpen: 'plugins', model: { showLists: true, skills: [], plugins: [] } }).includes('The assistant has no plugins yet.'));
+  assert.ok(render({ initialOpen: 'connectors', connectors: [] }).includes('>None<'));
+  assert.ok(render({ initialOpen: 'skills', model: { showLists: true, skills: [], plugins: [] } }).includes('>None<'));
+  assert.ok(render({ initialOpen: 'plugins', model: { showLists: true, skills: [], plugins: [] } }).includes('>None<'));
 });
 
 console.log(`✅ web: + menu: ${passed} passed, 0 failed`);

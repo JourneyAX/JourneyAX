@@ -17,11 +17,14 @@ export interface ConnectorRow {
   id: string;
   name: string;
   description: string;
-  /** "Real data", "Sample data" or "Built in". */
+  /** "Connector" (a real system), "Data" (one the platform holds itself) or "Built in" (a tool of the platform). */
   type: string;
   status: { tone: RowTone; label: string; detail: string };
   tools?: number;
 }
+
+/** A system's name as people see it: the name and nothing else ("Salesforce Marketing Cloud (sample)" is "Salesforce Marketing Cloud"). */
+export const tidyName = (name: string): string => String(name || '').replace(/\s*\((?:sample|demo)(?: data)?\)\s*$/i, '').trim();
 
 export interface ConnectorRows { yours: ConnectorRow[]; discover: ConnectorRow[] }
 
@@ -43,21 +46,22 @@ export function connectorRows(overview: OverviewForRows): ConnectorRows {
   if (overview.connectorRules.length > 0) {
     for (const system of overview.connectorRules) {
       const check = describeStatus(system.status);
+      // One plain word: Connected, Not connected, Off; a system the platform holds itself is simply Built in.
       const status: ConnectorRow['status'] = !system.enabled
-        ? { tone: 'off', label: 'Switched off', detail: '' }
-        : check.tone === 'bad' ? { tone: 'warn', label: 'Needs setup', detail: check.detail }
-        : check.tone === 'good' ? { tone: 'good', label: 'Connected', detail: '' }
-        : { tone: 'good', label: 'On', detail: 'The connection has not been checked.' };
+        ? { tone: 'off', label: 'Off', detail: '' }
+        : system.sample ? { tone: 'good', label: 'Built in', detail: '' }
+        : check.tone === 'bad' ? { tone: 'warn', label: 'Not connected', detail: check.detail }
+        : { tone: 'good', label: 'Connected', detail: '' };
       (system.enabled ? yours : discover).push({
-        key: `system:${system.connectorId}`, kind: 'system', id: system.connectorId, name: system.name, description: system.description,
-        type: system.sample ? 'Sample data' : 'Real data', status, tools: system.tools.length,
+        key: `system:${system.connectorId}`, kind: 'system', id: system.connectorId, name: tidyName(system.name), description: system.description,
+        type: system.sample ? 'Data' : 'Connector', status, tools: system.tools.length,
       });
     }
   } else {
     for (const system of overview.systems) {
       yours.push({
-        key: `system:${system.connectorId}`, kind: 'system', id: system.connectorId, name: system.name, description: system.description,
-        type: system.sample ? 'Sample data' : 'Real data', status: { tone: 'good', label: 'In use', detail: '' }, tools: system.tools,
+        key: `system:${system.connectorId}`, kind: 'system', id: system.connectorId, name: tidyName(system.name), description: system.description,
+        type: system.sample ? 'Data' : 'Connector', status: { tone: 'good', label: system.sample ? 'Built in' : 'Connected', detail: '' }, tools: system.tools,
       });
     }
   }
@@ -66,7 +70,7 @@ export function connectorRows(overview: OverviewForRows): ConnectorRows {
     const used = tool.usedBy.length > 0;
     (used ? yours : discover).push({
       key: `builtin:${tool.id}`, kind: 'builtin', id: tool.id, name: tool.name, description: tool.description, type: 'Built in',
-      status: used ? { tone: 'good', label: 'In use', detail: '' } : { tone: 'plain', label: 'Not used yet', detail: '' },
+      status: { tone: used ? 'good' : 'plain', label: used ? 'In use' : 'Not used', detail: '' },
     });
   }
   return { yours: yours.sort(order), discover: discover.sort(order) };

@@ -5,7 +5,8 @@
  * decides what is listed (it is exactly what the assistant may use for that person); a switch can only turn one off. An ask-first
  * connector is marked, so nobody is surprised that it will ask before it changes anything.
  */
-import { connectorCapability, type ConnectorItem } from '@/lib/connectors/connectors';
+import { tidyName } from '@/lib/customize/connectorPage';
+import type { ConnectorItem } from '@/lib/connectors/connectors';
 
 /** The connector rows and their note: one switch each, for this conversation. */
 export function ConnectorRows({ items, off, onToggle }: { items: ConnectorItem[]; off: string[]; onToggle: (connector: string) => void }) {
@@ -21,20 +22,14 @@ export function ConnectorRows({ items, off, onToggle }: { items: ConnectorItem[]
             aria-checked={on}
             className="ax-menu__item ax-connector"
             onClick={() => onToggle(item.connector)}
-            title={item.description}
           >
             <span className="ax-connector__text">
-              <span className="ax-connector__name">
-                {item.sample ? item.name.replace(/\s*\(sample\)\s*$/i, '') : item.name}
-                {item.sample && <span className="ax-badge">Sample data</span>}
-              </span>
-              <span className="ax-connector__line">{connectorCapability(item)}</span>
+              <span className="ax-connector__name">{tidyName(item.name)}</span>
             </span>
             <span className="ax-switch" data-on={on ? 'true' : 'false'} aria-hidden="true"><span className="ax-switch__knob" /></span>
           </button>
         );
       })}
-      <p className="ax-popover__note">Switch one off to keep the assistant from using it in this chat.</p>
     </>
   );
 }

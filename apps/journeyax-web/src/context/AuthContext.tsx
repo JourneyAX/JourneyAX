@@ -30,8 +30,6 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  /** Demo only: signs in as one of the demo personas the server offers (by the button's id; the server holds the password). */
-  loginAs: (id: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -79,23 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const loginAs = useCallback(async (id: string) => {
-    try {
-      const res = await fetch('/api/auth/demo-login' + (typeof window !== 'undefined' ? window.location.search : ''), {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) return { success: false, message: data.message || 'Could not sign in as that person.' };
-      setState({ user: data.user, isAuthenticated: true, isLoading: false });
-      return { success: true };
-    } catch {
-      return { success: false, message: 'Network error. Please try again.' };
-    }
-  }, []);
-
   const logout = useCallback(async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
@@ -104,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, loginAs, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

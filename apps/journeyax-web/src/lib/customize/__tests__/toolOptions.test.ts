@@ -50,9 +50,10 @@ check('what each team may do with a tool is the pack\'s own rule: allowed, asked
 });
 
 check('a system that is switched off is still listed, marked off, with the states its rules would give once on', () => {
-  const zendesk = byId.get('zendesk.find_tickets')!;
-  assert.equal(zendesk.enabled, false);
-  assert.equal(zendesk.states!['customer-service'], 'allow');
+  const report = byId.get('power-bi.list_reports')!;
+  assert.equal(report.enabled, false);
+  assert.equal(report.states!.marketing, 'allow');
+  assert.equal(byId.get('zendesk.find_tickets')!.enabled, true);
   assert.equal(byId.get('salesforce.list_cases')!.enabled, true);
 });
 

@@ -1,10 +1,9 @@
 /**
- * The demo persona sign-in file: one entry per demo login, with the password, for the web server to read (DEMO_LOGINS_FILE). The sign-in
- * screen then offers a button per persona. The file holds passwords, so it is written outside git (`.env*` is ignored) and only the web
- * server reads it; the browser is only ever told the name and description of each button.
+ * The private demo logins file: one entry per demo login (email and password), read by the recording scripts (scripts/demo/*.cjs) to sign in
+ * by typing, the way a person does. The web app does not read it. The file holds passwords, so it is written outside git (`.env*` is ignored):
+ * make it when recording and delete it afterwards.
  *
  *   npx tsx scripts/placemakers/demo-logins.ts [--out .env.demo-logins.json]
- *   then start the web app with DEMO_LOGINS_FILE=<that path>
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -41,5 +40,5 @@ if (require.main === module) {
   if (!existsSync(libraryFile)) throw new Error('The persona library is missing.');
   const entries = demoLoginEntries(DEMO_STAFF, JSON.parse(readFileSync(libraryFile, 'utf8')));
   writeFileSync(out, `${JSON.stringify({ logins: entries }, null, 2)}\n`, { mode: 0o600 });
-  console.log(`Wrote ${entries.length} demo logins to ${out} (private: it holds passwords; start the web app with DEMO_LOGINS_FILE=${out}).`);
+  console.log(`Wrote ${entries.length} demo logins to ${out} (private: it holds passwords; delete it when you are done recording).`);
 }

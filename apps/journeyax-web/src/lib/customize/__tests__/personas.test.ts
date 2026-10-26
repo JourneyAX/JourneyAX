@@ -120,9 +120,9 @@ check('customers never get a connected system: a tool added to a customer scenar
 });
 
 check('a system that is switched off, or not connected, is named as the reason', () => {
-  const off = checkScenarios(viewWith({ 'B01-UC01': ['zendesk.find_tickets'] }), overview).byUseCase['B01-UC01'];
-  const zd = off.tools.find((t) => t.id === 'zendesk.find_tickets')!;
-  assert.deepEqual([zd.outcome, zd.note], ['off', 'Zendesk is switched off.']);
+  const off = checkScenarios(viewWith({ 'B01-UC01': ['power-bi.list_reports'] }), overview).byUseCase['B01-UC01'];
+  const pb = off.tools.find((t) => t.id === 'power-bi.list_reports')!;
+  assert.deepEqual([pb.outcome, pb.note], ['off', 'Power BI is switched off.']);
   const down = checkScenarios(viewWith(), overviewWith({ ...connected, commercetools: { checked: true, connected: false, missing: ['CT_CLIENT_ID'] } })).byUseCase['B01-UC01'];
   assert.equal(down.verdict, 'gaps');
   assert.ok(down.tools.some((t) => t.outcome === 'not-connected' && /needs CT_CLIENT_ID/.test(t.note)));

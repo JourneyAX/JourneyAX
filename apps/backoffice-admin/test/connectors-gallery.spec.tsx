@@ -26,7 +26,7 @@ check('the project\'s connected systems are read as they are saved: name, switch
   assert.equal(systems.length, draft.extensions.connectors.connectors.length);
   const salesforce = systems.find((s) => s.id === 'salesforce')!;
   assert.deepEqual({ name: salesforce.name, enabled: salesforce.enabled, sample: salesforce.sample, tools: salesforce.tools, writes: salesforce.writes }, { name: 'Salesforce', enabled: true, sample: false, tools: 11, writes: 1 });
-  assert.equal(systems.find((s) => s.id === 'zendesk')!.enabled, false);
+  assert.equal(systems.find((s) => s.id === 'zendesk')!.enabled, true);
   assert.equal(systems.find((s) => s.id === 'marketing-cloud')!.sample, true);
   assert.deepEqual(readAssistantSystems(null), []);
   assert.deepEqual(readAssistantSystems({ extensions: { connectors: { connectors: [null, { connectorId: '' }, { connectorId: 'a' }, { connectorId: 'a' }] } } }), [{ id: 'a', name: 'a', enabled: true, sample: false, tools: 0, writes: 0 }]);
