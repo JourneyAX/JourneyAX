@@ -103,13 +103,25 @@ async function main() {
 
   await suite.test('a card may show the product the customer\'s own tap named, and only that one', async () => {
     const ctx = pavers();
-    ctx.customerEvent = { type: 'addToCart', payload: { sku: 'P1', quantity: 63, title: 'Forum Paver' } };
+    ctx.customerEvent = { type: 'viewProduct', payload: { sku: 'P1', title: 'Forum Paver' } };
     const shown: any = await executeAgentTool('present_card', { cardType: 'accessories', state: { forSku: 'P1', groups: [{ key: 'g', label: 'Goes with', items: [{ sku: 'P2' }] }] } }, ctx);
     assert.equal(shown.ok, false, 'a product nobody looked up and the tap did not name is still refused');
     assert.match(shown.error, /"P2"/);
     const named: any = await executeAgentTool('present_card', { cardType: 'products', state: { products: [{ sku: 'P1' }] } }, ctx);
     assert.equal(named.ok, true, JSON.stringify(named));
     assert.equal((ctx.presentedCards[0].state as any).products[0].title, 'Forum Paver 400 x 400 x 50mm Glacier Honed', 'its facts come from the catalogue, not the tap');
+  });
+
+  await suite.test('a product the customer has just added is not put on a recommendation card again, and looking at it is still allowed', async () => {
+    const ctx = pavers();
+    ctx.customerEvent = { type: 'addToCart', payload: { sku: 'P1', quantity: 63, title: 'Forum Paver' } };
+    const only: any = await executeAgentTool('present_card', { cardType: 'products', state: { products: [{ sku: 'P1' }] } }, ctx);
+    assert.equal(only.skipped, true, JSON.stringify(only));
+    assert.match(only.message, /already in the customer's cart/);
+    assert.equal(ctx.presentedCards.length, 0, 'no card was shown');
+    // Looking at a product that is in the cart is still allowed: only recommendations are cleaned.
+    const detail: any = await executeAgentTool('present_card', { cardType: 'productDetail', state: { product: { sku: 'P1' } } }, ctx);
+    assert.equal(detail.ok, true, JSON.stringify(detail));
   });
 
   await suite.test('the picture prompt is built from the scene and product names, and the template is the tenant\'s', () => {

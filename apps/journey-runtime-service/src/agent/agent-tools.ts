@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease, BusinessPackContent, JourneyPlaybookStage } from '@journeyax/business-pack';
 import { resolveAgentSkills, resolveCatalogMapping } from '@journeyax/business-pack';
+import { dropAdded, RECOMMENDATION_CARDS, skusInCart } from './already-added';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { ClaimClassSchema, effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
 import type { WorkspaceState } from '@journeyax/journey-core';
@@ -2479,6 +2480,19 @@ export async function executeAgentTool(
         }
         state.groups = fresh;
         for (const group of fresh) for (const item of group.items) shown.add(String(item.sku));
+      }
+      // What the customer has already added is not recommended again (their own tap this turn counts too).
+      if (RECOMMENDATION_CARDS.includes(cardType)) {
+        const cartId = `cart-${ctx.workspaceId || 'default'}`;
+        const added = skusInCart({
+          carts: [(ctx as any).cart, (ctx as any).workspace?.facts?.cart?.value, ctx.inMemoryCarts instanceof Map ? (ctx.inMemoryCarts.get(cartId) || ctx.inMemoryCarts.get('default')) : undefined],
+          event: ctx.customerEvent,
+        });
+        const dropped = dropAdded(cardType, state, added);
+        if (dropped.empty) {
+          return { ok: true, skipped: true, message: 'Everything on that card is already in the customer\'s cart, so no card was shown. Do not recommend those again: say in a sentence what they have, and move on to what they still need (a quantity, an accessory they have not added, or the order review).' };
+        }
+        if (dropped.removed.length > 0) Object.assign(state, dropped.state);
       }
       if (cardType === 'review') {
         if (!ctx.lastReview) {
