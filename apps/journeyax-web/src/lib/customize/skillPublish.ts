@@ -108,6 +108,6 @@ export async function changeSkill(deps: ChangeDeps, op: SkillOp): Promise<Change
     patch: body, undo: undoOf(patch, before), subject: 'skill',
     note: `Skill "${name}" ${op.kind === 'delete' ? 'deleted' : op.mode === 'create' ? 'added' : 'changed'} from the Customize page`,
   });
-  if (!written.ok) return written.result;
+  if (written.ok === false) return written.result;
   return ok({ ok: true, skillId, ...(written.version ? { version: written.version } : {}), ...(op.kind === 'delete' ? { affected: (done as { affected: Rec }).affected } : {}) });
 }

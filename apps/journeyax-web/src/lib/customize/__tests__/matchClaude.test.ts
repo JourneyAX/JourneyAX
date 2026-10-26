@@ -205,7 +205,7 @@ check('with no name anywhere the file name is used, except a bare SKILL.md which
 });
 
 check('files that are not skills are refused with a reason: empty, binary, too long, a name that is too long, a header with nothing under it', () => {
-  const reasons = (text: string, file = 'a.md') => { const r = parseSkillFile(text, file); return r.ok ? '' : r.error; };
+  const reasons = (text: string, file = 'a.md') => { const r = parseSkillFile(text, file); return r.ok === false ? r.error : ''; };
   assert.match(reasons('   '), /empty/);
   assert.match(reasons('abc\u0000def'), /text file/);
   assert.match(reasons('x'.repeat(MAX_SKILL_FILE_BYTES + 1)), /too long/);

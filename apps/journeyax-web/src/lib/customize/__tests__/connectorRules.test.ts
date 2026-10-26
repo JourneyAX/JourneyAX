@@ -19,7 +19,7 @@ const TEAMS = ['Customer Service', 'Sales', 'Sales Managers', 'Branch', 'Finance
 const view = (e: ConnectorsExtension, id: string) => buildConnectorRules(e, TEAMS).find((v) => v.connectorId === id)!;
 const asIfOn = (e: ConnectorsExtension) => ({ ...e, connectors: e.connectors.map((c) => ({ ...c, enabled: true })) });
 const engine = (e: ConnectorsExtension, id: string, tool: string, group: string) => connectorToolState(asIfOn(e), id, tool, { audience: 'staff', groups: [group] }).state;
-const good = (r: RulesResult) => { assert.equal(r.ok, true, r.ok ? '' : r.errors.join(' | ')); return r as Extract<RulesResult, { ok: true }>; };
+const good = (r: RulesResult) => { assert.equal(r.ok, true, r.ok === false ? r.errors.join(' | ') : ''); return r as Extract<RulesResult, { ok: true }>; };
 
 console.log('the connector rules table');
 
@@ -158,7 +158,7 @@ check('editing every system of the real draft at random gives exactly the cells 
       cells[name] = Object.fromEntries(v.columns.map((c) => [c.id, (write ? (['ask', 'blocked'] as const) : STATES)[next() % (write ? 2 : 3)]]));
     }
     const done = applyRulesChange(e, { connectorId: connector.connectorId, cells });
-    if (!done.ok) { assert.match(done.errors.join(' '), /Nothing was changed/, `${connector.connectorId}: ${done.errors.join(' ')}`); continue; }
+    if (done.ok === false) { assert.match(done.errors.join(' '), /Nothing was changed/, `${connector.connectorId}: ${done.errors.join(' ')}`); continue; }
     const after = view(done.extension, connector.connectorId);
     for (const tool of v.tools) for (const column of v.columns) {
       const want = edited.includes(tool.name) ? cells[tool.name][column.id] : v.grid[tool.name][column.id];

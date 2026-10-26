@@ -510,7 +510,7 @@ function CarouselView({ itemWidth, gap, label, className, style, rootRef, childr
         tabIndex={0}
         onScroll={update}
         onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); by(1); } else if (event.key === 'ArrowLeft') { event.preventDefault(); by(-1); } }}
-        style={{ gap, ['--jx-carousel-item' as any]: itemWidth || '300px' }}
+        style={{ gap, ['--carousel-item-w' as any]: itemWidth || '300px' }}
       >
         {children}
       </div>

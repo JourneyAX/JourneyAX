@@ -52,6 +52,6 @@ export async function changeRules(deps: WriteDeps, op: RulesOp): Promise<ChangeR
     subject: 'rules',
     note: `${name}: ${parts.join(', ')}, from the Customize page`,
   });
-  if (!written.ok) return written.result;
+  if (written.ok === false) return written.result;
   return ok({ ok: true, connectorId: op.connectorId, changes: done.changes, warnings: done.warnings, ...(written.version ? { version: written.version } : {}) });
 }
