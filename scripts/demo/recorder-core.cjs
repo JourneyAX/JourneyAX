@@ -59,15 +59,30 @@ const clock = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}
 function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, captionAt = 'bottom', captions = true }) {
   // The caption sits at the bottom of the picture, or at the top where the screen has a message box at the bottom (a chat).
   const overlay = captionAt === 'top' ? OVERLAY.replace('bottom:34px', 'top:12px').replace('padding:16px 30px', 'padding:10px 26px').replace('font:600 30px/1.3', 'font:600 26px/1.3') : OVERLAY;
-  async function openRecorder(name, { storageState } = {}) {
+  async function openRecorder(name, { storageState, profileDir } = {}) {
     const dir = path.join(out, '.raw', name);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
-    const browser = await chromium.launch({ executablePath: chromiumPath() });
     // The page is laid out at 1920 x 1080 and drawn at twice the size, so the frames are real 3840 x 2160 pictures (crisp text), not a small picture in a big frame.
-    const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2, storageState, colorScheme: 'light' });
+    // With `profileDir` the browser keeps its own saved state there (a rehearsal can come back to a conversation it built earlier).
+    let browser = null;
+    let context;
+    if (profileDir) {
+      context = await chromium.launchPersistentContext(profileDir, { executablePath: chromiumPath(), viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2, colorScheme: 'light' });
+      browser = context.browser();
+    } else {
+      browser = await chromium.launch({ executablePath: chromiumPath() });
+      context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2, storageState, colorScheme: 'light' });
+    }
     await context.addInitScript(overlay);
-    const page = await context.newPage();
+    const page = profileDir ? (context.pages()[0] || await context.newPage()) : await context.newPage();
+    // What happened to the page, kept beside the pictures: a crash or a close shows here.
+    const events = path.join(dir, 'events.log');
+    const note = (line) => { try { fs.appendFileSync(events, `${new Date().toISOString().slice(11, 23)} ${line}\n`); } catch { /* the folder may be gone */ } };
+    page.on('crash', () => note('page crashed'));
+    page.on('close', () => note('page closed'));
+    page.on('pageerror', (error) => note(`page error: ${String(error.message).slice(0, 160)}`));
+    page.on('framedetached', (frame) => note(`frame gone: ${frame.url().replace(/[?#].*/, '').slice(0, 80)}`));
     const cdp = await context.newCDPSession(page);
     // Pictures are taken as fast as the browser can make real 3840 x 2160 ones (about fifteen a second); a picture identical to the last is not kept.
     const frames = [];
@@ -145,7 +160,7 @@ function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, capti
         capturing = false;
         await taking;
         await context.close();
-        await browser.close();
+        if (browser) await browser.close().catch(() => {});
         if (frames.length === 0) throw new Error('no picture was captured');
         // Each picture is shown until the next one arrived (a screen that did not change sends no new picture), then made a steady 30 pictures a second.
         const list = frames.map((frame, i) => `file '${frame.file}'\nduration ${Math.max(0.02, ((i + 1 < frames.length ? frames[i + 1].at : Math.max(endedAt, frame.at + 0.5)) - frame.at)).toFixed(3)}`).join('\n') + `\nfile '${frames[frames.length - 1].file}'\n`;

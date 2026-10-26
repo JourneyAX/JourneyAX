@@ -27,6 +27,8 @@ const PROJECT = opt('project', 'placemakers');
 const ONLY = (opt('only', '') || '').split(',').filter(Boolean);
 /** The signed-in browser state of the commercetools Merchant Center (made by the owner signing in; a private file), and where its orders are. */
 const MC_STATE = opt('mc-state', '');
+/** A folder the rehearsal browser keeps its saved state in (a cart and conversation built once, reused without asking the model again). */
+const PROFILE = opt('profile', '');
 const MC_ORDERS = opt('mc-orders', 'https://mc.us-central1.gcp.commercetools.com/placemaker/orders');
 const { openRecorder } = createKit({ out: OUT, keepFrames: flag('keep-frames'), voice: opt('voice', 'Karen'), rate: Number(opt('rate', '168')), captionAt: 'top', captions: flag('captions') });
 
@@ -147,30 +149,43 @@ function chat(r) {
       await button.evaluate((el) => el.removeAttribute('data-rec-target')).catch(() => {});
     },
     async openBag() { await r.click(page.locator('button[aria-label^="View your"]').first(), 1500); },
-    /** Stripe's payment form in the panel, filled quickly with a test person and Stripe's published test card. */
-    async payWithTestCard() {
+    /** Stripe's payment form in the panel, filled quickly with a test person and Stripe's published test card. `stopBeforePay` leaves it filled. */
+    async payWithTestCard({ stopBeforePay = false } = {}) {
       await page.waitForSelector('iframe[src*="stripe"]', { timeout: 60000 });
-      await wait(6000);
-      const frame = page.frames().find((f) => /embedded-checkout-inner/.test(f.url()));
-      if (!frame) throw new Error('the payment form did not open');
-      const fill = async (id, value) => { await r.click(frame.locator(`#${id}`), 150); await page.keyboard.type(value, { delay: 9 }); };
-      await fill('email', 'shopper@placemakers.demo');
-      await fill('shippingName', 'Sam Shopper');
-      await frame.locator('#shippingCountry').selectOption('NZ').catch(() => {});
-      const manual = frame.getByText(/enter address manually/i).first();
-      if (await manual.count()) await manual.click({ timeout: 10000 }).catch(() => {});
-      await wait(600);
-      await fill('shippingAddressLine1', '1 Queen Street');
-      await page.keyboard.press('Escape');
-      await wait(400);
+      await wait(5000);
+      // The form can be rebuilt by Stripe while it is filled, so the frame is found again each time.
+      const frame = () => page.frames().find((f) => /embedded-checkout-inner/.test(f.url()));
+      const shot = async (label) => { if (process.env.REC_DEBUG_DIR) await page.screenshot({ path: path.join(process.env.REC_DEBUG_DIR, `${label}.png`) }).catch(() => {}); };
+      const field = (id) => frame().locator(`#${id}`);
+      const fill = async (id, value, { optional = false } = {}) => {
+        try {
+          await field(id).waitFor({ state: 'visible', timeout: 12000 });
+          // The cursor glides toward the field for the picture; the exact click and the typing are the browser's own, so a form that
+          // shifts while the cursor moves (Stripe's does) still gets the right field.
+          await r.point(field(id)).catch(() => {});
+          await field(id).click({ timeout: 8000 });
+          await field(id).pressSequentially(value, { delay: 9 });
+        } catch (error) {
+          if (!optional) throw new Error(`payment form, ${id}: ${String(error.message).split('\n')[0].slice(0, 90)}`);
+        }
+      };
+      if (!frame()) throw new Error('the payment form did not open');
+      await fill('email', 'shopper@placemakers.demo'); await shot('p1-email');
+      await fill('shippingName', 'Sam Shopper'); await shot('p2-name');
+      await frame().locator('#shippingCountry').selectOption('NZ').catch(() => {});
+      const manual = frame().getByText(/enter address manually/i).first();
+      if (await manual.count()) { await r.point(manual).catch(() => {}); await manual.click({ timeout: 8000 }).catch(() => {}); await wait(700); }
+      await shot('p3-manual');
+      await fill('shippingAddressLine1', '1 Queen Street'); await shot('p4-line1');
       await fill('shippingLocality', 'Auckland');
-      await fill('shippingPostalCode', '1010');
-      await fill('phoneNumber', '021 123 4567').catch(() => {});
+      await fill('shippingPostalCode', '1010'); await shot('p5-address');
+      await fill('phoneNumber', '021 123 4567', { optional: true });
       await fill('cardNumber', '4242 4242 4242 4242');
       await fill('cardExpiry', '12 / 34');
-      await fill('cardCvc', '123');
+      await fill('cardCvc', '123'); await shot('p6-card');
       await wait(700);
-      await r.click(frame.getByRole('button', { name: /pay/i }).last(), 600);
+      if (stopBeforePay) return;
+      await r.click(frame().getByRole('button', { name: /pay/i }).last(), 600);
     },
     /** Waits for the order panel ("Order #XXXXXXXX") and returns its number. */
     async orderNumber() {
@@ -234,6 +249,21 @@ function chat(r) {
 
 /* ── the scenarios ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
 const SCENARIOS = [
+  {
+    id: 'pay-rehearsal',
+    title: 'Payment form rehearsal (no chat questions, stops before Pay)',
+    persona: 'shopper',
+    async run(r, c) {
+      await c.open();
+      await r.page.waitForSelector('#chat-input-field', { timeout: 60000 });
+      await wait(2500);
+      const item = r.page.locator('a, button').filter({ hasText: /wall hung vanity/i }).first();
+      if (await item.count()) { await item.click(); await wait(3500); }
+      await c.press(/Take me to payment/, { last: true });
+      await c.payWithTestCard({ stopBeforePay: true });
+      await wait(1500);
+    },
+  },
   {
     id: '01-bathroom-end-to-end',
     title: 'A bathroom remodel, from the first question to the order in commercetools',
@@ -410,7 +440,7 @@ const SCENARIOS = [
   if (!flag('yes-run-real-chats')) { console.log('Dry run: nothing was recorded. Add --yes-run-real-chats to record (each scenario is a set of real model runs; scenario 04 raises one real case in Salesforce).'); return; }
   fs.mkdirSync(OUT, { recursive: true });
   for (const s of chosen) {
-    const r = await openRecorder(s.id, s.mcState && MC_STATE ? { storageState: MC_STATE } : {});
+    const r = await openRecorder(s.id, PROFILE && s.id === 'pay-rehearsal' ? { profileDir: PROFILE } : s.mcState && MC_STATE ? { storageState: MC_STATE } : {});
     try { await s.run(r, chat(r)); } catch (error) { console.error(`  ✗ ${s.id}: ${String(error.message || error).slice(0, 300)}`); }
     // What the conversation said, kept beside the video so it can be checked against the commentary.
     try {
