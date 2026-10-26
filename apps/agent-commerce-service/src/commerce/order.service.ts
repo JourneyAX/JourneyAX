@@ -21,6 +21,8 @@ import { Quote } from './quote.types';
 const DB_NAME = 'journeyx';
 const ORDERS = 'orders';
 
+import { mirrorIsOn, mirrorPaidOrder, type MirroredOrder, type MirrorDeps } from './order-mirror';
+
 export type OrderStatus = 'pending_payment' | 'paid' | 'failed' | 'cancelled';
 
 export interface OrderDoc {
@@ -46,6 +48,11 @@ export interface OrderDoc {
   billing?: OrderParty;
   shipping?: OrderParty;
   paidAt?: string;
+  /** The same order recorded in the business's commerce system (commercetools), under the same number, once it is paid. */
+  externalOrder?: MirroredOrder;
+  /** Why the last attempt to record it failed (empty when it worked), and when it was last tried. */
+  mirrorError?: string;
+  mirrorTriedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +114,41 @@ export class OrderService {
     const key = (tenantKey && tenantKey.trim()) || process.env.STRIPE_SECRET_KEY || '';
     if (!key) return null;
     return new Stripe(key, { apiVersion: '2025-01-27.acacia' as any });
+  }
+
+  /** Orders being recorded right now in this process, so a webhook and a page opening do not both try. */
+  private mirroring = new Set<string>();
+  /** For tests: the settings, fetch and clock the recording uses. */
+  mirrorDeps: MirrorDeps = {};
+
+  /**
+   * Records a paid order in the commerce system, if that is switched on. Never throws and never touches the order's status: the customer
+   * has paid and keeps their order whatever happens here. The outcome is written on the order; a failure is retried when it is next opened.
+   */
+  async mirror(orderId: string): Promise<void> {
+    if (this.mirroring.has(orderId)) return;
+    this.mirroring.add(orderId);
+    try {
+      const col = await this.getCol();
+      if (!col) return;
+      const order = await col.findOne({ orderId });
+      if (!order || order.status !== 'paid' || order.externalOrder) return;
+      const result = await mirrorPaidOrder(order, this.mirrorDeps);
+      if (result === null) return;
+      const at = (this.mirrorDeps.now ?? (() => new Date()))().toISOString();
+      if (result.ok) {
+        await col.updateOne({ orderId }, { $set: { externalOrder: result.mirrored, mirrorError: '', mirrorTriedAt: at } });
+        console.log(`[OrderService] recorded ${orderId} in commercetools as #${result.mirrored.orderNumber}`);
+      } else {
+        const reason = 'reason' in result ? result.reason : 'unknown';
+        await col.updateOne({ orderId }, { $set: { mirrorError: reason, mirrorTriedAt: at } });
+        console.warn(`[OrderService] could not record ${orderId} in commercetools: ${reason}`);
+      }
+    } catch (error: any) {
+      console.warn('[OrderService] recording the order failed:', error?.message);
+    } finally {
+      this.mirroring.delete(orderId);
+    }
   }
 
   async create(args: CreateOrderArgs): Promise<CreateOrderResult> {
@@ -171,6 +213,7 @@ export class OrderService {
       // Demo / Trade Credit mode: persist approved order and redirect to success
       const confirmedOrder: OrderDoc = { ...order, status: 'paid' };
       if (col) await col.insertOne(confirmedOrder).catch(() => {});
+      void this.mirror(order.orderId);
       const redirectUrl = args.successUrl.replace('{ORDER_ID}', order.orderId);
       return {
         orderId: order.orderId,
@@ -266,6 +309,7 @@ export class OrderService {
       if (orderId) {
         const stamp = new Date().toISOString();
         await col.updateOne({ orderId }, { $set: { status: 'paid', paidAt: stamp, updatedAt: stamp, ...partiesFromSession(s) } });
+        void this.mirror(orderId);
         // TODO(outbox): emit order.created / order.paid event here (event-bus).
         return { ok: true, handled: 'paid:' + orderId };
       }
@@ -283,6 +327,7 @@ export class OrderService {
     const filter: any = { orderId };
     if (tenantId) filter.tenantId = tenantId;
     const order = await col.findOne(filter);
+    if (order && order.status === 'paid' && !order.externalOrder && mirrorIsOn(this.mirrorDeps.env) && !(order.mirrorTriedAt && Date.now() - Date.parse(order.mirrorTriedAt) < 30_000)) void this.mirror(order.orderId);
     if (!order || order.status !== 'pending_payment') return order;
     return (await this.confirmWithStripe(order, tenantKeyFor(order))) || order;
   }
@@ -318,6 +363,7 @@ export class OrderService {
       const details = partiesFromSession(s);
       await col.updateOne({ orderId: order.orderId }, { $set: { status: 'paid', paidAt: updatedAt, updatedAt, ...details } });
       console.log(`[OrderService] confirmed with Stripe (no webhook): paid ${order.orderId}`);
+      void this.mirror(order.orderId);
       // Return exactly what was written — a caller reading `paidAt` from this
       // response must not see null for an order we just stamped as paid.
       return { ...order, status: 'paid', paidAt: updatedAt, updatedAt, ...details } as OrderDoc;

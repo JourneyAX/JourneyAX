@@ -44,11 +44,11 @@ async function main() {
     assert.deepEqual(server.health().connectors[0].missing, ['COMMERCETOOLS_PROJECT_KEY', 'COMMERCETOOLS_CLIENT_ID', 'COMMERCETOOLS_CLIENT_SECRET', 'COMMERCETOOLS_REGION']);
   });
 
-  await t.test('it offers the six shop tools and three more for stock and trade accounts, and only add_to_cart changes anything', async () => {
+  await t.test('it offers the shop tools, three more for stock and trade accounts and place_order for the shop, and only add_to_cart and place_order change anything', async () => {
     const { server, vendor } = await setup(() => undefined);
     const tools = await listTools(server, 'commercetools');
-    assert.deepEqual(tools.map((tool) => tool.name), ['find_product', 'get_product', 'get_cart', 'add_to_cart', 'get_order', 'order_history', 'stock_by_branch', 'find_account', 'get_account']);
-    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['add_to_cart']);
+    assert.deepEqual(tools.map((tool) => tool.name), ['find_product', 'get_product', 'get_cart', 'add_to_cart', 'place_order', 'get_order', 'order_history', 'stock_by_branch', 'find_account', 'get_account']);
+    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['add_to_cart', 'place_order']);
     await vendor.close();
   });
 
@@ -312,6 +312,90 @@ async function main() {
     assert.equal(leaks(unreachable.payload, SECRET), false);
   });
 
+  await t.test('get_order shows the custom lines of an order the shop recorded, with the tax-inclusive total and the tax', async () => {
+    const { vendor, call } = await setup(() => ({ json: {
+      id: ORDER, orderNumber: 'A1B2C3D4', orderState: 'Open', paymentState: 'Paid',
+      customLineItems: [{ name: { en: 'Boston Wall Hung Vanity' }, slug: '7603471', quantity: 1, totalPrice: { currencyCode: 'NZD', centAmount: 81501, fractionDigits: 2 } }, { name: { en: 'Pop Up Waste' }, slug: '7636725', quantity: 2, totalPrice: { currencyCode: 'NZD', centAmount: 8400, fractionDigits: 2 } }],
+      totalPrice: { currencyCode: 'NZD', centAmount: 89901, fractionDigits: 2 },
+      taxedPrice: { totalGross: { currencyCode: 'NZD', centAmount: 103386, fractionDigits: 2 }, totalTax: { currencyCode: 'NZD', centAmount: 13485, fractionDigits: 2 } },
+    } }));
+    const { payload } = (await call('get_order', { orderId: 'A1B2C3D4' })) as any;
+    assert.equal(payload.record.total, 1033.86);
+    assert.equal(payload.record.tax, 134.85);
+    assert.equal(payload.record.itemCount, 3);
+    assert.deepEqual(payload.record.lines.map((line: any) => [line.sku, line.quantity, line.total]), [['7603471', 1, 815.01], ['7636725', 2, 84]]);
+    await vendor.close();
+  });
+  await t.test('place_order makes one cart of custom lines with external tax, turns it into the order with the customer\'s number, and marks it paid', async () => {
+    const placed = (version: number, extra: any = {}) => ({
+      id: ORDER, version, orderNumber: 'A1B2C3D4', orderState: 'Open', paymentState: extra.paymentState, createdAt: '2026-10-26T20:00:00.000Z',
+      customLineItems: [{ name: { en: 'Boston Wall Hung Vanity' }, slug: '7603471', quantity: 1, totalPrice: { currencyCode: 'NZD', centAmount: 81501, fractionDigits: 2 } }, { name: { en: 'Pop Up Waste' }, slug: '7636725', quantity: 2, totalPrice: { currencyCode: 'NZD', centAmount: 8400, fractionDigits: 2 } }],
+      taxedPrice: { totalNet: { currencyCode: 'NZD', centAmount: 89901 }, totalGross: { currencyCode: 'NZD', centAmount: 103386, fractionDigits: 2 }, totalTax: { currencyCode: 'NZD', centAmount: 13485, fractionDigits: 2 } },
+      totalPrice: { currencyCode: 'NZD', centAmount: 89901, fractionDigits: 2 },
+    });
+    const { vendor, call } = await setup((request) => {
+      if (request.method === 'GET' && request.path.includes('/orders/order-number=')) return { status: 404, json: { message: 'not found' } };
+      if (request.method === 'POST' && request.path === `/${PROJECT}/carts`) return { json: { id: CART, version: 1 } };
+      if (request.method === 'POST' && request.path === `/${PROJECT}/orders`) return { json: placed(1) };
+      if (request.method === 'POST' && request.path === `/${PROJECT}/orders/${ORDER}`) return { json: placed(2, { paymentState: 'Paid' }) };
+      return undefined;
+    });
+    const { payload } = (await call('place_order', {
+      orderNumber: 'A1B2C3D4', currency: 'NZD', taxRate: 0.15, customerEmail: 'shopper@example.test', discount: 0,
+      lines: [{ sku: '7603471', name: 'Boston Wall Hung Vanity', quantity: 1, unitPrice: 815.01 }, { sku: '7636725', name: 'Pop Up Waste', quantity: 2, unitPrice: 42 }],
+      shipping: { name: 'Sam Shopper', line1: '1 Queen St', city: 'Auckland', postalCode: '1010', country: 'NZ' },
+    })) as any;
+    const posts = vendor.seen.filter((request) => request.method === 'POST' && request.path !== '/oauth/token');
+    assert.deepEqual(posts.map((request) => request.path), [`/${PROJECT}/carts`, `/${PROJECT}/orders`, `/${PROJECT}/orders/${ORDER}`]);
+    const body = posts[0].body;
+    assert.equal(body.taxMode, 'External');
+    assert.equal(body.currency, 'NZD');
+    assert.equal(body.customLineItems.length, 2);
+    assert.deepEqual(body.customLineItems[0].money, { type: 'centPrecision', currencyCode: 'NZD', centAmount: 81501 });
+    assert.deepEqual(body.customLineItems[1].externalTaxRate, { name: 'GST', amount: 0.15, country: 'NZ' });
+    assert.equal(body.customLineItems[1].quantity, 2);
+    assert.equal(body.shippingAddress.city, 'Auckland');
+    assert.deepEqual(posts[1].body, { id: CART, version: 1, orderNumber: 'A1B2C3D4' });
+    assert.deepEqual(posts[2].body.actions, [{ action: 'changePaymentState', paymentState: 'Paid' }]);
+    assert.equal(payload.created, true);
+    assert.equal(payload.record.orderNumber, 'A1B2C3D4');
+    assert.equal(payload.record.paymentState, 'Paid');
+    assert.equal(payload.record.lineCount, 2);
+    assert.equal(payload.record.total, 1033.86);
+    await vendor.close();
+  });
+  await t.test('place_order spreads a discount over the lines before tax, and asking again for the same order number returns that order without making another', async () => {
+    const { vendor, call } = await setup((request) => {
+      if (request.method === 'GET' && request.path.includes('/orders/order-number=')) return { json: { id: ORDER, version: 2, orderNumber: 'A1B2C3D4', orderState: 'Open', paymentState: 'Paid', customLineItems: [], totalPrice: { currencyCode: 'NZD', centAmount: 100 } } };
+      return undefined;
+    });
+    const again = (await call('place_order', { orderNumber: 'A1B2C3D4', currency: 'NZD', lines: [{ sku: 'A-1', name: 'One', quantity: 1, unitPrice: 10 }] })) as any;
+    assert.equal(again.payload.created, false);
+    assert.equal(again.payload.record.orderNumber, 'A1B2C3D4');
+    assert.equal(vendor.seen.filter((request) => request.method === 'POST' && request.path !== '/oauth/token').length, 0, 'nothing was made');
+    await vendor.close();
+    const discounted = await setup((request) => {
+      if (request.method === 'GET') return { status: 404, json: {} };
+      if (request.path === `/${PROJECT}/carts`) return { json: { id: CART, version: 1 } };
+      return { json: { id: ORDER, version: 1, orderNumber: 'X1', customLineItems: [], totalPrice: { currencyCode: 'NZD', centAmount: 0 } } };
+    });
+    await discounted.call('place_order', { orderNumber: 'X1', currency: 'NZD', taxRate: 0.15, discount: 10, paid: false, lines: [{ sku: 'A-1', name: 'One', quantity: 1, unitPrice: 60 }, { sku: 'B-2', name: 'Two', quantity: 1, unitPrice: 40 }] });
+    const cartBody = discounted.vendor.seen.find((request) => request.path === `/${PROJECT}/carts` && request.method === 'POST')!.body;
+    assert.deepEqual(cartBody.customLineItems.map((line: any) => line.money.centAmount), [5400, 3600], '10 off 100 is 10% off each line');
+    assert.equal(discounted.vendor.seen.filter((request) => request.method === 'POST' && request.path.startsWith(`/${PROJECT}/orders/`)).length, 0, 'paid: false leaves the payment state alone');
+    await discounted.vendor.close();
+  });
+  await t.test('place_order refuses bad lines before the vendor is asked anything', async () => {
+    const { vendor, call } = await setup(() => undefined);
+    for (const lines of [[], [{ sku: 'A-1', name: 'One', quantity: 0, unitPrice: 5 }], [{ sku: 'A-1', name: '', quantity: 1, unitPrice: 5 }], [{ sku: 'A-1', name: 'One', quantity: 1, unitPrice: -1 }], [{ sku: '??', name: 'One', quantity: 1, unitPrice: 5 }]]) {
+      const answer: any = await call('place_order', { orderNumber: 'N1', currency: 'NZD', lines });
+      assert.ok(answer.isError, JSON.stringify(lines));
+    }
+    const noCurrency: any = await call('place_order', { orderNumber: 'N1', currency: 'dollars', lines: [{ sku: 'A-1', name: 'One', quantity: 1, unitPrice: 5 }] });
+    assert.ok(noCurrency.isError);
+    assert.equal(vendor.seen.filter((request) => request.path !== '/oauth/token').length, 0, 'the vendor was never asked');
+    await vendor.close();
+  });
   t.finish();
 }
 

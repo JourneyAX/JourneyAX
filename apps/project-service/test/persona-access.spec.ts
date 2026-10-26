@@ -20,6 +20,7 @@ const TABLE: Record<string, string> = {
   'commercetools.get_product':        'A A A A A - A A A -',
   'commercetools.get_cart':           'A A A A - - A A - -',
   'commercetools.add_to_cart':        'K K K K - - - K - -',
+  'commercetools.place_order':        '- - - - - - - - - -',
   'commercetools.get_order':          'A A A A - - A A A -',
   'commercetools.order_history':      'A A A A - - A A A -',
   'commercetools.stock_by_branch':    'A A A A - - A A - -',

@@ -10,7 +10,8 @@
  *
  * Make the API client with the smallest scopes that work: `view_products`, `view_customer_groups` (for the trade-tier prices), `view_business_units`
  * and `view_customers` (for the trade accounts and their people), `view_orders` and `manage_orders` (commercetools keeps carts under the orders
- * scopes). Nothing here can delete anything. The only change a tool makes is adding a line to a cart.
+ * scopes). Nothing here can delete anything. The only changes a tool makes are adding a line to a cart and, for the shop after a payment, recording
+ * the paid order (`place_order`: one cart of custom lines, made into one order; asking again for the same order number returns that order).
  *
  * The product tools use Product Search, so the project's "products search" indexing must be on (the B2B loader switches it on). Set
  * COMMERCETOOLS_LOCALE to the language the names were written in (en-NZ for the PlaceMakers data), or a name search finds nothing.
@@ -24,6 +25,8 @@ const REQUIRED = ['COMMERCETOOLS_PROJECT_KEY', 'COMMERCETOOLS_CLIENT_ID', 'COMME
 const SKU = /^[A-Za-z0-9][A-Za-z0-9._\-/ ]{0,99}$/;
 const ID = /^[A-Za-z0-9_-]{6,64}$/;
 const ORDER_NUMBER = /^[A-Za-z0-9._-]{1,64}$/;
+const CURRENCY = /^[A-Z]{3}$/;
+const COUNTRY = /^[A-Z]{2}$/;
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const ORDER_STATES: Record<string, string> = { open: 'Open', confirmed: 'Confirmed', complete: 'Complete', cancelled: 'Cancelled' };
 
@@ -135,6 +138,23 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     });
   };
 
+  /** What a paid shop order looks like once recorded: its number, states, custom lines and money. */
+  const placedRecord = (order: any): Rec => {
+    const lines: any[] = Array.isArray(order?.customLineItems) ? order.customLineItems : [];
+    return compact({
+      orderNumber: order?.orderNumber,
+      orderId: order?.id,
+      state: order?.orderState,
+      paymentState: order?.paymentState,
+      lineCount: lines.length,
+      lines: lines.slice(0, 50).map((line) => compact({ name: localised(line.name, locale()), sku: line.slug, quantity: line.quantity, total: money(line.totalPrice)?.amount })),
+      tax: money(order?.taxedPrice?.totalTax)?.amount,
+      total: money(order?.taxedPrice?.totalGross ?? order?.totalPrice)?.amount,
+      currency: order?.totalPrice?.currencyCode,
+      createdAt: order?.createdAt,
+    });
+  };
+
   const cartRecord = (cart: any): Rec => {
     const lines: any[] = Array.isArray(cart?.lineItems) ? cart.lineItems : [];
     return compact({
@@ -157,8 +177,12 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
   };
 
   const orderRecord = (order: any, withLines: boolean): Rec => {
-    const lines: any[] = Array.isArray(order?.lineItems) ? order.lineItems : [];
+    // An order made by the shop after payment carries its lines as custom lines (name, code, price), so both kinds are shown.
+    const products: any[] = Array.isArray(order?.lineItems) ? order.lineItems : [];
+    const customs: any[] = Array.isArray(order?.customLineItems) ? order.customLineItems : [];
+    const lines = [...products.map((line) => ({ line, sku: line.variant?.sku })), ...customs.map((line) => ({ line, sku: line.slug }))];
     const address = order?.shippingAddress;
+    const gross = order?.taxedPrice?.totalGross ?? order?.totalPrice;
     return compact({
       orderId: order?.id,
       orderNumber: order?.orderNumber,
@@ -167,13 +191,14 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
       shipmentState: order?.shipmentState,
       customerId: order?.customerId,
       created: order?.createdAt,
-      total: money(order?.totalPrice)?.amount,
+      total: money(gross)?.amount,
+      tax: money(order?.taxedPrice?.totalTax)?.amount,
       currency: order?.totalPrice?.currencyCode,
-      itemCount: lines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0),
+      itemCount: lines.reduce((sum, entry) => sum + (Number(entry.line.quantity) || 0), 0),
       // Only the town and postcode: enough to talk about a delivery without copying a street address into a chat.
       shipTo: address ? compact({ city: address.city, postalCode: address.postalCode, country: address.country }) : undefined,
-      lines: withLines ? lines.slice(0, 50).map((line) => compact({
-        sku: line.variant?.sku,
+      lines: withLines ? lines.slice(0, 50).map(({ line, sku }) => compact({
+        sku,
         name: localised(line.name, locale()),
         quantity: line.quantity,
         total: money(line.totalPrice)?.amount,
@@ -336,6 +361,83 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
             throw error;
           }
         }
+      },
+    },
+    {
+      name: 'place_order',
+      readOnly: false,
+      description: 'Record a paid shop order: one order with its lines (name, product code, quantity, price before tax), tax at the given rate, the delivery address and the order number the customer saw. The shop calls it after payment; asking again with the same order number returns the order already made.',
+      inputSchema: {
+        type: 'object',
+        required: ['orderNumber', 'currency', 'lines'],
+        properties: {
+          orderNumber: { type: 'string', maxLength: 64, pattern: ORDER_NUMBER.source, description: 'The order number the customer saw.' },
+          currency: { type: 'string', maxLength: 3, pattern: CURRENCY.source },
+          taxRate: { type: 'number', minimum: 0, maximum: 1, description: 'Tax as a fraction of the price, for example 0.15.' },
+          discount: { type: 'number', minimum: 0, description: 'The whole order discount before tax, spread over the lines.' },
+          customerEmail: { type: 'string', maxLength: 320 },
+          paid: { type: 'boolean', description: 'Mark the order paid (default true).' },
+          lines: { type: 'array', description: 'Each line: sku, name, quantity (whole number), unitPrice (before tax, in whole currency units).' },
+          shipping: { type: 'object', description: 'Optional: name, line1, line2, city, state, postalCode, country (two letters).' },
+        },
+      },
+      async run(args) {
+        const orderNumber = String(args.orderNumber);
+        const currency = String(args.currency);
+        const raw = Array.isArray(args.lines) ? args.lines : [];
+        if (raw.length < 1 || raw.length > 50) throw new ToolError('invalid_arguments', 'lines must hold between 1 and 50 lines.');
+        const lines = raw.map((line: any, index: number) => {
+          const sku = String(line?.sku ?? '');
+          const name = String(line?.name ?? '').trim();
+          const quantity = Number(line?.quantity);
+          const unitPrice = Number(line?.unitPrice);
+          if (!SKU.test(sku)) throw new ToolError('invalid_arguments', `line ${index + 1}: sku is not in the expected form.`);
+          if (!name || name.length > 255) throw new ToolError('invalid_arguments', `line ${index + 1}: name must be between 1 and 255 characters.`);
+          if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new ToolError('invalid_arguments', `line ${index + 1}: quantity must be a whole number from 1 to 1000.`);
+          if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) throw new ToolError('invalid_arguments', `line ${index + 1}: unitPrice must be a number from 0 to 1000000.`);
+          return { sku, name, quantity, unitPrice };
+        });
+        const taxRate = args.taxRate === undefined ? 0 : Number(args.taxRate);
+        const discount = args.discount === undefined ? 0 : Number(args.discount);
+        const gross = lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+        if (discount > gross) throw new ToolError('invalid_arguments', 'discount is more than the lines come to.');
+        const factor = gross > 0 ? (gross - discount) / gross : 1;
+
+        const ship: any = args.shipping && typeof args.shipping === 'object' && !Array.isArray(args.shipping) ? args.shipping : {};
+        const country = COUNTRY.test(String(ship.country ?? '')) ? String(ship.country) : 'NZ';
+        const [firstName, ...rest] = String(ship.name ?? '').trim().split(/\s+/).filter(Boolean);
+        const address = compact({
+          country, firstName, lastName: rest.join(' ') || undefined, streetName: clip(String(ship.line1 ?? ''), 120) || undefined,
+          additionalStreetInfo: clip(String(ship.line2 ?? ''), 120) || undefined, city: clip(String(ship.city ?? ''), 80) || undefined,
+          state: clip(String(ship.state ?? ''), 80) || undefined, postalCode: clip(String(ship.postalCode ?? ''), 20) || undefined,
+          email: args.customerEmail ? String(args.customerEmail) : undefined,
+        });
+
+        // Asking again for an order number that exists returns that order: a retried payment never makes a second one.
+        try {
+          return { created: false, record: placedRecord(await api('GET', `/orders/order-number=${encodeURIComponent(orderNumber)}`)) };
+        } catch (error) {
+          if (!(error instanceof ToolError && error.code === 'not_found')) throw error;
+        }
+
+        const cart = await api('POST', '/carts', {
+          body: compact({
+            currency, country, locale: locale(), taxMode: 'External', customerEmail: args.customerEmail ? String(args.customerEmail) : undefined,
+            shippingAddress: ship && Object.keys(address).length > 1 ? address : undefined,
+            customLineItems: lines.map((line) => ({
+              name: { [locale()]: line.name },
+              quantity: line.quantity,
+              slug: line.sku.replace(/[^A-Za-z0-9._~-]/g, '-').slice(0, 200) || 'item',
+              money: { type: 'centPrecision', currencyCode: currency, centAmount: Math.round(line.unitPrice * factor * 100) },
+              externalTaxRate: { name: 'GST', amount: taxRate, country },
+            })),
+          }),
+        });
+        let order = await api('POST', '/orders', { body: { id: cart.id, version: cart.version, orderNumber } });
+        if (args.paid !== false) {
+          order = await api('POST', `/orders/${order.id}`, { body: { version: order.version, actions: [{ action: 'changePaymentState', paymentState: 'Paid' }] } });
+        }
+        return { created: true, record: placedRecord(order) };
       },
     },
     {

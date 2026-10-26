@@ -512,6 +512,11 @@
               "summary": "Add a product to a cart."
             },
             {
+              "name": "place_order",
+              "sideEffect": "write",
+              "summary": "Recorded by the shop after payment. Nobody asks the assistant for it."
+            },
+            {
               "name": "get_order",
               "sideEffect": "read",
               "summary": "Get an order with its lines: status, delivery type, branch and totals.",
