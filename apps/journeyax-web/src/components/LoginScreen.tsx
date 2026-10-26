@@ -6,17 +6,37 @@
  * Themed from the tenant config (logo, brand colour) so PlaceMakers, Caroma,
  * A&F each get their own sign-in, not a generic one.
  */
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import type { PublicDemoLogin } from '@/lib/auth/demoLogins';
+import PersonaLogins from './PersonaLogins';
 import { useAuth } from '@/context/AuthContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, loginAs } = useAuth();
   const cfg = useStorefrontConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // On a demo the server offers a button for each demo persona (see lib/auth/demoLogins.ts); otherwise this stays empty.
+  const [personas, setPersonas] = useState<PublicDemoLogin[]>([]);
+  const [personaBusy, setPersonaBusy] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/demo-logins', { credentials: 'same-origin', cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : { logins: [] }))
+      .then((data) => { if (!cancelled && Array.isArray(data?.logins)) setPersonas(data.logins); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const signInAsPersona = async (id: string) => {
+    setError(null);
+    setPersonaBusy(id);
+    const r = await loginAs(id);
+    setPersonaBusy('');
+    if (!r.success) setError(r.message || 'Sign-in failed.');
+  };
 
   const brand = cfg.companyName || 'JourneyAX';
   const accent = cfg.theme?.primaryColor || '#00AEC7';
@@ -56,7 +76,7 @@ export default function LoginScreen() {
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>JourneyAX · Agent Experience</div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F4F1EC', padding: 32 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, background: '#F4F1EC', padding: 32, overflowY: 'auto' }}>
         <form onSubmit={onSubmit} style={{ width: '100%', maxWidth: 400, background: '#FFFFFF', border: '1px solid #E4DFD4', padding: '36px 36px 30px', boxShadow: '0 12px 40px rgba(11,42,86,0.08)' }}>
           <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, color: '#0A0A0A' }}>Sign in</h2>
           <p style={{ margin: '0 0 24px', fontSize: 13.5, color: '#6B655B' }}>Use your {brand} account to continue.</p>
@@ -131,6 +151,7 @@ export default function LoginScreen() {
             </p>
           )}
         </form>
+        <PersonaLogins logins={personas} busyId={personaBusy} accent={accent} onPick={signInAsPersona} />
       </div>
     </div>
   );
