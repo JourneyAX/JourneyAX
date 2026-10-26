@@ -33,7 +33,7 @@ const productTile = (prefix: string, opts: { showReason?: boolean; cta?: 'addToC
       children: [k('img'), k('body'), k('foot')],
       on: { press: { action: 'viewProduct', params: { sku: I('sku') } } },
     }),
-    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), ratio: '4:3', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '100%', height: '96px', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
     [k('body')]: el('Box', { gap: 'xs', flex: 1 }, { children: [k('badges'), k('title'), k('reason'), k('meta')] }),
     [k('badges')]: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: [k('rec')], visible: [{ $item: 'recommended', eq: true }] }),
     [k('rec')]: el('Badge', { text: 'Recommended', tone: 'brand', icon: 'spark', uppercase: true }),
@@ -131,6 +131,69 @@ const productRow = (prefix: string): Record<string, El> => {
   };
 };
 
+/**
+ * A small tile for four across: a short picture, the name, the price, WHY this one (the catalogue's own feature that answers what
+ * the customer asked for), where it is held, and the buttons. The rows wrap, so a long answer grows downwards instead of hiding
+ * products behind a sideways scroll. Every line hides itself when there is nothing true to say.
+ */
+const productCompact = (prefix: string): Record<string, El> => {
+  const k = (s: string) => `${prefix}-${s}`;
+  const open = { press: { action: 'viewProduct', params: { sku: I('sku') } } };
+  return {
+    [k('card')]: el('Card', { pad: 'sm', gap: 'xs', variant: 'outlined', interactive: true }, { children: [k('img'), k('title'), k('price'), k('why'), k('stock'), k('actions')], on: open }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '100%', height: '88px', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
+    [k('title')]: el('Text', { text: I('title'), variant: 'small', lines: 2 }),
+    [k('price')]: el('Price', { amount: I('price'), currency: I('currency'), compareAt: I('compareAtPrice'), size: 'md', emptyText: 'Price on request' }),
+    [k('why')]: el('Box', { direction: 'row', gap: 'xs', align: 'start' }, { children: [k('whyIcon'), k('whyText')], visible: [{ $item: 'reason' }] }),
+    [k('whyIcon')]: el('Icon', { name: 'check', size: 'sm', tone: 'success' }),
+    [k('whyText')]: el('Text', { text: I('reason'), variant: 'caption', tone: 'muted', lines: 3, style: { flex: 1, minWidth: 0 } }),
+    [k('stock')]: el('StatusDot', { label: I('stockLabel'), tone: 'success' }, { visible: [{ $item: 'stockLabel' }] }),
+    // The buy button on its own line; "Details" and "Compare" share the line under it, so a tile stays short at four across.
+    [k('actions')]: el('Box', { gap: 'xs' }, { children: [k('buy'), k('more')] }),
+    [k('buy')]: el('Box', { gap: 'xs' }, { children: [k('add'), k('added'), k('ask')] }),
+    [k('more')]: el('Box', { direction: 'row', gap: 'xs', align: 'center', wrap: true }, { children: [k('details'), k('compare')] }),
+    [k('add')]: el('Button', { label: 'Add', variant: 'primary', size: 'sm', icon: 'cart' }, {
+      on: { press: { action: 'addToCart', params: { sku: I('sku'), qty: 1, title: I('title') } } },
+      visible: [{ $item: 'inBag', neq: true }],
+    }),
+    [k('added')]: el('Button', { label: 'Added ✓', variant: 'secondary', size: 'sm', icon: 'check' }, {
+      on: { press: { action: 'openPanel', params: { panel: 'quote' } } },
+      visible: [{ $item: 'inBag', eq: true }],
+    }),
+    [k('ask')]: el('Button', { label: 'Ask for price', variant: 'secondary', size: 'sm', icon: 'tag' }, {
+      on: { press: { action: 'sendMessage', params: { text: I('askPriceText') } } },
+      visible: [{ $item: 'priceMissing', eq: true }],
+    }),
+    [k('details')]: el('Button', { label: 'Details', variant: 'ghost', size: 'xs', style: { paddingInline: '4px' } }, { on: open }),
+    [k('compare')]: el('Button', { label: I('compareLabel'), variant: 'ghost', size: 'xs', style: { paddingInline: '4px' } }, {
+      on: { press: { action: 'toggleCompare', params: { sku: I('sku'), title: I('title') } } },
+    }),
+  };
+};
+
+/** One accessory on one short line: a tiny picture, the name, why it is needed, the price and a button. */
+const accessoryRow = (prefix: string): Record<string, El> => {
+  const k = (s: string) => `${prefix}-${s}`;
+  return {
+    [k('card')]: el('Card', { pad: 'sm', gap: 'sm', variant: 'outlined', interactive: true }, { children: [k('row')], on: { press: { action: 'viewProduct', params: { sku: I('sku') } } } }),
+    [k('row')]: el('Box', { direction: 'row', gap: 'sm', align: 'center' }, { children: [k('img'), k('body'), k('foot')] }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '40px', height: '40px', ratio: '1:1', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
+    [k('body')]: el('Box', { gap: '0', flex: 1, minWidth: '0' }, { children: [k('title'), k('why')] }),
+    [k('title')]: el('Text', { text: I('title'), variant: 'small', lines: 1 }),
+    [k('why')]: el('Text', { text: I('reason'), variant: 'caption', tone: 'muted', lines: 2 }, { visible: [{ $item: 'reason' }] }),
+    [k('foot')]: el('Box', { gap: 'xs', align: 'end' }, { children: [k('price'), k('add'), k('done')] }),
+    [k('price')]: el('Price', { amount: I('price'), currency: I('currency'), size: 'sm', emptyText: 'Price on request' }),
+    [k('add')]: el('Button', { label: 'Add', variant: 'primary', size: 'sm', icon: 'cart' }, {
+      on: { press: { action: 'addToCart', params: { sku: I('sku'), qty: 1, title: I('title') } } },
+      visible: [{ $item: 'inBag', neq: true }],
+    }),
+    [k('done')]: el('Button', { label: 'Added ✓', variant: 'secondary', size: 'sm', icon: 'check' }, {
+      on: { press: { action: 'openPanel', params: { panel: 'quote' } } },
+      visible: [{ $item: 'inBag', eq: true }],
+    }),
+  };
+};
+
 const quoteLine = (prefix: string): Record<string, El> => {
   const k = (s: string) => `${prefix}-${s}`;
   return {
@@ -208,8 +271,8 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     eyebrow: el('Text', { text: S('/eyebrow'), variant: 'eyebrow' }, { visible: [S('/eyebrow')] }),
     title: el('Text', { text: S('/heading'), variant: 'title' }, { visible: [S('/heading')] }),
     intro: el('Text', { text: S('/intro'), variant: 'body', tone: 'muted' }, { visible: [S('/intro')] }),
-    grid: el('Carousel', { itemWidth: '370px', gap: 'sm', label: 'Recommended products' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
-    ...productRow('p'),
+    grid: el('Grid', { columns: 4, gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
+    ...productCompact('p'),
   }),
 
   productDetail: spec('root', {
@@ -390,8 +453,8 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     grp: el('Box', { gap: 'sm' }, { children: ['gl', 'gh', 'gg'] }),
     gl: el('Text', { text: I('label'), variant: 'heading' }),
     gh: el('Text', { text: I('hint'), variant: 'small', tone: 'muted' }, { visible: [{ $item: 'hint' }] }),
-    gg: el('Grid', { minItemWidth: '200px', gap: 'md' }, { children: ['a-card'], repeat: { statePath: { $item: 'items' }, key: 'sku' } }),
-    ...productTile('a', { cta: 'addToCart' }),
+    gg: el('Grid', { columns: 2, gap: 'sm' }, { children: ['a-card'], repeat: { statePath: { $item: 'items' }, key: 'sku' } }),
+    ...accessoryRow('a'),
   }),
 
   quantity: spec('root', {

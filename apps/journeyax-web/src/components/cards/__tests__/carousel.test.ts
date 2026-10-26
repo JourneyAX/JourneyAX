@@ -1,6 +1,6 @@
 /**
- * Product recommendations (and the lists under a product: similar products, bundles, guide products) are one scrolling row of cards,
- * not a column that fills the thread.
+ * Product recommendations are a grid of small tiles, four across, that wraps downwards; bundles, guide products and the lists under a
+ * product are still one scrolling row of cards; accessories are short rows with a tiny picture.
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/components/cards/__tests__/carousel.test.ts
  */
 import assert from 'node:assert/strict';
@@ -20,17 +20,26 @@ const count = (html: string, needle: string) => html.split(needle).length - 1;
 
 console.log('cards as a carousel');
 
-check('the recommendation card is one scrolling row with a card per product, and says what it is for the screen reader', () => {
+check('the recommendation card is a grid of four across that wraps downwards, one small tile per product', () => {
   const html = render('products', { heading: 'Our picks', products: [1, 2, 3, 4, 5, 6].map(product), closing: 'bag' });
-  assert.equal(count(html, 'class="jx-carousel"'), 1);
-  assert.ok(html.includes('aria-roledescription="carousel"') && html.includes('aria-label="Recommended products"'));
-  for (let n = 1; n <= 6; n++) assert.ok(html.includes(`Product number ${n}`), `product ${n} is in the row`);
-  assert.ok(html.includes('Best fit for the job'));
+  assert.equal(count(html, 'class="jx-carousel"'), 0, 'no sideways row');
+  assert.ok(html.includes('class="jx-grid') && html.includes('repeat(4, minmax(0, 1fr))'), 'four columns');
+  for (let n = 1; n <= 6; n++) assert.ok(html.includes(`Product number ${n}`), `product ${n} is in the grid`);
+  assert.ok(html.includes('Best fit for the job'), 'the reason for the pick is on its tile');
+  assert.equal(count(html, '>Details<'), 6, 'each tile opens its details');
 });
 
-check('a short list is still just a row: no arrows are drawn until there is more to scroll to', () => {
-  const html = render('products', { products: [1, 2].map(product) });
-  assert.equal(count(html, 'jx-carousel__nav'), 0);
+check('a tile carries the picture, the price, the reason and Add, with Details and Compare together on the line under it', () => {
+  const html = render('products', { products: [1].map(product) });
+  for (const word of ['NZ$10.00', 'Best fit for the job', '>Add<', '>Details<']) assert.ok(html.includes(word) || html.includes(word.replace('NZ$', '$')) || /\$10/.test(html), word);
+  assert.ok(html.indexOf('>Add<') < html.indexOf('>Details<'));
+});
+
+check('accessories are short rows with a small picture, two across', () => {
+  const html = render('accessories', { heading: 'What the job needs', groups: [{ key: 'required', label: 'Required to install', hint: 'You need these', items: [1, 2].map(product) }] });
+  assert.ok(html.includes('repeat(2, minmax(0, 1fr))'));
+  assert.ok(html.includes('width:40px') || html.includes('width: 40px'), 'a 40px picture');
+  assert.ok(html.includes('Product number 1') && html.includes('Best fit for the job'));
 });
 
 check('bundles and guide products scroll the same way', () => {

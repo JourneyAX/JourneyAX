@@ -9,6 +9,7 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import { readableInk } from '@/lib/shell/theme';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -92,7 +93,7 @@ export default function LoginScreen() {
             id="login-submit"
             type="submit"
             disabled={busy}
-            style={{ width: '100%', padding: '14px 18px', fontSize: 15, fontWeight: 700, color: '#0A0A0A', background: accent, border: 'none', borderRadius: 8, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}
+            style={{ width: '100%', padding: '14px 18px', fontSize: 15, fontWeight: 700, color: readableInk(accent), background: accent, border: 'none', borderRadius: 8, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}
           >
             {busy ? 'Signing in…' : 'Sign in →'}
           </button>
