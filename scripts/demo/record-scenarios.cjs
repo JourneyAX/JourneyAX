@@ -56,6 +56,18 @@ function chat(r) {
       await wait(1200);
     },
     async pointAtSignIn() { await r.point(page.locator('#login-email')); await wait(1500); },
+    /** Moves the cursor along the first few product cards of the latest answer, and along the row if it scrolls sideways. */
+    async pointAtProducts() {
+      const cards = page.locator('.product-card');
+      const n = await cards.count();
+      if (n === 0) return false;
+      await cards.first().scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      for (let i = 0; i < Math.min(n, 4); i += 1) { await r.point(cards.nth(i)); await wait(900); }
+      await page.evaluate(() => { const row = [...document.querySelectorAll('.product-card')].map((el) => el.parentElement).find((el) => el && el.scrollWidth > el.clientWidth + 4); if (row) row.scrollTo({ left: row.scrollWidth, behavior: 'smooth' }); });
+      await wait(1200);
+      return true;
+    },
     async typeAndSend(text) {
       await r.type(input(), text, 34);
       await wait(700);
@@ -105,15 +117,15 @@ const SCENARIOS = [
     persona: 'shopper',
     async run(r, c) {
       await c.open();
-      await r.step('The sign-in screen', 'This is the PlaceMakers assistant. Every demo person, customers and colleagues, has their own username and password, so you can see what each of them gets. We start with the simplest: a homeowner, planning a new bathroom.', () => c.pointAtSignIn());
-      await r.step('Signed in as the homeowner', 'She signs in with her own username and password. Notice the assistant does not start with a wall of products. It waits to hear what she wants, and the suggestions under the box are things a homeowner would ask.', () => c.signIn('shopper'));
-      await r.step('She says what she is doing', 'She says what she is doing in her own words: a bathroom renovation, and she does not know where to start. This is the most common kind of question, and the assistant treats it as a project, not a product search.', () => c.typeAndSend('We are renovating our bathroom and need a new vanity, a basin and tapware. Where should we start?'));
-      await r.step('The assistant asks before it recommends', 'It asks the few questions a good person on the counter would ask: how big the room is, the look she wants, and a rough budget. The answers become tappable choices, so she is never staring at an empty box.', () => c.waitAnswer());
-      await r.step('She answers in a sentence', 'She does not have to tap anything. She can just answer in a sentence: a small family bathroom, a modern white look, and a vanity around eight hundred dollars.', () => c.typeAndSend('A small family bathroom, about 1.8 by 2.4 metres. We like a modern white look and want the vanity to be around $800.'));
-      await r.step('Real products from the catalogue', 'Now it shows real products from the PlaceMakers catalogue, with real prices and stock. They sit in a row she can swipe through, and each one can be added, opened, or compared. Nothing here is invented: every product, price and stock figure comes from the shop\'s own data.', () => c.waitAnswer());
-      await r.step('Open the work behind the answer', 'If she, or the shop owner, wants to see how the answer was made, the line that says worked for a few seconds opens up and shows each step the assistant took, from reading its playbook to looking up products.', () => c.showWork());
-      await r.step('Add to the cart, then what else it needs', 'When she picks one, the assistant adds it to her cart. Then it suggests what the job still needs, here a basin mixer and the waste fittings, and it does not suggest the same product twice.', () => c.ask('Add the first vanity to my cart, please.'));
-      await r.step('What happens next', 'That is the whole journey for a homeowner: a conversation that starts from the project, real products, a sensible cart, and the shop\'s own words throughout. Next, the same assistant for a trade customer with an account.', async () => { await c.toEnd(); await r.hold(2500); });
+      await r.step('The sign-in page', 'This is the PlaceMakers assistant. Every person here, customers and colleagues, has their own username and password, so each one sees what their role allows. We start with the simplest: a homeowner planning a new bathroom.', () => c.pointAtSignIn());
+      await r.step('She signs in', 'She signs in with her own login. Notice the assistant does not open with a wall of products. It waits to hear what she wants.', () => c.signIn('shopper'));
+      await r.step('She says what she is doing', 'She says what she is doing in her own words. That is a project, not a product search, and the assistant treats it that way.', () => c.typeAndSend('We are renovating our bathroom and need a new vanity, a basin and tapware. Where should we start?'));
+      await r.step('It asks before it recommends', 'It asks the few things a good person on the counter would ask: the size of the room, the look she wants, and a rough budget. The answers are tappable, so she is never staring at an empty box.', () => c.waitAnswer());
+      await r.step('She answers in a sentence', 'She answers in a sentence. She does not have to tap anything.', () => c.typeAndSend('A small family bathroom, about 1.8 by 2.4 metres. We like a modern white look and want the vanity to be around $800.'));
+      await r.step('Real products', 'Now real products from the PlaceMakers catalogue, with real prices and stock, in a row she can swipe through. Each one can be opened, compared or added.', async () => { await c.waitAnswer(); await c.pointAtProducts(); });
+      await r.step('How the answer was made', 'If she, or the shop owner, wants to see how the answer was made, the line that says worked for a few seconds opens up and lists each step the assistant took.', () => c.showWork());
+      await r.step('Add to the cart', 'When she picks one, the assistant adds it to her cart.', () => c.typeAndSend('Add the first vanity to my cart, please.'));
+      await r.step('What else the job needs', 'Then it suggests what the job still needs, such as a mixer and the waste fittings, and it does not suggest the same product twice. That is a homeowner\'s journey: a conversation that starts from the project, real products and a sensible cart.', async () => { await c.waitAnswer(); await r.hold(2500); });
     },
   },
   {
