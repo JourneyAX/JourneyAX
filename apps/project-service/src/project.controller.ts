@@ -19,6 +19,7 @@ import {
 import { OKF_LIMITS, OkfIntegrityError } from '@journeyax/knowledge';
 import { OkfAuthoringService, OkfDraftConflictError } from './okf-authoring.service';
 import { KnowledgeInsightService } from './knowledge-insight.service';
+import { PersonaLibraryError } from './persona-library';
 
 /**
  * Internal runtime services (agent, WhatsApp sender) present this shared key to
@@ -692,6 +693,47 @@ export class ProjectController {
     const project = await this.projectService.getProject(projectId);
     if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
     return this.projectService.addTeam(projectId, body.orgId || project.orgId, body);
+  }
+
+  // ── Persona library (reference material for the people who configure the assistant; not part of the published pack) ────────────
+  private personaError(error: unknown): never {
+    if (error instanceof PersonaLibraryError) {
+      if (error.code === 'conflict') throw new ConflictException(error.message);
+      if (error.code === 'not_found' || error.code === 'missing') throw new NotFoundException(error.message);
+      throw new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  @Get(':projectId/persona-library')
+  @RequirePermission('config.edit')
+  async getPersonaLibrary(@Param('projectId') projectId: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    const record = await this.projectService.getPersonaLibraryStore().get(projectId);
+    return record ? { present: true, ...record } : { present: false };
+  }
+
+  /** Loads a library (the importer's output). A newer one replaces the old; the scenario tools people set are kept. */
+  @Put(':projectId/persona-library')
+  @RequirePermission('config.edit')
+  async putPersonaLibrary(@Param('projectId') projectId: string, @Body() body: { library?: unknown; expectedRevision?: number }, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    try {
+      const record = await this.projectService.getPersonaLibraryStore().put(projectId, body?.library, userId || UNATTRIBUTED_PRINCIPAL, typeof body?.expectedRevision === 'number' ? body.expectedRevision : undefined);
+      return { present: true, revision: record.revision, checksum: record.checksum, updatedAt: record.updatedAt };
+    } catch (error) { return this.personaError(error); }
+  }
+
+  /** Sets the tools one scenario (use case) needs. */
+  @Put(':projectId/persona-library/scenario-tools')
+  @RequirePermission('config.edit')
+  async putScenarioTools(@Param('projectId') projectId: string, @Body() body: { useCaseId?: string; tools?: unknown; expectedRevision?: number }, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    if (typeof body?.useCaseId !== 'string' || !body.useCaseId || typeof body?.expectedRevision !== 'number') throw new BadRequestException('Say which use case, and which revision of the library you were looking at.');
+    try {
+      const record = await this.projectService.getPersonaLibraryStore().setScenarioTools(projectId, body.useCaseId, body.tools, userId || UNATTRIBUTED_PRINCIPAL, body.expectedRevision);
+      return { present: true, revision: record.revision, scenarioTools: record.scenarioTools[body.useCaseId] ?? [], updatedAt: record.updatedAt };
+    } catch (error) { return this.personaError(error); }
   }
 
   /** "View as": which agents a shopper, or a member of staff in the given groups, would get from the project's current settings. Read-only, for those who may edit the configuration (it names the project's teams). */

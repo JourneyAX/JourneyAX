@@ -12,6 +12,11 @@
  * Optional: --coverage-csv writes the one-row-per-use-case table the owner reads ("can we do it today?").
  * --check writes nothing: it exits 1 and says so when the committed library is not what the sheets and mapping would give now.
  *
+ * To put the library where the Customize page reads it (the project database, collection persona_libraries), add --load-into <database>:
+ *   npx tsx --env-file=.env --tsconfig tests/public-path/tsconfig.json scripts/placemakers/import-personas.ts --load-into journeyax [--tenant placemakers] [--apply]
+ * Without --apply it only says what it would load (no connection is made). A newer library replaces the old one; the tools people have set for
+ * each scenario on the Customize page are kept for every use case the new library still has. Run it twice and nothing changes but the revision.
+ *
  * The access model sheet is the owner's workbook sheet "ACCESS MODEL" saved as CSV (the workbook is not read directly, so no spreadsheet
  * library is needed): in Excel, open the sheet and Save As CSV, or run the one-liner in README.md.
  */
@@ -41,7 +46,7 @@ const NAMES: SheetNames = {
   ticketing: 'PlaceMakers_TicketingTools.csv',
 };
 
-function main() {
+async function main() {
   const sheets = Object.fromEntries((Object.keys(NAMES) as Array<keyof Sheets>).map((key) => {
     const file = path.join(sourceDir, NAMES[key]);
     if (!existsSync(file)) throw new Error(`missing ${NAMES[key]} in ${sourceDir}`);
@@ -67,12 +72,28 @@ function main() {
     console.log(`${path.relative(root, outFile)} is up to date.`);
     return;
   }
+  const loadInto = option('load-into');
+  const tenant = (option('tenant') || library.tenantId).toLowerCase();
+  if (flag('apply') && !loadInto) throw new Error('--apply needs --load-into <database>: name the project database to change (a scratch one to rehearse, the live one to load for real).');
+  if (loadInto && tenant !== library.tenantId) throw new Error(`The library is for "${library.tenantId}", not for "${tenant}".`);
   mkdirSync(path.dirname(outFile), { recursive: true });
   const before = existsSync(outFile) ? readFileSync(outFile, 'utf8') : '';
   writeFileSync(outFile, text);
   console.log(`${before === text ? 'Unchanged' : 'Wrote'} ${path.relative(root, outFile)}.`);
   if (casesMd) { writeFileSync(casesMdFile, casesMd); console.log(`Wrote ${path.relative(root, casesMdFile)} (${cases.length} cases).`); }
+  if (loadInto) {
+    if (!flag('apply')) console.log(`Dry run: would load the library (${counts.personas} personas, ${counts.useCases} use cases) into "${loadInto}".persona_libraries for project "${tenant}". Nothing was written. Add --apply to load.`);
+    else {
+      const uri = process.env.MONGODB_URI;
+      if (!uri) throw new Error('MONGODB_URI is not set.');
+      const { connectToDatabase } = await import('@journeyax/database');
+      const { PersonaLibraryStore, PERSONA_LIBRARY_COLLECTION } = await import('../../apps/project-service/src/persona-library');
+      const { db } = await connectToDatabase(uri, loadInto);
+      const record = await new PersonaLibraryStore(db.collection(PERSONA_LIBRARY_COLLECTION) as any).put(tenant, library, 'process:import-personas');
+      console.log(`Loaded the library into "${loadInto}".${PERSONA_LIBRARY_COLLECTION} for project "${tenant}" as revision ${record.revision} (${Object.keys(record.scenarioTools).length} scenario tool mapping(s) kept).`);
+    }
+  }
   if (coverageFile) { writeFileSync(coverageFile, coverageCsv(library)); console.log(`Wrote ${coverageFile}.`); }
 }
 
-main();
+main().then(() => process.exit(0)).catch((error) => { console.error(error instanceof Error ? error.message : error); process.exit(1); });

@@ -41,6 +41,7 @@ import {
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { buildAccessPreview, type AccessPreview, type AccessPreviewInput } from './access-preview';
+import { PersonaLibraryStore, PERSONA_LIBRARY_COLLECTION } from './persona-library';
 import { PublicationGateValidator } from './publication-gate-validator';
 import { ReleaseValidationPort } from './release-validation.port';
 
@@ -74,6 +75,7 @@ export { STANDARD_TOOL_SCHEMAS, PLATFORM_TOOL_CONTRACTS };
 export class ProjectService {
   private db!: Db;
   private runtimeDb?: Db;
+  private personaStore?: PersonaLibraryStore;
   private projectsCol!: Collection<ProjectConfig>;
   private membersCol!: Collection<ProjectMember & { projectId: string; orgId: string }>;
   private teamsCol!: Collection<ProjectTeam & { projectId: string; orgId: string }>;
@@ -172,6 +174,7 @@ export class ProjectService {
   }
 
   setDbForTesting(db: any): void {
+    this.personaStore = undefined;
     this.db          = db;
     this.projectsCol = db.collection(PROJECTS);
     this.membersCol  = db.collection(MEMBERS);
@@ -180,6 +183,12 @@ export class ProjectService {
     this.versionsCol = db.collection(VERSIONS);
     this.isConnected = true;
     this.publicationService = undefined;
+  }
+
+  /** The project's persona library (reference material for configuring the assistant, kept in the project database; see persona-library.ts). */
+  getPersonaLibraryStore(): PersonaLibraryStore {
+    if (!this.isConnected || !this.db) throw new Error('The project database is not connected.');
+    return (this.personaStore ??= new PersonaLibraryStore(this.db.collection(PERSONA_LIBRARY_COLLECTION) as any));
   }
 
   async ensureIndexes() {
