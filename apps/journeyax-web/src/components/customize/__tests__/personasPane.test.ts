@@ -9,6 +9,7 @@ import path from 'node:path';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import PersonasPane, { PersonasView } from '../PersonasPane';
+import ScenarioQuestionDialog from '../ScenarioQuestionDialog';
 import ScenarioToolsDialog from '../ScenarioToolsDialog';
 import { buildOverview } from '@/lib/customize/overview';
 import { buildToolOptions } from '@/lib/customize/toolOptions';
@@ -27,11 +28,11 @@ const status = { salesforce: { checked: true as const, connected: true, missing:
 const rules = buildConnectorRules((pack.extensions as any).connectors, TEAMS, status);
 const overview = buildOverview('placemakers', pack, { canViewInstructions: true, canEdit: true, teams: TEAMS, toolOptions: buildToolOptions(pack, TEAMS), connectorRules: rules });
 const reader = buildOverview('placemakers', pack, { canViewInstructions: false, canEdit: false });
-const view = (scenarioTools: Record<string, string[]> = {}) => parsePersonaLibraryAnswer({ present: true, revision: 2, updatedAt: '2026-10-26T01:00:00Z', updatedBy: 'import-personas', library, scenarioTools }) as PersonaLibraryView;
+const view = (scenarioTools: Record<string, string[]> = {}, scenarioPrompts: Record<string, string> = {}) => parsePersonaLibraryAnswer({ present: true, revision: 2, updatedAt: '2026-10-26T01:00:00Z', updatedBy: 'import-personas', library, scenarioTools, scenarioPrompts }) as PersonaLibraryView;
 const noop = () => {};
 const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 const render = (props: Record<string, unknown>) => renderToStaticMarkup(React.createElement(PersonasView as any, {
-  overview, library: view(), query: '', open: null, onOpen: noop, onToast: noop, save: async () => ({ ok: true }), ...props,
+  overview, library: view(), query: '', open: null, onOpen: noop, onToast: noop, save: async () => ({ ok: true }), savePrompt: async () => ({ ok: true }), onTryQuestion: noop, ...props,
 }));
 
 console.log('the personas list');
@@ -134,6 +135,50 @@ check('tools already saved are ticked, and a saved tool the assistant no longer 
 check('a failed save shows its reason in the dialog', () => {
   assert.ok(dialog({ error: 'The persona library was changed since you loaded it.' }).includes('changed since you loaded it'));
   assert.ok(dialog({ busy: true }).includes('Saving…'));
+});
+
+console.log('the test scenarios');
+
+check('every use case is a scenario to try: who to sign in as, what to ask, what should be possible, what should and should not be said', () => {
+  const html = render({ initialView: 'scenarios' });
+  assert.equal((html.match(/class="ax-uc ax-scn"/g) || []).length, 86);
+  assert.ok(html.includes('Test scenarios') && html.includes('csr@placemakers.demo') && html.includes('Sign in as') && html.includes('Should be able to'));
+  assert.ok(html.includes('Pass a special order to Trade Support') && html.includes('>test set<') && html.includes('>worded from the use case<'));
+  assert.ok(html.includes('Should say') && html.includes('Should not') && html.includes('a Yes/No card before anything is created'));
+  assert.ok(html.includes('Try in chat') && html.includes('Edit question'));
+  assert.ok(html.includes('has no demo login yet') && html.includes('No sign-in needed'));
+});
+
+check('the scenarios are grouped by the team whose rules apply, customers together, and say what is stopped and why', () => {
+  const html = render({ initialView: 'scenarios' });
+  for (const group of ['Customer Service', 'Branch', 'Finance', 'shoppers']) assert.ok(html.includes(`aria-label="${group}"`), group);
+  assert.ok(html.includes('List opportunities (Blocked for Customer Service)'));
+});
+
+check('a question a person set shows as theirs, and searching narrows the scenarios', () => {
+  const mine = render({ initialView: 'scenarios', library: view({}, { 'B01-UC02': 'Hand this order to Trade Support please' }) });
+  assert.ok(mine.includes('Hand this order to Trade Support please') && mine.includes('>yours<'));
+  const narrow = render({ initialView: 'scenarios', query: 'skip the counter' });
+  assert.equal((narrow.match(/class="ax-uc ax-scn"/g) || []).length, 1);
+  assert.ok(render({ initialView: 'scenarios', query: 'zzzz-nothing' }).includes('No scenario matches your search'));
+});
+
+const questionDialog = (props: Record<string, unknown> = {}) => renderToStaticMarkup(React.createElement(ScenarioQuestionDialog as any, {
+  title: 'Coordinate special orders', suggested: 'Pass a special order to Trade Support.', current: '', busy: false, error: '', onSave: noop, onClose: noop, ...props,
+}));
+
+check('the question dialog starts from the suggested wording, says nothing is set, and saving waits for a change', () => {
+  const html = questionDialog();
+  assert.ok(html.includes('Question for “Coordinate special orders”') && html.includes('Pass a special order to Trade Support.'));
+  assert.ok(html.includes('Nothing is set yet, so the suggested wording is used.'));
+  assert.ok(/disabled=""[^>]*>Save question/.test(html));
+  assert.ok(!html.includes('Use the suggested wording again'));
+});
+
+check('a question that is set shows itself, offers the suggested wording again, and a failed save shows its reason', () => {
+  const html = questionDialog({ current: 'Hand it over please', error: 'The persona library was changed since you loaded it.' });
+  assert.ok(html.includes('Hand it over please') && html.includes('Use the suggested wording again') && html.includes('changed since you loaded it'));
+  assert.ok(questionDialog({ busy: true }).includes('Saving…'));
 });
 
 console.log(`✅ web: Personas tab: ${passed} passed, 0 failed`);

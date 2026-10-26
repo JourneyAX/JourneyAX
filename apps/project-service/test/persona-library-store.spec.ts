@@ -84,6 +84,34 @@ async function main() {
     assert.deepEqual(cleared.scenarioTools, {});
   });
 
+  await suite.test('the question to try a scenario: set (spaces tidied), replaced, cleared with empty text, and refused when the use case, the text or the revision is wrong', async () => {
+    const store = new PersonaLibraryStore(new MemoryDb().collection(PERSONA_LIBRARY_COLLECTION) as any);
+    await rejects(() => store.setScenarioPrompt('placemakers', 'B01-UC01', 'x', 'a', 1), 'missing');
+    await store.put('placemakers', library(), 'a');
+    const set = await store.setScenarioPrompt('placemakers', 'B01-UC01', '  Tell me   about\nKauri Builders  ', 'a', 1);
+    assert.deepEqual([set.revision, set.scenarioPrompts], [2, { 'B01-UC01': 'Tell me about Kauri Builders' }]);
+    assert.deepEqual((await store.get('placemakers'))!.scenarioTools, {}, 'the tools are untouched');
+    await rejects(() => store.setScenarioPrompt('placemakers', 'B01-UC01', 'again', 'a', 1), 'conflict');
+    await rejects(() => store.setScenarioPrompt('placemakers', 'NOPE-UC09', 'x', 'a', 2), 'not_found');
+    await rejects(() => store.setScenarioPrompt('placemakers', 'B01-UC01', 42, 'a', 2), 'invalid');
+    await rejects(() => store.setScenarioPrompt('placemakers', 'B01-UC01', 'x'.repeat(401), 'a', 2), 'invalid');
+    const cleared = await store.setScenarioPrompt('placemakers', 'B01-UC01', '   ', 'a', 2);
+    assert.deepEqual(cleared.scenarioPrompts, {});
+  });
+
+  await suite.test('a record saved before test questions existed reads as having none, and a newer library keeps the questions of the use cases it still has', async () => {
+    const db = new MemoryDb();
+    await db.collection(PERSONA_LIBRARY_COLLECTION).insertOne({ projectId: 'placemakers', revision: 1, library: library(), scenarioTools: {}, checksum: 'x', updatedAt: 'x', updatedBy: 'x' } as any);
+    const store = new PersonaLibraryStore(db.collection(PERSONA_LIBRARY_COLLECTION) as any);
+    assert.deepEqual((await store.get('placemakers'))!.scenarioPrompts, {});
+    await store.setScenarioPrompt('placemakers', 'B01-UC01', 'one', 'a', 1);
+    await store.setScenarioPrompt('placemakers', 'B02-UC01', 'two', 'a', 2);
+    const smaller = library();
+    smaller.useCases = smaller.useCases.filter((u: any) => u.id !== 'B02-UC01');
+    smaller.personas = smaller.personas.map((p: any) => ({ ...p, useCases: p.useCases.filter((id: string) => id !== 'B02-UC01') }));
+    assert.deepEqual((await store.put('placemakers', smaller, 'b', 3)).scenarioPrompts, { 'B01-UC01': 'one' });
+  });
+
   await suite.test('a save on top of a change you have not seen is refused (by revision), and so is one that loses a race at the last moment', async () => {
     const db = new MemoryDb();
     const store = new PersonaLibraryStore(db.collection(PERSONA_LIBRARY_COLLECTION) as any);
@@ -104,13 +132,13 @@ async function main() {
     assert.equal((await db.collection(PERSONA_LIBRARY_COLLECTION).findOne({ projectId: 'placemakers' }))?.revision, 1);
   });
 
-  await suite.test('the routes: three of them, all needing permission to edit the configuration, answering with the right kind of error', async () => {
+  await suite.test('the routes: four of them, all needing permission to edit the configuration, answering with the right kind of error', async () => {
     const db = new MemoryDb();
     await db.collection('tenant_configs').insertOne({ projectId: 'placemakers', name: 'PlaceMakers', status: 'active', orgId: 'org' } as any);
     const service = new ProjectService();
     service.setDbForTesting(db);
     const controller = new ProjectController(service as any);
-    for (const name of ['getPersonaLibrary', 'putPersonaLibrary', 'putScenarioTools'] as const) {
+    for (const name of ['getPersonaLibrary', 'putPersonaLibrary', 'putScenarioTools', 'putScenarioPrompt'] as const) {
       assert.equal(Reflect.getMetadata(PERMISSION_KEY, (ProjectController.prototype as any)[name]), 'config.edit', name);
     }
     assert.deepEqual(await controller.getPersonaLibrary('placemakers'), { present: false });
@@ -127,6 +155,12 @@ async function main() {
     await assert.rejects(() => controller.putScenarioTools('placemakers', { useCaseId: 'B01-UC01', tools: [], expectedRevision: 1 }, 'u'), ConflictException);
     await assert.rejects(() => controller.putScenarioTools('placemakers', { useCaseId: 'NOPE', tools: [], expectedRevision: 2 }, 'u'), NotFoundException);
     await assert.rejects(() => controller.putScenarioTools('placemakers', { tools: [] } as any, 'u'), BadRequestException);
+    const prompt = await controller.putScenarioPrompt('placemakers', { useCaseId: 'B01-UC01', prompt: 'Brief me on Kauri Builders', expectedRevision: 2 }, 'u');
+    assert.deepEqual([prompt.revision, prompt.scenarioPrompt], [3, 'Brief me on Kauri Builders']);
+    await assert.rejects(() => controller.putScenarioPrompt('placemakers', { useCaseId: 'B01-UC01', prompt: 'x', expectedRevision: 1 }, 'u'), ConflictException);
+    await assert.rejects(() => controller.putScenarioPrompt('placemakers', { useCaseId: 'NOPE', prompt: 'x', expectedRevision: 3 }, 'u'), NotFoundException);
+    await assert.rejects(() => controller.putScenarioPrompt('placemakers', { prompt: 'x' } as any, 'u'), BadRequestException);
+    await assert.rejects(() => controller.putScenarioPrompt('placemakers', { useCaseId: 'B01-UC01', prompt: 7, expectedRevision: 3 }, 'u'), BadRequestException);
   });
 
   suite.finish();

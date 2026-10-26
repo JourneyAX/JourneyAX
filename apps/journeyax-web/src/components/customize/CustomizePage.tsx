@@ -28,6 +28,7 @@ import {
 } from '@/lib/customize/skillDrafts';
 import { connectorRows } from '@/lib/customize/connectorPage';
 import { readDeepLink } from '@/lib/customize/deepLink';
+import { setPrefill } from '@/lib/shell/prefill';
 import { MAX_SKILL_FILE_BYTES, parseSkillFile } from '@/lib/customize/skillFile';
 import AgentForm from './AgentForm';
 import ConnectorRulesDialog from './ConnectorRulesDialog';
@@ -482,7 +483,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
             {data && tab === 'plugins' && <PluginsTab scope={scope} query={query} plugins={data.plugins} agents={agents} skills={data.skills} systems={data.systems} />}
             {data && tab === 'knowledge' && <KnowledgeTab scope={scope} query={query} knowledge={data.knowledge} by={by} />}
             {data && tab === 'personas' && (
-              <PersonasPane overview={data} query={query} tenant={tenant} open={open} onOpen={setOpen} onToast={setToast} />
+              <PersonasPane overview={data} query={query} tenant={tenant} open={open} onOpen={setOpen} onToast={setToast} onTryQuestion={(question) => { setPrefill(tenant, question); onTry(); }} />
             )}
             {data && tab === 'connectors' && (
               <ConnectorsPane

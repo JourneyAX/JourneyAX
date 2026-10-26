@@ -5,7 +5,7 @@ import { createSuite } from '@journeyax/test-support';
 import { normaliseGroupId } from '@journeyax/shared-types';
 import { DEMO_STAFF, DEMO_TEAMS } from '../../../scripts/placemakers/demo-staff';
 import { ROLES as COMMERCETOOLS_ROLES } from '../../../packages/connectors-real/scripts/loaders/commercetools-b2b';
-import { buildLibrary, checkLibrary, coverageCsv, readinessOf, stableJson, stateOf, type Mapping, type PersonaLibrary, type SheetNames, type Sheets } from '../../../scripts/placemakers/personas';
+import { attachScenarioHelp, buildLibrary, checkLibrary, coverageCsv, readinessOf, stableJson, stateOf, type Mapping, type PersonaLibrary, type SheetNames, type Sheets } from '../../../scripts/placemakers/personas';
 
 /**
  * The persona library: the owner's three sheets read into one file, and the decisions that tie it to the pack. These checks keep the
@@ -26,9 +26,34 @@ const suite = createSuite('project-service: the PlaceMakers persona library');
 
 async function main() {
   await suite.test('the committed library is exactly what the sheets and the mapping give now, and building it twice gives the same bytes', () => {
-    const fresh = buildLibrary(sheets, NAMES, mapping);
+    const cases = JSON.parse(readFileSync(path.join(dir, 'test-cases.json'), 'utf8')).cases;
+    const logins = DEMO_STAFF.map((person) => ({ email: person.email, persona: person.persona, teams: person.teams }));
+    const fresh = attachScenarioHelp(buildLibrary(sheets, NAMES, mapping), logins, cases);
     assert.equal(stableJson(fresh), committed, 'run scripts/placemakers/import-personas.ts again');
-    assert.equal(stableJson(buildLibrary(sheets, NAMES, mapping)), stableJson(fresh));
+    assert.equal(stableJson(attachScenarioHelp(buildLibrary(sheets, NAMES, mapping), logins, cases)), stableJson(fresh));
+  });
+
+  await suite.test('every persona that needs a sign-in has a demo login to try it with: its own, its team\'s, or the shopper\'s / delegated buyer\'s; the rest have none', () => {
+    const emails = new Set(DEMO_STAFF.map((person) => person.email));
+    for (const persona of library.personas) if (persona.demoLogin) assert.ok(emails.has(persona.demoLogin), `${persona.id}: ${persona.demoLogin} is a demo login`);
+    const login = (id: string) => library.personas.find((persona) => persona.id === id)?.demoLogin;
+    assert.equal(login('B02'), 'csr@placemakers.demo', 'a persona with its own login');
+    assert.equal(login('B03'), 'csr@placemakers.demo', 'a team leader uses the team\'s login');
+    assert.equal(login('B08'), 'sales@placemakers.demo');
+    assert.equal(login('C01'), 'shopper@placemakers.demo', 'a retail shopper');
+    assert.equal(login('C05'), 'trade.buyer@placemakers.demo', 'a trade customer without a login of their own');
+    assert.equal(login('C04'), 'trade.admin@placemakers.demo');
+    assert.equal(login('C19'), undefined, 'a carrier signs in to nothing here');
+    for (const persona of library.personas.filter((candidate) => candidate.kind === 'staff')) {
+      const team = library.teams.find((candidate) => candidate.team === persona.team)!;
+      assert.equal(Boolean(persona.demoLogin), team.status === 'live' && DEMO_STAFF.some((person) => person.teams.some((name) => asGroup(name) === persona.team)), `${persona.id} (${persona.team})`);
+    }
+  });
+
+  await suite.test('the test set travels with the library: every case has the e-mail to sign in with, and the page the owner reads says the same', () => {
+    assert.equal(library.testCases?.length, 28);
+    for (const entry of library.testCases ?? []) assert.ok(DEMO_STAFF.some((person) => person.email === entry.loginEmail), `${entry.id}: ${entry.loginEmail}`);
+    assert.ok(!JSON.stringify(library.testCases).includes('demo-2026'), 'no password in the library');
   });
 
   await suite.test('the sheets and the mapping agree: every persona, role, team and playbook the mapping names exists', () => {

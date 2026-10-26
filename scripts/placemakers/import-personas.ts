@@ -23,7 +23,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { DEMO_STAFF } from './demo-staff';
-import { buildLibrary, casesMarkdown, checkLibrary, coverageCsv, stableJson, type Mapping, type SheetNames, type Sheets, type TestCase } from './personas';
+import { attachScenarioHelp, buildLibrary, casesMarkdown, checkLibrary, coverageCsv, stableJson, type Mapping, type SheetNames, type Sheets, type TestCase } from './personas';
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => argv.includes(`--${name}`);
@@ -53,12 +53,14 @@ async function main() {
     return [key, readFileSync(file, 'utf8')];
   })) as unknown as Sheets;
   const mapping = JSON.parse(readFileSync(mappingFile, 'utf8')) as Mapping;
-  const library = buildLibrary(sheets, NAMES, mapping);
-  const problems = checkLibrary(library, mapping);
+  const built = buildLibrary(sheets, NAMES, mapping);
+  const problems = checkLibrary(built, mapping);
   if (problems.length > 0) { console.error(`The sheets and the mapping disagree:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`); process.exit(1); }
 
-  const text = stableJson(library);
   const cases = existsSync(casesFile) ? (JSON.parse(readFileSync(casesFile, 'utf8')).cases as TestCase[]) : [];
+  // The library the project database holds also carries who to sign in as for each persona and the test set, for the Customize page.
+  const library = attachScenarioHelp(built, DEMO_STAFF.map((person) => ({ email: person.email, persona: person.persona, teams: person.teams })), cases);
+  const text = stableJson(library);
   const agentNames = existsSync(draftFile) ? Object.fromEntries((JSON.parse(readFileSync(draftFile, 'utf8')).agents as Array<{ agentId: string; name: string }>).map((agent) => [agent.agentId, agent.name])) : {};
   const casesMd = cases.length ? casesMarkdown(library, cases, DEMO_STAFF.map((person) => ({ key: person.email.split('@')[0], email: person.email, fullName: person.fullName })), agentNames) : '';
   const { counts } = library;

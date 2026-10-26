@@ -303,3 +303,10 @@
 .ax-toolrows__from { color: var(--ax-muted); font-size: 12.5px; }
 .ax-toolrows__note { flex-basis: 100%; padding-left: 96px; color: var(--ax-muted); font-size: 12.5px; }
 @media (max-width: 640px) { .ax-toolrows__note { padding-left: 0; } .ax-facts { grid-template-columns: minmax(0, 1fr); gap: 0; } .ax-facts dd { margin-bottom: 8px; } }
+
+/* Test scenarios */
+.ax-scn dl.ax-facts { margin-top: 2px; max-width: none; }
+.ax-quote { color: var(--ax-text); font-style: italic; }
+.ax-doors { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ax-plainlist { margin: 0 0 0 16px; padding: 0; }
+.ax-facts code { font-size: 13px; padding: 1px 6px; border-radius: 6px; background: var(--ax-fill); }

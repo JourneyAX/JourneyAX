@@ -736,6 +736,18 @@ export class ProjectController {
     } catch (error) { return this.personaError(error); }
   }
 
+  /** Sets the question a person types to try one scenario. */
+  @Put(':projectId/persona-library/scenario-prompt')
+  @RequirePermission('config.edit')
+  async putScenarioPrompt(@Param('projectId') projectId: string, @Body() body: { useCaseId?: string; prompt?: unknown; expectedRevision?: number }, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    if (typeof body?.useCaseId !== 'string' || !body.useCaseId || typeof body?.expectedRevision !== 'number') throw new BadRequestException('Say which use case, and which revision of the library you were looking at.');
+    try {
+      const record = await this.projectService.getPersonaLibraryStore().setScenarioPrompt(projectId, body.useCaseId, body.prompt, userId || UNATTRIBUTED_PRINCIPAL, body.expectedRevision);
+      return { present: true, revision: record.revision, scenarioPrompt: record.scenarioPrompts[body.useCaseId] ?? '', updatedAt: record.updatedAt };
+    } catch (error) { return this.personaError(error); }
+  }
+
   /** "View as": which agents a shopper, or a member of staff in the given groups, would get from the project's current settings. Read-only, for those who may edit the configuration (it names the project's teams). */
   @Get(':projectId/access-preview')
   @RequirePermission('config.edit')

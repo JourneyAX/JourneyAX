@@ -18,6 +18,7 @@ import PlusMenu from './shell/PlusMenu';
 import { useOverview } from './customize/useOverview';
 import { plusMenuModel, skillPrompt } from '@/lib/shell/plusMenu';
 import { startersFor } from '@/lib/shell/starters';
+import { takePrefill } from '@/lib/shell/prefill';
 import { parseConnectorList, readOff, toggled, writeOff, type ConnectorItem } from '@/lib/connectors/connectors';
 import SidePanelHost, { PanelNote, useShownPanelCard } from './shell/SidePanel';
 import { BagIcon, SidebarIcon, UserIcon } from './shell/icons';
@@ -367,6 +368,11 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   messagesRef.current = messages;
   const pickedAgentRef = useRef('');
   const [prompt, setPrompt] = useState('');
+  // "Try in chat" on the Customize page leaves a question for the next new chat: it is typed in the box (not sent), once.
+  useEffect(() => {
+    const waiting = takePrefill(cfg.projectId);
+    if (waiting) { setPrompt(waiting); window.requestAnimationFrame(() => document.getElementById('chat-input-field')?.focus()); }
+  }, [cfg.projectId]);
   const [isLoading, setIsLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>('');
   const { user: authUser } = useAuth();

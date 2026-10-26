@@ -7,7 +7,8 @@
  * assistant says or may do, so saving it needs no publication. Two things are stored apart so that one cannot undo the other:
  *   `library`        what the sheets said (replaced whole when a newer import is loaded);
  *   `scenarioTools`  what people say each scenario needs: use case id -> tool ids (kept when the library is replaced, minus any use case
- *                    the new library no longer has).
+ *                    the new library no longer has);
+ *   `scenarioPrompts` the question a person types to try each scenario: use case id -> text (kept the same way).
  * A revision number guards every save: a person who saves on top of a change they have not seen is told so (conflict), never overwritten.
  */
 import { z } from 'zod';
@@ -16,7 +17,7 @@ import * as crypto from 'crypto';
 export const PERSONA_LIBRARY_SCHEMA_ID = 'placemakers-personas/1';
 export const PERSONA_LIBRARY_COLLECTION = 'persona_libraries';
 
-export const LIMITS = { personas: 300, useCases: 2000, teams: 60, roles: 80, systems: 300, toolsPerScenario: 40 } as const;
+export const LIMITS = { personas: 300, useCases: 2000, teams: 60, roles: 80, systems: 300, toolsPerScenario: 40, promptLength: 400 } as const;
 
 const text = (max: number) => z.string().max(max);
 const many = <T extends z.ZodTypeAny>(max: number, item: T) => z.array(item).max(max);
@@ -79,6 +80,8 @@ export interface PersonaLibraryRecord {
   library: PersonaLibraryDocument;
   /** use case id -> tool ids, as people set them on the Customize page. */
   scenarioTools: Record<string, string[]>;
+  /** use case id -> the question to type to try the scenario, as people set it on the Customize page. */
+  scenarioPrompts: Record<string, string>;
   checksum: string;
   updatedAt: string;
   updatedBy: string;
@@ -127,7 +130,8 @@ export class PersonaLibraryStore {
     const doc = await this.collection.findOne({ projectId });
     if (!doc) return null;
     const { _id: _ignored, ...record } = doc;
-    return plain(record) as PersonaLibraryRecord;
+    // A record saved before test questions existed has none.
+    return plain({ scenarioPrompts: {}, ...record }) as PersonaLibraryRecord;
   }
 
   /** Stores a library (a newer import replaces it whole). The scenario tools people set are kept for every use case the new library still has. */
@@ -139,8 +143,9 @@ export class PersonaLibraryStore {
     if (existing && expectedRevision !== undefined && existing.revision !== expectedRevision) throw new PersonaLibraryError('conflict', 'The persona library was changed since you loaded it. Reload and try again.');
     const useCaseIds = new Set(checked.library.useCases.map((useCase) => useCase.id));
     const scenarioTools = Object.fromEntries(Object.entries(existing?.scenarioTools ?? {}).filter(([id]) => useCaseIds.has(id)));
+    const scenarioPrompts = Object.fromEntries(Object.entries(existing?.scenarioPrompts ?? {}).filter(([id]) => useCaseIds.has(id)));
     const record: PersonaLibraryRecord = {
-      projectId, revision: (existing?.revision ?? 0) + 1, library: checked.library, scenarioTools,
+      projectId, revision: (existing?.revision ?? 0) + 1, library: checked.library, scenarioTools, scenarioPrompts,
       checksum: checksumOf(checked.library), updatedAt: this.now().toISOString(), updatedBy: by || 'unknown',
     };
     if (!existing) { await this.collection.insertOne(plain(record)); return record; }
@@ -162,6 +167,23 @@ export class PersonaLibraryStore {
     if (unique.length) scenarioTools[useCaseId] = unique; else delete scenarioTools[useCaseId];
     const record: PersonaLibraryRecord = { ...existing, revision: existing.revision + 1, scenarioTools, updatedAt: this.now().toISOString(), updatedBy: by || 'unknown' };
     const done = await this.collection.updateOne({ projectId, revision: existing.revision }, { $set: plain({ revision: record.revision, scenarioTools, updatedAt: record.updatedAt, updatedBy: record.updatedBy }) });
+    if (!done.matchedCount) throw new PersonaLibraryError('conflict', 'The persona library was changed at the same moment. Reload and try again.');
+    return record;
+  }
+
+  /** Sets the question a person types to try one scenario. Empty text removes it (the page then words one from the use case itself). */
+  async setScenarioPrompt(projectId: string, useCaseId: string, prompt: unknown, by: string, expectedRevision: number): Promise<PersonaLibraryRecord> {
+    const existing = await this.get(projectId);
+    if (!existing) throw new PersonaLibraryError('missing', 'No persona library is loaded for this project.');
+    if (existing.revision !== expectedRevision) throw new PersonaLibraryError('conflict', 'The persona library was changed since you loaded it. Reload and try again.');
+    if (!existing.library.useCases.some((useCase) => useCase.id === useCaseId)) throw new PersonaLibraryError('not_found', `The library has no use case "${useCaseId}".`);
+    const parsed = z.string().max(LIMITS.promptLength).safeParse(prompt);
+    if (!parsed.success) throw new PersonaLibraryError('invalid', `The question was not valid: it must be text of at most ${LIMITS.promptLength} characters.`);
+    const text = parsed.data.replace(/\s+/g, ' ').trim();
+    const scenarioPrompts = { ...existing.scenarioPrompts };
+    if (text) scenarioPrompts[useCaseId] = text; else delete scenarioPrompts[useCaseId];
+    const record: PersonaLibraryRecord = { ...existing, revision: existing.revision + 1, scenarioPrompts, updatedAt: this.now().toISOString(), updatedBy: by || 'unknown' };
+    const done = await this.collection.updateOne({ projectId, revision: existing.revision }, { $set: plain({ revision: record.revision, scenarioPrompts, updatedAt: record.updatedAt, updatedBy: record.updatedBy }) });
     if (!done.matchedCount) throw new PersonaLibraryError('conflict', 'The persona library was changed at the same moment. Reload and try again.');
     return record;
   }

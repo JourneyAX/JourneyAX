@@ -48,6 +48,8 @@ export interface LibraryPersona {
   /** Customers: the access roles they sign in with (named in the access model), how they sign in, and the commercetools associate roles. */
   accessRoles: string[]; signIn?: 'guest' | 'buyer' | 'staff'; commercetoolsRoles: string[];
   useCases: string[]; readiness: Record<Readiness, number>;
+  /** The demo sign-in to try this persona with (an e-mail); none when the persona needs no sign-in or has no login yet. Added by `attachScenarioHelp`. */
+  demoLogin?: string;
 }
 export interface LibraryRole {
   role: string; side: 'external' | 'business'; scope: string; restriction: string; validation: string; source: string;
@@ -69,6 +71,8 @@ export interface PersonaLibrary {
   personas: LibraryPersona[];
   useCases: LibraryUseCase[];
   ticketing: { ourDesk: string; tools: Array<{ tool: string; workType: string; users: string; status: string; details: string; evidence: string }> };
+  /** The small test set (who signs in, what to type, what should happen), carried with the library so the Customize page can show it. */
+  testCases?: Array<TestCase & { loginEmail: string }>;
 }
 
 const rows = (text: string): Array<Record<string, string>> => parse(text, { columns: true, bom: true, skip_empty_lines: true, trim: true, relax_column_count: false });
@@ -262,6 +266,30 @@ export interface TestCase {
   allow: string[]; ask: string[]; blocked: string[]; shouldSay: string[]; shouldNot: string[]; note?: string;
 }
 export interface LoginInfo { key: string; email: string; fullName: string }
+
+export interface DemoLoginInfo { email: string; persona?: string; teams: string[] }
+
+const teamId = (name: string): string => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+/**
+ * Adds what the Customize page needs to show a test scenario for every persona: the demo login to try each persona with, and the test set.
+ * A persona with its own login uses it; a member of staff otherwise uses the login of their team; a customer who signs in uses the retail
+ * shopper's login (retail) or the delegated buyer's (trade); a customer who needs no sign-in has none. Pure.
+ */
+export function attachScenarioHelp(library: PersonaLibrary, logins: DemoLoginInfo[], cases: TestCase[]): PersonaLibrary {
+  const loginFor = (persona: LibraryPersona): string | undefined => {
+    const own = logins.find((login) => login.persona === persona.id);
+    if (own) return own.email;
+    if (persona.kind === 'staff') return persona.team ? logins.find((login) => login.teams.some((team) => teamId(team) === persona.team))?.email : undefined;
+    if (persona.signIn !== 'buyer') return undefined;
+    return logins.find((login) => login.email.startsWith(/^retail/i.test(persona.group) ? 'shopper@' : 'trade.buyer@'))?.email;
+  };
+  return {
+    ...library,
+    personas: library.personas.map((persona) => { const demoLogin = loginFor(persona); return demoLogin ? { ...persona, demoLogin } : persona; }),
+    ...(cases.length ? { testCases: cases.map((entry) => ({ ...entry, loginEmail: logins.find((login) => login.email.split('@')[0] === entry.login)?.email ?? '' })) } : {}),
+  };
+}
 
 /** The test set as a page the owner can read and use: for each case, who to sign in as, what to type, and what should and should not happen. */
 export function casesMarkdown(library: PersonaLibrary, cases: TestCase[], logins: LoginInfo[], agentNames: Record<string, string>): string {

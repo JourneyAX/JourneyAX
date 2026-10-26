@@ -18,6 +18,8 @@ import {
   type Counts, type LibPersona, type LibUseCase, type PersonaChecks, type PersonaLibraryView, type UseCaseCheck,
 } from '@/lib/customize/personas';
 import type { CustomizeOverview } from '@/lib/customize/types';
+import { buildScenarios, wordQuestion, type TestScenario } from '@/lib/customize/scenarios';
+import ScenarioQuestionDialog from './ScenarioQuestionDialog';
 import ScenarioToolsDialog from './ScenarioToolsDialog';
 import { usePersonaLibrary, type SaveOutcome } from './usePersonaLibrary';
 
@@ -29,7 +31,7 @@ const matches = (query: string, ...parts: Array<string | undefined>) => {
   return !q || parts.some((part) => (part || '').toLowerCase().includes(q));
 };
 
-export default function PersonasPane({ overview, query, tenant, open, onOpen, onToast }: {
+export default function PersonasPane({ overview, query, tenant, open, onOpen, onToast, onTryQuestion }: {
   overview: Overview;
   query: string;
   tenant: string | undefined;
@@ -37,9 +39,11 @@ export default function PersonasPane({ overview, query, tenant, open, onOpen, on
   open: string | null;
   onOpen: (personaId: string | null) => void;
   onToast: (message: string) => void;
+  /** Starts a new chat with this question typed in the message box (not sent). */
+  onTryQuestion: (question: string) => void;
 }) {
   const allowed = overview.canViewInstructions;
-  const { answer, error, loading, reload, save } = usePersonaLibrary(allowed, tenant);
+  const { answer, error, loading, reload, save, savePrompt } = usePersonaLibrary(allowed, tenant);
 
   if (!allowed) {
     return <Empty title="Personas are for people who manage the assistant">The personas and the tools each scenario needs are shown to people who may change the configuration.</Empty>;
@@ -58,11 +62,11 @@ export default function PersonasPane({ overview, query, tenant, open, onOpen, on
       </Empty>
     );
   }
-  return <PersonasView overview={overview} library={answer} query={query} open={open} onOpen={onOpen} onToast={onToast} save={save} />;
+  return <PersonasView overview={overview} library={answer} query={query} open={open} onOpen={onOpen} onToast={onToast} save={save} savePrompt={savePrompt} onTryQuestion={onTryQuestion} />;
 }
 
 /** The loaded library: team sections, a persona's page and the tools dialog. (Separate from the loading so it can be looked at on its own.) */
-export function PersonasView({ overview, library, query, open, onOpen, onToast, save, initialView = 'teams' }: {
+export function PersonasView({ overview, library, query, open, onOpen, onToast, save, savePrompt, onTryQuestion, initialView = 'teams' }: {
   overview: Overview;
   library: PersonaLibraryView;
   query: string;
@@ -70,13 +74,17 @@ export function PersonasView({ overview, library, query, open, onOpen, onToast, 
   onOpen: (personaId: string | null) => void;
   onToast: (message: string) => void;
   save: (useCaseId: string, tools: string[]) => Promise<SaveOutcome>;
-  initialView?: 'teams' | 'customers';
+  savePrompt: (useCaseId: string, prompt: string) => Promise<SaveOutcome>;
+  onTryQuestion: (question: string) => void;
+  initialView?: 'teams' | 'customers' | 'scenarios';
 }) {
-  const [view, setView] = useState<'teams' | 'customers'>(initialView);
+  const [view, setView] = useState<'teams' | 'customers' | 'scenarios'>(initialView);
+  const [asking, setAsking] = useState<TestScenario | null>(null);
   const [editing, setEditing] = useState<{ useCase: LibUseCase; check: UseCaseCheck } | null>(null);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
   const checks = useMemo(() => checkScenarios(library, overview), [library, overview]);
+  const scenarios = useMemo(() => buildScenarios(library, checks), [library, checks]);
   // An address that names a persona the library does not have goes back to the list.
   useEffect(() => { if (open && !library.library.personas.some((p) => p.id === open)) onOpen(null); }, [open, library, onOpen]);
 
@@ -94,6 +102,30 @@ export function PersonasView({ overview, library, query, open, onOpen, onToast, 
     setSaveError(result.error);
     if (result.conflict) onToast('The library changed while you were editing; it has been reloaded. Try again.');
   };
+
+  const submitQuestion = async (text: string) => {
+    if (!asking) return;
+    setBusy(true);
+    setSaveError('');
+    const result = await savePrompt(asking.useCaseId, text);
+    setBusy(false);
+    if (result.ok) { onToast(text ? `Saved the question for “${asking.title}”.` : `“${asking.title}” uses the suggested question again.`); setAsking(null); return; }
+    setSaveError(result.error);
+    if (result.conflict) onToast('The library changed while you were editing; it has been reloaded. Try again.');
+  };
+
+  const questionDialog = asking && (
+    <ScenarioQuestionDialog
+      key={asking.useCaseId}
+      title={asking.title}
+      suggested={library.library.testCases.find((c) => c.useCase === asking.useCaseId)?.prompt ?? wordQuestion(library.library.useCases.find((u) => u.id === asking.useCaseId)?.story ?? '', asking.title)}
+      current={library.scenarioPrompts[asking.useCaseId] ?? ''}
+      busy={busy}
+      error={saveError}
+      onSave={submitQuestion}
+      onClose={() => { setAsking(null); setSaveError(''); }}
+    />
+  );
 
   const dialog = editing && (
     <ScenarioToolsDialog
@@ -131,10 +163,13 @@ export function PersonasView({ overview, library, query, open, onOpen, onToast, 
         <div className="ax-segment" role="group" aria-label="Show personas">
           <button type="button" aria-pressed={view === 'teams'} onClick={() => setView('teams')}>Staff teams <span className="ax-muted">{staff.length}</span></button>
           <button type="button" aria-pressed={view === 'customers'} onClick={() => setView('customers')}>Customers and partners <span className="ax-muted">{customers.length}</span></button>
+          <button type="button" aria-pressed={view === 'scenarios'} onClick={() => setView('scenarios')}>Test scenarios <span className="ax-muted">{scenarios.length}</span></button>
         </div>
       </div>
 
-      {view === 'teams' ? (
+      {view === 'scenarios' ? (
+        <ScenarioList scenarios={scenarios.filter((s) => matches(query, s.title, s.personaName, s.audienceName, s.question.text, s.signIn.kind === 'login' ? s.signIn.email : ''))} onTry={(s) => onTryQuestion(s.question.text)} onEdit={(s) => { setSaveError(''); setAsking(s); }} />
+      ) : view === 'teams' ? (
         <>
           {library.library.teams.map((team) => {
             const list = shown(team.personas.map((id) => personas.get(id)).filter((p): p is LibPersona => !!p));
@@ -167,8 +202,59 @@ export function PersonasView({ overview, library, query, open, onOpen, onToast, 
           <p className="ax-notice">Customers use the shop’s own tools, which are not listed as tools, so their scenarios show “Not checked” until someone names the tools one needs. A connected system (the CRM, the order system) is never available to a shopper.</p>
         </>
       )}
-      {shown(view === 'teams' ? staff : customers).length === 0 && <Empty title="No persona matches your search">Try a different word, or clear the search.</Empty>}
+      {view !== 'scenarios' && shown(view === 'teams' ? staff : customers).length === 0 && <Empty title="No persona matches your search">Try a different word, or clear the search.</Empty>}
       {dialog}
+      {questionDialog}
+    </>
+  );
+}
+
+/** Every use case as something to try: who to sign in as, what to type, what should be possible, and what the answer should and should not say. */
+function ScenarioList({ scenarios, onTry, onEdit }: { scenarios: TestScenario[]; onTry: (scenario: TestScenario) => void; onEdit: (scenario: TestScenario) => void }) {
+  if (scenarios.length === 0) return <Empty title="No scenario matches your search">Try a different word, or clear the search.</Empty>;
+  return (
+    <>
+      <p className="ax-notice">A scenario to try for every use case. Sign in as the person named, then press <strong>Try in chat</strong>: the question is typed for you, not sent. Change a question with <strong>Edit question</strong>. Nothing here changes what the assistant does.</p>
+      {groupBy(scenarios, (s) => s.audienceName || 'Other').sort(([a], [b]) => (a === 'shoppers' ? 1 : 0) - (b === 'shoppers' ? 1 : 0)).map(([group, list]) => (
+        <section key={group} aria-label={group}>
+          <h2 className="ax-listhead">{group} <span className="ax-muted">{plural(list.length, 'scenario')}</span></h2>
+          {list.map((s) => (
+            <article key={s.useCaseId} className="ax-uc ax-scn" aria-label={s.title}>
+              <div className="ax-uc__head">
+                <h4>{s.title} <span className="ax-muted">· {s.personaName}</span></h4>
+                <div className="ax-card__meta"><span className={`ax-verdict ax-verdict--${s.verdict}`} title={s.summary}>{VERDICT_WORDS[s.verdict]}</span></div>
+              </div>
+              <dl className="ax-facts">
+                <dt>Sign in as</dt>
+                <dd>{s.signIn.kind === 'login' ? <code>{s.signIn.email}</code> : <span className="ax-muted">{s.signIn.note}</span>}</dd>
+                <dt>Ask</dt>
+                <dd><span className="ax-quote">“{s.question.text}”</span> <span className="ax-tag" title="Where this wording comes from">{s.question.source}</span></dd>
+                <dt>Should be able to</dt>
+                <dd>
+                  {s.doors.works.length + s.doors.asks.length + s.doors.stopped.length === 0
+                    ? <span className="ax-muted">No tools named for this scenario yet.</span>
+                    : (
+                      <span className="ax-doors">
+                        {s.doors.works.length > 0 && <span className="ax-outcome ax-outcome--ok" title={s.doors.works.join(', ')}>{s.doors.works.length} work</span>}
+                        {s.doors.asks.length > 0 && <span className="ax-outcome ax-outcome--ask" title={s.doors.asks.join(', ')}>{s.doors.asks.length} ask first</span>}
+                        {s.doors.stopped.length > 0 && <span className="ax-outcome ax-outcome--blocked" title={s.doors.stopped.join('; ')}>{s.doors.stopped.length} stopped</span>}
+                        <span className="ax-muted">{[...s.doors.works, ...s.doors.asks].slice(0, 4).join(', ')}{s.doors.works.length + s.doors.asks.length > 4 ? '…' : ''}</span>
+                      </span>
+                    )}
+                </dd>
+                {s.doors.stopped.length > 0 && <><dt>Stopped</dt><dd className="ax-muted">{s.doors.stopped.join('; ')}</dd></>}
+                {s.shouldSay.length > 0 && <><dt>Should say</dt><dd><ul className="ax-plainlist">{s.shouldSay.map((line) => <li key={line}>{line}</li>)}</ul></dd></>}
+                {s.shouldNot.length > 0 && <><dt>Should not</dt><dd><ul className="ax-plainlist">{s.shouldNot.map((line) => <li key={line}>{line}</li>)}</ul></dd></>}
+                {s.note && <><dt>Note</dt><dd className="ax-muted">{s.note}</dd></>}
+              </dl>
+              <div className="ax-card__actions">
+                <button type="button" className="ax-btn ax-btn--small ax-btn--primary" onClick={() => onTry(s)}>Try in chat</button>
+                <button type="button" className="ax-btn ax-btn--small" onClick={() => onEdit(s)}>Edit question</button>
+              </div>
+            </article>
+          ))}
+        </section>
+      ))}
     </>
   );
 }

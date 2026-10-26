@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { readLibrary, readScenarioOp, saveScenarioTools } from '../personaApi';
+import { MAX_PROMPT, readLibrary, readPromptOp, readScenarioOp, saveScenarioPrompt, saveScenarioTools } from '../personaApi';
 
 let passed = 0;
 const check = async (name: string, fn: () => Promise<void> | void) => { await fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -79,6 +79,28 @@ async function main() {
     assert.equal((await saveScenarioTools(service(() => reply(403, {})).deps, { useCaseId: 'U', tools: [], expectedRevision: 1 })).status, 403);
     assert.equal((await saveScenarioTools(service(() => { throw new Error('down'); }).deps, { useCaseId: 'U', tools: [], expectedRevision: 1 })).status, 502);
     assert.equal((await saveScenarioTools(service(() => reply(500, {})).deps, { useCaseId: 'U', tools: [], expectedRevision: 1 })).status, 502);
+  });
+
+  console.log('the question to try a scenario');
+
+  await check('a question: a use case, text (spaces tidied, empty clears it), at most 400 characters, and the version on screen', () => {
+    assert.deepEqual(readPromptOp({ useCaseId: ' B01-UC01 ', prompt: '  Brief me   on\nKauri Builders ', expectedRevision: 3 }), { useCaseId: 'B01-UC01', prompt: 'Brief me on Kauri Builders', expectedRevision: 3 });
+    assert.deepEqual(readPromptOp({ useCaseId: 'B01-UC01', prompt: '   ', expectedRevision: 3 }), { useCaseId: 'B01-UC01', prompt: '', expectedRevision: 3 });
+    for (const bad of [null, {}, { useCaseId: '', prompt: 'x', expectedRevision: 1 }, { useCaseId: 'U', prompt: 5, expectedRevision: 1 }, { useCaseId: 'U', prompt: 'x'.repeat(MAX_PROMPT + 1), expectedRevision: 1 }, { useCaseId: 'U', prompt: 'x', expectedRevision: 0 }, { useCaseId: 'U', prompt: 'x' }]) {
+      assert.ok('error' in readPromptOp(bad), JSON.stringify(bad)?.slice(0, 60));
+    }
+  });
+
+  await check('saving a question goes to the project service as a PUT and comes back with the new revision; refusals keep their reason', async () => {
+    const s = service(() => reply(200, { present: true, revision: 6, scenarioPrompt: 'Brief me', updatedAt: 'x' }));
+    assert.deepEqual(await saveScenarioPrompt(s.deps, { useCaseId: 'B01-UC01', prompt: 'Brief me', expectedRevision: 5 }), { status: 200, body: { ok: true, revision: 6, scenarioPrompt: 'Brief me' } });
+    assert.deepEqual([s.calls[0].method, s.calls[0].url], ['PUT', 'http://project/api/v1/projects/placemakers/persona-library/scenario-prompt']);
+    assert.deepEqual(s.calls[0].body, { useCaseId: 'B01-UC01', prompt: 'Brief me', expectedRevision: 5 });
+    const op = { useCaseId: 'U', prompt: 'x', expectedRevision: 1 };
+    assert.equal((await saveScenarioPrompt(service(() => reply(409, { message: 'changed' })).deps, op)).status, 409);
+    assert.equal((await saveScenarioPrompt(service(() => reply(403, {})).deps, op)).status, 403);
+    assert.equal((await saveScenarioPrompt(service(() => reply(404, { message: 'no such use case' })).deps, op)).body.error, 'no such use case');
+    assert.equal((await saveScenarioPrompt(service(() => { throw new Error('down'); }).deps, op)).status, 502);
   });
 
   console.log(`✅ web: persona library route helpers: ${passed} passed, 0 failed`);

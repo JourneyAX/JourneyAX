@@ -29,8 +29,26 @@ export interface LibPersona {
   accessRoles: string[];
   signIn?: string;
   team?: string;
+  /** The demo sign-in (an e-mail) to try this persona with; absent when none is needed or none exists yet. */
+  demoLogin?: string;
   useCases: string[];
   readiness: Record<ReadinessName, number>;
+}
+
+/** One case of the project's test set: who signs in, what to type, what the doors should be and what should and should not be said. */
+export interface LibTestCase {
+  id: string;
+  login: string;
+  loginEmail: string;
+  useCase: string | null;
+  playbook: string | null;
+  prompt: string;
+  allow: string[];
+  ask: string[];
+  blocked: string[];
+  shouldSay: string[];
+  shouldNot: string[];
+  note?: string;
 }
 
 export interface LibUseCase {
@@ -65,9 +83,11 @@ export interface PersonaLibraryView {
   revision: number;
   updatedAt: string;
   updatedBy: string;
-  library: { personas: LibPersona[]; useCases: LibUseCase[]; teams: LibTeam[]; counts?: Record<string, unknown> };
+  library: { personas: LibPersona[]; useCases: LibUseCase[]; teams: LibTeam[]; testCases: LibTestCase[]; counts?: Record<string, unknown> };
   /** use case id -> the tool ids a person said it needs. */
   scenarioTools: Record<string, string[]>;
+  /** use case id -> the question a person set for trying the scenario. */
+  scenarioPrompts: Record<string, string>;
 }
 export type PersonaLibraryAnswer = PersonaLibraryView | { present: false };
 
@@ -90,7 +110,8 @@ export function parsePersonaLibraryAnswer(json: unknown): PersonaLibraryAnswer |
   const personas = list(library.personas).filter(isRecord).filter((p) => text(p.id) && text(p.name)).map((p): LibPersona => ({
     id: text(p.id), kind: p.kind === 'customer' ? 'customer' : 'staff', side: text(p.side), name: text(p.name), group: text(p.group), description: text(p.description),
     goal: text(p.goal), channel: text(p.channel), systems: strings(p.systems), priority: text(p.priority), accessRoles: strings(p.accessRoles),
-    ...(text(p.signIn) ? { signIn: text(p.signIn) } : {}), ...(text(p.team) ? { team: text(p.team) } : {}), useCases: strings(p.useCases), readiness: readiness(p.readiness),
+    ...(text(p.signIn) ? { signIn: text(p.signIn) } : {}), ...(text(p.team) ? { team: text(p.team) } : {}), ...(text(p.demoLogin) ? { demoLogin: text(p.demoLogin) } : {}),
+    useCases: strings(p.useCases), readiness: readiness(p.readiness),
   }));
   const useCases = list(library.useCases).filter(isRecord).filter((u) => text(u.id) && text(u.personaId)).map((u): LibUseCase => ({
     id: text(u.id), personaId: text(u.personaId), persona: text(u.persona), title: text(u.title), story: text(u.story), workflow: text(u.workflow), feature: text(u.feature),
@@ -103,11 +124,17 @@ export function parsePersonaLibraryAnswer(json: unknown): PersonaLibraryAnswer |
     personas: strings(t.personas), useCases: typeof t.useCases === 'number' ? t.useCases : 0, readiness: readiness(t.readiness),
     waitingOn: list(t.waitingOn).filter(isRecord).map((w) => ({ system: text(w.system), state: text(w.state), useCases: typeof w.useCases === 'number' ? w.useCases : 0 })),
   }));
+  const testCases = list(library.testCases).filter(isRecord).filter((c) => text(c.id) && text(c.prompt)).map((c): LibTestCase => ({
+    id: text(c.id), login: text(c.login), loginEmail: text(c.loginEmail), useCase: text(c.useCase) || null, playbook: text(c.playbook) || null, prompt: text(c.prompt),
+    allow: strings(c.allow), ask: strings(c.ask), blocked: strings(c.blocked), shouldSay: strings(c.shouldSay), shouldNot: strings(c.shouldNot), ...(text(c.note) ? { note: text(c.note) } : {}),
+  }));
   const scenarioTools: Record<string, string[]> = {};
   if (isRecord(json.scenarioTools)) for (const [id, tools] of Object.entries(json.scenarioTools)) if (Array.isArray(tools)) scenarioTools[id] = strings(tools);
+  const scenarioPrompts: Record<string, string> = {};
+  if (isRecord(json.scenarioPrompts)) for (const [id, value] of Object.entries(json.scenarioPrompts)) if (typeof value === 'string' && value.trim()) scenarioPrompts[id] = value;
   return {
     present: true, revision: json.revision, updatedAt: text(json.updatedAt), updatedBy: text(json.updatedBy),
-    library: { personas, useCases, teams, ...(isRecord(library.counts) ? { counts: library.counts } : {}) }, scenarioTools,
+    library: { personas, useCases, teams, testCases, ...(isRecord(library.counts) ? { counts: library.counts } : {}) }, scenarioTools, scenarioPrompts,
   };
 }
 

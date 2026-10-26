@@ -48,5 +48,21 @@ export function usePersonaLibrary(enabled: boolean, tenant: string | undefined) 
     }
   }, [answer, url, load]);
 
-  return { answer, error, loading: loading && !answer, reload: load, save };
+  const savePrompt = useCallback(async (useCaseId: string, prompt: string): Promise<SaveOutcome> => {
+    if (!answer || !answer.present) return { ok: false, error: 'No persona library is loaded.', conflict: false };
+    try {
+      const res = await fetch(url, {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useCaseId, prompt, expectedRevision: answer.revision }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { if (res.status === 409) void load(); return { ok: false, error: String(body?.error || 'The question could not be saved.'), conflict: res.status === 409 }; }
+      await load();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'The question could not be saved: the service did not answer.', conflict: false };
+    }
+  }, [answer, url, load]);
+
+  return { answer, error, loading: loading && !answer, reload: load, save, savePrompt };
 }
