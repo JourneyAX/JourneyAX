@@ -39,7 +39,8 @@ check('accessories are short rows with a small picture, two across', () => {
   const html = render('accessories', { heading: 'What the job needs', groups: [{ key: 'required', label: 'Required to install', hint: 'You need these', items: [1, 2].map(product) }] });
   assert.ok(html.includes('repeat(2, minmax(0, 1fr))'));
   assert.ok(html.includes('width:40px') || html.includes('width: 40px'), 'a 40px picture');
-  assert.ok(html.includes('Product number 1') && html.includes('Best fit for the job'));
+  assert.ok(html.includes('Product number 1'), 'the name is there');
+  assert.ok(!html.includes('Best fit for the job'), 'the group says why it is needed, so a row carries no blurb of its own');
 });
 
 check('bundles and guide products scroll the same way', () => {

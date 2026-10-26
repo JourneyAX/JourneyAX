@@ -1760,7 +1760,12 @@
         "standardDelivery": "Standard delivery",
         "clickAndCollect": "Click & Collect"
       },
-      "maxAccessories": 4
+      "maxAccessories": 4,
+      "labels": {
+        "accessories": "What the job still needs",
+        "accessoriesSome": "Needed for this job",
+        "accessoriesNone": "Nothing else is needed for what is in your order"
+      }
     },
     "payment": {
       "embedded": true,
@@ -2206,13 +2211,13 @@
               "label": "Basin mixer",
               "query": "basin mixer",
               "reason": "Needed to run water to the basin",
-              "maxItems": 3
+              "maxItems": 2
             },
             {
               "label": "Basin waste",
               "query": "basin waste pop up",
               "reason": "Needed to drain the basin",
-              "maxItems": 3
+              "maxItems": 2
             }
           ]
         },
@@ -2225,13 +2230,13 @@
               "label": "Basin mixer",
               "query": "basin mixer",
               "reason": "Needed to run water to the basin",
-              "maxItems": 3
+              "maxItems": 2
             },
             {
               "label": "Basin waste",
               "query": "basin waste pop up",
               "reason": "Needed to drain the basin",
-              "maxItems": 3
+              "maxItems": 2
             }
           ]
         }

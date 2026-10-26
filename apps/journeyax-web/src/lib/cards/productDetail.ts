@@ -83,7 +83,7 @@ export function buildDetailProduct(tile: TileProduct | undefined, detail: Server
     description: detail?.description || tile?.description || tile?.narrative,
     imageUrl: usableImage(detail?.imageUrl) || usableImage(tile?.imageUrl) || tile?.image || null,
     price: detail?.price ?? tile?.price ?? null,
-    currency: detail?.currency,
+    currency: detail?.currency || (tile as { currency?: string } | undefined)?.currency,
     specs: tile?.specs || {},
     specList,
     hasSpecs: specList.length > 0,

@@ -171,16 +171,15 @@ const productCompact = (prefix: string): Record<string, El> => {
   };
 };
 
-/** One accessory on one short line: a tiny picture, the name, why it is needed, the price and a button. */
+/** One accessory on one short line: a tiny picture, the name, the price and a button. The group above it says why it is needed. */
 const accessoryRow = (prefix: string): Record<string, El> => {
   const k = (s: string) => `${prefix}-${s}`;
   return {
     [k('card')]: el('Card', { pad: 'sm', gap: 'sm', variant: 'outlined', interactive: true }, { children: [k('row')], on: { press: { action: 'viewProduct', params: { sku: I('sku') } } } }),
     [k('row')]: el('Box', { direction: 'row', gap: 'sm', align: 'center' }, { children: [k('img'), k('body'), k('foot')] }),
     [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '40px', height: '40px', ratio: '1:1', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
-    [k('body')]: el('Box', { gap: '0', flex: 1, minWidth: '0' }, { children: [k('title'), k('why')] }),
-    [k('title')]: el('Text', { text: I('title'), variant: 'small', lines: 1 }),
-    [k('why')]: el('Text', { text: I('reason'), variant: 'caption', tone: 'muted', lines: 2 }, { visible: [{ $item: 'reason' }] }),
+    [k('body')]: el('Box', { gap: '0', flex: 1, minWidth: '0' }, { children: [k('title')] }),
+    [k('title')]: el('Text', { text: I('title'), variant: 'small', lines: 2 }),
     [k('foot')]: el('Box', { gap: 'xs', align: 'end' }, { children: [k('price'), k('add'), k('done')] }),
     [k('price')]: el('Price', { amount: I('price'), currency: I('currency'), size: 'sm', emptyText: 'Price on request' }),
     [k('add')]: el('Button', { label: 'Add', variant: 'primary', size: 'sm', icon: 'cart' }, {
@@ -332,7 +331,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     askWhy: el('Button', { label: 'Why this one?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Why do you recommend ${/product/title} for me?' } } } } }),
     askWarranty: el('Button', { label: 'Warranty and guarantee', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'What is the warranty and guarantee on ${/product/title}?' } } } } }),
     askInstall: el('Button', { label: 'Who installs it?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Do I need a licensed tradesperson to install ${/product/title}, or can I do it myself? How is it installed?' } } } } }),
-    add: el('Button', { label: { $template: 'Add to ${/closing}' }, variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1, title: S('/product/title') } } } }),
+    add: el('Button', { label: 'Add', variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1, title: S('/product/title') } } } }),
     // A configured hand-off (e.g. "Design it in The Forge") — a product whose
     // sale closes in the tenant's own tool, not in the bag. Present only when
     // the storefront matched a `handoffs` rule to this product.

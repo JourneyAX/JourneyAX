@@ -120,7 +120,7 @@ function withBrandTheme(uiTheme: any, brand: any) {
 
 /**
  * Preview only: when the preview launcher names a draft (PREVIEW_DRAFT), its storefront settings (extensions checkoutReview, payment,
- * brandTheme) are laid over the project's own, in this response only, so a draft can be tried before it is published. Without that
+ * brandTheme, buyerFeedback) are laid over the project's own, in this response only, so a draft can be tried before it is published. Without that
  * variable (every real deployment) the project is returned as it is.
  */
 function withPreviewDraft(project: any) {
@@ -130,7 +130,7 @@ function withPreviewDraft(project: any) {
     const { readFileSync } = require('node:fs');
     const path = require('node:path');
     const draft = JSON.parse(readFileSync(path.resolve(process.cwd(), '../..', file), 'utf8'));
-    const keep = ['checkoutReview', 'payment', 'brandTheme'];
+    const keep = ['checkoutReview', 'payment', 'brandTheme', 'buyerFeedback'];
     const extensions = { ...(project?.extensions || {}) };
     for (const key of keep) if (draft?.extensions?.[key]) extensions[key] = draft.extensions[key];
     return { ...project, extensions };
