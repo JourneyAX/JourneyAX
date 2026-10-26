@@ -48,6 +48,8 @@ import type { LastProducts } from './auto-card';
 import { addOtherOption, checkShelfQuestions, type QuestionCardSettings, type Shelf } from './question-shelves';
 import { connectorWordsForLocale } from '../capabilities/handlers/locale-stemmer';
 import { CONNECTOR_META_TOOL_DEFINITIONS, executeConnectorMetaTool, isConnectorMetaTool } from './connector-tools';
+import { CUSTOMER_ACCOUNT_TOOL_DEFINITIONS, customerAccountSettings, executeCustomerAccountTool, isCustomerAccountTool } from './customer-account';
+import type { PersonCompany } from '../kernel/company-directory';
 import type { ConnectorPerson, ConnectorRuntime } from '../kernel/connector.runtime';
 
 export interface AgentToolContext {
@@ -60,6 +62,8 @@ export interface AgentToolContext {
   principalRole?: string;
   /** Who is asking, as far as groups and audience go: what the connector policy is worked out from. Absent: a shopper with no groups. */
   principal?: ConnectorPerson;
+  /** The companies the team linked this signed-in customer to (looked up from the verified login, never from the browser or the model). Absent or empty: an ordinary shopper. */
+  companies?: PersonCompany[];
   idempotencyKey?: string;
   release: BusinessPackRelease;
   workspace?: WorkspaceState | null;
@@ -493,6 +497,7 @@ export function getAgentToolDefinitions(
     if (tool.name === 'open_form' && forms.length === 0) {
       return false;
     }
+    if (isCustomerAccountTool(tool.name) && !customerAccountSettings(release).enabled) return false;
     return true;
   }).map((tool) => {
     if (tool.name === 'search_products') {
@@ -987,6 +992,8 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   // Generic tools for reaching connectors; offered only when the pack declares connectors this person may use.
   ...CONNECTOR_META_TOOL_DEFINITIONS,
+  // A signed-in trade customer's own account; offered only to a customer the team has linked to a company, and only when the pack turns it on.
+  ...CUSTOMER_ACCOUNT_TOOL_DEFINITIONS,
 ];
 
 /**
@@ -2243,6 +2250,13 @@ export async function executeAgentTool(
           message: `No verified warranty certificate registered for '${target}'. Please consult store staff.`,
         },
       };
+    }
+
+    case 'my_company':
+    case 'my_balance':
+    case 'my_deliveries':
+    case 'my_price': {
+      return executeCustomerAccountTool(toolName, args, ctx, makeExecContext(ctx) as any);
     }
 
     case 'list_connectors':

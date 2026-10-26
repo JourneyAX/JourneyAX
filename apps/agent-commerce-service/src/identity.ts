@@ -28,3 +28,15 @@ export function cleanDisabledConnectors(value: unknown): string[] | undefined {
   const ids = [...new Set(value.filter((id): id is string => typeof id === 'string' && /^[a-z0-9][a-z0-9_.-]{0,79}$/i.test(id)))].slice(0, 50);
   return ids.length ? ids : undefined;
 }
+
+/**
+ * Who the runtime is told is asking. A login the gateway verified wins: its signed subject is the login itself. Anyone else may still name
+ * themselves with the id the page sends (`demoPrincipalId` or `customerId`, a session or demo id), but never with something shaped like a
+ * login: services look a customer's company up by login, so a guest who sends someone's address must not become that person.
+ */
+export function principalIdFor(identity: VerifiedIdentity | undefined, claimed: unknown): string {
+  const verified = String(identity?.sub ?? '').trim();
+  if (verified.includes('@') && verified.toLowerCase() !== 'guest@anonymous') return verified;
+  const id = typeof claimed === 'string' ? claimed.trim() : '';
+  return id && !id.includes('@') ? id : 'anonymous';
+}

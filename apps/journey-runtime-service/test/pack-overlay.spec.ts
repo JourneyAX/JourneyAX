@@ -40,6 +40,17 @@ async function main() {
     assert.deepEqual(before, live(), 'the live pack passed in is not changed');
   });
 
+  await suite.test('every extension setting the draft carries is laid over, including connector rules and the customer account, and live ones the draft lacks stay', () => {
+    const withMore = { ...draft, extensions: { ...draft.extensions, connectors: { connectors: [{ connectorId: 'ace-erp' }], policy: [] }, customerAccount: { enabled: true, connector: 'ace-erp' }, skillAccess: { rows: [] } } };
+    const pack = overlayDraft(live(), withMore);
+    assert.deepEqual(pack.extensions.connectors.connectors.map((c: any) => c.connectorId), ['ace-erp']);
+    assert.deepEqual(pack.extensions.customerAccount, { enabled: true, connector: 'ace-erp' });
+    assert.deepEqual(pack.extensions.skillAccess, { rows: [] });
+    assert.deepEqual(pack.extensions.customerEvents, { autoTurnEvents: ['addToCart'] }, 'a live setting the draft does not mention stays');
+    withMore.extensions.customerAccount.enabled = false;
+    assert.equal(pack.extensions.customerAccount.enabled, true, 'the overlaid pack does not share objects with the draft');
+  });
+
   await suite.test('an agent is compiled with the fields a published agent has', () => {
     const agent = compileAgent({ agentId: 'x', name: 'X', purpose: 'p', systemPromptTemplate: ' text ', allowedTools: ['a'] }, live(), {});
     assert.equal(agent.systemPromptTemplate, 'text');

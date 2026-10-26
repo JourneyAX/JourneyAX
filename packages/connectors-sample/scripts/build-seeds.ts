@@ -337,13 +337,13 @@ async function main() {
   const deliveries: Rec[] = orders.filter((o) => o.deliveryType === 'delivery' && o.status !== 'cancelled').map((order, i) => {
     const status = order.status === 'delivered' ? 'delivered' : order.status === 'dispatched' ? 'out_for_delivery' : rn.chance(0.08) ? 'failed_attempt' : 'scheduled';
     return {
-      deliveryId: `DEL-${30001 + i}`, orderId: order.orderId, branchCode: order.branchCode, status, scheduledDate: dateOnly(Math.max(0, Math.round((REFERENCE_DAY - Date.parse(order.placedAt)) / DAY) - rn.int(1, 3))),
+      deliveryId: `DEL-${30001 + i}`, orderId: order.orderId, accountId: order.accountId ?? null, branchCode: order.branchCode, status, scheduledDate: dateOnly(Math.max(0, Math.round((REFERENCE_DAY - Date.parse(order.placedAt)) / DAY) - rn.int(1, 3))),
       window: rn.pick(['7am-10am', '10am-1pm', '1pm-4pm']), vehicle: `Truck ${rn.int(1, 9)}`, driver: rn.pick(FIRST_NAMES), stops: rn.int(2, 8), note: status === 'failed_attempt' ? 'Nobody on site; rebook needed.' : '', sample: true,
     };
   });
   const balances: Rec[] = accounts.map((a) => {
     const balance = money(rn.int(0, a.creditLimit * 0.8) + rn.next());
-    return { accountId: a.accountId, name: a.name, creditLimit: a.creditLimit, balance, overdue: rn.chance(0.2) ? money(balance * rn.next() * 0.5) : 0, lastPaymentAt: dateOnly(rn.int(1, 45)), terms: a.paymentTerms, currency: 'NZD', sample: true };
+    return { accountId: a.accountId, name: a.name, tier: a.tier, creditLimit: a.creditLimit, balance, overdue: rn.chance(0.2) ? money(balance * rn.next() * 0.5) : 0, lastPaymentAt: dateOnly(rn.int(1, 45)), terms: a.paymentTerms, currency: 'NZD', sample: true };
   });
   addSeed('ace-erp', { branches, stock, price_list: priceList, deliveries, account_balances: balances }, {
     branches: prov('mixed', 'store locator page (content master)', ['code', 'name', 'phone (street addresses are left out: the website text in the data folder has lost characters from them)'], ['lat', 'lng (approximate town centre, entered by hand)']),

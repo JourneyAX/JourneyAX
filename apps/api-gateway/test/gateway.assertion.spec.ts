@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { GatewayService, isCacheable } from '../src/gateway.service';
+import { GatewayService, isCacheable, signedSubject } from '../src/gateway.service';
 import { verifyGatewayAssertion, gatewayRoleFor } from '@journeyax/database';
 
 async function runGatewayAssertionTests() {
@@ -244,6 +244,25 @@ async function runGatewayAssertionTests() {
   });
 
   console.log(`\n====================================================`);
+  // The signed subject is the verified login; a guest cannot pass as one.
+  await test('the signed subject is the verified login, whatever x-user-id says', () => {
+    assert.equal(signedSubject({ 'x-user-email': 'hemi@talbot.example', 'x-user-id': 'someone-else@example.com' }), 'hemi@talbot.example');
+    assert.equal(signedSubject({ 'x-user-email': 'hemi@talbot.example' }), 'hemi@talbot.example');
+  });
+
+  await test('a guest who sends a login-shaped x-user-id or x-principal-id is signed as anonymous, not as that login', () => {
+    assert.equal(signedSubject({ 'x-user-email': 'guest@anonymous', 'x-user-id': 'hemi@talbot.example' }), 'anonymous');
+    assert.equal(signedSubject({ 'x-user-email': 'guest@anonymous', 'x-principal-id': 'hemi@talbot.example' }), 'anonymous');
+    assert.equal(signedSubject({ 'x-user-id': 'hemi@talbot.example' }), 'anonymous');
+    assert.equal(signedSubject({ 'x-user-email': 'GUEST@anonymous', 'x-user-id': 'hemi@talbot.example' }), 'anonymous');
+  });
+
+  await test('a guest may still carry a plain session id, and nobody at all is anonymous', () => {
+    assert.equal(signedSubject({ 'x-user-email': 'guest@anonymous', 'x-user-id': 'sess_123' }), 'sess_123');
+    assert.equal(signedSubject({ 'x-user-id': 'usr_gw_test' }), 'usr_gw_test');
+    assert.equal(signedSubject({}), 'anonymous');
+  });
+
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   console.log(`====================================================\n`);
 

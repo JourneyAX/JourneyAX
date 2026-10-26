@@ -29,6 +29,10 @@ export const PLATFORM_TOOLS: Record<string, { name: string; description: string 
   get_journey_checklist: { name: 'Journey checklist', description: 'Reports what the customer\'s journey still has to cover.' },
   estimate_quantity: { name: 'How many to buy', description: 'Works out how many pieces or packs a customer needs for their area, from the product\'s own size or stated coverage.' },
   generate_visual: { name: 'Picture of the finished job', description: 'Makes an illustration of the customer\'s project with the products they are considering, labelled as an illustration.' },
+  my_company: { name: 'My company', description: 'For a signed-in business customer the team has linked to a company: who they are on the account and what they can ask. The company comes from the link, never from the chat.' },
+  my_balance: { name: 'My account balance', description: 'A linked business customer\'s own balance, overdue amount and terms; only the account administrator and accounts payable see it.' },
+  my_deliveries: { name: 'My deliveries', description: 'A linked business customer\'s own deliveries and where they are; no other company\'s.' },
+  my_price: { name: 'My account price', description: 'A linked business customer\'s own account price for a product, from the accounts system.' },
   use_skill: { name: 'Use a skill', description: 'Reads the instructions of an on-demand skill when a request calls for it.' },
 };
 

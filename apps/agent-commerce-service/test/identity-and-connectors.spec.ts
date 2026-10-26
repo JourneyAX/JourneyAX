@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { signGatewayAssertion, verifyGatewayAssertion } from '@journeyax/database';
-import { cleanDisabledConnectors, verifiedIdentity } from '../src/identity';
+import { cleanDisabledConnectors, principalIdFor, verifiedIdentity } from '../src/identity';
 import { CanonicalRuntimeAdapter } from '../src/runtime/canonical-runtime.adapter';
 import { JourneyCoordinator } from '../src/orchestration/journey-coordinator';
 import { LegacyJourneyAdapter } from '../src/legacy/legacy-journey-adapter';
@@ -32,6 +32,17 @@ async function main() {
   assert.deepEqual(cleanDisabledConnectors(['sap-commerce', 'sap-commerce', 'bad id!', 7, 'ace-erp']), ['sap-commerce', 'ace-erp']);
   assert.equal(cleanDisabledConnectors('sap-commerce'), undefined);
   assert.equal(cleanDisabledConnectors([]), undefined);
+
+  // The principal the runtime is told: a verified login wins, and a guest cannot pass as one.
+  const hemi = { sub: 'hemi@harlow.example', role: 'customer', groups: [] as string[] };
+  assert.equal(principalIdFor(hemi, 'someone-else@example.com'), 'hemi@harlow.example', 'the verified login wins over what the page sends');
+  assert.equal(principalIdFor(hemi, undefined), 'hemi@harlow.example');
+  assert.equal(principalIdFor(undefined, 'hemi@harlow.example'), 'anonymous', 'a guest who sends a login as an id is anonymous');
+  assert.equal(principalIdFor({ sub: 'guest@anonymous', role: 'customer', groups: [] }, 'hemi@harlow.example'), 'anonymous');
+  assert.equal(principalIdFor({ sub: 'anonymous', role: 'customer', groups: [] }, 'hemi@harlow.example'), 'anonymous');
+  assert.equal(principalIdFor(undefined, 'sess_42'), 'sess_42', 'a plain session or demo id is still carried');
+  assert.equal(principalIdFor(undefined, undefined), 'anonymous');
+  assert.equal(principalIdFor(undefined, 42), 'anonymous');
 
   // ── 2. A stand-in runtime that checks what it is told, as the real one's guard does ─────────────────────────────────────────────────────
   const seen: Array<{ method: string; url: string; identity: any; body: any }> = [];

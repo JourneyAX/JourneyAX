@@ -54,6 +54,7 @@ import { ContentPageRepository } from './content-page.repository';
 import { FormSubmissionRepository } from './form-submission.repository';
 import { CatalogSearchHandler } from '../capabilities/handlers/catalog-search.handler';
 import { CatalogueIndexRegistry, openCatalogueDatabase } from '../capabilities/catalogue-index';
+import { CompanyDirectory, defaultCompanyDirectory } from './company-directory';
 import { resolveCatalogMapping } from '@journeyax/business-pack';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
@@ -143,7 +144,8 @@ export class TurnApplicationService {
     public readonly knowledgeGapRepo: KnowledgeGapRepository = new KnowledgeGapRepository(),
     public readonly productGuideRepo: ProductGuideRepository = new ProductGuideRepository(),
     public readonly contentPageRepo: ContentPageRepository = new ContentPageRepository(),
-    public readonly formSubmissionRepo: FormSubmissionRepository = new FormSubmissionRepository()
+    public readonly formSubmissionRepo: FormSubmissionRepository = new FormSubmissionRepository(),
+    public readonly companyDirectory: CompanyDirectory = defaultCompanyDirectory()
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
@@ -456,6 +458,7 @@ export class TurnApplicationService {
               productGuideRepo: this.productGuideRepo,
               contentPageRepo: this.contentPageRepo,
               formSubmissionRepo: this.formSubmissionRepo,
+              companyDirectory: this.companyDirectory,
               sink: agentTimingSink,
               timeoutMs: turnDeadlineMs,
               signal: abortController.signal,

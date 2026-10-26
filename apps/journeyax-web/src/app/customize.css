@@ -182,6 +182,11 @@
 .ax-ctable thead th { text-align: left; font-size: 13px; font-weight: 500; color: var(--ax-muted); padding: 8px 12px; border-bottom: 1px solid var(--ax-border); }
 .ax-ctable tbody th, .ax-ctable tbody td { padding: 14px 12px; border-bottom: 1px solid var(--ax-border); vertical-align: middle; text-align: left; font-weight: 400; }
 .ax-ctable tbody tr { cursor: pointer; }
+/* The company links table: ordinary columns, rows are not clickable. */
+.ax-ctable--links { table-layout: auto; margin-top: 8px; }
+.ax-ctable--links thead th:nth-child(2), .ax-ctable--links thead th:nth-child(3) { width: auto; }
+.ax-ctable--links tbody tr { cursor: default; }
+.ax-ctable--links td:last-child { white-space: nowrap; text-align: right; }
 .ax-ctable tbody tr:hover { background: var(--ax-fill); }
 .ax-ctable__name { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; border: 0; background: none; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
 .ax-ctable__name strong { display: block; font-weight: 600; }

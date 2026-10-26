@@ -7,6 +7,7 @@ import { ConfigLoader } from '../pipeline/config-loader';
 import { ChatRequest, ChatResponse } from '../pipeline/types';
 
 import { ReactAgentOrchestrator } from './react-agent-orchestrator';
+import { principalIdFor } from '../identity';
 
 /**
  * JourneyCoordinator
@@ -93,7 +94,7 @@ export class JourneyCoordinator {
         sessionId,
         turnId,
         correlationId,
-        principalId: request.demoPrincipalId || request.customerId || 'anonymous',
+        principalId: principalIdFor((request as any).verifiedIdentity, request.demoPrincipalId || request.customerId),
         // The role and staff groups the gateway signed for this person; a request without a valid assertion is a shopper.
         principalRole: (request as any).verifiedIdentity?.role ?? 'customer',
         principalGroups: (request as any).verifiedIdentity?.groups,
@@ -214,7 +215,7 @@ export class JourneyCoordinator {
         sessionId,
         turnId,
         correlationId,
-        principalId: request.demoPrincipalId || request.customerId || 'anonymous',
+        principalId: principalIdFor((request as any).verifiedIdentity, request.demoPrincipalId || request.customerId),
         // The role and staff groups the gateway signed for this person; a request without a valid assertion is a shopper.
         principalRole: (request as any).verifiedIdentity?.role ?? 'customer',
         principalGroups: (request as any).verifiedIdentity?.groups,

@@ -1,8 +1,8 @@
 /**
  * A draft agent pack laid over the live one, in memory only, to try a change before publishing it.
  *
- * `overlayDraft(live, draft)` returns a copy of the live pack with the draft's agents, skills, quantity-helper and picture settings,
- * persona and profile in place, shaped the way the publication step shapes them. Nothing is written anywhere: the preview runtime
+ * `overlayDraft(live, draft)` returns a copy of the live pack with the draft's agents, skills, extension settings (connectors and their rules,
+ * quantity helper, pictures, forms, ...), persona and profile in place, shaped the way the publication step shapes them. Nothing is written anywhere: the preview runtime
  * (scripts/dev/preview-runtime.ts) applies it to every pack it loads, so the live tenant and its database are untouched.
  */
 type Json = Record<string, any>;
@@ -40,18 +40,12 @@ export function compileAgent(agent: Json, live: Json, draft: Json): Json {
 export function overlayDraft(live: Json, draft: Json): Json {
   const pack: Json = structuredClone(live);
   if (Array.isArray(draft.agents) && draft.agents.length > 0) pack.agents = draft.agents.map((agent: Json) => compileAgent(agent, live, draft));
+  // Every setting the draft carries under `extensions` (connectors and their rules, plugins, skill access, forms, the customer account, ...) replaces the live one of the same name,
+  // as publishing does; the live settings the draft does not mention stay.
   pack.extensions = {
     ...(pack.extensions || {}),
+    ...(isPlain(draft.extensions) ? structuredClone(draft.extensions) : {}),
     ...(Array.isArray(draft.skills) ? { skills: draft.skills } : {}),
-    ...(draft.extensions?.quantityHelper ? { quantityHelper: draft.extensions.quantityHelper } : {}),
-    ...(draft.extensions?.visualiser ? { visualiser: draft.extensions.visualiser } : {}),
-    ...(draft.extensions?.eventPrefetch ? { eventPrefetch: draft.extensions.eventPrefetch } : {}),
-    ...(draft.extensions?.productGuides ? { productGuides: draft.extensions.productGuides } : {}),
-    ...(draft.extensions?.contentPages ? { contentPages: draft.extensions.contentPages } : {}),
-    ...(draft.extensions?.checkoutReview ? { checkoutReview: draft.extensions.checkoutReview } : {}),
-    ...(draft.extensions?.payment ? { payment: draft.extensions.payment } : {}),
-    ...(draft.extensions?.brandTheme ? { brandTheme: draft.extensions.brandTheme } : {}),
-    ...(draft.extensions?.voice ? { voice: draft.extensions.voice } : {}),
     ...(draft.persona ? { persona: draft.persona } : {}),
   };
   if (draft.profile) pack.profile = deepMerge(pack.profile || {}, draft.profile);

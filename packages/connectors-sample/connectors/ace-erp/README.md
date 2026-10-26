@@ -21,6 +21,7 @@ Smallest allowed per collection (a test checks it): branches 25, stock 100, deli
 - `stock_by_branch`: Stock on hand for a product, branch by branch. Narrow it to one branch with branchCode.
 - `trade_price`: The retail price and the trade prices by tier (bronze, silver, gold) for a product.
 - `delivery_status`: Where a delivery is. Give the delivery id or the order id.
+- `list_deliveries`: The deliveries of one trade account, newest first. Give the account id; optionally only one status (scheduled, out_for_delivery, delivered, failed_attempt).
 - `account_balance`: The balance, credit limit and overdue amount of a trade account.
 - `list_branches`: List branches, or find one by name.
 

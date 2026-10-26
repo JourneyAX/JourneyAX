@@ -332,6 +332,59 @@ export class ConnectorRuntime {
       claimClasses: listed?.claimClasses ?? [],
     };
   }
+
+  /**
+   * A read the server makes for a signed-in customer about their own company (the customer-account tools). The customer has no connector
+   * policy of their own, so the pack decides only two things here: the connector exists and is switched on, and the tool is listed there
+   * as one that only reads. The arguments are fixed by the caller (customer-account.ts), never taken from the model, and a tool that
+   * changes data is refused whatever the pack says.
+   */
+  async callRead(
+    release: { extensions?: Record<string, any> } | undefined,
+    ctx: ExecutionContext,
+    connectorId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ) {
+    const started = Date.now();
+    const connector = this.registryOf(release)?.connectors.find((entry) => entry.connectorId === connectorId);
+    const listed = connector?.tools.find((tool) => tool.name === toolName);
+    const audit = (outcome: ConnectorAuditEvent['outcome'], error?: unknown) =>
+      this.deps.audit?.({
+        tenantId: ctx.tenantId, environmentId: ctx.environmentId, principalId: ctx.principalId, connectorId, tool: toolName,
+        state: 'allow', outcome, durationMs: Date.now() - started, correlationId: ctx.correlationId, ...(error ? { errorType: errorType(error) } : {}),
+      });
+    if (!connector || connector.enabled === false || !listed || listed.sideEffect !== 'read') {
+      audit('blocked');
+      return { ok: false as const, status: 'not_found' as const, error: `"${toolName}" on "${connectorId}" is not available for your account.` };
+    }
+    const toolId = connectorToolId(connectorId, toolName);
+    const definition = {
+      toolId, version: '1.0.0', displayName: `${connector.displayName}: ${toolName}`, description: listed.summary ?? toolName,
+      inputSchema: {}, outputSchema: {}, sideEffect: 'read', risk: 'low',
+    } as unknown as ToolDefinition;
+    const binding = {
+      toolId, tenantId: ctx.tenantId, environmentId: ctx.environmentId, bindingVersion: '1.0.0', enabled: true,
+      executor: {
+        type: 'mcp_tool', mcpServerName: mcpServerNameOf(connector), mcpToolName: toolName,
+        ...(connector.secretRef ? { secretRef: connector.secretRef } : {}),
+        ...(connector.connectionRef ? { connectionRef: connector.connectionRef } : {}),
+      },
+    } as unknown as ToolBinding;
+    const response: ExecutionResponse = await this.deps.dispatcher.dispatch(
+      definition,
+      binding,
+      { toolId, input: args, policyState: 'allow', userConfirmationConfirmed: false, idempotencyKey: ctx.idempotencyKey },
+      ctx,
+    );
+    if (response.status !== 'success') {
+      audit('failed', response.error);
+      return { ok: false as const, status: 'failed' as const, error: String(response.error || 'The lookup failed.').slice(0, 200) };
+    }
+    audit('success');
+    const output = (response.output ?? {}) as { text?: string; data?: unknown };
+    return { ok: true as const, sample: Boolean(connector.sample), ...(connector.sample ? { notice: SAMPLE_NOTICE } : {}), result: output.data !== undefined ? output.data : output.text ?? '', claimClasses: listed.claimClasses ?? [] };
+  }
 }
 
 function metaOf(ctx: ExecutionContext, connector: ConnectorDefinition): McpRequestMeta {

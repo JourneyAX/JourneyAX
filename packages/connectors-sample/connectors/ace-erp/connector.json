@@ -130,6 +130,61 @@
       }
     },
     {
+      "name": "list_deliveries",
+      "description": "The deliveries of one trade account, newest first. Give the account id; optionally only one status (scheduled, out_for_delivery, delivered, failed_attempt).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0028."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional: only deliveries in this status."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "ACC-0028"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "deliveries",
+        "filters": [
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "scheduledDate",
+          "order": "desc"
+        }
+      }
+    },
+    {
       "name": "account_balance",
       "description": "The balance, credit limit and overdue amount of a trade account.",
       "inputSchema": {

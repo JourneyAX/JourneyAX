@@ -2,11 +2,12 @@
 /**
  * Asks the assistant one real question in a browser and prints what it answered and the steps it took: a way to see what a person would see.
  *
- *   node scripts/demo/ask.cjs --yes-run-real-chats --question "How do I install ..." [--base http://localhost:3008] [--project placemakers]
- *        [--wait 180] [--shot out.png] [--steps]
+ *   node scripts/demo/ask.cjs --yes-run-real-chats --question "How do I install ..." [--question "a follow-up" ...] [--base http://localhost:3008]
+ *        [--project placemakers] [--persona trade.admin] [--wait 180] [--shot out.png] [--steps]
  *
  * Each run is a real model run (and writes a conversation record), so it only runs with --yes-run-real-chats. It signs in with the sign-in
- * screen's own "Quick Demo Sign-in" button (the app's built-in dev login) when it meets the screen; it never types a password.
+ * screen's own persona button (--persona <id>) or "Quick Demo Sign-in" button (the app's built-in dev login) when it meets the screen; it never types a password.
+ * Give --question more than once to ask several messages in a row, each after the previous answer has finished.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,10 +18,11 @@ const ROOT = path.resolve(__dirname, '../..');
 const { chromium } = require(require.resolve('playwright', { paths: [ROOT] }));
 const base = opt('base', 'http://localhost:3008').replace(/\/$/, '');
 const project = opt('project', 'placemakers');
-const question = opt('question', '');
+const questions = args.flatMap((a, i) => (a === '--question' && args[i + 1] ? [args[i + 1]] : []));
+const persona = opt('persona', '');
 const waitSeconds = Number(opt('wait', '180'));
 if (!args.includes('--yes-run-real-chats')) { console.log('Dry run: this would ask the assistant at', base, 'one real question. Add --yes-run-real-chats to run it.'); process.exit(0); }
-if (!question) throw new Error('--question "..." is needed');
+if (questions.length === 0) throw new Error('--question "..." is needed');
 
 function chromiumPath() {
   if (process.env.PLAYWRIGHT_CHROMIUM_PATH) return process.env.PLAYWRIGHT_CHROMIUM_PATH;
@@ -38,16 +40,24 @@ function chromiumPath() {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
   const page = await context.newPage();
   await page.goto(`${base}/?project=${project}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#chat-input-field, #quick-login-btn', { timeout: 60000 });
-  if (await page.locator('#quick-login-btn').count()) { await page.click('#quick-login-btn'); await page.waitForSelector('#chat-input-field', { timeout: 60000 }); }
+  await page.waitForSelector('#chat-input-field, #quick-login-btn, [data-persona]', { timeout: 60000 });
+  if (persona) {
+    if (await page.locator('#chat-input-field').count()) throw new Error('already signed in; use a fresh browser to sign in as a persona');
+    await page.click(`[data-persona="${persona}"]`);
+    await page.waitForSelector('#chat-input-field', { timeout: 60000 });
+  } else if (await page.locator('#quick-login-btn').count()) { await page.click('#quick-login-btn'); await page.waitForSelector('#chat-input-field', { timeout: 60000 }); }
   await page.waitForTimeout(1500);
-  await page.fill('#chat-input-field', question);
-  await page.press('#chat-input-field', 'Enter');
   const started = Date.now();
-  await page.waitForSelector('#chat-stop-btn', { timeout: 20000 }).catch(() => {});
-  while (Date.now() - started < waitSeconds * 1000) {
-    if ((await page.locator('#chat-stop-btn').count()) === 0) break;
-    await page.waitForTimeout(1000);
+  for (const question of questions) {
+    await page.fill('#chat-input-field', question);
+    await page.press('#chat-input-field', 'Enter');
+    const askedAt = Date.now();
+    await page.waitForSelector('#chat-stop-btn', { timeout: 20000 }).catch(() => {});
+    while (Date.now() - askedAt < waitSeconds * 1000) {
+      if ((await page.locator('#chat-stop-btn').count()) === 0) break;
+      await page.waitForTimeout(1000);
+    }
+    await page.waitForTimeout(1500);
   }
   await page.waitForTimeout(2500);
   if (args.includes('--steps')) {

@@ -73,7 +73,11 @@
         "open_form",
         "list_connectors",
         "get_connector_tools",
-        "call_connector_tool"
+        "call_connector_tool",
+        "my_company",
+        "my_balance",
+        "my_deliveries",
+        "my_price"
       ],
       "modelPolicyRef": "complex_reasoning",
       "maxTurns": 5,
@@ -751,7 +755,18 @@
             {
               "name": "delivery_status",
               "sideEffect": "read",
-              "summary": "Where a delivery is."
+              "summary": "Where a delivery is.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
+              "name": "list_deliveries",
+              "sideEffect": "read",
+              "summary": "A trade account's deliveries, newest first.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
             },
             {
               "name": "account_balance",
@@ -1588,6 +1603,20 @@
         },
         {
           "connectorId": "ace-erp",
+          "tool": "list_deliveries",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales",
+            "sales-managers",
+            "branch",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "ace-erp",
           "tool": "account_balance",
           "audience": "staff",
           "groups": [
@@ -2127,6 +2156,15 @@
           "level": "available"
         }
       ]
+    },
+    "customerAccount": {
+      "enabled": true,
+      "connector": "ace-erp",
+      "tools": {
+        "balance": "account_balance",
+        "deliveries": "list_deliveries",
+        "price": "trade_price"
+      }
     }
   }
 }

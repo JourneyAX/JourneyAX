@@ -118,6 +118,19 @@ async function getIdToken(audience: string): Promise<string | undefined> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Who the signed identity says is asking. The login the auth guard verified wins: `x-user-email` is set by the guard on every request, from the
+ * verified token (a person who is not signed in gets `guest@anonymous`), so it is never the browser's word. A person who is not signed in may
+ * still name themselves with `x-user-id` (a session id, say), but never with something shaped like a login: services look a customer's company
+ * up by login, so a guest who sends `x-user-id: someone@company` must not become that person.
+ */
+export function signedSubject(headers: Record<string, any>): string {
+  const verified = String(headers['x-user-email'] || '').trim();
+  if (verified && verified.includes('@') && verified.toLowerCase() !== 'guest@anonymous') return verified;
+  const claimed = String(headers['x-user-id'] || headers['x-principal-id'] || '').trim();
+  return claimed && !claimed.includes('@') ? claimed : 'anonymous';
+}
+
+/**
  * Headers the gateway must pass through to services: the identity claims the
  * AuthGuard verified (so each service can enforce permissions itself) plus the
  * internal service key for trusted server-side callers.
@@ -365,7 +378,7 @@ export class GatewayService {
         {
           tenantId,
           environmentId,
-          sub: String(headers['x-user-id'] || headers['x-principal-id'] || headers['x-user-email'] || 'anonymous'),
+          sub: signedSubject(headers),
           role,
           groups,
         },

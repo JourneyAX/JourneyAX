@@ -19,6 +19,7 @@ import {
 } from '@/lib/customize/personas';
 import type { CustomizeOverview } from '@/lib/customize/types';
 import { buildScenarios, wordQuestion, type TestScenario } from '@/lib/customize/scenarios';
+import CompanyLinksPanel from './CompanyLinksPanel';
 import ScenarioQuestionDialog from './ScenarioQuestionDialog';
 import ScenarioToolsDialog from './ScenarioToolsDialog';
 import { usePersonaLibrary, type SaveOutcome } from './usePersonaLibrary';
@@ -62,14 +63,16 @@ export default function PersonasPane({ overview, query, tenant, open, onOpen, on
       </Empty>
     );
   }
-  return <PersonasView overview={overview} library={answer} query={query} open={open} onOpen={onOpen} onToast={onToast} save={save} savePrompt={savePrompt} onTryQuestion={onTryQuestion} />;
+  return <PersonasView overview={overview} library={answer} query={query} tenant={tenant} open={open} onOpen={onOpen} onToast={onToast} save={save} savePrompt={savePrompt} onTryQuestion={onTryQuestion} />;
 }
 
 /** The loaded library: team sections, a persona's page and the tools dialog. (Separate from the loading so it can be looked at on its own.) */
-export function PersonasView({ overview, library, query, open, onOpen, onToast, save, savePrompt, onTryQuestion, initialView = 'teams' }: {
+export function PersonasView({ overview, library, query, tenant, open, onOpen, onToast, save, savePrompt, onTryQuestion, initialView = 'teams' }: {
   overview: Overview;
   library: PersonaLibraryView;
   query: string;
+  /** The project, for the company links panel. */
+  tenant?: string;
   open: string | null;
   onOpen: (personaId: string | null) => void;
   onToast: (message: string) => void;
@@ -199,6 +202,7 @@ export function PersonasView({ overview, library, query, open, onOpen, onToast, 
               <ul className="ax-grid">{list.map((p) => <PersonaCard key={p.id} persona={p} counts={checks.byPersona[p.id]} onOpen={() => onOpen(p.id)} />)}</ul>
             </section>
           ))}
+          <CompanyLinksPanel tenant={tenant} onToast={onToast} />
           <p className="ax-notice">Customers use the shop’s own tools, which are not listed as tools, so their scenarios show “Not checked” until someone names the tools one needs. A connected system (the CRM, the order system) is never available to a shopper.</p>
         </>
       )}

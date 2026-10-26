@@ -20,6 +20,7 @@ import { OKF_LIMITS, OkfIntegrityError } from '@journeyax/knowledge';
 import { OkfAuthoringService, OkfDraftConflictError } from './okf-authoring.service';
 import { KnowledgeInsightService } from './knowledge-insight.service';
 import { PersonaLibraryError } from './persona-library';
+import { CompanyLinkError } from './company-links';
 
 /**
  * Internal runtime services (agent, WhatsApp sender) present this shared key to
@@ -746,6 +747,45 @@ export class ProjectController {
       const record = await this.projectService.getPersonaLibraryStore().setScenarioPrompt(projectId, body.useCaseId, body.prompt, userId || UNATTRIBUTED_PRINCIPAL, body.expectedRevision);
       return { present: true, revision: record.revision, scenarioPrompt: record.scenarioPrompts[body.useCaseId] ?? '', updatedAt: record.updatedAt };
     } catch (error) { return this.personaError(error); }
+  }
+
+  private companyLinkError(error: unknown): never {
+    if (error instanceof CompanyLinkError) throw new BadRequestException(error.message);
+    throw error;
+  }
+
+  /** Every trade customer login linked to a company in this project, for the back office. */
+  @Get(':projectId/company-links')
+  @RequirePermission('config.edit')
+  async listCompanyLinks(@Param('projectId') projectId: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    return { links: await this.projectService.getCompanyLinkStore().list(projectId) };
+  }
+
+  /** Links a login to a company by hand (or changes the person's role in it). The team checks who the person is before linking. */
+  @Put(':projectId/company-links')
+  @RequirePermission('config.edit')
+  async putCompanyLink(@Param('projectId') projectId: string, @Body() body: unknown, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    try {
+      return { link: await this.projectService.getCompanyLinkStore().link(projectId, body, userId || UNATTRIBUTED_PRINCIPAL) };
+    } catch (error) { return this.companyLinkError(error); }
+  }
+
+  @Delete(':projectId/company-links')
+  @RequirePermission('config.edit')
+  async deleteCompanyLink(@Param('projectId') projectId: string, @Body() body: { email?: unknown; companyId?: unknown }) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    try {
+      return { removed: await this.projectService.getCompanyLinkStore().unlink(projectId, body?.email, body?.companyId) };
+    } catch (error) { return this.companyLinkError(error); }
+  }
+
+  /** The companies a verified login is linked to: asked by the runtime with the identity the gateway verified, never by a browser. */
+  @Post(':projectId/company-links/lookup')
+  @RequirePermission('project.read')
+  async lookupCompanyLinks(@Param('projectId') projectId: string, @Body() body: { email?: unknown }) {
+    return { companies: await this.projectService.getCompanyLinkStore().lookup(projectId, body?.email) };
   }
 
   /** "View as": which agents a shopper, or a member of staff in the given groups, would get from the project's current settings. Read-only, for those who may edit the configuration (it names the project's teams). */

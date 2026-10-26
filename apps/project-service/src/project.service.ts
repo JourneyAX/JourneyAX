@@ -42,6 +42,7 @@ import {
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { buildAccessPreview, type AccessPreview, type AccessPreviewInput } from './access-preview';
 import { PersonaLibraryStore, PERSONA_LIBRARY_COLLECTION } from './persona-library';
+import { CompanyLinkStore, COMPANY_LINK_COLLECTION } from './company-links';
 import { PublicationGateValidator } from './publication-gate-validator';
 import { ReleaseValidationPort } from './release-validation.port';
 
@@ -76,6 +77,7 @@ export class ProjectService {
   private db!: Db;
   private runtimeDb?: Db;
   private personaStore?: PersonaLibraryStore;
+  private companyLinkStore?: CompanyLinkStore;
   private projectsCol!: Collection<ProjectConfig>;
   private membersCol!: Collection<ProjectMember & { projectId: string; orgId: string }>;
   private teamsCol!: Collection<ProjectTeam & { projectId: string; orgId: string }>;
@@ -189,6 +191,12 @@ export class ProjectService {
   getPersonaLibraryStore(): PersonaLibraryStore {
     if (!this.isConnected || !this.db) throw new Error('The project database is not connected.');
     return (this.personaStore ??= new PersonaLibraryStore(this.db.collection(PERSONA_LIBRARY_COLLECTION) as any));
+  }
+
+  /** Which company each trade customer's login is linked to (see company-links.ts). */
+  getCompanyLinkStore(): CompanyLinkStore {
+    if (!this.isConnected || !this.db) throw new Error('The project database is not connected.');
+    return (this.companyLinkStore ??= new CompanyLinkStore(this.db.collection(COMPANY_LINK_COLLECTION) as any));
   }
 
   async ensureIndexes() {

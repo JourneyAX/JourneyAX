@@ -133,6 +133,11 @@
           "summary": "Where a delivery is."
         },
         {
+          "name": "list_deliveries",
+          "sideEffect": "read",
+          "summary": "A trade account's deliveries, newest first."
+        },
+        {
           "name": "account_balance",
           "sideEffect": "read",
           "summary": "The balance, credit limit and overdue amount of a trade account.",

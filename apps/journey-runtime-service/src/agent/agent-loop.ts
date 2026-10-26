@@ -44,6 +44,8 @@ import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plan
 import type { CapabilityGateway } from '../kernel/capability.gateway';
 import { connectorSummaries, type ConnectorRuntime, type ConnectorSummary } from '../kernel/connector.runtime';
 import { formatConnectors, isConnectorMetaTool } from './connector-tools';
+import { customerAccountSettings, formatCustomerAccount, isCustomerAccountTool } from './customer-account';
+import type { CompanyDirectory } from '../kernel/company-directory';
 import type { ApprovalService } from '../kernel/approval.service';
 import type { ExecutionRepository } from '../kernel/execution.repository';
 import type { TurnTranscriptStore } from '../kernel/transcript.store';
@@ -65,6 +67,8 @@ export interface AgentTurnOptions {
   capabilityGateway?: CapabilityGateway;
   /** Reaches connectors. Defaults to the capability gateway's own; absent from both, no connector tool is offered. */
   connectorRuntime?: ConnectorRuntime;
+  /** Looks up the companies the team linked a signed-in customer to (from their verified login). Absent: no customer is linked to a company. */
+  companyDirectory?: CompanyDirectory;
   approvalService?: ApprovalService;
   executionRepo?: ExecutionRepository;
   transcriptStore?: TurnTranscriptStore;
@@ -338,6 +342,8 @@ export function buildAgentSystemPrompt(params: {
   person?: SkillPerson;
   /** The connectors this person can use, named and described (their tools are loaded on request). */
   connectors?: ConnectorSummary[];
+  /** Who this signed-in trade customer is on their account (empty for anyone else). */
+  customerAccount?: string;
 }): string {
   const platform = (params.platformPrompt || GENERIC_PLATFORM_OPERATING_PROMPT).trim();
   const agentBlock = formatAgentInstructions(params.resolvedAgent);
@@ -347,7 +353,7 @@ export function buildAgentSystemPrompt(params: {
 
   const connectorsBlock = formatConnectors(params.connectors ?? []);
 
-  const sections = [platform, agentBlock, skillsBlock, connectorsBlock, personaBlock, profileBlock].filter(Boolean);
+  const sections = [platform, agentBlock, skillsBlock, connectorsBlock, params.customerAccount || '', personaBlock, profileBlock].filter(Boolean);
   return sections.join('\n\n');
 }
 
@@ -531,6 +537,13 @@ export class AgentTurnLoop {
     const switchedOff = new Set<string>(Array.isArray((command as any).disabledConnectors) ? (command as any).disabledConnectors.map(String) : []);
     const connectors = connectorRuntime ? connectorSummaries(release, { audience: principal.audience, groups: principal.groups }).filter((summary) => !switchedOff.has(summary.connector)) : [];
 
+    // The company a signed-in trade customer belongs to, as the team linked it in the back office: looked up from the verified login (the
+    // runtime's principal id comes from the signed identity, never from the request body), only for a shopper, only when the pack turns it on.
+    const customerAccount = customerAccountSettings(release);
+    const companies = customerAccount.enabled && principal.audience === 'shopper' && options.companyDirectory && String(command.principalId || '').includes('@')
+      ? await options.companyDirectory.companiesFor(command.tenantId, String(command.principalId))
+      : [];
+
     // 2. Prepare Tool Context (server-enforced tenant isolation)
     const toolContext: AgentToolContext = {
       tenantId: command.tenantId,
@@ -541,6 +554,7 @@ export class AgentTurnLoop {
       principalId: command.principalId || (command as any).userId || (command as any).customerId || 'customer',
       principalRole: (command as any).principalRole || (command as any).role || 'customer',
       principal: { audience: principal.audience, groups: principal.groups },
+      companies,
       disabledConnectors: switchedOff,
       idempotencyKey: command.idempotencyKey || (command as any).turnId,
       release,
@@ -588,6 +602,7 @@ export class AgentTurnLoop {
       okfContent,
       person,
       connectors,
+      customerAccount: formatCustomerAccount(companies, customerAccount),
     });
 
     // 4. Offer only tools in agent.allowedTools
@@ -597,7 +612,7 @@ export class AgentTurnLoop {
     const hasOnDemandSkills = personSkills.some((entry) => entry.tier === 'on_demand');
     // The connector tools are offered when the person has a connector AND the agent's tool list names them (or allows everything).
     const hasConnectors = connectors.length > 0;
-    const toolOffered = (name: string) => (name === 'use_skill' ? hasOnDemandSkills : isConnectorMetaTool(name) ? hasConnectors && isToolAllowed(name, allowedTools, release) : isToolAllowed(name, allowedTools, release));
+    const toolOffered = (name: string) => (name === 'use_skill' ? hasOnDemandSkills : isConnectorMetaTool(name) ? hasConnectors && isToolAllowed(name, allowedTools, release) : isCustomerAccountTool(name) ? companies.length > 0 && isToolAllowed(name, allowedTools, release) : isToolAllowed(name, allowedTools, release));
     const availableTools = toolDefs
       .filter((t) => toolOffered(t.name))
       .filter((t) => !toolStateOf || toolStateOf(t.name).state !== 'blocked');

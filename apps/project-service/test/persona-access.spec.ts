@@ -43,6 +43,7 @@ const TABLE: Record<string, string> = {
   'ace-erp.stock_by_branch':          'A A A A - - A A - -',
   'ace-erp.trade_price':              'A A A A - - A A A -',
   'ace-erp.delivery_status':          'A A A A - - A A - -',
+  'ace-erp.list_deliveries':          'A A A A - - A A - -',
   'ace-erp.account_balance':          'A A - A - - A - A -',
   'ace-erp.list_branches':            'A A A A - - A A A -',
   'google-analytics.traffic_by_page': 'A - - - A A A - - -',
