@@ -33,11 +33,12 @@ import AgentForm from './AgentForm';
 import ConnectorRulesDialog from './ConnectorRulesDialog';
 import ConnectorsPane from './ConnectorsPane';
 import SkillForm from './SkillForm';
+import PersonasPane from './PersonasPane';
 import SkillsPane from './SkillsPane';
 import { useOverview } from './useOverview';
 import { ViewAs } from './ViewAs';
 
-type TabId = 'agents' | 'skills' | 'plugins' | 'knowledge' | 'connectors';
+type TabId = 'agents' | 'skills' | 'plugins' | 'knowledge' | 'connectors' | 'personas';
 type Scope = 'yours' | 'discover';
 
 const TABS: { id: TabId; label: string }[] = [
@@ -46,6 +47,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'plugins', label: 'Plugins' },
   { id: 'knowledge', label: 'Knowledge' },
   { id: 'connectors', label: 'Connectors' },
+  { id: 'personas', label: 'Personas' },
 ];
 
 const BANNERS: Record<TabId, { title: string; text: string; icons: ReactNode[] }> = {
@@ -73,6 +75,11 @@ const BANNERS: Record<TabId, { title: string; text: string; icons: ReactNode[] }
     title: 'Connected systems, and the tools agents can call',
     text: 'The other systems your assistant reaches (the CRM, the shop, the ticket desk) with who may do what in each, and the platform\'s own built-in tools. Each agent is allowed only the tools it needs.',
     icons: [<PlugIcon key="p" size={22} />, <AgentIcon key="a" size={22} />],
+  },
+  personas: {
+    title: 'Who uses the assistant, and what they want done',
+    text: 'The personas and use cases your organisation listed, and whether the assistant has the tools each scenario needs for that persona\'s team.',
+    icons: [<AgentIcon key="a" size={22} />, <SkillIcon key="s" size={22} />],
   },
 };
 
@@ -321,6 +328,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
     plugins: data?.plugins.length,
     knowledge: data ? (data.knowledge.releaseId ? 1 : 0) + data.knowledge.sources.length : undefined,
     connectors: data ? data.connectors.filter((c) => c.usedBy.length > 0).length + data.systems.length : undefined,
+    personas: undefined,
   };
 
   const banner = BANNERS[tab];
@@ -328,6 +336,7 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
   const inDetail = !!(open && data && (
     (tab === 'skills' && data.skills.some((skill) => skill.skillId === open))
     || (tab === 'connectors' && (() => { const rows = connectorRows(data); return [...rows.yours, ...rows.discover].some((row) => row.id === open); })())
+    || tab === 'personas'
   ));
 
   return (
@@ -358,15 +367,18 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
           <div id="ax-tabpanel" role="tabpanel" aria-labelledby={`ax-tab-${tab}`}>
             {!inDetail && (
             <div className="ax-toolbar">
-              <div className="ax-segment" role="group" aria-label="Show">
-                <button type="button" aria-pressed={scope === 'yours'} onClick={() => changeScope('yours')}>Yours</button>
-                <button type="button" aria-pressed={scope === 'discover'} onClick={() => changeScope('discover')}>Discover</button>
-              </div>
+              {tab !== 'personas' && (
+                <div className="ax-segment" role="group" aria-label="Show">
+                  <button type="button" aria-pressed={scope === 'yours'} onClick={() => changeScope('yours')}>Yours</button>
+                  <button type="button" aria-pressed={scope === 'discover'} onClick={() => changeScope('discover')}>Discover</button>
+                </div>
+              )}
               <label className="ax-field">
                 <SearchIcon size={16} />
                 <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${TABS.find((t) => t.id === tab)!.label.toLowerCase()}`} aria-label={`Search ${tab}`} />
               </label>
               <span className="ax-toolbar__spacer" />
+              {tab !== 'personas' && (
               <div className="ax-add" ref={addRef}>
                 <button type="button" className="ax-btn ax-btn--primary" aria-haspopup="menu" aria-expanded={addOpen} onClick={() => setAddOpen((v) => !v)}>
                   <PlusIcon size={16} /> Add
@@ -414,11 +426,12 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
                   </div>
                 )}
               </div>
+              )}
             </div>
             )}
             <input ref={fileRef} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden aria-hidden="true" tabIndex={-1} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void onSkillFile(file); }} />
 
-            {!inDetail && !((tab === 'skills' || tab === 'connectors') && scope === 'yours') && (
+            {!inDetail && tab !== 'personas' && !((tab === 'skills' || tab === 'connectors') && scope === 'yours') && (
             <section className="ax-herocard" aria-label="About this tab">
               <div>
                 <h2>{banner.title}</h2>
@@ -468,6 +481,9 @@ function CustomizeContent({ onTry }: { onTry: (agentId?: string) => void }) {
             )}
             {data && tab === 'plugins' && <PluginsTab scope={scope} query={query} plugins={data.plugins} agents={agents} skills={data.skills} systems={data.systems} />}
             {data && tab === 'knowledge' && <KnowledgeTab scope={scope} query={query} knowledge={data.knowledge} by={by} />}
+            {data && tab === 'personas' && (
+              <PersonasPane overview={data} query={query} tenant={tenant} open={open} onOpen={setOpen} onToast={setToast} />
+            )}
             {data && tab === 'connectors' && (
               <ConnectorsPane
                 scope={scope} query={query} overview={data} open={open} busy={rulesBusy} onOpen={setOpen}

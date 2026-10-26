@@ -271,3 +271,35 @@
   .ax-rowlist__side { display: none; }
   .ax-rowlist__draft { flex-wrap: wrap; }
 }
+
+/* ── Personas ────────────────────────────────────────────────────────────────────────────────────────────────────── */
+.ax-linkbtn--title { padding: 0; font-size: inherit; font-weight: 600; color: var(--ax-text); text-align: left; }
+.ax-linkbtn--title:hover { color: var(--ax-accent-text); }
+.ax-summary { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--ax-border); border-radius: 14px; background: var(--ax-fill); display: flex; flex-direction: column; gap: 10px; }
+.ax-summary p { font-size: 14px; line-height: 1.5; color: var(--ax-text-2); max-width: 760px; }
+.ax-teamnote { margin: 2px 0 8px; max-width: 820px; color: var(--ax-muted); font-size: 13.5px; line-height: 1.5; }
+.ax-verdict { display: inline-flex; align-items: center; font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--ax-fill); color: var(--ax-text-2); white-space: nowrap; }
+.ax-verdict--ready { background: color-mix(in srgb, #2E7D32 16%, var(--ax-surface)); color: color-mix(in srgb, #2E7D32 80%, var(--ax-text)); }
+.ax-verdict--gaps { background: color-mix(in srgb, #C98A00 20%, var(--ax-surface)); color: color-mix(in srgb, #8A5C00 88%, var(--ax-text)); font-weight: 600; }
+.ax-verdict--unmapped, .ax-verdict--unchecked { background: var(--ax-fill-strong); color: var(--ax-muted); }
+.ax-sheet--fully-ready { background: color-mix(in srgb, #2E7D32 12%, var(--ax-surface)); }
+.ax-sheet--partly-ready { background: color-mix(in srgb, #C98A00 12%, var(--ax-surface)); }
+.ax-sheet--sample-or-pending-only, .ax-sheet--not-possible-yet { background: var(--ax-fill-strong); }
+.ax-outcome { display: inline-block; min-width: 86px; text-align: center; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--ax-fill); color: var(--ax-text-2); }
+.ax-outcome--ok { background: color-mix(in srgb, #2E7D32 16%, var(--ax-surface)); color: color-mix(in srgb, #2E7D32 80%, var(--ax-text)); }
+.ax-outcome--ask { background: color-mix(in srgb, #C98A00 20%, var(--ax-surface)); color: color-mix(in srgb, #8A5C00 88%, var(--ax-text)); }
+.ax-outcome--blocked, .ax-outcome--off, .ax-outcome--not-connected, .ax-outcome--no-team, .ax-outcome--unknown { background: color-mix(in srgb, #C0392B 14%, var(--ax-surface)); color: color-mix(in srgb, #C0392B 85%, var(--ax-text)); }
+.ax-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin-top: 14px; font-size: 14px; max-width: 760px; }
+.ax-facts dt { color: var(--ax-muted); }
+.ax-facts dd { color: var(--ax-text-2); }
+.ax-uc { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--ax-border); border-radius: 14px; background: var(--ax-surface); display: flex; flex-direction: column; gap: 8px; }
+.ax-uc__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ax-uc__head h4 { font-size: 15px; font-weight: 600; }
+.ax-uc__story { font-size: 14px; color: var(--ax-text-2); line-height: 1.5; }
+.ax-uc__summary { font-size: 13.5px; color: var(--ax-text); font-weight: 500; }
+.ax-toolrows { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.ax-toolrows li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 13.5px; }
+.ax-toolrows__name { color: var(--ax-text); }
+.ax-toolrows__from { color: var(--ax-muted); font-size: 12.5px; }
+.ax-toolrows__note { flex-basis: 100%; padding-left: 96px; color: var(--ax-muted); font-size: 12.5px; }
+@media (max-width: 640px) { .ax-toolrows__note { padding-left: 0; } .ax-facts { grid-template-columns: minmax(0, 1fr); gap: 0; } .ax-facts dd { margin-bottom: 8px; } }

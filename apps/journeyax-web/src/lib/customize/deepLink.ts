@@ -4,10 +4,10 @@
  */
 import { preservedQuery } from '../shell/nav';
 
-export type CustomizeTab = 'agents' | 'skills' | 'plugins' | 'knowledge' | 'connectors';
+export type CustomizeTab = 'agents' | 'skills' | 'plugins' | 'knowledge' | 'connectors' | 'personas';
 export type CustomizeScope = 'yours' | 'discover';
 
-export const CUSTOMIZE_TABS: readonly CustomizeTab[] = ['agents', 'skills', 'plugins', 'knowledge', 'connectors'];
+export const CUSTOMIZE_TABS: readonly CustomizeTab[] = ['agents', 'skills', 'plugins', 'knowledge', 'connectors', 'personas'];
 
 export interface DeepLink { tab?: CustomizeTab; scope?: CustomizeScope; open?: string }
 
