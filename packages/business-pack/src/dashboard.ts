@@ -60,7 +60,7 @@ export interface DashboardView {
   sections: SectionView[];
 }
 
-export interface RecordsCardState { heading: string; rows: RowView[]; total: number; shown: number }
+export interface RecordsCardState { heading: string; rows: RowView[]; total: number; shown: number; atLeast?: boolean }
 
 /** The first entry of the pack's dashboard setting that fits this person, or none (no tile is shown). */
 export function dashboardFor(setting: unknown, person: DashboardPerson): DashboardEntry | undefined {
@@ -166,6 +166,7 @@ function passes(record: Record<string, unknown>, where: Where[] | undefined, tod
     const value = lookup(record, rule.field);
     if (rule.op === 'equals') return String(value ?? '').toLowerCase() === String(rule.value ?? '').toLowerCase();
     if (rule.op === 'notEquals') return String(value ?? '').toLowerCase() !== String(rule.value ?? '').toLowerCase();
+    if (rule.op === 'in') return String(rule.value ?? '').split(',').map((one) => one.trim().toLowerCase()).filter(Boolean).includes(String(value ?? '').toLowerCase());
     const day = dayOf(value);
     if (!day) return false;
     const edge = typeof rule.value === 'string' && DAY.test(rule.value) ? rule.value.slice(0, 10) : today;
@@ -195,15 +196,17 @@ function sorted(records: Array<Record<string, unknown>>, sort: { field: string; 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Words
 
-function money(value: unknown, format: DashboardFormat): string {
+function money(value: unknown, format: DashboardFormat, cents = false): string {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) return '';
+  const digits = cents ? 2 : 0;
+  const rounded = cents ? Math.round(n * 100) / 100 : Math.round(n);
   // The shop's own currency and locale come from its pack; with no currency given the figure is shown as a plain number, never as a guessed currency.
-  if (!format.currency) return new Intl.NumberFormat(format.locale).format(Math.round(n));
+  if (!format.currency) return new Intl.NumberFormat(format.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(rounded);
   try {
-    return new Intl.NumberFormat(format.locale, { style: 'currency', currency: format.currency, maximumFractionDigits: 0 }).format(n);
+    return new Intl.NumberFormat(format.locale, { style: 'currency', currency: format.currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
   } catch {
-    return String(Math.round(n));
+    return String(rounded);
   }
 }
 
@@ -218,7 +221,11 @@ function dateWords(value: unknown, format: DashboardFormat): string {
 function show(value: unknown, filter: string | undefined, format: DashboardFormat): string {
   if (value === undefined || value === null || value === '') return '';
   if (filter === 'money') return money(value, format);
+  // An order or a line is shown to the cent; a deal is not.
+  if (filter === 'price') return money(value, format, true);
   if (filter === 'date') return dateWords(value, format);
+  // A system that writes "pending" or "public reply" in lower case is shown with a capital, as the rest of the words are.
+  if (filter === 'title') return String(value).trim().replace(/^./u, (first) => first.toUpperCase());
   const text = String(value);
   // A deal's name ends with its number in brackets; the number is for the system, not for the person.
   if (filter === 'clean') return text.replace(/\s*\[[^\]]*\]\s*$/, '').trim();
@@ -274,13 +281,17 @@ function figure(metric: DashboardEntry['metrics'][number], outcome: CallOutcome 
   const data = outcome.data as Record<string, unknown> | undefined;
   const all = recordsOf(data);
   const rows = all.filter((record) => passes(record, metric.where, format.today));
-  // A list the tool cut short gives a lower bound for anything counted or added up from it.
+  // A list the tool cut short gives a lower bound for anything counted or added up from it. A count the tool itself gave for the whole
+  // search (more tickets than it returned) is exact; a "total" that only repeats how many it returned is not.
   const cut = (data as { more?: unknown } | undefined)?.more === true;
   const filtered = !!metric.where?.length;
+  const reported = (data as { total?: unknown } | undefined)?.total;
+  const returned = Number((data as { returned?: unknown } | undefined)?.returned ?? all.length);
+  const wholeCount = typeof reported === 'number' && (!cut || reported > returned);
   let raw: number;
   if (metric.measure === 'sum') raw = Math.round(rows.reduce((sum, record) => sum + (Number(lookup(record, metric.field!)) || 0), 0) * 100) / 100;
-  else raw = !filtered && typeof (data as { total?: unknown } | undefined)?.total === 'number' ? (data as { total: number }).total : rows.length;
-  const lowerBound = cut && (filtered || metric.measure === 'sum');
+  else raw = !filtered && typeof reported === 'number' ? reported : rows.length;
+  const lowerBound = cut && (filtered || metric.measure === 'sum' || !wholeCount);
   const tone = [...(metric.tone ?? [])].sort((a, b) => b.atLeast - a.atLeast).find((rule) => raw >= rule.atLeast)?.tone ?? 'neutral';
   let hint: string | undefined;
   if (metric.hint) {
@@ -337,7 +348,11 @@ export function recordCardsFor(entry: DashboardEntry, connector: string, tool: s
     const matching = sorted(recordsOf(data, card.from).filter((record) => passes(record, card.where, format.today)), card.sort);
     if (matching.length === 0) continue;
     const rows = matching.slice(0, card.limit ?? 5).map((record) => rowView(card.row, record, format));
-    out.push({ heading: card.heading, rows, total: matching.length, shown: rows.length });
+    // How many there are: the tool's own count for the whole search when it gave one, else what it returned, "at least" when it stopped at its limit.
+    const body = card.from || card.where?.length ? undefined : (data as { total?: unknown; returned?: unknown; more?: unknown } | undefined);
+    const cut = body?.more === true;
+    const whole = typeof body?.total === 'number' && body.total > matching.length && (!cut || body.total > Number(body.returned ?? matching.length)) ? body.total : undefined;
+    out.push({ heading: card.heading, rows, total: whole ?? matching.length, shown: rows.length, ...(cut && !whole ? { atLeast: true } : {}) });
   }
   return out;
 }

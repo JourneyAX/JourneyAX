@@ -119,7 +119,7 @@ check('figures are counted and added up from the tool’s answer, with the hint 
   assert.ok(closing > 0, 'the fixture has deals closing soon');
   assert.equal(byId['closing-soon'].value, String(closing));
   assert.equal(byId['closing-soon'].tone, 'warn');
-  assert.equal(byId['open-cases'].value, String(fixture.cases.total));
+  assert.equal(byId['open-cases'].value, `${fixture.cases.total}+`, 'the tool stopped at its limit (more: true), so the count is “at least”');
   assert.equal(byId['open-cases'].tone, 'bad', 'the highest threshold reached wins');
   assert.match(byId.worth.value, /^\$[\d,]+$/);
   assert.deepEqual(view.tile.map((t) => t.id), ['open-deals', 'closing-soon', 'open-cases']);
@@ -217,6 +217,58 @@ check('today is the shop’s own date, not the server’s', () => {
   assert.equal(todayIn('Pacific/Auckland', instant), '2026-10-27');
   assert.equal(todayIn('UTC', instant), '2026-10-26');
   assert.equal(todayIn('Not/AZone', instant), '2026-10-26', 'a bad zone falls back to UTC');
+});
+
+check('a figure can count the records whose field is one of a short list, and a lower-case word gets its capital', () => {
+  const tickets = { ok: true, total: 4, returned: 4, records: [
+    { status: 'open', priority: 'urgent' }, { status: 'open', priority: 'high' }, { status: 'pending', priority: 'normal' }, { status: 'open' },
+  ] };
+  const desk = DashboardSchema.parse({
+    entries: [{
+      groups: ['customer-service'], title: 'My desk', tile: ['loud'], sections: [], cards: [],
+      metrics: [{ id: 'loud', label: 'Urgent or high', source: { connector: 'zendesk', tool: 'find_tickets' }, measure: 'count', where: [{ field: 'priority', op: 'in', value: 'High, Urgent' }] }],
+    }],
+  });
+  const source = desk.entries[0].metrics[0].source;
+  const outcomes = new Map<string, CallOutcome>([[callKey(source, {}), { ok: true, data: tickets }]]);
+  const built = buildDashboard(desk.entries[0], outcomes, { format });
+  assert.equal(built.tile[0].value, '2', 'urgent and high are counted; normal, and a ticket with no priority, are not');
+  assert.equal(fillTemplate('{status|title} · {kind|title}', { status: 'pending', kind: 'public reply' }, format), 'Pending · Public reply');
+  assert.equal(fillTemplate('{priority|title}', { priority: '' }, format), '', 'an empty field stays empty');
+  assert.equal(fillTemplate('{total|money}', { total: 3253.75 }, format), '$3,254', 'a deal is shown in whole dollars');
+  assert.equal(fillTemplate('{total|price}', { total: 3253.75 }, format), '$3,253.75', 'an order is shown to the cent');
+  assert.equal(fillTemplate('{total|price}', { total: 478.8 }, { today: format.today, locale: 'en-NZ' }), '478.80', 'with no currency it is a plain number, still to the cent');
+});
+
+check('a count over a list the tool cut short says "25+"; a count the tool gave for the whole search is exact', () => {
+  const cases = { ok: true, total: 25, returned: 25, more: true, records: Array.from({ length: 25 }, (_, i) => ({ status: i < 5 ? 'Escalated' : 'New' })) };
+  const tickets = { ok: true, total: 61, returned: 25, more: true, records: Array.from({ length: 25 }, () => ({ status: 'open' })) };
+  const desk = DashboardSchema.parse({
+    entries: [{
+      groups: ['customer-service'], title: 'My desk', tile: ['cases'], sections: [], cards: [],
+      metrics: [
+        { id: 'cases', label: 'Open cases', source: { connector: 'salesforce', tool: 'list_cases' }, measure: 'count' },
+        { id: 'escalated', label: 'Escalated', source: { connector: 'salesforce', tool: 'list_cases' }, measure: 'count', where: [{ field: 'status', op: 'equals', value: 'Escalated' }] },
+        { id: 'tickets', label: 'Open tickets', source: { connector: 'zendesk', tool: 'find_tickets' }, measure: 'count' },
+      ],
+    }],
+  });
+  const [cs, , zd] = desk.entries[0].metrics.map((m) => m.source);
+  const outcomes = new Map<string, CallOutcome>([[callKey(cs, {}), { ok: true, data: cases }], [callKey(zd, {}), { ok: true, data: tickets }]]);
+  const byId = Object.fromEntries(buildDashboard(desk.entries[0], outcomes, { format }).metrics.map((m) => [m.id, m]));
+  assert.equal(byId.cases.value, '25+', 'the tool said it stopped at 25');
+  assert.equal(byId.escalated.value, '5+');
+  assert.equal(byId.tickets.value, '61', 'the tool counted the whole search itself');
+});
+
+check('a card says how many there are: the tool’s own count when it gave one, “at least” when it stopped at its limit', () => {
+  const card = { connector: 'zendesk', tool: 'find_tickets', heading: 'Tickets', limit: 2, row: { title: '{subject}' } };
+  const desk = DashboardSchema.parse({ entries: [{ groups: ['customer-service'], title: 'My desk', tile: ['n'], metrics: [{ id: 'n', label: 'Tickets', source: { connector: 'zendesk', tool: 'find_tickets' }, measure: 'count' }], sections: [], cards: [card] }] });
+  const records = [{ subject: 'a' }, { subject: 'b' }, { subject: 'c' }];
+  const make = (data: unknown) => recordCardsFor(desk.entries[0], 'zendesk', 'find_tickets', data, format)[0];
+  assert.deepEqual([make({ records }).total, make({ records }).atLeast], [3, undefined], 'the tool returned everything');
+  assert.deepEqual([make({ total: 61, returned: 3, more: true, records }).total, make({ total: 61, returned: 3, more: true, records }).atLeast], [61, undefined], 'the tool counted the whole search');
+  assert.deepEqual([make({ total: 3, returned: 3, more: true, records }).total, make({ total: 3, returned: 3, more: true, records }).atLeast], [3, true], 'the tool only repeated how many it returned, then stopped');
 });
 
 console.log(`\n✅ ${passed} dashboard checks passed`);

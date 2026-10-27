@@ -345,6 +345,8 @@ export const CARD_TYPES = {
       /** How many there were, and how many are shown. */
       total: z.number().int().optional(),
       shown: z.number().int().optional(),
+      /** The system stopped at its limit, so the true number is this or more. */
+      atLeast: z.boolean().optional(),
     }),
   },
   form: {

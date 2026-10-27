@@ -238,13 +238,14 @@ const DashboardSourceSchema = z.object({
 
 const DashboardWhereSchema = z.object({
   field: z.string().min(1).max(40),
-  op: z.enum(['equals', 'notEquals', 'before', 'onOrBefore', 'after', 'withinDays']),
+  /** `in` takes a short comma list ("high,urgent") and passes a record whose field is any one of them. */
+  op: z.enum(['equals', 'notEquals', 'in', 'before', 'onOrBefore', 'after', 'withinDays']),
   value: z.union([z.string().max(80), z.number()]).optional(),
 }).strict();
 
 const DashboardToneSchema = z.enum(['good', 'warn', 'bad', 'info']);
 
-/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`. */
+/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`, `{field|title}`, `{field|price}` (money to the cent). */
 const DashboardRowSchema = z.object({
   title: z.string().min(1).max(160),
   subtitle: z.string().max(200).optional(),

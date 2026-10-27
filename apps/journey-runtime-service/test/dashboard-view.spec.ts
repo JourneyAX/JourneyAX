@@ -90,7 +90,7 @@ async function main() {
     const deals = calls.find((c) => c.tool === 'list_opportunities')!;
     assert.deepEqual(deals.args, { stage: 'open', owner: 'Jess Penrose', limit: 25 });
     assert.equal(view!.scope, 'mine');
-    assert.deepEqual(view!.tile.map((t) => t.value), [String(fixture.opps.total), String(fixture.cases.total)]);
+    assert.deepEqual(view!.tile.map((t) => t.value), [String(fixture.opps.total), `${fixture.cases.total}+`]);
   });
 
   await check('a tool that changes data is never read for a dashboard, however the setting names it', async () => {

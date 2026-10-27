@@ -8,7 +8,7 @@
 import { askInChat } from '@/lib/shell/askInChat';
 
 interface Row { title: string; subtitle?: string; detail?: string; badge?: string; tone?: 'good' | 'warn' | 'bad' | 'info'; amount?: string; ask?: string }
-export interface RecordsState { heading: string; rows: Row[]; total?: number; shown?: number }
+export interface RecordsState { heading: string; rows: Row[]; total?: number; shown?: number; atLeast?: boolean }
 
 export default function RecordsCard({ state }: { state: RecordsState }) {
   const rows = Array.isArray(state.rows) ? state.rows : [];
@@ -18,7 +18,7 @@ export default function RecordsCard({ state }: { state: RecordsState }) {
     <section className="rec" aria-label={state.heading}>
       <header className="rec__head">
         <h3 className="rec__title">{state.heading}</h3>
-        {total !== undefined && <span className="rec__count">{rows.length} of {total}</span>}
+        {total !== undefined && <span className="rec__count">{rows.length} of {total}{state.atLeast ? '+' : ''}</span>}
       </header>
       <ul className="rec__rows">
         {rows.map((row, index) => {

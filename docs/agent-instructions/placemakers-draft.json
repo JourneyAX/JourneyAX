@@ -2879,6 +2879,434 @@
               }
             }
           ]
+        },
+        {
+          "groups": [
+            "customer-service"
+          ],
+          "title": "My desk",
+          "subtitle": "Tickets and cases waiting on us, and the customers behind them.",
+          "tile": [
+            "open-tickets",
+            "urgent-tickets",
+            "high-cases"
+          ],
+          "metrics": [
+            {
+              "id": "open-tickets",
+              "label": "Open tickets",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the open tickets, oldest first."
+            },
+            {
+              "id": "urgent-tickets",
+              "label": "Urgent or high",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "priority",
+                  "op": "in",
+                  "value": "high,urgent"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Show me the urgent and high-priority tickets."
+            },
+            {
+              "id": "waiting-customer",
+              "label": "Waiting on the customer",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "pending"
+                }
+              ],
+              "ask": "Which tickets are waiting on the customer, and since when?"
+            },
+            {
+              "id": "open-cases",
+              "label": "Open cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the open cases."
+            },
+            {
+              "id": "escalated",
+              "label": "Escalated cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "Escalated"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Which cases are escalated, and who has them?"
+            },
+            {
+              "id": "high-cases",
+              "label": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Show me the high-priority cases that are open."
+            }
+          ],
+          "sections": [
+            {
+              "id": "urgent",
+              "title": "Urgent and high priority",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "where": [
+                {
+                  "field": "priority",
+                  "op": "in",
+                  "value": "high,urgent"
+                }
+              ],
+              "sort": {
+                "field": "created",
+                "order": "asc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{requester.name}",
+                "detail": "{status|title} · opened {created|date}",
+                "badge": "{priority|title}",
+                "tones": {
+                  "Urgent": "bad",
+                  "High": "bad",
+                  "Low": "good"
+                },
+                "ask": "Open the ticket \"{subject}\" from {requester.name}: what is it about, and what should we do next?"
+              },
+              "empty": "No urgent tickets are open.",
+              "more": {
+                "label": "See the open tickets in the chat",
+                "prompt": "Show me the open tickets, oldest first."
+              }
+            },
+            {
+              "id": "waiting",
+              "title": "Others waiting longest",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "where": [
+                {
+                  "field": "priority",
+                  "op": "notEquals",
+                  "value": "high"
+                },
+                {
+                  "field": "priority",
+                  "op": "notEquals",
+                  "value": "urgent"
+                }
+              ],
+              "sort": {
+                "field": "created",
+                "order": "asc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{requester.name}",
+                "detail": "{status|title} · opened {created|date}",
+                "badge": "{priority|title}",
+                "tones": {
+                  "Urgent": "bad",
+                  "High": "bad",
+                  "Low": "good"
+                },
+                "ask": "Open the ticket \"{subject}\" from {requester.name}: what is it about, and what should we do next?"
+              },
+              "empty": "Nothing else is waiting."
+            },
+            {
+              "id": "cases",
+              "title": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              },
+              "empty": "No high-priority cases are open.",
+              "more": {
+                "label": "See the open cases in the chat",
+                "prompt": "Show me the open cases."
+              }
+            }
+          ],
+          "cards": [
+            {
+              "connector": "zendesk",
+              "tool": "find_tickets",
+              "heading": "Tickets",
+              "limit": 6,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{requester.name}",
+                "detail": "{status|title} · opened {created|date}",
+                "badge": "{priority|title}",
+                "tones": {
+                  "Urgent": "bad",
+                  "High": "bad",
+                  "Low": "good"
+                },
+                "ask": "Open the ticket \"{subject}\" from {requester.name}: what is it about, and what should we do next?"
+              }
+            },
+            {
+              "connector": "zendesk",
+              "tool": "get_ticket",
+              "heading": "The ticket",
+              "from": "record",
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{requester.name}",
+                "detail": "{status|title} · opened {created|date}",
+                "badge": "{priority|title}",
+                "tones": {
+                  "Urgent": "bad",
+                  "High": "bad",
+                  "Low": "good"
+                }
+              }
+            },
+            {
+              "connector": "zendesk",
+              "tool": "get_ticket",
+              "heading": "The conversation",
+              "from": "record.conversation",
+              "limit": 6,
+              "row": {
+                "title": "{from}",
+                "subtitle": "{said}",
+                "detail": "{kind|title} · {at|date}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "list_cases",
+              "heading": "Cases",
+              "limit": 6,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_case",
+              "heading": "The case",
+              "from": "record",
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date} · Owner {owner}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                }
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "find_account",
+              "heading": "Accounts",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}",
+                "ask": "Show me the open cases and orders for {name}."
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "The customer",
+              "from": "record",
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "Their open cases",
+              "from": "record.cases",
+              "limit": 3,
+              "row": {
+                "title": "{subject}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                }
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "get_order",
+              "heading": "The order",
+              "from": "record",
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Ordered {created|date} · Quantity {itemCount}",
+                "badge": "{state}",
+                "tones": {
+                  "Complete": "good",
+                  "Cancelled": "bad",
+                  "Confirmed": "info"
+                },
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and when will it arrive?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "get_order",
+              "heading": "What is on the order",
+              "from": "record.lines",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Quantity {quantity}",
+                "amount": "{total|price}"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "order_history",
+              "heading": "Their orders",
+              "limit": 5,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Ordered {created|date} · Quantity {itemCount}",
+                "badge": "{state}",
+                "tones": {
+                  "Complete": "good",
+                  "Cancelled": "bad",
+                  "Confirmed": "info"
+                },
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and when will it arrive?"
+              }
+            }
+          ]
         }
       ]
     },
