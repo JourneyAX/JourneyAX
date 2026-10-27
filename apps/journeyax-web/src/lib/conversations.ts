@@ -8,8 +8,9 @@
  * two separate threads.
  *
  * Each conversation owns its own server session, so switching threads switches
- * the agent's memory with it. Everything here is per project: one browser used
- * for two storefronts never mixes their threads.
+ * the agent's memory with it. Everything here is per project and per signed-in
+ * person: one browser used for two storefronts, or by two people one after the
+ * other, never mixes their threads.
  */
 
 export interface Conversation {
@@ -18,7 +19,13 @@ export interface Conversation {
   updatedAt: number;
 }
 
-const ns = (projectId?: string) => projectId || 'default';
+/** Whose threads these are: the login of the person signed in on this page, set when they sign in or the session is restored. */
+let storageOwner = '';
+export function setStorageOwner(login: string | null | undefined): void {
+  storageOwner = String(login ?? '').trim().toLowerCase();
+}
+
+const ns = (projectId?: string) => `${projectId || 'default'}${storageOwner ? `~${storageOwner}` : ''}`;
 
 export const listKey = (projectId?: string) => `jx_convos::${ns(projectId)}`;
 export const activeKey = (projectId?: string) => `jx_active_convo::${ns(projectId)}`;

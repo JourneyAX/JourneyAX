@@ -228,3 +228,23 @@ export const VoiceSchema = z.object({
     try { new RegExp(rule.pattern, `${rule.flags ?? ''}g`); } catch { ctx.addIssue({ code: 'custom', message: `"${rule.pattern}" is not a valid pattern` }); }
   })).max(40),
 }).strict();
+
+/**
+ * What the empty chat says to each kind of person (pack `extensions.welcome`): a headline, a line under it and a few things to ask, per
+ * team. The first entry that fits the person is used; an entry names the staff groups it is for (the normalised team names the access
+ * rows use) or a whole audience. `{hello}` becomes the time-of-day greeting and `{name}` the person's first name. A starter may list the
+ * tools (`system.tool`) it needs, and is then offered only to a person who may use all of them: nobody is offered what they would be refused.
+ */
+export const WelcomeSchema = z.object({
+  entries: z.array(z.object({
+    groups: z.array(z.string().min(1).max(60)).min(1).max(10).optional(),
+    audience: z.enum(['shopper', 'staff']).optional(),
+    headline: z.string().min(1).max(120).optional(),
+    subtitle: z.string().min(1).max(240).optional(),
+    starters: z.array(z.object({
+      label: z.string().min(1).max(60),
+      prompt: z.string().min(1).max(500),
+      needs: z.array(z.string().regex(/^[a-z0-9-]+\.[a-z0-9_]+$/i, 'a tool as system.tool')).max(4).optional(),
+    }).strict()).max(6).optional(),
+  }).strict().refine((entry) => Boolean(entry.groups?.length || entry.audience), { message: 'name the groups or the audience the entry is for' })).max(40),
+}).strict();

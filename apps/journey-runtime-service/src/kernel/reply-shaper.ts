@@ -27,6 +27,34 @@ export interface CompiledShapeContext {
 
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const LIST_LINE = /^\s*(?:[-*•–]|\d+[.)])\s+/;
+const HEADING_LINE = /^#{1,6}\s+\S/;
+const TABLE_LINE = /^\|.*\|$/;
+
+/** The part a line plays in a reply. A heading, a list item or a table row keeps its own place while its words are checked. */
+export type LineKind = 'heading' | 'list' | 'listcont' | 'table' | 'text';
+
+/** `indent` is the whitespace before the line; `previous` is the kind of the line above it (an indented line under a list item belongs to that item). */
+export function lineKindOf(line: string, indent: string, previous: LineKind | undefined): LineKind {
+  const text = line.trim();
+  if (HEADING_LINE.test(text)) return 'heading';
+  if (LIST_LINE.test(text)) return 'list';
+  if (TABLE_LINE.test(text)) return 'table';
+  if (indent.replace(/\t/g, '    ').length >= 2 && (previous === 'list' || previous === 'listcont')) return 'listcont';
+  return 'text';
+}
+
+/**
+ * What goes in front of a kept sentence so the reply keeps the shape the model gave it: sentences of one line run on, a new line of
+ * prose is its own paragraph, list items stack, a line indented under an item stays inside it, table rows stay together.
+ */
+export function leadFor(kind: LineKind, previous: LineKind | undefined, startsLine: boolean): string {
+  if (previous === undefined) return '';
+  if (!startsLine) return ' ';
+  if (kind === 'list') return '\n';
+  if (kind === 'listcont') return '\n   ';
+  if (kind === 'table') return previous === 'table' ? '\n' : '\n\n';
+  return '\n\n';
+}
 
 /**
  * Resolves effective reply style by overlaying turn-specific rules when available.
@@ -132,24 +160,32 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
   const compiled = compileShapeContext(context);
   const { style } = compiled;
 
-  const kept: string[] = [];
+  const kept: Array<{ sentence: string; kind: LineKind; lead: string }> = [];
   let questionsSeen = 0;
+  let previousLine: LineKind | undefined;
 
-  for (const line of text.split(/\n+/)) {
-    if (style.dropListLines && LIST_LINE.test(line)) {
-      removed.push({ reason: 'list', sentence: line.trim() });
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const kind = lineKindOf(line, /^[ \t]*/.exec(rawLine)?.[0] ?? '', previousLine);
+    previousLine = kind;
+    if (style.dropListLines && (kind === 'list' || kind === 'listcont')) {
+      removed.push({ reason: 'list', sentence: line });
       continue;
     }
-    const sentences = LIST_LINE.test(line)
-      ? [line.trim()]
-      : line.split(/(?<!\b\d+[.!?:])(?<=[.!?:])\s+/);
+    // A heading, a list item or a table row is checked whole; prose is checked a sentence at a time.
+    const sentences = kind === 'text' || kind === 'listcont'
+      ? line.split(/(?<!\b\d+[.!?:])(?<=[.!?:])\s+/)
+      : [line];
 
+    let startsLine = true;
     for (const raw of sentences) {
       const sentence = raw.trim();
       if (!sentence) continue;
       const result = shapeSentence(sentence, compiled, kept.length, questionsSeen);
       if (result.keep) {
-        kept.push(sentence);
+        kept.push({ sentence, kind, lead: leadFor(kind, kept[kept.length - 1]?.kind, startsLine) });
+        startsLine = false;
         if (result.isQuestion) {
           questionsSeen++;
         }
@@ -159,21 +195,11 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
     }
   }
   const limited = kept.slice(0, style.maxSentences);
-  for (const sentence of kept.slice(style.maxSentences)) {
-    removed.push({ reason: 'too long', sentence });
+  for (const entry of kept.slice(style.maxSentences)) {
+    removed.push({ reason: 'too long', sentence: entry.sentence });
   }
 
-  const hasList = limited.some((s) => LIST_LINE.test(s));
-  let formatted: string;
-  if (hasList) {
-    formatted = limited.reduce((acc, curr, idx) => {
-      if (idx === 0) return curr;
-      if (LIST_LINE.test(curr)) return `${acc}\n${curr}`;
-      return LIST_LINE.test(limited[idx - 1]) ? `${acc}\n\n${curr}` : `${acc} ${curr}`;
-    }, '').replace(/\s+([,.;:!?])/g, '$1').trim();
-  } else {
-    formatted = limited.join(' ').replace(/\s+([,.;:!?])/g, '$1').trim();
-  }
+  const formatted = limited.map((entry) => entry.lead + entry.sentence).join('').replace(/[ \t]+([,.;:!?])/g, '$1').trim();
 
   return { text: formatted, removed };
 }
@@ -189,6 +215,13 @@ export class IncrementalSentenceShaper {
   private withheldSentences: string[] = [];
   private withheldClasses = new Set<ClaimClass>();
   private streamedText = '';
+  /** The whitespace that came before the text now in `buffer`; the start of the reply counts as a new line. */
+  private whitespaceBefore = '\n';
+  /** What the line being read is, and what the last line shown was. */
+  private lineKind: LineKind | undefined;
+  private lastShownKind: LineKind | undefined;
+  /** The first sentence of a line was not shown, so the next one of the same line starts the line instead. */
+  private lineStartCarried = false;
   private compiledShape: CompiledShapeContext;
   private questionsSeen = 0;
   private readonly voiceRules: Array<{ pattern: RegExp; replacement: string }>;
@@ -231,10 +264,12 @@ export class IncrementalSentenceShaper {
 
   processDelta(chunk: string): void {
     this.buffer += chunk;
-    const parts = this.buffer.split(/(?<!\b\d+[.!?])(?<=[.!?])\s+|\n+/);
+    // The whitespace between pieces is kept (one capture group), so a new line is told apart from the next sentence of the same line.
+    const parts = this.buffer.split(/((?<!\b\d+[.!?])(?<=[.!?])\s+|[ \t]*\n\s*)/);
     if (parts.length > 1) {
-      for (let i = 0; i < parts.length - 1; i++) {
-        this.processSentence(parts[i]);
+      for (let i = 0; i + 1 < parts.length; i += 2) {
+        this.processSentence(parts[i], this.whitespaceBefore);
+        this.whitespaceBefore = parts[i + 1];
       }
       this.buffer = parts[parts.length - 1];
     }
@@ -242,17 +277,37 @@ export class IncrementalSentenceShaper {
 
   flush(): void {
     if (this.buffer.trim()) {
-      this.processSentence(this.buffer);
+      this.processSentence(this.buffer, this.whitespaceBefore);
       this.buffer = '';
     }
   }
 
-  private processSentence(rawSentence: string): void {
+  private processSentence(rawSentence: string, whitespaceBefore: string): void {
+    const lastBreak = whitespaceBefore.lastIndexOf('\n');
+    const startsLine = lastBreak >= 0;
+    const indent = (startsLine ? whitespaceBefore.slice(lastBreak + 1) : '') + (/^[ \t]*/.exec(rawSentence)?.[0] ?? '');
     let sentence = rawSentence.trim();
     if (sentence.startsWith('"') && (sentence.endsWith('"') || this.buffer === '')) {
       sentence = sentence.replace(/^"+|"+$/g, '').trim();
     }
-    if (!sentence) return;
+    if (!sentence) {
+      if (startsLine) this.lineStartCarried = true;
+      return;
+    }
+    // The first sentence of a line says what the line is; the rest of that line is the same kind of line.
+    let kind: LineKind;
+    if (startsLine) {
+      kind = lineKindOf(sentence, indent, this.lineKind);
+      this.lineKind = kind;
+    } else {
+      kind = this.lineKind ?? 'text';
+    }
+    // A line indented under a list item that is not shown is not shown either.
+    if (this.compiledShape.style.dropListLines && kind === 'listcont') {
+      console.warn(`[ReplyShaper] removed sentence during stream: "${sentence}" (list)`);
+      this.lineStartCarried = this.lineStartCarried || startsLine;
+      return;
+    }
     sentence = applyVoiceRules(sentence, this.voiceRules);
 
     if (this.isOkfRelease) {
@@ -262,6 +317,7 @@ export class IncrementalSentenceShaper {
         this.withheldSentences.push(sentence);
         for (const claim of claimResult.forbidden) this.withheldClasses.add(claim);
         console.warn(`[ClaimGuard] withheld sentence during stream: "${sentence}" asserting ${claimResult.forbidden.join(', ')}`);
+        this.lineStartCarried = this.lineStartCarried || startsLine;
         return;
       }
     }
@@ -269,6 +325,7 @@ export class IncrementalSentenceShaper {
     const shaped = shapeSentence(sentence, this.compiledShape, this.emittedSentences.length, this.questionsSeen);
     if (!shaped.keep) {
       console.warn(`[ReplyShaper] removed sentence during stream: "${sentence}" (${shaped.reason})`);
+      this.lineStartCarried = this.lineStartCarried || startsLine;
       return;
     }
 
@@ -276,13 +333,13 @@ export class IncrementalSentenceShaper {
       this.questionsSeen++;
     }
 
-    const previous = this.emittedSentences[this.emittedSentences.length - 1];
+    // When the first sentence of a line was removed, the next one of that line still starts a new line, as plain prose.
+    const starts = startsLine || this.lineStartCarried;
+    const shownKind: LineKind = startsLine || !starts ? kind : 'text';
+    this.lineStartCarried = false;
+    const delta = leadFor(shownKind, this.lastShownKind, starts) + sentence;
+    this.lastShownKind = shownKind;
     this.emittedSentences.push(sentence);
-    // A list line stands on its own line; prose that follows a list starts a new paragraph instead of running on from the last item.
-    const separator = LIST_LINE.test(sentence)
-      ? '\n'
-      : (this.streamedText ? (previous !== undefined && LIST_LINE.test(previous) ? '\n\n' : ' ') : '');
-    const delta = separator + sentence;
     this.streamedText += delta;
     this.onApprovedSentence(sentence, delta);
   }

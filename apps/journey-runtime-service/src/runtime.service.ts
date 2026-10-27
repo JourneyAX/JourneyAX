@@ -32,6 +32,8 @@ import * as crypto from 'crypto';
 import {
   computePackChecksum,
   getVerifiedBusinessPackMetadata,
+  welcomeFor,
+  type Welcome,
 } from '@journeyax/business-pack';
 import { isInCanaryBucket } from '@journeyax/journey-core';
 import { principalFrom } from '@journeyax/shared-types';
@@ -844,7 +846,7 @@ export class RuntimeService {
     tenantId: string,
     environmentId: EnvironmentId,
     person: { userId?: string; role?: string; groups?: string[] }
-  ): Promise<{ connectors: ConnectorListItem[]; packVersion?: string }> {
+  ): Promise<{ connectors: ConnectorListItem[]; packVersion?: string; welcome?: Welcome }> {
     let pack: any = null;
     try {
       pack = await this.appService.packRepo.loadActivePack(tenantId, environmentId);
@@ -852,7 +854,9 @@ export class RuntimeService {
       return { connectors: [] };
     }
     const principal = principalFrom({ userId: person.userId, tenantId, role: person.role, groups: person.groups });
-    return { connectors: connectorList(pack, { audience: principal.audience, groups: principal.groups }), packVersion: pack?.manifest?.version };
+    // What the empty chat says to this person (pack `extensions.welcome`) travels with their connector list: the same call, the same identity.
+    const welcome = welcomeFor(pack?.extensions?.welcome, { audience: principal.audience, groups: principal.groups });
+    return { connectors: connectorList(pack, { audience: principal.audience, groups: principal.groups }), packVersion: pack?.manifest?.version, ...(welcome ? { welcome } : {}) };
   }
 
   /**

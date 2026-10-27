@@ -25,19 +25,31 @@ interface Props {
 // "*italic*" at the start of a line are not mistaken for a list.
 const BULLET_LINE = /^\s*[-*•–]\s+(.*)$/;
 const NUMBERED_LINE = /^\s*(\d{1,3})[.)]\s+(.*)$/;
+// A heading line ("### Installation"): shown as a bold line of its own, without the marks.
+const HEADING_LINE = /^\s{0,3}#{1,6}\s+(\S.*)$/;
 
 type Block =
+  | { kind: 'heading'; text: string }
   | { kind: 'text'; lines: string[] }
   | { kind: 'bullets'; items: string[] }
   | { kind: 'numbers'; start: number; items: string[] };
 
-/** The lines of one paragraph as runs of plain lines, bullet lines and numbered lines, in order. */
+/**
+ * The lines of one paragraph as runs of plain lines, bullet lines and numbered lines, in order. A line indented under a list item
+ * belongs to that item (it is shown under the item's words, not as a paragraph that breaks the list).
+ */
 function blocksOf(lines: string[]): Block[] {
   const blocks: Block[] = [];
   for (const line of lines) {
+    const heading = HEADING_LINE.exec(line);
+    if (heading) { blocks.push({ kind: 'heading', text: heading[1] }); continue; }
     const bullet = BULLET_LINE.exec(line);
     const numbered = bullet ? null : NUMBERED_LINE.exec(line);
     const last = blocks[blocks.length - 1];
+    if (!bullet && !numbered && /^\s+\S/.test(line) && (last?.kind === 'bullets' || last?.kind === 'numbers')) {
+      last.items[last.items.length - 1] += `\n${line.trim()}`;
+      continue;
+    }
     if (bullet) {
       if (last?.kind === 'bullets') last.items.push(bullet[1]);
       else blocks.push({ kind: 'bullets', items: [bullet[1]] });
@@ -63,10 +75,13 @@ function renderMarkdown(text: string) {
     const lines = para.split('\n');
 
     // A paragraph with list lines becomes text and lists in order; any other paragraph renders exactly as it always has.
-    if (lines.some((line) => BULLET_LINE.test(line) || NUMBERED_LINE.test(line))) {
+    if (lines.some((line) => BULLET_LINE.test(line) || NUMBERED_LINE.test(line) || HEADING_LINE.test(line))) {
       return (
         <div key={pIdx} style={{ margin: pIdx > 0 ? '10px 0 0' : 0 }}>
           {blocksOf(lines).map((block, bIdx) => {
+            if (block.kind === 'heading') {
+              return <p key={bIdx} className="msg__heading" style={{ margin: bIdx > 0 ? '10px 0 0' : 0 }}>{parseBold(block.text)}</p>;
+            }
             if (block.kind === 'text') {
               return (
                 <p key={bIdx} style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>
@@ -79,7 +94,16 @@ function renderMarkdown(text: string) {
                 </p>
               );
             }
-            const items = block.items.map((item, iIdx) => <li key={iIdx}>{parseBold(item)}</li>);
+            const items = block.items.map((item, iIdx) => (
+              <li key={iIdx}>
+                {item.split('\n').map((line, lIdx) => (
+                  <span key={lIdx}>
+                    {lIdx > 0 && <br />}
+                    {parseBold(line)}
+                  </span>
+                ))}
+              </li>
+            ));
             return block.kind === 'bullets'
               ? <ul key={bIdx} className="msg__list" style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>{items}</ul>
               : <ol key={bIdx} className="msg__list" start={block.start} style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>{items}</ol>;

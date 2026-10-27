@@ -43,7 +43,7 @@ import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-searc
 import type { KnowledgeControlPlanePort } from '../kernel/knowledge-control-plane';
 import type { CapabilityGateway } from '../kernel/capability.gateway';
 import { connectorSummaries, type ConnectorRuntime, type ConnectorSummary } from '../kernel/connector.runtime';
-import { formatConnectors, isConnectorMetaTool } from './connector-tools';
+import { formatConnectors, isConnectorMetaTool, plainId } from './connector-tools';
 import { customerAccountSettings, formatCustomerAccount, isCustomerAccountTool } from './customer-account';
 import type { CompanyDirectory } from '../kernel/company-directory';
 import type { ApprovalService } from '../kernel/approval.service';
@@ -1065,7 +1065,11 @@ function extractToolResultCount(result: any): number | undefined {
 
         // Emit capability traces to sink ONLY for authorized calls (for UI WorkingStrip)
         for (const tc of authorizedCalls) {
-          sink('capability', { toolId: tc.name, callId: tc.id });
+          // For a connector step, which system and tool it is, so the working strip can say what is happening in plain words.
+          const aim = isConnectorMetaTool(tc.name)
+            ? { connector: plainId(tc.arguments?.connector), tool: plainId(tc.arguments?.tool) }
+            : {};
+          sink('capability', { toolId: tc.name, callId: tc.id, ...aim });
         }
 
         // Add assistant message containing all tool calls

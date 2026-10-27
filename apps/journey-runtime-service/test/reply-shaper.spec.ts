@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
-import { shapeReply, type ShapeContext } from '../src/kernel/reply-shaper';
+import { shapeReply, IncrementalSentenceShaper, type ShapeContext } from '../src/kernel/reply-shaper';
 import { resolveInterpretationPolicy } from '../src/turn/fact-semantics';
 
 const suite = createSuite('runtime: what the assistant says is shaped before a customer reads it');
@@ -107,6 +107,72 @@ async function main() {
   await suite.test('the platform style says what the customer asked for: short, human, no brand, no browsing, no sales pitch', () => {
     const rules = style.rules.join(' ').toLowerCase();
     for (const expected of ['short', 'company', 'category', 'question', 'pitch']) assert.ok(rules.includes(expected), `a rule covers "${expected}"`);
+  });
+
+  // The layout the model gave a reply (a heading, numbered steps with a line under each, a closing paragraph) is what the customer reads.
+  const longStyle: any = { ...style, dropListLines: false, maxSentences: 40, forbiddenPhrases: [], dropCompanyName: false };
+  const STEPS = [
+    'The guide gives specific steps for fixing the posts.',
+    '',
+    '### Installation and fixing',
+    '1. **Footing:** Place a minimum 100mm concrete punch pad at the base of the hole.',
+    '   Centralise the post so there is at least 100mm of concrete cover, then brace it.',
+    '2. **Cuts:** All saw cuts, notches and drilled holes must be primed.',
+    '3. **Fixings:** Use galvanised or stainless steel bolts.',
+    '   Coat them with non-petroleum grease where they touch the timber.',
+    '',
+    'Seal and paint all exposed timber within 14 days of installation.',
+  ].join('\n');
+  const BRIEF = [
+    'Harlow & Talbot Landscapes is a Silver trade account with its home branch at Silverdale.',
+    'Finn Paterson is the account manager.',
+    'The last order was on 25 October and is still open.',
+    'Two things need a word: a missed delivery and some damaged goods.',
+  ].join('\n');
+
+  await suite.test('a heading, numbered steps and the line under each step keep their shape', () => {
+    const shaped = shapeReply(STEPS, context({ style: longStyle }));
+    assert.equal(shaped.text, [
+      'The guide gives specific steps for fixing the posts.',
+      '',
+      '### Installation and fixing',
+      '1. **Footing:** Place a minimum 100mm concrete punch pad at the base of the hole.',
+      '   Centralise the post so there is at least 100mm of concrete cover, then brace it.',
+      '2. **Cuts:** All saw cuts, notches and drilled holes must be primed.',
+      '3. **Fixings:** Use galvanised or stainless steel bolts.',
+      '   Coat them with non-petroleum grease where they touch the timber.',
+      '',
+      'Seal and paint all exposed timber within 14 days of installation.',
+    ].join('\n'));
+    assert.deepEqual(shaped.removed, []);
+  });
+
+  await suite.test('a brief of short lines stays short lines, not one paragraph', () => {
+    const shaped = shapeReply(BRIEF, context({ style: longStyle }));
+    assert.equal(shaped.text, BRIEF.split('\n').join('\n\n'));
+  });
+
+  await suite.test('sentences of one line run on, and a line under a removed list item is removed with it', () => {
+    assert.equal(shapeReply('One thing. Another thing.\nA third thing.', context({ style: longStyle })).text, 'One thing. Another thing.\n\nA third thing.');
+    const shaped = shapeReply('Here is what to do.\n1. Step one.\n   More about step one.\nThen call us.', context());
+    assert.equal(shaped.text, 'Here is what to do.\n\nThen call us.');
+    assert.deepEqual(shaped.removed.map((entry) => entry.reason), ['list', 'list']);
+  });
+
+  await suite.test('streamed in any size of piece, the reply reads exactly as the one shaped whole', () => {
+    const RUN_ON = 'Here is the range:\n- Standard board (15 products)\n- Specialist board (65 products)\nCustomers usually also need tape and compound. Ask us.\n\n| Size | Price |\n| 10mm | $20 |\nThat is all.';
+    for (const [name, reply] of Object.entries({ STEPS, BRIEF, RUN_ON })) {
+      for (const size of [1, 3, 7, 1000]) {
+        const shaper = new IncrementalSentenceShaper(context({ style: longStyle }), [], false, () => {});
+        for (let at = 0; at < reply.length; at += size) shaper.processDelta(reply.slice(at, at + size));
+        shaper.flush();
+        assert.equal(shaper.getStreamedText(), shapeReply(reply, context({ style: longStyle })).text, `${name} in pieces of ${size}`);
+      }
+    }
+    const dropping = new IncrementalSentenceShaper(context(), [], false, () => {});
+    dropping.processDelta('Here is what to do.\n1. Step one.\n   More about step one.\nThen call us.');
+    dropping.flush();
+    assert.equal(dropping.getStreamedText(), 'Here is what to do.\n\nThen call us.');
   });
 
   process.exitCode = suite.finish() ? 0 : 1;

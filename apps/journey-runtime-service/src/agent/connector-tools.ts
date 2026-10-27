@@ -15,6 +15,11 @@ export function isConnectorMetaTool(toolName: string): boolean {
   return (CONNECTOR_META_TOOL_NAMES as readonly string[]).includes(toolName);
 }
 
+/** A connector or tool id as it is safe to show the page (letters, digits, dot, dash, underscore); anything else is left out. */
+export function plainId(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9_.-]{0,79}$/i.test(value.trim()) ? value.trim() : undefined;
+}
+
 export const CONNECTOR_META_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   {
     name: 'list_connectors',

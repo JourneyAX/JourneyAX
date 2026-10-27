@@ -34,6 +34,8 @@ import { orderRef, rememberOrder } from '@/components/canvas/money';
 import { closeCanvas, closePanelCard, getCanvas, openCanvas, openPanelCard } from '@/lib/shell/sidePanelStore';
 import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
 import { resolveHero } from '@/lib/shell/greeting';
+import { connectorStepLabel, UNKNOWN_STEP } from '@/lib/shell/stepLabel';
+import { fillGreeting, parseWelcome, welcomeStarters, type Welcome } from '@/lib/shell/welcome';
 import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } from '@/lib/shell/capabilities';
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
@@ -98,8 +100,8 @@ const TOOL_TRACE_LABEL: Record<string, string> = {
   get_journey_checklist: 'Checking what is left to cover',
   hand_off_to_human: 'Getting a person to help',
 };
-function traceLabel(name: string): string {
-  return TOOL_TRACE_LABEL[name] || `Running ${name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()}`;
+function traceLabel(name: string, aim?: { connector?: string; tool?: string }): string {
+  return connectorStepLabel(name, aim?.connector, aim?.tool) || TOOL_TRACE_LABEL[name] || UNKNOWN_STEP;
 }
 
 /**
@@ -136,9 +138,9 @@ async function streamChat(
   // `startedAt` is the caller's value (sendToAI) so the elapsed timer and the
   // post-turn auto-clear compare the same instant, not two different clocks.
   const workingSteps: { title: string; detail?: string; status?: 'done' | 'running' | 'pending' }[] = [];
-  const pushStep = (name: string) => {
+  const pushStep = (name: string, aim?: { connector?: string; tool?: string }) => {
     if (workingSteps.length) workingSteps[workingSteps.length - 1].status = 'done';
-    workingSteps.push({ title: traceLabel(name), status: 'running' });
+    workingSteps.push({ title: traceLabel(name, aim), status: 'running' });
     dispatch?.({ type: 'SET_WORKING', working: { startedAt, heard: heardText, steps: [...workingSteps] } });
   };
 
@@ -170,7 +172,7 @@ async function streamChat(
       capturedSessionId = payload.sessionId;
     } else if (ev === 'capability') {
       const toolId = payload.toolId || payload.name;
-      if (toolId) pushStep(toolId);
+      if (toolId) pushStep(toolId, { connector: typeof payload.connector === 'string' ? payload.connector : undefined, tool: typeof payload.tool === 'string' ? payload.tool : undefined });
     } else if (ev === 'token') {
       streamText += payload.delta || '';
       setMessages([...newMessages, { role: 'assistant', content: streamText }]);
@@ -408,6 +410,9 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const convoIdRef = useRef('');
   // The connectors the signed-in person may use (the server decides), and which of them this conversation has switched off.
   const [connectorItems, setConnectorItems] = useState<ConnectorItem[]>([]);
+  // What the pack says to this person's team on the empty chat (arrives with the connector list); until it has, the greeting is not shown at all.
+  const [welcome, setWelcome] = useState<Welcome | undefined>(undefined);
+  const [welcomeLoaded, setWelcomeLoaded] = useState(false);
   const [connectorsOff, setConnectorsOff] = useState<string[]>([]);
   // The assistant's skills and plugins for the "+" menu (shown to people who manage it only; see lib/shell/plusMenu.ts).
   const { data: overview } = useOverview();
@@ -484,12 +489,12 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   // What the signed-in person may use is the server's call (their role and staff groups); load it for the "+" menu when the project or
   // the person changes. No list, or a failure, simply means the menu has no connector section.
   useEffect(() => {
-    if (typeof window === 'undefined' || !authUser) { setConnectorItems([]); return; }
+    if (typeof window === 'undefined' || !authUser) { setConnectorItems([]); setWelcome(undefined); setWelcomeLoaded(true); return; }
     let cancelled = false;
     fetch('/api/connectors', { credentials: 'same-origin', cache: 'no-store', headers: cfg.projectId ? { 'X-Tenant-ID': cfg.projectId } : {} })
       .then((res) => (res.ok ? res.json() : { connectors: [] }))
       .catch(() => ({ connectors: [] }))
-      .then((json) => { if (!cancelled) setConnectorItems(parseConnectorList(json)); });
+      .then((json) => { if (!cancelled) { setConnectorItems(parseConnectorList(json)); setWelcome(parseWelcome(json)); setWelcomeLoaded(true); } });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.projectId, authUser?.email]);
@@ -1228,12 +1233,16 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     && state.phase === 'intro'
     && state.messages.every((m) => m.id === 'welcome');
   const personalGreeting = cfg.greeting ? personaliseGreeting(cfg.greeting, demoProfile?.name) : '';
-  const hero = resolveHero({ headline: cfg.intro?.heroHeadline, subtitle: cfg.intro?.heroSubtitle, greeting: personalGreeting, name: displayName });
-  // What the empty chat offers: the demo customer's own questions, else a few taken from what this person may use (an adviser is offered
-  // cases and orders, marketing is offered campaigns), else the shop's own starters.
+  // The team's own welcome (pack `extensions.welcome`) when there is one, else the shop's headline.
+  const welcomeHeadline = fillGreeting(welcome?.headline, authUser?.fullName);
+  const hero = welcomeHeadline
+    ? { title: welcomeHeadline, subtitle: fillGreeting(welcome?.subtitle, authUser?.fullName) ?? '' }
+    : resolveHero({ headline: cfg.intro?.heroHeadline, subtitle: cfg.intro?.heroSubtitle, greeting: personalGreeting, name: displayName });
+  // What the empty chat offers: the demo customer's own questions, else the team's own (the ones this person may use), else a few taken
+  // from what this person may use (an adviser is offered cases and orders, marketing is offered campaigns), else the shop's own starters.
   const starters = demoProfile?.tryAsking?.length
     ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
-    : startersFor(connectorItems, introStarters);
+    : welcomeStarters(welcome, connectorItems) ?? startersFor(connectorItems, introStarters);
 
   // Product details and comparisons open in the side panel; the thread keeps a one-line note where each one was.
   const shownPanelCard = useShownPanelCard(state.cards, panelEnabled);
@@ -1340,7 +1349,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
           {/* Composer */}
           <div className="chat-input-area">
             {isEmpty && (
-              <div className="ax-hero">
+              <div className="ax-hero" style={welcomeLoaded ? undefined : { visibility: 'hidden' }}>
                 <h1 className="ax-hero__title">{hero.title}</h1>
                 {hero.subtitle && <p className="ax-hero__sub">{hero.subtitle}</p>}
               </div>

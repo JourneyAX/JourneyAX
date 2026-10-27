@@ -34,6 +34,7 @@ import {
   PaymentSchema,
   BrandThemeSchema,
   VoiceSchema,
+  WelcomeSchema,
   QuestionCardsSchema,
   AgentAccessSchema,
   SkillAccessSchema,
@@ -524,7 +525,7 @@ export class ProjectService {
     if ((dto as any).console) $set.console = (dto as any).console;
     // Tenant settings that ride in the pack's extensions: only these keys, each checked against its schema.
     if ((dto as any).extensions && typeof (dto as any).extensions === 'object') {
-      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema, eventPrefetch: EventPrefetchSchema, productGuides: ProductGuidesSchema, customerAccount: CustomerAccountSchema, contentPages: ContentPagesSchema, checkoutReview: CheckoutReviewSchema, accessoryHelper: AccessoryHelperSchema, buyerFeedback: BuyerFeedbackSchema, payment: PaymentSchema, brandTheme: BrandThemeSchema, voice: VoiceSchema, questionCards: QuestionCardsSchema, agentAccess: AgentAccessSchema, skillAccess: SkillAccessSchema, toolStates: ToolStatesSchema, forms: FormsSchema, plugins: PluginsSchema, connectors: ConnectorsSchema };
+      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema, eventPrefetch: EventPrefetchSchema, productGuides: ProductGuidesSchema, customerAccount: CustomerAccountSchema, contentPages: ContentPagesSchema, checkoutReview: CheckoutReviewSchema, accessoryHelper: AccessoryHelperSchema, buyerFeedback: BuyerFeedbackSchema, payment: PaymentSchema, brandTheme: BrandThemeSchema, voice: VoiceSchema, welcome: WelcomeSchema, questionCards: QuestionCardsSchema, agentAccess: AgentAccessSchema, skillAccess: SkillAccessSchema, toolStates: ToolStatesSchema, forms: FormsSchema, plugins: PluginsSchema, connectors: ConnectorsSchema };
       for (const [key, value] of Object.entries((dto as any).extensions)) {
         const schema = allowed[key];
         if (!schema) return { success: false, message: `Unknown pack extension '${key}' (allowed: ${Object.keys(allowed).join(', ')}).` };

@@ -39,7 +39,7 @@ export class JourneyCoordinator {
    * Executes a buffered chat turn.
    */
   /** The connectors this person may use, for the chat's "+" menu. Never throws: no list means no menu entry, not a broken chat. */
-  async listConnectors(tenantId: string, person: { sub?: string; role?: string; groups?: string[] } | undefined): Promise<{ connectors: any[]; packVersion?: string }> {
+  async listConnectors(tenantId: string, person: { sub?: string; role?: string; groups?: string[] } | undefined): Promise<{ connectors: any[]; packVersion?: string; welcome?: any }> {
     const tenant = (tenantId || '').toLowerCase().trim();
     if (!tenant) return { connectors: [] };
     try {

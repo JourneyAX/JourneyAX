@@ -147,7 +147,7 @@ export class CanonicalRuntimeAdapter {
     tenantId: string,
     person: { sub?: string; role?: string; groups?: string[] } | undefined,
     environmentId: string = 'production'
-  ): Promise<{ connectors: any[]; packVersion?: string }> {
+  ): Promise<{ connectors: any[]; packVersion?: string; welcome?: any }> {
     const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/connectors`;
     const headers = await this.buildAuthenticatedHeaders({
       tenantId,
@@ -160,7 +160,11 @@ export class CanonicalRuntimeAdapter {
     const res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`Runtime /connectors returned status ${res.status}`);
     const body: any = await res.json();
-    return { connectors: Array.isArray(body?.connectors) ? body.connectors : [], ...(body?.packVersion ? { packVersion: String(body.packVersion) } : {}) };
+    return {
+      connectors: Array.isArray(body?.connectors) ? body.connectors : [],
+      ...(body?.packVersion ? { packVersion: String(body.packVersion) } : {}),
+      ...(body?.welcome && typeof body.welcome === 'object' ? { welcome: body.welcome } : {}),
+    };
   }
 
   /**

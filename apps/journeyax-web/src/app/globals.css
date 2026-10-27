@@ -1687,6 +1687,7 @@ body {
 .msg__bubble--ai ul.msg__list { list-style: disc; }
 .msg__bubble--ai ol.msg__list { list-style: decimal; }
 .msg__bubble--ai .msg__list li { margin: 2px 0; padding-left: 2px; }
+.msg__bubble--ai .msg__heading { font-weight: 600; }
 /* ── Validating Panel ───────────────────────────────────────────────── */
 .validating-panel {
   display: flex;

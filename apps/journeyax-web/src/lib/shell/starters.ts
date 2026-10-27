@@ -29,13 +29,15 @@ const TABLE: Array<Starter & { tool: string }> = [
 
 export const MAX_STARTERS = 4;
 
+/** Whether this person may use `system.tool` (or be asked first): the server's list is already cut down to them. */
+export function toolUsable(connectors: ConnectorItem[], tool: string): boolean {
+  const [system, name] = tool.split('.');
+  return connectors.some((item) => item.connector === system && item.tools.some((t) => t.name === name && (t.state === 'allow' || t.state === 'ask')));
+}
+
 /** The person's own starters, or `fallback` when fewer than two can be offered. */
 export function startersFor(connectors: ConnectorItem[], fallback: Starter[]): Starter[] {
-  const usable = (tool: string): boolean => {
-    const [system, name] = tool.split('.');
-    return connectors.some((item) => item.connector === system && item.tools.some((t) => t.name === name && (t.state === 'allow' || t.state === 'ask')));
-  };
-  const available = TABLE.filter((entry) => usable(entry.tool));
+  const available = TABLE.filter((entry) => toolUsable(connectors, entry.tool));
   // One system at a time, so a person who has two systems is shown both, not four questions about the same one.
   const bySystem = new Map<string, typeof available>();
   for (const entry of available) bySystem.set(entry.tool.split('.')[0], [...(bySystem.get(entry.tool.split('.')[0]) ?? []), entry]);

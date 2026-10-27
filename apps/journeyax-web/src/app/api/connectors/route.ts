@@ -23,7 +23,11 @@ export async function GET(req: Request) {
       signal: AbortSignal.timeout(8000),
     });
     const data: any = resp.ok ? await resp.json().catch(() => ({})) : {};
-    return Response.json({ connectors: Array.isArray(data?.connectors) ? data.connectors : [] });
+    return Response.json({
+      connectors: Array.isArray(data?.connectors) ? data.connectors : [],
+      // What the empty chat says to this person, from the pack; the page uses it when it is there.
+      ...(data?.welcome && typeof data.welcome === 'object' ? { welcome: data.welcome } : {}),
+    });
   } catch {
     return Response.json({ connectors: [] });
   }

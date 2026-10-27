@@ -381,7 +381,7 @@
         "get_connector_tools",
         "call_connector_tool"
       ],
-      "instructions": "Use this when a colleague asks about one trade account (\"tell me about Kauri Builders\", \"I'm visiting ACC-0007 tomorrow\", \"what's going on with this customer\"). Build the picture from three places, in this order, and say which system each fact came from.\n\n1. Find the account. salesforce.find_account (part of the name) gives the Salesforce account id, the owner (the sales rep) and, where it is known, the account number. commercetools.find_account (the name, the account number such as ACC-0001, or the unit key) gives the trade tier, the home branch, the account manager and the payment terms. When several accounts fit, list the two or three closest with their numbers and ask which one. Do not guess.\n2. Read the account. commercetools.get_account (unit key or account number): the terms, the people who work for it with their roles (account administrator, buyer, site manager, accounts payable), its divisions and how many orders it has. salesforce.get_account (account id): the main contacts and the latest cases.\n3. Read the activity. ace-erp.find_account (part of the name) gives the ERP account number, such as ACC-0007: Salesforce does not carry it, so find it by the name. Then ace-erp.list_deliveries (accountId is that number) lists the account's recent deliveries, newest first: use it for \"what have they had from us\". commercetools.order_history (accountId is the unit key, such as acc-0001; newest first) shows what they buy and how often. salesforce.list_opportunities (accountId, stage \"open\") shows deals in progress. salesforce.list_cases (accountId, status \"open\") shows anything unresolved, and zendesk.find_tickets (the account's tag, such as acc-0001, status \"unsolved\") shows the tickets still being worked. If commercetools is not connected or its tools are not offered, say in one line that order history is not available and carry on with the rest. Not every team may read deals (Customer Service, Branch and Finance may not): when a tool is not allowed for this colleague, say so in one line, leave that part out of the brief, and carry on with the rest.\n\nGive the colleague a short brief: who the customer is, their tier and home branch; their last few orders with dates and totals; open deals with the next step; open cases with priority; and anything that looks late or unusual (an order gap far longer than their pattern, a high-priority case that has been open for days). Name the account manager so the colleague knows who owns the relationship.\n\nBalances, credit limits and overdue amounts are shown by the ERP to finance, customer service and sales managers only: when asked, point a colleague who is one of them to the overdue and invoice playbook, and anyone else to finance, and never estimate a figure. You cannot see invoices, statements or individual payments. Live truck tracking is not connected. Do not read out a customer's e-mail address or phone number unless the colleague asks for contact details.\n\nHow to write it up: replies are cut after about 14 lines, and a heading or a divider counts as a line. Do not use headings, bold labels on their own line or dividers. Give the brief as 8 to 10 short lines, the most useful first, and say plainly what you could not see and why in one line at the end. When two systems answer, put what they said in the same reply."
+      "instructions": "Use this when a colleague asks about one trade account (\"tell me about Kauri Builders\", \"I'm visiting ACC-0007 tomorrow\", \"what's going on with this customer\"). Build the picture from three places, in this order. Keep track of which system each fact came from, and say so only when it matters to the colleague (something a system could not tell you, or two systems that disagree); never put a system name in brackets after every sentence.\n\n1. Find the account. salesforce.find_account (part of the name) gives the Salesforce account id, the owner (the sales rep) and, where it is known, the account number. commercetools.find_account (the name, the account number such as ACC-0001, or the unit key) gives the trade tier, the home branch, the account manager and the payment terms. When several accounts fit, list the two or three closest with their numbers and ask which one. Do not guess.\n2. Read the account. commercetools.get_account (unit key or account number): the terms, the people who work for it with their roles (account administrator, buyer, site manager, accounts payable), its divisions and how many orders it has. salesforce.get_account (account id): the main contacts and the latest cases.\n3. Read the activity. ace-erp.find_account (part of the name) gives the ERP account number, such as ACC-0007: Salesforce does not carry it, so find it by the name. Then ace-erp.list_deliveries (accountId is that number) lists the account's recent deliveries, newest first: use it for \"what have they had from us\". commercetools.order_history (accountId is the unit key, such as acc-0001; newest first) shows what they buy and how often. salesforce.list_opportunities (accountId, stage \"open\") shows deals in progress. salesforce.list_cases (accountId, status \"open\") shows anything unresolved, and zendesk.find_tickets (the account's tag, such as acc-0001, status \"unsolved\") shows the tickets still being worked. If commercetools is not connected or its tools are not offered, say in one line that order history is not available and carry on with the rest. Not every team may read deals (Customer Service, Branch and Finance may not): when a tool is not allowed for this colleague, say so in one line, leave that part out of the brief, and carry on with the rest.\n\nGive the colleague a short brief: who the customer is, their tier and home branch; their last few orders with dates and totals; open deals with the next step; open cases with priority; and anything that looks late or unusual (an order gap far longer than their pattern, a high-priority case that has been open for days). Name the account manager so the colleague knows who owns the relationship. Speak about people and things in plain words: the customer's name, the day an order arrived, the one delivery that is late. Order, case and delivery numbers belong on the cards and links the colleague can open, so mention a number only when the colleague needs it to act, and then only that one.\n\nBalances, credit limits and overdue amounts are shown by the ERP to finance, customer service and sales managers only: when asked, point a colleague who is one of them to the overdue and invoice playbook, and anyone else to finance, and never estimate a figure. You cannot see invoices, statements or individual payments. Live truck tracking is not connected. Do not read out a customer's e-mail address or phone number unless the colleague asks for contact details.\n\nHow to write it up: replies are cut after about 14 lines, and a heading or a divider counts as a line. Do not use headings, bold labels on their own line or dividers. Give the brief as 8 to 10 short lines, the most useful first, and say plainly what you could not see and why in one line at the end. When two systems answer, put what they said in the same reply."
     },
     {
       "skillId": "order-enquiry",
@@ -1851,6 +1851,279 @@
           "pattern": "\\bthe catalogue\\b",
           "replacement": "our range",
           "flags": ""
+        }
+      ]
+    },
+    "welcome": {
+      "entries": [
+        {
+          "groups": [
+            "sales"
+          ],
+          "headline": "{hello}. Who are we helping today?",
+          "subtitle": "Ask about a trade account, a deal, an order or a call you have coming up.",
+          "starters": [
+            {
+              "label": "Get me ready for a call",
+              "prompt": "I have a call with one of our trade accounts. Ask me which one, then give me a short brief.",
+              "needs": [
+                "salesforce.find_account"
+              ]
+            },
+            {
+              "label": "What deals are open?",
+              "prompt": "Show me the open deals and their next steps.",
+              "needs": [
+                "salesforce.list_opportunities"
+              ]
+            },
+            {
+              "label": "Where is a customer's order?",
+              "prompt": "A customer wants to know where their order is. Ask me for the order number.",
+              "needs": [
+                "commercetools.get_order"
+              ]
+            },
+            {
+              "label": "Pass a special order to Trade Support",
+              "prompt": "I want to hand a special order to Trade Support. Ask me what you need to know.",
+              "needs": [
+                "salesforce.create_case"
+              ]
+            }
+          ]
+        },
+        {
+          "groups": [
+            "sales-managers"
+          ],
+          "headline": "{hello}. What would you like to look at?",
+          "subtitle": "The pipeline, the accounts that need attention, and the reports behind them.",
+          "starters": [
+            {
+              "label": "How is the pipeline looking?",
+              "prompt": "Show me the pipeline by rep.",
+              "needs": [
+                "salesforce.pipeline_summary"
+              ]
+            },
+            {
+              "label": "Which accounts need attention?",
+              "prompt": "Which of our trade accounts need attention this week? Look at the open cases and any late deliveries.",
+              "needs": [
+                "salesforce.list_cases"
+              ]
+            },
+            {
+              "label": "Brief me on an account",
+              "prompt": "I want a brief on one of our trade accounts. Ask me which one.",
+              "needs": [
+                "salesforce.find_account"
+              ]
+            },
+            {
+              "label": "Show me a report",
+              "prompt": "Which reports can you show me?",
+              "needs": [
+                "power-bi.list_reports"
+              ]
+            }
+          ]
+        },
+        {
+          "groups": [
+            "customer-service",
+            "csr"
+          ],
+          "headline": "{hello}. What needs sorting?",
+          "subtitle": "Orders, cases and tickets for our customers.",
+          "starters": [
+            {
+              "label": "Show the open cases",
+              "prompt": "Show me the open cases, newest first.",
+              "needs": [
+                "salesforce.list_cases"
+              ]
+            },
+            {
+              "label": "Check an order",
+              "prompt": "I want to check an order. Ask me for the order number.",
+              "needs": [
+                "commercetools.get_order"
+              ]
+            },
+            {
+              "label": "Find a support ticket",
+              "prompt": "Find the open support tickets.",
+              "needs": [
+                "zendesk.find_tickets"
+              ]
+            },
+            {
+              "label": "Raise a case for a customer",
+              "prompt": "I need to raise a case for a customer. Ask me what you need to know.",
+              "needs": [
+                "salesforce.create_case"
+              ]
+            }
+          ]
+        },
+        {
+          "groups": [
+            "branch"
+          ],
+          "headline": "{hello}. What can we check for you?",
+          "subtitle": "Stock by branch, orders and accounts at the counter.",
+          "starters": [
+            {
+              "label": "Check stock at a branch",
+              "prompt": "I want to check the stock of a product at a branch. Ask me which product and which branch.",
+              "needs": [
+                "commercetools.stock_by_branch"
+              ]
+            },
+            {
+              "label": "Check an order",
+              "prompt": "I want to check an order. Ask me for the order number.",
+              "needs": [
+                "commercetools.get_order"
+              ]
+            },
+            {
+              "label": "Tell me about a trade account",
+              "prompt": "I want a brief on one of our trade accounts. Ask me which one.",
+              "needs": [
+                "salesforce.find_account"
+              ]
+            }
+          ]
+        },
+        {
+          "groups": [
+            "finance"
+          ],
+          "headline": "{hello}. Which account are we looking at?",
+          "subtitle": "Orders, account terms and what is open on an account.",
+          "starters": [
+            {
+              "label": "Tell me about a trade account",
+              "prompt": "I want a brief on one of our trade accounts. Ask me which one.",
+              "needs": [
+                "salesforce.find_account"
+              ]
+            },
+            {
+              "label": "See an account's recent orders",
+              "prompt": "I want to see the recent orders of one of our accounts. Ask me which one.",
+              "needs": [
+                "commercetools.order_history"
+              ]
+            },
+            {
+              "label": "Check an order",
+              "prompt": "I want to check an order. Ask me for the order number.",
+              "needs": [
+                "commercetools.get_order"
+              ]
+            }
+          ]
+        },
+        {
+          "groups": [
+            "marketing"
+          ],
+          "headline": "{hello}. What are we promoting?",
+          "subtitle": "Campaigns, the messages that went out, and how the website is doing.",
+          "starters": [
+            {
+              "label": "What campaigns are running?",
+              "prompt": "Which marketing campaigns are running right now?",
+              "needs": [
+                "salesforce.list_campaigns"
+              ]
+            },
+            {
+              "label": "What messages went out?",
+              "prompt": "Which messages did we send to trade customers recently?",
+              "needs": [
+                "marketing-cloud.list_messages"
+              ]
+            },
+            {
+              "label": "How is the website doing?",
+              "prompt": "How is our website doing? Show me the busiest pages.",
+              "needs": [
+                "google-analytics.traffic_by_page"
+              ]
+            },
+            {
+              "label": "Show me a report",
+              "prompt": "Which reports can you show me?",
+              "needs": [
+                "power-bi.list_reports"
+              ]
+            }
+          ]
+        },
+        {
+          "groups": [
+            "insights"
+          ],
+          "headline": "{hello}. What would you like to measure?",
+          "subtitle": "Website traffic and the reports behind it.",
+          "starters": [
+            {
+              "label": "How is the website doing?",
+              "prompt": "How is our website doing? Show me the busiest pages.",
+              "needs": [
+                "google-analytics.traffic_by_page"
+              ]
+            },
+            {
+              "label": "Show me a report",
+              "prompt": "Which reports can you show me?",
+              "needs": [
+                "power-bi.list_reports"
+              ]
+            }
+          ]
+        },
+        {
+          "groups": [
+            "leadership"
+          ],
+          "headline": "{hello}. What would you like to see across the business?",
+          "subtitle": "Deals, accounts, service and the reports behind them.",
+          "starters": [
+            {
+              "label": "How is the pipeline looking?",
+              "prompt": "Show me the pipeline by rep.",
+              "needs": [
+                "salesforce.pipeline_summary"
+              ]
+            },
+            {
+              "label": "What deals are open?",
+              "prompt": "Show me the open deals and their next steps.",
+              "needs": [
+                "salesforce.list_opportunities"
+              ]
+            },
+            {
+              "label": "Show the open cases",
+              "prompt": "Show me the open cases, newest first.",
+              "needs": [
+                "salesforce.list_cases"
+              ]
+            },
+            {
+              "label": "Show me a report",
+              "prompt": "Which reports can you show me?",
+              "needs": [
+                "power-bi.list_reports"
+              ]
+            }
+          ]
         }
       ]
     },

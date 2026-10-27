@@ -95,4 +95,33 @@ check('links and order numbers inside a list item still work', () => {
   assert.ok(html.includes('example.com/pergolas'));
 });
 
+check('a heading line shows as a bold line without its marks, and a line indented under a step stays inside that step', () => {
+  const html = replyWith([
+    'The guide gives these steps.',
+    '',
+    '### Installation and fixing',
+    '1. **Footing:** Place a 100mm concrete pad.',
+    '   Centralise the post and brace it.',
+    '2. **Cuts:** Prime every cut.',
+    '3. **Fixings:** Use galvanised bolts.',
+    '   Grease them where they touch the timber.',
+    '',
+    'Paint within 14 days.',
+  ].join('\n'));
+  assert.ok(!html.includes('#'), 'no # is left on screen');
+  assert.ok(html.includes('class="msg__heading"') && html.includes('Installation and fixing'));
+  assert.equal(count(html, 'ol'), 1, 'one numbered list, not three');
+  assert.equal(count(html, 'li'), 3);
+  assert.ok(html.includes('Centralise the post and brace it.') && html.includes('Grease them where they touch the timber.'));
+  const firstItem = html.slice(html.indexOf('<li>'), html.indexOf('</li>'));
+  assert.ok(firstItem.includes('Footing:') && firstItem.includes('Centralise the post and brace it.'), 'the second line is inside the first step');
+  assert.ok(html.includes('Paint within 14 days.'));
+});
+
+check('a line that only looks like a heading is left alone', () => {
+  for (const text of ['Item #5 is out of stock', 'C#', '#hashtag only']) {
+    assert.ok(!replyWith(text).includes('msg__heading'), text);
+  }
+});
+
 console.log(`✅ web: message bubble: ${passed} passed, 0 failed`);
