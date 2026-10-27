@@ -9,6 +9,7 @@
  *   CARE_REFUND_LIMIT          a refund or cancellation over this is the team lead's (default 500)
  *   CARE_MIN_STAGE_MS          keep each AI stage on screen at least this long (default 0; 1500 for a recording)
  *   CARE_TEAM                  the care people, as JSON (default: the care screens' team)
+ *   CARE_ORDER_FORMATS         how an order number looks in a customer's words, as JSON: [{"name":..., "pattern":..., "example":...}] (default: the checkout number and the prefixed number)
  * Changing Zendesk, commercetools or Salesforce is a separate switch (the write-back), not on here.
  */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
@@ -19,7 +20,7 @@ import { CareDesk } from './care.desk';
 import { CareEvents } from './care.events';
 import { CareIntake } from './care.intake';
 import { LlmCareModel } from './care.model';
-import { teamFromEnv, type CareTeam } from './care.playbook';
+import { orderFormatsFromEnv, teamFromEnv, type CareTeam } from './care.playbook';
 import { CareProcessor } from './care.processor';
 import { MemoryCareStore, MongoCareStore, type CareStore } from './care.store';
 import { UnavailableWriteBack, type CareActor, type CareWriteBack } from './care.writeback';
@@ -49,8 +50,10 @@ export class CareService implements OnModuleInit, OnModuleDestroy {
     this.store = store;
     const connectors = httpConnectorCaller();
     const log = (m: string) => this.log.log(m);
+    const orders = orderFormatsFromEnv(env);
+    for (const problem of orders.problems) this.log.warn(problem);
     const processor = new CareProcessor({
-      store, events: this.events, connectors, model: new LlmCareModel(log), team: this.team,
+      store, events: this.events, connectors, model: new LlmCareModel(log), team: this.team, orderFormats: orders.formats,
       refundLimit: Number(env.CARE_REFUND_LIMIT) > 0 ? Number(env.CARE_REFUND_LIMIT) : 500, minStageMs: Number(env.CARE_MIN_STAGE_MS) || 0,
     });
     const intake = connectors ? new CareIntake({ store, events: this.events, connectors }) : null;
