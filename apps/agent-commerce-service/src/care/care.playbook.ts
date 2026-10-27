@@ -53,11 +53,75 @@ export function readByWords(subject: string, message: string): { topic: CareTopi
   return { topic, topicConfidence: sure ? 'Medium' : 'Low', mood, moodConfidence: 'Medium' };
 }
 
-/** An order number as the customer sees it: eight letters and digits, at least one of each ("0960C27F"). */
-export function orderNumbersIn(text: string): string[] {
-  const found = String(text || '').match(/\b(?=[0-9A-F]*[0-9])(?=[0-9A-F]*[A-F])[0-9A-F]{8}\b/gi) ?? [];
-  return [...new Set(found.map((n) => n.toUpperCase()))];
+/**
+ * One way an order number looks in a customer's words. `pattern` (a regular expression, matched without regard to case) decides what counts, `example`
+ * is shown to the model and must match its own pattern, or the format is ignored. `CARE_ORDER_FORMATS` (JSON) replaces the list below.
+ */
+export interface OrderFormat { name: string; pattern: string; example: string }
+
+export const DEFAULT_ORDER_FORMATS: OrderFormat[] = [
+  { name: 'Checkout number', pattern: '\\b(?=[0-9A-F]*[0-9])(?=[0-9A-F]*[A-F])[0-9A-F]{8}\\b', example: '0960C27F' },
+  { name: 'Prefixed number', pattern: '\\b[A-Z]{2,5}(?:-[A-Z]{2,5}){0,2}-\\d{3,6}\\b', example: 'AB-CD-0001' },
+];
+
+const MAX_FORMATS = 8;
+const MAX_PATTERN = 200;
+const MAX_TEXT = 20_000;
+const MAX_NUMBERS = 5;
+const compiled = new Map<string, RegExp | null>();
+
+/** The format as a global regular expression, or null when it is unusable: it does not compile, matches nothing at all, or does not match its own example. */
+function compile(format: OrderFormat): RegExp | null {
+  const key = `${format.pattern}\u0000${format.example}`;
+  if (compiled.has(key)) return compiled.get(key) ?? null;
+  let result: RegExp | null = null;
+  try {
+    if (format.pattern.length > 0 && format.pattern.length <= MAX_PATTERN) {
+      const re = new RegExp(format.pattern, 'gi');
+      const own = new RegExp(format.pattern, 'i').exec(format.example);
+      if (!re.test('') && own && own[0].toUpperCase() === format.example.toUpperCase()) result = new RegExp(format.pattern, 'gi');
+    }
+  } catch { /* a pattern that does not compile is left out */ }
+  compiled.set(key, result);
+  return result;
 }
+
+/** The formats the desk recognises, from `CARE_ORDER_FORMATS` when it holds at least one usable format, else the default list. `problems` says what was left out and why. */
+export function orderFormatsFromEnv(env: Record<string, string | undefined> = process.env): { formats: OrderFormat[]; problems: string[] } {
+  const raw = (env.CARE_ORDER_FORMATS || '').trim();
+  if (!raw) return { formats: DEFAULT_ORDER_FORMATS, problems: [] };
+  const problems: string[] = [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return { formats: DEFAULT_ORDER_FORMATS, problems: ['CARE_ORDER_FORMATS is not readable JSON, so the default order formats are used.'] }; }
+  const formats: OrderFormat[] = [];
+  for (const item of Array.isArray(parsed) ? parsed.slice(0, MAX_FORMATS) : []) {
+    const f = item as Partial<OrderFormat>;
+    if (typeof f?.name === 'string' && typeof f.pattern === 'string' && typeof f.example === 'string' && compile(f as OrderFormat)) formats.push({ name: f.name, pattern: f.pattern, example: f.example });
+    else problems.push(`The order format "${String((item as any)?.name ?? '?').slice(0, 40)}" was left out: it needs a name, a pattern that compiles, and an example that matches it.`);
+  }
+  if (!formats.length) return { formats: DEFAULT_ORDER_FORMATS, problems: [...problems, 'CARE_ORDER_FORMATS has no usable format, so the default order formats are used.'] };
+  return { formats, problems };
+}
+
+/** What the model is told an order number looks like: the names and examples from the formats. */
+export const describeOrderFormats = (formats: OrderFormat[]): string => formats.map((f) => `${f.name}, like ${f.example}`).join('; ');
+
+/** The order numbers written in a text, in the order they appear, upper case, at most a few. Whether an order with that number exists is for the look-up to say. */
+export function orderNumbersIn(text: string, formats: OrderFormat[] = DEFAULT_ORDER_FORMATS): string[] {
+  const input = String(text || '').slice(0, MAX_TEXT);
+  const hits: Array<{ at: number; value: string }> = [];
+  for (const format of formats) {
+    const re = compile(format);
+    if (!re) continue;
+    for (const m of input.matchAll(re)) hits.push({ at: m.index ?? 0, value: m[0].toUpperCase() });
+  }
+  hits.sort((a, b) => a.at - b.at);
+  return [...new Set(hits.map((h) => h.value))].slice(0, MAX_NUMBERS);
+}
+
+/** What the desk records when it looked an order up and the system had no such order. The words are fixed so a reply can be checked against them. */
+export const orderMissingNote = (ref: string): string => `Order ${ref} was not found in commercetools.`;
+export const isOrderMissingNote = (note: string): boolean => /^Order .+ was not found in commercetools\.$/.test(note);
 
 /** Who looks at it: the rep who has the topic and the fewest open tickets; the lead for what only a lead decides. */
 export function assign(team: CareTeam, topic: string, openByPerson: Record<string, number>, needsLead: boolean): { name: string; id: string } {

@@ -12,9 +12,9 @@
  * back is checked. Every look-up that fails is said plainly in `notChecked`. Each stage leaves a trace (how long, which tools, how many model calls).
  */
 import type { CareEvents } from './care.events';
-import { checkReply } from './care.checks';
+import { checkReply, claimsOrderMissing } from './care.checks';
 import { ConnectorCallError, type ConnectorCaller } from './connector-rpc';
-import { MOODS, TOPICS, assign, fallbackWords, moneyOf, orderNumbersIn, readByWords, refundCheck, stepsFor, type CareTeam } from './care.playbook';
+import { DEFAULT_ORDER_FORMATS, MOODS, TOPICS, assign, describeOrderFormats, fallbackWords, isOrderMissingNote, moneyOf, orderMissingNote, orderNumbersIn, readByWords, refundCheck, stepsFor, type CareTeam, type OrderFormat } from './care.playbook';
 import type { CareStore } from './care.store';
 import { stageRank, type CareCase, type CareConfidence, type CareFact, type CareOrder, type CareStage, type CareStatus, type CareTrace } from './care.types';
 import { toView } from './care.view';
@@ -33,6 +33,8 @@ export interface ProcessorDeps {
   team: CareTeam;
   /** A refund or cancellation over this amount is decided by the team lead. */
   refundLimit: number;
+  /** How an order number looks in a customer's words (default: `DEFAULT_ORDER_FORMATS`). */
+  orderFormats?: OrderFormat[];
   now?: () => Date;
   /** Keeps each stage on screen at least this long, so a person watching can follow it. Zero in tests. */
   minStageMs?: number;
@@ -44,6 +46,8 @@ const text = (v: unknown, max: number): string => String(v ?? '').replace(/\s+\n
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const NEEDS_ORDER = new Set(['Delivery', 'Damaged item', 'Wrong or missing item', 'Cancel order', 'Change of address', 'Return or refund']);
 const MONEY_TOPICS = ['Cancel order', 'Damaged item', 'Wrong or missing item', 'Return or refund', 'Warranty'];
+/** How many numbers from one ticket are looked up, one after the other, until one is found. */
+const MAX_LOOKUPS = 3;
 
 /** The customer's words, fenced off so the model reads them as data. Anything that looks like the fence is taken out of the text first. */
 const fenced = (subject: string, message: string) => `<ticket>\nSubject: ${subject.replace(/<\/?ticket>/gi, '')}\n\nMessage:\n${message.replace(/<\/?ticket>/gi, '')}\n</ticket>`;
@@ -54,6 +58,7 @@ export class CareProcessor {
   private now = () => (this.d.now ? this.d.now() : new Date());
   private clock() { const t = this.now(); const p = (n: number) => String(n).padStart(2, '0'); return `${t.getHours()}:${p(t.getMinutes())}:${p(t.getSeconds())}`; }
   private usage = () => this.d.model?.usage?.() ?? { calls: 0, tokens: 0 };
+  private formats = () => this.d.orderFormats ?? DEFAULT_ORDER_FORMATS;
 
   /** Saves the case at its new stage and tells every open portal. */
   private async move(doc: CareCase, stage: CareStage, status: CareStatus, note: string, patch: Partial<CareCase> = {}): Promise<void> {
@@ -132,7 +137,7 @@ export class CareProcessor {
     doc.notChecked.push(`The AI could not finish its work: ${text(reason, 160)}`);
     if (!doc.draft.text) { doc.draft = { isReply: doc.topic.value !== 'Complaint', text: w.reply, original: w.reply }; doc.summary = w.summary; doc.recommendation = w.recommendation; doc.otherOption = w.otherOption; }
     if (!doc.steps.length) doc.steps = stepsFor({ ticketId: doc.zendeskId, topic: doc.topic.value || 'Product question', customerName: doc.customer.name, subject: doc.subject, message: doc.message, repName: doc.assignee.name });
-    doc.replyChecks = checkReply(doc.draft.text, { facts: doc.found.map((f) => f.text), steps: doc.steps, isReply: doc.draft.isReply });
+    doc.replyChecks = checkReply(doc.draft.text, { facts: doc.found.map((f) => f.text), steps: doc.steps, isReply: doc.draft.isReply, orderMissing: doc.notChecked.some(isOrderMissingNote) });
     await this.move(doc, 'drafted', 'ai', 'The AI could not finish; what it has is here for you to complete.');
   }
 
@@ -156,18 +161,18 @@ export class CareProcessor {
     const fallback = readByWords(doc.subject, doc.message);
     let topic: string = fallback.topic, mood: string = fallback.mood;
     let topicConfidence: CareConfidence = fallback.topicConfidence, moodConfidence: CareConfidence = fallback.moodConfidence;
-    let orders = orderNumbersIn(`${doc.subject} ${doc.message}`);
+    let orders = orderNumbersIn(`${doc.subject} ${doc.message}`, this.formats());
     let usedFallback: string | undefined = this.d.model ? undefined : 'no model: read by plain words';
     if (this.d.model) {
       const said = await this.d.model.json(
-        `You read customer-care tickets for a New Zealand building-supplies retailer. ${FENCE_RULE} Answer with JSON only: {"topic":..., "topicConfidence":..., "mood":..., "moodConfidence":..., "orderNumber":...}. topic is one of ${JSON.stringify(TOPICS)}. mood is one of ${JSON.stringify(MOODS)}. Confidence is High only when the customer says it plainly, else Medium or Low. orderNumber is an 8-character order number written in the message (letters A-F and digits), or null. Never guess an order number.`,
+        `You read customer-care tickets for a New Zealand building-supplies retailer. ${FENCE_RULE} Answer with JSON only: {"topic":..., "topicConfidence":..., "mood":..., "moodConfidence":..., "orderNumber":...}. topic is one of ${JSON.stringify(TOPICS)}. mood is one of ${JSON.stringify(MOODS)}. Confidence is High only when the customer says it plainly, else Medium or Low. orderNumber is the order number written in the message, copied exactly as written (an order number looks like: ${describeOrderFormats(this.formats())}), or null. Never guess an order number.`,
         fenced(doc.subject, doc.message),
         doc.tenantId,
       ).catch(() => null);
       if (!said) usedFallback = 'the model gave no usable answer: read by plain words';
       if (said && (TOPICS as readonly string[]).includes(said.topic)) { topic = said.topic; topicConfidence = asConf(said.topicConfidence, 'Medium'); }
       if (said && (MOODS as readonly string[]).includes(said.mood)) { mood = said.mood; moodConfidence = asConf(said.moodConfidence, 'Medium'); }
-      if (said?.orderNumber) orders = [...new Set([...orderNumbersIn(String(said.orderNumber)), ...orders])];
+      if (said?.orderNumber) orders = [...new Set([...orderNumbersIn(String(said.orderNumber), this.formats()), ...orders])];
     }
     return { topic: { value: topic, confidence: topicConfidence }, mood: { value: mood, confidence: moodConfidence }, orders, fallback: usedFallback };
   }
@@ -195,41 +200,55 @@ export class CareProcessor {
       } catch { notChecked.push('Earlier tickets could not be read from Zendesk.'); }
     }
     if (orders.length) {
-      try {
-        const r = await this.look(doc, tools, 'commercetools', 'get_order', { orderId: orders[0] });
-        const o = r?.record;
-        if (!o) throw new Error('no record');
-        currency = o.currency; orderTotal = typeof o.total === 'number' ? o.total : undefined;
-        const lines = Array.isArray(o.lines) ? o.lines : [];
-        order = {
-          ref: String(o.orderNumber || orders[0]),
-          states: { order: String(o.state || 'Unknown'), shipment: String(o.shipmentState || 'Unknown'), payment: String(o.paymentState || 'Unknown') },
-          lines: lines.map((l: any) => ({ name: String(l.name || l.sku || 'Item'), quantity: Number(l.quantity) || 1 })),
-          notes: [],
-        };
-        found.push({ text: `Order ${order.ref} is ${order.states.order.toLowerCase()}, shipment ${order.states.shipment.toLowerCase()}, payment ${order.states.payment.toLowerCase()}.`, source: { system: 'commercetools', label: `Order ${order.ref}` } });
-        if (orderTotal != null) found.push({ text: `Order total ${orderTotal.toFixed(2)} ${currency ?? ''}${o.shipTo?.city ? `, delivering to ${o.shipTo.city}` : ''}.`.replace(' ,', ','), source: { system: 'commercetools', label: `Order ${order.ref}` } });
-        if (MONEY_TOPICS.includes(topic)) {
-          const check = refundCheck({ state: order.states.order, shipment: order.states.shipment, payment: order.states.payment, total: orderTotal, currency }, topic, this.d.refundLimit);
-          cancelAllowed = check.cancelAllowed;
-          found.push({ text: `Policy check: ${check.note}`, source: { system: 'commercetools', label: `Order ${order.ref}` } });
+      // Each number written in the ticket is looked up in turn until one is found, so a note about another reference ("ticket 4322") does not hide the order.
+      const missed: string[] = []; const unreachable: string[] = [];
+      for (const ref of orders.slice(0, MAX_LOOKUPS)) {
+        try {
+          const r = await this.look(doc, tools, 'commercetools', 'get_order', { orderId: ref });
+          const o = r?.record;
+          if (!o) throw new Error('no record');
+          currency = o.currency; orderTotal = typeof o.total === 'number' ? o.total : undefined;
+          const lines = Array.isArray(o.lines) ? o.lines : [];
+          order = {
+            ref: String(o.orderNumber || ref),
+            states: { order: String(o.state || 'Unknown'), shipment: String(o.shipmentState || 'Unknown'), payment: String(o.paymentState || 'Unknown') },
+            lines: lines.map((l: any) => ({ name: String(l.name || l.sku || 'Item'), quantity: Number(l.quantity) || 1 })),
+            notes: [],
+          };
+          found.push({ text: `Order ${order.ref} is ${order.states.order.toLowerCase()}, shipment ${order.states.shipment.toLowerCase()}, payment ${order.states.payment.toLowerCase()}.`, source: { system: 'commercetools', label: `Order ${order.ref}` } });
+          if (orderTotal != null) found.push({ text: `Order total ${orderTotal.toFixed(2)} ${currency ?? ''}${o.shipTo?.city ? `, delivering to ${o.shipTo.city}` : ''}.`.replace(' ,', ','), source: { system: 'commercetools', label: `Order ${order.ref}` } });
+          if (MONEY_TOPICS.includes(topic)) {
+            const check = refundCheck({ state: order.states.order, shipment: order.states.shipment, payment: order.states.payment, total: orderTotal, currency }, topic, this.d.refundLimit);
+            cancelAllowed = check.cancelAllowed;
+            found.push({ text: `Policy check: ${check.note}`, source: { system: 'commercetools', label: `Order ${order.ref}` } });
+          }
+          break;
+        } catch (error: any) {
+          // "Not found" is said only when the system answered and had no such order. A server that did not answer says nothing about the order.
+          if (error instanceof ConnectorCallError && error.code !== 'not_found') { unreachable.push(ref); break; }
+          missed.push(ref);
         }
-      } catch { notChecked.push(`Order ${orders[0]} was not found in commercetools.`); }
+      }
+      if (!order) {
+        for (const ref of missed) notChecked.push(orderMissingNote(ref));
+        for (const ref of unreachable) notChecked.push(`Order ${ref} could not be looked up in commercetools just now, so nothing is known about it yet.`);
+      }
     } else if (NEEDS_ORDER.has(topic)) {
-      notChecked.push('There is no order number in the message, so no order was looked at.');
+      notChecked.push('The message gives no order number this desk recognises, so no order was looked up.');
     }
     return { found, notChecked, order, orderTotal, currency, customer, cancelAllowed };
   }
 
   private async draft(doc: CareCase, order?: CareOrder, orderTotal?: number, currency?: string, cancelAllowed?: boolean) {
     const topic = doc.topic.value;
+    const orderMissing = doc.notChecked.some(isOrderMissingNote);
     const words = fallbackWords(topic, doc.customer.name, doc.assignee.name, order ? { ref: order.ref, shipment: order.states.shipment } : undefined);
     let { summary, recommendation, otherOption, reply } = words;
     let fallback: string | undefined = this.d.model ? undefined : 'no model: wrote from plain words';
     if (this.d.model) {
       const facts = doc.found.map((f) => `- ${f.text} (${f.source.system})`).join('\n') || '- (nothing was found in the systems)';
       const said = await this.d.model.json(
-        `You prepare a care person's work-up of a ticket for a New Zealand building-supplies retailer. ${FENCE_RULE} Answer with JSON only: {"summary":..., "recommendation":..., "otherOption":..., "reply":...}. summary: under 14 words. recommendation and otherOption: one plain sentence each. reply: ${topic === 'Complaint' ? 'short call notes as bullet lines starting with "•", for a team lead. Nothing goes to the customer' : `the email to the customer, warm and short, starting "Kia ora <first name>," and ending "Ngā mihi," then the care person's first name (${doc.assignee.name.split(' ')[0]})`}. RULES: use only the facts given. Never promise a refund, a replacement, an amount, a compensation or a date that is not in the facts: a person decides those. Never say a fault is minor or major. Never include a web link. If something is not in the facts, say it will be checked.`,
+        `You prepare a care person's work-up of a ticket for a New Zealand building-supplies retailer. ${FENCE_RULE} Answer with JSON only: {"summary":..., "recommendation":..., "otherOption":..., "reply":...}. summary: under 14 words. recommendation and otherOption: one plain sentence each. reply: ${topic === 'Complaint' ? 'short call notes as bullet lines starting with "•", for a team lead. Nothing goes to the customer' : `the email to the customer, warm and short, starting "Kia ora <first name>," and ending "Ngā mihi," then the care person's first name (${doc.assignee.name.split(' ')[0]})`}. RULES: use only the facts given. Never promise a refund, a replacement, an amount, a compensation or a date that is not in the facts: a person decides those. Never say a fault is minor or major. Never include a web link. If something is not in the facts, say it will be checked. Say an order was not found only when \"Not checked\" says that order was not found in commercetools. If it says no order was looked up, say we will check and ask the customer for their order number. If it says an order could not be looked up just now, say we will check it.`,
         `${fenced(doc.subject, doc.message)}\n\nTopic: ${topic}. Mood: ${doc.mood.value}.\nFacts from the systems:\n${facts}\nNot checked: ${doc.notChecked.join(' ') || 'nothing'}`,
         doc.tenantId,
       ).catch(() => null);
@@ -238,10 +257,19 @@ export class CareProcessor {
         summary = text(said.summary, 140) || summary; recommendation = text(said.recommendation, 300) || recommendation;
         otherOption = text(said.otherOption, 300) || otherOption; reply = text(said.reply, 2500) || reply;
       }
+      // A line that says an order was not found stands only when a look-up ran and the system had no such order. Otherwise the model's line is swapped for plain words.
+      if (!orderMissing) {
+        const claims = [claimsOrderMissing(summary), claimsOrderMissing(recommendation), claimsOrderMissing(otherOption), claimsOrderMissing(reply)];
+        if (claims[0]) summary = words.summary;
+        if (claims[1]) recommendation = words.recommendation;
+        if (claims[2]) otherOption = words.otherOption;
+        if (claims[3]) reply = words.reply;
+        if (claims.some(Boolean)) fallback = 'the draft said an order was not found although no look-up said so: those lines were written from plain words';
+      }
     }
     const isReply = topic !== 'Complaint';
     const steps = stepsFor({ ticketId: doc.zendeskId, topic, customerName: doc.customer.name, orderRef: order?.ref, orderTotal, currency, subject: doc.subject, message: doc.message, repName: doc.assignee.name, cancelAllowed });
-    const replyChecks = checkReply(reply, { facts: doc.found.map((f) => f.text), steps, isReply });
+    const replyChecks = checkReply(reply, { facts: doc.found.map((f) => f.text), steps, isReply, orderMissing });
     const needsLead = topic === 'Complaint' || doc.mood.value === 'Angry' || doc.topic.confidence === 'Low' || moneyOf(steps, orderTotal) > this.d.refundLimit;
     return {
       isReply, steps, fallback,

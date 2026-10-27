@@ -22,7 +22,15 @@ export function dateKeys(text: string): string[] {
   return keys;
 }
 
-export function checkReply(text: string, ctx: { facts: string[]; steps: CareStep[]; isReply: boolean }): Array<{ label: string; ok: boolean }> {
+const SAYS_MISSING = /\b(?:not found|(?:was|were|is|are)(?:n['\u2019]t| not) found|(?:could(?:n['\u2019]t| not)|can['\u2019]t|cannot|can not|did(?:n['\u2019]t| not)|do(?:n['\u2019]t| not)) (?:find|locate)|unable to (?:find|locate)|no record of|(?:does|did)(?:n['\u2019]t| not) exist|no order (?:with|numbered|under|matching))\b/i;
+
+/** True when a sentence says an order could not be found. Only a look-up that ran and found nothing may be the reason; this reads the words, not the facts. */
+export function claimsOrderMissing(text: string): boolean {
+  return String(text || '').split(/(?<=[.!?])\s+|\n+/).some((sentence) => /\border\b/i.test(sentence) && SAYS_MISSING.test(sentence));
+}
+
+/** `orderMissing`: a look-up ran and the system had no order with that number. Without it, a sentence saying an order was not found is a claim nobody checked. */
+export function checkReply(text: string, ctx: { facts: string[]; steps: CareStep[]; isReply: boolean; orderMissing?: boolean }): Array<{ label: string; ok: boolean }> {
   if (!ctx.isReply) return [{ label: 'Internal only. Nothing here goes to the customer', ok: true }];
   const checks: Array<{ label: string; ok: boolean }> = [];
   const names = MONEY_WORDS.test(text) || AMOUNT.test(text);
@@ -30,6 +38,7 @@ export function checkReply(text: string, ctx: { facts: string[]; steps: CareStep
   if (!names) checks.push({ label: 'No refund, replacement or amount promised', ok: true });
   else if (money) checks.push({ label: `Names a refund or an amount: it holds only if you approve the step "${money.what}"`, ok: false });
   else checks.push({ label: 'Names a refund, a replacement or an amount that no step covers: check it', ok: false });
+  if (!ctx.orderMissing && claimsOrderMissing(text)) checks.push({ label: 'Says an order was not found, but no look-up said so: check it', ok: false });
   if (/https?:\/\/|www\./i.test(text)) checks.push({ label: 'Contains a web link: check it before it is sent', ok: false });
   const known = new Set(ctx.facts.flatMap((f) => dateKeys(f)));
   const stray = dateKeys(text).filter((k) => !known.has(k));

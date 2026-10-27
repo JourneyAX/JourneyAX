@@ -3,8 +3,8 @@ import { createSuite } from '@journeyax/test-support';
 import { CareEvents } from '../src/care/care.events';
 import { CareIntake } from '../src/care/care.intake';
 import { CareProcessor, type CareModel } from '../src/care/care.processor';
-import { DEFAULT_TEAM, assign, orderNumbersIn, readByWords, refundCheck, stepsFor } from '../src/care/care.playbook';
-import { checkReply, dateKeys } from '../src/care/care.checks';
+import { DEFAULT_ORDER_FORMATS, DEFAULT_TEAM, assign, orderFormatsFromEnv, orderNumbersIn, readByWords, refundCheck, stepsFor } from '../src/care/care.playbook';
+import { checkReply, claimsOrderMissing, dateKeys } from '../src/care/care.checks';
 import { MemoryCareStore } from '../src/care/care.store';
 import { ConnectorCallError, httpConnectorCaller, type ConnectorCaller } from '../src/care/connector-rpc';
 import { toView } from '../src/care/care.view';
@@ -41,7 +41,7 @@ const newStore = () => new MemoryCareStore();
 const model = (answers: any[]): CareModel & { asked: string[] } => { const asked: string[] = []; return { asked, async json(system, user) { asked.push(user); return answers.shift() ?? null; } }; };
 
 async function main() {
-  await suite.test('plain words are read as a topic and a mood, never with High confidence; order numbers are eight letters and digits', () => {
+  await suite.test('plain words are read as a topic and a mood, never with High confidence', () => {
     assert.equal(readByWords('Please cancel my order', '').topic, 'Cancel order');
     assert.equal(readByWords('', 'The mixer came cracked').topic, 'Damaged item');
     assert.equal(readByWords('Third time!', 'I want to close my account').topic, 'Complaint');
@@ -302,7 +302,8 @@ async function main() {
     await intake2.poll(TENANT);
     const d2 = (await new CareProcessor({ store: store2, events, connectors: down, model: null, team: DEFAULT_TEAM, refundLimit: 500, now: () => NOW }).run(TENANT, 't4322'))!;
     assert.equal(always, 2, 'one try and one retry, no more');
-    assert.ok(d2.notChecked.includes('Order B13E7A55 was not found in commercetools.'));
+    assert.ok(d2.notChecked.some((n) => n.includes('Order B13E7A55 could not be looked up')), 'a server that did not answer is not "not found"');
+    assert.ok(!d2.notChecked.some((n) => n.includes('was not found')));
     assert.equal(d2.stage, 'waiting', 'the ticket still reaches a person');
   });
 
@@ -410,6 +411,101 @@ async function main() {
       assert.ok(done.draft.text.includes('Ngā mihi,\nAroha'), `${way}: signed by the person who decides it`);
       assert.ok(!JSON.stringify([done.draft, done.steps]).includes('Unassigned'), `${way}: the placeholder never reaches the reply or a change`);
     }
+  });
+
+  await suite.test('order numbers come from a setting: the checkout number and prefixed numbers by default, other shapes by a list the shop sets; a format that cannot work is left out and said', () => {
+    assert.deepEqual(orderNumbersIn('Where is OPP-0007? Also ordered DEMO-ORD-0017, pm-test-0001 and ORD-100024 last week.'), ['OPP-0007', 'DEMO-ORD-0017', 'PM-TEST-0001', 'ORD-100024']);
+    assert.deepEqual(orderNumbersIn('Order 0960C27F then OPP-0007'), ['0960C27F', 'OPP-0007'], 'in the order they are written');
+    assert.deepEqual(orderNumbersIn('Ticket #38 on 2026-10-27, COVID-19 and a call to 0800 123 456'), [], 'dates, ticket numbers and phone numbers are not order numbers');
+    assert.deepEqual(orderNumbersIn('see W-1234567', [{ name: 'Web', pattern: '\\bW-\\d{7}\\b', example: 'W-1234567' }]), ['W-1234567'], 'a shop can set its own shape');
+    assert.deepEqual(orderNumbersIn('A'.repeat(30_000) + ' OPP-0007'), [], 'only the start of a very long text is read');
+    assert.equal(orderFormatsFromEnv({}).formats, DEFAULT_ORDER_FORMATS);
+    const mine = orderFormatsFromEnv({ CARE_ORDER_FORMATS: JSON.stringify([{ name: 'Web', pattern: '\\bW-\\d{7}\\b', example: 'W-1234567' }]) });
+    assert.deepEqual(mine.formats.map((f) => f.name), ['Web']);
+    assert.deepEqual(mine.problems, []);
+    const mixed = orderFormatsFromEnv({ CARE_ORDER_FORMATS: JSON.stringify([
+      { name: 'Broken', pattern: '(', example: 'x' },
+      { name: 'Empty', pattern: 'x*', example: '' },
+      { name: 'Mismatch', pattern: '\\bW-\\d{7}\\b', example: 'W-12' },
+      { name: 'Fine', pattern: '\\bQ\\d{5}\\b', example: 'Q12345' },
+    ]) });
+    assert.deepEqual(mixed.formats.map((f) => f.name), ['Fine']);
+    assert.equal(mixed.problems.length, 3, 'each unusable format is named');
+    const none = orderFormatsFromEnv({ CARE_ORDER_FORMATS: JSON.stringify([{ name: 'Broken', pattern: '(', example: 'x' }]) });
+    assert.equal(none.formats, DEFAULT_ORDER_FORMATS, 'with nothing usable the default list stays');
+    assert.ok(none.problems.length >= 2);
+    assert.equal(orderFormatsFromEnv({ CARE_ORDER_FORMATS: '{not json' }).formats, DEFAULT_ORDER_FORMATS);
+    assert.equal(orderFormatsFromEnv({ CARE_ORDER_FORMATS: '{not json' }).problems.length, 1);
+  });
+
+  await suite.test('an order written as OPP-0007 is looked up and found; a reference that is not an order does not hide the real one', async () => {
+    const asked: string[] = [];
+    const real = { ...order, orderNumber: 'OPP-0007' };
+    const handlers = { ...desk(ticket({ subject: 'Where is my order?', description: 'Following up ticket REF-1234 about OPP-0007, it has not arrived.' })), 'commercetools.get_order': (a: any) => { asked.push(a.orderId); if (a.orderId === 'OPP-0007') return { record: real }; throw new ConnectorCallError('no such order', 'not_found'); } };
+    const c = connectors(handlers);
+    const store = newStore();
+    const events = new CareEvents();
+    const intake = new CareIntake({ store, events, connectors: c, now: () => NOW });
+    await store.setCursor(TENANT, '2026-10-26T09:00:00Z');
+    await intake.poll(TENANT);
+    const done = (await new CareProcessor({ store, events, connectors: c, model: null, team: DEFAULT_TEAM, refundLimit: 500, now: () => NOW }).run(TENANT, 't4322'))!;
+    assert.deepEqual(asked, ['REF-1234', 'OPP-0007'], 'looked up in the order written, stopping at the first that exists');
+    assert.equal(done.order?.ref, 'OPP-0007');
+    assert.deepEqual(done.notChecked, [], 'nothing is left unchecked once the order is found');
+    assert.ok(done.found.some((f) => f.text.includes('Order OPP-0007 is confirmed')));
+  });
+
+  await suite.test('an order is said to be "not found" only when the look-up ran and the system had no such order', async () => {
+    const claim = { summary: 'The order was not found.', recommendation: 'Tell the customer we could not find their order.', otherOption: 'Ask for another number.', reply: 'Kia ora Sam,\n\nI am sorry, your order was not found in our system.\n\nNgā mihi,\nAroha' };
+    const read = { topic: 'Delivery', topicConfidence: 'High', mood: 'Neutral', moodConfidence: 'High', orderNumber: null };
+    const run = async (text: string, handlers: Record<string, (a: any) => any>, answers: any[]) => {
+      const c = connectors({ ...desk(ticket({ description: text })), ...handlers });
+      const store = newStore();
+      const events = new CareEvents();
+      await store.setCursor(TENANT, '2026-10-26T09:00:00Z');
+      await new CareIntake({ store, events, connectors: c, now: () => NOW }).poll(TENANT);
+      return (await new CareProcessor({ store, events, connectors: c, model: model(answers), team: DEFAULT_TEAM, refundLimit: 500, now: () => NOW }).run(TENANT, 't4322'))!;
+    };
+    // 1. No number the desk recognises: nothing was looked up, so the model's "not found" is swapped for plain words.
+    const none = await run('My posts have not arrived and nobody has rung me.', {}, [read, claim]);
+    assert.ok(none.notChecked.some((n) => n.includes('no order number this desk recognises') || n.includes('no order was looked up')));
+    assert.ok(!/not found|could not find/i.test(`${none.summary} ${none.recommendation} ${none.otherOption} ${none.draft.text}`), 'no line says an order was not found');
+    assert.ok(none.draft.text.includes('Kia ora Sam'));
+    assert.ok(none.replyChecks.every((x) => x.ok), 'and nothing is left to flag');
+    assert.match(none.trace!.find((t) => t.stage === 'drafted')!.fallback ?? '', /no look-up said so/);
+    // 2. A number was looked up and the system had none: the model may say so.
+    const missing = await run('Where is order OPP-0099?', { 'commercetools.get_order': () => { throw new ConnectorCallError('no such order', 'not_found'); } }, [{ ...read, orderNumber: 'OPP-0099' }, claim]);
+    assert.ok(missing.notChecked.includes('Order OPP-0099 was not found in commercetools.'));
+    assert.ok(missing.draft.text.includes('was not found'), 'a look-up that found nothing is allowed to be said');
+    assert.ok(missing.replyChecks.every((x) => x.ok));
+    // 3. The server did not answer: that says nothing about the order, so "not found" is swapped out here too.
+    const down = await run('Where is order OPP-0007?', { 'commercetools.get_order': () => { throw new ConnectorCallError('down', 'unavailable'); } }, [{ ...read, orderNumber: 'OPP-0007' }, claim]);
+    assert.ok(down.notChecked.some((n) => n.includes('could not be looked up')));
+    assert.ok(!/not found|could not find/i.test(down.draft.text));
+    // 4. The draft prompt tells the model the same rule.
+    const asked = model([read, claim]);
+    const c = connectors(desk(ticket({ description: 'My posts have not arrived.' })));
+    const store = newStore(); const events = new CareEvents();
+    await store.setCursor(TENANT, '2026-10-26T09:00:00Z');
+    await new CareIntake({ store, events, connectors: c, now: () => NOW }).poll(TENANT);
+    const prompts: string[] = [];
+    await new CareProcessor({ store, events, connectors: c, model: { async json(system, user, tenant) { prompts.push(system); return asked.json(system, user, tenant); } }, team: DEFAULT_TEAM, refundLimit: 500, now: () => NOW }).run(TENANT, 't4322');
+    assert.match(prompts[0], /like 0960C27F; Prefixed number, like AB-CD-0001/, 'the read prompt shows the formats from the setting');
+    assert.match(prompts[1], /Say an order was not found only when/);
+  });
+
+  await suite.test('a reply that says an order was not found with no look-up behind it is flagged for the person', () => {
+    assert.equal(claimsOrderMissing('We could not find your order in our system.'), true);
+    assert.equal(claimsOrderMissing('Order 0960C27F was not found.'), true);
+    assert.equal(claimsOrderMissing("I can't locate that order."), true);
+    assert.equal(claimsOrderMissing('There is no record of that order.'), true);
+    assert.equal(claimsOrderMissing('Your order is open and paid. We are checking where it is.'), false);
+    assert.equal(claimsOrderMissing('The carrier was not found at the depot.'), false, 'only a sentence about an order counts');
+    const facts = ['Order 0960C27F is open.'];
+    const flagged = checkReply('Sorry, your order was not found.', { facts, steps: [], isReply: true });
+    assert.ok(flagged.some((c) => !c.ok && /was not found, but no look-up said so/.test(c.label)));
+    const backed = checkReply('Sorry, your order was not found.', { facts, steps: [], isReply: true, orderMissing: true });
+    assert.ok(!backed.some((c) => /no look-up said so/.test(c.label)));
   });
 
   suite.finish();
