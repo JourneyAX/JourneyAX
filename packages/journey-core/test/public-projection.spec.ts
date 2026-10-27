@@ -56,6 +56,11 @@ async function main() {
     assert.deepEqual(projected.data, { toolId: 'catalog.search', status: 'success' });
   });
 
+  await suite.test('a connector step also names the system and the tool (so the page can say what is being looked at), still not what it was given', () => {
+    const projected = projectPublicEvent('capability', { toolId: 'call_connector_tool', callId: 'call_1', connector: 'salesforce', tool: 'list_cases', arguments: { accountId: '001xx' }, input: { accountId: '001xx' } })!;
+    assert.deepEqual(projected.data, { toolId: 'call_connector_tool', connector: 'salesforce', tool: 'list_cases' });
+  });
+
   await suite.test('an error shows a message chosen from its code, never the error\'s own text (which may name a host, a collection or a stack)', () => {
     const projected = projectPublicEvent('error', { code: 'SOMETHING_ELSE', message: 'MongoServerError: connection to mongodb://user:pw@host failed\n    at Object.<anonymous> (/app/x.js:1:1)' })!;
     assert.deepEqual(projected.data, { code: 'SOMETHING_ELSE', message: publicErrorMessage() });
