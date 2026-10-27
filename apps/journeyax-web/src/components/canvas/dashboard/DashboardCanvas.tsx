@@ -28,7 +28,7 @@ function Section({ section }: { section: DashboardSection }) {
     <section className="dash__section" aria-label={section.title}>
       <h3 className="cv__h dash__h">
         <span>{section.title}</span>
-        {section.state === 'ok' && section.total > 0 && <span className="dash__count">{section.total}</span>}
+        {section.state === 'ok' && section.total > 0 && <span className="dash__count">{section.total}{section.atLeast ? '+' : ''}</span>}
       </h3>
       {section.state === 'blocked' && <p className="dash__note">This one is not available to your team.</p>}
       {section.state === 'unavailable' && <p className="dash__note">Could not be read just now. It will try again in a minute.</p>}

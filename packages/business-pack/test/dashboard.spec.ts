@@ -271,4 +271,47 @@ check('a card says how many there are: the tool’s own count when it gave one, 
   assert.deepEqual([make({ total: 3, returned: 3, more: true, records }).total, make({ total: 3, returned: 3, more: true, records }).atLeast], [3, true], 'the tool only repeated how many it returned, then stopped');
 });
 
+check('a time written in UTC is read as the shop’s day, and "the last N days" counts back from today', () => {
+  const nz = { ...format, today: '2026-10-27', timeZone: 'Pacific/Auckland' };
+  // 22:57 UTC on the 25th is 11:57 on the 26th in Auckland; Salesforce writes the zone as +0000.
+  assert.equal(fillTemplate('{created|date}', { created: '2026-10-25T22:57:42.000+0000' }, nz), '26 Oct');
+  assert.equal(fillTemplate('{created|date}', { created: '2026-10-25T22:57:42Z' }, nz), '26 Oct');
+  assert.equal(fillTemplate('{created|date}', { created: '2026-10-25T22:57:42Z' }, format), '25 Oct', 'with no zone given the written day stands');
+  assert.equal(fillTemplate('{closeDate|date}', { closeDate: '2026-11-01' }, nz), '1 Nov', 'a plain date is never moved');
+  const desk = DashboardSchema.parse({
+    entries: [{
+      groups: ['branch'], title: 'My branch', tile: ['today', 'week'], sections: [], cards: [],
+      metrics: [
+        { id: 'today', label: 'Placed today', source: { connector: 'commercetools', tool: 'list_orders' }, measure: 'count', where: [{ field: 'created', op: 'withinLastDays', value: 0 }] },
+        { id: 'week', label: 'Placed this week', source: { connector: 'commercetools', tool: 'list_orders' }, measure: 'count', where: [{ field: 'created', op: 'withinLastDays', value: 7 }] },
+      ],
+    }],
+  });
+  const orders = { ok: true, total: 4, returned: 4, records: [
+    { created: '2026-10-26T19:38:51Z' }, // 08:38 on the 27th in Auckland: today
+    { created: '2026-10-26T01:00:00Z' }, // 14:00 on the 26th: yesterday
+    { created: '2026-10-20T01:00:00Z' }, // the 20th: exactly 7 days back
+    { created: '2026-10-19T01:00:00Z' }, // 8 days back
+  ] };
+  const outcomes = new Map<string, CallOutcome>([[callKey(desk.entries[0].metrics[0].source, {}), { ok: true, data: orders }]]);
+  const byId = Object.fromEntries(buildDashboard(desk.entries[0], outcomes, { format: nz }).metrics.map((m) => [m.id, m]));
+  assert.equal(byId.today.value, '1');
+  assert.equal(byId.week.value, '3');
+});
+
+check('a list says how many there are in the same way as a card does', () => {
+  const desk = DashboardSchema.parse({
+    entries: [{
+      groups: ['branch'], title: 'My branch', tile: ['n'], cards: [],
+      metrics: [{ id: 'n', label: 'Orders', source: { connector: 'commercetools', tool: 'list_orders' }, measure: 'count' }],
+      sections: [{ id: 'newest', title: 'Newest orders', source: { connector: 'commercetools', tool: 'list_orders' }, limit: 2, row: { title: '{orderNumber}' } }],
+    }],
+  });
+  const records = [{ orderNumber: 'a' }, { orderNumber: 'b' }, { orderNumber: 'c' }];
+  const sectionOf = (data: unknown) => buildDashboard(desk.entries[0], new Map<string, CallOutcome>([[callKey(desk.entries[0].sections[0].source, {}), { ok: true, data }]]), { format }).sections[0];
+  assert.deepEqual([sectionOf({ records }).total, sectionOf({ records }).atLeast], [3, undefined]);
+  assert.deepEqual([sectionOf({ total: 39, returned: 3, more: true, records }).total, sectionOf({ total: 39, returned: 3, more: true, records }).atLeast], [39, undefined], 'the order system counted all 39');
+  assert.deepEqual([sectionOf({ total: 3, returned: 3, more: true, records }).total, sectionOf({ total: 3, returned: 3, more: true, records }).atLeast], [3, true], 'stopped at its limit');
+});
+
 console.log(`\n✅ ${passed} dashboard checks passed`);

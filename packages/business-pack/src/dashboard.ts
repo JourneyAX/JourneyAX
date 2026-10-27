@@ -15,7 +15,7 @@ type Where = NonNullable<DashboardEntry['metrics'][number]['where']>[number];
 type RowTemplate = DashboardEntry['sections'][number]['row'];
 type Args = Record<string, string | number | boolean>;
 
-export interface DashboardFormat { today: string; currency?: string; locale?: string }
+export interface DashboardFormat { today: string; currency?: string; locale?: string; /** The shop's time zone: a time written in UTC is read as the shop's day, which can be the next one. */ timeZone?: string }
 
 /** What one connector call gave back: the tool's answer, or the reason there is none. */
 export type CallOutcome = { ok: true; data: unknown } | { ok: false; reason: 'blocked' | 'unavailable' };
@@ -43,6 +43,8 @@ export interface SectionView {
   state: 'ok' | 'blocked' | 'unavailable';
   rows: RowView[];
   total: number;
+  /** The system stopped at its limit, so the true number is this or more. */
+  atLeast?: boolean;
   empty?: string;
   more?: { label: string; prompt: string };
 }
@@ -129,7 +131,19 @@ const lookup = (record: unknown, path: string): unknown => path.split('.').reduc
 const DAY = /^(\d{4})-(\d{2})-(\d{2})/;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const dayOf = (value: unknown): string | undefined => (typeof value === 'string' && DAY.test(value) ? value.slice(0, 10) : undefined);
+const WITH_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+const WITH_ZONE = /(Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * The calendar day of a date or a time as the shop lives it. A plain date stays as it is; a time with a zone ("…T22:57:42Z", or Salesforce's
+ * "…+0000") is read in the shop's zone, where 22:57 UTC is already tomorrow in New Zealand. Without a zone to go by, the written day is used.
+ */
+function dayOf(value: unknown, timeZone?: string): string | undefined {
+  if (typeof value !== 'string' || !DAY.test(value)) return undefined;
+  if (!timeZone || !WITH_TIME.test(value) || !WITH_ZONE.test(value)) return value.slice(0, 10);
+  const at = Date.parse(value.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  return Number.isNaN(at) ? value.slice(0, 10) : todayIn(timeZone, new Date(at));
+}
 
 function addDays(day: string, days: number): string {
   const [y, m, d] = day.split('-').map(Number);
@@ -161,19 +175,21 @@ export function recordsOf(data: unknown, from?: string): Array<Record<string, un
   return body.record && typeof body.record === 'object' ? [body.record as Record<string, unknown>] : [];
 }
 
-function passes(record: Record<string, unknown>, where: Where[] | undefined, today: string): boolean {
+function passes(record: Record<string, unknown>, where: Where[] | undefined, format: DashboardFormat): boolean {
+  const today = format.today;
   return (where ?? []).every((rule) => {
     const value = lookup(record, rule.field);
     if (rule.op === 'equals') return String(value ?? '').toLowerCase() === String(rule.value ?? '').toLowerCase();
     if (rule.op === 'notEquals') return String(value ?? '').toLowerCase() !== String(rule.value ?? '').toLowerCase();
     if (rule.op === 'in') return String(rule.value ?? '').split(',').map((one) => one.trim().toLowerCase()).filter(Boolean).includes(String(value ?? '').toLowerCase());
-    const day = dayOf(value);
+    const day = dayOf(value, format.timeZone);
     if (!day) return false;
     const edge = typeof rule.value === 'string' && DAY.test(rule.value) ? rule.value.slice(0, 10) : today;
     if (rule.op === 'before') return day < edge;
     if (rule.op === 'onOrBefore') return day <= edge;
     if (rule.op === 'after') return day > edge;
     const days = Number(rule.value);
+    if (rule.op === 'withinLastDays') return Number.isFinite(days) && day <= today && day >= addDays(today, -days);
     return Number.isFinite(days) && day >= today && day <= addDays(today, days);
   });
 }
@@ -211,7 +227,7 @@ function money(value: unknown, format: DashboardFormat, cents = false): string {
 }
 
 function dateWords(value: unknown, format: DashboardFormat): string {
-  const day = dayOf(value);
+  const day = dayOf(value, format.timeZone);
   if (!day) return '';
   const [y, m, d] = day.split('-').map(Number);
   const year = Number(format.today.slice(0, 4));
@@ -280,7 +296,7 @@ function figure(metric: DashboardEntry['metrics'][number], outcome: CallOutcome 
   if (!outcome || !outcome.ok) return { ...base, value: '–', tone: 'neutral', ok: false };
   const data = outcome.data as Record<string, unknown> | undefined;
   const all = recordsOf(data);
-  const rows = all.filter((record) => passes(record, metric.where, format.today));
+  const rows = all.filter((record) => passes(record, metric.where, format));
   // A list the tool cut short gives a lower bound for anything counted or added up from it. A count the tool itself gave for the whole
   // search (more tickets than it returned) is exact; a "total" that only repeats how many it returned is not.
   const cut = (data as { more?: unknown } | undefined)?.more === true;
@@ -301,12 +317,24 @@ function figure(metric: DashboardEntry['metrics'][number], outcome: CallOutcome 
   return { ...base, value: `${formatNumber(raw, metric.format, format)}${lowerBound ? '+' : ''}`, raw, tone, ...(hint ? { hint } : {}), ok: true };
 }
 
+/**
+ * How many there are in a list: the tool's own count for the whole search when it gave one (more tickets than it returned), else what matched
+ * in what it returned, with "at least" when it stopped at its limit. A list taken from inside one record never carries the tool's flags.
+ */
+function howMany(data: unknown, matching: number, from: string | undefined, filtered: boolean): { total: number; atLeast?: boolean } {
+  const body = from ? undefined : (data as { total?: unknown; returned?: unknown; more?: unknown } | undefined);
+  const cut = body?.more === true;
+  const reported = typeof body?.total === 'number' ? body.total : undefined;
+  const whole = !filtered && reported !== undefined && reported > matching && (!cut || reported > Number(body?.returned ?? matching)) ? reported : undefined;
+  return { total: whole ?? matching, ...(cut && whole === undefined ? { atLeast: true } : {}) };
+}
+
 function sectionView(section: DashboardEntry['sections'][number], outcome: CallOutcome | undefined, format: DashboardFormat): SectionView {
   const base = { id: section.id, title: section.title, ...(section.empty ? { empty: section.empty } : {}), ...(section.more ? { more: section.more } : {}) };
   if (!outcome) return { ...base, state: 'unavailable', rows: [], total: 0 };
   if (!outcome.ok) return { ...base, state: outcome.reason, rows: [], total: 0 };
-  const matching = sorted(recordsOf(outcome.data, section.from).filter((record) => passes(record, section.where, format.today)), section.sort);
-  return { ...base, state: 'ok', total: matching.length, rows: matching.slice(0, section.limit ?? 5).map((record) => rowView(section.row, record, format)) };
+  const matching = sorted(recordsOf(outcome.data, section.from).filter((record) => passes(record, section.where, format)), section.sort);
+  return { ...base, state: 'ok', ...howMany(outcome.data, matching.length, section.from, !!section.where?.length), rows: matching.slice(0, section.limit ?? 5).map((record) => rowView(section.row, record, format)) };
 }
 
 /**
@@ -345,14 +373,10 @@ export function recordCardsFor(entry: DashboardEntry, connector: string, tool: s
   const out: RecordsCardState[] = [];
   for (const card of entry.cards) {
     if (card.connector !== connector || card.tool !== tool) continue;
-    const matching = sorted(recordsOf(data, card.from).filter((record) => passes(record, card.where, format.today)), card.sort);
+    const matching = sorted(recordsOf(data, card.from).filter((record) => passes(record, card.where, format)), card.sort);
     if (matching.length === 0) continue;
     const rows = matching.slice(0, card.limit ?? 5).map((record) => rowView(card.row, record, format));
-    // How many there are: the tool's own count for the whole search when it gave one, else what it returned, "at least" when it stopped at its limit.
-    const body = card.from || card.where?.length ? undefined : (data as { total?: unknown; returned?: unknown; more?: unknown } | undefined);
-    const cut = body?.more === true;
-    const whole = typeof body?.total === 'number' && body.total > matching.length && (!cut || body.total > Number(body.returned ?? matching.length)) ? body.total : undefined;
-    out.push({ heading: card.heading, rows, total: whole ?? matching.length, shown: rows.length, ...(cut && !whole ? { atLeast: true } : {}) });
+    out.push({ heading: card.heading, rows, ...howMany(data, matching.length, card.from, !!card.where?.length), shown: rows.length });
   }
   return out;
 }

@@ -47,7 +47,7 @@ async function main() {
   await t.test('it offers the shop tools, three more for stock and trade accounts and place_order for the shop, and only add_to_cart and place_order change anything', async () => {
     const { server, vendor } = await setup(() => undefined);
     const tools = await listTools(server, 'commercetools');
-    assert.deepEqual(tools.map((tool) => tool.name), ['find_product', 'get_product', 'get_cart', 'add_to_cart', 'place_order', 'get_order', 'order_history', 'stock_by_branch', 'find_account', 'get_account']);
+    assert.deepEqual(tools.map((tool) => tool.name), ['find_product', 'get_product', 'get_cart', 'add_to_cart', 'place_order', 'get_order', 'order_history', 'list_orders', 'stock_by_branch', 'find_account', 'get_account']);
     assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['add_to_cart', 'place_order']);
     await vendor.close();
   });
@@ -275,6 +275,26 @@ async function main() {
     await unit.call('order_history', { accountId: 'unit-0001' });
     assert.equal(unit.vendor.seen.find((r) => r.path === `/${PROJECT}/orders`)!.query.get('where'), 'businessUnit(key="unit-0001")');
     await unit.vendor.close();
+  });
+
+  await t.test('list_orders asks for the newest orders of every account, by state, shipment and how recent, and says when there are more', async () => {
+    const order = { id: ORDER, orderNumber: 'PM-2', orderState: 'Open', shipmentState: 'Pending', createdAt: '2026-10-26T01:00:00Z', totalPrice: { currencyCode: 'NZD', centAmount: 325375, fractionDigits: 2 }, lineItems: [{ quantity: 5 }], shippingAddress: { city: 'Oamaru', country: 'NZ', streetName: '1 Secret Street' } };
+    const { vendor, call } = await setup(() => ({ json: { total: 9, count: 1, results: [order] } }));
+    const { payload } = (await call('list_orders', { status: 'open', shipment: 'pending', sinceHours: 48, limit: 1 })) as any;
+    const request = vendor.seen.find((r) => r.path === `/${PROJECT}/orders`)!;
+    assert.match(request.query.get('where')!, /^orderState="Open" and shipmentState="Pending" and createdAt >= "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"$/);
+    const since = Date.parse(/createdAt >= "([^"]+)"/.exec(request.query.get('where')!)![1]);
+    assert.ok(Math.abs(Date.now() - 48 * 3_600_000 - since) < 60_000, 'forty-eight hours back from now');
+    assert.equal(request.query.get('sort'), 'createdAt desc');
+    assert.equal(request.query.get('limit'), '1');
+    assert.equal(payload.total, 9);
+    assert.equal(payload.more, true, '1 of 9 returned');
+    assert.equal(payload.records[0].shipmentState, 'Pending');
+    assert.deepEqual(payload.records[0].shipTo, { city: 'Oamaru', country: 'NZ' }, 'only the town, never the street');
+    assert.ok(!JSON.stringify(payload).includes('Secret Street'));
+    await call('list_orders', {});
+    assert.equal(vendor.seen.filter((r) => r.path === `/${PROJECT}/orders`).pop()!.query.get('where'), null, 'no filter, no where');
+    await vendor.close();
   });
 
   await t.test('an expired token is replaced once and the call is repeated; a refused sign-in is reported as such', async () => {

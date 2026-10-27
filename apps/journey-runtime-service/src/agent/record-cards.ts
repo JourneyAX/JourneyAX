@@ -6,7 +6,7 @@ const MAX_CARDS_PER_TURN = 3;
 
 /** How dates and money are written for this shop: its own currency and locale, and its own idea of today. */
 export function dashboardFormat(release: { profile?: { primaryCurrency?: string; primaryLocale?: string } } | undefined, setting: { timeZone?: string } | undefined, now?: Date): DashboardFormat {
-  return { today: todayIn(setting?.timeZone, now), currency: release?.profile?.primaryCurrency, locale: release?.profile?.primaryLocale };
+  return { today: todayIn(setting?.timeZone, now), ...(setting?.timeZone ? { timeZone: setting.timeZone } : {}), currency: release?.profile?.primaryCurrency, locale: release?.profile?.primaryLocale };
 }
 
 /**

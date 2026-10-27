@@ -13,6 +13,7 @@ export interface DashboardSection {
   state: 'ok' | 'blocked' | 'unavailable';
   rows: DashboardRow[];
   total: number;
+  atLeast?: boolean;
   empty?: string;
   more?: { label: string; prompt: string };
 }
@@ -69,6 +70,7 @@ export function parseDashboard(json: unknown): DashboardData | undefined {
       state: entry.state === 'blocked' || entry.state === 'unavailable' ? entry.state : 'ok',
       rows: list(entry.rows).map(parseRow).filter((r): r is DashboardRow => !!r).slice(0, 10),
       total: Number.isFinite(entry.total) ? Math.max(0, Math.floor(entry.total)) : 0,
+      ...(entry.atLeast === true ? { atLeast: true } : {}),
       ...(text(entry.empty, 160) ? { empty: text(entry.empty, 160) } : {}),
       ...(more ? { more } : {}),
     }];

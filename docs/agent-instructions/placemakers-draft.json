@@ -533,6 +533,14 @@
               ]
             },
             {
+              "name": "list_orders",
+              "sideEffect": "read",
+              "summary": "List the newest orders from every account: by state, by shipment, or placed in the last so many hours.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
               "name": "stock_by_branch",
               "sideEffect": "read",
               "summary": "Stock of one product at each branch that holds it, with the total.",
@@ -1141,6 +1149,20 @@
           "groups": [
             "customer-service",
             "sales",
+            "sales-managers",
+            "leadership",
+            "branch",
+            "finance",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "list_orders",
+          "audience": "staff",
+          "groups": [
+            "customer-service",
             "sales-managers",
             "leadership",
             "branch",
@@ -1994,6 +2016,13 @@
               "prompt": "I want a brief on one of our trade accounts. Ask me which one.",
               "needs": [
                 "salesforce.find_account"
+              ]
+            },
+            {
+              "label": "What orders came in?",
+              "prompt": "Show me the orders that came in over the last day.",
+              "needs": [
+                "commercetools.list_orders"
               ]
             }
           ]
@@ -3304,6 +3333,356 @@
                 },
                 "amount": "{total|price}",
                 "ask": "Where is order {orderNumber}, and when will it arrive?"
+              }
+            }
+          ]
+        },
+        {
+          "groups": [
+            "branch"
+          ],
+          "title": "My branch",
+          "subtitle": "Orders coming through, and the cases that touch our counter.",
+          "tile": [
+            "open-orders",
+            "last-day",
+            "high-cases"
+          ],
+          "metrics": [
+            {
+              "id": "open-orders",
+              "label": "Open orders",
+              "source": {
+                "connector": "commercetools",
+                "tool": "list_orders",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the open orders, newest first."
+            },
+            {
+              "id": "last-day",
+              "label": "Placed in the last day",
+              "source": {
+                "connector": "commercetools",
+                "tool": "list_orders",
+                "args": {
+                  "sinceHours": 24,
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the orders placed in the last day."
+            },
+            {
+              "id": "last-week",
+              "label": "Placed in the last week",
+              "source": {
+                "connector": "commercetools",
+                "tool": "list_orders",
+                "args": {
+                  "sinceHours": 168,
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the orders placed in the last week."
+            },
+            {
+              "id": "open-cases",
+              "label": "Open cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the open cases."
+            },
+            {
+              "id": "escalated",
+              "label": "Escalated cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "Escalated"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Which cases are escalated, and who has them?"
+            },
+            {
+              "id": "high-cases",
+              "label": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Show me the high-priority cases that are open."
+            }
+          ],
+          "sections": [
+            {
+              "id": "newest",
+              "title": "Newest orders",
+              "source": {
+                "connector": "commercetools",
+                "tool": "list_orders",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "limit": 5,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and what is on it?"
+              },
+              "empty": "No orders are open.",
+              "more": {
+                "label": "See the open orders in the chat",
+                "prompt": "Show me the open orders, newest first."
+              }
+            },
+            {
+              "id": "cases",
+              "title": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              },
+              "empty": "No high-priority cases are open.",
+              "more": {
+                "label": "See the open cases in the chat",
+                "prompt": "Show me the open cases."
+              }
+            },
+            {
+              "id": "escalated",
+              "title": "Escalated cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "Escalated"
+                }
+              ],
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              },
+              "empty": "No cases are escalated."
+            }
+          ],
+          "cards": [
+            {
+              "connector": "commercetools",
+              "tool": "list_orders",
+              "heading": "Orders",
+              "limit": 6,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and what is on it?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "get_order",
+              "heading": "The order",
+              "from": "record",
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "badge": "{state}",
+                "tones": {
+                  "Complete": "good",
+                  "Cancelled": "bad",
+                  "Confirmed": "info"
+                },
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and when will it arrive?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "get_order",
+              "heading": "What is on the order",
+              "from": "record.lines",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Quantity {quantity}",
+                "amount": "{total|price}"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "order_history",
+              "heading": "Their orders",
+              "limit": 5,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and what is on it?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "stock_by_branch",
+              "heading": "Stock by branch",
+              "limit": 6,
+              "row": {
+                "title": "{branch}",
+                "detail": "Branch {branchCode}",
+                "amount": "{available} in stock"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "find_product",
+              "heading": "Products",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{brand} · SKU {sku}",
+                "detail": "Gold {tierPrices.gold|price} · Silver {tierPrices.silver|price} · Bronze {tierPrices.bronze|price}",
+                "amount": "{price|price}",
+                "ask": "How much of {name} is in stock across our branches?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "list_cases",
+              "heading": "Cases",
+              "limit": 6,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "find_account",
+              "heading": "Accounts",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}",
+                "ask": "Show me the open cases and orders for {name}."
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "The customer",
+              "from": "record",
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "Their open cases",
+              "from": "record.cases",
+              "limit": 3,
+              "row": {
+                "title": "{subject}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                }
               }
             }
           ]

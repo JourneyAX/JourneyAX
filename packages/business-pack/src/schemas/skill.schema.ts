@@ -238,8 +238,8 @@ const DashboardSourceSchema = z.object({
 
 const DashboardWhereSchema = z.object({
   field: z.string().min(1).max(40),
-  /** `in` takes a short comma list ("high,urgent") and passes a record whose field is any one of them. */
-  op: z.enum(['equals', 'notEquals', 'in', 'before', 'onOrBefore', 'after', 'withinDays']),
+  /** `in` takes a short comma list ("high,urgent") and passes a record whose field is any one of them. `withinDays` is today up to N days ahead, `withinLastDays` is N days back up to today (0 is today). */
+  op: z.enum(['equals', 'notEquals', 'in', 'before', 'onOrBefore', 'after', 'withinDays', 'withinLastDays']),
   value: z.union([z.string().max(80), z.number()]).optional(),
 }).strict();
 
