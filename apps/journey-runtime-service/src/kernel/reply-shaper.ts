@@ -47,10 +47,11 @@ export function lineKindOf(line: string, indent: string, previous: LineKind | un
  * What goes in front of a kept sentence so the reply keeps the shape the model gave it: sentences of one line run on, a new line of
  * prose is its own paragraph, list items stack, a line indented under an item stays inside it, table rows stay together.
  */
-export function leadFor(kind: LineKind, previous: LineKind | undefined, startsLine: boolean): string {
+export function leadFor(kind: LineKind, previous: LineKind | undefined, startsLine: boolean, indent = ''): string {
   if (previous === undefined) return '';
   if (!startsLine) return ' ';
-  if (kind === 'list') return '\n';
+  // A list item keeps how far it was indented, so an item under an item stays under it.
+  if (kind === 'list') return `\n${indent.replace(/\t/g, '    ').slice(0, 12)}`;
   if (kind === 'listcont') return '\n   ';
   if (kind === 'table') return previous === 'table' ? '\n' : '\n\n';
   return '\n\n';
@@ -106,7 +107,10 @@ export function shapeSentence(
   sentence: string,
   context: CompiledShapeContext | ShapeContext,
   currentCount: number = 0,
-  questionsSeen: number = 0
+  questionsSeen: number = 0,
+  /** Which part of the reply the sentence belongs to, and how many list or table lines are already kept (when the style counts those apart). */
+  kind?: LineKind,
+  structureCount: number = 0
 ): { keep: boolean; reason?: string; sentence: string; isQuestion?: boolean } {
   const ctx = 'compiledIds' in context ? context : compileShapeContext(context);
   const { style } = ctx;
@@ -116,7 +120,9 @@ export function shapeSentence(
   if (style.dropListLines && LIST_LINE.test(trimmed)) {
     return { keep: false, reason: 'list', sentence: trimmed };
   }
-  if (currentCount >= style.maxSentences) {
+  // A style with `maxListLines` counts list items and table rows apart from sentences: a list of records is data, not chatter.
+  const apart = style.maxListLines !== undefined && (kind === 'list' || kind === 'listcont' || kind === 'table');
+  if (apart ? structureCount >= style.maxListLines! : currentCount >= style.maxSentences) {
     return { keep: false, reason: 'too long', sentence: trimmed };
   }
 
@@ -163,11 +169,15 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
   const kept: Array<{ sentence: string; kind: LineKind; lead: string }> = [];
   let questionsSeen = 0;
   let previousLine: LineKind | undefined;
+  const countedApart = (kind: LineKind) => style.maxListLines !== undefined && (kind === 'list' || kind === 'listcont' || kind === 'table');
+  let sentencesKept = 0;
+  let structureKept = 0;
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
-    const kind = lineKindOf(line, /^[ \t]*/.exec(rawLine)?.[0] ?? '', previousLine);
+    const indent = /^[ \t]*/.exec(rawLine)?.[0] ?? '';
+    const kind = lineKindOf(line, indent, previousLine);
     previousLine = kind;
     if (style.dropListLines && (kind === 'list' || kind === 'listcont')) {
       removed.push({ reason: 'list', sentence: line });
@@ -182,9 +192,10 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
     for (const raw of sentences) {
       const sentence = raw.trim();
       if (!sentence) continue;
-      const result = shapeSentence(sentence, compiled, kept.length, questionsSeen);
+      const result = shapeSentence(sentence, compiled, style.maxListLines !== undefined ? sentencesKept : kept.length, questionsSeen, kind, structureKept);
       if (result.keep) {
-        kept.push({ sentence, kind, lead: leadFor(kind, kept[kept.length - 1]?.kind, startsLine) });
+        kept.push({ sentence, kind, lead: leadFor(kind, kept[kept.length - 1]?.kind, startsLine, startsLine ? indent : '') });
+        if (countedApart(kind)) structureKept++; else sentencesKept++;
         startsLine = false;
         if (result.isQuestion) {
           questionsSeen++;
@@ -194,12 +205,7 @@ export function shapeReply(text: string, context: ShapeContext): ShapedReply {
       }
     }
   }
-  const limited = kept.slice(0, style.maxSentences);
-  for (const entry of kept.slice(style.maxSentences)) {
-    removed.push({ reason: 'too long', sentence: entry.sentence });
-  }
-
-  const formatted = limited.map((entry) => entry.lead + entry.sentence).join('').replace(/[ \t]+([,.;:!?])/g, '$1').trim();
+  const formatted = kept.map((entry) => entry.lead + entry.sentence).join('').replace(/[ \t]+([,.;:!?])/g, '$1').trim();
 
   return { text: formatted, removed };
 }
@@ -222,6 +228,9 @@ export class IncrementalSentenceShaper {
   private lastShownKind: LineKind | undefined;
   /** The first sentence of a line was not shown, so the next one of the same line starts the line instead. */
   private lineStartCarried = false;
+  /** How many sentences and how many list or table lines have been shown, for a style that counts them apart. */
+  private sentencesShown = 0;
+  private structureShown = 0;
   private compiledShape: CompiledShapeContext;
   private questionsSeen = 0;
   private readonly voiceRules: Array<{ pattern: RegExp; replacement: string }>;
@@ -322,7 +331,8 @@ export class IncrementalSentenceShaper {
       }
     }
 
-    const shaped = shapeSentence(sentence, this.compiledShape, this.emittedSentences.length, this.questionsSeen);
+    const apart = this.compiledShape.style.maxListLines !== undefined && (kind === 'list' || kind === 'listcont' || kind === 'table');
+    const shaped = shapeSentence(sentence, this.compiledShape, this.compiledShape.style.maxListLines !== undefined ? this.sentencesShown : this.emittedSentences.length, this.questionsSeen, kind, this.structureShown);
     if (!shaped.keep) {
       console.warn(`[ReplyShaper] removed sentence during stream: "${sentence}" (${shaped.reason})`);
       this.lineStartCarried = this.lineStartCarried || startsLine;
@@ -337,8 +347,9 @@ export class IncrementalSentenceShaper {
     const starts = startsLine || this.lineStartCarried;
     const shownKind: LineKind = startsLine || !starts ? kind : 'text';
     this.lineStartCarried = false;
-    const delta = leadFor(shownKind, this.lastShownKind, starts) + sentence;
+    const delta = leadFor(shownKind, this.lastShownKind, starts, startsLine ? indent : '') + sentence;
     this.lastShownKind = shownKind;
+    if (apart) this.structureShown++; else this.sentencesShown++;
     this.emittedSentences.push(sentence);
     this.streamedText += delta;
     this.onApprovedSentence(sentence, delta);

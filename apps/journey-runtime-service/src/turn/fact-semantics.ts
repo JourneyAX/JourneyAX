@@ -32,6 +32,11 @@ export interface TurnStyleConfig {
 export interface ReplyStyle {
   /** The reply keeps at most this many sentences. */
   maxSentences: number;
+  /**
+   * When set, list items and table rows are counted against this limit instead of `maxSentences`: a list of records is data, not
+   * chatter, and cutting it in the middle of an item helps nobody. Unset, they count as sentences, as they always did.
+   */
+  maxListLines?: number;
   /** Bullet and numbered lines are removed: cards show options and steps. */
   dropListLines: boolean;
   /** A sentence that names the company is removed: the customer is already in its shop. */

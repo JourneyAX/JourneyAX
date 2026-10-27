@@ -159,6 +159,63 @@ async function main() {
     assert.deepEqual(shaped.removed.map((entry) => entry.reason), ['list', 'list']);
   });
 
+  const DEALS = [
+    'These deals are open.',
+    '1. **OPP-0006, Ngata & Penrose Joinery:**',
+    '   - Amount: $6,612 | Stage: Propose',
+    '   - Next step: call to talk through delivery',
+    '2. **OPP-0023, Okafor & Yardley Painters:**',
+    '   - Amount: $5,733 | Stage: Negotiate',
+    '   - Next step: call to talk through delivery',
+    '3. **OPP-0030, Hartley & Hartley Concrete:**',
+    '   - Amount: $798 | Stage: Propose',
+    '   - Next step: send the quote',
+    'The first two are due to close this week.',
+  ].join('\n');
+
+  await suite.test('an item under an item keeps how far it was indented, so nested lists stay nested', () => {
+    const shaped = shapeReply(DEALS, context({ style: longStyle }));
+    assert.equal(shaped.text, DEALS.replace(/\nThe first/, '\n\nThe first'), 'only the closing sentence moves: it starts a paragraph after the list');
+    assert.ok(shaped.text.includes('\n   - Amount: $6,612 | Stage: Propose\n   - Next step: call to talk through delivery\n2. '));
+  });
+
+  await suite.test('a style with a list limit counts list lines apart from sentences, so a list of records is not cut in the middle', () => {
+    const counted: any = { ...longStyle, maxSentences: 3, maxListLines: 40 };
+    const whole = shapeReply(DEALS, context({ style: counted }));
+    assert.deepEqual(whole.removed, []);
+    assert.equal((whole.text.match(/^\s*- /gm) || []).length, 6, 'all six detail lines are there');
+    assert.ok(whole.text.endsWith('The first two are due to close this week.'));
+    const tight: any = { ...longStyle, maxSentences: 3, maxListLines: 5 };
+    const cut = shapeReply(DEALS, context({ style: tight }));
+    assert.equal(cut.removed.filter((entry) => entry.reason === 'too long').length, 4, 'the 6th..9th list lines are over the limit of five');
+    assert.ok(!cut.text.includes('send the quote'));
+  });
+
+  await suite.test('a pack may set the list limit, and it is checked', async () => {
+    const { validatePackSettings } = await import('../../project-service/src/pack-settings');
+    assert.equal(validatePackSettings({ interpretationPolicy: { replyStyle: { maxListLines: 30 } } }).ok, true);
+    for (const bad of [0, 2.5, 201, '30', null]) {
+      assert.equal(validatePackSettings({ interpretationPolicy: { replyStyle: { maxListLines: bad } } }).ok, false, JSON.stringify(bad));
+    }
+  });
+
+  await suite.test('without a list limit the old count stands: every list line is a sentence', () => {
+    const old: any = { ...longStyle, maxSentences: 4 };
+    const cut = shapeReply(DEALS, context({ style: old }));
+    assert.equal(cut.text.split('\n').filter(Boolean).length, 4);
+    assert.ok(cut.removed.every((entry) => entry.reason === 'too long'));
+  });
+
+  await suite.test('streamed in any size of piece, a nested list and a list limit read the same as the reply shaped whole', () => {
+    const counted: any = { ...longStyle, maxSentences: 3, maxListLines: 40 };
+    for (const size of [1, 4, 9, 1000]) {
+      const shaper = new IncrementalSentenceShaper(context({ style: counted }), [], false, () => {});
+      for (let at = 0; at < DEALS.length; at += size) shaper.processDelta(DEALS.slice(at, at + size));
+      shaper.flush();
+      assert.equal(shaper.getStreamedText(), shapeReply(DEALS, context({ style: counted })).text, `deals in pieces of ${size}`);
+    }
+  });
+
   await suite.test('streamed in any size of piece, the reply reads exactly as the one shaped whole', () => {
     const RUN_ON = 'Here is the range:\n- Standard board (15 products)\n- Specialist board (65 products)\nCustomers usually also need tape and compound. Ask us.\n\n| Size | Price |\n| 10mm | $20 |\nThat is all.';
     for (const [name, reply] of Object.entries({ STEPS, BRIEF, RUN_ON })) {

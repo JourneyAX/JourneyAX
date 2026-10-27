@@ -34,7 +34,7 @@ import { orderRef, rememberOrder } from '@/components/canvas/money';
 import { closeCanvas, closePanelCard, getCanvas, openCanvas, openPanelCard } from '@/lib/shell/sidePanelStore';
 import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
 import { resolveHero } from '@/lib/shell/greeting';
-import { connectorStepLabel, UNKNOWN_STEP } from '@/lib/shell/stepLabel';
+import { connectorStepLabel, isCompletionNotice, UNKNOWN_STEP } from '@/lib/shell/stepLabel';
 import { fillGreeting, parseWelcome, welcomeStarters, type Welcome } from '@/lib/shell/welcome';
 import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } from '@/lib/shell/capabilities';
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
@@ -148,6 +148,7 @@ async function streamChat(
   const decoder = new TextDecoder();
   let buffer = '';
   let streamText = '';
+  let sawStartedStep = false;
   let doneData: any = null;
   let capturedSessionId: string | null = null;
   let sentSessionId: string | undefined;
@@ -172,7 +173,10 @@ async function streamChat(
       capturedSessionId = payload.sessionId;
     } else if (ev === 'capability') {
       const toolId = payload.toolId || payload.name;
-      if (toolId) pushStep(toolId, { connector: typeof payload.connector === 'string' ? payload.connector : undefined, tool: typeof payload.tool === 'string' ? payload.tool : undefined });
+      // A notice that a step has finished (it carries a status) says nothing new when the steps were already shown as they began.
+      const finished = isCompletionNotice(payload);
+      if (!finished) sawStartedStep = true;
+      if (toolId && !(finished && sawStartedStep)) pushStep(toolId, { connector: typeof payload.connector === 'string' ? payload.connector : undefined, tool: typeof payload.tool === 'string' ? payload.tool : undefined });
     } else if (ev === 'token') {
       streamText += payload.delta || '';
       setMessages([...newMessages, { role: 'assistant', content: streamText }]);

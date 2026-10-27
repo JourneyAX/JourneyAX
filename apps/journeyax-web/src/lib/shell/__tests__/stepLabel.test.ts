@@ -3,7 +3,7 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/shell/__tests__/stepLabel.test.ts
  */
 import assert from 'node:assert/strict';
-import { connectorStepLabel, UNKNOWN_STEP } from '../stepLabel';
+import { connectorStepLabel, isCompletionNotice, UNKNOWN_STEP } from '../stepLabel';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -33,6 +33,14 @@ check('no label carries a tool name, and a step that is not a connector one is l
     assert.ok(label && !/_/.test(label), String(label));
   }
   assert.equal(connectorStepLabel('search_products'), undefined);
+});
+
+check('a notice that a step finished is told apart from the step beginning', () => {
+  assert.equal(isCompletionNotice({ toolId: 'call_connector_tool', status: 'success' }), true);
+  assert.equal(isCompletionNotice({ toolId: 'call_connector_tool', status: 'failure' }), true);
+  assert.equal(isCompletionNotice({ toolId: 'call_connector_tool', connector: 'salesforce', tool: 'list_cases' }), false);
+  assert.equal(isCompletionNotice({ toolId: 'use_skill' }), false);
+  assert.equal(isCompletionNotice(null), false);
 });
 
 console.log(`\n${passed} passed`);

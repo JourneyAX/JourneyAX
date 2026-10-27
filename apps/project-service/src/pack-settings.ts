@@ -122,10 +122,11 @@ export function validatePackSettings(dto: {
       if (policy.replyStyle !== undefined) {
         const style = policy.replyStyle;
         if (!style || typeof style !== 'object' || Array.isArray(style)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle must be an object' };
-        const allowedStyleKeys = ['maxSentences', 'dropListLines', 'dropCompanyName', 'forbiddenPhrases', 'rules', 'allowFollowUpQuestion', 'maxQuestions', 'turnStyles'];
+        const allowedStyleKeys = ['maxSentences', 'maxListLines', 'dropListLines', 'dropCompanyName', 'forbiddenPhrases', 'rules', 'allowFollowUpQuestion', 'maxQuestions', 'turnStyles'];
         const unknownStyle = Object.keys(style).filter((key) => !allowedStyleKeys.includes(key));
         if (unknownStyle.length) return { ok: false, message: `Invalid interpretationPolicy: replyStyle has unknown key(s) ${unknownStyle.join(', ')}` };
         if (style.maxSentences !== undefined && (!Number.isInteger(style.maxSentences) || style.maxSentences < 1 || style.maxSentences > 16)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxSentences must be a whole number from 1 to 16' };
+        if (style.maxListLines !== undefined && (!Number.isInteger(style.maxListLines) || style.maxListLines < 1 || style.maxListLines > 200)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxListLines must be a whole number from 1 to 200' };
         for (const flag of ['dropListLines', 'dropCompanyName', 'allowFollowUpQuestion']) if (style[flag] !== undefined && typeof style[flag] !== 'boolean') return { ok: false, message: `Invalid interpretationPolicy: replyStyle.${flag} must be true or false` };
         if (style.maxQuestions !== undefined && (!Number.isInteger(style.maxQuestions) || style.maxQuestions < 0 || style.maxQuestions > 5)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxQuestions must be a whole number from 0 to 5' };
         for (const list of ['forbiddenPhrases', 'rules']) if (style[list] !== undefined && !isStringArray(style[list])) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.${list} must be a list of non-empty strings` };

@@ -118,6 +118,37 @@ check('a heading line shows as a bold line without its marks, and a line indente
   assert.ok(html.includes('Paint within 14 days.'));
 });
 
+check('a list inside a list stays inside it: each deal is a numbered item with its own bullets', () => {
+  const html = replyWith([
+    'These deals are open.',
+    '1. **OPP-0006, Ngata & Penrose:**',
+    '   - Amount: $6,612 | Stage: Propose',
+    '   - Next step: call to talk through delivery',
+    '2. **OPP-0023, Okafor & Yardley:**',
+    '   - Amount: $5,733 | Stage: Negotiate',
+    '   - Next step: call to talk through delivery',
+    '3. **OPP-0030, Hartley & Hartley:**',
+    '   - Amount: $798 | Stage: Propose',
+    '   - Next step: send the quote',
+  ].join('\n'));
+  assert.equal(count(html, 'ol'), 1, 'one numbered list of three deals');
+  assert.equal(count(html, 'ul'), 3, 'one bulleted list inside each deal');
+  assert.equal(count(html, 'li'), 9);
+  const firstDeal = html.slice(html.indexOf('<li>'), html.indexOf('</li></ul></li>'));
+  assert.ok(firstDeal.includes('OPP-0006') && firstDeal.includes('<ul') && firstDeal.includes('Amount: $6,612'), 'the bullets are inside the first deal');
+  assert.ok(!firstDeal.includes('OPP-0023'), 'and the second deal is not');
+  assert.ok(html.indexOf('OPP-0023') > html.indexOf('Amount: $6,612'), 'order is kept');
+});
+
+check('a bullet list that goes back out to a numbered one, and a plain line under a nested item, are kept in place', () => {
+  const html = replyWith(['1. First', '   - inner a', '     more about a', '   - inner b', '2. Second'].join('\n'));
+  assert.equal(count(html, 'ol'), 1);
+  assert.equal(count(html, 'li'), 4);
+  const innerA = html.slice(html.indexOf('inner a'), html.indexOf('inner b'));
+  assert.ok(innerA.includes('more about a'), 'the extra line stays with inner a');
+  assert.ok(html.indexOf('Second') > html.indexOf('inner b'));
+});
+
 check('a line that only looks like a heading is left alone', () => {
   for (const text of ['Item #5 is out of stock', 'C#', '#hashtag only']) {
     assert.ok(!replyWith(text).includes('msg__heading'), text);

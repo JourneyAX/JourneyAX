@@ -28,38 +28,84 @@ const NUMBERED_LINE = /^\s*(\d{1,3})[.)]\s+(.*)$/;
 // A heading line ("### Installation"): shown as a bold line of its own, without the marks.
 const HEADING_LINE = /^\s{0,3}#{1,6}\s+(\S.*)$/;
 
+/** One list: its items, and under an item the lists that sit inside it. */
+interface ListNode { ordered: boolean; start: number; items: Array<{ lines: string[]; sub: ListNode[] }> }
+
 type Block =
   | { kind: 'heading'; text: string }
   | { kind: 'text'; lines: string[] }
-  | { kind: 'bullets'; items: string[] }
-  | { kind: 'numbers'; start: number; items: string[] };
+  | { kind: 'list'; list: ListNode };
+
+const indentOf = (line: string) => (/^[ \t]*/.exec(line)?.[0] ?? '').replace(/\t/g, '    ').length;
 
 /**
- * The lines of one paragraph as runs of plain lines, bullet lines and numbered lines, in order. A line indented under a list item
- * belongs to that item (it is shown under the item's words, not as a paragraph that breaks the list).
+ * The lines of one paragraph as runs of plain lines and lists, in order. A list item indented further than the item above it sits
+ * inside that item (a list within a list); a plain line indented under an item belongs to that item.
  */
 function blocksOf(lines: string[]): Block[] {
   const blocks: Block[] = [];
+  // The lists open at the moment, the outermost first, each with how far its markers are indented.
+  let open: Array<{ indent: number; node: ListNode }> = [];
+  const newList = (ordered: boolean, start: number): ListNode => ({ ordered, start, items: [] });
   for (const line of lines) {
     const heading = HEADING_LINE.exec(line);
-    if (heading) { blocks.push({ kind: 'heading', text: heading[1] }); continue; }
+    if (heading) { open = []; blocks.push({ kind: 'heading', text: heading[1] }); continue; }
     const bullet = BULLET_LINE.exec(line);
     const numbered = bullet ? null : NUMBERED_LINE.exec(line);
-    const last = blocks[blocks.length - 1];
-    if (!bullet && !numbered && /^\s+\S/.test(line) && (last?.kind === 'bullets' || last?.kind === 'numbers')) {
-      last.items[last.items.length - 1] += `\n${line.trim()}`;
+    if (bullet || numbered) {
+      const indent = indentOf(line);
+      const ordered = Boolean(numbered);
+      const text = bullet ? bullet[1] : numbered![2];
+      const start = numbered ? Number(numbered[1]) : 1;
+      while (open.length > 1 && indent < open[open.length - 1].indent) open.pop();
+      const top = open[open.length - 1];
+      if (!top) {
+        const node = newList(ordered, start);
+        blocks.push({ kind: 'list', list: node });
+        open = [{ indent, node }];
+      } else if (indent > top.indent) {
+        const parent = top.node.items[top.node.items.length - 1];
+        const node = newList(ordered, start);
+        parent.sub.push(node);
+        open.push({ indent, node });
+      } else if (top.node.ordered !== ordered) {
+        // The kind of list changes at the same depth: a new list starts there (bullets and numbers stay separate lists).
+        const node = newList(ordered, start);
+        if (open.length === 1) blocks.push({ kind: 'list', list: node });
+        else open[open.length - 2].node.items[open[open.length - 2].node.items.length - 1].sub.push(node);
+        open[open.length - 1] = { indent, node };
+      }
+      open[open.length - 1].node.items.push({ lines: [text], sub: [] });
       continue;
     }
-    if (bullet) {
-      if (last?.kind === 'bullets') last.items.push(bullet[1]);
-      else blocks.push({ kind: 'bullets', items: [bullet[1]] });
-    } else if (numbered) {
-      if (last?.kind === 'numbers') last.items.push(numbered[2]);
-      else blocks.push({ kind: 'numbers', start: Number(numbered[1]), items: [numbered[2]] });
-    } else if (last?.kind === 'text') last.lines.push(line);
+    if (open.length && /^\s+\S/.test(line)) {
+      const items = open[open.length - 1].node.items;
+      items[items.length - 1].lines.push(line.trim());
+      continue;
+    }
+    open = [];
+    const last = blocks[blocks.length - 1];
+    if (last?.kind === 'text') last.lines.push(line);
     else blocks.push({ kind: 'text', lines: [line] });
   }
   return blocks;
+}
+
+function renderList(node: ListNode, key: React.Key, margin: string): React.ReactNode {
+  const items = node.items.map((item, iIdx) => (
+    <li key={iIdx}>
+      {item.lines.map((line, lIdx) => (
+        <span key={lIdx}>
+          {lIdx > 0 && <br />}
+          {parseBold(line)}
+        </span>
+      ))}
+      {item.sub.map((inner, sIdx) => renderList(inner, `s${sIdx}`, '2px 0 0'))}
+    </li>
+  ));
+  return node.ordered
+    ? <ol key={key} className="msg__list" start={node.start} style={{ margin }}>{items}</ol>
+    : <ul key={key} className="msg__list" style={{ margin }}>{items}</ul>;
 }
 
 // Simple markdown parser for chat messages — handles **bold**, *italic*, bullet and numbered lists, and line breaks
@@ -94,19 +140,7 @@ function renderMarkdown(text: string) {
                 </p>
               );
             }
-            const items = block.items.map((item, iIdx) => (
-              <li key={iIdx}>
-                {item.split('\n').map((line, lIdx) => (
-                  <span key={lIdx}>
-                    {lIdx > 0 && <br />}
-                    {parseBold(line)}
-                  </span>
-                ))}
-              </li>
-            ));
-            return block.kind === 'bullets'
-              ? <ul key={bIdx} className="msg__list" style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>{items}</ul>
-              : <ol key={bIdx} className="msg__list" start={block.start} style={{ margin: bIdx > 0 ? '6px 0 0' : 0 }}>{items}</ol>;
+            return renderList(block.list, bIdx, bIdx > 0 ? '6px 0 0' : '0');
           })}
         </div>
       );

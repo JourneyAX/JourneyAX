@@ -16,7 +16,8 @@ export function sanitizeMessageText(raw: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/[ \t]{2,}/g, ' ')
+    // Runs of spaces inside a line become one; the indentation at the start of a line stays (it says which list item sits under which).
+    .replace(/(\S)[ \t]{2,}/g, '$1 ')
     .trim();
 
   // Strip accidental serialized UI envelope JSON

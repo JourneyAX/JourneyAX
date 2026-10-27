@@ -49,3 +49,11 @@ export function connectorStepLabel(toolName: string, connector?: string, tool?: 
 
 /** What the strip says for a tool the page has no wording for: nothing technical, just that work is going on. */
 export const UNKNOWN_STEP = 'Working on it';
+
+/**
+ * A `capability` event that carries a status is the notice that a step finished, sent once the turn is committed. The same step was
+ * already announced when it began, so showing the notice too lists every step twice.
+ */
+export function isCompletionNotice(payload: unknown): boolean {
+  return typeof (payload as { status?: unknown } | null | undefined)?.status === 'string';
+}

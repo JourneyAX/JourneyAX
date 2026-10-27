@@ -55,6 +55,9 @@ import type { ContentPageRepository } from '../kernel/content-page.repository';
 import type { FormSubmissionRepository } from '../kernel/form-submission.repository';
 import { announcesNextStep, STALL_NUDGE } from './stall';
 
+/** How many list items and table rows a colleague's reply may show before it is cut. */
+const STAFF_MAX_LIST_LINES = 40;
+
 export interface AgentTurnOptions {
   command: TurnCommand;
   release: BusinessPackRelease;
@@ -854,8 +857,11 @@ export class AgentTurnLoop {
       decision: tempDecision,
     });
 
+    // A colleague asks for records (deals, cases, orders): the list is the answer, so it is counted apart from the sentences and not cut
+    // in the middle of an item. A style that sets its own `maxListLines` keeps it; a shopper's reply is counted as it always was.
+    const replyStyle = principal.audience === 'staff' && baseStyle.maxListLines === undefined ? { ...baseStyle, maxListLines: STAFF_MAX_LIST_LINES } : baseStyle;
     const shapeContext: ShapeContext = {
-      style: baseStyle,
+      style: replyStyle,
       companyNames: [release.profile?.companyName || release.manifest?.name || ''].filter(Boolean),
       internalIds: [],
       questionCardShown: false,
