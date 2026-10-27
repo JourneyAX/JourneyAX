@@ -803,6 +803,14 @@
               ]
             },
             {
+              "name": "list_account_balances",
+              "sideEffect": "read",
+              "summary": "List trade accounts with balance, credit limit and overdue amount, most overdue first.",
+              "claimClasses": [
+                "catalog_fact"
+              ]
+            },
+            {
               "name": "list_branches",
               "sideEffect": "read",
               "summary": "List branches, or find one by name."
@@ -1684,6 +1692,19 @@
         },
         {
           "connectorId": "ace-erp",
+          "tool": "list_account_balances",
+          "audience": "staff",
+          "groups": [
+            "finance",
+            "customer-service",
+            "sales-managers",
+            "leadership",
+            "administrators"
+          ],
+          "state": "allow"
+        },
+        {
+          "connectorId": "ace-erp",
           "tool": "list_branches",
           "audience": "staff",
           "groups": [
@@ -2053,6 +2074,13 @@
               "prompt": "I want to check an order. Ask me for the order number.",
               "needs": [
                 "commercetools.get_order"
+              ]
+            },
+            {
+              "label": "Which accounts are overdue?",
+              "prompt": "Which trade accounts are overdue, and by how much?",
+              "needs": [
+                "ace-erp.list_account_balances"
               ]
             }
           ]
@@ -3655,6 +3683,376 @@
                 "subtitle": "{city} · {industry}",
                 "detail": "Account owner {owner}",
                 "ask": "Show me the open cases and orders for {name}."
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "The customer",
+              "from": "record",
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "Their open cases",
+              "from": "record.cases",
+              "limit": 3,
+              "row": {
+                "title": "{subject}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "groups": [
+            "finance"
+          ],
+          "title": "My accounts",
+          "subtitle": "What is overdue, who owes the most, and the invoice questions waiting on us.",
+          "tile": [
+            "overdue-total",
+            "overdue-accounts",
+            "invoice-queries"
+          ],
+          "metrics": [
+            {
+              "id": "overdue-total",
+              "label": "Overdue in total",
+              "source": {
+                "connector": "ace-erp",
+                "tool": "list_account_balances",
+                "args": {
+                  "minOverdue": 0.01,
+                  "limit": 25
+                }
+              },
+              "measure": "sum",
+              "field": "overdue",
+              "format": "money",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Which trade accounts are overdue, and by how much?"
+            },
+            {
+              "id": "overdue-accounts",
+              "label": "Accounts overdue",
+              "source": {
+                "connector": "ace-erp",
+                "tool": "list_account_balances",
+                "args": {
+                  "minOverdue": 0.01,
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "warn"
+                }
+              ],
+              "ask": "Which trade accounts are overdue, and by how much?"
+            },
+            {
+              "id": "owed-total",
+              "label": "Owed by trade accounts",
+              "source": {
+                "connector": "ace-erp",
+                "tool": "list_account_balances",
+                "args": {
+                  "limit": 30
+                }
+              },
+              "measure": "sum",
+              "field": "balance",
+              "format": "money",
+              "ask": "Which trade accounts owe us the most?"
+            },
+            {
+              "id": "invoice-queries",
+              "label": "Invoice and credit queries",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "subject",
+                  "op": "in",
+                  "value": "Invoice query,Credit note"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "warn"
+                }
+              ],
+              "ask": "Show me the open invoice and credit note queries."
+            },
+            {
+              "id": "high-cases",
+              "label": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Show me the high-priority cases that are open."
+            }
+          ],
+          "sections": [
+            {
+              "id": "overdue",
+              "title": "Most overdue",
+              "source": {
+                "connector": "ace-erp",
+                "tool": "list_account_balances",
+                "args": {
+                  "minOverdue": 0.01,
+                  "limit": 25
+                }
+              },
+              "sort": {
+                "field": "overdue",
+                "order": "desc"
+              },
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Terms {terms} · last paid {lastPaymentAt|date}",
+                "detail": "Balance {balance|price} of {creditLimit|price} limit",
+                "badge": "Overdue",
+                "tones": {
+                  "Overdue": "bad"
+                },
+                "amount": "{overdue|price}",
+                "ask": "What is overdue on {name}, and what are their payment terms?"
+              },
+              "empty": "No account is overdue.",
+              "more": {
+                "label": "See the overdue accounts in the chat",
+                "prompt": "Which trade accounts are overdue, and by how much?"
+              }
+            },
+            {
+              "id": "owed",
+              "title": "Owing the most",
+              "source": {
+                "connector": "ace-erp",
+                "tool": "list_account_balances",
+                "args": {
+                  "limit": 30
+                }
+              },
+              "sort": {
+                "field": "balance",
+                "order": "desc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Terms {terms} · last paid {lastPaymentAt|date}",
+                "detail": "Balance {balance|price} of {creditLimit|price} limit",
+                "amount": "{overdue|price} overdue",
+                "ask": "What is the balance on {name}, and is anything overdue?"
+              },
+              "empty": "No balances to show."
+            },
+            {
+              "id": "queries",
+              "title": "Invoice and credit queries",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "where": [
+                {
+                  "field": "subject",
+                  "op": "in",
+                  "value": "Invoice query,Credit note"
+                }
+              ],
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              },
+              "empty": "No invoice or credit note queries are open.",
+              "more": {
+                "label": "See the open cases in the chat",
+                "prompt": "Show me the open cases."
+              }
+            }
+          ],
+          "cards": [
+            {
+              "connector": "ace-erp",
+              "tool": "list_account_balances",
+              "heading": "Account balances",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Terms {terms} · last paid {lastPaymentAt|date}",
+                "detail": "Balance {balance|price} of {creditLimit|price} limit",
+                "amount": "{overdue|price} overdue",
+                "ask": "What is the balance on {name}, and is anything overdue?"
+              }
+            },
+            {
+              "connector": "ace-erp",
+              "tool": "account_balance",
+              "heading": "The account",
+              "from": "record",
+              "row": {
+                "title": "{name}",
+                "subtitle": "Terms {terms} · last paid {lastPaymentAt|date}",
+                "detail": "Balance {balance|price} of {creditLimit|price} limit",
+                "amount": "{overdue|price} overdue",
+                "ask": "What is the balance on {name}, and is anything overdue?"
+              }
+            },
+            {
+              "connector": "ace-erp",
+              "tool": "trade_price",
+              "heading": "Trade prices",
+              "from": "record",
+              "row": {
+                "title": "{title}",
+                "subtitle": "SKU {sku} · per {unitOfMeasure}",
+                "detail": "Gold {goldPrice|price} · Silver {silverPrice|price} · Bronze {bronzePrice|price}",
+                "amount": "{retailPrice|price}"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "list_orders",
+              "heading": "Orders",
+              "limit": 6,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and what is on it?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "order_history",
+              "heading": "Their orders",
+              "limit": 5,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and what is on it?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "get_order",
+              "heading": "The order",
+              "from": "record",
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "badge": "{state}",
+                "tones": {
+                  "Complete": "good",
+                  "Cancelled": "bad",
+                  "Confirmed": "info"
+                },
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and when will it arrive?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "get_order",
+              "heading": "What is on the order",
+              "from": "record.lines",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Quantity {quantity}",
+                "amount": "{total|price}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "list_cases",
+              "heading": "Cases",
+              "limit": 6,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "find_account",
+              "heading": "Accounts",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}",
+                "ask": "What is the balance on {name}, and is anything overdue?"
               }
             },
             {

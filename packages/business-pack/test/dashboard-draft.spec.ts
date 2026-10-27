@@ -54,7 +54,7 @@ for (const entry of setting.entries) {
 }
 
 check('a person in two teams gets the first entry that fits, and a login with no dashboard team gets none', () => {
-  assert.equal(dashboardFor(setting, { audience: 'staff', groups: ['finance'] }), undefined);
+  assert.equal(dashboardFor(setting, { audience: 'staff', groups: ['no-such-team'] }), undefined, 'a team with no entry gets none (and nobody is shown another team’s)');
   assert.equal(dashboardFor(setting, { audience: 'shopper', groups: [] }), undefined);
 });
 
