@@ -229,6 +229,105 @@ export const VoiceSchema = z.object({
   })).max(40),
 }).strict();
 
+const DashboardSourceSchema = z.object({
+  connector: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/i).max(60),
+  tool: z.string().regex(/^[a-z0-9_]+$/i).max(60),
+  /** Inputs for the tool. `{me.name}` stands for the signed-in person's name from `people`; an input that cannot be filled is left out. */
+  args: z.record(z.string().min(1).max(40), z.union([z.string().max(120), z.number(), z.boolean()])).optional(),
+}).strict();
+
+const DashboardWhereSchema = z.object({
+  field: z.string().min(1).max(40),
+  op: z.enum(['equals', 'notEquals', 'before', 'onOrBefore', 'after', 'withinDays']),
+  value: z.union([z.string().max(80), z.number()]).optional(),
+}).strict();
+
+const DashboardToneSchema = z.enum(['good', 'warn', 'bad', 'info']);
+
+/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`. */
+const DashboardRowSchema = z.object({
+  title: z.string().min(1).max(160),
+  subtitle: z.string().max(200).optional(),
+  detail: z.string().max(200).optional(),
+  badge: z.string().max(80).optional(),
+  /** The tone of the badge by the badge's own text ("High" is bad). */
+  tones: z.record(z.string().min(1).max(60), DashboardToneSchema).optional(),
+  amount: z.string().max(80).optional(),
+  /** What pressing the line asks in the chat. */
+  ask: z.string().max(300).optional(),
+}).strict();
+
+const DashboardId = z.string().min(1).max(40).regex(/^[a-z0-9][a-z0-9_-]*$/i);
+
+/**
+ * What each team sees in the corner of the chat and in the dashboard it opens (pack `extensions.dashboard`). Everything is the pack's:
+ * the numbers (`metrics`), the lists under them (`sections`) and the cards the chat shows when the assistant looks something up
+ * (`cards`) say which tool to call and which fields to show. The first entry that fits the person is used. Nothing here grants access:
+ * every call goes through the same connector gate as the assistant's, so a number the person may not read is left blank.
+ */
+export const DashboardSchema = z.object({
+  /** The shop's time zone, for "closing in 14 days" and the dates on cards (UTC when left out). */
+  timeZone: z.string().min(1).max(60).optional(),
+  /** The signed-in person's name in the connected systems, for inputs that say `{me.name}` (login → name). */
+  people: z.record(z.string().min(1).max(120), z.object({ name: z.string().min(1).max(120) }).strict()).optional(),
+  entries: z.array(z.object({
+    groups: z.array(z.string().min(1).max(60)).min(1).max(10).optional(),
+    audience: z.enum(['shopper', 'staff']).optional(),
+    title: z.string().min(1).max(40),
+    subtitle: z.string().max(160).optional(),
+    /** Ids of the metrics shown on the small tile in the corner, at most three. */
+    tile: z.array(DashboardId).min(1).max(3),
+    metrics: z.array(z.object({
+      id: DashboardId,
+      label: z.string().min(1).max(40),
+      source: DashboardSourceSchema,
+      measure: z.enum(['count', 'sum']),
+      /** The field to add up, for `sum`. */
+      field: z.string().min(1).max(40).optional(),
+      where: z.array(DashboardWhereSchema).max(3).optional(),
+      format: z.enum(['number', 'money']).optional(),
+      /** A second figure under the number, for example the money the deals are worth. `{value}` is the figure. */
+      hint: z.object({ field: z.string().min(1).max(40), format: z.enum(['number', 'money']).optional(), text: z.string().min(1).max(80) }).strict().optional(),
+      /** The number's colour: the highest `atLeast` that the number reaches. */
+      tone: z.array(z.object({ atLeast: z.number(), tone: DashboardToneSchema }).strict()).max(3).optional(),
+      /** What pressing the number asks in the chat. */
+      ask: z.string().max(300).optional(),
+    }).strict().refine((metric) => metric.measure !== 'sum' || Boolean(metric.field), { message: 'a sum needs the field to add up' })).max(8),
+    sections: z.array(z.object({
+      id: DashboardId,
+      title: z.string().min(1).max(60),
+      source: DashboardSourceSchema,
+      /** The dotted path to the list in the tool's answer; the tool's own `records` when left out. */
+      from: z.string().max(60).optional(),
+      where: z.array(DashboardWhereSchema).max(3).optional(),
+      sort: z.object({ field: z.string().min(1).max(40), order: z.enum(['asc', 'desc']).optional() }).strict().optional(),
+      limit: z.number().int().min(1).max(10).optional(),
+      row: DashboardRowSchema,
+      empty: z.string().max(160).optional(),
+      /** A button under the list that carries on in the chat. */
+      more: z.object({ label: z.string().min(1).max(40), prompt: z.string().min(1).max(300) }).strict().optional(),
+    }).strict()).max(6),
+    /** Cards the chat shows by itself when the assistant has looked something up, so the reply can stay short. */
+    cards: z.array(z.object({
+      connector: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/i).max(60),
+      tool: z.string().regex(/^[a-z0-9_]+$/i).max(60),
+      heading: z.string().min(1).max(60),
+      from: z.string().max(60).optional(),
+      where: z.array(DashboardWhereSchema).max(3).optional(),
+      sort: z.object({ field: z.string().min(1).max(40), order: z.enum(['asc', 'desc']).optional() }).strict().optional(),
+      limit: z.number().int().min(1).max(8).optional(),
+      row: DashboardRowSchema,
+    }).strict()).max(12),
+  }).strict()
+    .refine((entry) => Boolean(entry.groups?.length || entry.audience), { message: 'name the groups or the audience the entry is for' })
+    .refine((entry) => entry.tile.every((id) => entry.metrics.some((metric) => metric.id === id)), { message: 'every tile figure must be one of the metrics' })
+    .refine((entry) => new Set(entry.metrics.map((metric) => metric.id)).size === entry.metrics.length, { message: 'metric ids must be different' })
+    .refine((entry) => new Set(entry.sections.map((section) => section.id)).size === entry.sections.length, { message: 'section ids must be different' })).max(20),
+}).strict();
+
+export type DashboardSetting = z.infer<typeof DashboardSchema>;
+export type DashboardEntry = DashboardSetting['entries'][number];
+
 /**
  * What the empty chat says to each kind of person (pack `extensions.welcome`): a headline, a line under it and a few things to ask, per
  * team. The first entry that fits the person is used; an entry names the staff groups it is for (the normalised team names the access

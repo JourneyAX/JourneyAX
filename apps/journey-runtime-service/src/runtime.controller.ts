@@ -119,6 +119,25 @@ export class RuntimeController {
     });
   }
 
+  /**
+   * The corner tile and the dashboard for the signed-in person (pack `extensions.dashboard`). The person is the one the verified identity
+   * names; the figures are read through the same connector gate the assistant uses, so they are only what this person may see.
+   */
+  @Get('dashboard')
+  async getDashboard(
+    @Param('tenantId') tenantId: string,
+    @Param('environmentId') environmentId: string | undefined,
+    @Req() req: any
+  ) {
+    const authContext = req.authContext;
+    const env = (environmentId || authContext?.environmentId || 'production') as any;
+    return this.runtimeService.getDashboard(authContext.tenantId, env, {
+      userId: authContext.principalId,
+      role: authContext.principalRole,
+      groups: authContext.principalGroups,
+    });
+  }
+
   @InternalOnly()
   @Get('engine-mode')
   async getEngineMode(

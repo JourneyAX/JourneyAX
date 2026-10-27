@@ -4,6 +4,7 @@ export * from './skill-access';
 export * from './tool-states';
 export * from './plugins';
 export * from './welcome';
+export * from './dashboard';
 export * from './connector-policy';
 export * from './validator';
 export * from './journey';

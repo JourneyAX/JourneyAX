@@ -168,6 +168,30 @@ export class CanonicalRuntimeAdapter {
   }
 
   /**
+   * The corner tile and dashboard for this person, worked out by the runtime as that person (the verified role and staff groups are signed
+   * into the call). The runtime may need a few seconds when a system is slow, so this waits longer than the connector list does.
+   */
+  async getDashboard(
+    tenantId: string,
+    person: { sub?: string; role?: string; groups?: string[] } | undefined,
+    environmentId: string = 'production'
+  ): Promise<{ dashboard?: any }> {
+    const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/dashboard`;
+    const headers = await this.buildAuthenticatedHeaders({
+      tenantId,
+      environmentId: environmentId as any,
+      correlationId: `dashboard_${Date.now()}`,
+      principalId: person?.sub || 'anonymous',
+      principalRole: person?.role || 'customer',
+      principalGroups: person?.groups,
+    } as any);
+    const res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`Runtime /dashboard returned status ${res.status}`);
+    const body: any = await res.json();
+    return body?.dashboard && typeof body.dashboard === 'object' ? { dashboard: body.dashboard } : {};
+  }
+
+  /**
    * Delegates a buffered turn request to canonical /runtime/turn.
    */
   async runTurn(command: TurnCommand): Promise<TurnResult> {

@@ -2127,6 +2127,343 @@
         }
       ]
     },
+    "dashboard": {
+      "timeZone": "Pacific/Auckland",
+      "people": {
+        "sales@placemakers.demo": {
+          "name": "Jess Penrose"
+        }
+      },
+      "entries": [
+        {
+          "groups": [
+            "sales"
+          ],
+          "title": "My day",
+          "subtitle": "Your deals, and the cases that could slow them down.",
+          "tile": [
+            "open-deals",
+            "closing-soon",
+            "high-cases"
+          ],
+          "metrics": [
+            {
+              "id": "open-deals",
+              "label": "Open deals",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "open",
+                  "owner": "{me.name}",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "hint": {
+                "field": "amount",
+                "format": "money",
+                "text": "worth {value}"
+              },
+              "ask": "Show me my open deals."
+            },
+            {
+              "id": "closing-soon",
+              "label": "Closing in 14 days",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "open",
+                  "owner": "{me.name}",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "closeDate",
+                  "op": "withinDays",
+                  "value": 14
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "warn"
+                }
+              ],
+              "hint": {
+                "field": "amount",
+                "format": "money",
+                "text": "worth {value}"
+              },
+              "ask": "Which of my deals close in the next two weeks, and what is each one waiting on?"
+            },
+            {
+              "id": "high-cases",
+              "label": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Show me the high-priority cases that are open."
+            },
+            {
+              "id": "pipeline",
+              "label": "My pipeline",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "open",
+                  "owner": "{me.name}",
+                  "limit": 25
+                }
+              },
+              "measure": "sum",
+              "field": "amount",
+              "format": "money",
+              "ask": "Walk me through my pipeline by stage."
+            },
+            {
+              "id": "won",
+              "label": "Won so far",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "won",
+                  "owner": "{me.name}",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "good"
+                }
+              ],
+              "hint": {
+                "field": "amount",
+                "format": "money",
+                "text": "worth {value}"
+              },
+              "ask": "Show me the deals I have won."
+            }
+          ],
+          "sections": [
+            {
+              "id": "closing",
+              "title": "Next to close",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "open",
+                  "owner": "{me.name}",
+                  "limit": 25
+                }
+              },
+              "sort": {
+                "field": "closeDate",
+                "order": "asc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{account}",
+                "subtitle": "{name|item}",
+                "detail": "Closes {closeDate|date} · {nextStep}",
+                "badge": "{stage}",
+                "amount": "{amount|money}",
+                "ask": "Tell me about the {account} deal and what I should do next."
+              },
+              "empty": "None of your deals are open right now.",
+              "more": {
+                "label": "See all my deals in the chat",
+                "prompt": "Show me my open deals."
+              }
+            },
+            {
+              "id": "won",
+              "title": "Recently won",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "won",
+                  "owner": "{me.name}",
+                  "limit": 25
+                }
+              },
+              "sort": {
+                "field": "closeDate",
+                "order": "desc"
+              },
+              "limit": 3,
+              "row": {
+                "title": "{account}",
+                "subtitle": "{name|item}",
+                "detail": "Closed {closeDate|date}",
+                "badge": "{stage}",
+                "tones": {
+                  "Closed Won": "good"
+                },
+                "amount": "{amount|money}"
+              },
+              "empty": "No deals won yet."
+            },
+            {
+              "id": "cases",
+              "title": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              },
+              "empty": "No high-priority cases are open.",
+              "more": {
+                "label": "See the open cases in the chat",
+                "prompt": "Show me the open cases."
+              }
+            }
+          ],
+          "cards": [
+            {
+              "connector": "salesforce",
+              "tool": "list_opportunities",
+              "heading": "Deals",
+              "sort": {
+                "field": "closeDate",
+                "order": "asc"
+              },
+              "limit": 5,
+              "row": {
+                "title": "{account}",
+                "subtitle": "{name|item}",
+                "detail": "Closes {closeDate|date} · {nextStep}",
+                "badge": "{stage}",
+                "amount": "{amount|money}",
+                "ask": "Tell me about the {account} deal and what I should do next."
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "list_cases",
+              "heading": "Cases",
+              "limit": 5,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "find_account",
+              "heading": "Accounts",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}",
+                "ask": "Get me ready for a call with {name}."
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "The customer",
+              "from": "record",
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_account",
+              "heading": "Their open cases",
+              "from": "record.cases",
+              "limit": 3,
+              "row": {
+                "title": "{subject}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                }
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_opportunity",
+              "heading": "The deal",
+              "from": "record",
+              "row": {
+                "title": "{account}",
+                "subtitle": "{name|item}",
+                "detail": "Closes {closeDate|date} · {nextStep}",
+                "badge": "{stage}",
+                "amount": "{amount|money}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_opportunity",
+              "heading": "What is on the deal",
+              "from": "record.products",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{quantity} at {unitPrice|money}",
+                "amount": "{total|money}"
+              }
+            }
+          ]
+        }
+      ]
+    },
     "agentAccess": {
       "rows": [
         {

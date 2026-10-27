@@ -15,6 +15,7 @@ import { activeSessionId } from '@/lib/conversations';
 import { buildReviewEvent, reviewFingerprint } from '@/lib/cards/reviewEvent';
 import { closeCanvas, openCanvas } from '@/lib/shell/sidePanelStore';
 import { keepCardsUpTo } from '@/lib/chat/branching';
+import { keepsOwnPlace } from '@/lib/cards/appendOnly';
 
 type Action =
   | { type: 'SET_PHASE'; phase: Phase }
@@ -306,7 +307,7 @@ function reducer(state: JourneyState, action: Action): JourneyState {
 
     // ── Card CMS (v3) ──────────────────────────────────────────────────
     case 'PUSH_CARD': {
-      const append = action.card.variant === 'append';
+      const append = keepsOwnPlace(action.card);
       // If a card with the same ID already exists, update it in place
       const existingIdx = state.cards.findIndex((c) => c.id === action.card.id);
       if (existingIdx !== -1) {

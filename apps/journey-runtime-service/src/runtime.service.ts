@@ -33,11 +33,13 @@ import {
   computePackChecksum,
   getVerifiedBusinessPackMetadata,
   welcomeFor,
+  type DashboardView,
   type Welcome,
 } from '@journeyax/business-pack';
 import { isInCanaryBucket } from '@journeyax/journey-core';
 import { principalFrom } from '@journeyax/shared-types';
 import { connectorList, type ConnectorListItem } from './kernel/connector.runtime';
+import { DashboardViewService } from './dashboard/dashboard-view';
 import { idleRepinHours, isIdleBeyond, packHostsWorkspace } from './kernel/pin-lifecycle';
 import { isAgentModeEnabled } from './agent/agent-loop';
 import { getAgentToolDefinitions } from './agent/agent-tools';
@@ -857,6 +859,38 @@ export class RuntimeService {
     // What the empty chat says to this person (pack `extensions.welcome`) travels with their connector list: the same call, the same identity.
     const welcome = welcomeFor(pack?.extensions?.welcome, { audience: principal.audience, groups: principal.groups });
     return { connectors: connectorList(pack, { audience: principal.audience, groups: principal.groups }), packVersion: pack?.manifest?.version, ...(welcome ? { welcome } : {}) };
+  }
+
+  private dashboardViews: DashboardViewService | null = null;
+
+  /**
+   * The corner tile and dashboard this person's team has in the active pack (`extensions.dashboard`), with the figures read through the
+   * connector gate for this person. `{}` when there is no pack, no dashboard for them, or nothing could be read: the page then shows no tile.
+   */
+  async getDashboard(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    person: { userId?: string; role?: string; groups?: string[] }
+  ): Promise<{ dashboard?: DashboardView }> {
+    let pack: any = null;
+    try {
+      pack = await this.appService.packRepo.loadActivePack(tenantId, environmentId);
+    } catch {
+      return {};
+    }
+    if (!pack?.extensions?.dashboard) return {};
+    const principal = principalFrom({ userId: person.userId, tenantId, role: person.role, groups: person.groups });
+    if (principal.audience !== 'staff') return {};
+    const runtime = this.appService.capabilityGateway?.getConnectorRuntime?.();
+    if (!runtime) return {};
+    this.dashboardViews ||= new DashboardViewService({ runtime });
+    const dashboard = await this.dashboardViews.load({
+      tenantId,
+      environmentId,
+      release: pack,
+      person: { userId: principal.userId, role: principal.roleType, audience: principal.audience, groups: principal.groups },
+    });
+    return dashboard ? { dashboard } : {};
   }
 
   /**

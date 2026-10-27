@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { Fragment, useRef, useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
 import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
@@ -41,6 +41,9 @@ import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex,
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
 import { CARE_ENTRIES, useCareAccess } from '@/components/canvas/care/careAccess';
+import { registerAskHandler } from '@/lib/shell/askInChat';
+import { SHEET_BREAKPOINT } from '@/lib/shell/panel';
+import MyDayTile from './shell/MyDayTile';
 
 /** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
  *  Deliberately generic — a tenant's own vocabulary lives in the card's own
@@ -937,6 +940,19 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     await sendToAI(newMessages);
   }, [messages, sendToAI, isLoading, state.isThinking]);
 
+  // A line on the dashboard or on a card can put a question to the assistant for the person. If an answer is still being written the
+  // question is typed into the box instead, so it never lands on top of a reply; on a phone the panel steps aside to show the answer.
+  useEffect(() => registerAskHandler((text) => {
+    if (isLoading || state.isThinking) {
+      setPrompt(text);
+      window.requestAnimationFrame(() => document.getElementById('chat-input-field')?.focus());
+      return false;
+    }
+    if (window.innerWidth <= SHEET_BREAKPOINT) closeCanvas();
+    void append({ role: 'user', content: text });
+    return true;
+  }), [append, isLoading, state.isThinking]);
+
   // Clarify submission state machine:
   // Completing every chip reliably sends one continuation request,
   // survives streaming-state transitions (isLoading / isThinking),
@@ -1310,6 +1326,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             bagCount={bagCount}
             bagOpen={cartOpen}
             onBag={() => { if (panelEnabled) { if (getCanvas()?.kind === 'cart') closeCanvas(); else openCanvas({ kind: 'cart' }); } else setCartOpen((v) => !v); }}
+            extra={panelEnabled ? <MyDayTile person={authUser?.email} projectId={cfg.projectId} /> : null}
           />
 
           {/* Conversation stream */}
@@ -1420,8 +1437,10 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
 }
 
 /** The thin bar above the thread: the sidebar toggle (when the sidebar is closed), the chat's name, and the bag. */
-function ChatTopbar({ title, bagLabel, bagTitle, bagCount, bagOpen, onBag }: {
+function ChatTopbar({ title, bagLabel, bagTitle, bagCount, bagOpen, onBag, extra }: {
   title: string;
+  /** Something small for the corner, beside the bag: the person's dashboard tile. */
+  extra?: ReactNode;
   bagLabel: string;
   bagTitle: string;
   bagCount: number;
@@ -1440,6 +1459,7 @@ function ChatTopbar({ title, bagLabel, bagTitle, bagCount, bagOpen, onBag }: {
         {title && <h1 className="chat-topbar__title" title={title}>{title}</h1>}
       </div>
       <div className="chat-topbar__right">
+        {extra}
         {(bagCount > 0 || bagOpen) && (
         <button
           type="button"
