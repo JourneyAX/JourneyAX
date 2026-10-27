@@ -151,6 +151,14 @@
           ]
         },
         {
+          "name": "list_account_balances",
+          "sideEffect": "read",
+          "summary": "List trade accounts with balance, credit limit and overdue amount, most overdue first.",
+          "claimClasses": [
+            "catalog_fact"
+          ]
+        },
+        {
           "name": "list_branches",
           "sideEffect": "read",
           "summary": "List branches, or find one by name."

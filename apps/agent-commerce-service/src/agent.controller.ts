@@ -287,6 +287,20 @@ export class JourneyAXController {
     return this.agentService.listConnectors(tenantId, verifiedIdentity(gatewayAssertion, tenantId));
   }
 
+  /**
+   * The corner tile and dashboard of the signed-in person (their team's pack setting, figures read as them). A shopper, or a team with no
+   * dashboard, gets an empty answer and the page shows no tile.
+   */
+  @Get('dashboard')
+  async dashboard(
+    @Param('projectId') projectId: string,
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
+  ) {
+    const tenantId = (projectId || tenantHeader || '').toLowerCase().trim();
+    return this.agentService.getDashboard(tenantId, verifiedIdentity(gatewayAssertion, tenantId));
+  }
+
   @Post('chat')
   @UseGuards(ChatThrottleGuard)
   async chat(

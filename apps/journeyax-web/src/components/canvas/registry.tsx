@@ -13,6 +13,8 @@ import OrderCanvas from './OrderCanvas';
 import CareQueueCanvas from './care/CareQueueCanvas';
 import CareTicketCanvas from './care/CareTicketCanvas';
 import CareBoardCanvas from './care/CareBoardCanvas';
+import DashboardCanvas from './dashboard/DashboardCanvas';
+import { getDashboardState } from '@/lib/shell/dashboardStore';
 import { orderRef } from './money';
 
 /** A working surface needs room for lines, prices and a payment form. */
@@ -42,6 +44,9 @@ registerCanvas({
 });
 registerCanvas({ kind: 'care-board', title: () => 'Care board', minWidth: CANVAS_MIN_WIDTH });
 
+/** The dashboard the corner tile opens; its name is the shop's own (what the pack calls this team's dashboard). */
+registerCanvas({ kind: 'dashboard', title: (request) => getDashboardState().data?.title || request.title || 'Dashboard', minWidth: CANVAS_MIN_WIDTH });
+
 type Draw = (request: CanvasRequest) => ReactNode;
 
 const drawers: Record<string, Draw> = {
@@ -50,6 +55,7 @@ const drawers: Record<string, Draw> = {
     ? <CareTicketCanvas key={String(request.params.ticketId)} ticketId={String(request.params.ticketId)} failStep={request.params.failStep ? String(request.params.failStep) : undefined} />
     : null),
   'care-board': () => <CareBoardCanvas />,
+  dashboard: () => <DashboardCanvas />,
   cart: () => <CartCanvas />,
   checkout: (request) => (request.orderId && request.payment ? <CheckoutCanvas key={request.orderId} orderId={request.orderId} payment={request.payment} /> : null),
   order: (request) => (request.orderId ? <OrderCanvas key={request.orderId} orderId={request.orderId} /> : null),

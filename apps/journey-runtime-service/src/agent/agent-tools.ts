@@ -117,6 +117,8 @@ export interface AgentToolContext {
   usedConnectorIds?: Set<string>;
   /** Connectors the person switched off for this chat: the three connector tools refuse them. */
   disabledConnectors?: Set<string>;
+  /** The record cards already shown this turn (by their heading and rows), so the same lookup twice makes one card. */
+  shownRecordCards?: Set<string>;
   /** The quantity estimates of this turn by SKU: a quantity card shows only a number the estimate tool returned. */
   lastEstimates?: Map<string, Extract<QuantityEstimate, { ok: true }> & { title: string; unitLabel: string; working: Array<{ label: string; value: string }>; ctaLabel: string }>;
   /** The picture made this turn: a picture card shows only this one. */

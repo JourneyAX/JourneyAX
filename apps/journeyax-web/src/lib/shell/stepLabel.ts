@@ -26,6 +26,7 @@ const STEP: Record<string, string> = {
   'commercetools.find_account': 'Finding the account',
   'commercetools.get_account': 'Reading the account terms',
   'commercetools.order_history': 'Looking at recent orders',
+  'commercetools.list_orders': 'Looking at the latest orders',
   'commercetools.get_order': 'Looking up the order',
   'commercetools.stock_by_branch': 'Checking stock by branch',
   'zendesk.find_tickets': 'Looking for support tickets',

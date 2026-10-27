@@ -3,6 +3,7 @@ import type { ExecutionContext } from '@journeyax/capability-sdk';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
 import type { AgentToolContext } from './agent-tools';
 import type { ConnectorPerson, ConnectorSummary } from '../kernel/connector.runtime';
+import { cardsShownNote, showRecordCards } from './record-cards';
 
 /**
  * The three tools through which the model reaches connectors. They are generic: they know nothing about any one connector. The model sees
@@ -131,7 +132,9 @@ export async function executeConnectorMetaTool(
       if (parsed.success) ctx.allowedClaimClasses.add(parsed.data);
     }
     const { claimClasses: _claimClasses, ...forModel } = result as any;
-    return forModel;
+    // A team's lookups can show as cards (pack `extensions.dashboard.cards`); the model is then told the records are on screen.
+    const shown = showRecordCards(ctx, connector, tool, forModel.result);
+    return shown.length ? { ...forModel, shownAsCards: cardsShownNote(shown) } : forModel;
   }
   return result;
 }

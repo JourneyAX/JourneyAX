@@ -26,6 +26,10 @@ export class AgentService {
     return this.coordinator.listConnectors(tenantId, person);
   }
 
+  async getDashboard(tenantId: string, person: { sub?: string; role?: string; groups?: string[] } | undefined) {
+    return this.coordinator.getDashboard(tenantId, person);
+  }
+
   async processChat(request: ChatRequest): Promise<ChatResponse> {
     return this.coordinator.executeChat(request);
   }

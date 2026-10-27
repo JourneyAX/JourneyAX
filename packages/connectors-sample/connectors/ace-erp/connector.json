@@ -274,6 +274,51 @@
       }
     },
     {
+      "name": "list_account_balances",
+      "description": "Trade accounts with their balance, credit limit and overdue amount, most overdue first. Give minOverdue to list only the accounts overdue by at least that much.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "minOverdue": {
+            "type": "number",
+            "description": "Only accounts overdue by at least this much, for example 0.01 for every overdue account."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 30).",
+            "minimum": 1,
+            "maximum": 30
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "minOverdue": 0.01
+      },
+      "op": {
+        "kind": "find",
+        "collection": "account_balances",
+        "filters": [
+          {
+            "arg": "minOverdue",
+            "field": "overdue",
+            "match": "gte"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 30
+        },
+        "sort": {
+          "field": "overdue",
+          "order": "desc"
+        }
+      }
+    },
+    {
       "name": "list_branches",
       "description": "List branches, or find one by name.",
       "inputSchema": {

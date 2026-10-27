@@ -543,6 +543,13 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     outcome: el('Text', { text: S('/outcome'), variant: 'small', tone: 'muted' }, { visible: [S('/outcome')] }),
   }),
 
+  records: spec('root', {
+    root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '640px' }, { children: ['heading', 'rows'] }),
+    heading: el('Text', { text: S('/heading'), variant: 'heading' }),
+    rows: el('Box', { gap: 'xs' }, { children: ['r'], repeat: { statePath: '/rows', key: 'title' } }),
+    r: el('KeyValue', { label: I('title'), value: I('amount'), inline: true }),
+  }),
+
   form: spec('root', {
     root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '560px' }, { children: ['title', 'intro', 'fields', 'sent'] }),
     title: el('Text', { text: S('/title'), variant: 'heading' }),

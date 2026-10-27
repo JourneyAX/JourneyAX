@@ -50,6 +50,18 @@ export class JourneyCoordinator {
     }
   }
 
+  /** The corner tile and dashboard for this person. Never throws: no dashboard means no tile, not a broken chat. */
+  async getDashboard(tenantId: string, person: { sub?: string; role?: string; groups?: string[] } | undefined): Promise<{ dashboard?: any }> {
+    const tenant = (tenantId || '').toLowerCase().trim();
+    if (!tenant) return {};
+    try {
+      return await this.canonicalRuntime.getDashboard(tenant, person);
+    } catch (error: any) {
+      console.warn(`[JourneyCoordinator] dashboard unavailable for ${tenant}: ${String(error?.message || error).slice(0, 160)}`);
+      return {};
+    }
+  }
+
   async executeChat(request: ChatRequest): Promise<ChatResponse> {
     const tenantId = (request.tenantId || '').toLowerCase().trim();
     if (!tenantId) {

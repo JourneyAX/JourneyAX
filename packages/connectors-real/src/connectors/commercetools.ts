@@ -29,6 +29,7 @@ const CURRENCY = /^[A-Z]{3}$/;
 const COUNTRY = /^[A-Z]{2}$/;
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const ORDER_STATES: Record<string, string> = { open: 'Open', confirmed: 'Confirmed', complete: 'Complete', cancelled: 'Cancelled' };
+const SHIPMENT_STATES: Record<string, string> = { pending: 'Pending', ready: 'Ready', partial: 'Partial', shipped: 'Shipped', delayed: 'Delayed', backorder: 'Backorder' };
 
 /** A localised string ({"en": "...", "en-NZ": "..."}) in the wanted locale, else the same language, else the first one there is. */
 const localised = (value: any, locale: string): string => {
@@ -473,6 +474,30 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
         const answer = await api('GET', '/orders', { query: { where: clauses.join(' and '), sort: 'createdAt desc', limit: boundedInt(args.limit, 10, 1, 25) } });
         const results: any[] = Array.isArray(answer.results) ? answer.results : [];
         return { total: answer.total ?? answer.count ?? results.length, returned: results.length, records: results.map((order) => orderRecord(order, false)) };
+      },
+    },
+    {
+      name: 'list_orders',
+      readOnly: true,
+      description: 'The newest orders from every account, newest first. Filter by order state (open, confirmed, complete, cancelled), shipment state (pending, ready, partial, shipped, delayed, backorder) or how recently placed (sinceHours: 24 is the last day). For one account use order_history, for one order get_order.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: Object.keys(ORDER_STATES) },
+          shipment: { type: 'string', enum: Object.keys(SHIPMENT_STATES) },
+          sinceHours: { type: 'integer', minimum: 1, maximum: 720, description: 'Only orders placed in the last this-many hours.' },
+          limit: { type: 'integer', minimum: 1, maximum: 25, description: 'How many to return (default 10).' },
+        },
+      },
+      async run(args) {
+        const clauses: string[] = [];
+        if (args.status) clauses.push(`orderState="${ORDER_STATES[String(args.status)]}"`);
+        if (args.shipment) clauses.push(`shipmentState="${SHIPMENT_STATES[String(args.shipment)]}"`);
+        if (args.sinceHours !== undefined) clauses.push(`createdAt >= "${new Date(deps.now() - boundedInt(args.sinceHours, 24, 1, 720) * 3_600_000).toISOString()}"`);
+        const limit = boundedInt(args.limit, 10, 1, 25);
+        const answer = await api('GET', '/orders', { query: { ...(clauses.length ? { where: clauses.join(' and ') } : {}), sort: 'createdAt desc', limit } });
+        const results: any[] = Array.isArray(answer.results) ? answer.results : [];
+        return { total: answer.total ?? answer.count ?? results.length, returned: results.length, ...(results.length === limit && Number(answer.total) > results.length ? { more: true } : {}), records: results.map((order) => orderRecord(order, false)) };
       },
     },
     {

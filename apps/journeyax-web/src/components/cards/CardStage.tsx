@@ -28,6 +28,7 @@ import type { CardInstance } from '@/lib/types';
 import { openCanvas, openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
 import { openLink } from '@/lib/links';
 import FormCard from './FormCard';
+import RecordsCard from './RecordsCard';
 
 /**
  * Action → storefront behaviour (docs/v3-card-cms-architecture.md
@@ -506,6 +507,14 @@ export function CardTile({ card, onAction }: { card: CardInstance; onAction: (na
     return (
       <div className="jx-root chat-inline-card" data-card-type="form">
         <FormCard state={card.state as any} onAction={(name, params) => onAction(name, { ...params, cardId: card.id })} />
+      </div>
+    );
+  }
+  // Records read from a connected system (open deals, cases, a customer) are the shop's own wording over the system's own answer.
+  if (card.cardType === 'records') {
+    return (
+      <div className="jx-root chat-inline-card" data-card-type="records">
+        <RecordsCard state={card.state as any} />
       </div>
     );
   }

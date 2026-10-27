@@ -327,6 +327,28 @@ export const CARD_TYPES = {
       outcome: z.string().optional(),
     }),
   },
+  records: {
+    title: 'Records',
+    description: 'A short list of records read from a connected system (open deals, cases, orders, a customer): a heading and one line each. Built by the server from the tool\'s answer and the shop\'s own card definition, so every word on it is the system\'s.',
+    state: z.object({
+      heading: z.string(),
+      rows: z.array(z.object({
+        title: z.string(),
+        subtitle: z.string().optional(),
+        detail: z.string().optional(),
+        badge: z.string().optional(),
+        tone: z.enum(['good', 'warn', 'bad', 'info']).optional(),
+        amount: z.string().optional(),
+        /** What pressing the line asks in the chat. */
+        ask: z.string().optional(),
+      })).max(12),
+      /** How many there were, and how many are shown. */
+      total: z.number().int().optional(),
+      shown: z.number().int().optional(),
+      /** The system stopped at its limit, so the true number is this or more. */
+      atLeast: z.boolean().optional(),
+    }),
+  },
   form: {
     title: 'Form',
     description: 'A form the shop offers (contact us, an enquiry, a callback request): the shop\'s own fields, filled in by the person and sent for the shop to read. Built by the server from the shop\'s form definition.',

@@ -87,6 +87,10 @@ export const SAMPLE_STATE: Record<CardType, Record<string, unknown>> = {
   disclosure: { title: 'Custom print terms', text: 'Custom-printed items are made to order and cannot be returned once production has started.', acceptLabel: 'I understand' },
   confirm: { confirmationId: 'cf_sample', heading: 'Please check before I go ahead', summary: 'May I add these two items to your order?', details: [{ label: 'Action', value: 'Update cart' }, { label: 'Items', value: '2 items' }], allowLabel: 'Allow', denyLabel: 'Not now', allowedText: 'You allowed this.', deniedText: 'You chose not to.', pending: true },
   form: { formId: 'contact-us', title: 'Contact us', intro: 'Tell us how we can help and we will get back to you.', fields: [{ id: 'name', label: 'Your name', type: 'text', required: true }, { id: 'email', label: 'Email', type: 'email', required: true }, { id: 'message', label: 'How can we help?', type: 'textarea', required: true }], submitLabel: 'Send', status: 'open' },
+  records: { heading: 'Open deals', total: 5, shown: 2, rows: [
+    { title: 'Riverside Builders Ltd', subtitle: 'Kitchen fit-out, stage two', detail: 'Closes 12 Nov · Send the quote', badge: 'Propose', tone: 'warn', amount: '$6,612', ask: 'Tell me about the Riverside Builders deal.' },
+    { title: 'Harbour Joinery Ltd', subtitle: 'Deck and balustrade', detail: 'Closes 19 Nov · Book a site visit', badge: 'Qualify', amount: '$2,223' },
+  ] },
   suggestions: { chips: ['Show me cheaper options', 'Compare with another brand', 'Add to my quote'] },
   working: { elapsed: 8, label: 'Building your quote', heard: 'One-piece toilet, steady drip, I’ll DIY this myself.', steps: [{ title: 'Searched the catalogue', status: 'done' }, { title: 'Checked stock', status: 'done' }, { title: 'Building your quote', status: 'running' }], lastReply: 'Here’s what I’d start with — all in stock, ready today.' },
   action_button_group: {
