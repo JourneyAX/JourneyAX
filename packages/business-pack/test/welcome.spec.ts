@@ -43,6 +43,17 @@ check('a shopper never gets a staff entry, and gets nothing when no entry is for
   assert.equal(welcomeFor(setting, person('buyer')), undefined);
 });
 
+check('a team can say what its empty message box says, and a team that does not leaves it to the shop', () => {
+  const words = WelcomeSchema.parse({ entries: [
+    { groups: ['finance'], headline: 'Which account?', placeholder: 'Ask about an account, an invoice or what is overdue…' },
+    { audience: 'staff', headline: 'How can we help?' },
+  ] });
+  assert.equal(welcomeFor(words, person('rep', ['finance']))?.placeholder, 'Ask about an account, an invoice or what is overdue…');
+  assert.equal('placeholder' in (welcomeFor(words, person('rep', ['branch'])) ?? {}), false);
+  assert.equal(WelcomeSchema.safeParse({ entries: [{ audience: 'staff', placeholder: 'x'.repeat(101) }] }).success, false, 'it has to fit in the box');
+  assert.equal(WelcomeSchema.safeParse({ entries: [{ audience: 'staff', placeholder: '' }] }).success, false);
+});
+
 check('no setting, or a setting that is not a list, gives nothing', () => {
   assert.equal(welcomeFor(undefined, person('rep', ['sales'])), undefined);
   assert.equal(welcomeFor({ entries: 'x' }, person('rep', ['sales'])), undefined);

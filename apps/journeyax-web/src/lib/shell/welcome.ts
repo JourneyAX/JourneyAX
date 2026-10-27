@@ -10,6 +10,8 @@ import { toolUsable, type Starter } from './starters';
 export interface Welcome {
   headline?: string;
   subtitle?: string;
+  /** What the empty message box says before anyone types. */
+  placeholder?: string;
   starters?: Array<Starter & { needs?: string[] }>;
 }
 
@@ -28,8 +30,9 @@ export function parseWelcome(json: unknown): Welcome | undefined {
         return [{ label, prompt, ...(needs.length ? { needs } : {}) }];
       }).slice(0, 6)
     : undefined;
-  const welcome: Welcome = { headline: text(raw.headline, 120), subtitle: text(raw.subtitle, 240), ...(starters?.length ? { starters } : {}) };
-  return welcome.headline || welcome.subtitle || welcome.starters ? welcome : undefined;
+  const placeholder = text(raw.placeholder, 100);
+  const welcome: Welcome = { headline: text(raw.headline, 120), subtitle: text(raw.subtitle, 240), ...(placeholder ? { placeholder } : {}), ...(starters?.length ? { starters } : {}) };
+  return welcome.headline || welcome.subtitle || welcome.placeholder || welcome.starters ? welcome : undefined;
 }
 
 /** "{hello}, {name}." becomes "Good morning, Finn." and, with no name, "Good morning." */

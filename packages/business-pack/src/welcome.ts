@@ -4,7 +4,7 @@
  */
 export interface WelcomeStarter { label: string; prompt: string; needs?: string[] }
 
-export interface Welcome { headline?: string; subtitle?: string; starters?: WelcomeStarter[] }
+export interface Welcome { headline?: string; subtitle?: string; placeholder?: string; starters?: WelcomeStarter[] }
 
 interface WelcomeEntry extends Welcome { groups?: string[]; audience?: 'shopper' | 'staff' }
 
@@ -24,6 +24,7 @@ export function welcomeFor(setting: unknown, person: { audience: string; groups:
     return {
       ...(entry.headline ? { headline: entry.headline } : {}),
       ...(entry.subtitle ? { subtitle: entry.subtitle } : {}),
+      ...(entry.placeholder ? { placeholder: entry.placeholder } : {}),
       ...(Array.isArray(entry.starters) && entry.starters.length ? { starters: entry.starters.map((s) => ({ label: s.label, prompt: s.prompt, ...(s.needs?.length ? { needs: s.needs } : {}) })) } : {}),
     };
   }
