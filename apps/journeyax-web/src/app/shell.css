@@ -499,6 +499,42 @@ li[data-active="true"] > .ax-agentlist__row { background: var(--ax-fill); }
 .ax-suggestion:hover { background: var(--ax-surface); border-color: var(--ax-border-strong); color: var(--ax-text); }
 .app-layout .chat-main[data-empty="true"] .chat-input-hint { margin-top: 18px; }
 
+/* ── Home board: a person with a dashboard starts on it, with the message box underneath ── */
+.app-layout .chat-main[data-empty="true"][data-home="true"] .chat-input-area {
+  flex: 0 0 auto; justify-content: flex-end; padding-top: 10px; padding-bottom: 14px;
+  background: linear-gradient(to top, var(--ax-bg) 70%, transparent);
+}
+.home { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 24px 20px; scrollbar-width: thin; scrollbar-color: var(--ax-border-strong) transparent; }
+.home__inner { width: 100%; max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
+.home__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; padding-top: 8px; }
+.home__title { margin: 0; font-family: var(--ax-serif); font-weight: 400; font-size: clamp(26px, 3.4vw, 34px); line-height: 1.15; letter-spacing: -0.015em; color: var(--ax-text); }
+.home__sub { margin: 6px 0 0; max-width: 560px; font-size: 15px; line-height: 1.5; color: var(--ax-muted); }
+.home__tools { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
+.home__h { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ax-muted); }
+.home__h--alert { color: var(--ax-bad); }
+.home__alert-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.home__alert { padding: 14px 16px; border-left: 4px solid var(--ax-bad); background: color-mix(in srgb, var(--ax-bad) 7%, var(--ax-surface)); }
+.home__alert--warn { border-left-color: var(--ax-warn); background: color-mix(in srgb, var(--ax-warn) 8%, var(--ax-surface)); }
+.home__alert .dash__val { font-size: 32px; }
+.home__figs { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.home__cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 22px 20px; align-items: start; }
+.home__section .dash__rows { gap: 6px; }
+.rec__row--hot { box-shadow: inset 3px 0 0 var(--ax-bad); }
+.rec__row--warm { box-shadow: inset 3px 0 0 var(--ax-warn); }
+.home .rec__row--ask:hover { border-color: var(--ax-border-strong); background: var(--ax-bg); }
+@media (max-width: 860px) {
+  .home { padding: 2px 16px 14px; }
+  .home__cols { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .home__inner { gap: 16px; }
+  .home__alert-row, .home__figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home__alert { padding: 10px 12px; }
+  .home__alert .dash__val { font-size: 26px; }
+  .home__figs .dash__fig { padding: 10px 12px; }
+  .home__figs .dash__val { font-size: 22px; }
+}
+
 /* ── Side panel ────────────────────────────────────────────────────── */
 .ax-panel {
   position: relative; flex: 0 0 auto; height: 100%; min-width: 0; display: flex; flex-direction: column;
@@ -713,7 +749,7 @@ li[data-active="true"] > .ax-agentlist__row { background: var(--ax-fill); }
 @media (prefers-color-scheme: dark) {
   .ax-shell { --ax-good: #6fd0a0; --ax-warn: #e6b450; --ax-bad: #f08a80; --ax-info: #8fb4ee; }
   /* The shop's link colour is a dark navy; on the dark page the dashboard's own links are lightened so they can be read. */
-  .dash__refresh .cv__link, .dash__more { color: color-mix(in srgb, var(--ax-link-tenant, var(--ax-accent)) 35%, white); }
+  .dash__refresh .cv__link, .home__tools .cv__link, .dash__more { color: color-mix(in srgb, var(--ax-link-tenant, var(--ax-accent)) 35%, white); }
 }
 .myday {
   display: flex; align-items: stretch; padding: 0; min-height: 44px; border: 1px solid var(--ax-border); border-radius: var(--ax-card-radius, 10px);

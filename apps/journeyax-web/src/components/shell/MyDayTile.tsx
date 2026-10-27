@@ -12,14 +12,14 @@ import { closeCanvas, getCanvas, openCanvas, useCanvas } from '@/lib/shell/sideP
 
 export const DASHBOARD_KIND = 'dashboard';
 
-export default function MyDayTile({ person, projectId }: { person: string | null | undefined; projectId?: string }) {
+export default function MyDayTile({ person, projectId, hidden = false }: { person: string | null | undefined; projectId?: string; /** The home screen shows the board itself, so the tile steps aside (but keeps the figures current). */ hidden?: boolean }) {
   useEffect(() => {
     trackDashboard(person, projectId);
     return () => trackDashboard(null, projectId);
   }, [person, projectId]);
   const { status, data } = useDashboardState();
   const canvas = useCanvas();
-  if (status !== 'ready' || !data) return null;
+  if (hidden || status !== 'ready' || !data) return null;
   const open = canvas?.kind === DASHBOARD_KIND;
   const summary = data.tile.map((figure) => `${figure.value} ${figure.label}`).join(', ');
   return (

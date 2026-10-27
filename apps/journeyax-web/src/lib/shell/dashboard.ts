@@ -106,3 +106,20 @@ export function scopeWords(data: Pick<DashboardData, 'scope' | 'name'>): string 
 
 /** True when any figure of the tile could not be read, so the tile can say so instead of showing a dash alone. */
 export const tileHasGap = (data: Pick<DashboardData, 'tile'>): boolean => data.tile.some((f) => !f.ok);
+
+/**
+ * The home screen's "needs you now" band and the plain figures under it. The band is every figure the shop's pack has toned red or amber
+ * that is not zero (red first, then amber, in the pack's own order, at most `max`); the rest are the other figures, so nothing is shown twice.
+ * The words and the colours are the pack's: nothing here knows what counts as urgent.
+ */
+export function splitFigures(data: Pick<DashboardData, 'metrics' | 'tile'>, max = 4): { alerts: DashboardFigure[]; rest: DashboardFigure[] } {
+  const pool = data.metrics.length > 0 ? data.metrics : data.tile;
+  const wants = (f: DashboardFigure) => f.ok && (f.tone === 'bad' || f.tone === 'warn') && /[1-9]/.test(f.value);
+  const rank = (f: DashboardFigure) => (f.tone === 'bad' ? 0 : 1);
+  const alerts = pool.filter(wants).sort((a, b) => rank(a) - rank(b)).slice(0, max);
+  const shown = new Set(alerts.map((f) => f.id));
+  return { alerts, rest: pool.filter((f) => !shown.has(f.id)) };
+}
+
+/** The sections a team can read, for the home screen: one that is not for the team is left out there (the dashboard panel still says so). */
+export const homeSections = (data: Pick<DashboardData, 'sections'>): DashboardSection[] => data.sections.filter((s) => s.state !== 'blocked');

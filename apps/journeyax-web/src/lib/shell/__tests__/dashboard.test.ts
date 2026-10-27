@@ -3,7 +3,7 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/shell/__tests__/dashboard.test.ts
  */
 import assert from 'node:assert/strict';
-import { parseDashboard, parseRow, scopeWords, tileHasGap, updatedWords } from '../dashboard';
+import { homeSections, parseDashboard, parseRow, scopeWords, splitFigures, tileHasGap, updatedWords } from '../dashboard';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -83,6 +83,38 @@ check('whose figures these are, and whether the tile has a gap', () => {
   assert.equal(scopeWords({ scope: 'team' }), 'Showing the whole team');
   assert.equal(scopeWords({ scope: 'mine' }), 'Showing the whole team', 'no name, no claim of being theirs');
   assert.equal(tileHasGap(parseDashboard(answer)!), true);
+});
+
+const fig = (id: string, value: string, tone: string, ok = true) => ({ id, label: id, value, tone, ok });
+const withMetrics = (metrics: unknown[], tile: unknown[] = [fig('t', '1', 'neutral')]) =>
+  parseDashboard({ dashboard: { title: 'T', tile, metrics, sections: [] } })!;
+
+check('home: red and amber figures that are not zero form the "needs you now" band, red first, and nothing is shown twice', () => {
+  const data = withMetrics([fig('open', '24', 'neutral'), fig('late', '3', 'warn'), fig('urgent', '6', 'bad'), fig('quiet', '0', 'bad'), fig('cases', '25+', 'neutral'), fig('esc', '5+', 'bad')]);
+  const { alerts, rest } = splitFigures(data);
+  assert.deepEqual(alerts.map((f) => f.id), ['urgent', 'esc', 'late'], "red before amber, each in the pack's own order");
+  assert.deepEqual(rest.map((f) => f.id), ['open', 'quiet', 'cases'], 'a figure that is zero stays with the plain ones');
+});
+
+check('home: a figure that could not be read is never an alert, the band has a limit, and the tile stands in when there are no figures', () => {
+  const unread = splitFigures(withMetrics([fig('a', '–', 'bad', false), fig('b', '2', 'bad')]));
+  assert.deepEqual(unread.alerts.map((f) => f.id), ['b']);
+  assert.deepEqual(unread.rest.map((f) => f.id), ['a']);
+  const many = splitFigures(withMetrics(Array.from({ length: 7 }, (_, i) => fig(`f${i}`, '3', 'bad'))));
+  assert.equal(many.alerts.length, 4);
+  assert.equal(many.rest.length, 3);
+  const fromTile = splitFigures(withMetrics([], [fig('open', '22', 'neutral'), fig('soon', '6', 'warn')]));
+  assert.deepEqual(fromTile.alerts.map((f) => f.id), ['soon']);
+  assert.deepEqual(fromTile.rest.map((f) => f.id), ['open']);
+});
+
+check('home: a list the team may not read is left off the home screen, and one that is only unavailable stays', () => {
+  const data = parseDashboard({ dashboard: { title: 'T', tile: [fig('t', '1', 'neutral')], sections: [
+    { id: 'a', title: 'A', state: 'ok', total: 1, rows: [{ title: 'x' }] },
+    { id: 'b', title: 'B', state: 'blocked', total: 0, rows: [] },
+    { id: 'c', title: 'C', state: 'unavailable', total: 0, rows: [] },
+  ] } })!;
+  assert.deepEqual(homeSections(data).map((s) => s.id), ['a', 'c']);
 });
 
 console.log(`\n${passed} passed`);

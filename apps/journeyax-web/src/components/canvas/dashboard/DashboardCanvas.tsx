@@ -6,22 +6,9 @@
  * A figure or a line with a question attached asks that question in the chat when pressed, and the dashboard stays where it is.
  */
 import { askInChat } from '@/lib/shell/askInChat';
-import { scopeWords, updatedWords, type DashboardFigure, type DashboardSection } from '@/lib/shell/dashboard';
+import { scopeWords, updatedWords, type DashboardSection } from '@/lib/shell/dashboard';
 import { loadDashboard, useDashboardState } from '@/lib/shell/dashboardStore';
-
-function Figure({ figure }: { figure: DashboardFigure }) {
-  const body = (
-    <>
-      <span className={`dash__val dash__val--${figure.tone}`}>{figure.value}</span>
-      <span className="dash__lab">{figure.label}</span>
-      {figure.hint && <span className="dash__hint">{figure.hint}</span>}
-      {!figure.ok && <span className="dash__hint">Could not be read just now</span>}
-    </>
-  );
-  return figure.ask
-    ? <button type="button" className="dash__fig dash__fig--ask" onClick={() => askInChat(figure.ask!)}>{body}</button>
-    : <div className="dash__fig">{body}</div>;
-}
+import { Figure, RowItem } from './parts';
 
 function Section({ section }: { section: DashboardSection }) {
   return (
@@ -35,30 +22,7 @@ function Section({ section }: { section: DashboardSection }) {
       {section.state === 'ok' && section.rows.length === 0 && <p className="dash__note">{section.empty || 'Nothing to show.'}</p>}
       {section.state === 'ok' && section.rows.length > 0 && (
         <ul className="dash__rows">
-          {section.rows.map((row, index) => {
-            const body = (
-              <>
-                <span className="rec__main">
-                  <span className="rec__name">{row.title}</span>
-                  {row.subtitle && <span className="rec__sub">{row.subtitle}</span>}
-                  {row.detail && <span className="rec__detail">{row.detail}</span>}
-                </span>
-                {(row.amount || row.badge) && (
-                  <span className="rec__side">
-                    {row.amount && <span className="rec__amount">{row.amount}</span>}
-                    {row.badge && <span className={`rec__badge rec__badge--${row.tone ?? 'plain'}`}>{row.badge}</span>}
-                  </span>
-                )}
-              </>
-            );
-            return (
-              <li key={`${index}-${row.title}`}>
-                {row.ask
-                  ? <button type="button" className="rec__row rec__row--ask" onClick={() => askInChat(row.ask!)} title="Ask about this">{body}</button>
-                  : <div className="rec__row">{body}</div>}
-              </li>
-            );
-          })}
+          {section.rows.map((row, index) => <li key={`${index}-${row.title}`}><RowItem row={row} /></li>)}
         </ul>
       )}
       {section.state === 'ok' && section.more && (
