@@ -291,6 +291,12 @@ function rowView(template: RowTemplate, record: Record<string, unknown>, format:
 
 const formatNumber = (n: number, kind: 'number' | 'money' | undefined, format: DashboardFormat) => (kind === 'money' ? money(n, format) : new Intl.NumberFormat(format.locale).format(n));
 
+/** The tool stopped before the end: it says "more", or it counted more than it returned. */
+function cutShort(data: unknown): boolean {
+  const body = data as { total?: unknown; returned?: unknown; more?: unknown } | undefined;
+  return body?.more === true || (typeof body?.total === 'number' && typeof body?.returned === 'number' && body.total > body.returned);
+}
+
 function figure(metric: DashboardEntry['metrics'][number], outcome: CallOutcome | undefined, format: DashboardFormat): TileFigure {
   const base = { id: metric.id, label: metric.label, ...(metric.ask ? { ask: metric.ask } : {}) };
   if (!outcome || !outcome.ok) return { ...base, value: '–', tone: 'neutral', ok: false };
@@ -299,7 +305,7 @@ function figure(metric: DashboardEntry['metrics'][number], outcome: CallOutcome 
   const rows = all.filter((record) => passes(record, metric.where, format));
   // A list the tool cut short gives a lower bound for anything counted or added up from it. A count the tool itself gave for the whole
   // search (more tickets than it returned) is exact; a "total" that only repeats how many it returned is not.
-  const cut = (data as { more?: unknown } | undefined)?.more === true;
+  const cut = cutShort(data);
   const filtered = !!metric.where?.length;
   const reported = (data as { total?: unknown } | undefined)?.total;
   const returned = Number((data as { returned?: unknown } | undefined)?.returned ?? all.length);
@@ -323,7 +329,7 @@ function figure(metric: DashboardEntry['metrics'][number], outcome: CallOutcome 
  */
 function howMany(data: unknown, matching: number, from: string | undefined, filtered: boolean): { total: number; atLeast?: boolean } {
   const body = from ? undefined : (data as { total?: unknown; returned?: unknown; more?: unknown } | undefined);
-  const cut = body?.more === true;
+  const cut = !from && cutShort(data);
   const reported = typeof body?.total === 'number' ? body.total : undefined;
   const whole = !filtered && reported !== undefined && reported > matching && (!cut || reported > Number(body?.returned ?? matching)) ? reported : undefined;
   return { total: whole ?? matching, ...(cut && whole === undefined ? { atLeast: true } : {}) };

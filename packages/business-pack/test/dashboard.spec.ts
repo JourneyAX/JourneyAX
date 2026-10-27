@@ -314,4 +314,21 @@ check('a list says how many there are in the same way as a card does', () => {
   assert.deepEqual([sectionOf({ total: 3, returned: 3, more: true, records }).total, sectionOf({ total: 3, returned: 3, more: true, records }).atLeast], [3, true], 'stopped at its limit');
 });
 
+check('a list that counted more than it returned is cut short even when it does not say "more"', () => {
+  const desk = DashboardSchema.parse({
+    entries: [{
+      groups: ['marketing'], title: 'My campaigns', tile: ['all', 'opened'], sections: [], cards: [],
+      metrics: [
+        { id: 'all', label: 'Messages sent', source: { connector: 'marketing-cloud', tool: 'list_messages' }, measure: 'count' },
+        { id: 'opened', label: 'Opened', source: { connector: 'marketing-cloud', tool: 'list_messages' }, measure: 'count', where: [{ field: 'status', op: 'equals', value: 'opened' }] },
+      ],
+    }],
+  });
+  const messages = { ok: true, total: 34, returned: 4, records: [{ status: 'opened' }, { status: 'opened' }, { status: 'delivered' }, { status: 'opened' }] };
+  const outcomes = new Map<string, CallOutcome>([[callKey(desk.entries[0].metrics[0].source, {}), { ok: true, data: messages }]]);
+  const byId = Object.fromEntries(buildDashboard(desk.entries[0], outcomes, { format }).metrics.map((m) => [m.id, m]));
+  assert.equal(byId.all.value, '34', 'the tool counted all 34');
+  assert.equal(byId.opened.value, '3+', 'three of the four it returned; the rest were not looked at');
+});
+
 console.log(`\n✅ ${passed} dashboard checks passed`);

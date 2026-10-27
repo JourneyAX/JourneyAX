@@ -2119,6 +2119,13 @@
               "needs": [
                 "power-bi.list_reports"
               ]
+            },
+            {
+              "label": "Which leads are hot?",
+              "prompt": "Show me the hot leads and who owns each one.",
+              "needs": [
+                "salesforce.find_lead"
+              ]
             }
           ]
         },
@@ -4081,6 +4088,306 @@
                   "Medium": "warn",
                   "Low": "good"
                 }
+              }
+            }
+          ]
+        },
+        {
+          "groups": [
+            "marketing"
+          ],
+          "title": "My campaigns",
+          "subtitle": "What is running, the leads it brings in, and the messages that went out.",
+          "tile": [
+            "campaigns-running",
+            "hot-leads",
+            "campaign-leads"
+          ],
+          "metrics": [
+            {
+              "id": "campaigns-running",
+              "label": "Campaigns running",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_campaigns",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "In Progress"
+                }
+              ],
+              "ask": "Which campaigns are running, and how is each doing?"
+            },
+            {
+              "id": "hot-leads",
+              "label": "Hot leads",
+              "source": {
+                "connector": "salesforce",
+                "tool": "find_lead",
+                "args": {
+                  "rating": "Hot",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "good"
+                }
+              ],
+              "ask": "Show me the hot leads and who owns each one."
+            },
+            {
+              "id": "new-leads",
+              "label": "New leads",
+              "source": {
+                "connector": "salesforce",
+                "tool": "find_lead",
+                "args": {
+                  "status": "New",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the new leads that nobody has contacted yet."
+            },
+            {
+              "id": "campaign-leads",
+              "label": "Leads from campaigns",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_campaigns",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "measure": "sum",
+              "field": "leads",
+              "ask": "Which campaigns have brought in the most leads?"
+            },
+            {
+              "id": "responses",
+              "label": "Responses to campaigns",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_campaigns",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "measure": "sum",
+              "field": "responses",
+              "ask": "Which campaigns have had the most responses?"
+            },
+            {
+              "id": "messages",
+              "label": "Messages sent",
+              "source": {
+                "connector": "marketing-cloud",
+                "tool": "list_messages",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Which messages did we send to trade customers recently?"
+            }
+          ],
+          "sections": [
+            {
+              "id": "campaigns",
+              "title": "Campaigns",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_campaigns",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "sort": {
+                "field": "start",
+                "order": "asc"
+              },
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{type}",
+                "detail": "{start|date} to {end|date} · spent {actualCost|money} of {budget|money}",
+                "badge": "{status}",
+                "tones": {
+                  "Completed": "good",
+                  "In Progress": "info"
+                },
+                "ask": "How is the {name} campaign doing?"
+              },
+              "empty": "No campaigns yet.",
+              "more": {
+                "label": "See the campaigns in the chat",
+                "prompt": "Which marketing campaigns are running right now?"
+              }
+            },
+            {
+              "id": "hot",
+              "title": "Hot leads",
+              "source": {
+                "connector": "salesforce",
+                "tool": "find_lead",
+                "args": {
+                  "rating": "Hot",
+                  "limit": 25
+                }
+              },
+              "sort": {
+                "field": "created",
+                "order": "desc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{company}",
+                "detail": "{status} · from {source} · owner {owner}",
+                "badge": "{rating}",
+                "tones": {
+                  "Hot": "warn",
+                  "Warm": "info"
+                },
+                "ask": "Tell me about {name} at {company}: where did they come from, and what should we do next?"
+              },
+              "empty": "No leads are marked hot.",
+              "more": {
+                "label": "See the hot leads in the chat",
+                "prompt": "Show me the hot leads and who owns each one."
+              }
+            },
+            {
+              "id": "messages",
+              "title": "Recent messages",
+              "source": {
+                "connector": "marketing-cloud",
+                "tool": "list_messages",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{contactName}",
+                "detail": "Sent {sentAt|date}",
+                "badge": "{status|title}",
+                "tones": {
+                  "Opened": "good"
+                }
+              },
+              "empty": "No messages have gone out."
+            }
+          ],
+          "cards": [
+            {
+              "connector": "salesforce",
+              "tool": "list_campaigns",
+              "heading": "Campaigns",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{type}",
+                "detail": "{start|date} to {end|date} · spent {actualCost|money} of {budget|money}",
+                "badge": "{status}",
+                "tones": {
+                  "Completed": "good",
+                  "In Progress": "info"
+                },
+                "ask": "How is the {name} campaign doing?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_campaign",
+              "heading": "The campaign",
+              "from": "record",
+              "row": {
+                "title": "{name}",
+                "subtitle": "{type}",
+                "detail": "{start|date} to {end|date} · spent {actualCost|money} of {budget|money}",
+                "badge": "{status}",
+                "tones": {
+                  "Completed": "good",
+                  "In Progress": "info"
+                },
+                "ask": "How is the {name} campaign doing?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_campaign",
+              "heading": "Who responded",
+              "from": "record.responders",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{company}",
+                "detail": "{kind|title}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "find_lead",
+              "heading": "Leads",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{company}",
+                "detail": "{status} · from {source} · owner {owner}",
+                "badge": "{rating}",
+                "tones": {
+                  "Hot": "warn",
+                  "Warm": "info"
+                },
+                "ask": "Tell me about {name} at {company}: where did they come from, and what should we do next?"
+              }
+            },
+            {
+              "connector": "marketing-cloud",
+              "tool": "list_messages",
+              "heading": "Messages",
+              "limit": 6,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{contactName}",
+                "detail": "Sent {sentAt|date}",
+                "badge": "{status|title}",
+                "tones": {
+                  "Opened": "good"
+                }
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "find_account",
+              "heading": "Accounts",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "find_product",
+              "heading": "Products",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{brand} · SKU {sku}",
+                "amount": "{price|price}"
               }
             }
           ]
