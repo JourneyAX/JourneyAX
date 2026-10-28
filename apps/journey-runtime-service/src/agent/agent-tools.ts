@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
 import type { BusinessPackRelease, BusinessPackContent, JourneyPlaybookStage } from '@journeyax/business-pack';
-import { resolveAgentSkills, resolveCatalogMapping } from '@journeyax/business-pack';
+import { CUSTOMER_ACCOUNT_CONNECTOR, resolveAgentSkills, resolveCatalogMapping } from '@journeyax/business-pack';
 import { dropAdded, RECOMMENDATION_CARDS, skusInCart } from './already-added';
 import type { ClaimClass, OkfReleaseContent, OkfEvidenceChunk, OkfConcept } from '@journeyax/knowledge';
 import { ClaimClassSchema, effectiveVerification, scopedClaims, verifiedEvidenceRefs, mergeSearchScopes } from '@journeyax/knowledge';
@@ -48,7 +48,8 @@ import type { LastProducts } from './auto-card';
 import { addOtherOption, checkShelfQuestions, type QuestionCardSettings, type Shelf } from './question-shelves';
 import { connectorWordsForLocale } from '../capabilities/handlers/locale-stemmer';
 import { CONNECTOR_META_TOOL_DEFINITIONS, executeConnectorMetaTool, isConnectorMetaTool } from './connector-tools';
-import { CUSTOMER_ACCOUNT_TOOL_DEFINITIONS, customerAccountSettings, executeCustomerAccountTool, isCustomerAccountTool } from './customer-account';
+import { CUSTOMER_ACCOUNT_TOOL_DEFINITIONS, customerAccountRecords, customerAccountSettings, executeCustomerAccountTool, isCustomerAccountTool } from './customer-account';
+import { cardsShownNote, showRecordCards } from './record-cards';
 import type { PersonCompany } from '../kernel/company-directory';
 import type { ConnectorPerson, ConnectorRuntime } from '../kernel/connector.runtime';
 
@@ -2286,7 +2287,13 @@ export async function executeAgentTool(
     case 'my_balance':
     case 'my_deliveries':
     case 'my_price': {
-      return executeCustomerAccountTool(toolName, args, ctx, makeExecContext(ctx) as any);
+      const answer = await executeCustomerAccountTool(toolName, args, ctx, makeExecContext(ctx) as any);
+      // The customer's own deliveries and balance can show as cards (pack `extensions.dashboard.cards`); the model is then told they are on screen.
+      if (answer?.ok === true && (toolName === 'my_deliveries' || toolName === 'my_balance')) {
+        const shown = showRecordCards(ctx, CUSTOMER_ACCOUNT_CONNECTOR, toolName, customerAccountRecords(toolName, answer));
+        if (shown.length) return { ...answer, shownAsCards: cardsShownNote(shown) };
+      }
+      return answer;
     }
 
     case 'list_connectors':

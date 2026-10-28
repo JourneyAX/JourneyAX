@@ -8,7 +8,11 @@ import { DashboardSchema, type DashboardEntry } from './schemas/skill.schema';
 
 export type DashboardTone = 'good' | 'warn' | 'bad' | 'info';
 
-export interface DashboardPerson { audience: string; groups: string[]; userId?: string }
+/** `companyRoles` are the roles the person holds in the companies the team linked them to (a signed-in trade customer); empty for staff and for an ordinary shopper. */
+export interface DashboardPerson { audience: string; groups: string[]; userId?: string; companyRoles?: string[] }
+
+/** The reserved name a pack's dashboard gives to the signed-in customer's own account tools (`my_balance`, `my_deliveries`): they are the platform's, not a connector's. */
+export const CUSTOMER_ACCOUNT_CONNECTOR = 'customer-account';
 
 type Source = DashboardEntry['metrics'][number]['source'];
 type Where = NonNullable<DashboardEntry['metrics'][number]['where']>[number];
@@ -70,9 +74,13 @@ export function dashboardFor(setting: unknown, person: DashboardPerson): Dashboa
   const parsed = DashboardSchema.safeParse(setting);
   if (!parsed.success) return undefined;
   const mine = new Set(person.groups.map((group) => group.toLowerCase()));
+  const roles = new Set(person.companyRoles ?? []);
   for (const entry of parsed.data.entries) {
     const groups = (entry.groups ?? []).map((group) => group.toLowerCase());
-    const fits = groups.length ? person.audience === 'staff' && groups.some((group) => mine.has(group)) : entry.audience === person.audience;
+    // An entry for company roles fits a signed-in customer who holds one of them in a company; an ordinary shopper (no company) never fits.
+    const fits = entry.companyRoles?.length
+      ? person.audience === 'shopper' && entry.companyRoles.some((role) => roles.has(role))
+      : groups.length ? person.audience === 'staff' && groups.some((group) => mine.has(group)) : entry.audience === person.audience;
     if (fits) return entry;
   }
   return undefined;
@@ -244,6 +252,8 @@ function show(value: unknown, filter: string | undefined, format: DashboardForma
     const n = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(n) ? new Intl.NumberFormat(format.locale).format(n) : String(value).trim();
   }
+  // A status a system writes with underscores (out_for_delivery) is read as words, with a capital: "Out for delivery".
+  if (filter === 'words') return String(value).replace(/_+/g, ' ').trim().replace(/^./u, (first) => first.toUpperCase());
   if (filter === 'date') return dateWords(value, format);
   // A system that writes "pending" or "public reply" in lower case is shown with a capital, as the rest of the words are.
   if (filter === 'title') return String(value).trim().replace(/^./u, (first) => first.toUpperCase());

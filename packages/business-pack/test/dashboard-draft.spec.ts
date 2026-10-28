@@ -27,7 +27,33 @@ const toolsOf = (entry: (typeof setting.entries)[number]) => [
   ...entry.cards.map((c) => ({ where: `card "${c.heading}"`, connector: c.connector, tool: c.tool })),
 ];
 
-for (const entry of setting.entries) {
+// A trade customer's board reads only the customer's own account tools (the platform's, not a connector's), and the balance only for the roles
+// that may see it: the same rule the chat's `my_balance` tool applies, checked here so a board never shows a role a figure the chat would refuse.
+const MAY_SEE_BALANCE = new Set(['account_admin', 'accounts_payable']);
+const BOARD_TOOLS = new Set(['my_balance', 'my_deliveries']);
+
+for (const entry of setting.entries.filter((e) => e.companyRoles?.length)) {
+  const team = `customers (${entry.companyRoles!.join(', ')})`;
+  check(`${team}: reads only the customer's own account tools, and the balance only where the role may see it`, () => {
+    const problems: string[] = [];
+    for (const source of toolsOf(entry)) {
+      if (source.connector !== 'customer-account') problems.push(`${source.where}: ${source.connector}.${source.tool} is not one of the customer's own account tools`);
+      else if (!BOARD_TOOLS.has(source.tool)) problems.push(`${source.where}: ${source.tool} is not a tool a customer's board may read`);
+      else if (source.tool === 'my_balance' && !entry.companyRoles!.every((role) => MAY_SEE_BALANCE.has(role))) problems.push(`${source.where}: my_balance, but ${entry.companyRoles!.filter((role) => !MAY_SEE_BALANCE.has(role)).join(', ')} may not see the balance`);
+    }
+    assert.deepEqual(problems, []);
+  });
+  check(`${team}: the board and the welcome words are chosen by the role, and a homeowner gets neither`, () => {
+    for (const role of entry.companyRoles!) {
+      const first = setting.entries.find((e) => e.companyRoles?.includes(role));
+      assert.equal(dashboardFor(setting, { audience: 'shopper', groups: [], companyRoles: [role] })?.title, first?.title, `a ${role} gets the first board that names their role`);
+    }
+    assert.equal(dashboardFor(setting, { audience: 'shopper', groups: [] }), undefined, 'an ordinary shopper has no board');
+    assert.equal(dashboardFor(setting, { audience: 'staff', groups: ['no-such-team'], companyRoles: entry.companyRoles }), undefined, 'a company role does not make staff a customer');
+  });
+}
+
+for (const entry of setting.entries.filter((e) => !e.companyRoles?.length)) {
   const team = (entry.groups ?? []).join('+') || entry.audience;
   check(`${team}: every figure, list and card reads a read-only tool the team is allowed`, () => {
     const person = { audience: 'staff' as const, groups: entry.groups ?? [] };

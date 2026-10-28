@@ -17,8 +17,10 @@ export function dashboardFormat(release: { profile?: { primaryCurrency?: string;
 export function showRecordCards(ctx: AgentToolContext, connector: string, tool: string, answer: unknown, now?: Date): string[] {
   const setting = (ctx.release as { extensions?: Record<string, any> } | undefined)?.extensions?.dashboard;
   const person = ctx.principal;
-  if (!setting || !person || person.audience !== 'staff') return [];
-  const entry = dashboardFor(setting, { audience: person.audience, groups: person.groups });
+  // Staff have their team's cards; a signed-in trade customer has the cards of the company role they hold; an ordinary shopper has none.
+  const companyRoles = (ctx.companies ?? []).map((company) => company.role);
+  if (!setting || !person || (person.audience !== 'staff' && companyRoles.length === 0)) return [];
+  const entry = dashboardFor(setting, { audience: person.audience, groups: person.groups, companyRoles });
   if (!entry) return [];
   const shown = (ctx.shownRecordCards ||= new Set<string>());
   const headings: string[] = [];
