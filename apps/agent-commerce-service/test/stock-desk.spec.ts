@@ -230,14 +230,14 @@ async function main() {
     const saved = process.env.STOCK_INTAKE;
     try {
       delete process.env.STOCK_INTAKE;
-      assert.equal(svc.stockActorFor({ sub: 'branch@placemakers.demo', role: 'rep', groups: ['branch'] }), null, 'off means nobody');
-      assert.equal(svc.stock, null);
+      assert.equal(svc.actorForDesk('stock', { sub: 'branch@placemakers.demo', role: 'rep', groups: ['branch'] }), null, 'off means nobody');
+      assert.equal(svc.extraDesk('stock'), null);
       process.env.STOCK_INTAKE = 'erp';
-      assert.deepEqual(svc.stockActorFor({ sub: 'branch@placemakers.demo', role: 'rep', groups: ['branch'] }), { name: 'Wiremu Fox', id: 'STK-1101', isLead: false });
-      assert.equal(svc.stockActorFor({ sub: 'csr@placemakers.demo', role: 'rep', groups: ['customer-service'] }), null);
-      assert.equal(svc.stockActorFor({ sub: 'someone@example.com', role: 'shopper', groups: [] }), null);
-      assert.equal(svc.stockActorFor(undefined), null);
-      assert.deepEqual(svc.stockActorFor({ sub: 'admin@placemakers.demo', role: 'admin', groups: [] }), { name: 'Hone Rewi', id: 'TL-3001', isLead: true });
+      assert.deepEqual(svc.actorForDesk('stock', { sub: 'branch@placemakers.demo', role: 'rep', groups: ['branch'] }), { name: 'Wiremu Fox', id: 'STK-1101', isLead: false });
+      assert.equal(svc.actorForDesk('stock', { sub: 'csr@placemakers.demo', role: 'rep', groups: ['customer-service'] }), null);
+      assert.equal(svc.actorForDesk('stock', { sub: 'someone@example.com', role: 'shopper', groups: [] }), null);
+      assert.equal(svc.actorForDesk('stock', undefined), null);
+      assert.deepEqual(svc.actorForDesk('stock', { sub: 'admin@placemakers.demo', role: 'admin', groups: [] }), { name: 'Hone Rewi', id: 'TL-3001', isLead: true });
     } finally { if (saved === undefined) delete process.env.STOCK_INTAKE; else process.env.STOCK_INTAKE = saved; }
   });
 

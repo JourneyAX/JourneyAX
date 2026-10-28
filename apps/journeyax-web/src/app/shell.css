@@ -690,6 +690,11 @@ li[data-active="true"] > .ax-agentlist__row { background: var(--ax-fill); }
 .cv__branch--short th, .cv__branch--short td { color: var(--ax-text); font-weight: 600; }
 .cv__branch--source { background: var(--ax-accent-soft); }
 .cv__branch--source th, .cv__branch--source td { color: var(--ax-accent-text); font-weight: 600; }
+.cv__quote td:nth-child(2), .cv__quote td:nth-child(3), .cv__quote td:nth-child(4), .cv__quote thead th:nth-child(2), .cv__quote thead th:nth-child(3), .cv__quote thead th:nth-child(4) { text-align: right; white-space: nowrap; }
+.cv__quote td:last-child { color: var(--ax-muted); font-size: 12px; }
+.cv__quote tfoot th, .cv__quote tfoot td { border-top: 1px solid var(--ax-border); font-weight: 600; text-align: right; }
+.cv__quote tfoot td:last-child { border-top: 1px solid var(--ax-border); }
+.cv__quote-total th, .cv__quote-total td { border-top: 2px solid var(--ax-text); color: var(--ax-text); }
 .cv__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .cv__rec { margin: 0 0 4px; font-weight: 600; line-height: 1.4; }
 .cv__public, .cv__internal { margin: 0 0 6px; padding: 6px 10px; border-radius: 6px; font-size: 13px; }

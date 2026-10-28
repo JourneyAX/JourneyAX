@@ -48,6 +48,8 @@ export const AI_STRATEGY: BrandOverlay = {
   people: {
     'csr@placemakers.demo': { name: 'Aroha Ngata', role: 'Customer care' },
     'branch@placemakers.demo': { name: 'Wiremu Fox', role: 'Branch counter' },
+    'sales@placemakers.demo': { name: 'Hana Williams', role: 'Sales rep' },
+    'sales.manager@placemakers.demo': { name: 'Rob Taylor', role: 'Sales manager' },
   },
   loginHeadline: 'Sign in to try the assistant.',
   loginTagline: 'See how an assistant that is connected to your systems, with people in control, can help one workflow at a time.',

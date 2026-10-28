@@ -40,7 +40,7 @@ import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } fr
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
-import { CARE_ENTRIES, STOCK_ENTRIES, useCareAccess, useStockAccess } from '@/components/canvas/care/careAccess';
+import { CARE_ENTRIES, QUOTES_ENTRIES, STOCK_ENTRIES, useCareAccess, useQuotesAccess, useStockAccess } from '@/components/canvas/care/careAccess';
 import { registerAskHandler } from '@/lib/shell/askInChat';
 import { SHEET_BREAKPOINT } from '@/lib/shell/panel';
 import MyDayTile from './shell/MyDayTile';
@@ -390,8 +390,9 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const { user: authUser } = useAuth();
   const careAccess = useCareAccess(authUser?.email);
   const stockAccess = useStockAccess(authUser?.email);
-  /** The care screens this person is offered: customer care's, the stock desk's, both, or none. */
-  const careEntries = [...(careAccess ? CARE_ENTRIES : []), ...(stockAccess ? STOCK_ENTRIES : [])];
+  const quotesAccess = useQuotesAccess(authUser?.email);
+  /** The desk screens this person is offered: customer care's, the stock desk's, the quotes desk's, any mix, or none. */
+  const careEntries = [...(careAccess ? CARE_ENTRIES : []), ...(stockAccess ? STOCK_ENTRIES : []), ...(quotesAccess ? QUOTES_ENTRIES : [])];
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);

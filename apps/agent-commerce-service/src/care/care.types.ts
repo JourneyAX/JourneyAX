@@ -9,7 +9,7 @@ export type CareStage = 'arrived' | 'read' | 'researched' | 'drafted' | 'waiting
 export type CareStatus = 'ai' | 'decide' | 'waiting' | 'done' | 'lead';
 export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce' | 'SAP ERP';
 /** Which desk a case belongs to. A case with no desk is a customer-care ticket. */
-export type DeskKind = 'care' | 'stock';
+export type DeskKind = 'care' | 'stock' | 'quotes';
 export type CareStepKind = 'customer' | 'internal' | 'record' | 'money';
 export type CareConfidence = 'High' | 'Medium' | 'Low';
 
@@ -40,6 +40,24 @@ export interface CareOrder {
 }
 
 export interface CareCorrection { from: string; to: string }
+
+/** A quote the AI priced, drawn as a table of lines: what the customer asked for, at their trade tier, with stock at the branch it goes from. */
+export interface QuoteDetail {
+  /** The customer's trade tier ("Silver"). */
+  tier: string;
+  /** The last day the prices and the stock hold (YYYY-MM-DD). */
+  validUntil?: string;
+  /** Where it is delivered from. */
+  branch: string;
+  lines: Array<{ sku: string; name: string; quantity: number; unit: string; retailPrice: number; unitPrice: number; lineTotal: number; stock: string }>;
+  subtotal: number;
+  gst: number;
+  total: number;
+  /** How far under the retail price the whole quote is, in percent. */
+  discountPercent: number;
+  /** The currency the ERP's prices are in ("NZD"). */
+  currency?: string;
+}
 
 /** A stock exception's own facts, drawn as a table of branches: the product, what is short where, and what every branch holds. */
 export interface StockExceptionDetail {
@@ -102,6 +120,8 @@ export interface CareCase {
   order?: CareOrder;
   /** Set on a stock exception: what is short, where, and what every branch holds. */
   stock?: StockExceptionDetail;
+  /** Set on a quote request: the quote the AI priced. */
+  quote?: QuoteDetail;
   draft: { isReply: boolean; text: string; original: string };
   replyChecks: Array<{ label: string; ok: boolean }>;
   steps: CareStep[];

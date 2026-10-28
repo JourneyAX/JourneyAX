@@ -8,6 +8,7 @@
 // Beside the three systems it has a few doors for the person making the recording (all on this machine only):
 //   POST /control/new-ticket  { subject, message, name, email, orderNumber? }   a customer writes in (the ticket arrives in the pretend Zendesk)
 //   POST /control/new-exception { branchCode, sku, orderNumber, customerName, needed, note? }   the pretend ERP raises a short order line
+//   POST /control/new-quote-request { accountName, contactName, contactEmail, branchCode, lines:[{sku,quantity}], message }   a deal in the pretend Salesforce needs a quote
 //   GET  /control/state       everything the pretend systems hold, so a recording can show or check what an approval changed
 //   POST /control/reset       back to the starting data
 const http = require('http');
@@ -24,9 +25,11 @@ const BRANCHES = [['HAM', 'Hamilton'], ['CAM', 'Cambridge'], ['TGA', 'Tauranga']
 const DAYS_TO = { HAM: { HAM: 0, CAM: 1, TGA: 1, ROT: 1, WHK: 2, NPR: 3 } };
 const daysBetween = (from, to) => (from === to ? 0 : (DAYS_TO[to] && DAYS_TO[to][from]) ?? (DAYS_TO.HAM[from] != null && DAYS_TO.HAM[to] != null ? Math.max(1, Math.abs(DAYS_TO.HAM[from] - DAYS_TO.HAM[to])) : 2));
 const PRODUCTS = {
-  'FP-100-24': { name: 'Treated pine fence post 100 x 100 x 2.4 m', stock: { HAM: [6, 0, 20], CAM: [26, 0, 20], TGA: [30, 12, 15], ROT: [64, 10, 30], WHK: [140, 20, 80], NPR: [300, 40, 60] }, similar: { sku: 'FP-125-24', name: 'Treated pine fence post 125 x 125 x 2.4 m', onHand: { HAM: 40 } } },
-  'DB-140-48': { name: 'Decking board 140 x 32 x 4.8 m', stock: { HAM: [120, 10, 40], CAM: [60, 0, 30], TGA: [18, 4, 20], ROT: [80, 6, 30], WHK: [90, 0, 40], NPR: [160, 20, 50] }, similar: { sku: 'DB-140-36', name: 'Decking board 140 x 32 x 3.6 m', onHand: { TGA: 44 } } },
-  'WB-180-30': { name: 'Weatherboard primed 180 x 18 x 3.0 m', stock: { HAM: [90, 10, 30], CAM: [40, 0, 20], TGA: [70, 5, 30], ROT: [50, 0, 25], WHK: [30, 0, 20], NPR: [12, 0, 20] }, similar: { sku: 'WB-180-36', name: 'Weatherboard primed 180 x 18 x 3.6 m', onHand: { NPR: 30 } } },
+  'FR-100-36': { name: 'Treated pine fence rail 100 x 50 x 3.6 m', retail: 18.6, stock: { HAM: [60, 0, 20], CAM: [40, 0, 20], TGA: [50, 6, 20], ROT: [70, 0, 25], WHK: [120, 10, 40], NPR: [200, 30, 50] }, similar: { sku: 'FR-100-48', name: 'Treated pine fence rail 100 x 50 x 4.8 m', onHand: { HAM: 30 } } },
+  'DP-25-40': { name: 'Decking pedestal 25-40 mm', retail: 9.8, stock: { HAM: [200, 20, 50], CAM: [120, 0, 40], TGA: [150, 10, 40], ROT: [90, 0, 30], WHK: [60, 0, 30], NPR: [300, 40, 60] }, similar: { sku: 'DP-40-65', name: 'Decking pedestal 40-65 mm', onHand: { HAM: 80 } } },
+  'FP-100-24': { name: 'Treated pine fence post 100 x 100 x 2.4 m', retail: 27.8, stock: { HAM: [6, 0, 20], CAM: [26, 0, 20], TGA: [30, 12, 15], ROT: [64, 10, 30], WHK: [140, 20, 80], NPR: [300, 40, 60] }, similar: { sku: 'FP-125-24', name: 'Treated pine fence post 125 x 125 x 2.4 m', onHand: { HAM: 40 } } },
+  'DB-140-48': { name: 'Decking board 140 x 32 x 4.8 m', retail: 38.4, stock: { HAM: [120, 10, 40], CAM: [60, 0, 30], TGA: [18, 4, 20], ROT: [80, 6, 30], WHK: [90, 0, 40], NPR: [160, 20, 50] }, similar: { sku: 'DB-140-36', name: 'Decking board 140 x 32 x 3.6 m', onHand: { TGA: 44 } } },
+  'WB-180-30': { name: 'Weatherboard primed 180 x 18 x 3.0 m', retail: 21.9, stock: { HAM: [90, 10, 30], CAM: [40, 0, 20], TGA: [70, 5, 30], ROT: [50, 0, 25], WHK: [30, 0, 20], NPR: [12, 0, 20] }, similar: { sku: 'WB-180-36', name: 'Weatherboard primed 180 x 18 x 3.6 m', onHand: { NPR: 30 } } },
 };
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
@@ -34,7 +37,13 @@ const branchName = (code) => (BRANCHES.find((b) => b[0] === code) || [code, code
 function erpFresh() {
   const stock = {};
   for (const [sku, p] of Object.entries(PRODUCTS)) stock[sku] = Object.fromEntries(Object.entries(p.stock).map(([code, [onHand, reserved, safety]]) => [code, { onHand, reserved, safety, incoming: 0 }]));
-  return { stock, exceptions: [], transfers: [], nextException: 7301, nextTransfer: 3001 };
+  const accounts = {
+    'ACC-9001': { accountId: 'ACC-9001', name: 'Hartley Construction Ltd', tier: 'silver', creditLimit: 20000, balance: 1500, overdue: 0, terms: '20th of the month', currency: 'NZD' },
+    'ACC-9002': { accountId: 'ACC-9002', name: 'Tapsell Roofing Ltd', tier: 'bronze', creditLimit: 15000, balance: 2100, overdue: 0, terms: '20th of the month', currency: 'NZD' },
+    'ACC-9003': { accountId: 'ACC-9003', name: 'Pene Fencing Ltd', tier: 'gold', creditLimit: 30000, balance: 4800, overdue: 0, terms: '20th of the month', currency: 'NZD' },
+  };
+  const earlier = { quoteNumber: 'Q-2188', accountName: 'Hartley Construction Ltd', opportunityId: 'OPP-0871', total: 3912.4, subtotal: 3402.09, status: 'Accepted', createdAt: iso(new Date(Date.now() - 21 * 86_400_000)), lines: [] };
+  return { stock, exceptions: [], transfers: [], nextException: 7301, nextTransfer: 3001, accounts, quoteRequests: [], quotes: [earlier], emails: [], holds: [], nextRequest: 501, nextOpportunity: 912, nextQuote: 2210, nextHold: 4001 };
 }
 
 let state;
@@ -64,14 +73,43 @@ const fail = (code, message) => reply({ ok: false, error: { code, message } }, t
 
 const tools = {
   'ace-erp': {
+    find_account({ query, limit }) {
+      const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+      const records = Object.values(state.accounts).filter((a) => words.every((w) => a.name.toLowerCase().includes(w))).slice(0, Math.min(Number(limit) || 5, 10)).map((a) => ({ accountId: a.accountId, name: a.name, tier: a.tier, terms: a.terms }));
+      return { ok: true, connector: 'ace-erp', returned: records.length, records };
+    },
+    account_balance({ accountId }) {
+      const a = state.accounts[String(accountId)];
+      if (!a) return { ok: false, error: { code: 'not_found', message: `There is no account ${accountId}.` } };
+      return { ok: true, connector: 'ace-erp', record: a };
+    },
+    trade_price({ sku }) {
+      const p = PRODUCTS[String(sku)];
+      if (!p) return { ok: false, error: { code: 'not_found', message: `There is no product ${sku}.` } };
+      const at = (f) => Math.round(p.retail * f * 100) / 100;
+      return { ok: true, connector: 'ace-erp', record: { sku: String(sku), title: p.name, unitOfMeasure: 'each', currency: 'NZD', retailPrice: p.retail, bronzePrice: at(0.95), silverPrice: at(0.9), goldPrice: at(0.85) } };
+    },
+    hold_stock({ branchCode, lines, until, reference, opportunityId }) {
+      const list = Array.isArray(lines) ? lines : [];
+      if (!list.length) return { ok: false, error: { code: 'invalid', message: 'There is nothing to hold.' } };
+      for (const l of list) {
+        const row = state.stock[String(l.sku)] && state.stock[String(l.sku)][String(branchCode)];
+        if (!row) return { ok: false, error: { code: 'not_found', message: `${l.sku} is not stocked at ${branchName(branchCode)}.` } };
+        if (row.onHand - row.reserved < Number(l.quantity)) return { ok: false, error: { code: 'invalid', message: `${branchName(branchCode)} has only ${Math.max(row.onHand - row.reserved, 0)} of ${l.sku} free.` } };
+      }
+      for (const l of list) state.stock[String(l.sku)][String(branchCode)].reserved += Number(l.quantity);
+      const h = { holdNumber: `HOLD-${state.nextHold++}`, branchCode: String(branchCode), lines: list.map((l) => ({ sku: String(l.sku), quantity: Number(l.quantity) })), until: until ? String(until) : undefined, reference: reference ? String(reference) : undefined, opportunityId, createdAt: iso() };
+      state.holds.push(h);
+      return { ok: true, connector: 'ace-erp', record: h };
+    },
     list_stock_exceptions({ since, limit }) {
       const records = state.exceptions.filter((e) => !since || e.updated >= since).slice(-Math.min(Number(limit) || 25, 25));
       return { ok: true, connector: 'ace-erp', returned: records.length, records };
     },
-    stock_by_branch({ sku, toBranch, limit }) {
+    stock_by_branch({ sku, toBranch, branchCode: only, limit }) {
       const rows = state.stock[String(sku)];
       if (!rows) return { ok: false, error: { code: 'not_found', message: `There is no product ${sku}.` } };
-      const records = Object.entries(rows).slice(0, Math.min(Number(limit) || 10, 25)).map(([code, r]) => {
+      const records = Object.entries(rows).filter(([code]) => !only || code === String(only)).slice(0, Math.min(Number(limit) || 10, 25)).map(([code, r]) => {
         const days = toBranch ? daysBetween(code, String(toBranch)) : undefined;
         return { branchCode: code, branchName: branchName(code), sku: String(sku), onHand: r.onHand, reserved: r.reserved, safety: r.safety, ...(days != null ? { transferDays: days, arrives: inDays(days) } : {}) };
       });
@@ -151,6 +189,31 @@ const tools = {
     },
   },
   salesforce: {
+    list_quote_requests({ since, limit }) {
+      const records = state.quoteRequests.filter((r) => r.status === 'open' && (!since || r.updated >= since)).slice(-Math.min(Number(limit) || 25, 25));
+      return { ok: true, connector: 'salesforce', returned: records.length, records };
+    },
+    find_quotes({ accountName, limit }) {
+      const records = state.quotes.filter((q) => !accountName || q.accountName.toLowerCase() === String(accountName).toLowerCase()).slice().reverse().slice(0, Math.min(Number(limit) || 5, 10)).map((q) => ({ quoteNumber: q.quoteNumber, total: q.total, status: q.status, createdAt: q.createdAt, opportunityId: q.opportunityId }));
+      return { ok: true, connector: 'salesforce', returned: records.length, records };
+    },
+    create_quote({ opportunityId, requestId, tier, lines, subtotal, gst, total, validUntil }) {
+      const req = state.quoteRequests.find((r) => r.opportunityId === String(opportunityId) || r.requestId === Number(requestId));
+      if (!req) return { ok: false, error: { code: 'not_found', message: `There is no deal ${opportunityId}.` } };
+      if (!Array.isArray(lines) || !lines.length) return { ok: false, error: { code: 'invalid', message: 'A quote needs lines.' } };
+      const q = { quoteNumber: `Q-${state.nextQuote++}`, accountName: req.accountName, opportunityId: req.opportunityId, requestId: req.requestId, tier: String(tier), lines, subtotal: Number(subtotal), gst: Number(gst), total: Number(total), validUntil: validUntil ? String(validUntil) : undefined, status: 'Sent', createdAt: iso() };
+      state.quotes.push(q);
+      req.status = 'quoted'; req.stage = 'Proposal sent'; req.updated = iso();
+      return { ok: true, connector: 'salesforce', record: { quoteNumber: q.quoteNumber, total: q.total, status: q.status, dealStage: req.stage } };
+    },
+    send_quote_email({ opportunityId, to, subject, body, author }) {
+      const q = state.quotes.filter((x) => x.opportunityId === String(opportunityId)).pop();
+      if (!q) return { ok: false, error: { code: 'not_found', message: `There is no quote on deal ${opportunityId} to send.` } };
+      if (!String(body || '').trim()) return { ok: false, error: { code: 'invalid', message: 'An email needs some words.' } };
+      state.emails.push({ at: iso(), to: String(to), subject: String(subject || ''), body: String(body), author: String(author || ''), quoteNumber: q.quoteNumber, opportunityId: String(opportunityId) });
+      return { ok: true, connector: 'salesforce', record: { quoteNumber: q.quoteNumber, to: String(to), emails: state.emails.length } };
+    },
+
     create_case({ subject, description, priority, ticketId }) {
       const c = { caseNumber: String(1001 + state.cases.length).padStart(8, '0'), subject: String(subject || ''), description: String(description || '').slice(0, 500), priority: String(priority || 'Medium'), status: 'New', ticketId, createdAt: iso() };
       state.cases.push(c);
@@ -249,6 +312,43 @@ ${PAGE_STYLE}</style></head><body>
 </div></main></body></html>`;
 }
 
+function newQuoteRequest({ accountName, contactName, contactEmail, branchCode, lines, message, neededInDays = 8, hoursToRespond = 3.5 }) {
+  if (!Array.isArray(lines) || !lines.length) throw new Error('A quote request needs lines.');
+  const id = state.nextRequest++;
+  const r = {
+    requestId: id, opportunityId: `OPP-0${state.nextOpportunity++}`, raised: iso(), updated: iso(), status: 'open', stage: 'Propose', accountName: String(accountName), contactName: String(contactName || ''), contactEmail: String(contactEmail || ''),
+    branchCode: String(branchCode), branchName: branchName(branchCode), neededBy: inDays(neededInDays), message: message ? String(message) : undefined,
+    lines: lines.map((l) => ({ sku: String(l.sku), name: PRODUCTS[String(l.sku)] ? PRODUCTS[String(l.sku)].name : String(l.sku), quantity: Number(l.quantity) })), respondBy: iso(new Date(Date.now() + hoursToRespond * 3_600_000)),
+  };
+  state.quoteRequests.push(r);
+  return r;
+}
+
+/** The same kind of page for a quote: the quote and the email in Salesforce, and the stock the ERP now holds. */
+function quotePage(requestId) {
+  const r = state.quoteRequests.find((x) => x.requestId === Number(requestId)) || state.quoteRequests[state.quoteRequests.length - 1];
+  if (!r) return '<!doctype html><title>Connected systems</title><p>No quote requests yet.</p>';
+  const q = state.quotes.filter((x) => x.opportunityId === r.opportunityId).pop();
+  const mails = state.emails.filter((m) => m.opportunityId === r.opportunityId);
+  const hold = state.holds.filter((h) => h.opportunityId === r.opportunityId).pop();
+  const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long' }).replace(',', '') : '');
+  const nz = (n) => `$${Number(n).toLocaleString('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const lines = q ? q.lines.map((l) => `<li><b>${esc(l.quantity)} × ${esc(l.name)}</b><span>${esc(nz(l.unitPrice))} each</span><p>${esc(nz(l.lineTotal))}</p></li>`).join('') : '';
+  const held = hold ? hold.lines.map((l) => `<li><b>${esc(l.quantity)} × ${esc((PRODUCTS[l.sku] || {}).name || l.sku)}</b><span>${esc(branchName(hold.branchCode))}</span></li>`).join('') : '';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connected systems</title>
+<style>
+${PAGE_STYLE}</style></head><body>
+<header><h1>What changed in the connected systems</h1><p>Quote request ${esc(r.requestId)}, ${esc(r.accountName)}</p></header>
+<main>
+<section class="card"><h2>Salesforce</h2><h3>${q ? `Quote ${esc(q.quoteNumber)} · ${esc(r.accountName)}` : `Deal ${esc(r.opportunityId)}`}</h3><span class="chip ${q ? 'blue' : ''}">${q ? 'Quote sent' : 'No quote yet'}</span>
+<ul>${lines}${q ? `<li class="note"><b>Total with GST ${esc(nz(q.total))}</b><span>${esc(nz(q.subtotal))} before GST · ${esc(q.tier[0].toUpperCase() + q.tier.slice(1))} trade prices${q.validUntil ? ` · valid to ${esc(day(q.validUntil))}` : ''}</span></li>` : ''}
+${mails.map((m) => `<li><b>Email to ${esc(m.to)}</b><span>${esc(m.author)} · ${esc(clock(m.at))}</span><p>${esc(m.body)}</p></li>`).join('')}</ul></section>
+<div class="side">
+<section class="card"><h2>Deal</h2><h3>${esc(r.opportunityId)}</h3><dl><dt>Customer</dt><dd>${esc(r.accountName)}</dd><dt>Stage</dt><dd>${esc(r.stage)}</dd><dt>Needed by</dt><dd>${esc(day(r.neededBy))}</dd></dl></section>
+<section class="card"><h2>SAP ERP</h2><h3>${hold ? esc(hold.holdNumber) : 'No stock held yet'}</h3>${hold ? `<span class="chip">Held${hold.until ? ` until ${esc(day(hold.until))}` : ''}</span><ul>${held}</ul>` : ''}</section>
+</div></main></body></html>`;
+}
+
 const server = http.createServer((req, res) => {
   const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   let raw = '';
@@ -256,12 +356,14 @@ const server = http.createServer((req, res) => {
   req.on('end', () => {
     try {
       const url = new URL(req.url, 'http://x');
+      if (req.method === 'GET' && url.pathname === '/desk' && url.searchParams.get('quote')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(quotePage(url.searchParams.get('quote'))); }
       if (req.method === 'GET' && url.pathname === '/desk' && url.searchParams.get('exception')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(exceptionPage(url.searchParams.get('exception'))); }
       if (req.method === 'GET' && url.pathname === '/desk') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(deskPage(url.searchParams.get('ticket'))); }
       if (url.pathname.startsWith('/control/')) {
         if (req.socket.remoteAddress && !/^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/.test(req.socket.remoteAddress)) return send(403, { error: 'This machine only.' });
         if (req.method === 'GET' && url.pathname === '/control/state') return send(200, state);
         if (req.method === 'POST' && url.pathname === '/control/reset') { state = fresh(); return send(200, { ok: true }); }
+        if (req.method === 'POST' && url.pathname === '/control/new-quote-request') return send(200, { ok: true, request: newQuoteRequest(JSON.parse(raw || '{}')) });
         if (req.method === 'POST' && url.pathname === '/control/new-exception') return send(200, { ok: true, exception: newException(JSON.parse(raw || '{}')) });
         if (req.method === 'POST' && url.pathname === '/control/new-ticket') return send(200, { ok: true, ticket: publicTicket(newTicket(JSON.parse(raw || '{}'))) });
         return send(404, { error: 'No such door.' });

@@ -5,9 +5,10 @@
  * else is asked to see them, and a shopper's page never makes the call at all (it needs a signed-in person).
  */
 import { useEffect, useState } from 'react';
-import { fetchCareAccess, fetchStockAccess } from './careApi';
+import { fetchCareAccess, fetchDeskAccess } from './careApi';
+import type { DeskKind } from './careData';
 
-export interface CareEntry { label: string; kind: 'care-queue' | 'care-board' | 'stock-queue' | 'stock-board' }
+export interface CareEntry { label: string; kind: 'care-queue' | 'care-board' | 'stock-queue' | 'stock-board' | 'quotes-queue' | 'quotes-board' }
 
 export const CARE_ENTRIES: CareEntry[] = [
   { label: 'My tickets', kind: 'care-queue' },
@@ -18,6 +19,12 @@ export const CARE_ENTRIES: CareEntry[] = [
 export const STOCK_ENTRIES: CareEntry[] = [
   { label: 'Stock exceptions', kind: 'stock-queue' },
   { label: 'Stock board', kind: 'stock-board' },
+];
+
+/** The chips for the quotes desk, offered only to the sales people the server says work it. */
+export const QUOTES_ENTRIES: CareEntry[] = [
+  { label: 'Quote requests', kind: 'quotes-queue' },
+  { label: 'Quotes board', kind: 'quotes-board' },
 ];
 
 /** True once the server has said the signed-in person is care staff; false while it is asking, for anyone else, and when signed out. */
@@ -32,14 +39,16 @@ export function useCareAccess(signedInAs: string | null | undefined): boolean {
   return care;
 }
 
-/** True once the server has said the signed-in person works the stock desk; false while it is asking, for anyone else, when the desk is off, and when signed out. */
-export function useStockAccess(signedInAs: string | null | undefined): boolean {
-  const [stock, setStock] = useState(false);
+/** True once the server has said the signed-in person works the desk; false while it is asking, for anyone else, when the desk is off, and when signed out. */
+export function useDeskAccess(desk: Exclude<DeskKind, 'care'>, signedInAs: string | null | undefined): boolean {
+  const [yes, setYes] = useState(false);
   useEffect(() => {
-    if (!signedInAs) { setStock(false); return; }
+    if (!signedInAs) { setYes(false); return; }
     let cancelled = false;
-    fetchStockAccess().then((yes) => { if (!cancelled) setStock(yes); });
+    fetchDeskAccess(desk).then((answer) => { if (!cancelled) setYes(answer); });
     return () => { cancelled = true; };
-  }, [signedInAs]);
-  return stock;
+  }, [desk, signedInAs]);
+  return yes;
 }
+export const useStockAccess = (signedInAs: string | null | undefined): boolean => useDeskAccess('stock', signedInAs);
+export const useQuotesAccess = (signedInAs: string | null | undefined): boolean => useDeskAccess('quotes', signedInAs);

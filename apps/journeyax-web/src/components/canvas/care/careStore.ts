@@ -2,7 +2,7 @@
  * The care person's tickets as the portal holds them right now. Held outside React (like the side panel and the compare selection) because the
  * thing that changes a ticket, the care desk telling us a ticket arrived or the AI finished a stage, lives far from the canvases that show it.
  *
- * There is one list for each desk (customer care's tickets, the stock desk's exceptions); every function takes the desk and means customer care
+ * There is one list for each desk (customer care's tickets, the stock desk's exceptions, the quotes desk's requests); every function takes the desk and means customer care
  * when it is left out. A case says which desk it belongs to (`desk`), so an event finds its own list.
  *
  * Two ways in, one function: `applyCareEvent`. In a connected portal `useCareSync` asks the desk for its cases every two seconds while a care
@@ -16,7 +16,7 @@ import { FIXTURES, fetchTickets, type CareActor } from './careApi';
 
 interface DeskState { tickets: CareTicket[]; actor: CareActor | null; status: { loaded: boolean; error: string } }
 const initial = (desk: DeskKind): DeskState => ({ tickets: FIXTURES && desk === 'care' ? [...CARE_TICKETS] : [], actor: null, status: { loaded: FIXTURES && desk === 'care', error: '' } });
-const desks: Record<DeskKind, DeskState> = { care: initial('care'), stock: initial('stock') };
+const desks: Record<DeskKind, DeskState> = { care: initial('care'), stock: initial('stock'), quotes: initial('quotes') };
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
@@ -52,7 +52,7 @@ export function useCareTicket(id: string | undefined, desk: DeskKind = 'care'): 
 export const useCareActor = (desk: DeskKind = 'care'): CareActor | null => useSyncExternalStore(subscribe, () => desks[desk].actor, () => desks[desk].actor);
 export const useCareStatus = (desk: DeskKind = 'care') => useSyncExternalStore(subscribe, () => desks[desk].status, () => desks[desk].status);
 
-export function resetCareStore(): void { desks.care = initial('care'); desks.stock = initial('stock'); emit(); }
+export function resetCareStore(): void { desks.care = initial('care'); desks.stock = initial('stock'); desks.quotes = initial('quotes'); emit(); }
 
 export async function syncCareNow(desk: DeskKind = 'care'): Promise<void> {
   const answer = await fetchTickets(desk);

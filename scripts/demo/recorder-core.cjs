@@ -94,7 +94,8 @@ function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, capti
       while (capturing) {
         const at = Date.now() / 1000;
         try {
-          const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 92, optimizeForSpeed: true, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 2 } });
+          // A picture the browser never answers must not hold the recording (or its ending) forever: after eight seconds it is dropped and the next is tried.
+          const { data } = await Promise.race([cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 92, optimizeForSpeed: true, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 2 } }), new Promise((_, reject) => setTimeout(() => reject(new Error('screenshot timed out')), 8000))]);
           const hash = crypto.createHash('md5').update(data).digest('hex');
           if (hash !== lastHash) {
             const file = path.join(dir, `${String(frames.length).padStart(6, '0')}.jpg`);

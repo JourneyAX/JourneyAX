@@ -13,7 +13,7 @@ import { openCanvas } from '@/lib/shell/sidePanelStore';
 import { slaClock, stageIndex, type CareStage, type CareStep, type CareStepKind, type CareTicket, type DeskKind } from './careData';
 import { StatusChip } from './CareQueueCanvas';
 import { FIXTURES, decide } from './careApi';
-import { deskWords } from './deskWords';
+import { dayLabel, deskWords, formatMoney } from './deskWords';
 import { applyCareEvent, useCareActor, useCareSync, useCareTicket } from './careStore';
 
 type Phase = 'review' | 'running' | 'attention' | 'done' | 'rejected' | 'sent';
@@ -82,6 +82,7 @@ export default function CareTicketCanvas({ ticketId, failStep, desk = 'care' }: 
   if (!ticket) return <div className="cv"><div className="cv__body"><p className="cv__empty-title">We could not find that {w.one}</p><button type="button" className="cv__link" onClick={() => openCanvas({ kind: w.kinds.queue })}>Back to {w.queueTitle.toLowerCase()}</button></div></div>;
 
   const t: CareTicket = ticket;
+  const quoteCurrency = t.quote?.currency;
   const clock = slaClock(t.slaMinutes);
   const isDone = t.stage === 'done';
   const readIt = reached(t, 'read');
@@ -283,6 +284,34 @@ export default function CareTicketCanvas({ ticketId, failStep, desk = 'care' }: 
                     </tr>
                   ))}
                 </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {researched && t.quote && (
+          <>
+            <h3 className="cv__h">The quote</h3>
+            <div className="cv__orderbox">
+              <div className="cv__meta">{t.quote.tier} trade prices · {t.quote.discountPercent}% under retail · delivered from {t.quote.branch}{t.quote.validUntil ? ` · prices and stock hold to ${dayLabel(t.quote.validUntil)}` : ''}</div>
+              <table className="cv__branches cv__quote" aria-label="Quote lines">
+                <thead><tr><th scope="col">Product</th><th scope="col">Qty</th><th scope="col">Each</th><th scope="col">Line total</th><th scope="col">Stock</th></tr></thead>
+                <tbody>
+                  {t.quote.lines.map((l) => (
+                    <tr key={l.sku}>
+                      <th scope="row">{l.name}</th>
+                      <td>{l.quantity}</td>
+                      <td>{formatMoney(l.unitPrice, quoteCurrency)}</td>
+                      <td>{formatMoney(l.lineTotal, quoteCurrency)}</td>
+                      <td>{l.stock}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr><th scope="row" colSpan={3}>Subtotal before GST</th><td>{formatMoney(t.quote.subtotal, quoteCurrency)}</td><td /></tr>
+                  <tr><th scope="row" colSpan={3}>GST 15%</th><td>{formatMoney(t.quote.gst, quoteCurrency)}</td><td /></tr>
+                  <tr className="cv__quote-total"><th scope="row" colSpan={3}>Total with GST</th><td>{formatMoney(t.quote.total, quoteCurrency)}</td><td /></tr>
+                </tfoot>
               </table>
             </div>
           </>

@@ -33,6 +33,8 @@ const ALLOWED_TOOLS = new Set([
   'salesforce.create_case', 'salesforce.create_task',
   // The stock desk's one change in the ERP: a request for stock to be moved. It never writes a count.
   'ace-erp.request_stock_transfer',
+  // The quotes desk's changes: the quote and the email in Salesforce, and a hold on the stock in the ERP.
+  'salesforce.create_quote', 'salesforce.send_quote_email', 'ace-erp.hold_stock',
 ]);
 
 const done = (step: CareStep, args: Record<string, unknown>): string => {
@@ -43,6 +45,9 @@ const done = (step: CareStep, args: Record<string, unknown>): string => {
     case 'add_order_note': return `Note added on order ${args.orderNumber}.`;
     case 'create_case': return 'Case logged in Salesforce.';
     case 'create_task': return 'Task created for the account manager.';
+    case 'create_quote': return `Quote created on deal ${args.opportunityId}.`;
+    case 'send_quote_email': return `Quote emailed to ${args.to}.`;
+    case 'hold_stock': return `Stock held at branch ${args.branchCode} until ${args.until}.`;
     case 'request_stock_transfer': return `Transfer requested: ${args.quantity} from branch ${args.fromBranch} to branch ${args.toBranch}.`;
     default: return 'Done.';
   }
@@ -61,13 +66,13 @@ export class ConnectorWriteBack implements CareWriteBack {
     const action = step.action;
     if (!connector || !action || !ALLOWED_TOOLS.has(`${connector}.${action.tool}`)) return { ok: false, message: `${step.system} cannot be changed that way from here. Nothing was changed.` };
     const args: Record<string, unknown> = { ...action.args };
-    if (action.tool === 'reply_to_ticket') {
-      if (!ctx.draft.trim()) return { ok: false, message: 'There is no reply to send. Nothing was changed.' };
+    if (action.tool === 'reply_to_ticket' || action.tool === 'send_quote_email') {
+      if (!ctx.draft.trim()) return { ok: false, message: `There is no ${action.tool === 'send_quote_email' ? 'email' : 'reply'} to send. Nothing was changed.` };
       args.body = ctx.draft;
       args.author = ctx.actor.name;
     }
-    // A care ticket's case and task are tied to the ticket; a stock exception's carry the exception number the step already holds.
-    if ((action.tool === 'create_case' || action.tool === 'create_task') && doc.desk !== 'stock') args.ticketId = doc.zendeskId;
+    // A care ticket's case and task are tied to the ticket; the other desks' carry the number the step already holds.
+    if ((action.tool === 'create_case' || action.tool === 'create_task') && (!doc.desk || doc.desk === 'care')) args.ticketId = doc.zendeskId;
     try {
       await this.connectors.call(connector, action.tool, args, tenantId);
       return { ok: true, message: done(step, args) };
