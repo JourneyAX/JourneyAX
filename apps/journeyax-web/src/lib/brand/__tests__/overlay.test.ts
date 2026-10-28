@@ -94,6 +94,7 @@ check('a demo login is shown as a person with a job under the overlay, and as it
   assert.deepEqual(rebrandPerson(' CSR@placemakers.demo '), { name: 'Aroha Ngata', role: 'Customer care' });
   assert.deepEqual(rebrandPerson('branch@placemakers.demo'), { name: 'Wiremu Fox', role: 'Branch counter' });
   assert.deepEqual(rebrandPerson('sales@placemakers.demo'), { name: 'Hana Williams', role: 'Sales rep' });
+  assert.deepEqual(rebrandPerson('exec@placemakers.demo'), { name: 'Maia Collins', role: 'General manager' });
   assert.equal(rebrandPerson('someone@else.test'), undefined);
   assert.equal(rebrandPerson(undefined), undefined);
   setRebrand(undefined);
