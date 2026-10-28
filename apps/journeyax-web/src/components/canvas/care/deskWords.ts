@@ -130,7 +130,7 @@ const QUOTES: DeskWords = {
 };
 
 const INVOICES: DeskWords = {
-  eyebrow: 'Finance', queueTitle: 'Invoice exceptions', boardTitle: 'Finance board', one: 'invoice exception', many: 'invoice exceptions', refPrefix: '',
+  eyebrow: 'Finance', queueTitle: 'Invoice exceptions', boardTitle: 'Invoice board', one: 'invoice exception', many: 'invoice exceptions', refPrefix: '',
   kinds: { queue: 'invoices-queue', board: 'invoices-board', ticket: 'invoices-ticket' },
   stages: INVOICE_STAGES, topicLabel: 'Kind', moodLabel: 'Urgency', topics: INVOICE_TOPICS, moods: STOCK_URGENCY,
   wrote: 'What the customer said', waitingToRead: 'Waiting for the AI to start reading this exception.',

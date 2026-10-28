@@ -30,7 +30,7 @@ export const QUOTES_ENTRIES: CareEntry[] = [
 /** The chips for the invoices desk, offered only to the finance people the server says work it. */
 export const INVOICES_ENTRIES: CareEntry[] = [
   { label: 'Invoice exceptions', kind: 'invoices-queue' },
-  { label: 'Finance board', kind: 'invoices-board' },
+  { label: 'Invoice board', kind: 'invoices-board' },
 ];
 
 /** True once the server has said the signed-in person is care staff; false while it is asking, for anyone else, and when signed out. */

@@ -55,7 +55,7 @@ async function main() {
   await check('the invoices desk has its own words: invoice exceptions, SAP ERP, its own stages and labels', () => {
     const w = deskWords('invoices');
     assert.equal(w.queueTitle, 'Invoice exceptions');
-    assert.equal(w.boardTitle, 'Finance board');
+    assert.equal(w.boardTitle, 'Invoice board');
     assert.deepEqual(w.stages.map((s) => s.word), ['Flagged', 'AI read it', 'AI matched it', 'Credit ready', 'Waiting for approval', 'Changes running', 'Done']);
     assert.deepEqual(w.topics, ['Price mismatch', 'Quantity mismatch', 'Duplicate invoice', 'Missing credit note']);
     assert.equal(w.noteHeading('Sam', true), 'Email to Sam');
@@ -107,7 +107,7 @@ async function main() {
       answering(404, {});
       assert.equal(await fetchDeskAccess('invoices'), false);
     } finally { restore(); }
-    assert.deepEqual(INVOICES_ENTRIES, [{ label: 'Invoice exceptions', kind: 'invoices-queue' }, { label: 'Finance board', kind: 'invoices-board' }]);
+    assert.deepEqual(INVOICES_ENTRIES, [{ label: 'Invoice exceptions', kind: 'invoices-queue' }, { label: 'Invoice board', kind: 'invoices-board' }]);
   });
 
   await check('the portal passes on the invoices desk\'s routes, and the three screens can be opened', () => {
@@ -125,10 +125,10 @@ async function main() {
     resetCareStore();
     replaceCareTickets([exception(), { ...exception('read'), id: 'i8102', ref: 'IX-8102' }], { name: 'Ana Rangi', id: 'FIN-3101', isLead: false }, 'invoices');
     const list = html(React.createElement(CareQueueCanvas, { desk: 'invoices' }));
-    assert.ok(list.includes('IX-8101') && list.includes('Sam Hartley') && list.includes('Ana Rangi · FIN-3101') && list.includes('Finance board'));
+    assert.ok(list.includes('IX-8101') && list.includes('Sam Hartley') && list.includes('Ana Rangi · FIN-3101') && list.includes('Invoice board'));
     assert.ok(!list.includes('Zendesk') && !list.includes('My tickets'));
     const board = html(React.createElement(CareBoardCanvas, { desk: 'invoices' }));
-    assert.ok(board.includes('Finance board') && board.includes('How the invoice exceptions are moving'));
+    assert.ok(board.includes('Invoice board') && board.includes('How the invoice exceptions are moving'));
     for (const word of ['Flagged', 'AI matched it', 'Credit ready']) assert.ok(board.includes(word), word);
     assert.ok(!board.includes('Draft ready') && !board.includes('Quote ready'));
     resetCareStore();
