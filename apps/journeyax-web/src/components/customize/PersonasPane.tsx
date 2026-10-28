@@ -11,6 +11,7 @@
  * Saving the tools of a scenario changes nothing the assistant says or may do; it is a note the page checks. Shown to people who may change
  * the configuration (the project service checks that too).
  */
+import { readableId } from '@/lib/brand/overlay';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeftIcon, UserIcon } from '@/components/shell/icons';
 import {
@@ -185,7 +186,7 @@ export function PersonasView({ overview, library, query, tenant, open, onOpen, o
                   <span className="ax-muted">{plural(team.personas.length, 'persona')} · {plural(team.useCases, 'use case')}</span>
                 </h2>
                 <p className="ax-hint ax-teamnote">
-                  {team.note}{team.agent ? ` Answered by ${team.agent}.` : ' No assistant is set up for this team yet.'}
+                  {team.note}{team.agent ? ` Answered by ${readableId(team.agent)}.` : ' No assistant is set up for this team yet.'}
                   {team.waitingOn.length > 0 && <> Waiting on: {team.waitingOn.map((w) => `${w.system} (${w.state}, ${plural(w.useCases, 'use case')})`).join(', ')}.</>}
                 </p>
                 {counts && <VerdictChips counts={counts} />}

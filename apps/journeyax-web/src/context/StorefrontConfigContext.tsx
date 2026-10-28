@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { mergeTokens, applyTokens, type UiTheme } from '@journeyax/ui-cards';
+import { setRebrand } from '../lib/brand/overlay';
 
 export interface ConfiguratorConfig {
   enabled?: boolean;
@@ -56,6 +57,8 @@ export interface StorefrontConfig {
   labels: { items: string; itemsSingular: string; headerTitle: string };
   greeting: string;
   systemName: string;
+  /** Present only when the app is shown under another brand (BRAND_OVERLAY): what the sign-in screen says, and the names to take out of any text. */
+  brandOverlay?: { id: string; companyName: string; loginHeadline: string; loginTagline: string; remove: string[]; highlight: string };
   capabilities: string[];
   configurator: ConfiguratorConfig | null;
   intro?: IntroConfig | null;
@@ -246,6 +249,7 @@ export function StorefrontConfigProvider({ children }: { children: React.ReactNo
           setError(c.message || 'Project does not exist.');
           return;
         }
+        setRebrand(c.brandOverlay?.remove);
         setConfig({ ...DEFAULT, ...c, labels: { ...DEFAULT.labels, ...(c.labels || {}) } });
         applyTheme(c.theme || {});
         applyCardTheme(c.uiTheme || null, c.theme || {});

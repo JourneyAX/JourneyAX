@@ -1,0 +1,32 @@
+/*
+ * The AI strategy brand over the app (loaded only when BRAND_OVERLAY=ai-strategy). Colours here are for buttons, boxes and small highlights
+ * only: the page's own backgrounds are left exactly as they are. The lime and blue are the website's own (#C6FF00 and #4545F5).
+ */
+@font-face { font-family: 'DM Sans'; src: url('/brand/ai-strategy/fonts/dm-sans-400.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'DM Sans'; src: url('/brand/ai-strategy/fonts/dm-sans-600.ttf') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+
+html[data-brand="ai-strategy"] {
+  --brand-lime: #C6FF00;
+  --brand-blue: #4545F5;
+  --brand-ink: #12121A;
+  --brand-mark-line: #12121A;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-brand="ai-strategy"]:not([data-theme="light"]) { --brand-mark-line: #F4F1EC; }
+}
+
+/* The lockup: two squares, and the name over "& enablement" (sizes follow the website header; the font size scales the whole thing). */
+.brand-lockup { display: inline-flex; align-items: center; gap: 0.65em; font-family: 'DM Sans', Arial, sans-serif; font-size: 17px; line-height: 1.16; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; color: var(--brand-lockup-ink, var(--ax-text, #12121A)); }
+.brand-lockup__symbol { position: relative; display: block; flex-shrink: 0; width: 1.75em; height: 1.9em; }
+.brand-lockup__symbol i { position: absolute; display: block; width: 1em; height: 1.35em; border: 0.1em solid var(--brand-mark-line, #12121A); border-radius: 0.1em; box-sizing: border-box; }
+.brand-lockup__symbol i:first-child { left: 0; top: 0; background: var(--brand-lime, #C6FF00); }
+.brand-lockup__symbol i:last-child { left: 0.6em; top: 0.5em; background: var(--brand-blue, #4545F5); }
+.brand-lockup b { font-weight: 400; font-size: 0.75em; letter-spacing: 0; }
+.brand-lockup--large { font-size: 24px; }
+
+/* Small highlights in the lime: the New chat button. Its icon stays dark so it reads on the lime. */
+html[data-brand="ai-strategy"] .ax-nav__badge { background: var(--brand-lime) !important; color: var(--brand-ink) !important; border-radius: 6px; }
+html[data-brand="ai-strategy"] .ax-nav__item--primary:hover .ax-nav__badge { background: #D4FF3A !important; }
+/* Hover tint for the suggestion chips, and the send button in the website blue. */
+html[data-brand="ai-strategy"] .ax-suggestion:hover { background: rgba(198, 255, 0, 0.22); border-color: var(--brand-ink); }
+html[data-brand="ai-strategy"] .ax-send:not(:disabled), html[data-brand="ai-strategy"] .chat-send-btn:not(:disabled) { background: var(--brand-blue); color: #fff; }

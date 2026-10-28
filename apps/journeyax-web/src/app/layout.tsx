@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { overlayFromEnv } from "../lib/brand/overlay";
 import { Newsreader } from "next/font/google";
 import "./globals.css";
 // The app shell (sidebar, chat column, composer, side panel, Customize page): warm light tokens with a dark variant.
@@ -19,18 +20,28 @@ const serif = Newsreader({
   fallback: ["Iowan Old Style", "Palatino Linotype", "Georgia", "Times New Roman", "serif"],
 });
 
-export const metadata: Metadata = {
-  title: "JourneyAX",
-  description: "AI-powered conversational commerce — understand the goal, curate the plan, and order in one conversation.",
-};
+// With a brand overlay on (BRAND_OVERLAY), the page carries that brand's name; otherwise it is exactly as it was.
+export function generateMetadata(): Metadata {
+  const overlay = overlayFromEnv();
+  return {
+    title: overlay?.pageTitle ?? "JourneyAX",
+    description: "AI-powered conversational commerce — understand the goal, curate the plan, and order in one conversation.",
+  };
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const overlay = overlayFromEnv();
   return (
-    <html lang="en" className={serif.variable}>
+    <html lang="en" className={serif.variable} data-brand={overlay?.id}>
+      {overlay && (
+        <head>
+          <link rel="stylesheet" href={`/brand/${overlay.id}/overlay.css`} />
+        </head>
+      )}
       <body>{children}</body>
     </html>
   );

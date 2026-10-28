@@ -4,7 +4,13 @@
  * like &#x20;, and stripping raw serialized UI envelopes.
  */
 
+import { rebrandText } from './brand/overlay';
+
 export function sanitizeMessageText(raw: string): string {
+  return rebrandText(sanitizeInner(raw));
+}
+
+function sanitizeInner(raw: string): string {
   if (!raw || typeof raw !== 'string') return '';
   let cleaned = raw
     .replace(/<svg[\s\S]*?<\/svg>/gi, '') // Strip any serialized SVG markup

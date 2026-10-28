@@ -5,6 +5,7 @@
  * person with their menu. Everything shown is the tenant's own: its logo or name at the top, the person's name at the
  * bottom, the chats in between. No business is named here.
  */
+import BrandLockup from '@/components/brand/BrandLockup';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -76,7 +77,9 @@ export default function AppSidebar({
           <SidebarIcon />
         </button>
         <div className="ax-sidebar__brand">
-          {logo ? (
+          {cfg.brandOverlay ? (
+            <BrandLockup />
+          ) : logo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={logo}

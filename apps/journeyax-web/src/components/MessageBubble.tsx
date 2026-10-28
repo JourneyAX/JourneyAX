@@ -311,7 +311,7 @@ export default function MessageBubble({ message, onEdit, onRetry }: Props) {
 
   return (
     <div className="msg msg--ai">
-      <div className="msg__avatar" aria-hidden="true">{brandInitials(cfg.companyName)}</div>
+      <div className="msg__avatar" aria-hidden="true">{cfg.brandOverlay ? 'AI' : brandInitials(cfg.companyName)}</div>
       <div className="msg__body">
         {/* The name stays for screen readers; it is shown only when the engine badge is (debug builds). */}
         <div className={`msg__label${debugEngine ? ' msg__label--debug' : ''}`}>
