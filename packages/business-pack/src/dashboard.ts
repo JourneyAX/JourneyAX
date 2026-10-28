@@ -239,6 +239,11 @@ function show(value: unknown, filter: string | undefined, format: DashboardForma
   if (filter === 'money') return money(value, format);
   // An order or a line is shown to the cent; a deal is not.
   if (filter === 'price') return money(value, format, true);
+  // A count is written with its thousands (9,111 views), in the shop's own locale; text that is not a number is shown as it is.
+  if (filter === 'number') {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? new Intl.NumberFormat(format.locale).format(n) : String(value).trim();
+  }
   if (filter === 'date') return dateWords(value, format);
   // A system that writes "pending" or "public reply" in lower case is shown with a capital, as the rest of the words are.
   if (filter === 'title') return String(value).trim().replace(/^./u, (first) => first.toUpperCase());

@@ -184,6 +184,13 @@ check('money is written in the shop’s currency, and never in a guessed one whe
   assert.equal(fillTemplate('{amount|money}', { amount: 6612 }, { today: format.today }), '6,612', 'a plain number, with no currency sign');
 });
 
+check('a count is written with its thousands, and a word where a number was expected is left as it is', () => {
+  assert.equal(fillTemplate('{views|number} views', { views: 9111 }, format), '9,111 views');
+  assert.equal(fillTemplate('{views|number}', { views: '44851' }, format), '44,851', 'a number a system wrote as text');
+  assert.equal(fillTemplate('{views|number}', { views: 'n/a' }, format), 'n/a');
+  assert.equal(fillTemplate('{views|number} views', {}, format), '', 'a missing count takes its words with it');
+});
+
 check('chat cards: a lookup the pack has a card for becomes a card, newest facts only, with nothing invented', () => {
   const cards = recordCardsFor(entry, 'salesforce', 'list_opportunities', fixture.opps, format);
   assert.equal(cards.length, 1);

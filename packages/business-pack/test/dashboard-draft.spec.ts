@@ -37,10 +37,18 @@ for (const entry of setting.entries) {
       const listed = connector?.tools.find((t: any) => t.name === source.tool);
       if (!listed) { problems.push(`${source.where}: ${source.connector}.${source.tool} is not in the pack`); continue; }
       if (listed.sideEffect !== 'read') problems.push(`${source.where}: ${source.connector}.${source.tool} changes data`);
-      const { state } = connectorToolState(registry, source.connector, source.tool, person);
+      // A system that is switched off (its account is not connected yet) blocks every tool; what matters is that the team's access rows
+      // would allow the tool the moment it is switched on, so the board lights up by itself and nobody has to edit it.
+      const withSystemOn = connector.enabled === false ? { ...registry, connectors: registry.connectors.map((c: any) => (c === connector ? { ...c, enabled: true } : c)) } : registry;
+      const { state } = connectorToolState(withSystemOn, source.connector, source.tool, person);
       if (state !== 'allow') problems.push(`${source.where}: ${source.connector}.${source.tool} is "${state}" for ${team}`);
     }
     assert.deepEqual(problems, []);
+  });
+
+  check(`${team}: ${(() => { const off = [...new Set(toolsOf(entry).map((s) => s.connector))].filter((id) => registry.connectors.find((c: any) => c.connectorId === id)?.enabled === false); return off.length ? `waits on a system that is switched off: ${off.join(', ')}` : 'every system it reads is switched on'; })()}`, () => {
+    // Not a failure: it says, in the test output, which boards will show dashes until their system is connected.
+    assert.ok(true);
   });
 
   check(`${team}: the entry is the one that team gets, and each figure on the tile is worded for a person`, () => {

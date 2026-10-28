@@ -4399,6 +4399,825 @@
               }
             }
           ]
+        },
+        {
+          "groups": [
+            "leadership"
+          ],
+          "title": "The business",
+          "subtitle": "Deals, orders, service and what is owed, across the whole business.",
+          "tile": [
+            "pipeline",
+            "high-cases",
+            "overdue-total"
+          ],
+          "metrics": [
+            {
+              "id": "pipeline",
+              "label": "Open pipeline",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "sum",
+              "field": "amount",
+              "format": "money",
+              "ask": "How is the pipeline looking? Show me the stages and each rep."
+            },
+            {
+              "id": "closing-soon",
+              "label": "Closing in 14 days",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "closeDate",
+                  "op": "withinDays",
+                  "value": 14
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "warn"
+                }
+              ],
+              "hint": {
+                "field": "amount",
+                "format": "money",
+                "text": "worth {value}"
+              },
+              "ask": "Which deals close in the next two weeks, and who owns each?"
+            },
+            {
+              "id": "won",
+              "label": "Won so far",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "won",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "good"
+                }
+              ],
+              "hint": {
+                "field": "amount",
+                "format": "money",
+                "text": "worth {value}"
+              },
+              "ask": "Show me the deals we have won."
+            },
+            {
+              "id": "open-orders",
+              "label": "Open orders",
+              "source": {
+                "connector": "commercetools",
+                "tool": "list_orders",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the open orders, newest first."
+            },
+            {
+              "id": "open-tickets",
+              "label": "Open tickets",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "ask": "Show me the open tickets, oldest first."
+            },
+            {
+              "id": "urgent-tickets",
+              "label": "Urgent or high",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "priority",
+                  "op": "in",
+                  "value": "high,urgent"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Show me the urgent and high-priority tickets."
+            },
+            {
+              "id": "high-cases",
+              "label": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "measure": "count",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Show me the high-priority cases that are open."
+            },
+            {
+              "id": "overdue-total",
+              "label": "Overdue in total",
+              "source": {
+                "connector": "ace-erp",
+                "tool": "list_account_balances",
+                "args": {
+                  "minOverdue": 0.01,
+                  "limit": 25
+                }
+              },
+              "measure": "sum",
+              "field": "overdue",
+              "format": "money",
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Which trade accounts are overdue, and by how much?"
+            }
+          ],
+          "sections": [
+            {
+              "id": "stages",
+              "title": "Where the deals stand",
+              "source": {
+                "connector": "salesforce",
+                "tool": "pipeline_summary"
+              },
+              "from": "stages",
+              "where": [
+                {
+                  "field": "deals",
+                  "op": "notEquals",
+                  "value": 0
+                }
+              ],
+              "limit": 4,
+              "row": {
+                "title": "{stage}",
+                "detail": "{deals} deals",
+                "amount": "{amount|money}"
+              }
+            },
+            {
+              "id": "closing",
+              "title": "Closing in the next two weeks",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_opportunities",
+                "args": {
+                  "stage": "open",
+                  "limit": 25
+                }
+              },
+              "where": [
+                {
+                  "field": "closeDate",
+                  "op": "withinDays",
+                  "value": 14
+                }
+              ],
+              "sort": {
+                "field": "closeDate",
+                "order": "asc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{account}",
+                "subtitle": "{name|item}",
+                "detail": "Closes {closeDate|date} · {owner} · {nextStep}",
+                "badge": "{stage}",
+                "amount": "{amount|money}",
+                "ask": "Tell me about the {account} deal and where it stands."
+              },
+              "empty": "Nothing is due to close in the next two weeks.",
+              "more": {
+                "label": "See all the open deals in the chat",
+                "prompt": "Show me all the open deals."
+              }
+            },
+            {
+              "id": "urgent",
+              "title": "Urgent and high-priority tickets",
+              "source": {
+                "connector": "zendesk",
+                "tool": "find_tickets",
+                "args": {
+                  "status": "unsolved",
+                  "limit": 25
+                }
+              },
+              "where": [
+                {
+                  "field": "priority",
+                  "op": "in",
+                  "value": "high,urgent"
+                }
+              ],
+              "sort": {
+                "field": "created",
+                "order": "asc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{requester.name}",
+                "detail": "{status|title} · opened {created|date}",
+                "badge": "{priority|title}",
+                "tones": {
+                  "Urgent": "bad",
+                  "High": "bad",
+                  "Low": "good"
+                },
+                "ask": "Open the ticket \"{subject}\" from {requester.name}: what is it about, and what should we do next?"
+              },
+              "empty": "No urgent tickets are open.",
+              "more": {
+                "label": "See the open tickets in the chat",
+                "prompt": "Show me the open tickets, oldest first."
+              }
+            },
+            {
+              "id": "cases",
+              "title": "High-priority cases",
+              "source": {
+                "connector": "salesforce",
+                "tool": "list_cases",
+                "args": {
+                  "status": "open",
+                  "priority": "high",
+                  "limit": 25
+                }
+              },
+              "limit": 4,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              },
+              "empty": "No high-priority cases are open.",
+              "more": {
+                "label": "See the open cases in the chat",
+                "prompt": "Show me the open cases."
+              }
+            },
+            {
+              "id": "overdue",
+              "title": "Most overdue accounts",
+              "source": {
+                "connector": "ace-erp",
+                "tool": "list_account_balances",
+                "args": {
+                  "minOverdue": 0.01,
+                  "limit": 25
+                }
+              },
+              "sort": {
+                "field": "overdue",
+                "order": "desc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Terms {terms} · last paid {lastPaymentAt|date}",
+                "detail": "Balance {balance|price} of {creditLimit|price} limit",
+                "badge": "Overdue",
+                "tones": {
+                  "Overdue": "bad"
+                },
+                "amount": "{overdue|price}",
+                "ask": "What is overdue on {name}, and what are their payment terms?"
+              },
+              "empty": "No account is overdue.",
+              "more": {
+                "label": "See the overdue accounts in the chat",
+                "prompt": "Which trade accounts are overdue, and by how much?"
+              }
+            },
+            {
+              "id": "newest",
+              "title": "Newest orders",
+              "source": {
+                "connector": "commercetools",
+                "tool": "list_orders",
+                "args": {
+                  "status": "open",
+                  "limit": 25
+                }
+              },
+              "limit": 4,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and what is on it?"
+              },
+              "empty": "No orders are open.",
+              "more": {
+                "label": "See the open orders in the chat",
+                "prompt": "Show me the open orders, newest first."
+              }
+            }
+          ],
+          "cards": [
+            {
+              "connector": "salesforce",
+              "tool": "pipeline_summary",
+              "heading": "The pipeline by stage",
+              "from": "stages",
+              "where": [
+                {
+                  "field": "deals",
+                  "op": "notEquals",
+                  "value": 0
+                }
+              ],
+              "limit": 6,
+              "row": {
+                "title": "{stage}",
+                "detail": "{deals} deals",
+                "amount": "{amount|money}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "list_opportunities",
+              "heading": "Deals",
+              "sort": {
+                "field": "closeDate",
+                "order": "asc"
+              },
+              "limit": 6,
+              "row": {
+                "title": "{account}",
+                "subtitle": "{name|item}",
+                "detail": "Closes {closeDate|date} · {owner} · {nextStep}",
+                "badge": "{stage}",
+                "amount": "{amount|money}",
+                "ask": "Tell me about the {account} deal and where it stands."
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_opportunity",
+              "heading": "The deal",
+              "from": "record",
+              "row": {
+                "title": "{account}",
+                "subtitle": "{name|item}",
+                "detail": "Closes {closeDate|date} · {owner} · {nextStep}",
+                "badge": "{stage}",
+                "amount": "{amount|money}"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "list_cases",
+              "heading": "Cases",
+              "limit": 6,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                },
+                "ask": "What is happening with the {account} case, and who is looking after it?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "find_account",
+              "heading": "Accounts",
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{city} · {industry}",
+                "detail": "Account owner {owner}",
+                "ask": "Brief me on {name}."
+              }
+            },
+            {
+              "connector": "zendesk",
+              "tool": "find_tickets",
+              "heading": "Tickets",
+              "limit": 6,
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{requester.name}",
+                "detail": "{status|title} · opened {created|date}",
+                "badge": "{priority|title}",
+                "tones": {
+                  "Urgent": "bad",
+                  "High": "bad",
+                  "Low": "good"
+                },
+                "ask": "Open the ticket \"{subject}\" from {requester.name}: what is it about, and what should we do next?"
+              }
+            },
+            {
+              "connector": "zendesk",
+              "tool": "get_ticket",
+              "heading": "The ticket",
+              "from": "record",
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{requester.name}",
+                "detail": "{status|title} · opened {created|date}",
+                "badge": "{priority|title}",
+                "tones": {
+                  "Urgent": "bad",
+                  "High": "bad",
+                  "Low": "good"
+                }
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "list_orders",
+              "heading": "Orders",
+              "limit": 6,
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Placed {created|date} · Quantity {itemCount}",
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and what is on it?"
+              }
+            },
+            {
+              "connector": "commercetools",
+              "tool": "get_order",
+              "heading": "The order",
+              "from": "record",
+              "row": {
+                "title": "Order {orderNumber}",
+                "subtitle": "{shipTo.city}",
+                "detail": "Ordered {created|date} · Quantity {itemCount}",
+                "badge": "{state}",
+                "tones": {
+                  "Complete": "good",
+                  "Cancelled": "bad",
+                  "Confirmed": "info"
+                },
+                "amount": "{total|price}",
+                "ask": "Where is order {orderNumber}, and when will it arrive?"
+              }
+            },
+            {
+              "connector": "ace-erp",
+              "tool": "list_account_balances",
+              "heading": "Account balances",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "Terms {terms} · last paid {lastPaymentAt|date}",
+                "detail": "Balance {balance|price} of {creditLimit|price} limit",
+                "amount": "{overdue|price} overdue",
+                "ask": "What is the balance on {name}, and is anything overdue?"
+              }
+            },
+            {
+              "connector": "ace-erp",
+              "tool": "account_balance",
+              "heading": "The account",
+              "from": "record",
+              "row": {
+                "title": "{name}",
+                "subtitle": "Terms {terms} · last paid {lastPaymentAt|date}",
+                "detail": "Balance {balance|price} of {creditLimit|price} limit",
+                "amount": "{overdue|price} overdue",
+                "ask": "What is the balance on {name}, and is anything overdue?"
+              }
+            },
+            {
+              "connector": "salesforce",
+              "tool": "get_case",
+              "heading": "The case",
+              "from": "record",
+              "row": {
+                "title": "{subject}",
+                "subtitle": "{account}",
+                "detail": "{status} · opened {created|date} · Owner {owner}",
+                "badge": "{priority}",
+                "tones": {
+                  "High": "bad",
+                  "Medium": "warn",
+                  "Low": "good"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "groups": [
+            "insights"
+          ],
+          "title": "The website",
+          "subtitle": "Traffic, the searches that bring people in, and what it turns into.",
+          "tile": [
+            "sessions",
+            "conversions",
+            "search-clicks"
+          ],
+          "metrics": [
+            {
+              "id": "sessions",
+              "label": "Sessions, last 60 days",
+              "source": {
+                "connector": "google-analytics",
+                "tool": "daily_traffic",
+                "args": {
+                  "limit": 60
+                }
+              },
+              "measure": "sum",
+              "field": "sessions",
+              "format": "number",
+              "ask": "How has website traffic been over the last two months?"
+            },
+            {
+              "id": "conversions",
+              "label": "Conversions, last 60 days",
+              "source": {
+                "connector": "google-analytics",
+                "tool": "daily_traffic",
+                "args": {
+                  "limit": 60
+                }
+              },
+              "measure": "sum",
+              "field": "conversions",
+              "format": "number",
+              "ask": "How many conversions did the website bring in over the last two months?"
+            },
+            {
+              "id": "search-clicks",
+              "label": "Clicks from top searches",
+              "source": {
+                "connector": "google-analytics",
+                "tool": "top_searches",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "measure": "sum",
+              "field": "clicks",
+              "format": "number",
+              "ask": "Which searches bring the most people to the website?"
+            },
+            {
+              "id": "reports",
+              "label": "Reports",
+              "source": {
+                "connector": "power-bi",
+                "tool": "list_reports",
+                "args": {
+                  "limit": 10
+                }
+              },
+              "measure": "count",
+              "ask": "Which reports do we have, and what does each show?"
+            }
+          ],
+          "sections": [
+            {
+              "id": "pages",
+              "title": "Busiest pages",
+              "source": {
+                "connector": "google-analytics",
+                "tool": "traffic_by_page",
+                "args": {
+                  "limit": 10
+                }
+              },
+              "limit": 5,
+              "row": {
+                "title": "{title}",
+                "subtitle": "{path}",
+                "detail": "{users|number} visitors · {conversions|number} conversions",
+                "amount": "{views|number} views",
+                "ask": "How is the {title} page doing, and what should we change on it?"
+              },
+              "empty": "No page traffic yet.",
+              "more": {
+                "label": "See the busiest pages in the chat",
+                "prompt": "Which pages of the website are busiest?"
+              }
+            },
+            {
+              "id": "searches",
+              "title": "Searches that bring people in",
+              "source": {
+                "connector": "google-analytics",
+                "tool": "top_searches",
+                "args": {
+                  "limit": 25
+                }
+              },
+              "limit": 5,
+              "row": {
+                "title": "{term}",
+                "detail": "{impressions|number} shown · average position {avgPosition}",
+                "amount": "{clicks|number} clicks",
+                "ask": "How are we doing for the search \"{term}\"?"
+              },
+              "empty": "No searches yet.",
+              "more": {
+                "label": "See the searches in the chat",
+                "prompt": "Which searches bring the most people to the website?"
+              }
+            },
+            {
+              "id": "channels",
+              "title": "How people arrive",
+              "source": {
+                "connector": "google-analytics",
+                "tool": "conversion_summary"
+              },
+              "from": "rows",
+              "sort": {
+                "field": "sessions",
+                "order": "desc"
+              },
+              "limit": 6,
+              "row": {
+                "title": "{channel|title}",
+                "detail": "{sessions|number} sessions",
+                "amount": "{conversions|number} conversions"
+              },
+              "empty": "No channel figures yet."
+            },
+            {
+              "id": "reports",
+              "title": "Reports",
+              "source": {
+                "connector": "power-bi",
+                "tool": "list_reports",
+                "args": {
+                  "limit": 10
+                }
+              },
+              "limit": 5,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{description}",
+                "detail": "{owner} · refreshed {refreshedAt|date}",
+                "badge": "{grain|title}",
+                "ask": "Show me the figures in the {name} report."
+              },
+              "empty": "No reports yet.",
+              "more": {
+                "label": "See the reports in the chat",
+                "prompt": "Which reports do we have, and what does each show?"
+              }
+            }
+          ],
+          "cards": [
+            {
+              "connector": "google-analytics",
+              "tool": "traffic_by_page",
+              "heading": "Pages",
+              "limit": 6,
+              "row": {
+                "title": "{title}",
+                "subtitle": "{path}",
+                "detail": "{users|number} visitors · {conversions|number} conversions",
+                "amount": "{views|number} views",
+                "ask": "How is the {title} page doing, and what should we change on it?"
+              }
+            },
+            {
+              "connector": "google-analytics",
+              "tool": "top_searches",
+              "heading": "Searches",
+              "limit": 6,
+              "row": {
+                "title": "{term}",
+                "detail": "{impressions|number} shown · average position {avgPosition}",
+                "amount": "{clicks|number} clicks",
+                "ask": "How are we doing for the search \"{term}\"?"
+              }
+            },
+            {
+              "connector": "google-analytics",
+              "tool": "daily_traffic",
+              "heading": "Day by day",
+              "limit": 7,
+              "row": {
+                "title": "{date|date}",
+                "detail": "{users|number} visitors · {conversions|number} conversions",
+                "amount": "{sessions|number} sessions"
+              }
+            },
+            {
+              "connector": "google-analytics",
+              "tool": "conversion_summary",
+              "heading": "How people arrive",
+              "from": "rows",
+              "limit": 6,
+              "row": {
+                "title": "{channel|title}",
+                "detail": "{sessions|number} sessions",
+                "amount": "{conversions|number} conversions"
+              }
+            },
+            {
+              "connector": "power-bi",
+              "tool": "list_reports",
+              "heading": "Reports",
+              "limit": 6,
+              "row": {
+                "title": "{name}",
+                "subtitle": "{description}",
+                "detail": "{owner} · refreshed {refreshedAt|date}",
+                "badge": "{grain|title}",
+                "ask": "Show me the figures in the {name} report."
+              }
+            },
+            {
+              "connector": "power-bi",
+              "tool": "report_totals",
+              "heading": "Report totals",
+              "from": "rows",
+              "limit": 6,
+              "row": {
+                "title": "{dimension|clean}",
+                "detail": "{periods} periods",
+                "amount": "{total|number}"
+              }
+            },
+            {
+              "connector": "power-bi",
+              "tool": "get_report_figures",
+              "heading": "Report figures",
+              "limit": 8,
+              "row": {
+                "title": "{period}",
+                "subtitle": "{dimension|clean}",
+                "amount": "{value|number}"
+              }
+            }
+          ]
         }
       ]
     },
