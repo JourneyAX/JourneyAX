@@ -58,7 +58,7 @@ export interface StorefrontConfig {
   greeting: string;
   systemName: string;
   /** Present only when the app is shown under another brand (BRAND_OVERLAY): what the sign-in screen says, and the names to take out of any text. */
-  brandOverlay?: { id: string; companyName: string; loginHeadline: string; loginTagline: string; remove: string[]; highlight: string };
+  brandOverlay?: { id: string; companyName: string; loginHeadline: string; loginTagline: string; remove: string[]; rename?: { from: string; to: string }[]; people?: Record<string, { name: string; role: string }>; highlight: string };
   capabilities: string[];
   configurator: ConfiguratorConfig | null;
   intro?: IntroConfig | null;
@@ -249,7 +249,7 @@ export function StorefrontConfigProvider({ children }: { children: React.ReactNo
           setError(c.message || 'Project does not exist.');
           return;
         }
-        setRebrand(c.brandOverlay?.remove);
+        setRebrand(c.brandOverlay?.remove, c.brandOverlay?.rename, c.brandOverlay?.people);
         setConfig({ ...DEFAULT, ...c, labels: { ...DEFAULT.labels, ...(c.labels || {}) } });
         applyTheme(c.theme || {});
         applyCardTheme(c.uiTheme || null, c.theme || {});

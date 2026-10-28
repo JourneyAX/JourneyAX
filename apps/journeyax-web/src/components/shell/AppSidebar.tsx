@@ -6,6 +6,7 @@
  * bottom, the chats in between. No business is named here.
  */
 import BrandLockup from '@/components/brand/BrandLockup';
+import { rebrandPerson } from '@/lib/brand/overlay';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -63,7 +64,10 @@ export default function AppSidebar({
   const logo = cfg.theme?.logoUrl && !logoFailed ? cfg.theme.logoUrl : null;
   const brand = cfg.companyName || 'JourneyAX';
   const login = String(user?.email || '').split('@')[0];
-  const personName = login || user?.fullName || '';
+  // Under a brand overlay a demo login is shown as a person with a job (the login itself is unchanged).
+  const shown = rebrandPerson(user?.email);
+  const personName = shown?.name || login || user?.fullName || '';
+  const personRole = shown?.role || user?.role;
 
   const signOut = async () => {
     setMenuOpen(false);
@@ -172,8 +176,8 @@ export default function AppSidebar({
         {menuOpen && (
           <div className="ax-menu ax-menu--up" role="menu" aria-label="Account">
             <div className="ax-menu__who">
-              <strong>{user?.fullName || personName || 'Signed in'}</strong>
-              {user?.email && <span>{user.email}</span>}
+              <strong>{shown?.name || user?.fullName || personName || 'Signed in'}</strong>
+              {shown ? <span>{shown.role}</span> : user?.email && <span>{user.email}</span>}
             </div>
             {!embed && (
               <Link role="menuitem" href={shellHref('/customize', search)} className="ax-menu__item" onClick={() => { setMenuOpen(false); onNavigate(); }}>
@@ -195,7 +199,7 @@ export default function AppSidebar({
           <span className="ax-user__avatar" aria-hidden="true">{initials(personName, '·')}</span>
           <span className="ax-user__meta">
             <span className="ax-user__name">{personName || 'Signed in'}</span>
-            {user?.role && <span className="ax-user__sub">{user.role}</span>}
+            {personRole && <span className="ax-user__sub">{personRole}</span>}
           </span>
           <ChevronDownIcon size={16} className="ax-user__chev" />
         </button>

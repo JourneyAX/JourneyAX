@@ -6,7 +6,8 @@ import { resolveTenant } from '../../../../lib/tenant';
 import { upstreamAuthHeaders, unauthorized } from '../../../../lib/bff-auth';
 import { allowedCarePath } from '../../../../lib/care/allowedPath';
 
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
+// A recording can send the care desk's calls to a separate gateway (CARE_GATEWAY_URL) that reaches pretend systems; normally it is the one gateway.
+const GATEWAY_URL = process.env.CARE_GATEWAY_URL || process.env.GATEWAY_URL || 'http://localhost:3010';
 async function forward(req: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   const segments = Array.isArray(path) ? path : [];

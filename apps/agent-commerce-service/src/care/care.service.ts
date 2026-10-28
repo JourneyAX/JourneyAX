@@ -10,7 +10,8 @@
  *   CARE_MIN_STAGE_MS          keep each AI stage on screen at least this long (default 0; 1500 for a recording)
  *   CARE_TEAM                  the care people, as JSON (default: the care screens' team)
  *   CARE_ORDER_FORMATS         how an order number looks in a customer's words, as JSON: [{"name":..., "pattern":..., "example":...}] (default: the checkout number and the prefixed number)
- * Changing Zendesk, commercetools or Salesforce is a separate switch (the write-back), not on here.
+ *   CARE_WRITEBACK=connectors  carry out an approved ticket's changes through the connector server (default: off, nothing is changed)
+ * Changing Zendesk, commercetools or Salesforce is that separate switch (the write-back); it is off unless named.
  */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ADMIN_GROUP } from '@journeyax/shared-types';
@@ -23,7 +24,7 @@ import { LlmCareModel } from './care.model';
 import { orderFormatsFromEnv, teamFromEnv, type CareTeam } from './care.playbook';
 import { CareProcessor } from './care.processor';
 import { MemoryCareStore, MongoCareStore, type CareStore } from './care.store';
-import { UnavailableWriteBack, type CareActor, type CareWriteBack } from './care.writeback';
+import { ConnectorWriteBack, UnavailableWriteBack, type CareActor, type CareWriteBack } from './care.writeback';
 import { httpConnectorCaller } from './connector-rpc';
 import type { VerifiedIdentity } from '../identity';
 
@@ -49,6 +50,7 @@ export class CareService implements OnModuleInit, OnModuleDestroy {
       : new MongoCareStore(async (): Promise<Db | null> => (await connectToDatabase(env.MONGODB_URI!, 'journeyx')).db);
     this.store = store;
     const connectors = httpConnectorCaller();
+    if (connectors && (env.CARE_WRITEBACK || '').trim().toLowerCase() === 'connectors') this.writeBack = new ConnectorWriteBack(connectors);
     const log = (m: string) => this.log.log(m);
     const orders = orderFormatsFromEnv(env);
     for (const problem of orders.problems) this.log.warn(problem);

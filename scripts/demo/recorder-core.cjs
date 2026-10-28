@@ -56,9 +56,11 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const clock = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
 /** A recording kit that writes into `out`. */
-function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, captionAt = 'bottom', captions = true }) {
+function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, captionAt = 'bottom', captions = true, ripple = '#a8346f' }) {
   // The caption sits at the bottom of the picture, or at the top where the screen has a message box at the bottom (a chat).
-  const overlay = captionAt === 'top' ? OVERLAY.replace('bottom:34px', 'top:12px').replace('padding:16px 30px', 'padding:10px 26px').replace('font:600 30px/1.3', 'font:600 26px/1.3') : OVERLAY;
+  const base = captionAt === 'top' ? OVERLAY.replace('bottom:34px', 'top:12px').replace('padding:16px 30px', 'padding:10px 26px').replace('font:600 30px/1.3', 'font:600 26px/1.3') : OVERLAY;
+  // The click ripple takes the brand's colour (a recording for another brand passes its own).
+  const overlay = base.split('#a8346f').join(ripple);
   async function openRecorder(name, { storageState, profileDir } = {}) {
     const dir = path.join(out, '.raw', name);
     fs.rmSync(dir, { recursive: true, force: true });

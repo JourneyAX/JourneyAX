@@ -8,6 +8,12 @@
  * the assistant's replies, the sign-in screen), so "Build it right with PlaceMakers." reads "Build it right.".
  */
 
+/** `from` is a name exactly as written in the connected system; `to` is how it reads on the screen ("Support team", or "the support team" after "from"). */
+export interface Rename { from: string; to: string }
+
+/** How a signed-in demo login is shown in the sidebar: a person's name and job instead of the login (the login itself is never changed). */
+export interface Person { name: string; role: string }
+
 export interface BrandOverlay {
   id: string;
   /** The name shown where the project's name was (sign-in, sidebar when there is no logo, the avatar's initials). */
@@ -17,6 +23,10 @@ export interface BrandOverlay {
   pageTitle: string;
   /** The shop names to take out of any text (whole words, exactly as written: an id or an address in lower case is not a name). */
   remove: string[];
+  /** People's names (as they are in the connected systems) shown as a team name instead, so a recording never carries a real person's name. */
+  rename: Rename[];
+  /** Demo logins by e-mail address (lower case), shown as a person with a job. */
+  people: Record<string, Person>;
   loginHeadline: string;
   loginTagline: string;
   /** Button, link and panel-header colours only. */
@@ -32,6 +42,10 @@ export const AI_STRATEGY: BrandOverlay = {
   pageTitle: 'AI strategy & enablement',
   // The brand as it is written for people. Ids, addresses and links are lower case and are never touched.
   remove: ['PlaceMakers', 'Placemakers', 'PLACEMAKERS'],
+  // The sample helpdesk's staff reply as one person; on screen it is the team. The full name first, so the first name alone is only a fallback.
+  rename: [{ from: 'Mahaveer Amudhachandran', to: 'Support team' }, { from: 'Mahaveer', to: 'Support team' }],
+  // The care desk already names this login Aroha Ngata (CSR-1041); the sidebar now agrees with it.
+  people: { 'csr@placemakers.demo': { name: 'Aroha Ngata', role: 'Customer care' } },
   loginHeadline: 'Sign in to try the assistant.',
   loginTagline: 'See how an assistant that is connected to your systems, with people in control, can help one workflow at a time.',
   colors: { action: '#4545F5', actionText: '#FFFFFF', link: '#4545F5', canvasHeader: '#12121A', canvasHeaderText: '#FFFFFF' },
@@ -64,6 +78,20 @@ export function removeNames(text: string, names: readonly string[]): string {
   return out.replace(/(\S)[ \t]{2,}/g, '$1 ').replace(/(\S)[ \t]+([.,;:!?])/g, '$1$2');
 }
 
+/**
+ * A person's name shown as a team name: "from Mahaveer Amudhachandran" reads "from the support team", "Mahaveer Amudhachandran's note" reads
+ * "Support team's note", and a name on its own line reads "Support team".
+ */
+export function renameNames(text: string, renames: readonly Rename[]): string {
+  let out = text;
+  for (const { from, to } of renames) {
+    const n = escapeRegex(from);
+    out = out.replace(new RegExp(`\\b(from|by|with|to|of|for)([ \\t]+)${n}\\b`, 'g'), (_m, word: string, space: string) => `${word}${space}the ${to.toLowerCase()}`);
+    out = out.replace(new RegExp(`\\b${n}\\b`, 'g'), to);
+  }
+  return out;
+}
+
 /** Every string inside a value (arrays and objects included, keys left alone) with the names taken out. */
 export function removeNamesDeep<T>(value: T, names: readonly string[]): T {
   if (typeof value === 'string') return removeNames(value, names) as unknown as T;
@@ -73,7 +101,7 @@ export function removeNamesDeep<T>(value: T, names: readonly string[]): T {
 }
 
 /** The storefront config as the page should receive it under this overlay. */
-export function applyBrandOverlay<T extends Record<string, any>>(config: T, overlay: BrandOverlay): T & { brandOverlay: { id: string; companyName: string; loginHeadline: string; loginTagline: string; remove: string[]; highlight: string } } {
+export function applyBrandOverlay<T extends Record<string, any>>(config: T, overlay: BrandOverlay): T & { brandOverlay: { id: string; companyName: string; loginHeadline: string; loginTagline: string; remove: string[]; rename: Rename[]; people: Record<string, Person>; highlight: string } } {
   const base: any = removeNamesDeep(config, overlay.remove);
   const tokens = base?.uiTheme?.tokens && typeof base.uiTheme.tokens === 'object' ? base.uiTheme.tokens : {};
   const colors = { ...(tokens.colors && typeof tokens.colors === 'object' ? tokens.colors : {}), ...overlay.colors, brand: overlay.colors.action, brandText: overlay.colors.actionText, accent: overlay.colors.link };
@@ -85,21 +113,32 @@ export function applyBrandOverlay<T extends Record<string, any>>(config: T, over
     theme: { ...(base.theme || {}), logoUrl: undefined, primaryColor: overlay.colors.action, accentColor: overlay.colors.link },
     uiTheme: { ...(base.uiTheme || {}), tokens: { ...tokens, colors } },
     labels: { ...(base.labels || {}), headerTitle: overlay.loginHeadline },
-    brandOverlay: { id: overlay.id, companyName: overlay.companyName, loginHeadline: overlay.loginHeadline, loginTagline: overlay.loginTagline, remove: overlay.remove, highlight: overlay.highlight },
+    brandOverlay: { id: overlay.id, companyName: overlay.companyName, loginHeadline: overlay.loginHeadline, loginTagline: overlay.loginTagline, remove: overlay.remove, rename: overlay.rename, people: overlay.people, highlight: overlay.highlight },
   };
 }
 
 // ---- in the browser: the assistant's replies and cards are cleaned as they are drawn ---------------------------------------------------------
 let activeNames: readonly string[] = [];
+let activeRenames: readonly Rename[] = [];
+let activePeople: Record<string, Person> = {};
 
-/** Called once the page has its config: the names to take out of every reply (none when the overlay is off). */
-export function setRebrand(names: readonly string[] | undefined): void {
+/** Called once the page has its config: the names to take out of every reply, the people's names to show as a team, and the demo logins shown as people (none when the overlay is off). */
+export function setRebrand(names: readonly string[] | undefined, renames?: readonly Rename[], people?: Record<string, Person>): void {
   activeNames = Array.isArray(names) ? names : [];
+  activeRenames = Array.isArray(renames) ? renames : [];
+  activePeople = people && typeof people === 'object' ? people : {};
+}
+
+/** The person a signed-in login is shown as under the overlay, or nothing (the usual case). */
+export function rebrandPerson(email: string | undefined | null): Person | undefined {
+  return activePeople[String(email || '').trim().toLowerCase()];
 }
 
 /** A piece of text for the screen: unchanged unless a brand overlay is on. */
 export function rebrandText(text: string): string {
-  return activeNames.length ? removeNames(text, activeNames) : text;
+  if (!text || (!activeNames.length && !activeRenames.length)) return text;
+  const cleaned = activeNames.length ? removeNames(text, activeNames) : text;
+  return activeRenames.length ? renameNames(cleaned, activeRenames) : cleaned;
 }
 
 /**

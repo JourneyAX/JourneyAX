@@ -6,6 +6,7 @@
  * short. A line with a question attached asks that question in the chat when pressed.
  */
 import { askInChat } from '@/lib/shell/askInChat';
+import { rebrandText } from '@/lib/brand/overlay';
 
 interface Row { title: string; subtitle?: string; detail?: string; badge?: string; tone?: 'good' | 'warn' | 'bad' | 'info'; amount?: string; ask?: string }
 export interface RecordsState { heading: string; rows: Row[]; total?: number; shown?: number; atLeast?: boolean }
@@ -25,9 +26,9 @@ export default function RecordsCard({ state }: { state: RecordsState }) {
           const body = (
             <>
               <span className="rec__main">
-                <span className="rec__name">{row.title}</span>
-                {row.subtitle && <span className="rec__sub">{row.subtitle}</span>}
-                {row.detail && <span className="rec__detail">{row.detail}</span>}
+                <span className="rec__name">{rebrandText(row.title)}</span>
+                {row.subtitle && <span className="rec__sub">{rebrandText(row.subtitle)}</span>}
+                {row.detail && <span className="rec__detail">{rebrandText(row.detail)}</span>}
               </span>
               {(row.amount || row.badge) && (
                 <span className="rec__side">

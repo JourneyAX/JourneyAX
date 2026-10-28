@@ -4,7 +4,7 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/brand/__tests__/overlay.test.ts
  */
 import assert from 'node:assert/strict';
-import { AI_STRATEGY, applyBrandOverlay, overlayFromEnv, readableId, rebrandText, removeNames, removeNamesDeep, setRebrand } from '../overlay';
+import { AI_STRATEGY, applyBrandOverlay, overlayFromEnv, readableId, rebrandPerson, rebrandText, removeNames, removeNamesDeep, renameNames, setRebrand } from '../overlay';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -70,6 +70,30 @@ check('an internal id shown to a person loses the shop\u2019s name only under th
   setRebrand(AI_STRATEGY.remove);
   assert.equal(readableId('placemakers_customer_service'), 'customer service');
   assert.equal(readableId('other_agent'), 'other_agent');
+  setRebrand(undefined);
+});
+
+check('a person’s name from the connected helpdesk is shown as the team, and an address is left alone', () => {
+  const R = AI_STRATEGY.rename;
+  assert.equal(renameNames('a request from Mahaveer Amudhachandran for a photo', R), 'a request from the support team for a photo');
+  assert.equal(renameNames('Mahaveer Amudhachandran', R), 'Support team');
+  assert.equal(renameNames("Mahaveer Amudhachandran's note", R), "Support team's note");
+  assert.equal(renameNames('Thanks, Mahaveer', R), 'Thanks, Support team');
+  assert.equal(renameNames('Ruth Mackie asked, then Mahaveer Amudhachandran replied.', R), 'Ruth Mackie asked, then Support team replied.');
+  assert.equal(renameNames('mahaveer.it@gmail.com', R), 'mahaveer.it@gmail.com');
+  setRebrand(AI_STRATEGY.remove, AI_STRATEGY.rename);
+  assert.equal(rebrandText('The PlaceMakers desk heard from Mahaveer Amudhachandran.'), 'The desk heard from the support team.', 'the shop name and the person both go');
+  setRebrand(undefined);
+  assert.equal(rebrandText('from Mahaveer Amudhachandran'), 'from Mahaveer Amudhachandran', 'nothing changes with the overlay off');
+});
+
+check('a demo login is shown as a person with a job under the overlay, and as itself otherwise', () => {
+  setRebrand(undefined);
+  assert.equal(rebrandPerson('csr@placemakers.demo'), undefined);
+  setRebrand(AI_STRATEGY.remove, AI_STRATEGY.rename, AI_STRATEGY.people);
+  assert.deepEqual(rebrandPerson(' CSR@placemakers.demo '), { name: 'Aroha Ngata', role: 'Customer care' });
+  assert.equal(rebrandPerson('someone@else.test'), undefined);
+  assert.equal(rebrandPerson(undefined), undefined);
   setRebrand(undefined);
 });
 
