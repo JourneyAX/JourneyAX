@@ -102,7 +102,7 @@
     },
     {
       "connectorId": "ace-erp",
-      "displayName": "ACE ERP (sample)",
+      "displayName": "SAP ERP (sample)",
       "description": "The business system: stock by branch, trade prices by tier, delivery status and account balances.",
       "owner": "Supply chain team",
       "secretRef": "tenant-secret://placemakers/production/sample-connectors-key",

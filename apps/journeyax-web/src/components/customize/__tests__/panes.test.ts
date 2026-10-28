@@ -44,7 +44,7 @@ check('a table with Connector, Type and Status; systems first; the words are Con
   for (const head of ['Connector', 'Type', 'Status']) assert.ok(html.includes(`>${head}<`), head);
   assert.ok(html.indexOf('Salesforce') < html.indexOf('Browse the range'), 'systems come first');
   assert.ok(html.includes('<td>Connector</td>') && html.includes('<td>Data</td>') && html.includes('Connected') && html.includes('Not connected'));
-  assert.ok(html.includes('>Salesforce Marketing Cloud<') && html.includes('>ACE ERP<'), 'the name and nothing else');
+  assert.ok(html.includes('>Salesforce Marketing Cloud<') && html.includes('>SAP ERP<'), 'the name and nothing else');
   assert.ok(!/sample/i.test(html) && !html.includes('Real data') && !html.includes('Needs setup') && !html.includes('Need another system?'), 'no explanations');
   assert.ok(html.includes('Zendesk'), 'the ticket desk is switched on');
   assert.ok(!html.includes('MuleSoft'), 'a switched-off system is under Discover');

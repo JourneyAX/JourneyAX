@@ -56,7 +56,7 @@ check('each team is a section: live or planned, its note, who answers it, what i
   assert.ok(html.includes('Live') && html.includes('Planned'));
   assert.ok(html.includes('Answered by placemakers_customer_service'));
   assert.ok(html.includes('No assistant is set up for this team yet.'));
-  assert.ok(html.includes('Waiting on: ACE (sample, 2 use cases)'));
+  assert.ok(html.includes('Waiting on: SAP (sample, 2 use cases)'));
   assert.ok(html.includes('Trade Support Advisor / Telesales') && html.includes('2 use cases'));
   assert.equal((html.match(/class="ax-card"/g) || []).length, 24, 'a card for every member of staff');
 });
@@ -85,7 +85,7 @@ check('a persona\'s page: who they are, how they sign in, each use case with the
   assert.ok(html.includes('1 thing in the way'));
   assert.ok(html.includes('Blocked') && html.includes('List opportunities') && html.includes('Blocked for Customer Service.'));
   assert.ok(html.includes('Playbook: Account 360 before a call or visit'));
-  assert.ok(html.includes('Still missing, from the sheet: ACE (sample data only).'));
+  assert.ok(html.includes('Still missing, from the sheet: SAP (sample data only).'));
   assert.ok(html.includes('from the playbook'));
   assert.ok(html.includes('Edit tools'));
 });

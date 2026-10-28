@@ -22,7 +22,7 @@ async function createService() {
 }
 
 const registry = {
-  connectors: [{ connectorId: 'ace-erp', displayName: 'ACE ERP', description: 'Stock by branch.', owner: 'Supply chain', secretRef: 'tenant-secret://placemakers/dev/sample-key', sample: true, tools: [{ name: 'stock_by_branch', sideEffect: 'read' }] }],
+  connectors: [{ connectorId: 'ace-erp', displayName: 'SAP ERP', description: 'Stock by branch.', owner: 'Supply chain', secretRef: 'tenant-secret://placemakers/dev/sample-key', sample: true, tools: [{ name: 'stock_by_branch', sideEffect: 'read' }] }],
   policy: [{ connectorId: 'ace-erp', tool: '*', audience: 'staff', groups: [], state: 'allow' }],
 };
 

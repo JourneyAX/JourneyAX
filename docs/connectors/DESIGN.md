@@ -46,7 +46,7 @@ A pack extension, `extensions.connectors`, built the same way as `extensions.age
   "connectors": [
     {
       "connectorId": "ace-erp",
-      "displayName": "ACE ERP",
+      "displayName": "SAP ERP",
       "description": "Stock by branch, trade prices and delivery status.",
       "owner": "Supply chain team",
       "mcpServerName": "ace-erp",

@@ -317,7 +317,7 @@ async function main() {
     order_reviews: prov('sample', 'invented over the sample orders', [], ['every field']),
   });
 
-  // ---- ACE ERP
+  // ---- SAP ERP
   const rn = new Rng('erp');
   const stock: Rec[] = [];
   for (const product of products) {
