@@ -191,6 +191,12 @@ check('a count is written with its thousands, and a word where a number was expe
   assert.equal(fillTemplate('{views|number} views', {}, format), '', 'a missing count takes its words with it');
 });
 
+check('a status written with underscores is read as words', () => {
+  assert.equal(fillTemplate('{status|words}', { status: 'out_for_delivery' }, format), 'Out for delivery');
+  assert.equal(fillTemplate('{status|words}', { status: 'delivered' }, format), 'Delivered');
+  assert.equal(fillTemplate('{status|words} today', {}, format), '', 'a missing status takes its words with it');
+});
+
 check('chat cards: a lookup the pack has a card for becomes a card, newest facts only, with nothing invented', () => {
   const cards = recordCardsFor(entry, 'salesforce', 'list_opportunities', fixture.opps, format);
   assert.equal(cards.length, 1);

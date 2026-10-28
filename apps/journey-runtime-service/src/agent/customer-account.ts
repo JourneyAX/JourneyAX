@@ -220,3 +220,19 @@ export async function executeCustomerAccountTool(
     ...sampleNote(price),
   };
 }
+
+/**
+ * What a trade customer's own account tools give back, in the shape every dashboard source has (`records`): deliveries are a list, the balance
+ * is one record. A full page of deliveries says there may be more, so a count over it is shown as "10+" rather than as a total it is not.
+ */
+export function customerAccountRecords(tool: string, answer: any): Record<string, unknown> {
+  if (tool === 'my_deliveries') {
+    const rows = Array.isArray(answer?.deliveries) ? answer.deliveries : [];
+    return { ok: true, records: rows, returned: rows.length, ...(rows.length >= 10 ? { more: true } : {}) };
+  }
+  if (tool === 'my_balance') {
+    const { ok: _ok, notice: _notice, ...record } = answer ?? {};
+    return { ok: true, records: [record], total: 1, returned: 1 };
+  }
+  return { ok: false };
+}

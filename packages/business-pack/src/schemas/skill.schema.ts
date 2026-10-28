@@ -245,7 +245,10 @@ const DashboardWhereSchema = z.object({
 
 const DashboardToneSchema = z.enum(['good', 'warn', 'bad', 'info']);
 
-/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`, `{field|title}`, `{field|price}` (money to the cent), `{field|number}` (a count with its thousands). */
+/** The roles a signed-in trade customer holds in a company the team linked them to (the words the customer-account tools use). */
+export const CompanyRoleSchema = z.enum(['account_admin', 'accounts_payable', 'buyer', 'job_viewer']);
+
+/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`, `{field|title}`, `{field|price}` (money to the cent), `{field|number}` (a count with its thousands), `{field|words}` (out_for_delivery read as "Out for delivery"). */
 const DashboardRowSchema = z.object({
   title: z.string().min(1).max(160),
   subtitle: z.string().max(200).optional(),
@@ -274,6 +277,8 @@ export const DashboardSchema = z.object({
   entries: z.array(z.object({
     groups: z.array(z.string().min(1).max(60)).min(1).max(10).optional(),
     audience: z.enum(['shopper', 'staff']).optional(),
+    /** For a signed-in trade customer: the company roles this entry is for (it then reads only the `customer-account` tools `my_balance` and `my_deliveries`). */
+    companyRoles: z.array(CompanyRoleSchema).min(1).max(4).optional(),
     title: z.string().min(1).max(40),
     subtitle: z.string().max(160).optional(),
     /** Ids of the metrics shown on the small tile in the corner, at most three. */
@@ -320,7 +325,7 @@ export const DashboardSchema = z.object({
       row: DashboardRowSchema,
     }).strict()).max(12),
   }).strict()
-    .refine((entry) => Boolean(entry.groups?.length || entry.audience), { message: 'name the groups or the audience the entry is for' })
+    .refine((entry) => Boolean(entry.groups?.length || entry.audience || entry.companyRoles?.length), { message: 'name the groups, the company roles or the audience the entry is for' })
     .refine((entry) => entry.tile.every((id) => entry.metrics.some((metric) => metric.id === id)), { message: 'every tile figure must be one of the metrics' })
     .refine((entry) => new Set(entry.metrics.map((metric) => metric.id)).size === entry.metrics.length, { message: 'metric ids must be different' })
     .refine((entry) => new Set(entry.sections.map((section) => section.id)).size === entry.sections.length, { message: 'section ids must be different' })).max(20),
@@ -339,6 +344,8 @@ export const WelcomeSchema = z.object({
   entries: z.array(z.object({
     groups: z.array(z.string().min(1).max(60)).min(1).max(10).optional(),
     audience: z.enum(['shopper', 'staff']).optional(),
+    /** For a signed-in trade customer: the company roles this entry is for. */
+    companyRoles: z.array(CompanyRoleSchema).min(1).max(4).optional(),
     headline: z.string().min(1).max(120).optional(),
     subtitle: z.string().min(1).max(240).optional(),
     /** What the empty message box says, in grey, before anyone types ("Ask about a ticket, a case or an order…"). */
@@ -348,5 +355,5 @@ export const WelcomeSchema = z.object({
       prompt: z.string().min(1).max(500),
       needs: z.array(z.string().regex(/^[a-z0-9-]+\.[a-z0-9_]+$/i, 'a tool as system.tool')).max(4).optional(),
     }).strict()).max(6).optional(),
-  }).strict().refine((entry) => Boolean(entry.groups?.length || entry.audience), { message: 'name the groups or the audience the entry is for' })).max(40),
+  }).strict().refine((entry) => Boolean(entry.groups?.length || entry.audience || entry.companyRoles?.length), { message: 'name the groups, the company roles or the audience the entry is for' })).max(40),
 }).strict();

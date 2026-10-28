@@ -1900,6 +1900,24 @@
     "welcome": {
       "entries": [
         {
+          "companyRoles": [
+            "account_admin",
+            "accounts_payable"
+          ],
+          "headline": "{hello}. How can we help with your account?",
+          "subtitle": "Your deliveries, and what is owed on your account.",
+          "placeholder": "Ask about a delivery, your balance or a price…"
+        },
+        {
+          "companyRoles": [
+            "buyer",
+            "job_viewer"
+          ],
+          "headline": "{hello}. Where can we help with your deliveries?",
+          "subtitle": "Where your orders are, and when they arrive.",
+          "placeholder": "Ask about a delivery or a price…"
+        },
+        {
           "groups": [
             "sales"
           ],
@@ -5215,6 +5233,458 @@
                 "title": "{period}",
                 "subtitle": "{dimension|clean}",
                 "amount": "{value|number}"
+              }
+            }
+          ]
+        },
+        {
+          "companyRoles": [
+            "account_admin",
+            "accounts_payable"
+          ],
+          "title": "My account",
+          "subtitle": "Your deliveries, and what is owed on your account.",
+          "tile": [
+            "owed",
+            "overdue",
+            "on-the-way"
+          ],
+          "metrics": [
+            {
+              "id": "owed",
+              "label": "Owed on the account",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_balance"
+              },
+              "measure": "sum",
+              "field": "balance",
+              "format": "money",
+              "ask": "What is the balance on our account?"
+            },
+            {
+              "id": "overdue",
+              "label": "Overdue",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_balance"
+              },
+              "measure": "sum",
+              "field": "overdue",
+              "format": "money",
+              "tone": [
+                {
+                  "atLeast": 0.01,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "How much of our account is overdue?"
+            },
+            {
+              "id": "on-the-way",
+              "label": "On the way",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "out_for_delivery"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "info"
+                }
+              ],
+              "ask": "Which of our deliveries are on the way today?"
+            },
+            {
+              "id": "booked",
+              "label": "Booked for later",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "scheduled"
+                }
+              ],
+              "ask": "Which deliveries are booked for the coming days?"
+            },
+            {
+              "id": "missed",
+              "label": "Missed delivery",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "failed_attempt"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Which delivery was missed, and what happens next?"
+            },
+            {
+              "id": "delivered",
+              "label": "Delivered lately",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "delivered"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "good"
+                }
+              ],
+              "ask": "Which deliveries have we received lately?"
+            }
+          ],
+          "sections": [
+            {
+              "id": "account",
+              "title": "Your account",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_balance"
+              },
+              "limit": 1,
+              "row": {
+                "title": "{company}",
+                "subtitle": "Terms {paymentTerms} · last paid {lastPaymentOn|date}",
+                "detail": "Overdue {overdue|price}",
+                "amount": "{balance|price}",
+                "ask": "What is the balance on our account, and is anything overdue?"
+              },
+              "empty": "The account could not be read just now."
+            },
+            {
+              "id": "upcoming",
+              "title": "On the way and coming up",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "where": [
+                {
+                  "field": "status",
+                  "op": "in",
+                  "value": "failed_attempt,out_for_delivery,scheduled"
+                }
+              ],
+              "sort": {
+                "field": "day",
+                "order": "asc"
+              },
+              "limit": 5,
+              "row": {
+                "title": "Order {orderId}",
+                "subtitle": "{day|date} · {window}",
+                "detail": "{note}",
+                "badge": "{status|words}",
+                "tones": {
+                  "Delivered": "good",
+                  "Out for delivery": "info",
+                  "Scheduled": "info",
+                  "Failed attempt": "bad"
+                },
+                "ask": "Where is the delivery for order {orderId}, and when does it arrive?"
+              },
+              "empty": "Nothing is booked at the moment.",
+              "more": {
+                "label": "See our deliveries in the chat",
+                "prompt": "Show me our deliveries."
+              }
+            },
+            {
+              "id": "recent",
+              "title": "Delivered lately",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "delivered"
+                }
+              ],
+              "sort": {
+                "field": "day",
+                "order": "desc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "Order {orderId}",
+                "subtitle": "{day|date} · {window}",
+                "detail": "{note}",
+                "badge": "{status|words}",
+                "tones": {
+                  "Delivered": "good",
+                  "Out for delivery": "info",
+                  "Scheduled": "info",
+                  "Failed attempt": "bad"
+                },
+                "ask": "Where is the delivery for order {orderId}, and when does it arrive?"
+              },
+              "empty": "Nothing has been delivered yet."
+            }
+          ],
+          "cards": [
+            {
+              "connector": "customer-account",
+              "tool": "my_deliveries",
+              "heading": "Your deliveries",
+              "limit": 6,
+              "row": {
+                "title": "Order {orderId}",
+                "subtitle": "{day|date} · {window}",
+                "detail": "{note}",
+                "badge": "{status|words}",
+                "tones": {
+                  "Delivered": "good",
+                  "Out for delivery": "info",
+                  "Scheduled": "info",
+                  "Failed attempt": "bad"
+                },
+                "ask": "Where is the delivery for order {orderId}, and when does it arrive?"
+              }
+            },
+            {
+              "connector": "customer-account",
+              "tool": "my_balance",
+              "heading": "Your account",
+              "limit": 1,
+              "row": {
+                "title": "{company}",
+                "subtitle": "Terms {paymentTerms} · last paid {lastPaymentOn|date}",
+                "detail": "Overdue {overdue|price}",
+                "amount": "{balance|price}",
+                "ask": "What is the balance on our account, and is anything overdue?"
+              }
+            }
+          ]
+        },
+        {
+          "companyRoles": [
+            "buyer",
+            "job_viewer"
+          ],
+          "title": "My deliveries",
+          "subtitle": "Where your orders are, and when they arrive.",
+          "tile": [
+            "on-the-way",
+            "booked",
+            "missed"
+          ],
+          "metrics": [
+            {
+              "id": "on-the-way",
+              "label": "On the way",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "out_for_delivery"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "info"
+                }
+              ],
+              "ask": "Which of our deliveries are on the way today?"
+            },
+            {
+              "id": "booked",
+              "label": "Booked for later",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "scheduled"
+                }
+              ],
+              "ask": "Which deliveries are booked for the coming days?"
+            },
+            {
+              "id": "missed",
+              "label": "Missed delivery",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "failed_attempt"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "bad"
+                }
+              ],
+              "ask": "Which delivery was missed, and what happens next?"
+            },
+            {
+              "id": "delivered",
+              "label": "Delivered lately",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "measure": "count",
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "delivered"
+                }
+              ],
+              "tone": [
+                {
+                  "atLeast": 1,
+                  "tone": "good"
+                }
+              ],
+              "ask": "Which deliveries have we received lately?"
+            }
+          ],
+          "sections": [
+            {
+              "id": "upcoming",
+              "title": "On the way and coming up",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "where": [
+                {
+                  "field": "status",
+                  "op": "in",
+                  "value": "failed_attempt,out_for_delivery,scheduled"
+                }
+              ],
+              "sort": {
+                "field": "day",
+                "order": "asc"
+              },
+              "limit": 5,
+              "row": {
+                "title": "Order {orderId}",
+                "subtitle": "{day|date} · {window}",
+                "detail": "{note}",
+                "badge": "{status|words}",
+                "tones": {
+                  "Delivered": "good",
+                  "Out for delivery": "info",
+                  "Scheduled": "info",
+                  "Failed attempt": "bad"
+                },
+                "ask": "Where is the delivery for order {orderId}, and when does it arrive?"
+              },
+              "empty": "Nothing is booked at the moment.",
+              "more": {
+                "label": "See our deliveries in the chat",
+                "prompt": "Show me our deliveries."
+              }
+            },
+            {
+              "id": "recent",
+              "title": "Delivered lately",
+              "source": {
+                "connector": "customer-account",
+                "tool": "my_deliveries"
+              },
+              "where": [
+                {
+                  "field": "status",
+                  "op": "equals",
+                  "value": "delivered"
+                }
+              ],
+              "sort": {
+                "field": "day",
+                "order": "desc"
+              },
+              "limit": 4,
+              "row": {
+                "title": "Order {orderId}",
+                "subtitle": "{day|date} · {window}",
+                "detail": "{note}",
+                "badge": "{status|words}",
+                "tones": {
+                  "Delivered": "good",
+                  "Out for delivery": "info",
+                  "Scheduled": "info",
+                  "Failed attempt": "bad"
+                },
+                "ask": "Where is the delivery for order {orderId}, and when does it arrive?"
+              },
+              "empty": "Nothing has been delivered yet."
+            }
+          ],
+          "cards": [
+            {
+              "connector": "customer-account",
+              "tool": "my_deliveries",
+              "heading": "Your deliveries",
+              "limit": 6,
+              "row": {
+                "title": "Order {orderId}",
+                "subtitle": "{day|date} · {window}",
+                "detail": "{note}",
+                "badge": "{status|words}",
+                "tones": {
+                  "Delivered": "good",
+                  "Out for delivery": "info",
+                  "Scheduled": "info",
+                  "Failed attempt": "bad"
+                },
+                "ask": "Where is the delivery for order {orderId}, and when does it arrive?"
               }
             }
           ]

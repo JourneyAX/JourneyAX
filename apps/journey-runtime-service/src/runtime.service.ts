@@ -40,6 +40,8 @@ import { isInCanaryBucket } from '@journeyax/journey-core';
 import { principalFrom } from '@journeyax/shared-types';
 import { connectorList, type ConnectorListItem } from './kernel/connector.runtime';
 import { DashboardViewService } from './dashboard/dashboard-view';
+import { customerAccountSettings } from './agent/customer-account';
+import type { PersonCompany } from './kernel/company-directory';
 import { idleRepinHours, isIdleBeyond, packHostsWorkspace } from './kernel/pin-lifecycle';
 import { isAgentModeEnabled } from './agent/agent-loop';
 import { getAgentToolDefinitions } from './agent/agent-tools';
@@ -857,11 +859,26 @@ export class RuntimeService {
     }
     const principal = principalFrom({ userId: person.userId, tenantId, role: person.role, groups: person.groups });
     // What the empty chat says to this person (pack `extensions.welcome`) travels with their connector list: the same call, the same identity.
-    const welcome = welcomeFor(pack?.extensions?.welcome, { audience: principal.audience, groups: principal.groups });
+    const companies = await this.companiesOf(pack, tenantId, principal);
+    const welcome = welcomeFor(pack?.extensions?.welcome, { audience: principal.audience, groups: principal.groups, companyRoles: companies.map((company) => company.role) });
     return { connectors: connectorList(pack, { audience: principal.audience, groups: principal.groups }), packVersion: pack?.manifest?.version, ...(welcome ? { welcome } : {}) };
   }
 
   private dashboardViews: DashboardViewService | null = null;
+
+  /**
+   * The companies the team linked a signed-in trade customer to, from the verified login (never from the page), and only when the pack turns
+   * customer accounts on. Nobody else has any: staff and an ordinary shopper get an empty list.
+   */
+  private async companiesOf(pack: any, tenantId: string, principal: { audience: string; userId?: string }): Promise<PersonCompany[]> {
+    const login = String(principal.userId || '');
+    if (principal.audience !== 'shopper' || !login.includes('@') || !customerAccountSettings(pack).enabled) return [];
+    try {
+      return await this.appService.companyDirectory.companiesFor(tenantId, login);
+    } catch {
+      return [];
+    }
+  }
 
   /**
    * The corner tile and dashboard this person's team has in the active pack (`extensions.dashboard`), with the figures read through the
@@ -880,7 +897,9 @@ export class RuntimeService {
     }
     if (!pack?.extensions?.dashboard) return {};
     const principal = principalFrom({ userId: person.userId, tenantId, role: person.role, groups: person.groups });
-    if (principal.audience !== 'staff') return {};
+    // Staff have a team's board; a shopper has one only when the team linked them to a company (a trade customer).
+    const companies = await this.companiesOf(pack, tenantId, principal);
+    if (principal.audience !== 'staff' && companies.length === 0) return {};
     const runtime = this.appService.capabilityGateway?.getConnectorRuntime?.();
     if (!runtime) return {};
     this.dashboardViews ||= new DashboardViewService({ runtime });
@@ -889,6 +908,7 @@ export class RuntimeService {
       environmentId,
       release: pack,
       person: { userId: principal.userId, role: principal.roleType, audience: principal.audience, groups: principal.groups },
+      companies,
     });
     return dashboard ? { dashboard } : {};
   }

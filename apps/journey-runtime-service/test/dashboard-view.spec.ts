@@ -8,6 +8,7 @@ import { DashboardSchema } from '@journeyax/business-pack';
 import { DashboardViewService, type DashboardRequest } from '../src/dashboard/dashboard-view';
 import { executeConnectorMetaTool } from '../src/agent/connector-tools';
 import { showRecordCards } from '../src/agent/record-cards';
+import { customerAccountRecords } from '../src/agent/customer-account';
 import fixture from '../../../packages/business-pack/test/fixtures/dashboard-salesforce.json';
 
 let passed = 0;
@@ -81,7 +82,93 @@ function fakeRuntime(options: { slow?: string; fail?: string } = {}) {
   };
 }
 
+// ---- A signed-in trade customer's own board: the customer-account tools, for the company the team linked to their login --------------------
+const DELIVERY_ROW = { title: 'Order {orderId}', subtitle: '{day|date} · {window}', badge: '{status|words}', tones: { Delivered: 'good', 'Failed attempt': 'bad' } };
+const customerBoard = DashboardSchema.parse({
+  entries: [
+    { companyRoles: ['account_admin', 'accounts_payable'], title: 'My account', tile: ['owed', 'on-the-way'], metrics: [
+      { id: 'owed', label: 'Owed on the account', source: { connector: 'customer-account', tool: 'my_balance' }, measure: 'sum', field: 'balance', format: 'money' },
+      { id: 'overdue', label: 'Overdue', source: { connector: 'customer-account', tool: 'my_balance' }, measure: 'sum', field: 'overdue', format: 'money', tone: [{ atLeast: 0.01, tone: 'bad' }] },
+      { id: 'on-the-way', label: 'On the way', source: { connector: 'customer-account', tool: 'my_deliveries' }, measure: 'count', where: [{ field: 'status', op: 'equals', value: 'out_for_delivery' }] },
+    ], sections: [{ id: 'deliveries', title: 'Your deliveries', source: { connector: 'customer-account', tool: 'my_deliveries' }, limit: 5, row: DELIVERY_ROW }], cards: [{ connector: 'customer-account', tool: 'my_deliveries', heading: 'Your deliveries', limit: 5, row: DELIVERY_ROW }] },
+    { companyRoles: ['buyer', 'job_viewer'], title: 'My deliveries', tile: ['on-the-way'], metrics: [
+      { id: 'on-the-way', label: 'On the way', source: { connector: 'customer-account', tool: 'my_deliveries' }, measure: 'count', where: [{ field: 'status', op: 'equals', value: 'out_for_delivery' }] },
+    ], sections: [{ id: 'deliveries', title: 'Your deliveries', source: { connector: 'customer-account', tool: 'my_deliveries' }, limit: 5, row: DELIVERY_ROW }], cards: [] },
+  ],
+});
+const erp = {
+  askVia: 'card',
+  connectors: [{ connectorId: 'erp', displayName: 'ERP', description: 'Accounts.', owner: 'Finance', enabled: true, tools: [{ name: 'account_balance', sideEffect: 'read' }, { name: 'list_deliveries', sideEffect: 'read' }] }],
+  policy: [],
+};
+const customerRelease = (enabled = true) => ({
+  manifest: { packId: 'p', version: '1.0.0' },
+  profile: { primaryCurrency: 'NZD', primaryLocale: 'en-NZ' },
+  extensions: { connectors: erp, dashboard: customerBoard, customerAccount: { enabled, connector: 'erp', tools: { balance: 'account_balance', deliveries: 'list_deliveries', price: 'trade_price' } } },
+}) as any;
+const DELIVERIES = [
+  { deliveryId: 'D-1', orderId: 'ORD-1', status: 'out_for_delivery', scheduledDate: '2026-10-28', window: '08:00-12:00' },
+  { deliveryId: 'D-2', orderId: 'ORD-2', status: 'failed_attempt', scheduledDate: '2026-10-26', window: '13:00-17:00', note: 'Nobody on site.' },
+  { deliveryId: 'D-3', orderId: 'ORD-3', status: 'delivered', scheduledDate: '2026-10-20', window: '08:00-12:00' },
+];
+function customerRuntime() {
+  const reads: Array<{ connector: string; tool: string; args: Record<string, unknown> }> = [];
+  return {
+    reads,
+    runtime: {
+      async call() { throw new Error('a customer board never goes through the staff connector gate'); },
+      async callRead(_release: any, _ctx: any, connector: string, tool: string, args: Record<string, unknown>) {
+        reads.push({ connector, tool, args });
+        if (tool === 'account_balance') return { ok: true, result: { record: { balance: 30456.47, overdue: 12159.66, currency: 'NZD', terms: '30 days', lastPaymentAt: '2026-07-30' } } };
+        if (tool === 'list_deliveries') return { ok: true, result: { records: DELIVERIES } };
+        return { ok: false, status: 'not_found' };
+      },
+    } as any,
+  };
+}
+const customer = (userId: string, role: 'account_admin' | 'buyer' | 'job_viewer', id = 'ACC-0028'): DashboardRequest => ({
+  tenantId: 'placemakers', environmentId: 'production', release: customerRelease(),
+  person: { userId, role: 'buyer', audience: 'shopper', groups: [] }, companies: [{ id, name: 'Harlow & Talbot Landscapes Ltd', role }],
+});
+
 async function main() {
+  await check('a trade customer’s board reads their own company only: the account id is the one the team linked, never anything else', async () => {
+    const { reads, runtime } = customerRuntime();
+    const view = await new DashboardViewService({ runtime }).load(customer('admin@x.test', 'account_admin'));
+    assert.ok(view);
+    assert.equal(view!.title, 'My account');
+    assert.ok(reads.length >= 2 && reads.every((r) => r.connector === 'erp' && r.args.accountId === 'ACC-0028'), 'every read names the linked company');
+    assert.deepEqual(view!.tile.map((t) => t.value), ['$30,456', '1']);
+    assert.equal(view!.metrics.find((m) => m.id === 'overdue')?.tone, 'bad');
+    const deliveries = view!.sections.find((s) => s.id === 'deliveries')!;
+    assert.equal(deliveries.rows.length, 3);
+    assert.deepEqual(deliveries.rows.map((r) => r.badge), ['Out for delivery', 'Failed attempt', 'Delivered']);
+    assert.equal(deliveries.rows[1].tone, 'bad');
+  });
+
+  await check('a buyer is never read the balance: their board has no balance figure and the account tool is not called', async () => {
+    const { reads, runtime } = customerRuntime();
+    const view = await new DashboardViewService({ runtime }).load(customer('buyer@x.test', 'buyer'));
+    assert.equal(view?.title, 'My deliveries');
+    assert.ok(!reads.some((r) => r.tool === 'account_balance'), 'no balance read for a buyer');
+    assert.deepEqual(view!.tile.map((t) => t.value), ['1']);
+  });
+
+  await check('an ordinary shopper (no company) and a customer when the pack has customer accounts off get no board', async () => {
+    const { runtime } = customerRuntime();
+    const none: DashboardRequest = { ...customer('shopper@x.test', 'buyer'), companies: [] };
+    assert.equal(await new DashboardViewService({ runtime }).load(none), undefined);
+    const off = await new DashboardViewService({ runtime }).load({ ...customer('admin@x.test', 'account_admin'), release: customerRelease(false) });
+    assert.ok(off, 'the board still exists');
+    assert.ok(off!.metrics.every((m) => !m.ok), 'but every figure is blank: nothing was read');
+  });
+
+  await check('a company the customer was not linked to is never asked for: the id comes from the link, not from the board', async () => {
+    const { reads, runtime } = customerRuntime();
+    await new DashboardViewService({ runtime }).load(customer('admin@x.test', 'account_admin', 'ACC-0016'));
+    assert.ok(reads.every((r) => r.args.accountId === 'ACC-0016'));
+  });
+
   await check('each distinct lookup is made once for the whole view, as the person, with their name filled in', async () => {
     const { calls, runtime } = fakeRuntime();
     const view = await new DashboardViewService({ runtime }).load(request());
@@ -160,6 +247,18 @@ async function main() {
       } as any,
     };
   };
+
+  await check('a trade customer’s own deliveries show as a card in the chat, only for a customer linked to a company', async () => {
+    const answer = { ok: true, company: 'Harlow & Talbot Landscapes Ltd', deliveries: [{ deliveryId: 'D-1', orderId: 'ORD-1', status: 'out_for_delivery', day: '2026-10-28', window: '08:00-12:00' }] };
+    const records = customerAccountRecords('my_deliveries', answer);
+    const linked = ctxFor({ audience: 'shopper', groups: [] }, customerRelease());
+    (linked.ctx as any).companies = [{ id: 'ACC-0028', name: 'Harlow & Talbot Landscapes Ltd', role: 'account_admin' }];
+    assert.deepEqual(showRecordCards(linked.ctx, 'customer-account', 'my_deliveries', records), ['Your deliveries']);
+    assert.equal(linked.presentedCards[0].state.rows[0].badge, 'Out for delivery');
+    const homeowner = ctxFor({ audience: 'shopper', groups: [] }, customerRelease());
+    assert.deepEqual(showRecordCards(homeowner.ctx, 'customer-account', 'my_deliveries', records), [], 'no company, no card');
+    assert.deepEqual(customerAccountRecords('my_deliveries', { deliveries: Array.from({ length: 10 }, (_, i) => ({ orderId: `O${i}` })) }), { ok: true, records: Array.from({ length: 10 }, (_, i) => ({ orderId: `O${i}` })), returned: 10, more: true }, 'a full page may be only the first page');
+  });
 
   await check('a lookup the team has a card for is shown as a card, built from the answer, and the model is told so', async () => {
     const { ctx, presentedCards, actions } = ctxFor({ audience: 'staff', groups: ['sales'] });
