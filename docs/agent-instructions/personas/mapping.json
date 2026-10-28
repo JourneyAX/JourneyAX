@@ -46,6 +46,11 @@
     "GA4": "needs a GA4 property and a Google service-account key.",
     "Power BI": "needs a Power BI workspace the owner controls."
   },
+  "displayNames": {
+    "ACE ERP": "SAP ERP",
+    "ACE finance": "SAP finance",
+    "ACE": "SAP"
+  },
   "teams": [
     {
       "team": "customer-service",

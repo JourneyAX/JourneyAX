@@ -1,7 +1,7 @@
 {
   "connectorId": "ace-erp",
-  "title": "ACE ERP (sample)",
-  "standsInFor": "ACE ERP: stock, trade prices, deliveries and account balances",
+  "title": "SAP ERP (sample)",
+  "standsInFor": "SAP ERP: stock, trade prices, deliveries and account balances",
   "description": "Stock by branch, trade prices, deliveries and account balances.",
   "minimums": {
     "branches": 25,

@@ -10,7 +10,7 @@ It is **sample data**. Every record says so (`sample: true`) unless it was copie
 |---|---|---|---|---|
 | `sap-commerce` | SAP Commerce Cloud | 100 products, 30 carts, 48 orders | products, prices, product pages | carts, orders, quantities |
 | `salesforce` | Salesforce Sales and Service Cloud | 30 trade accounts, 44 cases, 32 order reviews | branch codes | everything else |
-| `ace-erp` | ACE ERP | 65 branches, 800 stock rows (100 products × 8 branches), 100 price rows, 27 deliveries, 30 balances | branch names, codes, phones; products; retail prices | stock counts, tier discounts, deliveries, balances, branch coordinates (approximate) |
+| `ace-erp` | SAP ERP | 65 branches, 800 stock rows (100 products × 8 branches), 100 price rows, 27 deliveries, 30 balances | branch names, codes, phones; products; retail prices | stock counts, tier discounts, deliveries, balances, branch coordinates (approximate) |
 | `mulesoft` | MuleSoft | 38 integration runs | none | all |
 | `salsify` | Salsify | 100 products with specifications and documents | everything | none |
 | `bloomreach` | Bloomreach | 100 catalogue entries, 34 popular searches | catalogue, search words, results | how often a search is typed |

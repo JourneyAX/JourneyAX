@@ -24,6 +24,8 @@ export interface RoleMapping { signIn?: 'guest' | 'buyer'; commercetoolsRole?: s
 export interface Mapping {
   systemStates: { ready: string[]; sample: string[]; pending: string[] };
   systemNotes: Record<string, string>;
+  /** What the shop calls a thing the owner's sheets name differently (the sheets say "ACE", the shop's ERP is SAP): the sheets stay as given, the library says the shop's word. Whole words, longest first. */
+  displayNames?: Record<string, string>;
   teams: TeamMapping[];
   personaTeams: Record<string, string>;
   teamLeads: Record<string, string>;
@@ -102,6 +104,21 @@ export function readinessOf(systems: string[], mapping: Mapping): { readiness: R
 
 const zero = () => count(READINESS_ORDER);
 const kindOf = (id: string): 'customer' | 'staff' => (id.startsWith('C') ? 'customer' : 'staff');
+
+/** Every piece of text in `value` with the shop's own names for things the sheets name differently (whole words, longest name first); keys are left alone. */
+export function renamed<T>(value: T, displayNames: Record<string, string> | undefined): T {
+  const entries = Object.entries(displayNames ?? {}).sort((a, b) => b[0].length - a[0].length);
+  if (entries.length === 0) return value;
+  const lookup = new Map(entries);
+  const pattern = new RegExp(`\\b(?:${entries.map(([from]) => from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'g');
+  const walk = (item: unknown): unknown => {
+    if (typeof item === 'string') return item.replace(pattern, (word) => lookup.get(word) ?? word);
+    if (Array.isArray(item)) return item.map(walk);
+    if (item && typeof item === 'object') return Object.fromEntries(Object.entries(item).map(([key, inner]) => [key, walk(inner)]));
+    return item;
+  };
+  return walk(value) as T;
+}
 
 export function buildLibrary(sheets: Sheets, names: SheetNames, mapping: Mapping): PersonaLibrary {
   const personaRows = rows(sheets.personas);
@@ -194,7 +211,7 @@ export function buildLibrary(sheets: Sheets, names: SheetNames, mapping: Mapping
 
   const readiness = zero();
   for (const useCase of useCases) readiness[useCase.readiness] += 1;
-  return {
+  return renamed({
     $schema: 'placemakers-personas/1',
     tenantId: 'placemakers',
     source: {
@@ -211,7 +228,7 @@ export function buildLibrary(sheets: Sheets, names: SheetNames, mapping: Mapping
       ourDesk: 'Salesforce Service Cloud',
       tools: ticketRows.map((row) => ({ tool: row.Tool, workType: row['Ticket / work type'], users: row['Likely users'], status: row['Confidence / status'], details: row.Details, evidence: row['Evidence URL'] })),
     },
-  };
+  }, mapping.displayNames);
 }
 
 /** Everything that should hold for a library to be trusted: the sheets and the mapping agree with each other. Returns the problems found (empty is good). */

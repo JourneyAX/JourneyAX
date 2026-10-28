@@ -37,7 +37,7 @@
       "useCases": 58
     },
     {
-      "name": "ACE",
+      "name": "SAP",
       "state": "sample",
       "note": "the ERP: prices on account, balances, deliveries. Sample data only until the real details arrive.",
       "personas": 13,
@@ -92,7 +92,7 @@
       "useCases": 4
     },
     {
-      "name": "ACE finance",
+      "name": "SAP finance",
       "state": "sample",
       "personas": 2,
       "useCases": 4
@@ -162,7 +162,7 @@
       "useCases": 2
     },
     {
-      "name": "ACE ERP",
+      "name": "SAP ERP",
       "state": "sample",
       "personas": 1,
       "useCases": 2
@@ -380,7 +380,7 @@
       ],
       "waitingOn": [
         {
-          "system": "ACE",
+          "system": "SAP",
           "state": "sample",
           "useCases": 2
         },
@@ -458,7 +458,7 @@
       ],
       "waitingOn": [
         {
-          "system": "ACE",
+          "system": "SAP",
           "state": "sample",
           "useCases": 4
         },
@@ -496,7 +496,7 @@
       ],
       "waitingOn": [
         {
-          "system": "ACE finance",
+          "system": "SAP finance",
           "state": "sample",
           "useCases": 2
         },
@@ -613,7 +613,7 @@
       "accessRoles": [],
       "waitingOn": [
         {
-          "system": "ACE",
+          "system": "SAP",
           "state": "sample",
           "useCases": 2
         },
@@ -648,7 +648,7 @@
       ],
       "waitingOn": [
         {
-          "system": "ACE",
+          "system": "SAP",
           "state": "sample",
           "useCases": 6
         },
@@ -745,7 +745,7 @@
           "useCases": 4
         },
         {
-          "system": "ACE",
+          "system": "SAP",
           "state": "sample",
           "useCases": 2
         }
@@ -791,7 +791,7 @@
       "name": "IT and Integration",
       "status": "planned",
       "agent": null,
-      "note": "CRM admin, integration and support engineers: needs MuleSoft, ACE logs and Jira.",
+      "note": "CRM admin, integration and support engineers: needs MuleSoft, SAP logs and Jira.",
       "personas": [
         "B21",
         "B22",
@@ -809,7 +809,7 @@
       ],
       "waitingOn": [
         {
-          "system": "ACE ERP",
+          "system": "SAP ERP",
           "state": "sample",
           "useCases": 2
         },
@@ -1160,7 +1160,7 @@
       "systems": [
         "Trade Portal",
         "SAP Commerce",
-        "ACE"
+        "SAP"
       ],
       "priority": "P0",
       "roleBasis": "Evidenced account segment",
@@ -1195,7 +1195,7 @@
       "channel": "Trade Portal; Trade App",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Salesforce",
         "account dashboard"
       ],
@@ -1234,7 +1234,7 @@
       "systems": [
         "SAP Commerce",
         "Salesforce",
-        "ACE",
+        "SAP",
         "delivery systems"
       ],
       "priority": "P1",
@@ -1271,7 +1271,7 @@
       "systems": [
         "SAP Commerce",
         "Salesforce",
-        "ACE",
+        "SAP",
         "logistics"
       ],
       "priority": "P0",
@@ -1381,7 +1381,7 @@
       "channel": "Trade Portal; account manager",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Salesforce",
         "PIM"
       ],
@@ -1454,7 +1454,7 @@
       "goal": "Reconcile purchases and control liabilities.",
       "channel": "Trade Portal; Saber/account portal",
       "systems": [
-        "ACE finance",
+        "SAP finance",
         "Dataprint Saber",
         "SAP Commerce"
       ],
@@ -1805,7 +1805,7 @@
       "channel": "Salesforce Service Cloud; phone; email",
       "systems": [
         "Salesforce Service Cloud",
-        "ACE",
+        "SAP",
         "SAP Commerce"
       ],
       "priority": "P0",
@@ -1875,7 +1875,7 @@
       "channel": "POS; SAP Commerce; branch tools",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "branch POS"
       ],
       "priority": "P0",
@@ -1909,7 +1909,7 @@
       "goal": "Balance customer service, branch revenue and stock.",
       "channel": "Branch reports; SAP Commerce; CRM",
       "systems": [
-        "ACE",
+        "SAP",
         "SAP Commerce",
         "Salesforce",
         "reporting"
@@ -2045,7 +2045,7 @@
       "goal": "Ship correct items and prevent shortages.",
       "channel": "Warehouse/yard device",
       "systems": [
-        "ACE",
+        "SAP",
         "fulfilment",
         "Descartes"
       ],
@@ -2079,7 +2079,7 @@
       "goal": "Maintain reliable inventory and safe material movement.",
       "channel": "Yard app; ERP; scanning device",
       "systems": [
-        "ACE",
+        "SAP",
         "Zebra Yard App",
         "SAP Commerce"
       ],
@@ -2115,7 +2115,7 @@
       "systems": [
         "Descartes Route Planner",
         "Glympse",
-        "ACE"
+        "SAP"
       ],
       "priority": "P0",
       "roleBasis": "Explicit documented function",
@@ -2213,7 +2213,7 @@
       "goal": "Reduce credit risk and improve collection accuracy.",
       "channel": "Accounts dashboard; finance tools",
       "systems": [
-        "ACE finance",
+        "SAP finance",
         "account dashboard",
         "Dataprint"
       ],
@@ -2315,7 +2315,7 @@
       "channel": "Merchandising tools; ERP; BI",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Bloomreach",
         "Salsify"
       ],
@@ -2478,15 +2478,15 @@
       "id": "B22",
       "kind": "staff",
       "side": "Business / staff",
-      "name": "Integration / ACE ERP Specialist",
+      "name": "Integration / SAP ERP Specialist",
       "group": "Enterprise IT",
-      "description": "Technologist maintaining MuleSoft, SAP Commerce API and ACE ERP transaction consistency.",
+      "description": "Technologist maintaining MuleSoft, SAP Commerce API and SAP ERP transaction consistency.",
       "goal": "Keep orders, prices and inventory synchronized across systems.",
       "channel": "Integration logs; ERP",
       "systems": [
         "MuleSoft",
         "Solace",
-        "ACE ERP",
+        "SAP ERP",
         "SAP Commerce"
       ],
       "priority": "P1",
@@ -2555,7 +2555,7 @@
       "systems": [
         "Salesforce",
         "Power BI",
-        "ACE"
+        "SAP"
       ],
       "priority": "P2",
       "roleBasis": "Evidenced leadership function; workflow inferred",
@@ -2671,11 +2671,11 @@
       "systems": [
         "Trade Portal",
         "SAP Commerce",
-        "ACE"
+        "SAP"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
@@ -2693,11 +2693,11 @@
       "systems": [
         "Trade Portal",
         "SAP Commerce",
-        "ACE"
+        "SAP"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
@@ -2714,13 +2714,13 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Salesforce",
         "account dashboard"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
@@ -2737,13 +2737,13 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Salesforce",
         "account dashboard"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://www.placemakers.co.nz/online/?ismobile=0&store=Huntly"
@@ -2761,12 +2761,12 @@
       "systems": [
         "SAP Commerce",
         "Salesforce",
-        "ACE",
+        "SAP",
         "delivery systems"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "delivery systems (not connected)"
       ],
       "playbooks": [],
@@ -2785,12 +2785,12 @@
       "systems": [
         "SAP Commerce",
         "Salesforce",
-        "ACE",
+        "SAP",
         "delivery systems"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "delivery systems (not connected)"
       ],
       "playbooks": [],
@@ -2809,12 +2809,12 @@
       "systems": [
         "SAP Commerce",
         "Salesforce",
-        "ACE",
+        "SAP",
         "logistics"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "logistics (not connected)"
       ],
       "playbooks": [],
@@ -2833,12 +2833,12 @@
       "systems": [
         "SAP Commerce",
         "Salesforce",
-        "ACE",
+        "SAP",
         "logistics"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "logistics (not connected)"
       ],
       "playbooks": [],
@@ -2940,13 +2940,13 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Salesforce",
         "PIM"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "PIM (sample data only)"
       ],
       "playbooks": [],
@@ -2964,13 +2964,13 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Salesforce",
         "PIM"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "PIM (sample data only)"
       ],
       "playbooks": [],
@@ -3029,13 +3029,13 @@
       "priority": "P0",
       "scope": "Existing capability or documented workflow",
       "systems": [
-        "ACE finance",
+        "SAP finance",
         "Dataprint Saber",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE finance (sample data only)",
+        "SAP finance (sample data only)",
         "Dataprint Saber (not connected)"
       ],
       "playbooks": [],
@@ -3052,13 +3052,13 @@
       "priority": "P0",
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
-        "ACE finance",
+        "SAP finance",
         "Dataprint Saber",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE finance (sample data only)",
+        "SAP finance (sample data only)",
         "Dataprint Saber (not connected)"
       ],
       "playbooks": [],
@@ -3464,12 +3464,12 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "Salesforce Service Cloud",
-        "ACE",
+        "SAP",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [
         "account-360"
@@ -3488,12 +3488,12 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "Salesforce Service Cloud",
-        "ACE",
+        "SAP",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [
         "order-enquiry"
@@ -3558,12 +3558,12 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "branch POS"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "branch POS (not connected)"
       ],
       "playbooks": [
@@ -3584,12 +3584,12 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "branch POS"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "branch POS (not connected)"
       ],
       "playbooks": [
@@ -3608,14 +3608,14 @@
       "priority": "P0",
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
-        "ACE",
+        "SAP",
         "SAP Commerce",
         "Salesforce",
         "reporting"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "reporting (account pending)"
       ],
       "playbooks": [
@@ -3634,14 +3634,14 @@
       "priority": "P0",
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
-        "ACE",
+        "SAP",
         "SAP Commerce",
         "Salesforce",
         "reporting"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "reporting (account pending)"
       ],
       "playbooks": [
@@ -3799,13 +3799,13 @@
       "priority": "P0",
       "scope": "Existing capability or documented workflow",
       "systems": [
-        "ACE",
+        "SAP",
         "fulfilment",
         "Descartes"
       ],
       "readiness": "sample or pending only",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "fulfilment (not connected)",
         "Descartes (not connected)"
       ],
@@ -3823,13 +3823,13 @@
       "priority": "P0",
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
-        "ACE",
+        "SAP",
         "fulfilment",
         "Descartes"
       ],
       "readiness": "sample or pending only",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "fulfilment (not connected)",
         "Descartes (not connected)"
       ],
@@ -3847,13 +3847,13 @@
       "priority": "P0",
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
-        "ACE",
+        "SAP",
         "Zebra Yard App",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "Zebra Yard App (not connected)"
       ],
       "playbooks": [],
@@ -3870,13 +3870,13 @@
       "priority": "P0",
       "scope": "Existing capability or documented workflow",
       "systems": [
-        "ACE",
+        "SAP",
         "Zebra Yard App",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "Zebra Yard App (not connected)"
       ],
       "playbooks": [],
@@ -3895,13 +3895,13 @@
       "systems": [
         "Descartes Route Planner",
         "Glympse",
-        "ACE"
+        "SAP"
       ],
       "readiness": "sample or pending only",
       "missing": [
         "Descartes Route Planner (not connected)",
         "Glympse (not connected)",
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
@@ -3919,13 +3919,13 @@
       "systems": [
         "Descartes Route Planner",
         "Glympse",
-        "ACE"
+        "SAP"
       ],
       "readiness": "sample or pending only",
       "missing": [
         "Descartes Route Planner (not connected)",
         "Glympse (not connected)",
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://www.bestrane.com.au/insights/home-supply-chain-builds-a-better-delivery-system-with-bestrane"
@@ -4021,13 +4021,13 @@
       "priority": "P0",
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
-        "ACE finance",
+        "SAP finance",
         "account dashboard",
         "Dataprint"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE finance (sample data only)",
+        "SAP finance (sample data only)",
         "Dataprint (not connected)"
       ],
       "playbooks": [
@@ -4046,13 +4046,13 @@
       "priority": "P0",
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
-        "ACE finance",
+        "SAP finance",
         "account dashboard",
         "Dataprint"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE finance (sample data only)",
+        "SAP finance (sample data only)",
         "Dataprint (not connected)"
       ],
       "playbooks": [
@@ -4162,13 +4162,13 @@
       "scope": "Existing capability or documented workflow",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Bloomreach",
         "Salsify"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "Bloomreach (sample data only)",
         "Salsify (sample data only)"
       ],
@@ -4187,13 +4187,13 @@
       "scope": "Illustrative scenario; validate workflow and permissions",
       "systems": [
         "SAP Commerce",
-        "ACE",
+        "SAP",
         "Bloomreach",
         "Salsify"
       ],
       "readiness": "partly ready",
       "missing": [
-        "ACE (sample data only)",
+        "SAP (sample data only)",
         "Bloomreach (sample data only)",
         "Salsify (sample data only)"
       ],
@@ -4399,24 +4399,24 @@
     {
       "id": "B22-UC01",
       "personaId": "B22",
-      "persona": "Integration / ACE ERP Specialist",
+      "persona": "Integration / SAP ERP Specialist",
       "title": "Trace failed digital order",
-      "story": "As a integration / ace erp specialist, I want to identify where a commerce order failed between Salesforce and ACE, so that the customer gets a reliable order confirmation.",
-      "workflow": "SAP order > MuleSoft > Salesforce/ACE > recovery",
+      "story": "As a integration / ace erp specialist, I want to identify where a commerce order failed between Salesforce and SAP, so that the customer gets a reliable order confirmation.",
+      "workflow": "SAP order > MuleSoft > Salesforce/SAP > recovery",
       "feature": "Cross-system order monitoring",
       "priority": "P1",
       "scope": "Existing capability or documented workflow",
       "systems": [
         "MuleSoft",
         "Solace",
-        "ACE ERP",
+        "SAP ERP",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
         "MuleSoft (sample data only)",
         "Solace (not connected)",
-        "ACE ERP (sample data only)"
+        "SAP ERP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
@@ -4424,7 +4424,7 @@
     {
       "id": "B22-UC02",
       "personaId": "B22",
-      "persona": "Integration / ACE ERP Specialist",
+      "persona": "Integration / SAP ERP Specialist",
       "title": "Reconcile order amendments",
       "story": "As a integration / ace erp specialist, I want to detect mismatched delivery dates or quantities across systems, so that fulfilment uses correct data.",
       "workflow": "Update order > event/API > reconcile",
@@ -4434,14 +4434,14 @@
       "systems": [
         "MuleSoft",
         "Solace",
-        "ACE ERP",
+        "SAP ERP",
         "SAP Commerce"
       ],
       "readiness": "partly ready",
       "missing": [
         "MuleSoft (sample data only)",
         "Solace (not connected)",
-        "ACE ERP (sample data only)"
+        "SAP ERP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://royalcyber.atlassian.net/wiki/spaces/DSAH/pages/4785504283/PlaceMakers+-+Project+Information"
@@ -4505,12 +4505,12 @@
       "systems": [
         "Salesforce",
         "Power BI",
-        "ACE"
+        "SAP"
       ],
       "readiness": "partly ready",
       "missing": [
         "Power BI (account pending)",
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [
         "account-360"
@@ -4530,12 +4530,12 @@
       "systems": [
         "Salesforce",
         "Power BI",
-        "ACE"
+        "SAP"
       ],
       "readiness": "partly ready",
       "missing": [
         "Power BI (account pending)",
-        "ACE (sample data only)"
+        "SAP (sample data only)"
       ],
       "playbooks": [],
       "source": "https://sleeq.global/articles/placemakers-salesforce-marketing-cloud-case-study"
