@@ -40,7 +40,7 @@ import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } fr
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
-import { CARE_ENTRIES, useCareAccess } from '@/components/canvas/care/careAccess';
+import { CARE_ENTRIES, STOCK_ENTRIES, useCareAccess, useStockAccess } from '@/components/canvas/care/careAccess';
 import { registerAskHandler } from '@/lib/shell/askInChat';
 import { SHEET_BREAKPOINT } from '@/lib/shell/panel';
 import MyDayTile from './shell/MyDayTile';
@@ -389,6 +389,9 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const [displayName, setDisplayName] = useState<string>('');
   const { user: authUser } = useAuth();
   const careAccess = useCareAccess(authUser?.email);
+  const stockAccess = useStockAccess(authUser?.email);
+  /** The care screens this person is offered: customer care's, the stock desk's, both, or none. */
+  const careEntries = [...(careAccess ? CARE_ENTRIES : []), ...(stockAccess ? STOCK_ENTRIES : [])];
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
@@ -1341,7 +1344,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             <DashboardHome
               title={welcomeLoaded ? hero.title : ''}
               subtitle={welcomeLoaded ? hero.subtitle : undefined}
-              links={careAccess ? CARE_ENTRIES.map((entry) => ({ label: entry.label, onOpen: () => openCanvas({ kind: entry.kind }) })) : []}
+              links={careEntries.map((entry) => ({ label: entry.label, onOpen: () => openCanvas({ kind: entry.kind }) }))}
             />
           )}
 
@@ -1421,9 +1424,9 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
               placeholder={welcome?.placeholder ?? introPlaceholder}
               autoFocus={typeof window !== 'undefined' && window.innerWidth > 860}
             />
-            {isEmpty && !dashboardReady && !dashboardPending && (careAccess || starters.length > 0) && (
+            {isEmpty && !dashboardReady && !dashboardPending && (careEntries.length > 0 || starters.length > 0) && (
               <div className="ax-suggestions" role="group" aria-label="Things you can ask">
-                {careAccess && CARE_ENTRIES.map((entry) => (
+                {careEntries.map((entry) => (
                   <button key={entry.kind} type="button" className="ax-suggestion" onClick={() => openCanvas({ kind: entry.kind })}>
                     {entry.label}
                   </button>

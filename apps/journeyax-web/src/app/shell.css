@@ -682,6 +682,15 @@ li[data-active="true"] > .ax-agentlist__row { background: var(--ax-fill); }
 .cv__gap { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: #fdf3dc; color: #6e4700; font-size: 13px; }
 .cv__orderbox { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--ax-border); border-radius: 8px; background: var(--ax-bg); }
 .cv__states { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+/* Stock across branches (the stock desk's case page): the short branch first, the branch that sends the stock next. */
+.cv__branches { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+.cv__branches th, .cv__branches td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--ax-border); font-weight: 400; vertical-align: top; }
+.cv__branches thead th { border-top: 0; color: var(--ax-muted); font-weight: 600; }
+.cv__branches tbody th { font-weight: 600; }
+.cv__branch--short th, .cv__branch--short td { color: var(--ax-text); font-weight: 600; }
+.cv__branch--source { background: var(--ax-accent-soft); }
+.cv__branch--source th, .cv__branch--source td { color: var(--ax-accent-text); font-weight: 600; }
+.cv__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .cv__rec { margin: 0 0 4px; font-weight: 600; line-height: 1.4; }
 .cv__public, .cv__internal { margin: 0 0 6px; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
 .cv__public { background: #fdf3dc; color: #6e4700; }

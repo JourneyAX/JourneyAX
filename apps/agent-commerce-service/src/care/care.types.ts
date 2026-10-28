@@ -7,7 +7,9 @@
  */
 export type CareStage = 'arrived' | 'read' | 'researched' | 'drafted' | 'waiting' | 'running' | 'done';
 export type CareStatus = 'ai' | 'decide' | 'waiting' | 'done' | 'lead';
-export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce';
+export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce' | 'SAP ERP';
+/** Which desk a case belongs to. A case with no desk is a customer-care ticket. */
+export type DeskKind = 'care' | 'stock';
 export type CareStepKind = 'customer' | 'internal' | 'record' | 'money';
 export type CareConfidence = 'High' | 'Medium' | 'Low';
 
@@ -39,6 +41,14 @@ export interface CareOrder {
 
 export interface CareCorrection { from: string; to: string }
 
+/** A stock exception's own facts, drawn as a table of branches: the product, what is short where, and what every branch holds. */
+export interface StockExceptionDetail {
+  product: { sku: string; name: string };
+  short: { branch: string; needed: number; onHand: number };
+  /** Every branch's stock, the short one first, then the best source, then the rest. */
+  branches: Array<{ name: string; onHand: number; spare: number; role: 'short' | 'source' | 'other'; note?: string }>;
+}
+
 /** What the care desk did at one stage, for finding out afterwards what went wrong: how long, which tools, whether the model was used, any fallback. */
 export interface CareTrace {
   stage: CareStage;
@@ -64,7 +74,10 @@ export interface CareApproval {
 export interface CareCase {
   tenantId: string;
   id: string;
+  /** Absent means a customer-care ticket. */
+  desk?: DeskKind;
   ref: string;
+  /** The ticket desk's own number; for a stock exception, the number the ERP gave it. */
   zendeskId: number;
   zendeskUpdatedAt: string;
   subject: string;
@@ -87,6 +100,8 @@ export interface CareCase {
   recommendation: string;
   otherOption: string;
   order?: CareOrder;
+  /** Set on a stock exception: what is short, where, and what every branch holds. */
+  stock?: StockExceptionDetail;
   draft: { isReply: boolean; text: string; original: string };
   replyChecks: Array<{ label: string; ok: boolean }>;
   steps: CareStep[];
@@ -97,10 +112,12 @@ export interface CareCase {
   claimedAt?: string;
   /** The record of how the AI got here, for the team and not for the customer. */
   trace?: CareTrace[];
+  /** What the source system raised, as it gave it (a stock exception). Server only. */
+  raw?: Record<string, unknown>;
 }
 
 /** What the portal's canvases draw. The server-only parts (the actions behind the steps, the approval's fingerprint) are left out. */
-export interface CareTicketView extends Omit<CareCase, 'tenantId' | 'requester' | 'zendeskId' | 'zendeskUpdatedAt' | 'createdAt' | 'updatedAt' | 'dueAt' | 'steps' | 'draft' | 'approval' | 'claimedAt' | 'trace'> {
+export interface CareTicketView extends Omit<CareCase, 'tenantId' | 'requester' | 'zendeskId' | 'zendeskUpdatedAt' | 'createdAt' | 'updatedAt' | 'dueAt' | 'steps' | 'draft' | 'approval' | 'claimedAt' | 'trace' | 'raw'> {
   slaMinutes: number;
   /** Who approved, when, and how each change went. The fingerprint stays on the server. */
   approval?: Omit<CareApproval, 'contentHash'>;

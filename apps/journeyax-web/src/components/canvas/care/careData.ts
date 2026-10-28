@@ -29,7 +29,10 @@ export const stageIndex = (stage: CareStage): number => CARE_STAGES.findIndex((s
 
 export interface CareTimelineEntry { stage: CareStage; at: string; note: string }
 
-export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce';
+export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce' | 'SAP ERP';
+
+/** Which desk a case belongs to: customer care's tickets, or the stock exceptions desk's exceptions. The same screens draw both. */
+export type DeskKind = 'care' | 'stock';
 
 /** What a proposed change does, so the person can tell a note from an email to the customer from a money move. */
 export type CareStepKind = 'customer' | 'internal' | 'record' | 'money';
@@ -58,8 +61,19 @@ export interface CareOrder {
   notes: string[];
 }
 
+/** A stock exception's own facts, drawn as a table of branches. */
+export interface StockDetail {
+  product: { sku: string; name: string };
+  short: { branch: string; needed: number; onHand: number };
+  branches: Array<{ name: string; onHand: number; spare: number; role: 'short' | 'source' | 'other'; note?: string }>;
+}
+
 export interface CareTicket {
   id: string;
+  /** Absent means a customer-care ticket. */
+  desk?: DeskKind;
+  /** Set on a stock exception: what is short, where, and what every branch holds. */
+  stock?: StockDetail;
   ref: string;
   subject: string;
   status: CareStatus;

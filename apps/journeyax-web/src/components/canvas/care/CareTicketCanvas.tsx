@@ -10,9 +10,10 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { openCanvas } from '@/lib/shell/sidePanelStore';
-import { CARE_MOODS, CARE_STAGES, CARE_TOPICS, slaClock, stageIndex, type CareStage, type CareStep, type CareStepKind, type CareTicket } from './careData';
+import { slaClock, stageIndex, type CareStage, type CareStep, type CareStepKind, type CareTicket, type DeskKind } from './careData';
 import { StatusChip } from './CareQueueCanvas';
 import { FIXTURES, decide } from './careApi';
+import { deskWords } from './deskWords';
 import { applyCareEvent, useCareActor, useCareSync, useCareTicket } from './careStore';
 
 type Phase = 'review' | 'running' | 'attention' | 'done' | 'rejected' | 'sent';
@@ -39,10 +40,12 @@ function Working({ text }: { text: string }) {
   return <p className="cv__working"><span aria-hidden="true">◐ </span>{text}</p>;
 }
 
-export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: string; failStep?: string }) {
-  useCareSync();
-  const ticket = useCareTicket(ticketId);
-  const actor = useCareActor();
+export default function CareTicketCanvas({ ticketId, failStep, desk = 'care' }: { ticketId: string; failStep?: string; desk?: DeskKind }) {
+  useCareSync(desk);
+  const w = deskWords(desk);
+  const CARE_STAGES = w.stages;
+  const ticket = useCareTicket(ticketId, desk);
+  const actor = useCareActor(desk);
   const connected = !FIXTURES;
   const original = ticket?.draft.text ?? '';
   const [draft, setDraft] = useState(original);
@@ -76,7 +79,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
     if (phase === 'done' || phase === 'attention' || phase === 'rejected' || phase === 'sent') result.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [phase]);
 
-  if (!ticket) return <div className="cv"><div className="cv__body"><p className="cv__empty-title">We could not find that ticket</p><button type="button" className="cv__link" onClick={() => openCanvas({ kind: 'care-queue' })}>Back to my tickets</button></div></div>;
+  if (!ticket) return <div className="cv"><div className="cv__body"><p className="cv__empty-title">We could not find that {w.one}</p><button type="button" className="cv__link" onClick={() => openCanvas({ kind: w.kinds.queue })}>Back to {w.queueTitle.toLowerCase()}</button></div></div>;
 
   const t: CareTicket = ticket;
   const clock = slaClock(t.slaMinutes);
@@ -134,7 +137,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
     if (connected) {
       setEditing(false); setPhase('running');
       const removed = t.steps.filter((s) => states[s.id] === 'removed').map((s) => s.id);
-      const answer = await decide(t.id, 'approve', { draft, removedSteps: removed, topic, mood });
+      const answer = await decide(t.id, 'approve', { draft, removedSteps: removed, topic, mood }, desk);
       if (!answer.ok) { setPhase('review'); setError(answer.error); return; }
       applyCareEvent({ type: 'ticket', ticket: answer.ticket });
       return;
@@ -145,7 +148,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
   const retry = async () => {
     setError('');
     if (connected) {
-      const answer = await decide(t.id, 'retry');
+      const answer = await decide(t.id, 'retry', {}, desk);
       if (!answer.ok) { setError(answer.error); return; }
       applyCareEvent({ type: 'ticket', ticket: answer.ticket });
       return;
@@ -157,7 +160,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
   const reject = async () => {
     setError('');
     if (connected) {
-      const answer = await decide(t.id, 'reject');
+      const answer = await decide(t.id, 'reject', {}, desk);
       if (!answer.ok) { setError(answer.error); return; }
       applyCareEvent({ type: 'ticket', ticket: answer.ticket });
     }
@@ -166,7 +169,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
   const toLead = async () => {
     setError('');
     if (connected) {
-      const answer = await decide(t.id, 'to-lead');
+      const answer = await decide(t.id, 'to-lead', {}, desk);
       if (!answer.ok) { setError(answer.error); return; }
       applyCareEvent({ type: 'ticket', ticket: answer.ticket });
     }
@@ -179,12 +182,12 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
   return (
     <div className="cv">
       <div className="cv__body">
-        <button type="button" className="cv__link cv__back" onClick={() => openCanvas({ kind: 'care-queue' })}>← My tickets</button>
+        <button type="button" className="cv__link cv__back" onClick={() => openCanvas({ kind: w.kinds.queue })}>← {w.queueTitle}</button>
 
         <div className="cv__order-head">
           <div>
-            <div className="cv__eyebrow">Ticket</div>
-            <div className="cv__order-no">#{t.ref}</div>
+            <div className="cv__eyebrow">{w.one[0].toUpperCase() + w.one.slice(1)}</div>
+            <div className="cv__order-no">{w.refPrefix}{t.ref}</div>
             <div className="cv__name">{t.subject}</div>
             <div className="cv__meta">{[t.customer.name, t.customer.account, t.customer.since ? `since ${t.customer.since}` : '', t.customer.earlier].filter(Boolean).join(' · ')}</div>
             <div className="cv__meta">{t.channel} · assigned to {t.assignee.name} ({t.assignee.id})</div>
@@ -195,7 +198,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
           </div>
         </div>
 
-        <ol className="cv__track" aria-label="Where this ticket is" aria-live="polite">
+        <ol className="cv__track" aria-label={`Where this ${w.one} is`} aria-live="polite">
           {CARE_STAGES.map((s) => {
             const idx = stageIndex(s.id); const at = stageIndex(t.stage);
             const state = idx < at || (isDone && idx === at) ? 'done' : idx === at ? 'now' : 'next';
@@ -203,7 +206,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
           })}
         </ol>
 
-        <h3 className="cv__h">What the customer wrote</h3>
+        <h3 className="cv__h">{w.wrote}</h3>
         <blockquote className="cv__quote">{t.message}</blockquote>
 
         {readIt ? (
@@ -212,7 +215,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
             {(['topic', 'mood'] as const).map((which) => {
               const value = which === 'topic' ? topic : mood;
               const firstPick = which === 'topic' ? t.topic : t.mood;
-              const options = which === 'topic' ? CARE_TOPICS : CARE_MOODS;
+              const options = which === 'topic' ? w.topics : w.moods;
               const changed = value !== firstPick.value;
               return correcting === which ? (
                 <select key={which} className="cv__label cv__label--pick" autoFocus value={value} aria-label={`Correct the ${which}`}
@@ -221,13 +224,13 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
                 </select>
               ) : (
                 <button key={which} type="button" className="cv__label" disabled={locked} onClick={() => setCorrecting(which)}
-                  aria-label={`${which === 'topic' ? 'Topic' : 'Mood'}: ${value}. Press to correct it.`}>
-                  {which === 'topic' ? 'Topic' : 'Mood'}: {value} · {changed ? 'corrected by you' : firstPick.confidence}
+                  aria-label={`${which === 'topic' ? w.topicLabel : w.moodLabel}: ${value}. Press to correct it.`}>
+                  {which === 'topic' ? w.topicLabel : w.moodLabel}: {value} · {changed ? 'corrected by you' : firstPick.confidence}
                 </button>
               );
             })}
           </div>
-        ) : <Working text="Waiting for the AI to start reading this ticket." />}
+        ) : <Working text={w.waitingToRead} />}
 
         <h3 className="cv__h">How I got here</h3>
         <ol className="cv__timeline">
@@ -245,7 +248,7 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
             </ul>
             {t.notChecked.map((n) => <p key={n} className="cv__gap"><span aria-hidden="true">! </span>Not checked: {n}</p>)}
           </>
-        ) : <Working text="Looking up the order, the account and earlier tickets." />}
+        ) : <Working text={w.researching} />}
 
         {researched && t.order && (
           <>
@@ -256,9 +259,31 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
                 <span>Shipment <strong>{t.order.states.shipment}</strong></span>
                 <span>Payment <strong>{t.order.states.payment}</strong></span>
               </div>
-              <div className="cv__meta">Promised {t.order.promised ?? '–'} · Delivered {t.order.actual ?? '–'}</div>
+              <div className="cv__meta">{desk === 'stock' ? `Needed by ${t.order.promised ?? '–'}` : `Promised ${t.order.promised ?? '–'} · Delivered ${t.order.actual ?? '–'}`}</div>
               {t.order.lines.map((l) => <div key={l.name} className="cv__meta">{l.quantity} × {l.name}</div>)}
               {t.order.notes.map((n) => <div key={n} className="cv__meta">Note: {n}</div>)}
+            </div>
+          </>
+        )}
+
+        {researched && t.stock && (
+          <>
+            <h3 className="cv__h">Stock across branches</h3>
+            <div className="cv__orderbox">
+              <div className="cv__meta">{t.stock.product.name} · {t.stock.short.branch} needs {t.stock.short.needed} and has {t.stock.short.onHand}.</div>
+              <table className="cv__branches" aria-label="Stock by branch">
+                <thead><tr><th scope="col">Branch</th><th scope="col">On hand</th><th scope="col">To spare</th><th scope="col"><span className="cv__sr">Role</span></th></tr></thead>
+                <tbody>
+                  {t.stock.branches.map((b) => (
+                    <tr key={b.name} className={`cv__branch cv__branch--${b.role}`}>
+                      <th scope="row">{b.name}</th>
+                      <td>{b.onHand}</td>
+                      <td>{b.role === 'short' ? '–' : b.spare}</td>
+                      <td>{b.role === 'short' ? 'Short' : b.role === 'source' ? `Sends the stock${b.note ? ` · ${b.note}` : ''}` : b.note ?? ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </>
         )}
@@ -269,14 +294,14 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
             <p className="cv__rec">{t.recommendation}</p>
             <p className="cv__meta">Other option: {t.otherOption}</p>
           </>
-        ) : <Working text="Working out what to do, and writing the reply and the list of changes." />}
+        ) : <Working text={w.drafting} />}
 
         {drafted && (
           <>
-            <h3 className="cv__h">{t.draft.isReply ? `Reply to ${first.split(' ')[0]}` : 'Call notes'}</h3>
+            <h3 className="cv__h">{w.noteHeading(first.split(' ')[0], t.draft.isReply)}</h3>
             {t.draft.isReply
               ? <p className="cv__public"><span aria-hidden="true">✉ </span>This is emailed to {first} and anyone copied in, when you approve.</p>
-              : <p className="cv__internal">Internal only. Nothing here goes to the customer.</p>}
+              : <p className="cv__internal">{w.noteIsInternal}</p>}
             {editing
               ? <textarea className="cv__draft cv__draft--edit" value={draft} onChange={(e) => { setDraft(e.target.value); setTouched(true); }} aria-label="Reply text" rows={9} />
               : <div className="cv__draft">{draft}</div>}
@@ -285,8 +310,8 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
               {!locked && edited && <button type="button" className="cv__link" onClick={() => { setDraft(original); setTouched(false); setEditing(false); }}>Undo to the AI version</button>}
               {edited && <Chip tone="info">Edited by you</Chip>}
             </div>
-            {t.draft.isReply && (
-              <ul className="cv__checks" aria-label="Checks on this reply">
+            {(t.draft.isReply || w.showChecksAlways) && (
+              <ul className="cv__checks" aria-label={w.checksLabel}>
                 {t.replyChecks.map((c) => <li key={c.label} className={c.ok ? 'cv__check--ok' : 'cv__check--look'}><span aria-hidden="true">{c.ok ? '✓' : '!'}</span> {c.label}</li>)}
               </ul>
             )}
@@ -318,20 +343,20 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
         <div ref={result} />
         {phase === 'done' && (
           <div className="cv__notice">
-            Done. Approved by {t.approval?.by.name ?? t.assignee.name} ({t.approval?.by.id ?? t.assignee.id}) at {t.approval ? new Date(t.approval.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : approvedAt}. The reply was {(t.approval?.edited ?? edited) ? 'edited' : 'sent as written'}. {t.approval ? serverResults.length : live.length} {(t.approval ? serverResults.length : live.length) === 1 ? 'change' : 'changes'} made. Recorded, with the AI version beside the approved one.
+            Done. Approved by {t.approval?.by.name ?? t.assignee.name} ({t.approval?.by.id ?? t.assignee.id}) at {t.approval ? new Date(t.approval.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : approvedAt}. {w.doneNote} {(t.approval?.edited ?? edited) ? 'edited' : w.asWritten}. {t.approval ? serverResults.length : live.length} {(t.approval ? serverResults.length : live.length) === 1 ? 'change' : 'changes'} made. Recorded, with the AI version beside the approved one.
           </div>
         )}
-        {phase === 'rejected' && <div className="cv__rejected">Not approved. The ticket stays with you, the AI work-up stays on it as a note, and nothing was changed in any system.</div>}
-        {phase === 'sent' && <div className="cv__rejected">Sent to Hemi Parata (TL-2001). It shows in the team lead's list as Decide. Nothing has gone to the customer.</div>}
+        {phase === 'rejected' && <div className="cv__rejected">Not approved. The {w.one} stays with you, the AI work-up stays on it as a note, and nothing was changed in any system.</div>}
+        {phase === 'sent' && <div className="cv__rejected">{w.sentToLead('')}</div>}
       </div>
 
       <div className="cv__foot">
         {!reached(t, 'waiting') && <div className="cv__meta">The AI is still working on this one. What it has finished is above, and the rest fills in by itself.</div>}
-        {phase === 'review' && canDecide && !mayDecide && <p className="cv__meta">This ticket is assigned to {t.assignee.name}. Only they, or the team lead, can decide it.</p>}
+        {phase === 'review' && canDecide && !mayDecide && <p className="cv__meta">This {w.one} is assigned to {t.assignee.name}. Only they, or the team lead, can decide it.</p>}
         {phase === 'review' && canDecide && mayDecide && (leadOnly ? (
           <>
-            <p className="cv__alert cv__alert--lead">Only the team lead can approve this one: it is a complaint, and the AI is not sure.</p>
-            <button type="button" className="cv__btn cv__btn--primary" onClick={toLead}>Send to Hemi Parata (TL-2001)</button>
+            <p className="cv__alert cv__alert--lead">Only the team lead can approve this one: {w.leadReason}</p>
+            <button type="button" className="cv__btn cv__btn--primary" onClick={toLead}>{w.sendToLead('')}</button>
             <button type="button" className="cv__btn cv__btn--ghost" onClick={reject}>I will handle it</button>
           </>
         ) : (
@@ -345,12 +370,12 @@ export default function CareTicketCanvas({ ticketId, failStep }: { ticketId: str
         {phase === 'running' && <div className="cv__meta">Making the approved changes…</div>}
         {phase === 'attention' && (
           <>
-            <p className="cv__alert">One change did not go through. The ticket stays open and needs you.</p>
+            <p className="cv__alert">One change did not go through. The {w.one} stays open and needs you.</p>
             <button type="button" className="cv__btn cv__btn--primary" onClick={retry}>Retry the failed change</button>
           </>
         )}
         {(phase === 'done' || phase === 'rejected' || phase === 'sent' || isDone || !reached(t, 'waiting')) && (
-          <button type="button" className="cv__btn cv__btn--ghost" onClick={() => openCanvas({ kind: 'care-queue' })}>Back to my tickets</button>
+          <button type="button" className="cv__btn cv__btn--ghost" onClick={() => openCanvas({ kind: w.kinds.queue })}>Back to {w.queueTitle.toLowerCase()}</button>
         )}
       </div>
     </div>

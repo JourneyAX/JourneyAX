@@ -45,7 +45,10 @@ export const AI_STRATEGY: BrandOverlay = {
   // The sample helpdesk's staff reply as one person; on screen it is the team. The full name first, so the first name alone is only a fallback.
   rename: [{ from: 'Mahaveer Amudhachandran', to: 'Support team' }, { from: 'Mahaveer', to: 'Support team' }],
   // The care desk already names this login Aroha Ngata (CSR-1041); the sidebar now agrees with it.
-  people: { 'csr@placemakers.demo': { name: 'Aroha Ngata', role: 'Customer care' } },
+  people: {
+    'csr@placemakers.demo': { name: 'Aroha Ngata', role: 'Customer care' },
+    'branch@placemakers.demo': { name: 'Wiremu Fox', role: 'Branch counter' },
+  },
   loginHeadline: 'Sign in to try the assistant.',
   loginTagline: 'See how an assistant that is connected to your systems, with people in control, can help one workflow at a time.',
   colors: { action: '#4545F5', actionText: '#FFFFFF', link: '#4545F5', canvasHeader: '#12121A', canvasHeaderText: '#FFFFFF' },

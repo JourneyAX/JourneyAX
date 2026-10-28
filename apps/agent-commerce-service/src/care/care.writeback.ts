@@ -21,7 +21,7 @@ export class UnavailableWriteBack implements CareWriteBack {
   }
 }
 
-const CONNECTOR_OF: Record<string, string> = { Zendesk: 'zendesk', commercetools: 'commercetools', Salesforce: 'salesforce' };
+const CONNECTOR_OF: Record<string, string> = { Zendesk: 'zendesk', commercetools: 'commercetools', Salesforce: 'salesforce', 'SAP ERP': 'ace-erp' };
 
 /**
  * The only changes the write-back will ever make: the ones the playbook proposes (`stepsFor`), each in the one system it names. Anything else a
@@ -31,6 +31,8 @@ const ALLOWED_TOOLS = new Set([
   'zendesk.reply_to_ticket', 'zendesk.update_ticket',
   'commercetools.cancel_order', 'commercetools.add_order_note',
   'salesforce.create_case', 'salesforce.create_task',
+  // The stock desk's one change in the ERP: a request for stock to be moved. It never writes a count.
+  'ace-erp.request_stock_transfer',
 ]);
 
 const done = (step: CareStep, args: Record<string, unknown>): string => {
@@ -41,6 +43,7 @@ const done = (step: CareStep, args: Record<string, unknown>): string => {
     case 'add_order_note': return `Note added on order ${args.orderNumber}.`;
     case 'create_case': return 'Case logged in Salesforce.';
     case 'create_task': return 'Task created for the account manager.';
+    case 'request_stock_transfer': return `Transfer requested: ${args.quantity} from branch ${args.fromBranch} to branch ${args.toBranch}.`;
     default: return 'Done.';
   }
 };
@@ -63,7 +66,8 @@ export class ConnectorWriteBack implements CareWriteBack {
       args.body = ctx.draft;
       args.author = ctx.actor.name;
     }
-    if (action.tool === 'create_case' || action.tool === 'create_task') args.ticketId = doc.zendeskId;
+    // A care ticket's case and task are tied to the ticket; a stock exception's carry the exception number the step already holds.
+    if ((action.tool === 'create_case' || action.tool === 'create_task') && doc.desk !== 'stock') args.ticketId = doc.zendeskId;
     try {
       await this.connectors.call(connector, action.tool, args, tenantId);
       return { ok: true, message: done(step, args) };

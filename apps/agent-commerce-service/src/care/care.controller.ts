@@ -11,9 +11,13 @@
  *   POST care/tickets/:id/reject
  *   POST care/tickets/:id/to-lead
  *   POST care/poll                    look at Zendesk now (instead of waiting for the timer)
+ *
+ * The stock exceptions desk answers the same routes under `care/stock/...` (me, tickets, tickets/:id, board, the four decisions, poll). They need
+ * branch staff, and answer "not switched on" while STOCK_INTAKE is off.
  */
 import { Body, Controller, Get, Headers, HttpException, HttpStatus, Inject, Param, Post } from '@nestjs/common';
 import { verifiedIdentity } from '../identity';
+import type { CareDesk } from './care.desk';
 import { CareService } from './care.service';
 import type { CareActor } from './care.writeback';
 
@@ -89,5 +93,74 @@ export class CareController {
   async poll(@Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
     const { tenantId } = this.who(projectId, assertion);
     return { found: await this.care.desk.pollOnce(tenantId) };
+  }
+
+  // ---- The stock exceptions desk: the same routes, for branch staff, on the second desk. ----
+
+  private stockWho(projectId: string, assertion: string | undefined): { tenantId: string; actor: CareActor; desk: CareDesk } {
+    const desk = this.care.stock;
+    if (!desk) throw new HttpException({ error: 'The stock exceptions desk is not switched on.' }, HttpStatus.NOT_FOUND);
+    const tenantId = (projectId || '').toLowerCase().trim();
+    const actor = this.care.stockActorFor(verifiedIdentity(assertion, tenantId));
+    if (!actor) throw new HttpException({ error: 'Branch staff only.' }, HttpStatus.FORBIDDEN);
+    return { tenantId, actor, desk };
+  }
+
+  /** Whether the signed-in person works the stock desk: answers "no" instead of refusing, like `care/me`. */
+  @Get('stock/me')
+  stockMe(@Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const tenantId = (projectId || '').toLowerCase().trim();
+    const actor = this.care.stockActorFor(verifiedIdentity(assertion, tenantId));
+    return actor ? { stock: true, actor: { name: actor.name, id: actor.id, isLead: actor.isLead } } : { stock: false };
+  }
+
+  @Get('stock/tickets')
+  async stockList(@Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const { tenantId, actor, desk } = this.stockWho(projectId, assertion);
+    return { serverTime: new Date().toISOString(), actor: { name: actor.name, id: actor.id, isLead: actor.isLead }, tickets: await desk.list(tenantId) };
+  }
+
+  @Get('stock/tickets/:id')
+  async stockOne(@Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const { tenantId, desk } = this.stockWho(projectId, assertion);
+    const ticket = await desk.get(tenantId, id);
+    if (!ticket) throw new HttpException({ error: 'There is no such exception.' }, HttpStatus.NOT_FOUND);
+    return { ticket };
+  }
+
+  @Get('stock/board')
+  async stockBoard(@Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const { tenantId, desk } = this.stockWho(projectId, assertion);
+    return desk.board(tenantId);
+  }
+
+  @Post('stock/tickets/:id/approve')
+  async stockApprove(@Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined, @Body() body: { draft?: unknown; removedSteps?: unknown; topic?: unknown; mood?: unknown }) {
+    const { tenantId, actor, desk } = this.stockWho(projectId, assertion);
+    return this.answer(await desk.approve(tenantId, id, actor, body || {}));
+  }
+
+  @Post('stock/tickets/:id/retry')
+  async stockRetry(@Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const { tenantId, actor, desk } = this.stockWho(projectId, assertion);
+    return this.answer(await desk.retry(tenantId, id, actor));
+  }
+
+  @Post('stock/tickets/:id/reject')
+  async stockReject(@Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const { tenantId, actor, desk } = this.stockWho(projectId, assertion);
+    return this.answer(await desk.reject(tenantId, id, actor));
+  }
+
+  @Post('stock/tickets/:id/to-lead')
+  async stockToLead(@Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const { tenantId, actor, desk } = this.stockWho(projectId, assertion);
+    return this.answer(await desk.toLead(tenantId, id, actor));
+  }
+
+  @Post('stock/poll')
+  async stockPoll(@Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const { tenantId, desk } = this.stockWho(projectId, assertion);
+    return { found: await desk.pollOnce(tenantId) };
   }
 }

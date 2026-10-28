@@ -43,13 +43,14 @@ export class MemoryCareStore implements CareStore {
 export class MongoCareStore implements CareStore {
   private cases: Collection<CareCase> | null = null;
   private state: Collection<{ tenantId: string; cursor: string }> | null = null;
-  constructor(private readonly getDb: () => Promise<Db | null>) {}
+  /** `prefix` names the collections (`care_cases` and `care_state` for customer care; the stock desk keeps its own). */
+  constructor(private readonly getDb: () => Promise<Db | null>, private readonly prefix: string = 'care') {}
   private async open() {
     if (this.cases && this.state) return;
     const db = await this.getDb();
     if (!db) throw new Error('The database is not connected.');
-    this.cases = db.collection<CareCase>('care_cases');
-    this.state = db.collection('care_state');
+    this.cases = db.collection<CareCase>(`${this.prefix}_cases`);
+    this.state = db.collection(`${this.prefix}_state`);
     await Promise.all([this.cases.createIndex({ tenantId: 1, id: 1 }, { unique: true }), this.cases.createIndex({ tenantId: 1, createdAt: 1 }), this.state.createIndex({ tenantId: 1 }, { unique: true })]);
   }
   async get(tenantId: string, id: string) { await this.open(); return (await this.cases!.findOne({ tenantId, id }, { projection: { _id: 0 } })) as CareCase | null; }
