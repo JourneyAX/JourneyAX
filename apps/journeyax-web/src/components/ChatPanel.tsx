@@ -1418,7 +1418,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
               onSubmit={submitPrompt}
               onStop={stopStreaming}
               busy={isLoading}
-              placeholder={introPlaceholder}
+              placeholder={welcome?.placeholder ?? introPlaceholder}
               autoFocus={typeof window !== 'undefined' && window.innerWidth > 860}
             />
             {isEmpty && !dashboardReady && !dashboardPending && (careAccess || starters.length > 0) && (

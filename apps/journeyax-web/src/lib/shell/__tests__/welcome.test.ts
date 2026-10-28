@@ -29,6 +29,13 @@ check('only well-formed parts of the welcome are kept', () => {
   assert.equal(parseWelcome({ welcome: {} }), undefined);
 });
 
+check('the message-box wording is kept when it is words, and a welcome with only that is still a welcome', () => {
+  assert.equal(parseWelcome({ welcome: { headline: 'Hi', placeholder: ' Ask about a ticket… ' } })?.placeholder, 'Ask about a ticket…');
+  assert.equal('placeholder' in (parseWelcome({ welcome: { headline: 'Hi', placeholder: 7 } }) ?? {}), false);
+  assert.deepEqual(parseWelcome({ welcome: { placeholder: 'Ask about stock…' } }), { headline: undefined, subtitle: undefined, placeholder: 'Ask about stock…' });
+  assert.equal(parseWelcome({ welcome: { placeholder: 'x'.repeat(300) } })?.placeholder?.length, 100);
+});
+
 check('a starter is offered only when the person may use every tool it needs', () => {
   const welcome = parseWelcome({ welcome: { starters: [
     { label: 'Call', prompt: 'p1', needs: ['salesforce.find_account'] },

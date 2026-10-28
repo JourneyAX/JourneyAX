@@ -1905,6 +1905,7 @@
           ],
           "headline": "{hello}. Who are we helping today?",
           "subtitle": "Ask about a trade account, a deal, an order or a call you have coming up.",
+          "placeholder": "Ask about an account, a deal or a call you have coming up…",
           "starters": [
             {
               "label": "Get me ready for a call",
@@ -1942,6 +1943,7 @@
           ],
           "headline": "{hello}. What would you like to look at?",
           "subtitle": "The pipeline, the accounts that need attention, and the reports behind them.",
+          "placeholder": "Ask about the pipeline, a rep or an account that needs attention…",
           "starters": [
             {
               "label": "How is the pipeline looking?",
@@ -1980,6 +1982,7 @@
           ],
           "headline": "{hello}. What needs sorting?",
           "subtitle": "Orders, cases and tickets for our customers.",
+          "placeholder": "Ask about a ticket, a case or an order number…",
           "starters": [
             {
               "label": "Show the open cases",
@@ -2017,6 +2020,7 @@
           ],
           "headline": "{hello}. What can we check for you?",
           "subtitle": "Stock by branch, orders and accounts at the counter.",
+          "placeholder": "Ask about stock, a price or an order at the counter…",
           "starters": [
             {
               "label": "Check stock at a branch",
@@ -2054,6 +2058,7 @@
           ],
           "headline": "{hello}. Which account are we looking at?",
           "subtitle": "Orders, account terms and what is open on an account.",
+          "placeholder": "Ask about an account, an invoice or what is overdue…",
           "starters": [
             {
               "label": "Tell me about a trade account",
@@ -2091,6 +2096,7 @@
           ],
           "headline": "{hello}. What are we promoting?",
           "subtitle": "Campaigns, the messages that went out, and how the website is doing.",
+          "placeholder": "Ask about a campaign, a lead or how the website is doing…",
           "starters": [
             {
               "label": "What campaigns are running?",
@@ -2135,6 +2141,7 @@
           ],
           "headline": "{hello}. What would you like to measure?",
           "subtitle": "Website traffic and the reports behind it.",
+          "placeholder": "Ask about website traffic, searches or a report…",
           "starters": [
             {
               "label": "How is the website doing?",
@@ -2158,6 +2165,7 @@
           ],
           "headline": "{hello}. What would you like to see across the business?",
           "subtitle": "Deals, accounts, service and the reports behind them.",
+          "placeholder": "Ask about deals, accounts, service or a report…",
           "starters": [
             {
               "label": "How is the pipeline looking?",

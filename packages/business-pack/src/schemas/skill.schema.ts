@@ -341,6 +341,8 @@ export const WelcomeSchema = z.object({
     audience: z.enum(['shopper', 'staff']).optional(),
     headline: z.string().min(1).max(120).optional(),
     subtitle: z.string().min(1).max(240).optional(),
+    /** What the empty message box says, in grey, before anyone types ("Ask about a ticket, a case or an order…"). */
+    placeholder: z.string().min(1).max(100).optional(),
     starters: z.array(z.object({
       label: z.string().min(1).max(60),
       prompt: z.string().min(1).max(500),
