@@ -36,11 +36,12 @@ import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
 import { resolveHero } from '@/lib/shell/greeting';
 import { connectorStepLabel, isCompletionNotice, UNKNOWN_STEP } from '@/lib/shell/stepLabel';
 import { fillGreeting, parseWelcome, welcomeOffer, type Welcome } from '@/lib/shell/welcome';
+import { rebrandWelcome } from '@/lib/brand/overlay';
 import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } from '@/lib/shell/capabilities';
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
-import { CARE_ENTRIES, QUOTES_ENTRIES, STOCK_ENTRIES, useCareAccess, useQuotesAccess, useStockAccess } from '@/components/canvas/care/careAccess';
+import { CARE_ENTRIES, INVOICES_ENTRIES, QUOTES_ENTRIES, STOCK_ENTRIES, useCareAccess, useInvoicesAccess, useQuotesAccess, useStockAccess } from '@/components/canvas/care/careAccess';
 import { registerAskHandler } from '@/lib/shell/askInChat';
 import { SHEET_BREAKPOINT } from '@/lib/shell/panel';
 import MyDayTile from './shell/MyDayTile';
@@ -391,8 +392,9 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const careAccess = useCareAccess(authUser?.email);
   const stockAccess = useStockAccess(authUser?.email);
   const quotesAccess = useQuotesAccess(authUser?.email);
-  /** The desk screens this person is offered: customer care's, the stock desk's, the quotes desk's, any mix, or none. */
-  const careEntries = [...(careAccess ? CARE_ENTRIES : []), ...(stockAccess ? STOCK_ENTRIES : []), ...(quotesAccess ? QUOTES_ENTRIES : [])];
+  const invoicesAccess = useInvoicesAccess(authUser?.email);
+  /** The desk screens this person is offered: customer care's, the stock desk's, the quotes desk's, the invoices desk's, any mix, or none. */
+  const careEntries = [...(careAccess ? CARE_ENTRIES : []), ...(stockAccess ? STOCK_ENTRIES : []), ...(quotesAccess ? QUOTES_ENTRIES : []), ...(invoicesAccess ? INVOICES_ENTRIES : [])];
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
@@ -1265,15 +1267,17 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const dashboardPending = isEmpty && panelEnabled && !!authUser && (dashboard.status === 'idle' || dashboard.status === 'loading');
   const personalGreeting = cfg.greeting ? personaliseGreeting(cfg.greeting, demoProfile?.name) : '';
   // The team's own welcome (pack `extensions.welcome`) when there is one, else the shop's headline.
-  const welcomeHeadline = fillGreeting(welcome?.headline, authUser?.fullName);
+  // Under a brand overlay a login the pack has no welcome for is given one by the overlay, so it never opens on the shop's shopper starters.
+  const shownWelcome: Welcome | undefined = welcome ?? rebrandWelcome(authUser?.email);
+  const welcomeHeadline = fillGreeting(shownWelcome?.headline, authUser?.fullName);
   const hero = welcomeHeadline
-    ? { title: welcomeHeadline, subtitle: fillGreeting(welcome?.subtitle, authUser?.fullName) ?? '' }
+    ? { title: welcomeHeadline, subtitle: fillGreeting(shownWelcome?.subtitle, authUser?.fullName) ?? '' }
     : resolveHero({ headline: cfg.intro?.heroHeadline, subtitle: cfg.intro?.heroSubtitle, greeting: personalGreeting, name: displayName });
   // What the empty chat offers: the demo customer's own questions, else the team's own (the ones this person may use), else a few taken
   // from what this person may use (an adviser is offered cases and orders, marketing is offered campaigns), else the shop's own starters.
   const starters = demoProfile?.tryAsking?.length
     ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
-    : welcomeOffer(welcome, connectorItems) ?? startersFor(connectorItems, introStarters);
+    : welcomeOffer(shownWelcome, connectorItems) ?? startersFor(connectorItems, introStarters);
 
   // Product details and comparisons open in the side panel; the thread keeps a one-line note where each one was.
   const shownPanelCard = useShownPanelCard(state.cards, panelEnabled);
@@ -1422,7 +1426,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
               onSubmit={submitPrompt}
               onStop={stopStreaming}
               busy={isLoading}
-              placeholder={welcome?.placeholder ?? introPlaceholder}
+              placeholder={shownWelcome?.placeholder ?? introPlaceholder}
               autoFocus={typeof window !== 'undefined' && window.innerWidth > 860}
             />
             {isEmpty && !dashboardReady && !dashboardPending && (careEntries.length > 0 || starters.length > 0) && (

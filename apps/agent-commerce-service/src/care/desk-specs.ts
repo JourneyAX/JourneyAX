@@ -11,6 +11,9 @@ import type { CareModel } from './care.processor';
 import type { CareTeam } from './care.playbook';
 import type { CareStore } from './care.store';
 import type { ConnectorCaller } from './connector-rpc';
+import { InvoicesIntake } from './invoices/invoices.intake';
+import { INVOICE_TOPICS, INVOICE_URGENCY, INVOICES_GROUPS, invoicesTeamFromEnv } from './invoices/invoices.playbook';
+import { InvoicesProcessor } from './invoices/invoices.processor';
 import { QuotesIntake } from './quotes/quotes.intake';
 import { QUOTE_TOPICS, QUOTE_URGENCY, QUOTES_GROUPS, QUOTES_LEAD_GROUPS, quotesTeamFromEnv } from './quotes/quotes.playbook';
 import { QuotesProcessor } from './quotes/quotes.processor';
@@ -54,6 +57,12 @@ export const EXTRA_DESKS: ExtraDeskSpec[] = [
     team: quotesTeamFromEnv, labels: { topics: QUOTE_TOPICS, moods: QUOTE_URGENCY },
     processor: (p) => new QuotesProcessor({ store: p.store, events: p.events, connectors: p.connectors, model: p.model, team: p.team, managerLimit: Number(p.env.QUOTES_MANAGER_LIMIT) > 0 ? Number(p.env.QUOTES_MANAGER_LIMIT) : undefined, minStageMs: stageMs(p.env) }),
     intake: (p) => new QuotesIntake({ store: p.store, events: p.events, connectors: p.connectors! }),
+  },
+  {
+    kind: 'invoices', env: 'INVOICES', intakeValue: 'erp', source: 'the ERP for invoice exceptions', groups: INVOICES_GROUPS, leadGroups: [],
+    team: invoicesTeamFromEnv, labels: { topics: INVOICE_TOPICS, moods: INVOICE_URGENCY },
+    processor: (p) => new InvoicesProcessor({ store: p.store, events: p.events, connectors: p.connectors, model: p.model, team: p.team, creditLimit: Number(p.env.INVOICES_CREDIT_LIMIT) > 0 ? Number(p.env.INVOICES_CREDIT_LIMIT) : undefined, minStageMs: stageMs(p.env) }),
+    intake: (p) => new InvoicesIntake({ store: p.store, events: p.events, connectors: p.connectors! }),
   },
 ];
 

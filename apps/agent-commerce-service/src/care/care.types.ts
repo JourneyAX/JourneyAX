@@ -9,7 +9,7 @@ export type CareStage = 'arrived' | 'read' | 'researched' | 'drafted' | 'waiting
 export type CareStatus = 'ai' | 'decide' | 'waiting' | 'done' | 'lead';
 export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce' | 'SAP ERP';
 /** Which desk a case belongs to. A case with no desk is a customer-care ticket. */
-export type DeskKind = 'care' | 'stock' | 'quotes';
+export type DeskKind = 'care' | 'stock' | 'quotes' | 'invoices';
 export type CareStepKind = 'customer' | 'internal' | 'record' | 'money';
 export type CareConfidence = 'High' | 'Medium' | 'Low';
 
@@ -40,6 +40,28 @@ export interface CareOrder {
 }
 
 export interface CareCorrection { from: string; to: string }
+
+/** An invoice the AI compared with the order, the delivery and the agreed prices, drawn as a table of lines: what was invoiced, what it should have been, and the difference. */
+export interface InvoiceDetail {
+  invoiceId: string;
+  orderRef?: string;
+  deliveryId?: string;
+  /** The customer's trade tier ("Silver"), when the ERP gave one. */
+  tier?: string;
+  currency?: string;
+  /** What the invoice came to, with GST. */
+  invoiceTotal: number;
+  lines: Array<{ sku: string; name: string; invoicedQty: number; invoicedPrice: number; rightQty: number; rightPrice: number; over: number; why: string }>;
+  /** What was over-charged before GST, the GST on it, and the credit due (both together). */
+  overcharge: number;
+  gst: number;
+  credit: number;
+  /** The account's balance now and after the credit, when the ERP gave one. */
+  balanceBefore?: number;
+  balanceAfter?: number;
+  /** Who owns the account in the CRM: the person the exception is routed to. */
+  owner?: string;
+}
 
 /** A quote the AI priced, drawn as a table of lines: what the customer asked for, at their trade tier, with stock at the branch it goes from. */
 export interface QuoteDetail {
@@ -122,6 +144,8 @@ export interface CareCase {
   stock?: StockExceptionDetail;
   /** Set on a quote request: the quote the AI priced. */
   quote?: QuoteDetail;
+  /** Set on an invoice exception: the invoice compared with the order, the delivery and the agreed prices. */
+  invoice?: InvoiceDetail;
   draft: { isReply: boolean; text: string; original: string };
   replyChecks: Array<{ label: string; ok: boolean }>;
   steps: CareStep[];

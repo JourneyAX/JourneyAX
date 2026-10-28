@@ -83,6 +83,7 @@ export default function CareTicketCanvas({ ticketId, failStep, desk = 'care' }: 
 
   const t: CareTicket = ticket;
   const quoteCurrency = t.quote?.currency;
+  const invoiceCurrency = t.invoice?.currency;
   const clock = slaClock(t.slaMinutes);
   const isDone = t.stage === 'done';
   const readIt = reached(t, 'read');
@@ -313,6 +314,35 @@ export default function CareTicketCanvas({ ticketId, failStep, desk = 'care' }: 
                   <tr className="cv__quote-total"><th scope="row" colSpan={3}>Total with GST</th><td>{formatMoney(t.quote.total, quoteCurrency)}</td><td /></tr>
                 </tfoot>
               </table>
+            </div>
+          </>
+        )}
+
+        {researched && t.invoice && (
+          <>
+            <h3 className="cv__h">The invoice compared</h3>
+            <div className="cv__orderbox">
+              <div className="cv__meta">Invoice {t.invoice.invoiceId} · {formatMoney(t.invoice.invoiceTotal, invoiceCurrency)} with GST{t.invoice.orderRef ? ` · order ${t.invoice.orderRef}` : ''}{t.invoice.deliveryId ? ` · delivery ${t.invoice.deliveryId}` : ''}{t.invoice.tier ? ` · ${t.invoice.tier} trade prices` : ''}</div>
+              <table className="cv__branches cv__invoice" aria-label="Invoice lines compared with the order and the delivery">
+                <thead><tr><th scope="col">Product</th><th scope="col">Invoiced</th><th scope="col">Should be</th><th scope="col">Over</th><th scope="col">Why</th></tr></thead>
+                <tbody>
+                  {t.invoice.lines.map((l) => (
+                    <tr key={l.sku} className={l.over > 0 ? 'cv__invoice-bad' : undefined}>
+                      <th scope="row">{l.name}</th>
+                      <td>{l.invoicedQty} × {formatMoney(l.invoicedPrice, invoiceCurrency)}</td>
+                      <td>{l.rightQty} × {formatMoney(l.rightPrice, invoiceCurrency)}</td>
+                      <td>{l.over > 0 ? formatMoney(l.over, invoiceCurrency) : '–'}</td>
+                      <td>{l.why}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr><th scope="row" colSpan={3}>Over-charged before GST</th><td>{formatMoney(t.invoice.overcharge, invoiceCurrency)}</td><td /></tr>
+                  <tr><th scope="row" colSpan={3}>GST 15%</th><td>{formatMoney(t.invoice.gst, invoiceCurrency)}</td><td /></tr>
+                  <tr className="cv__quote-total"><th scope="row" colSpan={3}>Credit due with GST</th><td>{formatMoney(t.invoice.credit, invoiceCurrency)}</td><td /></tr>
+                </tfoot>
+              </table>
+              {t.invoice.balanceBefore != null && t.invoice.balanceAfter != null && <div className="cv__meta">Account balance {formatMoney(t.invoice.balanceBefore, invoiceCurrency)} now, {formatMoney(t.invoice.balanceAfter, invoiceCurrency)} after the credit.{t.invoice.owner ? ` Account owner: ${t.invoice.owner}.` : ''}</div>}
             </div>
           </>
         )}

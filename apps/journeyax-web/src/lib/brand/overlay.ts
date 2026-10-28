@@ -14,6 +14,9 @@ export interface Rename { from: string; to: string }
 /** How a signed-in demo login is shown in the sidebar: a person's name and job instead of the login (the login itself is never changed). */
 export interface Person { name: string; role: string }
 
+/** What the empty chat says to a login the shop's pack has no welcome for (the words of a team's welcome: a headline, a line under it, a prompt and starters). */
+export interface WelcomeCopy { headline: string; subtitle?: string; placeholder?: string; starters?: Array<{ label: string; prompt: string }> }
+
 export interface BrandOverlay {
   id: string;
   /** The name shown where the project's name was (sign-in, sidebar when there is no logo, the avatar's initials). */
@@ -27,6 +30,8 @@ export interface BrandOverlay {
   rename: Rename[];
   /** Demo logins by e-mail address (lower case), shown as a person with a job. */
   people: Record<string, Person>;
+  /** Demo logins by e-mail address (lower case) whose team has no welcome in the pack: the start screen says this instead of the shop's own (shopper) words. */
+  welcomes: Record<string, WelcomeCopy>;
   loginHeadline: string;
   loginTagline: string;
   /** Button, link and panel-header colours only. */
@@ -50,6 +55,19 @@ export const AI_STRATEGY: BrandOverlay = {
     'branch@placemakers.demo': { name: 'Wiremu Fox', role: 'Branch counter' },
     'sales@placemakers.demo': { name: 'Hana Williams', role: 'Sales rep' },
     'sales.manager@placemakers.demo': { name: 'Rob Taylor', role: 'Sales manager' },
+    'finance@placemakers.demo': { name: 'Ana Rangi', role: 'Credit controller' },
+  },
+  // The finance team has no welcome in the pack yet, so its start screen would carry the shop's shopper starters; this is what it says instead.
+  welcomes: {
+    'finance@placemakers.demo': {
+      headline: 'Good morning. Which account are we looking at?',
+      subtitle: 'Ask about an account, an invoice or a credit query.',
+      placeholder: 'Ask about an account, an invoice or a credit query…',
+      starters: [
+        { label: 'Overdue accounts', prompt: 'Which accounts are overdue, and by how much?' },
+        { label: 'Credit queries', prompt: 'Which invoice and credit queries are open?' },
+      ],
+    },
   },
   loginHeadline: 'Sign in to try the assistant.',
   loginTagline: 'See how an assistant that is connected to your systems, with people in control, can help one workflow at a time.',
@@ -106,7 +124,7 @@ export function removeNamesDeep<T>(value: T, names: readonly string[]): T {
 }
 
 /** The storefront config as the page should receive it under this overlay. */
-export function applyBrandOverlay<T extends Record<string, any>>(config: T, overlay: BrandOverlay): T & { brandOverlay: { id: string; companyName: string; loginHeadline: string; loginTagline: string; remove: string[]; rename: Rename[]; people: Record<string, Person>; highlight: string } } {
+export function applyBrandOverlay<T extends Record<string, any>>(config: T, overlay: BrandOverlay): T & { brandOverlay: { id: string; companyName: string; loginHeadline: string; loginTagline: string; remove: string[]; rename: Rename[]; people: Record<string, Person>; welcomes: Record<string, WelcomeCopy>; highlight: string } } {
   const base: any = removeNamesDeep(config, overlay.remove);
   const tokens = base?.uiTheme?.tokens && typeof base.uiTheme.tokens === 'object' ? base.uiTheme.tokens : {};
   const colors = { ...(tokens.colors && typeof tokens.colors === 'object' ? tokens.colors : {}), ...overlay.colors, brand: overlay.colors.action, brandText: overlay.colors.actionText, accent: overlay.colors.link };
@@ -118,7 +136,7 @@ export function applyBrandOverlay<T extends Record<string, any>>(config: T, over
     theme: { ...(base.theme || {}), logoUrl: undefined, primaryColor: overlay.colors.action, accentColor: overlay.colors.link },
     uiTheme: { ...(base.uiTheme || {}), tokens: { ...tokens, colors } },
     labels: { ...(base.labels || {}), headerTitle: overlay.loginHeadline },
-    brandOverlay: { id: overlay.id, companyName: overlay.companyName, loginHeadline: overlay.loginHeadline, loginTagline: overlay.loginTagline, remove: overlay.remove, rename: overlay.rename, people: overlay.people, highlight: overlay.highlight },
+    brandOverlay: { id: overlay.id, companyName: overlay.companyName, loginHeadline: overlay.loginHeadline, loginTagline: overlay.loginTagline, remove: overlay.remove, rename: overlay.rename, people: overlay.people, welcomes: overlay.welcomes, highlight: overlay.highlight },
   };
 }
 
@@ -126,17 +144,24 @@ export function applyBrandOverlay<T extends Record<string, any>>(config: T, over
 let activeNames: readonly string[] = [];
 let activeRenames: readonly Rename[] = [];
 let activePeople: Record<string, Person> = {};
+let activeWelcomes: Record<string, WelcomeCopy> = {};
 
 /** Called once the page has its config: the names to take out of every reply, the people's names to show as a team, and the demo logins shown as people (none when the overlay is off). */
-export function setRebrand(names: readonly string[] | undefined, renames?: readonly Rename[], people?: Record<string, Person>): void {
+export function setRebrand(names: readonly string[] | undefined, renames?: readonly Rename[], people?: Record<string, Person>, welcomes?: Record<string, WelcomeCopy>): void {
   activeNames = Array.isArray(names) ? names : [];
   activeRenames = Array.isArray(renames) ? renames : [];
   activePeople = people && typeof people === 'object' ? people : {};
+  activeWelcomes = welcomes && typeof welcomes === 'object' ? welcomes : {};
 }
 
 /** The person a signed-in login is shown as under the overlay, or nothing (the usual case). */
 export function rebrandPerson(email: string | undefined | null): Person | undefined {
   return activePeople[String(email || '').trim().toLowerCase()];
+}
+
+/** What the empty chat says to a login the pack has no welcome for, under the overlay; nothing otherwise (the usual case). */
+export function rebrandWelcome(email: string | undefined | null): WelcomeCopy | undefined {
+  return activeWelcomes[String(email || '').trim().toLowerCase()];
 }
 
 /** A piece of text for the screen: unchanged unless a brand overlay is on. */

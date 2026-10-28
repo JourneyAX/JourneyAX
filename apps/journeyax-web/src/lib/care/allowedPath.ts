@@ -2,11 +2,11 @@
 const SEGMENT = /^[A-Za-z0-9_-]{1,64}$/;
 const DECISIONS = new Set(['approve', 'retry', 'reject', 'to-lead']);
 /** The desks besides customer care, each under its own leading segment. */
-const DESKS = new Set(['stock', 'quotes']);
+const DESKS = new Set(['stock', 'quotes', 'invoices']);
 
 /**
- * me, tickets, tickets/<id>, tickets/<id>/<decision>, board, poll: nothing else. The other desks (stock, quotes) have the same set under a leading `stock/` or
- * `quotes/` (and a desk on its own is not a path).
+ * me, tickets, tickets/<id>, tickets/<id>/<decision>, board, poll: nothing else. The other desks (stock, quotes, invoices) have the same set under a leading `stock/`,
+ * `quotes/` or `invoices/` (and a desk on its own is not a path).
  */
 export function allowedCarePath(method: string, segments: string[]): boolean {
   if (!segments.length || !segments.every((s) => SEGMENT.test(s))) return false;

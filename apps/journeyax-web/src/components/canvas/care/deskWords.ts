@@ -15,7 +15,7 @@ export interface DeskWords {
   /** What goes before a case's reference on screen ("#4322", "EX-7301"). */
   refPrefix: string;
   /** The canvas kinds this desk opens. */
-  kinds: { queue: 'care-queue' | 'stock-queue' | 'quotes-queue'; board: 'care-board' | 'stock-board' | 'quotes-board'; ticket: 'care-ticket' | 'stock-ticket' | 'quotes-ticket' };
+  kinds: { queue: 'care-queue' | 'stock-queue' | 'quotes-queue' | 'invoices-queue'; board: 'care-board' | 'stock-board' | 'quotes-board' | 'invoices-board'; ticket: 'care-ticket' | 'stock-ticket' | 'quotes-ticket' | 'invoices-ticket' };
   stages: CareStageInfo[];
   topicLabel: string;
   moodLabel: string;
@@ -59,6 +59,17 @@ const STOCK_STAGES: CareStageInfo[] = [
 export const STOCK_TOPICS = ['Short at branch', 'Damaged in store', 'Late from supplier', 'Count mismatch'];
 export const STOCK_URGENCY = ['Routine', 'Soon', 'Urgent'];
 export const QUOTE_TOPICS = ['New quote', 'Repeat order', 'Large job', 'Price check'];
+export const INVOICE_TOPICS = ['Price mismatch', 'Quantity mismatch', 'Duplicate invoice', 'Missing credit note'];
+
+const INVOICE_STAGES: CareStageInfo[] = [
+  { id: 'arrived', word: 'Flagged', doing: 'Flagged by SAP ERP. Waiting for the AI.' },
+  { id: 'read', word: 'AI read it', doing: 'Reading what the customer says is wrong and how urgent it is.' },
+  { id: 'researched', word: 'AI matched it', doing: 'Comparing the invoice with the order, the delivery and the agreed prices.' },
+  { id: 'drafted', word: 'Credit ready', doing: 'Writing the summary, the email and the list of changes.' },
+  { id: 'waiting', word: 'Waiting for approval', doing: 'With a named credit controller to approve, edit or reject.' },
+  { id: 'running', word: 'Changes running', doing: 'Making the approved changes in each system.' },
+  { id: 'done', word: 'Done', doing: 'Corrected. Recorded with who approved it.' },
+];
 
 const QUOTE_STAGES: CareStageInfo[] = [
   { id: 'arrived', word: 'Requested', doing: 'Raised by Salesforce. Waiting for the AI.' },
@@ -118,8 +129,24 @@ const QUOTES: DeskWords = {
   staffOnly: 'Sales staff only.', unreachable: 'Could not reach the quotes desk.',
 };
 
-export const deskWords = (desk: DeskKind | undefined): DeskWords => (desk === 'stock' ? STOCK : desk === 'quotes' ? QUOTES : CARE);
-export const deskOf = (t: { desk?: DeskKind } | undefined): DeskKind => (t?.desk === 'stock' || t?.desk === 'quotes' ? t.desk : 'care');
+const INVOICES: DeskWords = {
+  eyebrow: 'Finance', queueTitle: 'Invoice exceptions', boardTitle: 'Finance board', one: 'invoice exception', many: 'invoice exceptions', refPrefix: '',
+  kinds: { queue: 'invoices-queue', board: 'invoices-board', ticket: 'invoices-ticket' },
+  stages: INVOICE_STAGES, topicLabel: 'Kind', moodLabel: 'Urgency', topics: INVOICE_TOPICS, moods: STOCK_URGENCY,
+  wrote: 'What the customer said', waitingToRead: 'Waiting for the AI to start reading this exception.',
+  researching: 'Comparing the invoice with the order, the delivery and the agreed prices.', drafting: 'Working out the credit, and writing the email and the list of changes.',
+  noneYet: 'No invoice exceptions yet. A new one appears here as soon as SAP ERP flags an invoice, and you can watch the AI match it.',
+  sortedBy: 'Sorted by the time an answer is due, soonest first. Nothing is sent or changed until you approve.',
+  noteHeading: (first, isReply) => (isReply ? `Email to ${first}` : 'Notes for the controller'),
+  noteIsInternal: 'Internal only. Nothing here goes to the customer.', checksLabel: 'Checks on this correction', doneNote: 'The email was', asWritten: 'sent as written',
+  leadReason: 'the credit is over what a controller may decide, or the AI found no difference or is not sure.',
+  sendToLead: (lead) => (lead ? `Send to ${lead}` : 'Send to the finance manager'), sentToLead: (lead) => `Sent to ${lead || 'the finance manager'}. It shows in their list as Decide. Nothing has been sent to the customer.`,
+  showChecksAlways: true,
+  staffOnly: 'Finance staff only.', unreachable: 'Could not reach the invoices desk.',
+};
+
+export const deskWords = (desk: DeskKind | undefined): DeskWords => (desk === 'stock' ? STOCK : desk === 'quotes' ? QUOTES : desk === 'invoices' ? INVOICES : CARE);
+export const deskOf = (t: { desk?: DeskKind } | undefined): DeskKind => (t?.desk === 'stock' || t?.desk === 'quotes' || t?.desk === 'invoices' ? t.desk : 'care');
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

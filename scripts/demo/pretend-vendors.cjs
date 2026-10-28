@@ -8,6 +8,7 @@
 // Beside the three systems it has a few doors for the person making the recording (all on this machine only):
 //   POST /control/new-ticket  { subject, message, name, email, orderNumber? }   a customer writes in (the ticket arrives in the pretend Zendesk)
 //   POST /control/new-exception { branchCode, sku, orderNumber, customerName, needed, note? }   the pretend ERP raises a short order line
+//   POST /control/new-invoice-exception { invoiceId, message, contactName, contactEmail }   a customer queries an invoice (the pretend ERP flags it)
 //   POST /control/new-quote-request { accountName, contactName, contactEmail, branchCode, lines:[{sku,quantity}], message }   a deal in the pretend Salesforce needs a quote
 //   GET  /control/state       everything the pretend systems hold, so a recording can show or check what an approval changed
 //   POST /control/reset       back to the starting data
@@ -38,12 +39,31 @@ function erpFresh() {
   const stock = {};
   for (const [sku, p] of Object.entries(PRODUCTS)) stock[sku] = Object.fromEntries(Object.entries(p.stock).map(([code, [onHand, reserved, safety]]) => [code, { onHand, reserved, safety, incoming: 0 }]));
   const accounts = {
-    'ACC-9001': { accountId: 'ACC-9001', name: 'Hartley Construction Ltd', tier: 'silver', creditLimit: 20000, balance: 1500, overdue: 0, terms: '20th of the month', currency: 'NZD' },
-    'ACC-9002': { accountId: 'ACC-9002', name: 'Tapsell Roofing Ltd', tier: 'bronze', creditLimit: 15000, balance: 2100, overdue: 0, terms: '20th of the month', currency: 'NZD' },
-    'ACC-9003': { accountId: 'ACC-9003', name: 'Pene Fencing Ltd', tier: 'gold', creditLimit: 30000, balance: 4800, overdue: 0, terms: '20th of the month', currency: 'NZD' },
+    'ACC-9001': { accountId: 'ACC-9001', name: 'Hartley Construction Ltd', tier: 'silver', creditLimit: 20000, balance: 6000, overdue: 0, terms: '20th of the month', currency: 'NZD' },
+    'ACC-9002': { accountId: 'ACC-9002', name: 'Tapsell Roofing Ltd', tier: 'bronze', creditLimit: 15000, balance: 3200, overdue: 0, terms: '20th of the month', currency: 'NZD' },
+    'ACC-9003': { accountId: 'ACC-9003', name: 'Pene Fencing Ltd', tier: 'gold', creditLimit: 30000, balance: 6900, overdue: 0, terms: '20th of the month', currency: 'NZD' },
   };
   const earlier = { quoteNumber: 'Q-2188', accountName: 'Hartley Construction Ltd', opportunityId: 'OPP-0871', total: 3912.4, subtotal: 3402.09, status: 'Accepted', createdAt: iso(new Date(Date.now() - 21 * 86_400_000)), lines: [] };
-  return { stock, exceptions: [], transfers: [], nextException: 7301, nextTransfer: 3001, accounts, quoteRequests: [], quotes: [earlier], emails: [], holds: [], nextRequest: 501, nextOpportunity: 912, nextQuote: 2210, nextHold: 4001 };
+  // Invoices (with the delivery and the order behind each): one billed at retail against the silver price, one billed for more than was delivered, and one billed twice.
+  const invoiceLine = (sku, quantity, unitPrice) => ({ sku, name: PRODUCTS[sku].name, quantity, unitPrice, lineTotal: Math.round(quantity * unitPrice * 100) / 100 });
+  const invoice = (invoiceId, accountId, orderNumber, deliveryId, daysAgo, lines) => {
+    const subtotal = Math.round(lines.reduce((sum, l) => sum + l.lineTotal, 0) * 100) / 100; const gst = Math.round(subtotal * 15) / 100;
+    const day = (n) => ymd(new Date(Date.now() + n * 86_400_000));
+    return { invoiceId, accountId, accountName: accounts[accountId].name, orderNumber, deliveryId, issuedAt: day(-daysAgo), dueAt: day(30 - daysAgo), status: 'Open', currency: 'NZD', subtotal, gst, total: Math.round((subtotal + gst) * 100) / 100, lines };
+  };
+  const invoices = {
+    'INV-6032': invoice('INV-6032', 'ACC-9001', 'OPP-4851', 'DEL-31001', 7, [invoiceLine('DB-140-48', 80, 38.4), invoiceLine('FR-100-36', 24, 18.6), invoiceLine('DP-25-40', 60, 8.82)]),
+    'INV-6040': invoice('INV-6040', 'ACC-9002', 'OPP-4852', 'DEL-31002', 6, [invoiceLine('WB-180-30', 60, 20.8)]),
+    'INV-6050': invoice('INV-6050', 'ACC-9003', 'OPP-4853', 'DEL-31003', 9, [invoiceLine('FP-100-24', 40, 23.63), invoiceLine('FR-100-36', 60, 15.81)]),
+    'INV-6051': invoice('INV-6051', 'ACC-9003', 'OPP-4853', 'DEL-31003', 8, [invoiceLine('FP-100-24', 40, 23.63), invoiceLine('FR-100-36', 60, 15.81)]),
+  };
+  const deliveries = {
+    'DEL-31001': { deliveryId: 'DEL-31001', orderId: 'OPP-4851', accountId: 'ACC-9001', status: 'Delivered', scheduledDate: ymd(new Date(Date.now() - 8 * 86_400_000)), lines: [{ sku: 'DB-140-48', name: PRODUCTS['DB-140-48'].name, delivered: 80 }, { sku: 'FR-100-36', name: PRODUCTS['FR-100-36'].name, delivered: 24 }, { sku: 'DP-25-40', name: PRODUCTS['DP-25-40'].name, delivered: 60 }] },
+    'DEL-31002': { deliveryId: 'DEL-31002', orderId: 'OPP-4852', accountId: 'ACC-9002', status: 'Delivered', scheduledDate: ymd(new Date(Date.now() - 7 * 86_400_000)), lines: [{ sku: 'WB-180-30', name: PRODUCTS['WB-180-30'].name, delivered: 54 }] },
+    'DEL-31003': { deliveryId: 'DEL-31003', orderId: 'OPP-4853', accountId: 'ACC-9003', status: 'Delivered', scheduledDate: ymd(new Date(Date.now() - 10 * 86_400_000)), lines: [{ sku: 'FP-100-24', name: PRODUCTS['FP-100-24'].name, delivered: 40 }, { sku: 'FR-100-36', name: PRODUCTS['FR-100-36'].name, delivered: 60 }] },
+  };
+  const owners = { 'Hartley Construction Ltd': { name: 'Hana Williams', role: 'Sales rep' }, 'Tapsell Roofing Ltd': { name: 'Eru Campbell', role: 'Sales rep' }, 'Pene Fencing Ltd': { name: 'Hana Williams', role: 'Sales rep' } };
+  return { stock, exceptions: [], transfers: [], nextException: 7301, nextTransfer: 3001, accounts, quoteRequests: [], quotes: [earlier], emails: [], holds: [], nextRequest: 501, nextOpportunity: 912, nextQuote: 2210, nextHold: 4001, invoices, deliveries, owners, invoiceExceptions: [], creditNotes: [], creditEmails: [], nextInvoiceException: 8101, nextCreditNote: 5001 };
 }
 
 let state;
@@ -63,6 +83,10 @@ function fresh() {
     ...erpFresh(),
   };
   state0.orders['OPP-4833'] = { orderNumber: 'OPP-4833', state: 'Confirmed', shipmentState: 'Pending', paymentState: 'Paid', total: 2184.0, currency: 'NZD', createdAt: ago(60 * 24 * 3), shipTo: { city: 'Hamilton' }, lines: [{ name: 'Treated pine fence post 100 x 100 x 2.4 m', sku: 'FP-100-24', quantity: 24 }, { name: 'Treated pine fence rail 100 x 50 x 3.6 m', sku: 'FR-100-36', quantity: 36 }], notes: [] };
+  const orderLine = (sku, quantity, unitPrice) => ({ name: PRODUCTS[sku].name, sku, quantity, unitPrice });
+  state0.orders['OPP-4851'] = { orderNumber: 'OPP-4851', state: 'Confirmed', shipmentState: 'Delivered', paymentState: 'Pending', total: 4250.12, currency: 'NZD', createdAt: ago(60 * 24 * 12), shipTo: { city: 'Hamilton' }, lines: [orderLine('DB-140-48', 80, 34.56), orderLine('FR-100-36', 24, 16.74), orderLine('DP-25-40', 60, 8.82)], notes: [] };
+  state0.orders['OPP-4852'] = { orderNumber: 'OPP-4852', state: 'Confirmed', shipmentState: 'Delivered', paymentState: 'Pending', total: 1435.2, currency: 'NZD', createdAt: ago(60 * 24 * 11), shipTo: { city: 'Tauranga' }, lines: [orderLine('WB-180-30', 60, 20.8)], notes: [] };
+  state0.orders['OPP-4853'] = { orderNumber: 'OPP-4853', state: 'Confirmed', shipmentState: 'Delivered', paymentState: 'Pending', total: 2177.87, currency: 'NZD', createdAt: ago(60 * 24 * 14), shipTo: { city: 'Napier' }, lines: [orderLine('FP-100-24', 40, 23.63), orderLine('FR-100-36', 60, 15.81)], notes: [] };
   return state0;
 }
 state = fresh();
@@ -73,6 +97,47 @@ const fail = (code, message) => reply({ ok: false, error: { code, message } }, t
 
 const tools = {
   'ace-erp': {
+    list_invoice_exceptions({ since, limit }) {
+      const records = state.invoiceExceptions.filter((e) => e.status === 'open' && (!since || e.updated >= since)).slice(-Math.min(Number(limit) || 25, 25));
+      return { ok: true, connector: 'ace-erp', returned: records.length, records };
+    },
+    get_invoice({ invoiceId }) {
+      const inv = state.invoices[String(invoiceId)];
+      if (!inv) return { ok: false, error: { code: 'not_found', message: `There is no invoice ${invoiceId}.` } };
+      return { ok: true, connector: 'ace-erp', record: inv };
+    },
+    find_invoices({ accountId, limit }) {
+      const records = Object.values(state.invoices).filter((i) => !accountId || i.accountId === String(accountId)).slice(0, Math.min(Number(limit) || 10, 25)).map((i) => ({ invoiceId: i.invoiceId, orderNumber: i.orderNumber, total: i.total, issuedAt: i.issuedAt, status: i.status }));
+      return { ok: true, connector: 'ace-erp', returned: records.length, records };
+    },
+    delivery_status({ deliveryId }) {
+      const d = state.deliveries[String(deliveryId)];
+      if (!d) return { ok: false, error: { code: 'not_found', message: `There is no delivery ${deliveryId}.` } };
+      return { ok: true, connector: 'ace-erp', record: d };
+    },
+    create_credit_note({ invoiceId, exceptionId, reason, overcharge, gst, total, lines }) {
+      const inv = state.invoices[String(invoiceId)];
+      if (!inv) return { ok: false, error: { code: 'not_found', message: `There is no invoice ${invoiceId}.` } };
+      const already = state.creditNotes.filter((c) => c.invoiceId === inv.invoiceId).reduce((sum, c) => sum + c.total, 0);
+      if (!(Number(total) > 0)) return { ok: false, error: { code: 'invalid', message: 'A credit note needs an amount.' } };
+      if (Number(total) + already > inv.total + 0.005) return { ok: false, error: { code: 'invalid', message: `That is more than invoice ${inv.invoiceId} came to.` } };
+      const cn = { creditNumber: `CN-${state.nextCreditNote++}`, invoiceId: inv.invoiceId, accountId: inv.accountId, accountName: inv.accountName, exceptionId, reason: String(reason || ''), overcharge: Number(overcharge), gst: Number(gst), total: Number(total), lines: Array.isArray(lines) ? lines : [], createdAt: iso() };
+      state.creditNotes.push(cn);
+      const acc = state.accounts[inv.accountId];
+      if (acc) acc.balance = Math.round((acc.balance - cn.total) * 100) / 100;
+      inv.status = already + cn.total >= inv.total - 0.005 ? 'Credited' : 'Part credited';
+      const e = state.invoiceExceptions.find((x) => x.exceptionId === Number(exceptionId));
+      if (e) { e.status = 'credited'; e.updated = iso(); }
+      return { ok: true, connector: 'ace-erp', record: { creditNumber: cn.creditNumber, invoiceId: inv.invoiceId, total: cn.total, balance: acc ? acc.balance : undefined } };
+    },
+    send_credit_note_email({ invoiceId, to, subject, body, author }) {
+      const cn = state.creditNotes.filter((c) => c.invoiceId === String(invoiceId)).pop();
+      if (!cn) return { ok: false, error: { code: 'not_found', message: `There is no credit note on invoice ${invoiceId} to send.` } };
+      if (!String(body || '').trim()) return { ok: false, error: { code: 'invalid', message: 'An email needs some words.' } };
+      state.creditEmails.push({ at: iso(), to: String(to), subject: String(subject || ''), body: String(body), author: String(author || ''), creditNumber: cn.creditNumber, invoiceId: String(invoiceId) });
+      return { ok: true, connector: 'ace-erp', record: { creditNumber: cn.creditNumber, to: String(to), emails: state.creditEmails.length } };
+    },
+
     find_account({ query, limit }) {
       const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
       const records = Object.values(state.accounts).filter((a) => words.every((w) => a.name.toLowerCase().includes(w))).slice(0, Math.min(Number(limit) || 5, 10)).map((a) => ({ accountId: a.accountId, name: a.name, tier: a.tier, terms: a.terms }));
@@ -189,6 +254,11 @@ const tools = {
     },
   },
   salesforce: {
+    find_account_owner({ accountName }) {
+      const o = state.owners[String(accountName)];
+      if (!o) return { ok: false, error: { code: 'not_found', message: `There is no account ${accountName}.` } };
+      return { ok: true, connector: 'salesforce', record: { account: String(accountName), owner: o } };
+    },
     list_quote_requests({ since, limit }) {
       const records = state.quoteRequests.filter((r) => r.status === 'open' && (!since || r.updated >= since)).slice(-Math.min(Number(limit) || 25, 25));
       return { ok: true, connector: 'salesforce', returned: records.length, records };
@@ -349,6 +419,39 @@ ${mails.map((m) => `<li><b>Email to ${esc(m.to)}</b><span>${esc(m.author)} · ${
 </div></main></body></html>`;
 }
 
+function newInvoiceException({ invoiceId, message, contactName, contactEmail, hoursToRespond = 3.5 }) {
+  const inv = state.invoices[String(invoiceId)];
+  if (!inv) throw new Error('That invoice is not in the pretend ERP.');
+  const id = state.nextInvoiceException++;
+  const e = { exceptionId: id, invoiceId: inv.invoiceId, raised: iso(), updated: iso(), status: 'open', accountName: inv.accountName, contactName: contactName ? String(contactName) : undefined, contactEmail: contactEmail ? String(contactEmail) : undefined, message: message ? String(message) : undefined, respondBy: iso(new Date(Date.now() + hoursToRespond * 3_600_000)) };
+  state.invoiceExceptions.push(e);
+  return e;
+}
+
+/** The same kind of page for an invoice exception: the credit note and the email in the ERP, the account's balance, and the task for the account owner. */
+function invoicePage(exceptionId) {
+  const e = state.invoiceExceptions.find((x) => x.exceptionId === Number(exceptionId)) || state.invoiceExceptions[state.invoiceExceptions.length - 1];
+  if (!e) return '<!doctype html><title>Connected systems</title><p>No invoice exceptions yet.</p>';
+  const inv = state.invoices[e.invoiceId];
+  const cns = state.creditNotes.filter((c) => c.invoiceId === e.invoiceId);
+  const mails = state.creditEmails.filter((m) => m.invoiceId === e.invoiceId);
+  const tasks = state.tasks.filter((t) => t.exceptionId === e.exceptionId);
+  const acc = inv && state.accounts[inv.accountId];
+  const nz = (n) => `$${Number(n).toLocaleString('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const cnHtml = cns.map((c) => `<li class="note"><b>${esc(c.creditNumber)} · ${esc(nz(c.total))} with GST</b><span>${esc(c.reason)} · ${esc(clock(c.createdAt))}</span><p>${esc(nz(c.overcharge))} over-charged plus ${esc(nz(c.gst))} GST, against invoice ${esc(c.invoiceId)}.</p></li>`).join('');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connected systems</title>
+<style>
+${PAGE_STYLE}</style></head><body>
+<header><h1>What changed in the connected systems</h1><p>Invoice exception ${esc(e.exceptionId)}, ${esc(e.accountName)}</p></header>
+<main>
+<section class="card"><h2>SAP ERP</h2><h3>Invoice ${esc(e.invoiceId)}${inv ? ` · ${esc(nz(inv.total))}` : ''}</h3><span class="chip ${cns.length ? 'blue' : ''}">${esc(inv ? inv.status : 'Unknown')}</span>
+<ul>${cnHtml || '<li><span>No credit note yet</span></li>'}${mails.map((m) => `<li><b>Email to ${esc(m.to)}</b><span>${esc(m.author)} · ${esc(m.creditNumber)} · ${esc(clock(m.at))}</span><p>${esc(m.body)}</p></li>`).join('')}</ul></section>
+<div class="side">
+<section class="card"><h2>Account</h2><h3>${esc(e.accountName)}</h3>${acc ? `<dl><dt>Trade tier</dt><dd>${esc(acc.tier[0].toUpperCase() + acc.tier.slice(1))}</dd><dt>Balance</dt><dd>${esc(nz(acc.balance))}</dd><dt>Credit limit</dt><dd>${esc(nz(acc.creditLimit))}</dd></dl>` : ''}</section>
+<section class="card"><h2>Salesforce</h2><h3>${tasks.length ? 'Task for the account owner' : 'No task yet'}</h3>${tasks.map((t) => `<span class="chip">${esc(t.status)}</span><p>${esc(t.subject)}</p>`).join('')}</section>
+</div></main></body></html>`;
+}
+
 const server = http.createServer((req, res) => {
   const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   let raw = '';
@@ -356,6 +459,7 @@ const server = http.createServer((req, res) => {
   req.on('end', () => {
     try {
       const url = new URL(req.url, 'http://x');
+      if (req.method === 'GET' && url.pathname === '/desk' && url.searchParams.get('invoice')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(invoicePage(url.searchParams.get('invoice'))); }
       if (req.method === 'GET' && url.pathname === '/desk' && url.searchParams.get('quote')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(quotePage(url.searchParams.get('quote'))); }
       if (req.method === 'GET' && url.pathname === '/desk' && url.searchParams.get('exception')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(exceptionPage(url.searchParams.get('exception'))); }
       if (req.method === 'GET' && url.pathname === '/desk') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return res.end(deskPage(url.searchParams.get('ticket'))); }
@@ -363,6 +467,7 @@ const server = http.createServer((req, res) => {
         if (req.socket.remoteAddress && !/^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/.test(req.socket.remoteAddress)) return send(403, { error: 'This machine only.' });
         if (req.method === 'GET' && url.pathname === '/control/state') return send(200, state);
         if (req.method === 'POST' && url.pathname === '/control/reset') { state = fresh(); return send(200, { ok: true }); }
+        if (req.method === 'POST' && url.pathname === '/control/new-invoice-exception') return send(200, { ok: true, exception: newInvoiceException(JSON.parse(raw || '{}')) });
         if (req.method === 'POST' && url.pathname === '/control/new-quote-request') return send(200, { ok: true, request: newQuoteRequest(JSON.parse(raw || '{}')) });
         if (req.method === 'POST' && url.pathname === '/control/new-exception') return send(200, { ok: true, exception: newException(JSON.parse(raw || '{}')) });
         if (req.method === 'POST' && url.pathname === '/control/new-ticket') return send(200, { ok: true, ticket: publicTicket(newTicket(JSON.parse(raw || '{}'))) });

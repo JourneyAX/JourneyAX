@@ -35,6 +35,8 @@ const ALLOWED_TOOLS = new Set([
   'ace-erp.request_stock_transfer',
   // The quotes desk's changes: the quote and the email in Salesforce, and a hold on the stock in the ERP.
   'salesforce.create_quote', 'salesforce.send_quote_email', 'ace-erp.hold_stock',
+  // The invoices desk's changes in the ERP: a credit note, and the email that sends it. A credit note is made against one invoice and never writes a balance.
+  'ace-erp.create_credit_note', 'ace-erp.send_credit_note_email',
 ]);
 
 const done = (step: CareStep, args: Record<string, unknown>): string => {
@@ -47,6 +49,8 @@ const done = (step: CareStep, args: Record<string, unknown>): string => {
     case 'create_task': return 'Task created for the account manager.';
     case 'create_quote': return `Quote created on deal ${args.opportunityId}.`;
     case 'send_quote_email': return `Quote emailed to ${args.to}.`;
+    case 'create_credit_note': return `Credit note issued against invoice ${args.invoiceId}.`;
+    case 'send_credit_note_email': return `Credit note emailed to ${args.to}.`;
     case 'hold_stock': return `Stock held at branch ${args.branchCode} until ${args.until}.`;
     case 'request_stock_transfer': return `Transfer requested: ${args.quantity} from branch ${args.fromBranch} to branch ${args.toBranch}.`;
     default: return 'Done.';
@@ -66,8 +70,8 @@ export class ConnectorWriteBack implements CareWriteBack {
     const action = step.action;
     if (!connector || !action || !ALLOWED_TOOLS.has(`${connector}.${action.tool}`)) return { ok: false, message: `${step.system} cannot be changed that way from here. Nothing was changed.` };
     const args: Record<string, unknown> = { ...action.args };
-    if (action.tool === 'reply_to_ticket' || action.tool === 'send_quote_email') {
-      if (!ctx.draft.trim()) return { ok: false, message: `There is no ${action.tool === 'send_quote_email' ? 'email' : 'reply'} to send. Nothing was changed.` };
+    if (action.tool === 'reply_to_ticket' || action.tool === 'send_quote_email' || action.tool === 'send_credit_note_email') {
+      if (!ctx.draft.trim()) return { ok: false, message: `There is no ${action.tool === 'reply_to_ticket' ? 'reply' : 'email'} to send. Nothing was changed.` };
       args.body = ctx.draft;
       args.author = ctx.actor.name;
     }

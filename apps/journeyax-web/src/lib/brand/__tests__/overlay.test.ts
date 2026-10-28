@@ -4,7 +4,7 @@
  *   npx tsx --tsconfig apps/journeyax-web/tsconfig.json apps/journeyax-web/src/lib/brand/__tests__/overlay.test.ts
  */
 import assert from 'node:assert/strict';
-import { AI_STRATEGY, applyBrandOverlay, overlayFromEnv, readableId, rebrandPerson, rebrandText, removeNames, removeNamesDeep, renameNames, setRebrand } from '../overlay';
+import { AI_STRATEGY, applyBrandOverlay, overlayFromEnv, readableId, rebrandPerson, rebrandText, rebrandWelcome, removeNames, removeNamesDeep, renameNames, setRebrand } from '../overlay';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -85,6 +85,18 @@ check('a person’s name from the connected helpdesk is shown as the team, and a
   assert.equal(rebrandText('The PlaceMakers desk heard from Mahaveer Amudhachandran.'), 'The desk heard from the support team.', 'the shop name and the person both go');
   setRebrand(undefined);
   assert.equal(rebrandText('from Mahaveer Amudhachandran'), 'from Mahaveer Amudhachandran', 'nothing changes with the overlay off');
+});
+
+check('a login whose team has no welcome in the pack is given one by the overlay, and nothing otherwise', () => {
+  setRebrand(undefined);
+  assert.equal(rebrandWelcome('finance@placemakers.demo'), undefined);
+  setRebrand(AI_STRATEGY.remove, AI_STRATEGY.rename, AI_STRATEGY.people, AI_STRATEGY.welcomes);
+  const w = rebrandWelcome(' Finance@placemakers.demo ');
+  assert.equal(w?.headline, 'Good morning. Which account are we looking at?');
+  assert.deepEqual(w?.starters?.map((s) => s.label), ['Overdue accounts', 'Credit queries']);
+  assert.equal(rebrandWelcome('sales@placemakers.demo'), undefined, 'a team the pack already welcomes is left alone');
+  assert.equal(rebrandWelcome(undefined), undefined);
+  setRebrand(undefined);
 });
 
 check('a demo login is shown as a person with a job under the overlay, and as itself otherwise', () => {

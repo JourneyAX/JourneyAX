@@ -18,8 +18,9 @@
  *   <ENV>_STORE=memory         keep its case files in memory (default: the database, in its own collections)
  *   <ENV>_WRITEBACK=connectors carry out an approved case's changes through the connector server (default: off, nothing is changed)
  *   <ENV>_TEAM                 the desk's people, as JSON (default: the desk screens' team)
- * where <ENV> is STOCK (STOCK_INTAKE=erp) or QUOTES (QUOTES_INTAKE=salesforce; QUOTES_MANAGER_LIMIT is the quote size over which only the sales
- * manager decides). With a desk's intake unset its routes answer "not switched on" and nobody is offered its screens.
+ * where <ENV> is STOCK (STOCK_INTAKE=erp), QUOTES (QUOTES_INTAKE=salesforce; QUOTES_MANAGER_LIMIT is the quote size over which only the sales
+ * manager decides) or INVOICES (INVOICES_INTAKE=erp; INVOICES_CREDIT_LIMIT is the credit, with GST, over which only the finance manager decides).
+ * With a desk's intake unset its routes answer "not switched on" and nobody is offered its screens.
  */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ADMIN_GROUP } from '@journeyax/shared-types';
