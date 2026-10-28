@@ -245,7 +245,7 @@ const DashboardWhereSchema = z.object({
 
 const DashboardToneSchema = z.enum(['good', 'warn', 'bad', 'info']);
 
-/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`, `{field|title}`, `{field|price}` (money to the cent). */
+/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`, `{field|title}`, `{field|price}` (money to the cent), `{field|number}` (a count with its thousands). */
 const DashboardRowSchema = z.object({
   title: z.string().min(1).max(160),
   subtitle: z.string().max(200).optional(),
