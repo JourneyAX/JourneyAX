@@ -52,3 +52,13 @@ export function welcomeStarters(welcome: Welcome | undefined, connectors: Connec
   const usable = (welcome?.starters ?? []).filter((starter) => (starter.needs ?? []).every((tool) => toolUsable(connectors, tool)));
   return usable.length ? usable.map(({ label, prompt }) => ({ label, prompt })) : undefined;
 }
+
+/**
+ * What the empty chat offers a person the pack has words for. The starters of their team that they may use; and when the team has starters
+ * but this person may use none of them yet (their systems are not connected), nothing at all, because the shop's own starters are for
+ * shoppers and are never shown to a team. `undefined` only when the pack gave this person no starters, so the page falls back to its own.
+ */
+export function welcomeOffer(welcome: Welcome | undefined, connectors: ConnectorItem[]): Starter[] | undefined {
+  if (!welcome?.starters?.length) return undefined;
+  return welcomeStarters(welcome, connectors) ?? [];
+}

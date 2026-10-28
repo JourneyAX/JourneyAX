@@ -35,7 +35,7 @@ import { closeCanvas, closePanelCard, getCanvas, openCanvas, openPanelCard } fro
 import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
 import { resolveHero } from '@/lib/shell/greeting';
 import { connectorStepLabel, isCompletionNotice, UNKNOWN_STEP } from '@/lib/shell/stepLabel';
-import { fillGreeting, parseWelcome, welcomeStarters, type Welcome } from '@/lib/shell/welcome';
+import { fillGreeting, parseWelcome, welcomeOffer, type Welcome } from '@/lib/shell/welcome';
 import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } from '@/lib/shell/capabilities';
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
@@ -1269,7 +1269,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   // from what this person may use (an adviser is offered cases and orders, marketing is offered campaigns), else the shop's own starters.
   const starters = demoProfile?.tryAsking?.length
     ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
-    : welcomeStarters(welcome, connectorItems) ?? startersFor(connectorItems, introStarters);
+    : welcomeOffer(welcome, connectorItems) ?? startersFor(connectorItems, introStarters);
 
   // Product details and comparisons open in the side panel; the thread keeps a one-line note where each one was.
   const shownPanelCard = useShownPanelCard(state.cards, panelEnabled);
