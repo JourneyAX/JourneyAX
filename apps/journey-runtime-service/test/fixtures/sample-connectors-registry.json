@@ -162,6 +162,16 @@
           "name": "list_branches",
           "sideEffect": "read",
           "summary": "List branches, or find one by name."
+        },
+        {
+          "name": "find_invoices",
+          "sideEffect": "read",
+          "summary": "A trade account's invoices, newest first, without the lines."
+        },
+        {
+          "name": "get_invoice",
+          "sideEffect": "read",
+          "summary": "One invoice with its lines, GST and total."
         }
       ]
     },

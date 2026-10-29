@@ -10,6 +10,8 @@
       "capability-sdk",
       "connectors-sample",
       "connectors-real",
+      "jax-iq",
+      "jax-iq-service",
       "database",
       "project-service",
       "journey-runtime-service",
@@ -26,6 +28,8 @@
       "tsc:capability-sdk",
       "tsc:connectors-sample",
       "tsc:connectors-real",
+      "tsc:jax-iq",
+      "tsc:jax-iq-service",
       "tsc:database",
       "tsc:project-service",
       "tsc:journey-runtime-service",
@@ -194,6 +198,22 @@
     "tsc:connectors-real": {
       "cwd": "packages/connectors-real",
       "command": "npx tsc --noEmit -p tsconfig.test.json"
+    },
+    "jax-iq": {
+      "cwd": "packages/jax-iq",
+      "command": "npm test"
+    },
+    "jax-iq-service": {
+      "cwd": "apps/jax-iq-service",
+      "command": "npm test"
+    },
+    "tsc:jax-iq": {
+      "cwd": "packages/jax-iq",
+      "command": "npx tsc --noEmit -p test/tsconfig.json"
+    },
+    "tsc:jax-iq-service": {
+      "cwd": "apps/jax-iq-service",
+      "command": "npx tsc --noEmit -p test/tsconfig.json"
     }
   }
 }

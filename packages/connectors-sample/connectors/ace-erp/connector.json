@@ -8,7 +8,8 @@
     "stock": 100,
     "deliveries": 25,
     "price_list": 25,
-    "account_balances": 25
+    "account_balances": 25,
+    "invoices": 7
   },
   "tools": [
     {
@@ -366,6 +367,114 @@
         "sort": {
           "field": "name"
         }
+      }
+    },
+    {
+      "name": "find_invoices",
+      "description": "The invoices of one trade account, newest first: invoice number, order number, issue and due dates, status and totals, without the lines. Give the account id; optionally only one status (open, part_paid, paid, overdue) or one order number.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0028."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional: only invoices in this status (open, part_paid, paid, overdue)."
+          },
+          "orderNumber": {
+            "type": "string",
+            "description": "Optional: only the invoice for this order number, for example ORD-100033."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "$first:invoices.accountId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "invoices",
+        "filters": [
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          },
+          {
+            "arg": "orderNumber",
+            "field": "commercetoolsOrderNumber"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "issuedAt",
+          "order": "desc"
+        },
+        "select": [
+          "invoiceId",
+          "accountId",
+          "commercetoolsOrderNumber",
+          "orderId",
+          "deliveryId",
+          "issuedAt",
+          "dueAt",
+          "dueNote",
+          "status",
+          "currency",
+          "subtotal",
+          "gst",
+          "total",
+          "paidAmount",
+          "sample"
+        ]
+      }
+    },
+    {
+      "name": "get_invoice",
+      "description": "One invoice with its lines, GST and total. Give the invoice id, for example INV-40001.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoiceId": {
+            "type": "string",
+            "description": "The invoice id, for example INV-40001."
+          }
+        },
+        "required": [
+          "invoiceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "invoiceId": "$first:invoices.invoiceId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "invoices",
+        "key": "invoiceId",
+        "arg": "invoiceId"
       }
     }
   ]

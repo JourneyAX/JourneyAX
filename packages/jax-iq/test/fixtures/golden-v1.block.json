@@ -1,0 +1,371 @@
+{
+  "schemaVersion": "1.0.0",
+  "ontologyId": "golden-v1",
+  "enabled": true,
+  "selfConnector": "jax-iq",
+  "claimGuard": { "figures": "off" },
+  "things": [
+    {
+      "thing": "Account",
+      "meaning": "A customer account: charge (credit terms) or cash.",
+      "aliases": ["account", "customer"],
+      "group": "Customer",
+      "status": "active",
+      "key": { "canonical": "account_number", "pattern": "^ACC-\\d{4}$" },
+      "keyKinds": [
+        { "kind": "account_number", "system": "ace-erp", "evidence": "real_field", "caseRule": "upper", "ready": true },
+        { "kind": "ct_unit_key", "system": "commercetools", "evidence": "real_field", "caseRule": "lower", "pattern": "^acc-\\d{4}$", "ready": true },
+        { "kind": "sf_account_id", "system": "salesforce", "evidence": "real_field", "caseRule": "as_is", "pattern": "^[a-zA-Z0-9]{15,18}$", "ready": true },
+        { "kind": "sf_account_note", "system": "salesforce", "evidence": "text_note", "caseRule": "upper", "ready": false },
+        { "kind": "zd_tag", "system": "zendesk", "evidence": "tag", "caseRule": "lower", "ready": true }
+      ],
+      "labelFact": "Account.name",
+      "searchFacts": ["Account.name"],
+      "defaultFacts": ["Account.name", "Account.tier", "Account.terms", "Account.balance"],
+      "expectedIn": ["ace-erp", "commercetools", "salesforce"]
+    },
+    {
+      "thing": "Ticket",
+      "meaning": "A support item raised for an account.",
+      "aliases": ["ticket", "case", "support item"],
+      "group": "Service",
+      "status": "active",
+      "key": { "canonical": "ticket_id", "pattern": "^\\d{1,12}$" },
+      "keyKinds": [
+        { "kind": "ticket_id", "system": "zendesk", "evidence": "real_field", "caseRule": "as_is", "ready": true }
+      ],
+      "labelFact": "Ticket.subject",
+      "searchFacts": ["Ticket.subject"],
+      "defaultFacts": ["Ticket.subject", "Ticket.priority", "Ticket.status"],
+      "expectedIn": ["zendesk"]
+    },
+    {
+      "thing": "Order",
+      "meaning": "What a customer asked us to supply.",
+      "aliases": ["order"],
+      "group": "Sales",
+      "status": "modelled_only",
+      "key": { "canonical": "order_number", "pattern": "^ORD-\\d{6}$" },
+      "keyKinds": [
+        { "kind": "order_number", "system": "commercetools", "evidence": "real_field", "caseRule": "as_is", "ready": true }
+      ],
+      "labelFact": "Order.state",
+      "searchFacts": ["Order.state"],
+      "defaultFacts": ["Order.state"],
+      "expectedIn": ["commercetools"]
+    }
+  ],
+  "facts": [
+    { "fact": "Account.name", "thing": "Account", "label": "Name", "meaning": "The account holder's trading name.", "type": "text", "freshnessKind": "reference", "allowStale": true },
+    { "fact": "Account.status", "thing": "Account", "label": "Online status", "meaning": "Whether the online account is active. Not a credit hold.", "type": "text", "freshnessKind": "reference", "allowStale": true },
+    { "fact": "Account.homeBranchCode", "thing": "Account", "label": "Home branch", "meaning": "The code of the branch that serves the account.", "type": "ref", "freshnessKind": "reference", "allowStale": true },
+    { "fact": "Account.tier", "thing": "Account", "label": "Price tier", "meaning": "The price tier the ERP prices this account at.", "type": "enum", "enumValues": ["bronze", "silver", "gold"], "freshnessKind": "price", "allowStale": false },
+    { "fact": "Account.terms", "thing": "Account", "label": "Payment terms", "meaning": "When the account must pay, as the ERP writes it.", "type": "text", "freshnessKind": "credit", "allowStale": false },
+    { "fact": "Account.creditLimit", "thing": "Account", "label": "Credit limit", "meaning": "The most the ERP lets the account owe us.", "type": "money", "freshnessKind": "credit", "allowStale": false },
+    { "fact": "Account.balance", "thing": "Account", "label": "Balance", "meaning": "What the account owes us today, from the ERP.", "type": "money", "freshnessKind": "credit", "allowStale": false, "claimClasses": ["catalog_fact"] },
+    { "fact": "Account.overdue", "thing": "Account", "label": "Overdue", "meaning": "The part of the balance past its due date, from the ERP.", "type": "money", "freshnessKind": "credit", "allowStale": false },
+    { "fact": "Account.lastPaid", "thing": "Account", "label": "Last payment", "meaning": "The date of the last payment the ERP recorded.", "type": "date", "freshnessKind": "credit", "allowStale": false },
+    { "fact": "Account.openOrderCount", "thing": "Account", "label": "Open orders", "meaning": "How many orders are open (see the contract for which).", "type": "number", "freshnessKind": "order", "allowStale": false },
+    { "fact": "Account.onCreditHold", "thing": "Account", "label": "On credit hold", "meaning": "Whether the account is stopped from ordering on credit. No system is bound yet.", "type": "boolean", "freshnessKind": "credit", "allowStale": false },
+    { "fact": "Account.discountRate", "thing": "Account", "label": "Discount rate", "meaning": "The standing discount the account is given. No system is bound yet.", "type": "percent", "freshnessKind": "price", "allowStale": false },
+    { "fact": "Order.state", "thing": "Order", "label": "State", "meaning": "Where the order is in its life, as the commerce platform writes it. No system is bound yet.", "type": "text", "freshnessKind": "order", "allowStale": false },
+    { "fact": "Ticket.subject", "thing": "Ticket", "label": "Subject", "meaning": "The subject line the customer or the agent wrote.", "type": "text", "freshnessKind": "ticket", "allowStale": true, "freeText": true },
+    { "fact": "Ticket.priority", "thing": "Ticket", "label": "Priority", "meaning": "How urgent the support desk rates the ticket.", "type": "enum", "enumValues": ["low", "normal", "high", "urgent"], "freshnessKind": "ticket", "allowStale": false },
+    { "fact": "Ticket.status", "thing": "Ticket", "label": "Status", "meaning": "Whether the ticket is still open: new, open, pending and hold count as open.", "type": "enum", "enumValues": ["open", "closed"], "freshnessKind": "ticket", "allowStale": false },
+    { "fact": "Ticket.created", "thing": "Ticket", "label": "Created", "meaning": "When the ticket was raised.", "type": "datetime", "freshnessKind": "ticket", "allowStale": true },
+    { "fact": "Ticket.dueBy", "thing": "Ticket", "label": "Due by", "meaning": "When the support desk promised an answer, if it did.", "type": "datetime", "freshnessKind": "ticket", "allowStale": false },
+    { "fact": "Ticket.tags", "thing": "Ticket", "label": "Tags", "meaning": "The labels on the ticket, including the account tag.", "type": "list", "freshnessKind": "ticket", "allowStale": true }
+  ],
+  "links": [
+    { "link": "Account.orders", "from": "Account", "to": "Order", "meaning": "Orders the account placed.", "cardinality": "1:n", "rollsUpDivisions": true, "inverse": "Order.account" },
+    { "link": "Order.account", "from": "Order", "to": "Account", "meaning": "The account an order was placed for.", "cardinality": "n:1", "inverse": "Account.orders" },
+    { "link": "Account.tickets", "from": "Account", "to": "Ticket", "meaning": "Support items for the account.", "cardinality": "1:n" },
+    { "link": "Order.tickets", "from": "Order", "to": "Ticket", "meaning": "Support items that mention the order.", "cardinality": "1:n" },
+    { "link": "Account.orderTickets", "from": "Account", "to": "Ticket", "meaning": "Support items about the account's orders.", "cardinality": "1:n", "via": ["Account.orders", "Order.tickets"] }
+  ],
+  "bindings": [
+    {
+      "bindingId": "Account.creditLimit@ace-erp.account_balance", "target": { "kind": "fact", "fact": "Account.creditLimit" },
+      "system": "ace-erp", "tool": "account_balance", "args": { "accountId": { "from": "key", "kind": "account_number" } },
+      "select": "record.creditLimit", "currencyFrom": "record.currency", "presence": "required", "authority": "source_of_truth", "freshnessKind": "credit",
+      "contract": { "unit": "currency amount", "currency": "from_record", "tax": "unknown", "asOf": "retrieved", "counts": "unknown" },
+      "selfTest": { "fixtureId": "account-erp-ok" }
+    },
+    {
+      "bindingId": "Account.balance@ace-erp.account_balance", "target": { "kind": "fact", "fact": "Account.balance" },
+      "system": "ace-erp", "tool": "account_balance", "args": { "accountId": { "from": "key", "kind": "account_number" } },
+      "select": "record.balance", "currencyFrom": "record.currency", "presence": "required", "authority": "source_of_truth", "freshnessKind": "credit",
+      "contract": { "unit": "currency amount", "currency": "from_record", "tax": "unknown", "asOf": "retrieved", "counts": "unknown" },
+      "selfTest": { "fixtureId": "account-erp-ok" }
+    },
+    {
+      "bindingId": "Account.overdue@ace-erp.account_balance", "target": { "kind": "fact", "fact": "Account.overdue" },
+      "system": "ace-erp", "tool": "account_balance", "args": { "accountId": { "from": "key", "kind": "account_number" } },
+      "select": "record.overdue", "currencyFrom": "record.currency", "presence": "required", "authority": "source_of_truth", "freshnessKind": "credit",
+      "contract": { "unit": "currency amount", "currency": "from_record", "tax": "unknown", "asOf": "retrieved", "counts": "unknown" },
+      "selfTest": { "fixtureId": "account-erp-ok" }
+    },
+    {
+      "bindingId": "Account.terms@ace-erp.account_balance", "target": { "kind": "fact", "fact": "Account.terms" },
+      "system": "ace-erp", "tool": "account_balance", "args": { "accountId": { "from": "key", "kind": "account_number" } },
+      "select": "record.terms", "presence": "required", "authority": "source_of_truth", "freshnessKind": "credit",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "account-erp-ok" }
+    },
+    {
+      "bindingId": "Account.lastPaid@ace-erp.account_balance", "target": { "kind": "fact", "fact": "Account.lastPaid" },
+      "system": "ace-erp", "tool": "account_balance", "args": { "accountId": { "from": "key", "kind": "account_number" } },
+      "select": "record.lastPaymentAt", "presence": "required", "authority": "source_of_truth", "freshnessKind": "credit",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "account-erp-ok" }
+    },
+    {
+      "bindingId": "Account.tier@ace-erp.account_balance", "target": { "kind": "fact", "fact": "Account.tier" },
+      "system": "ace-erp", "tool": "account_balance", "args": { "accountId": { "from": "key", "kind": "account_number" } },
+      "select": "record.tier", "presence": "required", "authority": "source_of_truth", "freshnessKind": "price",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "account-erp-ok" }
+    },
+    {
+      "bindingId": "Account.name@salesforce.get_account", "target": { "kind": "fact", "fact": "Account.name" },
+      "system": "salesforce", "tool": "get_account", "args": { "accountId": { "from": "key", "kind": "sf_account_id" } },
+      "select": "record.name", "presence": "required", "authority": "source_of_truth", "freshnessKind": "reference",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "account-crm-ok" }
+    },
+    {
+      "bindingId": "Account.homeBranchCode@salesforce.get_account", "target": { "kind": "fact", "fact": "Account.homeBranchCode" },
+      "system": "salesforce", "tool": "get_account", "args": { "accountId": { "from": "key", "kind": "sf_account_id" } },
+      "select": "record.homeBranch", "presence": "optional", "authority": "source_of_truth", "freshnessKind": "reference",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "not_applicable" },
+      "precondition": "the CRM must hold a home branch field and the connector must be set to read it, else the home branch is not recorded",
+      "selfTest": { "fixtureId": "account-crm-ok" }
+    },
+    {
+      "bindingId": "Account.status@commercetools.get_account", "target": { "kind": "fact", "fact": "Account.status" },
+      "system": "commercetools", "tool": "get_account", "args": { "accountId": { "from": "key", "kind": "ct_unit_key" } },
+      "select": "record.status", "presence": "optional", "authority": "source_of_truth", "freshnessKind": "reference",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "the online business unit's status; not a credit hold" },
+      "selfTest": { "fixtureId": "account-commerce-ok" }
+    },
+    {
+      "bindingId": "Account.homeBranchCode@commercetools.get_account", "target": { "kind": "fact", "fact": "Account.homeBranchCode" },
+      "system": "commercetools", "tool": "get_account", "args": { "accountId": { "from": "key", "kind": "ct_unit_key" } },
+      "select": "record.homeBranchCode", "presence": "optional", "authority": "fallback", "freshnessKind": "reference",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "not_applicable" }
+    },
+    {
+      "bindingId": "Account.creditLimit@commercetools.get_account", "target": { "kind": "fact", "fact": "Account.creditLimit" },
+      "system": "commercetools", "tool": "get_account", "args": { "accountId": { "from": "key", "kind": "ct_unit_key" } },
+      "select": "record.creditLimit", "currencyFrom": "record.currency", "presence": "optional", "authority": "cross_check", "freshnessKind": "credit",
+      "contract": { "unit": "currency amount", "currency": "from_record", "tax": "unknown", "asOf": "retrieved", "counts": "unknown" }
+    },
+    {
+      "bindingId": "Account.openOrderCount@commercetools.order_history#open", "target": { "kind": "fact", "fact": "Account.openOrderCount" },
+      "system": "commercetools", "tool": "order_history",
+      "args": { "accountId": { "from": "key", "kind": "ct_unit_key" }, "status": { "from": "literal", "value": "open" }, "limit": { "from": "literal", "value": 1 } },
+      "select": "total", "presence": "required", "authority": "source_of_truth", "freshnessKind": "order",
+      "contract": { "unit": "orders", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "orders in state Open and Confirmed (to confirm); this binding is the Open part" },
+      "precondition": "the connector must run with the account kind set to business unit, else the account id means a customer id",
+      "selfTest": { "fixtureId": "account-commerce-ok" }
+    },
+    {
+      "bindingId": "Account.orders@commercetools.order_history", "target": { "kind": "link", "link": "Account.orders" },
+      "system": "commercetools", "tool": "order_history",
+      "args": { "accountId": { "from": "key", "kind": "ct_unit_key" }, "status": { "from": "request", "param": "status" } },
+      "select": "records", "rows": { "path": "records", "keyField": "orderNumber" }, "page": { "totalPath": "total" },
+      "presence": "required", "authority": "source_of_truth", "freshnessKind": "order",
+      "contract": { "unit": "orders", "currency": "not_applicable", "tax": "unknown", "asOf": "retrieved", "counts": "newest first, at most the tool's limit" },
+      "precondition": "as above; one call per unit key: the account's own and its divisions",
+      "selfTest": { "fixtureId": "account-commerce-ok" }
+    },
+    {
+      "bindingId": "Account.tickets@zendesk.find_tickets", "target": { "kind": "link", "link": "Account.tickets" },
+      "system": "zendesk", "tool": "find_tickets",
+      "args": { "tag": { "from": "key", "kind": "zd_tag" }, "status": { "from": "request", "param": "status" } },
+      "select": "records", "rows": { "path": "records", "keyField": "ticketId" }, "page": { "totalPath": "total", "morePath": "more" },
+      "presence": "required", "authority": "source_of_truth", "freshnessKind": "ticket",
+      "contract": { "unit": "tickets", "currency": "not_applicable", "tax": "not_applicable", "asOf": "retrieved", "counts": "\"unsolved\" means a status below solved: new, open, pending, hold" },
+      "precondition": "a ticket without the account tag cannot be found from the account",
+      "selfTest": { "fixtureId": "ticket-support-ok" }
+    },
+    {
+      "bindingId": "Ticket.subject@zendesk.get_ticket", "target": { "kind": "fact", "fact": "Ticket.subject" },
+      "system": "zendesk", "tool": "get_ticket", "args": { "ticketId": { "from": "key", "kind": "ticket_id" } },
+      "select": "record.subject", "presence": "required", "authority": "source_of_truth", "freshnessKind": "ticket",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "source_updated", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "ticket-support-ok" }
+    },
+    {
+      "bindingId": "Ticket.priority@zendesk.get_ticket", "target": { "kind": "fact", "fact": "Ticket.priority" },
+      "system": "zendesk", "tool": "get_ticket", "args": { "ticketId": { "from": "key", "kind": "ticket_id" } },
+      "select": "record.priority", "presence": "optional", "authority": "source_of_truth", "freshnessKind": "ticket",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "source_updated", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "ticket-support-ok" }
+    },
+    {
+      "bindingId": "Ticket.status@zendesk.get_ticket", "target": { "kind": "fact", "fact": "Ticket.status" },
+      "system": "zendesk", "tool": "get_ticket", "args": { "ticketId": { "from": "key", "kind": "ticket_id" } },
+      "select": "record.status", "presence": "required", "authority": "source_of_truth", "stateMap": "ticket-status-open", "freshnessKind": "ticket",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "source_updated", "counts": "new, open, pending and hold are open; solved and closed are closed" },
+      "selfTest": { "fixtureId": "ticket-support-ok" }
+    },
+    {
+      "bindingId": "Ticket.created@zendesk.get_ticket", "target": { "kind": "fact", "fact": "Ticket.created" },
+      "system": "zendesk", "tool": "get_ticket", "args": { "ticketId": { "from": "key", "kind": "ticket_id" } },
+      "select": "record.createdAt", "presence": "required", "authority": "source_of_truth", "freshnessKind": "ticket",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "source_updated", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "ticket-support-ok" }
+    },
+    {
+      "bindingId": "Ticket.dueBy@zendesk.get_ticket", "target": { "kind": "fact", "fact": "Ticket.dueBy" },
+      "system": "zendesk", "tool": "get_ticket", "args": { "ticketId": { "from": "key", "kind": "ticket_id" } },
+      "select": "record.dueAt", "presence": "optional", "authority": "source_of_truth", "freshnessKind": "ticket",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "source_updated", "counts": "not_applicable" },
+      "selfTest": { "fixtureId": "ticket-support-ok" }
+    },
+    {
+      "bindingId": "Ticket.tags@zendesk.get_ticket", "target": { "kind": "fact", "fact": "Ticket.tags" },
+      "system": "zendesk", "tool": "get_ticket", "args": { "ticketId": { "from": "key", "kind": "ticket_id" } },
+      "select": "record.tags", "presence": "optional", "authority": "source_of_truth", "freshnessKind": "ticket",
+      "contract": { "unit": "not_applicable", "currency": "not_applicable", "tax": "not_applicable", "asOf": "source_updated", "counts": "all the tags on the ticket" },
+      "selfTest": { "fixtureId": "ticket-support-ok" }
+    }
+  ],
+  "permissionRules": [
+    {
+      "ruleId": "pr-account-credit-see", "mode": "see",
+      "target": { "thing": "Account", "facts": ["Account.balance", "Account.creditLimit", "Account.overdue", "Account.lastPaid"] },
+      "who": [{ "audience": "staff", "groups": ["finance", "sales-managers", "leadership"] }],
+      "note": "A shopper or another customer never sees these."
+    },
+    {
+      "ruleId": "pr-account-basic-see", "mode": "see",
+      "target": { "thing": "Account", "facts": ["Account.name", "Account.tier", "Account.terms", "Account.status", "Account.homeBranchCode", "Account.openOrderCount"] },
+      "who": [{ "audience": "staff", "groups": [] }]
+    },
+    {
+      "ruleId": "pr-ticket-see", "mode": "see",
+      "target": { "thing": "Ticket" },
+      "who": [{ "audience": "staff", "groups": ["customer-service", "sales", "sales-managers", "leadership"] }]
+    },
+    {
+      "ruleId": "pr-ticket-change", "mode": "change",
+      "target": { "thing": "Ticket" },
+      "who": [{ "audience": "staff", "groups": ["customer-service"] }],
+      "writeTools": [{ "connectorId": "zendesk", "tool": "add_ticket_note" }],
+      "note": "Only customer service writes to a ticket; leadership changes nothing."
+    }
+  ],
+  "signalRules": [
+    {
+      "signalId": "sig-credit-use", "name": "Credit use", "meaning": "How much of the credit limit the balance uses.",
+      "appliesTo": "Account", "severity": "watch",
+      "inputs": [
+        { "name": "balance", "fact": "Account.balance", "maxAge": "freshness.credit", "requireAuthority": "source_of_truth" },
+        { "name": "limit", "fact": "Account.creditLimit", "maxAge": "freshness.credit", "requireAuthority": "source_of_truth" }
+      ],
+      "formula": {
+        "op": "compare", "cmp": "gte",
+        "left": { "formula": { "op": "ratio", "num": { "input": "balance" }, "den": { "input": "limit" } } },
+        "right": { "setting": "credit.useWatch" }
+      },
+      "settings": ["credit.useWatch"], "status": "draft",
+      "wording": ["Credit use is at or above the watch level."]
+    },
+    {
+      "signalId": "sig-account-attention", "name": "Account needs attention", "meaning": "Something is overdue on the account, or a ticket has passed the time promised for it.",
+      "appliesTo": "Account", "severity": "watch",
+      "inputs": [
+        { "name": "overdue", "fact": "Account.overdue", "maxAge": "freshness.credit", "requireAuthority": "source_of_truth" }
+      ],
+      "formula": {
+        "op": "or",
+        "of": [
+          { "op": "positive", "of": { "input": "overdue" } },
+          { "op": "any", "of": { "over": "Account.tickets", "where": { "op": "is_past", "of": { "input": "Ticket.dueBy" } } } }
+        ]
+      },
+      "settings": [], "status": "draft",
+      "wording": ["Something on this account needs attention."]
+    },
+    {
+      "signalId": "sig-ticket-pileup", "name": "Tickets piling up", "meaning": "How many open tickets the account has, against a watch level.",
+      "appliesTo": "Account", "severity": "watch",
+      "inputs": [],
+      "formula": {
+        "op": "compare", "cmp": "gte",
+        "left": { "formula": { "op": "count", "of": { "over": "Account.tickets", "where": { "op": "compare", "cmp": "eq", "left": { "input": "Ticket.status" }, "right": { "text": "open" } } } } },
+        "right": { "setting": "ticket.pileUp" }
+      },
+      "settings": ["ticket.pileUp"], "status": "draft",
+      "wording": ["The account has as many open tickets as the watch level or more."]
+    },
+    {
+      "signalId": "sig-old-urgent-ticket", "name": "Old high-priority ticket", "meaning": "An open high-priority ticket has waited longer than the set time.",
+      "appliesTo": "Account", "severity": "watch",
+      "inputs": [],
+      "formula": {
+        "op": "any",
+        "of": {
+          "over": "Account.tickets",
+          "where": {
+            "op": "and",
+            "of": [
+              { "op": "compare", "cmp": "eq", "left": { "input": "Ticket.priority" }, "right": { "text": "high" } },
+              { "op": "compare", "cmp": "eq", "left": { "input": "Ticket.status" }, "right": { "text": "open" } },
+              { "op": "compare", "cmp": "gt", "left": { "formula": { "op": "age", "of": { "input": "Ticket.created" }, "unit": "days" } }, "right": { "setting": "ticket.highPriorityAge" } }
+            ]
+          }
+        }
+      },
+      "settings": ["ticket.highPriorityAge"], "status": "active",
+      "activatedBy": "Test Approver", "activatedAt": "2026-10-29T09:30:00Z",
+      "wording": ["A high-priority ticket has been open longer than the set time."]
+    }
+  ],
+  "settings": [
+    { "key": "timeout.call", "label": "How long one call to a system may take", "kind": "timeout", "unit": "milliseconds", "ownerRole": "operations", "value": null },
+    { "key": "timeout.query", "label": "How long a whole question may take", "kind": "timeout", "unit": "milliseconds", "ownerRole": "operations", "value": null },
+    { "key": "retry.attempts", "label": "How many times a failed call is repeated", "kind": "retry", "unit": "count", "ownerRole": "operations", "value": null },
+    { "key": "retry.delay", "label": "How long to wait before a failed call is repeated", "kind": "retry", "unit": "milliseconds", "ownerRole": "operations", "value": null },
+    { "key": "cooldown.rateLimited", "label": "How long to leave a system alone after it asked us to slow down", "kind": "retry", "unit": "seconds", "ownerRole": "operations", "value": null },
+    { "key": "limit.parallelPerSystem", "label": "How many calls to one system may run at once", "kind": "limit", "unit": "count", "ownerRole": "operations", "value": null },
+    { "key": "evidence.retention", "label": "How long the evidence behind an answer is kept", "kind": "limit", "unit": "seconds", "ownerRole": "operations", "value": null },
+    { "key": "freshness.credit", "label": "How old a credit figure may be", "kind": "freshness", "unit": "seconds", "ownerRole": "finance", "value": null },
+    { "key": "freshness.price", "label": "How old a price tier may be", "kind": "freshness", "unit": "seconds", "ownerRole": "finance", "value": null },
+    { "key": "freshness.reference", "label": "How old a reference fact may be", "kind": "freshness", "unit": "seconds", "ownerRole": "operations", "value": null },
+    { "key": "freshness.order", "label": "How old an order fact may be", "kind": "freshness", "unit": "seconds", "ownerRole": "operations", "value": null },
+    { "key": "freshness.ticket", "label": "How old a ticket fact may be", "kind": "freshness", "unit": "seconds", "ownerRole": "service", "value": null },
+    { "key": "credit.useWatch", "label": "Credit use watch level", "kind": "threshold", "unit": "ratio", "ownerRole": "finance", "value": null },
+    { "key": "ticket.pileUp", "label": "Open tickets that count as a pile-up", "kind": "threshold", "unit": "count", "ownerRole": "service", "value": null },
+    { "key": "ticket.highPriorityAge", "label": "TEST FIXTURE ONLY, not a business value: days a high-priority ticket may stay open", "kind": "threshold", "unit": "days", "ownerRole": "service", "value": 3 }
+  ],
+  "severities": ["watch"],
+  "stateMaps": [
+    {
+      "id": "ticket-status-open", "from": "support desk ticket status", "to": "open or closed",
+      "table": [
+        { "from": "new", "to": "open" },
+        { "from": "open", "to": "open" },
+        { "from": "pending", "to": "open" },
+        { "from": "hold", "to": "open" },
+        { "from": "solved", "to": "closed" },
+        { "from": "closed", "to": "closed" }
+      ],
+      "lossy": true
+    }
+  ],
+  "contractChanges": [
+    {
+      "factOrLink": "Account.creditLimit",
+      "from": { "unit": "currency amount", "currency": "from_record", "tax": "unknown", "asOf": "retrieved", "counts": "unknown" },
+      "to": { "unit": "currency amount", "currency": "from_record", "tax": "excludes_tax", "asOf": "retrieved", "counts": "unknown" },
+      "conversionRule": "none: the amount is used as the source gives it",
+      "reason": "The new source states that the limit is a figure without tax.",
+      "approvedBy": "Test Approver",
+      "approvedAt": "2026-10-29T09:30:00Z"
+    }
+  ],
+  "notes": "TEST FIXTURE ONLY. A frozen block written for version 1.0.0 of the schema; every later schema must still read it. Nothing in it is a business value."
+}
