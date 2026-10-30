@@ -118,9 +118,15 @@ const PATH_SHAPES: RegExp[] = [
 /** A key pattern is a regular expression written as text. */
 const PATTERN_FIELD = /^things\[\d+\]\.(?:key|keyKinds\[\d+\])\.pattern$/;
 /**
+ * The texts the secret, address and path shapes are tried on. A key pattern is tried as written and with its escapes undone, because
+ * an escaped slash and a plain slash match the same character: `https:\/\/` is still a web address and `sk\-` still starts a key.
+ * Only escapes of punctuation are undone, so `\d` stays `\d`. Any other text is tried as written.
+ */
+const variantsOf = (path: string, text: string): readonly string[] =>
+  PATTERN_FIELD.test(path) ? [text, text.replace(/\\([^A-Za-z0-9])/g, '$1')] : [text];
+/**
  * What is still a path when the text is a regular expression: a lone slash, `\d` or `C:` before a class is not one, but slashes between
- * literal words, a home folder, a drive folder and a network share are. Tried on the text as written and with its escapes undone,
- * because an escaped slash and a plain slash match the same character.
+ * literal words, a home folder, a drive folder and a network share are.
  */
 const PATTERN_PATH_SHAPES: RegExp[] = [
   /(?:^|[\s"'(=,;|^:[{<])\/[A-Za-z0-9_.~-]{2,}(?:\/[A-Za-z0-9_.~-]|$|[\s"')$|;,\]}>])/,
@@ -128,10 +134,10 @@ const PATTERN_PATH_SHAPES: RegExp[] = [
   /(?:^|[^A-Za-z0-9])[A-Za-z]:\\[A-Za-z0-9_.~-]{2,}(?:\\|$|[\s"')])/,
   /\\\\[A-Za-z0-9_.-]+\\/,
 ];
-const holdsPath = (path: string, text: string): boolean =>
+const holdsPath = (path: string, variants: readonly string[]): boolean =>
   PATTERN_FIELD.test(path)
-    ? [text, text.replace(/\\([^A-Za-z0-9])/g, '$1')].some((variant) => PATTERN_PATH_SHAPES.some((shape) => shape.test(variant)))
-    : PATH_SHAPES.some((shape) => shape.test(text));
+    ? variants.some((variant) => PATTERN_PATH_SHAPES.some((shape) => shape.test(variant)))
+    : PATH_SHAPES.some((shape) => shape.test(variants[0]));
 
 /** A run of 32 or more letters and digits holding both: the look of a key or a hash. */
 const looksLikeKey = (text: string): boolean => (text.match(/[A-Za-z0-9]{32,}/g) ?? []).some((run) => /\d/.test(run) && /[A-Za-z]/.test(run));
@@ -148,11 +154,12 @@ function checkNeutral(block: JaxOntologyRelease): DictionaryIssue[] {
   textsOf(block, '', texts);
   const found: DictionaryIssue[] = [];
   for (const { path, text } of texts) {
-    if (SECRET_SHAPES.some((shape) => shape.test(text)) || looksLikeKey(text)) {
+    const variants = variantsOf(path, text);
+    if (variants.some((variant) => SECRET_SHAPES.some((shape) => shape.test(variant)) || looksLikeKey(variant))) {
       found.push(dictionaryIssue('r12_secret', path, 'This text looks like a secret or a key. A dictionary holds names only; keep secrets in the secret store.'));
-    } else if (ADDRESS_SHAPES.some((shape) => shape.test(text))) {
+    } else if (variants.some((variant) => ADDRESS_SHAPES.some((shape) => shape.test(variant)))) {
       found.push(dictionaryIssue('r12_address', path, 'This text looks like a web address, a host or a network address. A dictionary holds names only; addresses are settings of the service.'));
-    } else if (holdsPath(path, text)) {
+    } else if (holdsPath(path, variants)) {
       found.push(dictionaryIssue('r12_path', path, 'This text looks like a file path. A dictionary holds names only and does not depend on where a file sits.'));
     }
   }

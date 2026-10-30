@@ -530,8 +530,15 @@ async function main() {
       '^ACC-\\d{4}$', '^[a-zA-Z0-9]{15,18}$', '^(?:ACC|CUS)-\\d{4}$', '/acc-\\d+', '/acc-\\d+/x', '^acc\\/\\d+$', '^ACC/2026/X\\d+$', '^[A-Z]/2026/X$',
       '^ACC:\\d+$', '^X:\\d{4}$', '^.{3}/\\d+$', '^ACC\\\\d$',
     ];
-    const addresses = ['https://erp.example.test/api', 'www.example.test', '10.20.30.40', 'erp.internal:8080'];
-    const secrets = ['sk-abcdefghijklmnopqrstuvwx', 'Zx9Qw8Er7Ty6Ui5Op4As3Df2Gh1Jk0LzXc'];
+    // The second half of each list is the same address or secret written with regex escapes, which match the same characters.
+    const addresses = [
+      'https://erp.example.test/api', 'www.example.test', '10.20.30.40', 'erp.internal:8080',
+      '^https:\\/\\/erp\\.example\\.test\\/api$', 'www\\.example\\.test', '^10\\.20\\.30\\.40$', '^erp\\.internal:8080$', 'ftp:\\/\\/files\\.example\\.test',
+    ];
+    const secrets = [
+      'sk-abcdefghijklmnopqrstuvwx', 'Zx9Qw8Er7Ty6Ui5Op4As3Df2Gh1Jk0LzXc',
+      '^sk\\-abcdefghijklmnopqrstuvwx$', 'Bearer\\ abcdefgh12345678', 'api_key\\=abc123', '^eyJabcdefgh\\.eyJabcdefgh\\.abcdefghij$', 'tenant\\-secret:',
+    ];
     const refused = (issues: DictionaryIssue[]) => [...pathsOf(issues, 'r12_path'), ...pathsOf(issues, 'r12_address'), ...pathsOf(issues, 'r12_secret')];
     for (const [at, put] of fields) {
       for (const text of paths) {
@@ -545,8 +552,17 @@ async function main() {
         absent(issues, 'schema', `for the pattern ${text}`);
         assert.deepEqual(refused(issues), [], `${at}: ${text} is only a pattern`);
       }
-      for (const text of addresses) found(check(edit(golden, (draft) => put(draft, text))), 'r12_address', at, /web address/);
-      for (const text of secrets) found(check(edit(golden, (draft) => put(draft, text))), 'r12_secret', at, /secret or a key/);
+      for (const text of addresses) {
+        const issues = check(edit(golden, (draft) => put(draft, text)));
+        found(issues, 'r12_address', at, /web address/);
+        assert.deepEqual(refused(issues), [at], `${text}: one finding, at the pattern`);
+      }
+      for (const text of secrets) {
+        const issues = check(edit(golden, (draft) => put(draft, text)));
+        const hit = found(issues, 'r12_secret', at, /secret or a key/);
+        assert.ok(!hit.message.includes(text.replace(/\\([^A-Za-z0-9])/g, '$1')), `${text}: the finding does not repeat the secret`);
+        assert.deepEqual(refused(issues), [at], `${text}: one finding, at the pattern`);
+      }
     }
     assert.deepEqual(refused(check(golden)), [], 'the frozen golden block and its patterns are untouched');
     const partial = check(edit(golden, (draft) => { draft.things[0].key.pattern = '/Users/someone/private/file.txt'; }), { partial: { external: [] } });
