@@ -230,7 +230,12 @@ async function main() {
 
   await t.test('add_ticket_note adds an INTERNAL note only: it can never send a public reply', async () => {
     const { vendor, call } = await setup((request) => (request.method === 'PUT' ? { json: { ticket: { id: 55, status: 'open', subject: 'Where is it?' } } } : undefined));
-    const done = ((await call('add_ticket_note', { ticketId: 55, note: 'Customer rang; branch is checking.', public: true, publicReply: true })) as any).payload;
+    // Asking for a public reply is refused outright: the tool has no such input, and nothing is sent to Zendesk.
+    const refused: any = await call('add_ticket_note', { ticketId: 55, note: 'Customer rang; branch is checking.', public: true, publicReply: true });
+    assert.equal(refused.isError, true);
+    assert.match(refused.payload.error.message, /public, publicReply are not inputs of this tool/);
+    assert.equal(vendor.seen.filter((request) => request.method === 'PUT').length, 0, 'no request reached Zendesk');
+    const done = ((await call('add_ticket_note', { ticketId: 55, note: 'Customer rang; branch is checking.' })) as any).payload;
     const put = vendor.seen.find((request) => request.method === 'PUT')!;
     assert.equal(put.path, '/api/v2/tickets/55.json');
     assert.deepEqual(put.body, { ticket: { comment: { body: 'Customer rang; branch is checking.', public: false } } });

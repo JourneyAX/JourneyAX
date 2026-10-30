@@ -134,9 +134,17 @@ export async function executeConnectorMetaTool(
     const { claimClasses: _claimClasses, ...forModel } = result as any;
     // A team's lookups can show as cards (pack `extensions.dashboard.cards`); the model is then told the records are on screen.
     const shown = showRecordCards(ctx, connector, tool, forModel.result);
-    return shown.length ? { ...forModel, shownAsCards: cardsShownNote(shown) } : forModel;
+    return shown.length ? { ...forModel, shownAsCards: cardsShownNote(shown, recordCount(forModel.result)) } : forModel;
   }
   return result;
+}
+
+/** How many records a tool's answer holds: a list's length, or one for a single record. */
+function recordCount(result: unknown): number {
+  const body = result as any;
+  if (Array.isArray(body?.records)) return body.records.length;
+  if (Array.isArray(body)) return body.length;
+  return 1;
 }
 
 /** The scalar inputs of a call, for the card ("sku: S-1", "quantity: 2"); a list is counted. */

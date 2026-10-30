@@ -36,7 +36,16 @@ export function showRecordCards(ctx: AgentToolContext, connector: string, tool: 
   return headings;
 }
 
-/** What the model is told when cards were shown: say what stands out, do not read the records out again. */
-export function cardsShownNote(headings: string[]): string {
-  return `The person can now see ${headings.map((heading) => `"${heading}"`).join(' and ')} as ${headings.length === 1 ? 'a card' : 'cards'} under your reply, with each record's figures. Do not list those records in your reply, and do not repeat their numbers or reference numbers. In two or three short sentences say what stands out and what the person might do next.`;
+/**
+ * What the model is told when cards were shown: say what stands out, do not read the records out again. When the answer holds several
+ * records and the person has to pick one (three accounts match one name), the model names each with its number so they can choose: the
+ * card alone does not say which one the person meant, and a skill that says "list the closest with their numbers and ask" must not be
+ * contradicted here.
+ */
+export function cardsShownNote(headings: string[], records = 1): string {
+  const list = `${headings.map((heading) => `"${heading}"`).join(' and ')} as ${headings.length === 1 ? 'a card' : 'cards'}`;
+  const choose = records > 1
+    ? ' When the question needs the person to pick one of these records (several match the name they gave), name each in one short line with its number so they can choose, and ask which one. Otherwise, in'
+    : ' In';
+  return `The person can now see ${list} under your reply, with each record's figures. Do not read the records out again or repeat their figures.${choose} two or three short sentences say what stands out and what the person might do next.`;
 }

@@ -371,4 +371,24 @@ describe('Connector tools in the agent loop', () => {
     assert.ok(outcome.toolsCalled.every((t) => t.ok === false));
     assert.equal(world.audit[0].errorType, 'unreachable');
   });
+
+  test('a first reply that only promises ("I am checking…") is nudged like a later one, and the step is then taken', async () => {
+    const world = await setup();
+    const { requests, toolMessages, outcome } = await turn(world, [
+      () => ({ content: 'I am checking the stock at Hamilton for you now. I will provide the figures as soon as I have the verified details.' }),
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'stock-system', tool: 'stock_by_branch', arguments: { sku: 'S-1' } })] }),
+      () => ({ content: 'Hamilton holds 12 on hand.' }),
+    ], { role: 'operator', groups: ['customer-service'] });
+    assert.equal(requests.length, 3, 'the model was asked again after its first-round promise');
+    assert.match(String(requests[1].messages.at(-1)?.content), /You said you would take another step/);
+    assert.equal(lastTool(toolMessages).ok, true, 'the step was taken');
+    assert.match(outcome.turnResult.assistantMessage ?? '', /12 on hand/);
+    assert.equal((outcome.turnResult as any).decision?.reason ?? (outcome as any).decision?.reason, 'Agent provided grounded answer');
+  });
+
+  test('a reply with no lookup behind it is not called grounded', async () => {
+    const world = await setup();
+    const { outcome } = await turn(world, [() => ({ content: 'Hi there.' })], { role: 'operator', message: 'Hello' });
+    assert.equal((outcome.turnResult as any).decision?.reason ?? (outcome as any).decision?.reason, 'Agent answered without a lookup');
+  });
 });

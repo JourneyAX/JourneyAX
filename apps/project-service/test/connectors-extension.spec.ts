@@ -68,6 +68,19 @@ async function main() {
     assert.equal((await service.updateProject(TENANT, { extensions: { productGuides: { wholeGuideChars: -1 } } } as any)).success, false);
   });
 
+  await suite.test('the branch stock setting (which connector tool lists stock branch by branch) is stored, and anything else in it is refused', async () => {
+    const { service, db } = await createService();
+    const ok = await service.updateProject(TENANT, { extensions: { branchStock: { connector: 'ace-erp', tool: 'stock_by_branch', inputs: { sku: 'sku' }, extra: { limit: 25 }, note: 'Branches are listed by code.' } } } as any);
+    assert.equal(ok.success, true, ok.message);
+    assert.deepEqual(db.dump('tenant_configs')[0].extensions.branchStock.extra, { limit: 25 });
+    for (const bad of [{ connector: 'ace-erp' }, { connector: 'has space', tool: 'stock_by_branch' }, { connector: 'ace-erp', tool: 'stock_by_branch', url: 'https://example.test' }, { connector: 'ace-erp', tool: 'stock_by_branch', extra: { nested: {} } }]) {
+      const refused = await service.updateProject(TENANT, { extensions: { branchStock: bad } } as any);
+      assert.equal(refused.success, false, JSON.stringify(bad));
+      assert.match(refused.message || '', /Invalid branchStock/);
+    }
+    assert.equal(db.dump('tenant_configs')[0].extensions.branchStock.tool, 'stock_by_branch', 'a refused change leaves the stored setting as it was');
+  });
+
   await suite.test('an extension key that is not on the list is still refused', async () => {
     const { service } = await createService();
     const refused = await service.updateProject(TENANT, { extensions: { connectorz: registry } } as any);

@@ -136,6 +136,10 @@ check('argument checks: required, types, enums and ranges are reported together 
   assert.deepEqual(validateArguments(schema, { a: 1 }), ['a must be text']);
   assert.deepEqual(validateArguments(schema, null), ['arguments must be an object']);
   assert.deepEqual(validateArguments(schema, { a: 'x', b: 1.5 }), ['b must be a whole number']);
+  // an input the tool does not have is reported with the real ones, unless the schema allows extra properties
+  assert.deepEqual(validateArguments(schema, { a: 'ok', accountName: 'x' }), ['accountName is not an input of this tool; its inputs are a, b, c, d, e']);
+  assert.deepEqual(validateArguments(schema, { a: 'ok', x: 1, y: 2 }), ['x, y are not inputs of this tool; its inputs are a, b, c, d, e']);
+  assert.deepEqual(validateArguments({ ...schema, additionalProperties: true }, { a: 'ok', z: 1 }), []);
 });
 
 check('example placeholders point at records and fail loudly when there is none', () => {

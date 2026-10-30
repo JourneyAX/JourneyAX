@@ -47,7 +47,7 @@ import { buildReview, type ReviewLine, type ReviewState, type ReviewSuggestion }
 import type { LastProducts } from './auto-card';
 import { addOtherOption, checkShelfQuestions, type QuestionCardSettings, type Shelf } from './question-shelves';
 import { connectorWordsForLocale } from '../capabilities/handlers/locale-stemmer';
-import { CONNECTOR_META_TOOL_DEFINITIONS, executeConnectorMetaTool, isConnectorMetaTool } from './connector-tools';
+import { CONNECTOR_META_TOOL_DEFINITIONS, executeConnectorMetaTool, isConnectorMetaTool, plainId } from './connector-tools';
 import { CUSTOMER_ACCOUNT_TOOL_DEFINITIONS, customerAccountRecords, customerAccountSettings, executeCustomerAccountTool, isCustomerAccountTool } from './customer-account';
 import { cardsShownNote, showRecordCards } from './record-cards';
 import type { PersonCompany } from '../kernel/company-directory';
@@ -273,6 +273,25 @@ function makeExecContext(ctx: AgentToolContext) {
     currency: primaryCurrency,
     pricing: (ctx.release as any)?.pricing || (primaryCurrency ? { currency: primaryCurrency } : undefined),
   };
+}
+
+/**
+ * Where a branch's stock figures live, when the pack says so (`extensions.branchStock`): a connector tool of the business system, the name
+ * of its SKU input (default `sku`), the name of its branch input when the tool takes the branch as the person says it (left out when the
+ * system wants a code instead), any fixed extra inputs (a limit), and a note for the model. Without this setting check_stock has only the
+ * catalogue's shop-wide flag, and says so. Nothing here names a system: the pack does.
+ */
+export interface BranchStockRoute { connector: string; tool: string; inputs?: { sku?: string; branch?: string }; extra?: Record<string, unknown>; note?: string }
+
+export function branchStockRoute(release: unknown): BranchStockRoute | undefined {
+  const raw = (release as any)?.extensions?.branchStock;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const connector = plainId(raw.connector);
+  const tool = plainId(raw.tool);
+  if (!connector || !tool) return undefined;
+  const inputs = raw.inputs && typeof raw.inputs === 'object' && !Array.isArray(raw.inputs) ? raw.inputs : undefined;
+  const extra = raw.extra && typeof raw.extra === 'object' && !Array.isArray(raw.extra) ? raw.extra : undefined;
+  return { connector, tool, inputs, extra, note: typeof raw.note === 'string' ? raw.note : undefined };
 }
 
 /**
@@ -753,7 +772,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'check_stock',
-    description: 'Check real-time stock availability and inventory levels for a product SKU at a specific branch or location. Only a check_stock result supports claiming an item is in stock or out of stock.',
+    description: 'Stock for a product SKU. When the business\'s stock system is connected it returns the figures branch by branch (on hand, reserved, available); otherwise it returns the catalogue\'s shop-wide in-stock flag and says so, and a branch\'s stock stays unverified. Only a check_stock result supports claiming an item is in stock or out of stock, and only a branch row from it supports saying what a branch holds.',
     parameters: {
       type: 'object',
       properties: {
@@ -2366,8 +2385,40 @@ export async function executeAgentTool(
 
     case 'check_stock': {
       const sku = String(args.sku || '').trim();
-      const branch = String(args.branch || 'Main Branch').trim();
+      const branchAsked = String(args.branch || '').trim();
 
+      // 1. The branch figures, from the business system, when the pack names the tool that holds them (`extensions.branchStock`) and this
+      //    person may use that connector. The policy gate applies as for any connector call.
+      const route = branchStockRoute(ctx.release);
+      const runtime = ctx.connectorRuntime;
+      if (route && runtime && !ctx.disabledConnectors?.has(route.connector)) {
+        const person = ctx.principal ?? { audience: 'shopper' as const, groups: [] };
+        if (runtime.summaries(ctx.release as any, person).some((summary) => summary.connector === route.connector)) {
+          const callArgs: Record<string, unknown> = { ...(route.extra ?? {}), [route.inputs?.sku || 'sku']: sku };
+          // The branch goes along only when the pack says the tool takes it as the person says it: systems often want a code, not a name.
+          if (branchAsked && route.inputs?.branch) callArgs[route.inputs.branch] = branchAsked;
+          const called: any = await runtime.call(ctx.release as any, person, makeExecContext(ctx) as any, route.connector, route.tool, callArgs);
+          ctx.emitTrace?.('connector_call', { connector: route.connector, tool: route.tool, outcome: called.ok ? 'success' : called.status });
+          if (called.ok) {
+            (ctx.usedConnectorIds ||= new Set()).add(route.connector);
+            ctx.turnProductSkus.add(sku);
+            ctx.allowedClaimClasses.add('catalog_fact');
+            ctx.allowedClaimClasses.add('stock');
+            return {
+              sku,
+              ...(branchAsked ? { branch: branchAsked } : {}),
+              source: 'business_system',
+              connector: route.connector,
+              tool: route.tool,
+              branchStock: called.result,
+              message: `Branch stock for SKU ${sku} from the business system, branch by branch${branchAsked ? `: find ${branchAsked} among the rows` : ''}. "available" (on hand less reserved) is what can be sold. If the branch is not among the rows, say it is not listed in what the system returned (the list can be cut short), not that it holds none. Quote the figures as the system shows them, with the count date when it gives one.${route.note ? ` ${route.note}` : ''}`,
+            };
+          }
+          // The system did not answer: the catalogue below is all that is left, and the branch is reported as not checked.
+        }
+      }
+
+      // 2. Otherwise the catalogue's own in-stock flag. It is shop-wide and is said to be: never a branch figure with the branch pasted in.
       let cached = ctx.catalogProductCache.get(sku);
       if (!cached) {
         try {
@@ -2391,7 +2442,7 @@ export async function executeAgentTool(
       if (cached && isProductDiscontinued(cached)) {
         return {
           sku,
-          branch,
+          ...(branchAsked ? { branch: branchAsked } : {}),
           inStock: false,
           isDiscontinued: true,
           stockLevel: 'Discontinued (no longer stocked)',
@@ -2400,14 +2451,19 @@ export async function executeAgentTool(
       }
 
       const inStock = cached ? Boolean(cached.inStock) : false;
+      const branchNote = branchAsked
+        ? ` Stock at ${branchAsked} was NOT checked: this is the catalogue's shop-wide flag, not a branch figure. Do not say the item is in stock at ${branchAsked}; say the catalogue shows it as ${inStock ? 'in stock' : 'out of stock'} and that the branch's stock is unverified${runtime ? ', or read the branch figures from the business system through its connector' : ''}.`
+        : '';
       return {
         sku,
-        branch,
+        ...(branchAsked ? { branch: branchAsked } : {}),
         inStock,
+        branchChecked: false,
+        source: 'catalogue',
         stockLevel: cached?.stockLevel || (inStock ? 'Available (in stock)' : 'Out of stock / special order'),
         message: inStock
-          ? `SKU ${sku} is verified IN STOCK at ${branch}.`
-          : `SKU ${sku} is currently OUT OF STOCK at ${branch}. Do not claim this item is in stock.`,
+          ? `The catalogue lists SKU ${sku} as in stock (shop-wide).${branchNote}`
+          : `The catalogue lists SKU ${sku} as out of stock or special order.${branchNote} Do not claim this item is in stock.`,
       };
     }
 

@@ -167,6 +167,24 @@ export const BuyerFeedbackSchema = z.object({
   }).strict()).max(30),
 }).strict();
 
+/**
+ * Where a branch's stock figures live (pack `extensions.branchStock`): the business system's connector and the tool that lists stock branch
+ * by branch. check_stock reads it from there for a person who may use that connector, instead of answering from the catalogue's shop-wide
+ * flag. `inputs.sku` names the tool's SKU input (default `sku`); `inputs.branch` is set only when the tool takes the branch as the person
+ * says it (many systems want a code, so it is left out and the tool lists every branch for the model to read); `extra` are fixed inputs such
+ * as a limit; `note` is a line for the model. Nothing here names a system: the shop does.
+ */
+export const BranchStockSchema = z.object({
+  connector: z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,79}$/i),
+  tool: z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,79}$/i),
+  inputs: z.object({
+    sku: z.string().min(1).max(60).optional(),
+    branch: z.string().min(1).max(60).optional(),
+  }).strict().optional(),
+  extra: z.record(z.string().min(1).max(60), z.union([z.string().max(200), z.number(), z.boolean()])).optional(),
+  note: z.string().max(400).optional(),
+}).strict();
+
 export const CheckoutReviewSchema = z.object({
   enabled: z.boolean().optional(),
   /** The words on the card (heading, section titles, button labels); anything left out keeps the platform's plain wording. */

@@ -106,7 +106,7 @@
           },
           "orderId": {
             "type": "string",
-            "description": "The order the delivery is for."
+            "description": "The ERP's own order number, for example ORD-100045. The shop numbers orders differently: its OPP-nnnn number or its long order id will not be found here."
           }
         }
       },

@@ -96,8 +96,13 @@ async function main() {
     assert.equal(payload.records[0].homeBranchCode, 'HAM01');
     await vendor.close();
     const bad = await setup({ SALESFORCE_TIER_FIELD: 'Name FROM User--' });
-    await bad.call('find_account', { tier: 'Gold' });
-    assert.ok(!soqlSeen(bad.vendor)[0]!.includes('WHERE'), 'a field name that is not a plain field name is ignored, never put in the query');
+    // A field name that is not a plain field name is not accepted as a setting, so the tool has no tier input: the call is refused, and nothing is sent.
+    const refused: any = await bad.call('find_account', { tier: 'Gold' });
+    assert.equal(refused.isError, true);
+    assert.match(refused.payload.error.message, /tier is not an input of this tool/);
+    assert.equal(soqlSeen(bad.vendor).length, 0, 'nothing is sent for an input the tool does not have');
+    await bad.call('find_account', { query: 'Hamilton' });
+    assert.ok(!soqlSeen(bad.vendor)[0]!.includes('User--'), 'a field name that is not plain is never put in the query');
     await bad.vendor.close();
   });
 
