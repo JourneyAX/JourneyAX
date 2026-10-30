@@ -291,8 +291,9 @@ async function main() {
     for (const row of rows('account_balances')) {
       assert.deepEqual(Object.keys(row), [...oldFields, ...KEY_FIELDS.account_balances, ...INVOICE_ACCOUNT_FIELDS]);
     }
-    assert.deepEqual(Object.keys(erp.seed.collections), ['branches', 'stock', 'price_list', 'deliveries', 'account_balances', 'invoices']);
-    assert.deepEqual(Object.keys(erp.seed.provenance), ['branches', 'stock', 'price_list', 'deliveries', 'account_balances', 'invoices']);
+    // Later stages (fulfilment, payments) add their collections after these; only the order of the first six is this stage's.
+    assert.deepEqual(Object.keys(erp.seed.collections).slice(0, 6), ['branches', 'stock', 'price_list', 'deliveries', 'account_balances', 'invoices']);
+    assert.deepEqual(Object.keys(erp.seed.provenance).slice(0, 6), ['branches', 'stock', 'price_list', 'deliveries', 'account_balances', 'invoices']);
   });
 
   await check('the new collection has provenance, a minimum and sample: true, and the README says so', () => {
@@ -308,7 +309,7 @@ async function main() {
     for (const invoice of invoices) assert.equal(invoice.sample, true);
     const text = readFileSync(path.join(DEFAULT_CONNECTORS_DIR, 'ace-erp', 'README.md'), 'utf8');
     assert.match(text, /\| `invoices` \| 7 \| real and made up \| 7\/7 \| lines: sku and title \|/);
-    assert.match(text, /invoices 7\./);
+    assert.match(text, /invoices 7[.,]/);
     assert.match(text, /- `find_invoices`: /);
     assert.match(text, /- `get_invoice`: /);
     assert.equal(erp.seed.provenance.account_balances.madeUpFields[0], 'every field', 'the account rows were already all made up');
@@ -579,8 +580,10 @@ async function main() {
     assert.deepEqual(matching('invoice'), ['find_invoices', 'get_invoice']);
   });
 
-  await check('the contract spec\'s count: 50 tools in all, every one runs on its example in the process and answers in the shape the contract expects, and the contract spec says 50', async () => {
+  await check('the contract spec\'s count: every tool runs on its example in the process and answers in the shape the contract expects, and the contract spec pins the same total', async () => {
     const all = new SampleConnectorServer({ tenants: [TENANT], now: () => new Date('2026-09-01T10:00:00Z') });
+    const expected = [...connectors.values()].reduce((sum, { definition }) => sum + definition.tools.length, 0);
+    assert.ok(expected >= 50, 'the invoice tools brought the count to 50; later stages only add');
     let calls = 0;
     for (const [id, { definition, seed }] of connectors) {
       for (const tool of definition.tools) {
@@ -597,8 +600,8 @@ async function main() {
         calls++;
       }
     }
-    assert.equal(calls, 50);
-    assert.match(readFileSync(CONTRACT_SPEC, 'utf8'), /assert\.equal\(calls, 50\);/);
+    assert.equal(calls, expected);
+    assert.match(readFileSync(CONTRACT_SPEC, 'utf8'), new RegExp(`assert\\.equal\\(calls, ${expected}\\);`));
   });
 
   await check('the runtime\'s frozen registry lists the two tools, in the order the server offers them, as reads; the pack schema accepts it; its summaries fit', () => {

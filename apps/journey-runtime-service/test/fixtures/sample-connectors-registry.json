@@ -138,6 +138,26 @@
           "summary": "A trade account's deliveries, newest first."
         },
         {
+          "name": "list_consignments",
+          "sideEffect": "read",
+          "summary": "An order's or a trade account's consignments, newest first."
+        },
+        {
+          "name": "get_consignment",
+          "sideEffect": "read",
+          "summary": "One consignment: order, delivery or collection, branch, trip and status."
+        },
+        {
+          "name": "list_consignment_lines",
+          "sideEffect": "read",
+          "summary": "What is on consignments: order line, product code and quantity."
+        },
+        {
+          "name": "list_tracking_events",
+          "sideEffect": "read",
+          "summary": "The events of a consignment or a trip, oldest first."
+        },
+        {
           "name": "find_account",
           "sideEffect": "read",
           "summary": "Find a trade account by name."

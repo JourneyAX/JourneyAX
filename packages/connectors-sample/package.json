@@ -9,7 +9,7 @@
     "build": "tsc",
     "serve": "tsx src/cli.ts",
     "seed": "tsx scripts/build-seeds.ts",
-    "test": "tsx test/seeds.spec.ts && tsx test/engine.spec.ts && tsx test/contract.spec.ts && tsx test/erp-account-keys.spec.ts && tsx test/erp-invoices.spec.ts"
+    "test": "tsx test/seeds.spec.ts && tsx test/engine.spec.ts && tsx test/contract.spec.ts && tsx test/erp-account-keys.spec.ts && tsx test/erp-invoices.spec.ts && tsx test/erp-fulfilment.spec.ts"
   },
   "devDependencies": {
     "typescript": "^5"
