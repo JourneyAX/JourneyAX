@@ -7,23 +7,27 @@
  */
 import { useState } from 'react';
 import { openCanvas } from '@/lib/shell/sidePanelStore';
-import { CARE_BOARD, CARE_STAGES, slaClock, stageIndex, type CareStage } from './careData';
+import { CARE_BOARD, slaClock, stageIndex, type CareStage, type DeskKind } from './careData';
 import { FIXTURES } from './careApi';
+import { deskWords } from './deskWords';
 import { useCareSync, useCareTickets } from './careStore';
 import { StatusChip } from './CareQueueCanvas';
 
 /** What the rest of the team has at each stage, so the board counts the whole team and not only this person. */
 const TEAMMATES: Record<CareStage, number> = FIXTURES ? { arrived: 0, read: 0, researched: 0, drafted: 0, waiting: 3, running: 1, done: 21 } : { arrived: 0, read: 0, researched: 0, drafted: 0, waiting: 0, running: 0, done: 0 };
 
-export default function CareBoardCanvas() {
-  useCareSync();
-  const tickets = useCareTickets();
+export default function CareBoardCanvas({ desk = 'care' }: { desk?: DeskKind }) {
+  useCareSync(desk);
+  const w = deskWords(desk);
+  const CARE_STAGES = w.stages;
+  const tickets = useCareTickets(desk);
   const b = CARE_BOARD;
+  const fixtures = FIXTURES && desk === 'care';
   const closeToLate = tickets.filter((t) => t.stage !== 'done' && t.status !== 'ai' && t.slaMinutes <= 15).length;
   const approved = tickets.filter((t) => t.approval);
   const asWritten = approved.filter((t) => !t.approval!.edited).length;
-  const byPerson = FIXTURES ? b.byPerson : Object.values(tickets.filter((t) => t.stage !== 'done').reduce<Record<string, { name: string; id: string; open: number }>>((acc, t) => { const k = t.assignee.id || 'none'; acc[k] = acc[k] ?? { name: t.assignee.name, id: t.assignee.id, open: 0 }; acc[k].open += 1; return acc; }, {})).filter((p) => p.id);
-  const count = (stage: CareStage) => tickets.filter((t) => t.stage === stage).length + TEAMMATES[stage];
+  const byPerson = fixtures ? b.byPerson : Object.values(tickets.filter((t) => t.stage !== 'done').reduce<Record<string, { name: string; id: string; open: number }>>((acc, t) => { const k = t.assignee.id || 'none'; acc[k] = acc[k] ?? { name: t.assignee.name, id: t.assignee.id, open: 0 }; acc[k].open += 1; return acc; }, {})).filter((p) => p.id);
+  const count = (stage: CareStage) => tickets.filter((t) => t.stage === stage).length + (fixtures ? TEAMMATES[stage] : 0);
   const firstBusy = CARE_STAGES.find((s) => s.id !== 'done' && tickets.some((t) => t.stage === s.id))?.id ?? 'waiting';
   const [picked, setPicked] = useState<CareStage | null>(null);
   const stage = picked ?? firstBusy;
@@ -38,14 +42,14 @@ export default function CareBoardCanvas() {
       <div className="cv__body">
         <div className="cv__order-head">
           <div>
-            <div className="cv__eyebrow">Customer care</div>
-            <div className="cv__order-no">Care board</div>
+            <div className="cv__eyebrow">{w.eyebrow}</div>
+            <div className="cv__order-no">{w.boardTitle}</div>
             <div className="cv__meta">Today · whole team · time figures are medians</div>
           </div>
-          <button type="button" className="cv__link" onClick={() => openCanvas({ kind: 'care-queue' })}>My tickets</button>
+          <button type="button" className="cv__link" onClick={() => openCanvas({ kind: w.kinds.queue })}>{w.queueTitle}</button>
         </div>
 
-        <h3 className="cv__h cv__h--first">How the tickets are moving</h3>
+        <h3 className="cv__h cv__h--first">How the {w.many} are moving</h3>
         <ol className="cv__stages" aria-live="polite">
           {CARE_STAGES.map((s, i) => {
             const n = count(s.id);
@@ -65,16 +69,16 @@ export default function CareBoardCanvas() {
         </ol>
         <p className="cv__meta cv__stage-doing"><strong>{info?.word}:</strong> {info?.doing}</p>
         {inStage.length === 0
-          ? <p className="cv__meta">None of your tickets are at this stage{TEAMMATES[stage] ? `. The other ${TEAMMATES[stage]} belong to your teammates.` : '.'}</p>
+          ? <p className="cv__meta">None of your {w.many} are at this stage{fixtures && TEAMMATES[stage] ? `. The other ${TEAMMATES[stage]} belong to your teammates.` : '.'}</p>
           : (
             <ul className="cv__tickets">
               {inStage.map((t) => {
                 const clock = slaClock(t.slaMinutes);
                 return (
                   <li key={t.id}>
-                    <button type="button" className="cv__ticket" onClick={() => openCanvas({ kind: 'care-ticket', params: { ticketId: t.id } })}>
+                    <button type="button" className="cv__ticket" onClick={() => openCanvas({ kind: w.kinds.ticket, params: { ticketId: t.id } })}>
                       <span className="cv__ticket-top"><StatusChip status={t.status} /><span className="cv__ticket-subject">{t.subject}</span>{t.status !== 'ai' && t.status !== 'done' && <span className={`cv__clock cv__clock--${clock.tone}`}><span aria-hidden="true">{clock.icon}</span> {clock.text}</span>}</span>
-                      <span className="cv__meta">#{t.ref} · {t.customer.name} · assigned to {t.assignee.name} ({t.assignee.id})</span>
+                      <span className="cv__meta">{w.refPrefix}{t.ref} · {t.customer.name} · assigned to {t.assignee.name} ({t.assignee.id})</span>
                     </button>
                   </li>
                 );
@@ -85,13 +89,13 @@ export default function CareBoardCanvas() {
         <h3 className="cv__h">Numbers</h3>
         <div className="cv__nums">
           <div className="cv__num"><div className="cv__meta">Open now</div><div className="cv__big">{open}</div><div className="cv__meta">{count('waiting')} wait on a person</div></div>
-          <div className="cv__num"><div className="cv__meta">Close to late</div><div className="cv__big">{FIXTURES ? b.nearBreach : closeToLate}</div><div className="cv__meta">under 15 minutes or late</div></div>
-          {FIXTURES && <div className="cv__num"><div className="cv__meta">First reply</div><div className="cv__big">{b.firstReplyMinutes} min</div><div className="cv__meta">target {b.firstReplyTargetMinutes} min</div></div>}
-          {FIXTURES && <div className="cv__num"><div className="cv__meta">Satisfaction, 7 days</div><div className="cv__big">{b.csat.percent}%</div><div className="cv__meta">{b.csat.ratings} ratings</div></div>}
-          {!FIXTURES && <div className="cv__num"><div className="cv__meta">Approved today</div><div className="cv__big">{approved.length}</div><div className="cv__meta">{approved.length ? `${asWritten} sent as written` : 'none yet'}</div></div>}
+          <div className="cv__num"><div className="cv__meta">Close to late</div><div className="cv__big">{fixtures ? b.nearBreach : closeToLate}</div><div className="cv__meta">under 15 minutes or late</div></div>
+          {fixtures && <div className="cv__num"><div className="cv__meta">First reply</div><div className="cv__big">{b.firstReplyMinutes} min</div><div className="cv__meta">target {b.firstReplyTargetMinutes} min</div></div>}
+          {fixtures && <div className="cv__num"><div className="cv__meta">Satisfaction, 7 days</div><div className="cv__big">{b.csat.percent}%</div><div className="cv__meta">{b.csat.ratings} ratings</div></div>}
+          {!fixtures && <div className="cv__num"><div className="cv__meta">Approved today</div><div className="cv__big">{approved.length}</div><div className="cv__meta">{approved.length ? `${asWritten} ${w.asWritten}` : 'none yet'}</div></div>}
         </div>
 
-        {FIXTURES && <>
+        {fixtures && <>
         <h3 className="cv__h">AI drafts, last 7 days</h3>
         <div className="cv__split" role="img" aria-label={`${b.drafts.asIs} percent sent as written, ${b.drafts.edited} percent edited, ${b.drafts.discarded} percent discarded`}>
           <span style={{ width: `${b.drafts.asIs}%` }} className="cv__split-a" />

@@ -11,11 +11,18 @@
  *   POST care/tickets/:id/reject
  *   POST care/tickets/:id/to-lead
  *   POST care/poll                    look at Zendesk now (instead of waiting for the timer)
+ *
+ * The other desks (stock, quotes) answer the same routes under `care/<desk>/...` (me, tickets, tickets/:id, board, the four decisions, poll). They need
+ * the people who work that desk, and answer "not switched on" while the desk's intake setting is off.
  */
 import { Body, Controller, Get, Headers, HttpException, HttpStatus, Inject, Param, Post } from '@nestjs/common';
 import { verifiedIdentity } from '../identity';
+import type { CareDesk } from './care.desk';
+import { extraSpec } from './desk-specs';
 import { CareService } from './care.service';
 import type { CareActor } from './care.writeback';
+
+const isExtraDesk = (desk: string): boolean => !!extraSpec(desk);
 
 @Controller('api/v1/:projectId/commerce/care')
 export class CareController {
@@ -89,5 +96,74 @@ export class CareController {
   async poll(@Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
     const { tenantId } = this.who(projectId, assertion);
     return { found: await this.care.desk.pollOnce(tenantId) };
+  }
+
+  // ---- The other desks (stock exceptions, quotes): the same routes under `<desk>/...`, for the people who work them. ----
+
+  private deskWho(desk: string, projectId: string, assertion: string | undefined): { tenantId: string; actor: CareActor; desk: CareDesk } {
+    const found = isExtraDesk(desk) ? this.care.extraDesk(desk) : null;
+    if (!found) throw new HttpException({ error: 'That desk is not switched on.' }, HttpStatus.NOT_FOUND);
+    const tenantId = (projectId || '').toLowerCase().trim();
+    const actor = this.care.actorForDesk(desk, verifiedIdentity(assertion, tenantId));
+    if (!actor) throw new HttpException({ error: 'This desk is for the people who work it.' }, HttpStatus.FORBIDDEN);
+    return { tenantId, actor, desk: found };
+  }
+
+  /** Whether the signed-in person works the desk: answers "no" instead of refusing, like `care/me`. */
+  @Get(':desk/me')
+  deskMe(@Param('desk') desk: string, @Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const tenantId = (projectId || '').toLowerCase().trim();
+    const actor = isExtraDesk(desk) ? this.care.actorForDesk(desk, verifiedIdentity(assertion, tenantId)) : null;
+    return actor ? { [desk]: true, actor: { name: actor.name, id: actor.id, isLead: actor.isLead } } : { [desk]: false };
+  }
+
+  @Get(':desk/tickets')
+  async deskList(@Param('desk') desk: string, @Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const w = this.deskWho(desk, projectId, assertion);
+    return { serverTime: new Date().toISOString(), actor: { name: w.actor.name, id: w.actor.id, isLead: w.actor.isLead }, tickets: await w.desk.list(w.tenantId) };
+  }
+
+  @Get(':desk/tickets/:id')
+  async deskOne(@Param('desk') desk: string, @Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const w = this.deskWho(desk, projectId, assertion);
+    const ticket = await w.desk.get(w.tenantId, id);
+    if (!ticket) throw new HttpException({ error: 'There is no such case.' }, HttpStatus.NOT_FOUND);
+    return { ticket };
+  }
+
+  @Get(':desk/board')
+  async deskBoard(@Param('desk') desk: string, @Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const w = this.deskWho(desk, projectId, assertion);
+    return w.desk.board(w.tenantId);
+  }
+
+  @Post(':desk/tickets/:id/approve')
+  async deskApprove(@Param('desk') desk: string, @Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined, @Body() body: { draft?: unknown; removedSteps?: unknown; topic?: unknown; mood?: unknown }) {
+    const w = this.deskWho(desk, projectId, assertion);
+    return this.answer(await w.desk.approve(w.tenantId, id, w.actor, body || {}));
+  }
+
+  @Post(':desk/tickets/:id/retry')
+  async deskRetry(@Param('desk') desk: string, @Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const w = this.deskWho(desk, projectId, assertion);
+    return this.answer(await w.desk.retry(w.tenantId, id, w.actor));
+  }
+
+  @Post(':desk/tickets/:id/reject')
+  async deskReject(@Param('desk') desk: string, @Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const w = this.deskWho(desk, projectId, assertion);
+    return this.answer(await w.desk.reject(w.tenantId, id, w.actor));
+  }
+
+  @Post(':desk/tickets/:id/to-lead')
+  async deskToLead(@Param('desk') desk: string, @Param('projectId') projectId: string, @Param('id') id: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const w = this.deskWho(desk, projectId, assertion);
+    return this.answer(await w.desk.toLead(w.tenantId, id, w.actor));
+  }
+
+  @Post(':desk/poll')
+  async deskPoll(@Param('desk') desk: string, @Param('projectId') projectId: string, @Headers('x-gateway-assertion') assertion: string | undefined) {
+    const w = this.deskWho(desk, projectId, assertion);
+    return { found: await w.desk.pollOnce(w.tenantId) };
   }
 }

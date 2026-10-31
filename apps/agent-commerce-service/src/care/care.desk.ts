@@ -9,8 +9,6 @@
  */
 import { createHash } from 'node:crypto';
 import type { CareEvents } from './care.events';
-import type { CareIntake } from './care.intake';
-import type { CareProcessor } from './care.processor';
 import { MOODS, TOPICS, type CareTeam } from './care.playbook';
 import type { CareStore } from './care.store';
 import type { CareWriteBack, CareActor } from './care.writeback';
@@ -19,13 +17,23 @@ import { toView } from './care.view';
 
 export type Decision<T = {}> = ({ ok: true } & T) | { ok: false; code: 'not_found' | 'not_allowed' | 'not_ready' | 'invalid'; message: string };
 
+/** What the desk needs of the AI's worker: take a new case through its stages, and finish one that stopped part way. The care and stock workers both do. */
+export interface CaseProcessor {
+  run(tenantId: string, id: string): Promise<CareCase | null>;
+  rescue(tenantId: string, id: string): Promise<CareCase | null>;
+}
+/** What the desk needs of the intake: one look at the source, returning the cases it made. */
+export interface CaseIntake { poll(tenantId: string): Promise<CareCase[]> }
+
 export interface DeskDeps {
   store: CareStore;
   events: CareEvents;
-  processor: CareProcessor;
-  intake: CareIntake | null;
+  processor: CaseProcessor;
+  intake: CaseIntake | null;
   writeBack: CareWriteBack;
   team: CareTeam;
+  /** The labels a person may correct the AI's reading to. Customer care's own topics and moods unless the desk says otherwise. */
+  labels?: { topics: readonly string[]; moods: readonly string[] };
   now?: () => Date;
   log?: (message: string) => void;
 }
@@ -118,8 +126,10 @@ export class CareDesk {
     doc.draft = { ...doc.draft, text: draft };
     // Where the person disagreed with the AI's reading is kept, as the plainest signal of how well it is reading tickets.
     const corrections: NonNullable<CareCase['approval']>['corrections'] = {};
-    if (typeof input.topic === 'string' && (TOPICS as readonly string[]).includes(input.topic) && input.topic !== doc.topic.value) { corrections.topic = { from: doc.topic.value, to: input.topic }; doc.topic = { value: input.topic, confidence: 'High' }; }
-    if (typeof input.mood === 'string' && (MOODS as readonly string[]).includes(input.mood) && input.mood !== doc.mood.value) { corrections.mood = { from: doc.mood.value, to: input.mood }; doc.mood = { value: input.mood, confidence: 'High' }; }
+    const topics: readonly string[] = this.d.labels?.topics ?? TOPICS;
+    const moods: readonly string[] = this.d.labels?.moods ?? MOODS;
+    if (typeof input.topic === 'string' && topics.includes(input.topic) && input.topic !== doc.topic.value) { corrections.topic = { from: doc.topic.value, to: input.topic }; doc.topic = { value: input.topic, confidence: 'High' }; }
+    if (typeof input.mood === 'string' && moods.includes(input.mood) && input.mood !== doc.mood.value) { corrections.mood = { from: doc.mood.value, to: input.mood }; doc.mood = { value: input.mood, confidence: 'High' }; }
     doc.approval = { by: { name: actor.name, id: actor.id }, at: this.now().toISOString(), contentHash: hashOf(draft, kept.map((s) => s.id)), edited: draft !== doc.draft.original, removedSteps: removed, ...(Object.keys(corrections).length ? { corrections } : {}), results: [] };
     doc.steps = kept;
     return this.run(doc, actor, 0, `Approved by ${actor.name} (${actor.id})${doc.approval.edited ? ', with edits' : ''}. Making the changes.`);

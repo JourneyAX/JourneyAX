@@ -9,6 +9,7 @@
  * seen come back as 409 instead of overwriting it.
  */
 import { NextResponse } from 'next/server';
+import { overlayFromEnv, removeNamesDeep } from '@/lib/brand/overlay';
 import { resolveTenant } from '@/lib/tenant';
 import { unauthorized, upstreamAuthHeaders } from '@/lib/bff-auth';
 import { readLibrary, readPromptOp, readScenarioOp, saveScenarioPrompt, saveScenarioTools } from '@/lib/customize/personaApi';
@@ -29,7 +30,9 @@ export async function GET(req: Request) {
   const d = await deps(req);
   if (!d) return unauthorized();
   const result = await readLibrary(d);
-  return NextResponse.json(result.body, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
+  // Under a brand overlay (BRAND_OVERLAY) the library is shown without the shop's name; what is stored is not changed.
+  const overlay = overlayFromEnv();
+  return NextResponse.json(overlay ? removeNamesDeep(result.body, overlay.remove) : result.body, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req: Request) {

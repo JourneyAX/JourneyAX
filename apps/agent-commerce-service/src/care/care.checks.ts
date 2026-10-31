@@ -16,7 +16,8 @@ const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 export function dateKeys(text: string): string[] {
   const keys: string[] = [];
   const t = text.toLowerCase();
-  for (const m of t.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/g)) keys.push(`${Number(m[1])} ${m[2]}`);
+  // The month must be written as a month ("30 October", "30 Oct", "5 Sept"), so "30 decking boards" and "14 Marine Parade" are not dates.
+  for (const m of t.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/g)) keys.push(`${Number(m[1])} ${m[2].slice(0, 3)}`);
   for (const d of DAYS) if (new RegExp(`\\b${d}\\b`).test(t)) keys.push(d);
   for (const w of ['tomorrow', 'next week', 'this week', 'by friday']) if (t.includes(w)) keys.push(w);
   return keys;

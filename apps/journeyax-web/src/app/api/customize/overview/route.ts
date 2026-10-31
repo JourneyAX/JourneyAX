@@ -9,6 +9,7 @@
  * route does not read Mongo itself. Agent system prompts are dropped here; skill instructions are sent only to people who
  * hold the config.edit permission. Knowledge release details are added for people who may read knowledge releases.
  */
+import { overlayFromEnv, removeNamesDeep } from '../../../../lib/brand/overlay';
 import { NextResponse } from 'next/server';
 import { can } from '@journeyax/shared-types';
 import { resolveTenant } from '@/lib/tenant';
@@ -127,5 +128,7 @@ export async function GET(req: Request) {
     if (details) overview.knowledge = { ...overview.knowledge, ...details };
   }
 
-  return NextResponse.json(overview, { headers: { 'Cache-Control': 'no-store' } });
+  // Under a brand overlay (BRAND_OVERLAY) the agent, skill and plugin names are shown without the shop's name; the ids are not touched.
+  const overlay = overlayFromEnv();
+  return NextResponse.json(overlay ? removeNamesDeep(overview, overlay.remove) : overview, { headers: { 'Cache-Control': 'no-store' } });
 }

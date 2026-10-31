@@ -6,6 +6,7 @@
  * Themed from the tenant config (logo, brand colour) so PlaceMakers, Caroma,
  * A&F each get their own sign-in, not a generic one.
  */
+import BrandLockup from '@/components/brand/BrandLockup';
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
@@ -20,7 +21,8 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const brand = cfg.companyName || 'JourneyAX';
   const accent = cfg.theme?.primaryColor || '#00AEC7';
-  const sidebar = cfg.theme?.sidebarColor || '#0B2A56';
+  // Under a brand overlay the panel takes the brand's own dark; otherwise the shop's colour, as before.
+  const sidebar = cfg.brandOverlay ? '#12121A' : (cfg.theme?.sidebarColor || '#0B2A56');
   const logo = cfg.theme?.logoUrl;
 
   const onSubmit = async (e: FormEvent) => {
@@ -36,7 +38,9 @@ export default function LoginScreen() {
     <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: '2fr 3fr', fontFamily: cfg.theme?.fontFamily || 'inherit' }}>
       <div style={{ background: sidebar, color: '#FFFFFF', padding: '48px 44px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         <div>
-          {logo ? (
+          {cfg.brandOverlay ? (
+            <span style={{ ['--brand-lockup-ink' as string]: '#FFFFFF', ['--brand-mark-line' as string]: '#FFFFFF' }}><BrandLockup className="brand-lockup--large" /></span>
+          ) : logo ? (
             <img src={logo} alt={brand} style={{ height: 36, width: 'auto' }} />
           ) : (
             <div style={{ fontSize: 22, fontWeight: 700 }}>{brand}</div>
@@ -50,7 +54,7 @@ export default function LoginScreen() {
             {cfg.labels?.headerTitle || 'Your project, planned in one conversation.'}
           </h1>
           <p style={{ fontSize: 15, lineHeight: 1.6, color: 'rgba(255,255,255,0.78)', margin: 0, maxWidth: 420 }}>
-            Sign in to talk to your {brand} consultant — real catalogue, real stock, one complete quote.
+            {cfg.brandOverlay ? cfg.brandOverlay.loginTagline : `Sign in to talk to your ${brand} consultant — real catalogue, real stock, one complete quote.`}
           </p>
         </div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>JourneyAX · Agent Experience</div>

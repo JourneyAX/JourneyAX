@@ -7,7 +7,9 @@
  */
 export type CareStage = 'arrived' | 'read' | 'researched' | 'drafted' | 'waiting' | 'running' | 'done';
 export type CareStatus = 'ai' | 'decide' | 'waiting' | 'done' | 'lead';
-export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce';
+export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce' | 'SAP ERP';
+/** Which desk a case belongs to. A case with no desk is a customer-care ticket. */
+export type DeskKind = 'care' | 'stock' | 'quotes' | 'invoices';
 export type CareStepKind = 'customer' | 'internal' | 'record' | 'money';
 export type CareConfidence = 'High' | 'Medium' | 'Low';
 
@@ -39,6 +41,54 @@ export interface CareOrder {
 
 export interface CareCorrection { from: string; to: string }
 
+/** An invoice the AI compared with the order, the delivery and the agreed prices, drawn as a table of lines: what was invoiced, what it should have been, and the difference. */
+export interface InvoiceDetail {
+  invoiceId: string;
+  orderRef?: string;
+  deliveryId?: string;
+  /** The customer's trade tier ("Silver"), when the ERP gave one. */
+  tier?: string;
+  currency?: string;
+  /** What the invoice came to, with GST. */
+  invoiceTotal: number;
+  lines: Array<{ sku: string; name: string; invoicedQty: number; invoicedPrice: number; rightQty: number; rightPrice: number; over: number; why: string }>;
+  /** What was over-charged before GST, the GST on it, and the credit due (both together). */
+  overcharge: number;
+  gst: number;
+  credit: number;
+  /** The account's balance now and after the credit, when the ERP gave one. */
+  balanceBefore?: number;
+  balanceAfter?: number;
+  /** Who owns the account in the CRM: the person the exception is routed to. */
+  owner?: string;
+}
+
+/** A quote the AI priced, drawn as a table of lines: what the customer asked for, at their trade tier, with stock at the branch it goes from. */
+export interface QuoteDetail {
+  /** The customer's trade tier ("Silver"). */
+  tier: string;
+  /** The last day the prices and the stock hold (YYYY-MM-DD). */
+  validUntil?: string;
+  /** Where it is delivered from. */
+  branch: string;
+  lines: Array<{ sku: string; name: string; quantity: number; unit: string; retailPrice: number; unitPrice: number; lineTotal: number; stock: string }>;
+  subtotal: number;
+  gst: number;
+  total: number;
+  /** How far under the retail price the whole quote is, in percent. */
+  discountPercent: number;
+  /** The currency the ERP's prices are in ("NZD"). */
+  currency?: string;
+}
+
+/** A stock exception's own facts, drawn as a table of branches: the product, what is short where, and what every branch holds. */
+export interface StockExceptionDetail {
+  product: { sku: string; name: string };
+  short: { branch: string; needed: number; onHand: number };
+  /** Every branch's stock, the short one first, then the best source, then the rest. */
+  branches: Array<{ name: string; onHand: number; spare: number; role: 'short' | 'source' | 'other'; note?: string }>;
+}
+
 /** What the care desk did at one stage, for finding out afterwards what went wrong: how long, which tools, whether the model was used, any fallback. */
 export interface CareTrace {
   stage: CareStage;
@@ -64,7 +114,10 @@ export interface CareApproval {
 export interface CareCase {
   tenantId: string;
   id: string;
+  /** Absent means a customer-care ticket. */
+  desk?: DeskKind;
   ref: string;
+  /** The ticket desk's own number; for a stock exception, the number the ERP gave it. */
   zendeskId: number;
   zendeskUpdatedAt: string;
   subject: string;
@@ -87,6 +140,12 @@ export interface CareCase {
   recommendation: string;
   otherOption: string;
   order?: CareOrder;
+  /** Set on a stock exception: what is short, where, and what every branch holds. */
+  stock?: StockExceptionDetail;
+  /** Set on a quote request: the quote the AI priced. */
+  quote?: QuoteDetail;
+  /** Set on an invoice exception: the invoice compared with the order, the delivery and the agreed prices. */
+  invoice?: InvoiceDetail;
   draft: { isReply: boolean; text: string; original: string };
   replyChecks: Array<{ label: string; ok: boolean }>;
   steps: CareStep[];
@@ -97,10 +156,12 @@ export interface CareCase {
   claimedAt?: string;
   /** The record of how the AI got here, for the team and not for the customer. */
   trace?: CareTrace[];
+  /** What the source system raised, as it gave it (a stock exception). Server only. */
+  raw?: Record<string, unknown>;
 }
 
 /** What the portal's canvases draw. The server-only parts (the actions behind the steps, the approval's fingerprint) are left out. */
-export interface CareTicketView extends Omit<CareCase, 'tenantId' | 'requester' | 'zendeskId' | 'zendeskUpdatedAt' | 'createdAt' | 'updatedAt' | 'dueAt' | 'steps' | 'draft' | 'approval' | 'claimedAt' | 'trace'> {
+export interface CareTicketView extends Omit<CareCase, 'tenantId' | 'requester' | 'zendeskId' | 'zendeskUpdatedAt' | 'createdAt' | 'updatedAt' | 'dueAt' | 'steps' | 'draft' | 'approval' | 'claimedAt' | 'trace' | 'raw'> {
   slaMinutes: number;
   /** Who approved, when, and how each change went. The fingerprint stays on the server. */
   approval?: Omit<CareApproval, 'contentHash'>;

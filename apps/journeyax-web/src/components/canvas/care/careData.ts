@@ -29,7 +29,10 @@ export const stageIndex = (stage: CareStage): number => CARE_STAGES.findIndex((s
 
 export interface CareTimelineEntry { stage: CareStage; at: string; note: string }
 
-export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce';
+export type CareSystem = 'Zendesk' | 'commercetools' | 'Salesforce' | 'SAP ERP';
+
+/** Which desk a case belongs to: customer care's tickets, the stock exceptions desk's exceptions, the quotes desk's quote requests, or the invoices desk's exceptions. The same screens draw all four. */
+export type DeskKind = 'care' | 'stock' | 'quotes' | 'invoices';
 
 /** What a proposed change does, so the person can tell a note from an email to the customer from a money move. */
 export type CareStepKind = 'customer' | 'internal' | 'record' | 'money';
@@ -58,8 +61,54 @@ export interface CareOrder {
   notes: string[];
 }
 
+/** A stock exception's own facts, drawn as a table of branches. */
+export interface StockDetail {
+  product: { sku: string; name: string };
+  short: { branch: string; needed: number; onHand: number };
+  branches: Array<{ name: string; onHand: number; spare: number; role: 'short' | 'source' | 'other'; note?: string }>;
+}
+
+/** An invoice the AI compared with the order, the delivery and the agreed prices, drawn as a table of lines. */
+export interface InvoiceDetail {
+  invoiceId: string;
+  orderRef?: string;
+  deliveryId?: string;
+  tier?: string;
+  currency?: string;
+  invoiceTotal: number;
+  lines: Array<{ sku: string; name: string; invoicedQty: number; invoicedPrice: number; rightQty: number; rightPrice: number; over: number; why: string }>;
+  overcharge: number;
+  gst: number;
+  credit: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
+  owner?: string;
+}
+
+/** A quote the AI priced, drawn as a table of lines. */
+export interface QuoteDetail {
+  tier: string;
+  validUntil?: string;
+  branch: string;
+  lines: Array<{ sku: string; name: string; quantity: number; unit: string; retailPrice: number; unitPrice: number; lineTotal: number; stock: string }>;
+  subtotal: number;
+  gst: number;
+  total: number;
+  discountPercent: number;
+  /** The currency the ERP's prices are in ("NZD"). */
+  currency?: string;
+}
+
 export interface CareTicket {
   id: string;
+  /** Absent means a customer-care ticket. */
+  desk?: DeskKind;
+  /** Set on a stock exception: what is short, where, and what every branch holds. */
+  stock?: StockDetail;
+  /** Set on a quote request: the quote the AI priced. */
+  quote?: QuoteDetail;
+  /** Set on an invoice exception: the invoice compared with the order, the delivery and the agreed prices. */
+  invoice?: InvoiceDetail;
   ref: string;
   subject: string;
   status: CareStatus;

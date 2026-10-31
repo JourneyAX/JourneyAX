@@ -5,6 +5,7 @@
  * attached asks that question in the chat when pressed.
  */
 import { askInChat } from '@/lib/shell/askInChat';
+import { rebrandText } from '@/lib/brand/overlay';
 import type { DashboardFigure, DashboardRow } from '@/lib/shell/dashboard';
 
 export function Figure({ figure, className = '' }: { figure: DashboardFigure; className?: string }) {
@@ -26,9 +27,9 @@ export function RowItem({ row, className = '' }: { row: DashboardRow; className?
   const body = (
     <>
       <span className="rec__main">
-        <span className="rec__name">{row.title}</span>
-        {row.subtitle && <span className="rec__sub">{row.subtitle}</span>}
-        {row.detail && <span className="rec__detail">{row.detail}</span>}
+        <span className="rec__name">{rebrandText(row.title)}</span>
+        {row.subtitle && <span className="rec__sub">{rebrandText(row.subtitle)}</span>}
+        {row.detail && <span className="rec__detail">{rebrandText(row.detail)}</span>}
       </span>
       {(row.amount || row.badge) && (
         <span className="rec__side">

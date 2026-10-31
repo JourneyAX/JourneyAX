@@ -7,6 +7,7 @@
  */
 import { resolveTenant } from '../../../lib/tenant';
 import { handleConfigFailure, json } from '../../../lib/config/configFailure';
+import { applyBrandOverlay, overlayFromEnv } from '../../../lib/brand/overlay';
 
 const PROJECT_API = process.env.PROJECT_API || 'http://localhost:8082';
 
@@ -26,7 +27,10 @@ export async function GET(req: Request) {
       return await handleConfigFailure(PROJECT_ID);
     }
     const p: any = withPreviewDraft(await res.json());
-    return json({
+    // With a brand overlay on (BRAND_OVERLAY) the config is shown under that brand; with it off the config is returned as it is.
+    const overlay = overlayFromEnv();
+    const shown = (config: Record<string, any>) => (overlay ? applyBrandOverlay(config, overlay) : config);
+    return json(shown({
       projectId: p.projectId || PROJECT_ID,
       companyName: p.companyName || 'JourneyAX',
       theme: p.theme || {},
@@ -99,7 +103,7 @@ export async function GET(req: Request) {
           tryAsking: Array.isArray(x.tryAsking) ? x.tryAsking.map(String) : [],
         })),
       } : null,
-    });
+    }));
   } catch {
     return await handleConfigFailure(PROJECT_ID);
   }

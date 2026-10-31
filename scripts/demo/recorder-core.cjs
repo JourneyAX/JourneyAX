@@ -56,9 +56,11 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const clock = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
 /** A recording kit that writes into `out`. */
-function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, captionAt = 'bottom', captions = true }) {
+function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, captionAt = 'bottom', captions = true, ripple = '#a8346f' }) {
   // The caption sits at the bottom of the picture, or at the top where the screen has a message box at the bottom (a chat).
-  const overlay = captionAt === 'top' ? OVERLAY.replace('bottom:34px', 'top:12px').replace('padding:16px 30px', 'padding:10px 26px').replace('font:600 30px/1.3', 'font:600 26px/1.3') : OVERLAY;
+  const base = captionAt === 'top' ? OVERLAY.replace('bottom:34px', 'top:12px').replace('padding:16px 30px', 'padding:10px 26px').replace('font:600 30px/1.3', 'font:600 26px/1.3') : OVERLAY;
+  // The click ripple takes the brand's colour (a recording for another brand passes its own).
+  const overlay = base.split('#a8346f').join(ripple);
   async function openRecorder(name, { storageState, profileDir } = {}) {
     const dir = path.join(out, '.raw', name);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -92,7 +94,8 @@ function createKit({ out, keepFrames = false, voice = 'Karen', rate = 168, capti
       while (capturing) {
         const at = Date.now() / 1000;
         try {
-          const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 92, optimizeForSpeed: true, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 2 } });
+          // A picture the browser never answers must not hold the recording (or its ending) forever: after eight seconds it is dropped and the next is tried.
+          const { data } = await Promise.race([cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 92, optimizeForSpeed: true, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 2 } }), new Promise((_, reject) => setTimeout(() => reject(new Error('screenshot timed out')), 8000))]);
           const hash = crypto.createHash('md5').update(data).digest('hex');
           if (hash !== lastHash) {
             const file = path.join(dir, `${String(frames.length).padStart(6, '0')}.jpg`);
